@@ -3,7 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowLeft, Save, CheckCircle } from "lucide-react";
+import { ArrowLeft, Save, CheckCircle, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import ropeWorksLogo from "@/assets/rope-works-logo.png";
 import InspectionHeader from "@/components/inspection/InspectionHeader";
@@ -18,6 +18,9 @@ export default function InspectionForm() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [autoSaving, setAutoSaving] = useState(false);
+  const [lastSaved, setLastSaved] = useState<Date | null>(null);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [inspection, setInspection] = useState<any>(null);
   const [systems, setSystems] = useState<any[]>([]);
   const [ziplines, setZiplines] = useState<any[]>([]);
@@ -40,6 +43,30 @@ export default function InspectionForm() {
   useEffect(() => {
     loadInspection();
   }, [id]);
+
+  // Track changes to inspection data
+  useEffect(() => {
+    if (!loading) {
+      setHasUnsavedChanges(true);
+    }
+  }, [systems, ziplines, equipment, standards, summary]);
+
+  // Auto-save interval (every 2 minutes)
+  useEffect(() => {
+    const autoSaveInterval = setInterval(() => {
+      autoSaveProgress();
+    }, 120000); // 2 minutes = 120,000 ms
+
+    return () => clearInterval(autoSaveInterval);
+  }, [hasUnsavedChanges, saving, autoSaving]);
+
+  const formatTime = (date: Date) => {
+    return date.toLocaleTimeString('en-US', { 
+      hour: 'numeric', 
+      minute: '2-digit',
+      hour12: true 
+    });
+  };
 
   const loadInspection = async () => {
     try {
@@ -92,75 +119,96 @@ export default function InspectionForm() {
     }
   };
 
+  const performSave = async () => {
+    // Save systems
+    for (const system of systems) {
+      if (system.id) {
+        await supabase
+          .from("inspection_systems")
+          .update(system)
+          .eq("id", system.id);
+      } else {
+        await supabase
+          .from("inspection_systems")
+          .insert({ ...system, inspection_id: id });
+      }
+    }
+
+    // Save ziplines
+    for (const zipline of ziplines) {
+      if (zipline.id) {
+        await supabase
+          .from("inspection_ziplines")
+          .update(zipline)
+          .eq("id", zipline.id);
+      } else {
+        await supabase
+          .from("inspection_ziplines")
+          .insert({ ...zipline, inspection_id: id });
+      }
+    }
+
+    // Save equipment
+    for (const item of equipment) {
+      if (item.id) {
+        await supabase
+          .from("inspection_equipment")
+          .update(item)
+          .eq("id", item.id);
+      } else {
+        await supabase
+          .from("inspection_equipment")
+          .insert({ ...item, inspection_id: id });
+      }
+    }
+
+    // Save standards
+    await supabase.from("inspection_standards").delete().eq("inspection_id", id);
+    await supabase.from("inspection_standards").insert(
+      standards.map((s) => ({ ...s, inspection_id: id }))
+    );
+
+    // Save or update summary
+    const { data: existingSummary } = await supabase
+      .from("inspection_summary")
+      .select("id")
+      .eq("inspection_id", id)
+      .single();
+
+    if (existingSummary) {
+      await supabase
+        .from("inspection_summary")
+        .update(summary)
+        .eq("inspection_id", id);
+    } else {
+      await supabase
+        .from("inspection_summary")
+        .insert({ ...summary, inspection_id: id });
+    }
+  };
+
+  const autoSaveProgress = async () => {
+    if (!hasUnsavedChanges || saving || autoSaving) return;
+    
+    setAutoSaving(true);
+    try {
+      await performSave();
+      setLastSaved(new Date());
+      setHasUnsavedChanges(false);
+      console.log("Auto-saved successfully");
+    } catch (error: any) {
+      console.error("Auto-save failed:", error);
+    } finally {
+      setAutoSaving(false);
+    }
+  };
+
   const saveProgress = async () => {
     setSaving(true);
     try {
-      // Save systems
-      for (const system of systems) {
-        if (system.id) {
-          await supabase
-            .from("inspection_systems")
-            .update(system)
-            .eq("id", system.id);
-        } else {
-          await supabase
-            .from("inspection_systems")
-            .insert({ ...system, inspection_id: id });
-        }
-      }
-
-      // Save ziplines
-      for (const zipline of ziplines) {
-        if (zipline.id) {
-          await supabase
-            .from("inspection_ziplines")
-            .update(zipline)
-            .eq("id", zipline.id);
-        } else {
-          await supabase
-            .from("inspection_ziplines")
-            .insert({ ...zipline, inspection_id: id });
-        }
-      }
-
-      // Save equipment
-      for (const item of equipment) {
-        if (item.id) {
-          await supabase
-            .from("inspection_equipment")
-            .update(item)
-            .eq("id", item.id);
-        } else {
-          await supabase
-            .from("inspection_equipment")
-            .insert({ ...item, inspection_id: id });
-        }
-      }
-
-      // Save standards
-      await supabase.from("inspection_standards").delete().eq("inspection_id", id);
-      await supabase.from("inspection_standards").insert(
-        standards.map((s) => ({ ...s, inspection_id: id }))
-      );
-
-      // Save or update summary
-      const { data: existingSummary } = await supabase
-        .from("inspection_summary")
-        .select("id")
-        .eq("inspection_id", id)
-        .single();
-
-      if (existingSummary) {
-        await supabase
-          .from("inspection_summary")
-          .update(summary)
-          .eq("inspection_id", id);
-      } else {
-        await supabase
-          .from("inspection_summary")
-          .insert({ ...summary, inspection_id: id });
-      }
-
+      await performSave();
+      setLastSaved(new Date());
+      setHasUnsavedChanges(false);
       toast.success("Progress saved");
     } catch (error: any) {
       console.error("Save error:", error);
@@ -203,12 +251,26 @@ export default function InspectionForm() {
             Back
           </Button>
           <img src={ropeWorksLogo} alt="Rope Works" className="h-10 w-auto object-contain absolute left-1/2 transform -translate-x-1/2" />
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={saveProgress} disabled={saving}>
+          <div className="flex items-center gap-3">
+            <div className="text-xs text-muted-foreground">
+              {autoSaving && (
+                <span className="flex items-center gap-1">
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                  Auto-saving...
+                </span>
+              )}
+              {!autoSaving && lastSaved && (
+                <span>Last saved: {formatTime(lastSaved)}</span>
+              )}
+              {!autoSaving && !lastSaved && hasUnsavedChanges && (
+                <span className="text-yellow-600">Unsaved changes</span>
+              )}
+            </div>
+            <Button variant="outline" onClick={saveProgress} disabled={saving || autoSaving}>
               <Save className="w-4 h-4 mr-2" />
               {saving ? "Saving..." : "Save Progress"}
             </Button>
-            <Button onClick={completeInspection}>
+            <Button onClick={completeInspection} disabled={saving || autoSaving}>
               <CheckCircle className="w-4 h-4 mr-2" />
               Complete
             </Button>
