@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ArrowLeft, MapPin, Camera } from "lucide-react";
 import { toast } from "sonner";
+import ropeWorksLogo from "@/assets/rope-works-logo.png";
 
 export default function NewInspection() {
   const navigate = useNavigate();
@@ -69,11 +70,12 @@ export default function NewInspection() {
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b bg-card">
-        <div className="container mx-auto px-4 py-4">
+        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <Button variant="ghost" onClick={() => navigate("/dashboard")}>
             <ArrowLeft className="w-4 h-4 mr-2" />
             Back to Dashboard
           </Button>
+          <img src={ropeWorksLogo} alt="Rope Works" className="h-10 w-auto object-contain" />
         </div>
       </header>
 

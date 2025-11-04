@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Plus, LogOut, FileText, CloudOff, Cloud } from "lucide-react";
 import { toast } from "sonner";
+import ropeWorksLogo from "@/assets/rope-works-logo.png";
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -72,7 +73,10 @@ export default function Dashboard() {
     <div className="min-h-screen bg-background">
       <header className="border-b bg-card">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <h1 className="text-2xl font-bold text-primary">Rope Works Inspections</h1>
+          <div className="flex items-center gap-3">
+            <img src={ropeWorksLogo} alt="Rope Works" className="h-12 w-auto object-contain" />
+            <h1 className="text-2xl font-bold text-primary">Inspections</h1>
+          </div>
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">
               {isOnline ? (

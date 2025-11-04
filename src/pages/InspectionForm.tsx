@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ArrowLeft, Save, CheckCircle, FileDown } from "lucide-react";
 import { toast } from "sonner";
+import ropeWorksLogo from "@/assets/rope-works-logo.png";
 import ResultSelect from "@/components/ResultSelect";
 import PhotoCapture from "@/components/PhotoCapture";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -193,6 +194,7 @@ export default function InspectionForm() {
             <ArrowLeft className="w-4 h-4 mr-2" />
             Back
           </Button>
+          <img src={ropeWorksLogo} alt="Rope Works" className="h-10 w-auto object-contain absolute left-1/2 transform -translate-x-1/2" />
           <div className="flex gap-2">
             <Button variant="outline" onClick={saveProgress} disabled={saving}>
               <Save className="w-4 h-4 mr-2" />
