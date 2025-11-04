@@ -1,0 +1,100 @@
+import { useRef, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Camera, Upload, X } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
+
+interface PhotoCaptureProps {
+  inspectionId: string;
+  section: string;
+  onPhotoAdded: () => void;
+}
+
+export default function PhotoCapture({ inspectionId, section, onPhotoAdded }: PhotoCaptureProps) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    setUploading(true);
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Not authenticated");
+
+      for (const file of Array.from(files)) {
+        // Upload to storage
+        const fileExt = file.name.split('.').pop();
+        const fileName = `${user.id}/${inspectionId}/${Date.now()}.${fileExt}`;
+        
+        const { error: uploadError } = await supabase.storage
+          .from('inspection-photos')
+          .upload(fileName, file);
+
+        if (uploadError) throw uploadError;
+
+        // Get public URL
+        const { data: { publicUrl } } = supabase.storage
+          .from('inspection-photos')
+          .getPublicUrl(fileName);
+
+        // Save to database
+        const { error: dbError } = await supabase
+          .from('inspection_photos')
+          .insert({
+            inspection_id: inspectionId,
+            photo_url: fileName,
+            photo_section: section,
+          });
+
+        if (dbError) throw dbError;
+      }
+
+      toast.success("Photo(s) uploaded successfully");
+      onPhotoAdded();
+    } catch (error: any) {
+      console.error("Upload error:", error);
+      toast.error(error.message || "Failed to upload photo");
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
+  return (
+    <div className="flex gap-2">
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        multiple
+        onChange={handleFileSelect}
+        className="hidden"
+      />
+      <Button
+        type="button"
+        variant="outline"
+        onClick={() => fileInputRef.current?.click()}
+        disabled={uploading}
+        className="flex-1"
+      >
+        {uploading ? (
+          <>
+            <Upload className="w-4 h-4 mr-2 animate-spin" />
+            Uploading...
+          </>
+        ) : (
+          <>
+            <Camera className="w-4 h-4 mr-2" />
+            Add Photo
+          </>
+        )}
+      </Button>
+    </div>
+  );
+}
