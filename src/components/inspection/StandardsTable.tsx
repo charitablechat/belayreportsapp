@@ -1,0 +1,95 @@
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
+
+interface StandardsTableProps {
+  standards: any[];
+  onUpdate: (standards: any[]) => void;
+}
+
+const STANDARDS_LIST = [
+  { name: "Local Written Operations Procedures", reference: "(CHPT 2. ANSI/ACCT B.2.4)" },
+  { name: "Local Written Emergency Action Plan", reference: "(CHPT 2 ANSI/ACCT B.2.5)" },
+  { name: "Minimum Annual Training", reference: "(CHPT 3 ANSI/ACCT B.1.2)" },
+  { name: "Written Pre-Use Inspection in Use", reference: "(CHPT 2 ANSI/ACCT B.2.13)" },
+  { name: "Inventory Tracking System in Use", reference: "(CHPT 1 ANSI/ACCT I.3.2.1)" },
+  { name: "Operational Review Every 5 Years", reference: "(CHPT 2 ANSI/ACCT B.2.7)" },
+];
+
+export default function StandardsTable({ standards, onUpdate }: StandardsTableProps) {
+  const updateStandard = (index: number, has_documentation: boolean) => {
+    const updated = [...standards];
+    updated[index] = { ...updated[index], has_documentation };
+    onUpdate(updated);
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>ACCT Operations Standards Criteria</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="mb-4 text-sm text-muted-foreground">
+          <p>
+            The following documentation is currently required by the ANSI/ACCT 03-2019 Operations Standards. 
+            If your program does not have the following in existence it is noted below. It is your responsibility 
+            to ensure these are located or created and available. If these documents have been made available 
+            during the professional inspection it is noted below. It is important to recognize these documents 
+            are not reviewed by the professional inspector for content. They are only verified of their existence 
+            for program operations.
+          </p>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse">
+            <thead>
+              <tr className="bg-blue-50 dark:bg-blue-950/20">
+                <th className="border p-3 text-left font-semibold text-sm">Document</th>
+                <th className="border p-3 text-center font-semibold text-sm w-20">YES</th>
+                <th className="border p-3 text-center font-semibold text-sm w-20">NO</th>
+              </tr>
+            </thead>
+            <tbody>
+              {STANDARDS_LIST.map((standard, index) => {
+                const standardData = standards[index] || { has_documentation: false };
+                return (
+                  <tr key={index} className="hover:bg-muted/50">
+                    <td className="border p-3">
+                      <div>
+                        <p className="font-medium">{standard.name}</p>
+                        <p className="text-xs text-muted-foreground">{standard.reference}</p>
+                      </div>
+                    </td>
+                    <td className="border p-3 text-center">
+                      <Checkbox
+                        checked={standardData.has_documentation === true}
+                        onCheckedChange={(checked) => updateStandard(index, checked as boolean)}
+                      />
+                    </td>
+                    <td className="border p-3 text-center">
+                      <span className="text-sm font-medium">
+                        {standardData.has_documentation ? "" : "✓"}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="mt-6 text-xs text-muted-foreground border-t pt-4">
+          <p className="mb-2">
+            <strong>Comments:</strong> A QCP is a Qualified Course Professional that meets the criteria outlined by the ACCT. 
+            Operations & Emergency procedures must be written and specific to the site's local operations procedures.
+          </p>
+          <p>
+            The information contained in this report has been documented by a Qualified Professional. 
+            This report is effective for one year from the date of inspection. Issued by: 
+            Rope Works Inc., PO Box 1074, Dripping Springs, TX 78620
+          </p>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
