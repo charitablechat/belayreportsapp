@@ -3,6 +3,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import ResultSelect from "@/components/ResultSelect";
+import SystemTypeSelect from "@/components/SystemTypeSelect";
 import { Plus } from "lucide-react";
 
 interface OperatingSystemsTableProps {
@@ -47,11 +48,9 @@ export default function OperatingSystemsTable({ systems, onUpdate }: OperatingSy
               {systems.map((system, index) => (
                 <tr key={index} className="hover:bg-muted/50">
                   <td className="border p-2">
-                    <Input
+                    <SystemTypeSelect
                       value={system.system_name}
-                      onChange={(e) => updateSystem(index, "system_name", e.target.value)}
-                      placeholder="Enter system type"
-                      className="border-0 bg-transparent"
+                      onChange={(value) => updateSystem(index, "system_name", value)}
                     />
                   </td>
                   <td className="border p-2">
