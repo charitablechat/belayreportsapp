@@ -1,0 +1,47 @@
+import { AuroraBackground } from "@/components/ui/aurora-background";
+import { motion } from "framer-motion";
+import { Button } from "@/components/ui/button";
+import { useNavigate } from "react-router-dom";
+import ropeWorksLogo from "@/assets/rope-works-logo.png";
+import acctLogo from "@/assets/acct-accredited-vendor.png";
+
+export default function AuroraLanding() {
+  const navigate = useNavigate();
+
+  return (
+    <AuroraBackground>
+      <motion.div
+        initial={{ opacity: 0.0, y: 40 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        transition={{
+          delay: 0.3,
+          duration: 0.8,
+          ease: "easeInOut",
+        }}
+        className="relative flex flex-col gap-6 items-center justify-center px-4"
+      >
+        <div className="flex items-center gap-4 mb-4">
+          <img src={ropeWorksLogo} alt="Rope Works" className="h-16 w-auto object-contain" />
+          <img src={acctLogo} alt="ACCT Accredited Vendor" className="h-16 w-auto object-contain" />
+        </div>
+        
+        <div className="text-4xl md:text-7xl font-bold text-primary dark:text-white text-center">
+          Professional Rope Course Inspections
+        </div>
+        
+        <div className="font-light text-lg md:text-2xl text-muted-foreground dark:text-neutral-200 py-4 text-center max-w-2xl">
+          Comprehensive inspection reports for rope courses, zip lines, and aerial adventure equipment
+        </div>
+        
+        <div className="flex gap-4">
+          <Button size="lg" onClick={() => navigate('/dashboard')}>
+            Get Started
+          </Button>
+          <Button size="lg" variant="outline" onClick={() => navigate('/capabilities')}>
+            Learn More
+          </Button>
+        </div>
+      </motion.div>
+    </AuroraBackground>
+  );
+}

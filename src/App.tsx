@@ -10,6 +10,7 @@ import NewInspection from "./pages/NewInspection";
 import InspectionForm from "./pages/InspectionForm";
 import Install from "./pages/Install";
 import Capabilities from "./pages/Capabilities";
+import AuroraLanding from "./pages/AuroraLanding";
 import NotFound from "./pages/NotFound";
 import { InstallBanner } from "@/components/pwa/InstallBanner";
 import { UpdateNotification } from "@/components/pwa/UpdateNotification";
@@ -84,6 +85,7 @@ const App = () => (
           
           <Routes>
             <Route path="/" element={<Index />} />
+            <Route path="/welcome" element={<AuroraLanding />} />
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/inspection/new" element={<NewInspection />} />
             <Route path="/inspection/:id" element={<InspectionForm />} />
