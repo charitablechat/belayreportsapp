@@ -73,6 +73,50 @@ export default function InspectionForm() {
     });
   };
 
+  const handleHeaderUpdate = async (field: string, value: string) => {
+    try {
+      const updatedInspection = {
+        ...inspection,
+        [field]: value,
+        updated_at: new Date().toISOString(),
+      };
+
+      setInspection(updatedInspection);
+
+      // Save offline
+      await saveInspectionOffline(updatedInspection);
+
+      if (isOnline) {
+        // Update in Supabase
+        const { error } = await supabase
+          .from("inspections")
+          .update({ [field]: value, updated_at: new Date().toISOString() })
+          .eq("id", id);
+
+        if (error) throw error;
+        
+        toast.success("Field updated successfully");
+        
+        if (import.meta.env.DEV) {
+          console.log('[InspectionForm] Header field updated:', field, value);
+        }
+      } else {
+        // Queue for later sync
+        await queueOperation('update', id!, updatedInspection);
+        toast.success("Field updated offline - will sync when online");
+        
+        if (import.meta.env.DEV) {
+          console.log('[InspectionForm] Header field queued for sync:', field, value);
+        }
+      }
+
+      setHasUnsavedChanges(false);
+    } catch (error: any) {
+      console.error("Error updating field:", error);
+      toast.error("Failed to update field");
+    }
+  };
+
   const loadInspection = async () => {
     try {
       // Try offline first
@@ -373,7 +417,7 @@ export default function InspectionForm() {
       </header>
 
       <main className="container mx-auto px-4 py-8 max-w-6xl">
-        <InspectionHeader inspection={inspection} />
+        <InspectionHeader inspection={inspection} onUpdate={handleHeaderUpdate} />
 
         <Tabs defaultValue="details" className="space-y-6 mt-6">
           <TabsList className="grid w-full grid-cols-4">

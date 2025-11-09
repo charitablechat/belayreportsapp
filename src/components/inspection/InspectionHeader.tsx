@@ -1,12 +1,79 @@
+import { useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Pencil, Check, X } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 interface InspectionHeaderProps {
   inspection: any;
+  onUpdate: (field: string, value: string) => void;
 }
 
-export default function InspectionHeader({ inspection }: InspectionHeaderProps) {
+export default function InspectionHeader({ inspection, onUpdate }: InspectionHeaderProps) {
+  const [editingField, setEditingField] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState("");
+
+  const startEdit = (field: string, currentValue: string) => {
+    setEditingField(field);
+    setEditValue(currentValue || "");
+  };
+
+  const cancelEdit = () => {
+    setEditingField(null);
+    setEditValue("");
+  };
+
+  const saveEdit = (field: string) => {
+    onUpdate(field, editValue);
+    setEditingField(null);
+    setEditValue("");
+  };
+
+  const renderEditableField = (label: string, field: string, value: string, type: string = "text") => {
+    const isEditing = editingField === field;
+    
+    return (
+      <div>
+        <Label className="text-sm text-muted-foreground">{label}</Label>
+        {isEditing ? (
+          <div className="flex items-center gap-2">
+            <Input
+              type={type}
+              value={editValue}
+              onChange={(e) => setEditValue(e.target.value)}
+              className="h-8"
+              autoFocus
+              onKeyDown={(e) => {
+                if (e.key === "Enter") saveEdit(field);
+                if (e.key === "Escape") cancelEdit();
+              }}
+            />
+            <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => saveEdit(field)}>
+              <Check className="h-4 w-4 text-green-600" />
+            </Button>
+            <Button size="icon" variant="ghost" className="h-8 w-8" onClick={cancelEdit}>
+              <X className="h-4 w-4 text-red-600" />
+            </Button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 group">
+            <p className="font-medium flex-1">{value || "N/A"}</p>
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+              onClick={() => startEdit(field, value)}
+            >
+              <Pencil className="h-3 w-3" />
+            </Button>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-6">
       <div className="text-center">
@@ -19,38 +86,14 @@ export default function InspectionHeader({ inspection }: InspectionHeaderProps) 
         <CardContent className="pt-6">
           <div className="grid grid-cols-2 gap-6 mb-6">
             <div className="space-y-4">
-              <div>
-                <Label className="text-sm text-muted-foreground">Facility Name</Label>
-                <p className="font-medium">{inspection?.organization}</p>
-              </div>
-              <div>
-                <Label className="text-sm text-muted-foreground">Location</Label>
-                <p className="font-medium">{inspection?.location}</p>
-              </div>
-              <div>
-                <Label className="text-sm text-muted-foreground">Onsite Contact</Label>
-                <p className="font-medium">{inspection?.onsite_contact || "N/A"}</p>
-              </div>
+              {renderEditableField("Facility Name", "organization", inspection?.organization)}
+              {renderEditableField("Location", "location", inspection?.location)}
+              {renderEditableField("Onsite Contact", "onsite_contact", inspection?.onsite_contact)}
             </div>
             <div className="space-y-4">
-              <div>
-                <Label className="text-sm text-muted-foreground">Inspection Date</Label>
-                <p className="font-medium">
-                  {new Date(inspection?.inspection_date).toLocaleDateString()}
-                </p>
-              </div>
-              <div>
-                <Label className="text-sm text-muted-foreground">Previous Inspector</Label>
-                <p className="font-medium">{inspection?.previous_inspector || "N/A"}</p>
-              </div>
-              <div>
-                <Label className="text-sm text-muted-foreground">Prev. Inspection Date</Label>
-                <p className="font-medium">
-                  {inspection?.previous_inspection_date 
-                    ? new Date(inspection.previous_inspection_date).toLocaleDateString()
-                    : "N/A"}
-                </p>
-              </div>
+              {renderEditableField("Inspection Date", "inspection_date", inspection?.inspection_date, "date")}
+              {renderEditableField("Previous Inspector", "previous_inspector", inspection?.previous_inspector)}
+              {renderEditableField("Prev. Inspection Date", "previous_inspection_date", inspection?.previous_inspection_date, "date")}
             </div>
           </div>
 
