@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
+import { GradientButton } from "@/components/ui/gradient-button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -114,13 +115,13 @@ export default function Auth() {
                 </button>
               </div>
             </div>
-            <Button
+            <GradientButton
               type="submit"
               className="w-full"
               disabled={loading}
             >
               {loading ? "Please wait..." : isSignUp ? "Create Account" : "Sign In"}
-            </Button>
+            </GradientButton>
             <Button
               type="button"
               variant="ghost"

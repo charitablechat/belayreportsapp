@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
+import { GradientButton } from "@/components/ui/gradient-button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Plus, LogOut, FileText, GraduationCap, ArrowRight, Lock, Download, Settings, Trash2, MoreVertical } from "lucide-react";
@@ -236,10 +237,10 @@ export default function Dashboard() {
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="relative z-10 text-center pb-6">
-                    <Button size="lg" className="w-full bg-blue-600 hover:bg-blue-700">
+                    <GradientButton className="w-full group-hover:scale-105 transition-transform">
                       Start Inspection
                       <ArrowRight className="w-4 h-4 ml-2" />
-                    </Button>
+                    </GradientButton>
                   </CardContent>
                 </Card>
 
@@ -284,10 +285,10 @@ export default function Dashboard() {
                 View and manage your inspection reports
               </p>
             </div>
-            <Button onClick={() => navigate("/inspection/new")} size="lg">
+            <GradientButton onClick={() => navigate("/inspection/new")}>
               <Plus className="w-5 h-5 mr-2" />
               New Inspection
-            </Button>
+            </GradientButton>
           </div>
 
           {loading ? (
@@ -299,9 +300,9 @@ export default function Dashboard() {
               <CardContent className="py-12 text-center">
                 <FileText className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
                 <p className="text-muted-foreground">No inspections yet</p>
-                <Button onClick={() => navigate("/inspection/new")} className="mt-4">
+                <GradientButton onClick={() => navigate("/inspection/new")} className="mt-4">
                   Create your first inspection
-                </Button>
+                </GradientButton>
               </CardContent>
             </Card>
           ) : (

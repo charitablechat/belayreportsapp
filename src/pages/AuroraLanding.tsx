@@ -1,6 +1,6 @@
 import { AuroraBackground } from "@/components/ui/aurora-background";
 import { motion } from "framer-motion";
-import { Button } from "@/components/ui/button";
+import { GradientButton } from "@/components/ui/gradient-button";
 import { useNavigate } from "react-router-dom";
 import ropeWorksLogo from "@/assets/rope-works-logo.png";
 import acctLogo from "@/assets/acct-accredited-vendor.png";
@@ -34,12 +34,19 @@ export default function AuroraLanding() {
         </div>
         
         <div className="flex gap-4">
-          <Button size="lg" onClick={() => navigate('/dashboard')}>
+          <GradientButton 
+            className="min-w-[140px] px-10 py-5 text-lg" 
+            onClick={() => navigate('/dashboard')}
+          >
             Get Started
-          </Button>
-          <Button size="lg" variant="outline" onClick={() => navigate('/capabilities')}>
+          </GradientButton>
+          <GradientButton 
+            variant="variant"
+            className="min-w-[140px] px-10 py-5 text-lg" 
+            onClick={() => navigate('/capabilities')}
+          >
             Learn More
-          </Button>
+          </GradientButton>
         </div>
       </motion.div>
     </AuroraBackground>
