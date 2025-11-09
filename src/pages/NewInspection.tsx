@@ -6,7 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ArrowLeft, MapPin, Camera } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { ArrowLeft, MapPin, CloudOff, Info } from "lucide-react";
 import { toast } from "sonner";
 import ropeWorksLogo from "@/assets/rope-works-logo.png";
 import { saveInspectionOffline, queueOperation } from "@/lib/offline-storage";
@@ -139,6 +140,15 @@ export default function NewInspection() {
             <CardTitle className="text-2xl">New Inspection Report</CardTitle>
           </CardHeader>
           <CardContent>
+            {!isOnline && (
+              <Alert className="mb-6 border-warning bg-warning/10">
+                <CloudOff className="h-4 w-4 text-warning" />
+                <AlertDescription className="text-warning-foreground">
+                  📴 Working offline - inspection will sync when online
+                </AlertDescription>
+              </Alert>
+            )}
+            
             <form onSubmit={handleSubmit} className="space-y-6">
               <div className="space-y-2">
                 <Label htmlFor="organization">Organization *</Label>
@@ -215,9 +225,18 @@ export default function NewInspection() {
                 />
               </div>
 
+              {!isOnline && (
+                <Alert className="border-muted bg-muted/50">
+                  <Info className="h-4 w-4" />
+                  <AlertDescription className="text-sm">
+                    <strong>Offline mode:</strong> You can create and edit inspections offline. Changes will automatically sync when you're back online.
+                  </AlertDescription>
+                </Alert>
+              )}
+
               <div className="flex gap-4">
                 <Button type="submit" disabled={loading} className="flex-1">
-                  {loading ? "Creating..." : "Create Inspection"}
+                  {loading ? "Creating..." : isOnline ? "Create Inspection" : "Create Locally"}
                 </Button>
                 <Button
                   type="button"

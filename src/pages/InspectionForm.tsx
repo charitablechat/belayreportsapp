@@ -4,7 +4,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Save, CheckCircle, Loader2, WifiOff } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { ArrowLeft, Save, CheckCircle, Loader2, WifiOff, CloudOff } from "lucide-react";
 import { toast } from "sonner";
 import ropeWorksLogo from "@/assets/rope-works-logo.png";
 import InspectionHeader from "@/components/inspection/InspectionHeader";
@@ -406,17 +408,39 @@ export default function InspectionForm() {
             </div>
             <Button variant="outline" onClick={saveProgress} disabled={saving || autoSaving}>
               <Save className="w-4 h-4 mr-2" />
-              {saving ? "Saving..." : "Save Progress"}
+              {saving ? "Saving..." : isOnline ? "Save Progress" : "Save Locally"}
             </Button>
-            <Button onClick={completeInspection} disabled={saving || autoSaving}>
-              <CheckCircle className="w-4 h-4 mr-2" />
-              Complete
-            </Button>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span>
+                    <Button onClick={completeInspection} disabled={saving || autoSaving || !isOnline}>
+                      <CheckCircle className="w-4 h-4 mr-2" />
+                      Complete
+                    </Button>
+                  </span>
+                </TooltipTrigger>
+                {!isOnline && (
+                  <TooltipContent>
+                    <p>Complete inspection requires internet connection</p>
+                  </TooltipContent>
+                )}
+              </Tooltip>
+            </TooltipProvider>
           </div>
         </div>
       </header>
 
       <main className="container mx-auto px-4 py-8 max-w-6xl">
+        {!isOnline && (
+          <Alert className="mb-6 border-warning bg-warning/10">
+            <CloudOff className="h-4 w-4 text-warning" />
+            <AlertDescription className="text-warning-foreground">
+              📴 Working offline - data will sync when online
+            </AlertDescription>
+          </Alert>
+        )}
+
         <InspectionHeader inspection={inspection} onUpdate={handleHeaderUpdate} />
 
         <Tabs defaultValue="details" className="space-y-6 mt-6">
