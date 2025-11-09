@@ -11,6 +11,7 @@ import Install from "./pages/Install";
 import NotFound from "./pages/NotFound";
 import { InstallBanner } from "@/components/pwa/InstallBanner";
 import { UpdateNotification } from "@/components/pwa/UpdateNotification";
+import { InstallSuccessNotification } from "@/components/pwa/InstallSuccessNotification";
 
 const queryClient = new QueryClient();
 
@@ -22,6 +23,7 @@ const App = () => (
       <BrowserRouter>
         <InstallBanner />
         <UpdateNotification />
+        <InstallSuccessNotification />
         <Routes>
           <Route path="/" element={<Index />} />
           <Route path="/dashboard" element={<Dashboard />} />
