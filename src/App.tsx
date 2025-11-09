@@ -14,6 +14,9 @@ import NotFound from "./pages/NotFound";
 import { InstallBanner } from "@/components/pwa/InstallBanner";
 import { UpdateNotification } from "@/components/pwa/UpdateNotification";
 import { InstallSuccessNotification } from "@/components/pwa/InstallSuccessNotification";
+import { NetworkStatusIndicator } from "@/components/pwa/NetworkStatusIndicator";
+import { SyncStatusIndicator } from "@/components/pwa/SyncStatusIndicator";
+import { PWAProvider } from "@/components/pwa/PWAProvider";
 import { syncInspections } from "@/lib/sync-manager";
 
 const queryClient = new QueryClient();
@@ -61,26 +64,37 @@ const AppContent = () => {
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <Toaster />
-      <Sonner />
-      <BrowserRouter>
-        <AppContent />
-        <InstallBanner />
-        <UpdateNotification />
-        <InstallSuccessNotification />
-        <Routes>
-          <Route path="/" element={<Index />} />
-          <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/inspection/new" element={<NewInspection />} />
-          <Route path="/inspection/:id" element={<InspectionForm />} />
-          <Route path="/install" element={<Install />} />
-          <Route path="/capabilities" element={<Capabilities />} />
-          {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-          <Route path="*" element={<NotFound />} />
-        </Routes>
-      </BrowserRouter>
-    </TooltipProvider>
+    <PWAProvider>
+      <TooltipProvider>
+        <Toaster />
+        <Sonner />
+        <BrowserRouter>
+          <AppContent />
+          
+          {/* Global PWA Status Indicators */}
+          <div className="fixed top-4 right-4 z-40 flex flex-col gap-2">
+            <NetworkStatusIndicator />
+            <SyncStatusIndicator />
+          </div>
+          
+          {/* PWA Notifications */}
+          <InstallBanner />
+          <UpdateNotification />
+          <InstallSuccessNotification />
+          
+          <Routes>
+            <Route path="/" element={<Index />} />
+            <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/inspection/new" element={<NewInspection />} />
+            <Route path="/inspection/:id" element={<InspectionForm />} />
+            <Route path="/install" element={<Install />} />
+            <Route path="/capabilities" element={<Capabilities />} />
+            {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </BrowserRouter>
+      </TooltipProvider>
+    </PWAProvider>
   </QueryClientProvider>
 );
 

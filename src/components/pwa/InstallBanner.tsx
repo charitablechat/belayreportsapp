@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Download, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { usePWAInstall } from '@/hooks/usePWAInstall';
+import { usePWA } from '@/hooks/usePWA';
 
 export const InstallBanner = () => {
-  const { isInstallable, isDismissed, promptInstall, dismissPrompt } = usePWAInstall();
+  const { isInstallable, isDismissed, promptInstall, dismissPrompt } = usePWA();
   const [isVisible, setIsVisible] = useState(false);
 
   useEffect(() => {

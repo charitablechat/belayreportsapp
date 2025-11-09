@@ -1,14 +1,13 @@
 import { useEffect } from 'react';
 import { RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
-import { usePWAUpdate } from '@/hooks/usePWAUpdate';
-import { Button } from '@/components/ui/button';
+import { usePWA } from '@/hooks/usePWA';
 
 export const UpdateNotification = () => {
-  const { needRefresh, offlineReady, updateServiceWorker } = usePWAUpdate();
+  const { needsUpdate, offlineReady, updateAndReload } = usePWA();
 
   useEffect(() => {
-    if (needRefresh) {
+    if (needsUpdate) {
       if (import.meta.env.DEV) {
         console.log('[Update Notification] Showing update available notification');
       }
@@ -23,13 +22,13 @@ export const UpdateNotification = () => {
             if (import.meta.env.DEV) {
               console.log('[Update Notification] User clicked update button');
             }
-            updateServiceWorker(true);
+            updateAndReload();
           },
         },
         icon: <RefreshCw className="w-4 h-4" />,
       });
     }
-  }, [needRefresh, updateServiceWorker]);
+  }, [needsUpdate, updateAndReload]);
 
   useEffect(() => {
     if (offlineReady) {

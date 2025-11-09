@@ -1,11 +1,11 @@
 import { useEffect } from 'react';
 import { Cloud, CloudOff, Wifi, WifiOff } from 'lucide-react';
 import { toast } from 'sonner';
-import { useNetworkStatus } from '@/hooks/useNetworkStatus';
+import { usePWA } from '@/hooks/usePWA';
 import { Badge } from '@/components/ui/badge';
 
 export const NetworkStatusIndicator = () => {
-  const { isOnline, effectiveType } = useNetworkStatus();
+  const { isOnline, effectiveType } = usePWA();
 
   useEffect(() => {
     if (isOnline) {

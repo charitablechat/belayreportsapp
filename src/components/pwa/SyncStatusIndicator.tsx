@@ -1,8 +1,7 @@
 import { RefreshCw, AlertCircle, Check, Cloud } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { useSyncStatus } from '@/hooks/useSyncStatus';
-import { useNetworkStatus } from '@/hooks/useNetworkStatus';
+import { usePWA } from '@/hooks/usePWA';
 import {
   Tooltip,
   TooltipContent,
@@ -11,8 +10,7 @@ import {
 } from '@/components/ui/tooltip';
 
 export const SyncStatusIndicator = () => {
-  const { unsyncedCount, isSyncing, lastSyncTime, syncError, triggerSync } = useSyncStatus();
-  const { isOnline } = useNetworkStatus();
+  const { unsyncedCount, isSyncing, lastSyncTime, syncError, triggerSync, isOnline } = usePWA();
 
   const formatLastSync = (date: Date | null) => {
     if (!date) return 'Never';
