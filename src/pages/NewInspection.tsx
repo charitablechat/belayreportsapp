@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import ropeWorksLogo from "@/assets/rope-works-logo.png";
 import { saveInspectionOffline, queueOperation } from "@/lib/offline-storage";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
+import { getCurrentLocation as getLocation } from "@/lib/geolocation";
 
 export default function NewInspection() {
   const navigate = useNavigate();
@@ -23,20 +24,25 @@ export default function NewInspection() {
     previous_inspector: "",
     previous_inspection_date: "",
     course_history: "",
+    latitude: null as number | null,
+    longitude: null as number | null,
   });
 
-  const getCurrentLocation = () => {
-    if ("geolocation" in navigator) {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          toast.success("Location captured successfully");
-        },
-        (error) => {
-          toast.error("Failed to get location: " + error.message);
-        }
-      );
-    } else {
-      toast.error("Geolocation is not supported");
+  const handleLocationCapture = async () => {
+    try {
+      const position = await getLocation();
+      setFormData({
+        ...formData,
+        latitude: position.latitude,
+        longitude: position.longitude,
+      });
+      toast.success(`Location captured: ${position.latitude.toFixed(6)}, ${position.longitude.toFixed(6)}`);
+      
+      if (import.meta.env.DEV) {
+        console.log('[NewInspection] Location captured:', position);
+      }
+    } catch (error: any) {
+      toast.error("Failed to get location: " + error.message);
     }
   };
 
@@ -148,8 +154,8 @@ export default function NewInspection() {
                     placeholder="Enter location"
                     className="flex-1"
                   />
-                  <Button type="button" variant="outline" onClick={getCurrentLocation}>
-                    <MapPin className="w-4 h-4" />
+                  <Button type="button" variant="outline" onClick={handleLocationCapture}>
+                    <MapPin className={`w-4 h-4 ${formData.latitude && formData.longitude ? 'text-green-600' : ''}`} />
                   </Button>
                 </div>
               </div>
