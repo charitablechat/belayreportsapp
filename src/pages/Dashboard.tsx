@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Plus, LogOut, FileText, GraduationCap, ArrowRight, Lock, Download, Settings, Trash2, MoreVertical } from "lucide-react";
 import { toast } from "sonner";
 import ropeWorksLogo from "@/assets/rope-works-logo.png";
+import acctLogo from "@/assets/acct-accredited-vendor.png";
 import { usePWAInstall } from "@/hooks/usePWAInstall";
 import { NetworkStatusIndicator } from "@/components/pwa/NetworkStatusIndicator";
 import { SyncStatusIndicator } from "@/components/pwa/SyncStatusIndicator";
@@ -155,7 +156,7 @@ export default function Dashboard() {
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <img src={ropeWorksLogo} alt="Rope Works" className="h-12 w-auto object-contain" />
-            <h1 className="text-2xl font-bold text-primary">Reports</h1>
+            <img src={acctLogo} alt="ACCT Accredited Vendor" className="h-12 w-auto object-contain" />
           </div>
           <div className="flex items-center gap-4">
             <NetworkStatusIndicator />
