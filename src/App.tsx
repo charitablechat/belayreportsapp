@@ -7,7 +7,9 @@ import Index from "./pages/Index";
 import Dashboard from "./pages/Dashboard";
 import NewInspection from "./pages/NewInspection";
 import InspectionForm from "./pages/InspectionForm";
+import Install from "./pages/Install";
 import NotFound from "./pages/NotFound";
+import { InstallBanner } from "@/components/pwa/InstallBanner";
 
 const queryClient = new QueryClient();
 
@@ -17,11 +19,13 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter>
+        <InstallBanner />
         <Routes>
           <Route path="/" element={<Index />} />
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/inspection/new" element={<NewInspection />} />
           <Route path="/inspection/:id" element={<InspectionForm />} />
+          <Route path="/install" element={<Install />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>

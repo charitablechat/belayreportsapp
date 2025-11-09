@@ -4,15 +4,17 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, LogOut, FileText, CloudOff, Cloud, GraduationCap, ArrowRight, Lock } from "lucide-react";
+import { Plus, LogOut, FileText, CloudOff, Cloud, GraduationCap, ArrowRight, Lock, Download } from "lucide-react";
 import { toast } from "sonner";
 import ropeWorksLogo from "@/assets/rope-works-logo.png";
+import { usePWAInstall } from "@/hooks/usePWAInstall";
 
 export default function Dashboard() {
   const navigate = useNavigate();
   const [inspections, setInspections] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const { isInstallable, isInstalled, promptInstall } = usePWAInstall();
 
   useEffect(() => {
     const handleOnline = () => {
@@ -88,6 +90,17 @@ export default function Dashboard() {
                 {isOnline ? "Online" : "Offline"}
               </span>
             </div>
+            {isInstallable && !isInstalled && (
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={promptInstall}
+                className="gap-2"
+              >
+                <Download className="w-4 h-4" />
+                Install App
+              </Button>
+            )}
             <Button variant="ghost" onClick={handleSignOut}>
               <LogOut className="w-4 h-4 mr-2" />
               Sign Out
