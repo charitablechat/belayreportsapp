@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { toast } from "sonner";
 import { Eye, EyeOff } from "lucide-react";
 import ropeWorksLogo from "@/assets/rope-works-logo.png";
-import { ShaderAnimation } from "@/components/ui/shader-animation";
+import authBackgroundVideo from "@/assets/auth-background.mp4";
 
 export default function Auth() {
   const [loading, setLoading] = useState(false);
@@ -64,7 +64,15 @@ export default function Auth() {
   return (
     <div className="relative min-h-screen flex items-center justify-center p-4">
       <div className="absolute inset-0 z-0">
-        <ShaderAnimation />
+        <video 
+          autoPlay 
+          loop 
+          muted 
+          playsInline
+          className="w-full h-full object-cover"
+        >
+          <source src={authBackgroundVideo} type="video/mp4" />
+        </video>
       </div>
       <Card className="relative z-10 w-full max-w-md shadow-2xl backdrop-blur-sm bg-card/95">
         <CardHeader className="space-y-4 text-center">
