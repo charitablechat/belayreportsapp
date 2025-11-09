@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { toast } from "sonner";
 import { Eye, EyeOff } from "lucide-react";
 import ropeWorksLogo from "@/assets/rope-works-logo.png";
+import { ShaderAnimation } from "@/components/ui/shader-animation";
 
 export default function Auth() {
   const [loading, setLoading] = useState(false);
@@ -60,8 +61,11 @@ export default function Auth() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-background to-muted p-4">
-      <Card className="w-full max-w-md">
+    <div className="relative min-h-screen flex items-center justify-center p-4">
+      <div className="absolute inset-0 z-0">
+        <ShaderAnimation />
+      </div>
+      <Card className="relative z-10 w-full max-w-md shadow-2xl backdrop-blur-sm bg-card/95">
         <CardHeader className="space-y-4 text-center">
           <div className="mx-auto w-48 h-24 flex items-center justify-center">
             <img src={ropeWorksLogo} alt="Rope Works Logo" className="w-full h-full object-contain" />
