@@ -21,6 +21,9 @@ export const usePWAInstall = (): UsePWAInstallReturn => {
   useEffect(() => {
     // Check if already installed
     if (window.matchMedia('(display-mode: standalone)').matches) {
+      if (import.meta.env.DEV) {
+        console.log('[PWA Install] App is already installed (standalone mode)');
+      }
       setIsInstalled(true);
       return;
     }
@@ -28,23 +31,39 @@ export const usePWAInstall = (): UsePWAInstallReturn => {
     // Check if dismissed in this session
     const dismissed = sessionStorage.getItem('pwa-install-dismissed');
     if (dismissed) {
+      if (import.meta.env.DEV) {
+        console.log('[PWA Install] Install prompt was dismissed in this session');
+      }
       setIsDismissed(true);
     }
 
     // Listen for install prompt
     const handleBeforeInstallPrompt = (e: Event) => {
       e.preventDefault();
+      if (import.meta.env.DEV) {
+        console.log('[PWA Install] beforeinstallprompt event fired - app is installable');
+      }
       setDeferredPrompt(e as BeforeInstallPromptEvent);
     };
 
     // Listen for app installed
     const handleAppInstalled = () => {
+      if (import.meta.env.DEV) {
+        console.log('[PWA Install] App successfully installed');
+      }
       setIsInstalled(true);
       setDeferredPrompt(null);
     };
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
     window.addEventListener('appinstalled', handleAppInstalled);
+
+    if (import.meta.env.DEV) {
+      console.log('[PWA Install] Hook initialized', {
+        isStandalone: window.matchMedia('(display-mode: standalone)').matches,
+        isDismissed: !!dismissed,
+      });
+    }
 
     return () => {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
@@ -54,23 +73,30 @@ export const usePWAInstall = (): UsePWAInstallReturn => {
 
   const promptInstall = async () => {
     if (!deferredPrompt) {
-      console.log('No install prompt available');
+      if (import.meta.env.DEV) {
+        console.log('[PWA Install] No install prompt available');
+      }
       return;
+    }
+
+    if (import.meta.env.DEV) {
+      console.log('[PWA Install] Showing install prompt to user');
     }
 
     deferredPrompt.prompt();
     const { outcome } = await deferredPrompt.userChoice;
     
-    if (outcome === 'accepted') {
-      console.log('PWA installed');
-    } else {
-      console.log('PWA installation dismissed');
+    if (import.meta.env.DEV) {
+      console.log(`[PWA Install] User ${outcome === 'accepted' ? 'accepted' : 'dismissed'} the install prompt`);
     }
     
     setDeferredPrompt(null);
   };
 
   const dismissPrompt = () => {
+    if (import.meta.env.DEV) {
+      console.log('[PWA Install] Install prompt dismissed by user');
+    }
     setIsDismissed(true);
     sessionStorage.setItem('pwa-install-dismissed', 'true');
   };

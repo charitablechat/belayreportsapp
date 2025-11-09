@@ -9,25 +9,47 @@ export const InstallBanner = () => {
 
   useEffect(() => {
     if (isInstallable && !isDismissed) {
+      if (import.meta.env.DEV) {
+        console.log('[Install Banner] Banner will show in 2 seconds');
+      }
+      
       // Show banner after 2 seconds
-      const timer = setTimeout(() => setIsVisible(true), 2000);
+      const timer = setTimeout(() => {
+        if (import.meta.env.DEV) {
+          console.log('[Install Banner] Showing banner');
+        }
+        setIsVisible(true);
+      }, 2000);
       
       // Auto-hide after 15 seconds
-      const hideTimer = setTimeout(() => setIsVisible(false), 17000);
+      const hideTimer = setTimeout(() => {
+        if (import.meta.env.DEV) {
+          console.log('[Install Banner] Auto-hiding banner after 15 seconds');
+        }
+        setIsVisible(false);
+      }, 17000);
 
       return () => {
         clearTimeout(timer);
         clearTimeout(hideTimer);
       };
+    } else if (import.meta.env.DEV) {
+      console.log('[Install Banner] Banner not shown', { isInstallable, isDismissed });
     }
   }, [isInstallable, isDismissed]);
 
   const handleInstall = async () => {
+    if (import.meta.env.DEV) {
+      console.log('[Install Banner] Install button clicked');
+    }
     await promptInstall();
     setIsVisible(false);
   };
 
   const handleDismiss = () => {
+    if (import.meta.env.DEV) {
+      console.log('[Install Banner] Dismiss button clicked');
+    }
     dismissPrompt();
     setIsVisible(false);
   };

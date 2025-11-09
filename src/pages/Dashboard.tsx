@@ -94,7 +94,12 @@ export default function Dashboard() {
               <Button 
                 variant="outline" 
                 size="sm"
-                onClick={promptInstall}
+                onClick={() => {
+                  if (import.meta.env.DEV) {
+                    console.log('[Dashboard] Install App button clicked');
+                  }
+                  promptInstall();
+                }}
                 className="gap-2"
               >
                 <Download className="w-4 h-4" />
