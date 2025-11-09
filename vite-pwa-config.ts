@@ -2,7 +2,7 @@ import { VitePWA } from 'vite-plugin-pwa';
 
 export const pwaConfig = VitePWA({
   registerType: 'autoUpdate',
-  includeAssets: ['favicon.ico'],
+  includeAssets: ['favicon.ico', 'sw-push.js'],
   manifest: {
     name: 'Rope Works Inspection',
     short_name: 'RW Inspect',
@@ -44,6 +44,7 @@ export const pwaConfig = VitePWA({
     globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
     navigateFallback: '/offline.html',
     navigateFallbackDenylist: [/^\/api/],
+    importScripts: ['/sw-push.js'],
     runtimeCaching: [
       // API calls - Network first with 1 hour cache
       {
