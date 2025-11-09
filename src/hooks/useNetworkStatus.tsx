@@ -7,9 +7,22 @@ export interface NetworkStatus {
   rtt: number | null;
 }
 
+const STORAGE_KEY = 'last-network-status';
+const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
 export const useNetworkStatus = () => {
+  // Start with optimistic state or last known state
+  const getInitialState = (): boolean => {
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY);
+      return stored ? JSON.parse(stored) : true; // Optimistic: assume online
+    } catch {
+      return true;
+    }
+  };
+
   const [networkStatus, setNetworkStatus] = useState<NetworkStatus>({
-    isOnline: navigator.onLine,
+    isOnline: getInitialState(),
     effectiveType: null,
     downlink: null,
     rtt: null,
@@ -17,49 +30,94 @@ export const useNetworkStatus = () => {
   
   const debounceTimerRef = useRef<NodeJS.Timeout>();
   const verifyingRef = useRef(false);
+  const retryCountRef = useRef(0);
 
   useEffect(() => {
-    // Verify actual connectivity with a real request
-    const verifyConnectivity = async (): Promise<boolean> => {
-      if (verifyingRef.current) return navigator.onLine;
+    // Multi-endpoint verification with retry logic
+    const verifyConnectivity = async (retryAttempt = 0): Promise<boolean> => {
+      if (verifyingRef.current) return networkStatus.isOnline;
       verifyingRef.current = true;
       
-      try {
-        // Try to fetch a tiny resource with a short timeout
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 3000);
-        
-        const response = await fetch('/favicon.ico', {
-          method: 'HEAD',
-          cache: 'no-cache',
-          signal: controller.signal,
-        });
-        
-        clearTimeout(timeoutId);
-        verifyingRef.current = false;
-        return response.ok || response.status === 304;
-      } catch (error) {
-        verifyingRef.current = false;
-        // If fetch fails, we're likely offline
-        return false;
+      const timeout = isMobile ? 7000 : 5000; // Longer timeout for mobile
+      const endpoints = [
+        '/favicon.ico',
+        '/robots.txt',
+        'https://www.gstatic.com/generate_204', // Google's connectivity check
+      ];
+      
+      // Try each endpoint
+      for (const endpoint of endpoints) {
+        try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), timeout);
+          
+          const startTime = Date.now();
+          const response = await fetch(endpoint, {
+            method: 'HEAD',
+            cache: 'no-cache',
+            signal: controller.signal,
+          });
+          
+          clearTimeout(timeoutId);
+          const responseTime = Date.now() - startTime;
+          
+          if (response.ok || response.status === 304) {
+            if (import.meta.env.DEV) {
+              console.log(`[Network] Connected via ${endpoint} (${responseTime}ms)`);
+            }
+            verifyingRef.current = false;
+            retryCountRef.current = 0;
+            return true;
+          }
+        } catch (error) {
+          if (import.meta.env.DEV) {
+            console.log(`[Network] Failed to reach ${endpoint}:`, error);
+          }
+          continue; // Try next endpoint
+        }
       }
+      
+      // All endpoints failed - retry with backoff
+      if (retryAttempt < 3) {
+        const backoffDelay = Math.pow(2, retryAttempt) * 1000; // 1s, 2s, 4s
+        if (import.meta.env.DEV) {
+          console.log(`[Network] Retry ${retryAttempt + 1}/3 after ${backoffDelay}ms`);
+        }
+        await new Promise(resolve => setTimeout(resolve, backoffDelay));
+        verifyingRef.current = false;
+        return verifyConnectivity(retryAttempt + 1);
+      }
+      
+      verifyingRef.current = false;
+      return false;
     };
 
     const updateNetworkStatus = async (skipVerification = false) => {
       const connection = (navigator as any).connection || (navigator as any).mozConnection || (navigator as any).webkitConnection;
       
-      // For mobile browsers, verify actual connectivity
-      const isActuallyOnline = skipVerification ? navigator.onLine : await verifyConnectivity();
+      // Always verify on mobile, even when browser says we're online
+      const shouldVerify = isMobile || !skipVerification;
+      const isActuallyOnline = shouldVerify ? await verifyConnectivity() : navigator.onLine;
       
-      setNetworkStatus({
+      const newStatus = {
         isOnline: isActuallyOnline,
         effectiveType: connection?.effectiveType || null,
         downlink: connection?.downlink || null,
         rtt: connection?.rtt || null,
-      });
+      };
+      
+      setNetworkStatus(newStatus);
+      
+      // Store last known good state
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(isActuallyOnline));
+      } catch (error) {
+        // Ignore storage errors
+      }
 
       if (import.meta.env.DEV) {
-        console.log('[Network Status] Status updated:', {
+        console.log('[Network] Status updated:', {
+          isMobile,
           navigatorOnLine: navigator.onLine,
           verifiedOnline: isActuallyOnline,
           effectiveType: connection?.effectiveType,
@@ -101,10 +159,11 @@ export const useNetworkStatus = () => {
       debouncedUpdate(true);
     };
 
-    // Initial status with delay to allow mobile browsers to establish connection
+    // Initial verification - be patient on mobile
+    const initialDelay = isMobile ? 1000 : 500;
     setTimeout(() => {
       updateNetworkStatus(false);
-    }, 500);
+    }, initialDelay);
 
     // Add event listeners
     window.addEventListener('online', handleOnline);
