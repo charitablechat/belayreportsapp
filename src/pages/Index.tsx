@@ -11,31 +11,45 @@ const Index = () => {
   useEffect(() => {
     const checkAuth = async () => {
       try {
-        // First check localStorage for cached session (works offline)
-        const cachedSession = localStorage.getItem('sb-ssgzcgvygnsrqalisshx-auth-token');
+        // Always try to verify with Supabase first (with timeout)
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Auth check timeout')), 5000)
+        );
         
-        if (cachedSession) {
-          // Parse cached session
-          try {
-            const parsed = JSON.parse(cachedSession);
-            if (parsed && parsed.access_token) {
-              // We have a cached session, navigate to dashboard
-              setSession(parsed);
-              setLoading(false);
-              navigate("/dashboard");
-              return;
-            }
-          } catch (e) {
-            console.error('[Auth] Error parsing cached session:', e);
-          }
-        }
+        const authPromise = supabase.auth.getSession();
+        
+        try {
+          const { data: { session }, error } = await Promise.race([
+            authPromise,
+            timeoutPromise
+          ]) as any;
 
-        // If online, verify with Supabase
-        if (navigator.onLine) {
-          const { data: { session } } = await supabase.auth.getSession();
-          setSession(session);
-          if (session) {
+          if (!error && session) {
+            setSession(session);
             navigate("/dashboard");
+            return;
+          }
+        } catch (authError) {
+          console.log('[Auth] Supabase verification failed or timed out, checking cache:', authError);
+          
+          // Fallback to cached session only if Supabase request truly failed
+          const cachedSession = localStorage.getItem('sb-ssgzcgvygnsrqalisshx-auth-token');
+          
+          if (cachedSession) {
+            try {
+              const parsed = JSON.parse(cachedSession);
+              if (parsed && parsed.access_token) {
+                // Verify the token hasn't expired
+                const expiresAt = parsed.expires_at;
+                if (expiresAt && expiresAt * 1000 > Date.now()) {
+                  setSession(parsed);
+                  navigate("/dashboard");
+                  return;
+                }
+              }
+            } catch (e) {
+              console.error('[Auth] Error parsing cached session:', e);
+            }
           }
         }
       } catch (error) {
