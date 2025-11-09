@@ -4,13 +4,23 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, LogOut, FileText, GraduationCap, ArrowRight, Lock, Download, Settings } from "lucide-react";
+import { Plus, LogOut, FileText, GraduationCap, ArrowRight, Lock, Download, Settings, Trash2, MoreVertical } from "lucide-react";
 import { toast } from "sonner";
 import ropeWorksLogo from "@/assets/rope-works-logo.png";
 import { usePWAInstall } from "@/hooks/usePWAInstall";
 import { NetworkStatusIndicator } from "@/components/pwa/NetworkStatusIndicator";
 import { SyncStatusIndicator } from "@/components/pwa/SyncStatusIndicator";
-import { getOfflineInspections } from "@/lib/offline-storage";
+import { getOfflineInspections, deleteOfflineInspection, queueOperation } from "@/lib/offline-storage";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -24,6 +34,8 @@ export default function Dashboard() {
   const navigate = useNavigate();
   const [inspections, setInspections] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [inspectionToDelete, setInspectionToDelete] = useState<any>(null);
   const { isInstallable, isInstalled, promptInstall } = usePWAInstall();
 
   useEffect(() => {
@@ -72,6 +84,53 @@ export default function Dashboard() {
   const handleSignOut = async () => {
     await supabase.auth.signOut();
     toast.success("Signed out successfully");
+  };
+
+  const handleDeleteClick = (e: React.MouseEvent, inspection: any) => {
+    e.stopPropagation();
+    setInspectionToDelete(inspection);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!inspectionToDelete) return;
+
+    try {
+      // Delete from offline storage
+      await deleteOfflineInspection(inspectionToDelete.id);
+
+      if (navigator.onLine) {
+        // Delete from Supabase
+        const { error } = await supabase
+          .from("inspections")
+          .delete()
+          .eq("id", inspectionToDelete.id);
+
+        if (error) throw error;
+        
+        toast.success("Inspection deleted successfully");
+        
+        if (import.meta.env.DEV) {
+          console.log('[Dashboard] Inspection deleted:', inspectionToDelete.id);
+        }
+      } else {
+        // Queue for later deletion
+        await queueOperation('delete', inspectionToDelete.id, inspectionToDelete);
+        toast.success("Inspection deleted offline - will sync when online");
+        
+        if (import.meta.env.DEV) {
+          console.log('[Dashboard] Inspection deletion queued:', inspectionToDelete.id);
+        }
+      }
+
+      // Update UI
+      setInspections(inspections.filter(i => i.id !== inspectionToDelete.id));
+      setDeleteDialogOpen(false);
+      setInspectionToDelete(null);
+    } catch (error: any) {
+      console.error("Error deleting inspection:", error);
+      toast.error("Failed to delete inspection");
+    }
   };
 
   const getStatusBadge = (inspection: any) => {
@@ -244,15 +303,39 @@ export default function Dashboard() {
               {inspections.map((inspection) => (
                 <Card
                   key={inspection.id}
-                  className="cursor-pointer hover:shadow-lg transition-shadow"
+                  className="cursor-pointer hover:shadow-lg transition-shadow group"
                   onClick={() => navigate(`/inspection/${inspection.id}`)}
                 >
                   <CardHeader>
-                    <div className="flex items-start justify-between">
-                      <CardTitle className="text-lg">{inspection.organization}</CardTitle>
-                      {getStatusBadge(inspection)}
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <CardTitle className="text-lg truncate">{inspection.organization}</CardTitle>
+                        <CardDescription className="truncate">{inspection.location}</CardDescription>
+                      </div>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        {getStatusBadge(inspection)}
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                            <Button 
+                              variant="ghost" 
+                              size="icon"
+                              className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
+                            >
+                              <MoreVertical className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem 
+                              className="text-red-600 focus:text-red-600"
+                              onClick={(e) => handleDeleteClick(e, inspection)}
+                            >
+                              <Trash2 className="w-4 h-4 mr-2" />
+                              Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
                     </div>
-                    <CardDescription>{inspection.location}</CardDescription>
                   </CardHeader>
                   <CardContent>
                     <div className="text-sm text-muted-foreground space-y-1">
@@ -272,6 +355,27 @@ export default function Dashboard() {
           )}
         </section>
       </main>
+
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Inspection Report</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete the inspection report for{" "}
+              <strong>{inspectionToDelete?.organization}</strong>? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleDeleteConfirm}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
