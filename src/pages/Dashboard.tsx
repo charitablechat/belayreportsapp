@@ -202,12 +202,12 @@ export default function Dashboard() {
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b bg-card">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <img src={ropeWorksLogo} alt="Rope Works" className="h-12 w-auto object-contain" />
-            <img src={acctLogo} alt="ACCT Accredited Vendor" className="h-12 w-auto object-contain" />
+        <div className="container mx-auto px-2 md:px-4 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-2 md:gap-3">
+            <img src={ropeWorksLogo} alt="Rope Works" className="h-8 md:h-12 w-auto object-contain" />
+            <img src={acctLogo} alt="ACCT Accredited Vendor" className="h-8 md:h-12 w-auto object-contain" />
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 md:gap-4">
             <NetworkStatusIndicator />
             <SyncStatusIndicator />
             {isInstallable && !isInstalled && (
@@ -223,14 +223,14 @@ export default function Dashboard() {
                 className="gap-2"
               >
                 <Download className="w-4 h-4" />
-                Install App
+                <span className="hidden md:inline">Install App</span>
               </Button>
             )}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="sm">
-                  <Settings className="w-4 h-4 mr-2" />
-                  Settings
+                <Button variant="ghost" size="sm" className="gap-2">
+                  <Settings className="w-4 h-4" />
+                  <span className="hidden md:inline">Settings</span>
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
