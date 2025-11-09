@@ -10,6 +10,7 @@ import InspectionForm from "./pages/InspectionForm";
 import Install from "./pages/Install";
 import NotFound from "./pages/NotFound";
 import { InstallBanner } from "@/components/pwa/InstallBanner";
+import { UpdateNotification } from "@/components/pwa/UpdateNotification";
 
 const queryClient = new QueryClient();
 
@@ -20,6 +21,7 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <InstallBanner />
+        <UpdateNotification />
         <Routes>
           <Route path="/" element={<Index />} />
           <Route path="/dashboard" element={<Dashboard />} />

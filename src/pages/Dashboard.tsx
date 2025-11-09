@@ -4,36 +4,17 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, LogOut, FileText, CloudOff, Cloud, GraduationCap, ArrowRight, Lock, Download } from "lucide-react";
+import { Plus, LogOut, FileText, GraduationCap, ArrowRight, Lock, Download } from "lucide-react";
 import { toast } from "sonner";
 import ropeWorksLogo from "@/assets/rope-works-logo.png";
 import { usePWAInstall } from "@/hooks/usePWAInstall";
+import { NetworkStatusIndicator } from "@/components/pwa/NetworkStatusIndicator";
 
 export default function Dashboard() {
   const navigate = useNavigate();
   const [inspections, setInspections] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [isOnline, setIsOnline] = useState(navigator.onLine);
   const { isInstallable, isInstalled, promptInstall } = usePWAInstall();
-
-  useEffect(() => {
-    const handleOnline = () => {
-      setIsOnline(true);
-      toast.success("Connection restored");
-    };
-    const handleOffline = () => {
-      setIsOnline(false);
-      toast.error("You are offline. Data will sync when connection is restored.");
-    };
-
-    window.addEventListener("online", handleOnline);
-    window.addEventListener("offline", handleOffline);
-
-    return () => {
-      window.removeEventListener("online", handleOnline);
-      window.removeEventListener("offline", handleOffline);
-    };
-  }, []);
 
   useEffect(() => {
     loadInspections();
@@ -80,16 +61,7 @@ export default function Dashboard() {
             <h1 className="text-2xl font-bold text-primary">Reports</h1>
           </div>
           <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2">
-              {isOnline ? (
-                <Cloud className="w-5 h-5 text-success" />
-              ) : (
-                <CloudOff className="w-5 h-5 text-muted-foreground" />
-              )}
-              <span className="text-sm text-muted-foreground">
-                {isOnline ? "Online" : "Offline"}
-              </span>
-            </div>
+            <NetworkStatusIndicator />
             {isInstallable && !isInstalled && (
               <Button 
                 variant="outline" 
