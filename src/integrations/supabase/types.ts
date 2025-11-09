@@ -546,6 +546,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      get_service_role_key: { Args: never; Returns: string }
       has_role: {
         Args: {
           _org_id: string
