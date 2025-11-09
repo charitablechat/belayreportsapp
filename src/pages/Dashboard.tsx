@@ -8,6 +8,7 @@ import { Plus, LogOut, FileText, GraduationCap, ArrowRight, Lock, Download, Sett
 import { toast } from "sonner";
 import ropeWorksLogo from "@/assets/rope-works-logo.png";
 import acctLogo from "@/assets/acct-accredited-vendor.png";
+import { AuroraBackground } from "@/components/ui/aurora-background";
 import { usePWAInstall } from "@/hooks/usePWAInstall";
 import { NetworkStatusIndicator } from "@/components/pwa/NetworkStatusIndicator";
 import { SyncStatusIndicator } from "@/components/pwa/SyncStatusIndicator";
@@ -206,68 +207,72 @@ export default function Dashboard() {
 
       <main className="container mx-auto px-4 py-8">
         {/* Foyer Section */}
-        <section className="mb-12">
-          <div className="text-center mb-8">
-            <h2 className="text-4xl font-bold text-primary mb-2">
-              Welcome to Rope Works
-            </h2>
-            <p className="text-lg text-muted-foreground">
-              Choose a report type to get started
-            </p>
-          </div>
+        <section className="mb-12 -mx-4">
+          <AuroraBackground className="rounded-lg" showRadialGradient={true}>
+            <div className="container mx-auto px-4 py-16">
+              <div className="text-center mb-8">
+                <h2 className="text-4xl font-bold text-primary dark:text-white mb-2">
+                  Welcome to Rope Works
+                </h2>
+                <p className="text-lg text-muted-foreground dark:text-neutral-200">
+                  Choose a report type to get started
+                </p>
+              </div>
 
-          <div className="grid md:grid-cols-2 gap-6 max-w-4xl mx-auto">
-            {/* INSPECTION CARD - FUNCTIONAL */}
-            <Card 
-              className="relative overflow-hidden hover:shadow-2xl transition-all duration-300 border-2 hover:border-blue-500 cursor-pointer group"
-              onClick={() => navigate("/inspection/new")}
-            >
-              <div className="absolute inset-0 bg-gradient-to-br from-blue-50 to-transparent opacity-50" />
-              <CardHeader className="relative z-10 text-center pb-4">
-                <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-blue-100 flex items-center justify-center group-hover:scale-110 transition-transform">
-                  <FileText className="w-8 h-8 text-blue-600" />
-                </div>
-                <CardTitle className="text-2xl mb-2">Inspection Report</CardTitle>
-                <CardDescription className="text-base">
-                  Create a new equipment and facility inspection report
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="relative z-10 text-center pb-6">
-                <Button size="lg" className="w-full bg-blue-600 hover:bg-blue-700">
-                  Start Inspection
-                  <ArrowRight className="w-4 h-4 ml-2" />
-                </Button>
-              </CardContent>
-            </Card>
+              <div className="grid md:grid-cols-2 gap-6 max-w-4xl mx-auto">
+                {/* INSPECTION CARD - FUNCTIONAL */}
+                <Card 
+                  className="relative overflow-hidden hover:shadow-2xl transition-all duration-300 border-2 hover:border-blue-500 cursor-pointer group"
+                  onClick={() => navigate("/inspection/new")}
+                >
+                  <div className="absolute inset-0 bg-gradient-to-br from-blue-50 to-transparent opacity-50" />
+                  <CardHeader className="relative z-10 text-center pb-4">
+                    <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-blue-100 flex items-center justify-center group-hover:scale-110 transition-transform">
+                      <FileText className="w-8 h-8 text-blue-600" />
+                    </div>
+                    <CardTitle className="text-2xl mb-2">Inspection Report</CardTitle>
+                    <CardDescription className="text-base">
+                      Create a new equipment and facility inspection report
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="relative z-10 text-center pb-6">
+                    <Button size="lg" className="w-full bg-blue-600 hover:bg-blue-700">
+                      Start Inspection
+                      <ArrowRight className="w-4 h-4 ml-2" />
+                    </Button>
+                  </CardContent>
+                </Card>
 
-            {/* TRAINING CARD - MOCKUP (DISABLED) */}
-            <Card className="relative overflow-hidden border-2 opacity-60 cursor-not-allowed">
-              <Badge 
-                variant="secondary" 
-                className="absolute top-4 right-4 z-20 bg-yellow-100 text-yellow-800 border-yellow-300"
-              >
-                Coming Soon
-              </Badge>
-              <div className="absolute inset-0 bg-gradient-to-br from-green-50 to-transparent opacity-30" />
-              <CardHeader className="relative z-10 text-center pb-4">
-                <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-green-100 flex items-center justify-center">
-                  <GraduationCap className="w-8 h-8 text-green-600" />
-                </div>
-                <CardTitle className="text-2xl mb-2 text-muted-foreground">
-                  Training Report
-                </CardTitle>
-                <CardDescription className="text-base">
-                  Document training sessions and participant assessments
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="relative z-10 text-center pb-6">
-                <Button size="lg" className="w-full" disabled>
-                  <Lock className="w-4 h-4 mr-2" />
-                  Coming Soon
-                </Button>
-              </CardContent>
-            </Card>
-          </div>
+                {/* TRAINING CARD - MOCKUP (DISABLED) */}
+                <Card className="relative overflow-hidden border-2 opacity-60 cursor-not-allowed">
+                  <Badge 
+                    variant="secondary" 
+                    className="absolute top-4 right-4 z-20 bg-yellow-100 text-yellow-800 border-yellow-300"
+                  >
+                    Coming Soon
+                  </Badge>
+                  <div className="absolute inset-0 bg-gradient-to-br from-green-50 to-transparent opacity-30" />
+                  <CardHeader className="relative z-10 text-center pb-4">
+                    <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-green-100 flex items-center justify-center">
+                      <GraduationCap className="w-8 h-8 text-green-600" />
+                    </div>
+                    <CardTitle className="text-2xl mb-2 text-muted-foreground">
+                      Training Report
+                    </CardTitle>
+                    <CardDescription className="text-base">
+                      Document training sessions and participant assessments
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="relative z-10 text-center pb-6">
+                    <Button size="lg" className="w-full" disabled>
+                      <Lock className="w-4 h-4 mr-2" />
+                      Coming Soon
+                    </Button>
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
+          </AuroraBackground>
         </section>
 
         {/* Recent Reports Section */}
