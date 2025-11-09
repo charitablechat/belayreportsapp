@@ -31,11 +31,11 @@ export default function NewInspection() {
   const handleLocationCapture = async () => {
     try {
       const position = await getLocation();
-      setFormData({
-        ...formData,
+      setFormData(prev => ({
+        ...prev,
         latitude: position.latitude,
         longitude: position.longitude,
-      });
+      }));
       toast.success(`Location captured: ${position.latitude.toFixed(6)}, ${position.longitude.toFixed(6)}`);
       
       if (import.meta.env.DEV) {
@@ -69,6 +69,14 @@ export default function NewInspection() {
 
       if (isOnline) {
         // Create in Supabase
+        if (import.meta.env.DEV) {
+          console.log('[NewInspection] Submitting to Supabase:', {
+            ...formData,
+            inspector_id: user.id,
+            status: "draft",
+          });
+        }
+        
         const { data, error } = await supabase
           .from("inspections")
           .insert({
@@ -137,7 +145,7 @@ export default function NewInspection() {
                 <Input
                   id="organization"
                   value={formData.organization}
-                  onChange={(e) => setFormData({ ...formData, organization: e.target.value })}
+                  onChange={(e) => setFormData(prev => ({ ...prev, organization: e.target.value }))}
                   required
                   placeholder="Enter organization name"
                 />
@@ -149,7 +157,7 @@ export default function NewInspection() {
                   <Input
                     id="location"
                     value={formData.location}
-                    onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+                    onChange={(e) => setFormData(prev => ({ ...prev, location: e.target.value }))}
                     required
                     placeholder="Enter location"
                     className="flex-1"
@@ -158,6 +166,11 @@ export default function NewInspection() {
                     <MapPin className={`w-4 h-4 ${formData.latitude && formData.longitude ? 'text-green-600' : ''}`} />
                   </Button>
                 </div>
+                {formData.latitude && formData.longitude && (
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Coordinates: {formData.latitude.toFixed(6)}, {formData.longitude.toFixed(6)}
+                  </p>
+                )}
               </div>
 
               <div className="space-y-2">
@@ -165,7 +178,7 @@ export default function NewInspection() {
                 <Input
                   id="onsite_contact"
                   value={formData.onsite_contact}
-                  onChange={(e) => setFormData({ ...formData, onsite_contact: e.target.value })}
+                  onChange={(e) => setFormData(prev => ({ ...prev, onsite_contact: e.target.value }))}
                   placeholder="Enter contact name"
                 />
               </div>
@@ -176,7 +189,7 @@ export default function NewInspection() {
                   <Input
                     id="previous_inspector"
                     value={formData.previous_inspector}
-                    onChange={(e) => setFormData({ ...formData, previous_inspector: e.target.value })}
+                    onChange={(e) => setFormData(prev => ({ ...prev, previous_inspector: e.target.value }))}
                   />
                 </div>
 
@@ -186,7 +199,7 @@ export default function NewInspection() {
                     id="previous_inspection_date"
                     type="date"
                     value={formData.previous_inspection_date}
-                    onChange={(e) => setFormData({ ...formData, previous_inspection_date: e.target.value })}
+                    onChange={(e) => setFormData(prev => ({ ...prev, previous_inspection_date: e.target.value }))}
                   />
                 </div>
               </div>
@@ -196,7 +209,7 @@ export default function NewInspection() {
                 <Textarea
                   id="course_history"
                   value={formData.course_history}
-                  onChange={(e) => setFormData({ ...formData, course_history: e.target.value })}
+                  onChange={(e) => setFormData(prev => ({ ...prev, course_history: e.target.value }))}
                   rows={4}
                   placeholder="Enter any known history about this course..."
                 />
