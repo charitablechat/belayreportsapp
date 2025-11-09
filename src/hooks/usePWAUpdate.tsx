@@ -19,7 +19,11 @@ export const usePWAUpdate = (): PWAUpdateStatus => {
           console.log('[PWA Update] Service Worker ready');
         }
         setRegistration(reg);
-        setOfflineReady(true);
+        
+        // Only set offline ready once
+        if (!offlineReady) {
+          setOfflineReady(true);
+        }
 
         // Check for updates every hour
         setInterval(() => {
@@ -33,16 +37,8 @@ export const usePWAUpdate = (): PWAUpdateStatus => {
           console.error('[PWA Update] Service Worker registration error:', error);
         }
       });
-
-      // Listen for updates
-      navigator.serviceWorker.addEventListener('controllerchange', () => {
-        if (import.meta.env.DEV) {
-          console.log('[PWA Update] New version detected');
-        }
-        setNeedRefresh(true);
-      });
     }
-  }, []);
+  }, [offlineReady]);
 
   const updateServiceWorker = async (reloadPage = true) => {
     if (registration?.waiting) {

@@ -1,20 +1,24 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { usePWA } from '@/hooks/usePWA';
 
 export const UpdateNotification = () => {
   const { needsUpdate, offlineReady, updateAndReload } = usePWA();
+  const hasShownUpdate = useRef(false);
+  const hasShownOfflineReady = useRef(false);
 
   useEffect(() => {
-    if (needsUpdate) {
+    if (needsUpdate && !hasShownUpdate.current) {
+      hasShownUpdate.current = true;
+      
       if (import.meta.env.DEV) {
         console.log('[Update Notification] Showing update available notification');
       }
 
       toast.success('Update Available', {
         description: 'A new version of the app is available',
-        duration: Infinity,
+        duration: 10000,
         id: 'update-available',
         action: {
           label: 'Update Now',
@@ -22,6 +26,7 @@ export const UpdateNotification = () => {
             if (import.meta.env.DEV) {
               console.log('[Update Notification] User clicked update button');
             }
+            toast.dismiss('update-available');
             updateAndReload();
           },
         },
@@ -31,7 +36,9 @@ export const UpdateNotification = () => {
   }, [needsUpdate, updateAndReload]);
 
   useEffect(() => {
-    if (offlineReady) {
+    if (offlineReady && !hasShownOfflineReady.current) {
+      hasShownOfflineReady.current = true;
+      
       if (import.meta.env.DEV) {
         console.log('[Update Notification] App ready for offline use');
       }
