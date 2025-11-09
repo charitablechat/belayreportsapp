@@ -275,6 +275,7 @@ export type Database = {
           longitude: number | null
           onsite_contact: string | null
           organization: string
+          organization_id: string | null
           previous_inspection_date: string | null
           previous_inspector: string | null
           status: string
@@ -292,6 +293,7 @@ export type Database = {
           longitude?: number | null
           onsite_contact?: string | null
           organization: string
+          organization_id?: string | null
           previous_inspection_date?: string | null
           previous_inspector?: string | null
           status?: string
@@ -309,23 +311,252 @@ export type Database = {
           longitude?: number | null
           onsite_contact?: string | null
           organization?: string
+          organization_id?: string | null
           previous_inspection_date?: string | null
           previous_inspector?: string | null
           status?: string
           synced_at?: string | null
           updated_at?: string | null
         }
+        Relationships: [
+          {
+            foreignKeyName: "inspections_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      notification_preferences: {
+        Row: {
+          created_at: string | null
+          id: string
+          inspection_completed: boolean | null
+          sync_conflicts: boolean | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          inspection_completed?: boolean | null
+          sync_conflicts?: boolean | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          inspection_completed?: boolean | null
+          sync_conflicts?: boolean | null
+          updated_at?: string | null
+          user_id?: string
+        }
         Relationships: []
+      }
+      notifications_log: {
+        Row: {
+          body: string
+          data: Json | null
+          id: string
+          notification_type: string
+          sent_at: string | null
+          status: string | null
+          title: string
+          user_id: string
+        }
+        Insert: {
+          body: string
+          data?: Json | null
+          id?: string
+          notification_type: string
+          sent_at?: string | null
+          status?: string | null
+          title: string
+          user_id: string
+        }
+        Update: {
+          body?: string
+          data?: Json | null
+          id?: string
+          notification_type?: string
+          sent_at?: string | null
+          status?: string | null
+          title?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      organization_members: {
+        Row: {
+          created_at: string | null
+          id: string
+          organization_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          organization_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          organization_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "organization_members_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      organizations: {
+        Row: {
+          created_at: string | null
+          id: string
+          name: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          name: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          name?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      push_subscriptions: {
+        Row: {
+          auth: string
+          created_at: string | null
+          endpoint: string
+          id: string
+          last_used_at: string | null
+          p256dh: string
+          user_agent: string | null
+          user_id: string
+        }
+        Insert: {
+          auth: string
+          created_at?: string | null
+          endpoint: string
+          id?: string
+          last_used_at?: string | null
+          p256dh: string
+          user_agent?: string | null
+          user_id: string
+        }
+        Update: {
+          auth?: string
+          created_at?: string | null
+          endpoint?: string
+          id?: string
+          last_used_at?: string | null
+          p256dh?: string
+          user_agent?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      sync_conflicts: {
+        Row: {
+          created_at: string | null
+          id: string
+          inspection_id: string
+          local_updated_at: string
+          organization_id: string
+          remote_updated_at: string
+          resolved: boolean | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          inspection_id: string
+          local_updated_at: string
+          organization_id: string
+          remote_updated_at: string
+          resolved?: boolean | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          inspection_id?: string
+          local_updated_at?: string
+          organization_id?: string
+          remote_updated_at?: string
+          resolved?: boolean | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sync_conflicts_inspection_id_fkey"
+            columns: ["inspection_id"]
+            isOneToOne: false
+            referencedRelation: "inspections"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      user_roles: {
+        Row: {
+          created_at: string | null
+          id: string
+          organization_id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          organization_id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          organization_id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_roles_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      has_role: {
+        Args: {
+          _org_id: string
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
     }
     Enums: {
-      [_ in never]: never
+      app_role: "super_admin" | "admin" | "inspector"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -452,6 +683,8 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_role: ["super_admin", "admin", "inspector"],
+    },
   },
 } as const
