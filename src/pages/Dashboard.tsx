@@ -9,6 +9,8 @@ import { toast } from "sonner";
 import ropeWorksLogo from "@/assets/rope-works-logo.png";
 import { usePWAInstall } from "@/hooks/usePWAInstall";
 import { NetworkStatusIndicator } from "@/components/pwa/NetworkStatusIndicator";
+import { SyncStatusIndicator } from "@/components/pwa/SyncStatusIndicator";
+import { getOfflineInspections } from "@/lib/offline-storage";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -30,13 +32,35 @@ export default function Dashboard() {
 
   const loadInspections = async () => {
     try {
-      const { data, error } = await supabase
-        .from("inspections")
-        .select("*")
-        .order("created_at", { ascending: false });
+      // Load from offline storage first
+      const offlineInspections = await getOfflineInspections();
+      
+      if (offlineInspections.length > 0) {
+        setInspections(offlineInspections);
+        setLoading(false);
+        
+        if (import.meta.env.DEV) {
+          console.log('[Dashboard] Loaded from offline storage:', offlineInspections.length);
+        }
+      }
 
-      if (error) throw error;
-      setInspections(data || []);
+      // If online, fetch from Supabase and merge
+      if (navigator.onLine) {
+        const { data, error } = await supabase
+          .from("inspections")
+          .select("*")
+          .order("created_at", { ascending: false });
+
+        if (error) throw error;
+        
+        if (data) {
+          setInspections(data);
+          
+          if (import.meta.env.DEV) {
+            console.log('[Dashboard] Loaded from Supabase:', data.length);
+          }
+        }
+      }
     } catch (error: any) {
       console.error("Error loading inspections:", error);
       toast.error("Failed to load inspections");
@@ -50,13 +74,19 @@ export default function Dashboard() {
     toast.success("Signed out successfully");
   };
 
-  const getStatusBadge = (status: string) => {
+  const getStatusBadge = (inspection: any) => {
+    const isUnsynced = !inspection.synced_at || 
+      (inspection.updated_at && new Date(inspection.updated_at) > new Date(inspection.synced_at));
+    
+    if (isUnsynced) {
+      return <Badge variant="default">Unsynced</Badge>;
+    }
+    
     const variants: Record<string, { variant: any; label: string }> = {
       draft: { variant: "secondary", label: "Draft" },
-      completed: { variant: "default", label: "Completed" },
-      synced: { variant: "outline", label: "Synced" },
+      completed: { variant: "outline", label: "Completed" },
     };
-    const config = variants[status] || variants.draft;
+    const config = variants[inspection.status] || variants.draft;
     return <Badge variant={config.variant}>{config.label}</Badge>;
   };
 
@@ -70,6 +100,7 @@ export default function Dashboard() {
           </div>
           <div className="flex items-center gap-4">
             <NetworkStatusIndicator />
+            <SyncStatusIndicator />
             {isInstallable && !isInstalled && (
               <Button 
                 variant="outline" 
@@ -219,7 +250,7 @@ export default function Dashboard() {
                   <CardHeader>
                     <div className="flex items-start justify-between">
                       <CardTitle className="text-lg">{inspection.organization}</CardTitle>
-                      {getStatusBadge(inspection.status)}
+                      {getStatusBadge(inspection)}
                     </div>
                     <CardDescription>{inspection.location}</CardDescription>
                   </CardHeader>

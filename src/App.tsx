@@ -3,6 +3,7 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { useEffect } from "react";
 import Index from "./pages/Index";
 import Dashboard from "./pages/Dashboard";
 import NewInspection from "./pages/NewInspection";
@@ -13,8 +14,50 @@ import NotFound from "./pages/NotFound";
 import { InstallBanner } from "@/components/pwa/InstallBanner";
 import { UpdateNotification } from "@/components/pwa/UpdateNotification";
 import { InstallSuccessNotification } from "@/components/pwa/InstallSuccessNotification";
+import { syncInspections } from "@/lib/sync-manager";
 
 const queryClient = new QueryClient();
+
+const AppContent = () => {
+  useEffect(() => {
+    // Initial sync on app load
+    if (navigator.onLine) {
+      if (import.meta.env.DEV) {
+        console.log('[App] Initial sync on load');
+      }
+      syncInspections();
+    }
+
+    // Periodic sync every 5 minutes when online
+    const syncInterval = setInterval(() => {
+      if (navigator.onLine) {
+        if (import.meta.env.DEV) {
+          console.log('[App] Periodic sync triggered');
+        }
+        syncInspections();
+      }
+    }, 5 * 60 * 1000);
+
+    // Sync when app becomes visible
+    const handleVisibilityChange = () => {
+      if (!document.hidden && navigator.onLine) {
+        if (import.meta.env.DEV) {
+          console.log('[App] Sync on visibility change');
+        }
+        syncInspections();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      clearInterval(syncInterval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, []);
+
+  return null;
+};
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
@@ -22,6 +65,7 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter>
+        <AppContent />
         <InstallBanner />
         <UpdateNotification />
         <InstallSuccessNotification />

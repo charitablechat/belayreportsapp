@@ -9,9 +9,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ArrowLeft, MapPin, Camera } from "lucide-react";
 import { toast } from "sonner";
 import ropeWorksLogo from "@/assets/rope-works-logo.png";
+import { saveInspectionOffline, queueOperation } from "@/lib/offline-storage";
+import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 
 export default function NewInspection() {
   const navigate = useNavigate();
+  const { isOnline } = useNetworkStatus();
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
     organization: "",
@@ -45,20 +48,57 @@ export default function NewInspection() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
 
-      const { data, error } = await supabase
-        .from("inspections")
-        .insert({
-          ...formData,
-          inspector_id: user.id,
-          status: "draft",
-        })
-        .select()
-        .single();
+      // Generate temporary ID for offline mode
+      const tempId = `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      
+      const newInspection = {
+        ...formData,
+        id: tempId,
+        inspector_id: user.id,
+        status: "draft",
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        inspection_date: new Date().toISOString().split('T')[0],
+      };
 
-      if (error) throw error;
+      if (isOnline) {
+        // Create in Supabase
+        const { data, error } = await supabase
+          .from("inspections")
+          .insert({
+            ...formData,
+            inspector_id: user.id,
+            status: "draft",
+          })
+          .select()
+          .single();
 
-      toast.success("Inspection created successfully");
-      navigate(`/inspection/${data.id}`);
+        if (error) throw error;
+
+        // Cache offline
+        await saveInspectionOffline({
+          ...data,
+          synced_at: new Date().toISOString(),
+        });
+
+        toast.success("Inspection created successfully");
+        navigate(`/inspection/${data.id}`);
+        
+        if (import.meta.env.DEV) {
+          console.log('[NewInspection] Created and synced to Supabase');
+        }
+      } else {
+        // Create offline only
+        await saveInspectionOffline(newInspection);
+        await queueOperation('create', tempId, newInspection);
+
+        toast.success("Inspection created offline - will sync when online");
+        navigate(`/inspection/${tempId}`);
+        
+        if (import.meta.env.DEV) {
+          console.log('[NewInspection] Created offline with temp ID:', tempId);
+        }
+      }
     } catch (error: any) {
       console.error("Error creating inspection:", error);
       toast.error(error.message || "Failed to create inspection");

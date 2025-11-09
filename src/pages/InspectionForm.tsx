@@ -3,7 +3,8 @@ import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowLeft, Save, CheckCircle, Loader2 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { ArrowLeft, Save, CheckCircle, Loader2, WifiOff } from "lucide-react";
 import { toast } from "sonner";
 import ropeWorksLogo from "@/assets/rope-works-logo.png";
 import InspectionHeader from "@/components/inspection/InspectionHeader";
@@ -12,10 +13,14 @@ import ZiplinesTable from "@/components/inspection/ZiplinesTable";
 import EquipmentTable from "@/components/inspection/EquipmentTable";
 import StandardsTable from "@/components/inspection/StandardsTable";
 import SummarySection from "@/components/inspection/SummarySection";
+import { saveInspectionOffline, getOfflineInspection, queueOperation } from "@/lib/offline-storage";
+import { useNetworkStatus } from "@/hooks/useNetworkStatus";
+import { SyncStatusIndicator } from "@/components/pwa/SyncStatusIndicator";
 
 export default function InspectionForm() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { isOnline } = useNetworkStatus();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [autoSaving, setAutoSaving] = useState(false);
@@ -70,14 +75,38 @@ export default function InspectionForm() {
 
   const loadInspection = async () => {
     try {
-      const { data, error } = await supabase
-        .from("inspections")
-        .select("*")
-        .eq("id", id)
-        .single();
+      // Try offline first
+      const offlineData = await getOfflineInspection(id!);
+      
+      if (offlineData) {
+        setInspection(offlineData);
+        
+        if (import.meta.env.DEV) {
+          console.log('[InspectionForm] Loaded from offline storage');
+        }
+      }
 
-      if (error) throw error;
-      setInspection(data);
+      // If online, fetch from Supabase and update local cache
+      if (isOnline) {
+        const { data, error } = await supabase
+          .from("inspections")
+          .select("*")
+          .eq("id", id)
+          .maybeSingle();
+
+        if (error) throw error;
+        
+        if (data) {
+          setInspection(data);
+          await saveInspectionOffline(data);
+          
+          if (import.meta.env.DEV) {
+            console.log('[InspectionForm] Loaded from Supabase and cached');
+          }
+        }
+      } else if (!offlineData) {
+        throw new Error("No offline data available");
+      }
 
       const { data: systemsData } = await supabase
         .from("inspection_systems")
@@ -120,19 +149,41 @@ export default function InspectionForm() {
   };
 
   const performSave = async () => {
-    // Save systems
-    for (const system of systems) {
-      if (system.id) {
-        await supabase
-          .from("inspection_systems")
-          .update(system)
-          .eq("id", system.id);
-      } else {
-        await supabase
-          .from("inspection_systems")
-          .insert({ ...system, inspection_id: id });
-      }
+    const saveData = {
+      systems,
+      ziplines,
+      equipment,
+      standards,
+      summary,
+      updated_at: new Date().toISOString(),
+    };
+
+    // Always save to offline storage first
+    await saveInspectionOffline({
+      ...inspection,
+      ...saveData,
+    });
+
+    if (import.meta.env.DEV) {
+      console.log('[InspectionForm] Saved to offline storage');
     }
+
+    // If online, sync to Supabase
+    if (isOnline) {
+      try {
+        // Save systems
+        for (const system of systems) {
+          if (system.id) {
+            await supabase
+              .from("inspection_systems")
+              .update(system)
+              .eq("id", system.id);
+          } else {
+            await supabase
+              .from("inspection_systems")
+              .insert({ ...system, inspection_id: id });
+          }
+        }
 
     // Save ziplines
     for (const zipline of ziplines) {
@@ -168,22 +219,50 @@ export default function InspectionForm() {
       standards.map((s) => ({ ...s, inspection_id: id }))
     );
 
-    // Save or update summary
-    const { data: existingSummary } = await supabase
-      .from("inspection_summary")
-      .select("id")
-      .eq("inspection_id", id)
-      .single();
+        // Save or update summary
+        const { data: existingSummary } = await supabase
+          .from("inspection_summary")
+          .select("id")
+          .eq("inspection_id", id)
+          .maybeSingle();
 
-    if (existingSummary) {
-      await supabase
-        .from("inspection_summary")
-        .update(summary)
-        .eq("inspection_id", id);
+        if (existingSummary) {
+          await supabase
+            .from("inspection_summary")
+            .update(summary)
+            .eq("inspection_id", id);
+        } else {
+          await supabase
+            .from("inspection_summary")
+            .insert({ ...summary, inspection_id: id });
+        }
+
+        // Mark as synced
+        await saveInspectionOffline({
+          ...inspection,
+          ...saveData,
+          synced_at: new Date().toISOString(),
+        });
+
+        if (import.meta.env.DEV) {
+          console.log('[InspectionForm] Synced to Supabase');
+        }
+      } catch (error) {
+        console.error('[InspectionForm] Failed to sync to Supabase:', error);
+        // Queue for later sync
+        await queueOperation('update', id!, saveData);
+        
+        if (import.meta.env.DEV) {
+          console.log('[InspectionForm] Queued for later sync');
+        }
+      }
     } else {
-      await supabase
-        .from("inspection_summary")
-        .insert({ ...summary, inspection_id: id });
+      // Queue operation when offline
+      await queueOperation('update', id!, saveData);
+      
+      if (import.meta.env.DEV) {
+        console.log('[InspectionForm] Queued for sync when online');
+      }
     }
   };
 
@@ -209,7 +288,7 @@ export default function InspectionForm() {
       await performSave();
       setLastSaved(new Date());
       setHasUnsavedChanges(false);
-      toast.success("Progress saved");
+      toast.success(isOnline ? "Progress saved" : "Saved offline - will sync when online");
     } catch (error: any) {
       console.error("Save error:", error);
       toast.error("Failed to save progress");
@@ -221,13 +300,21 @@ export default function InspectionForm() {
   const completeInspection = async () => {
     await saveProgress();
     try {
-      const { error } = await supabase
-        .from("inspections")
-        .update({ status: "completed" })
-        .eq("id", id);
+      if (isOnline) {
+        const { error } = await supabase
+          .from("inspections")
+          .update({ status: "completed" })
+          .eq("id", id);
 
-      if (error) throw error;
-      toast.success("Inspection completed!");
+        if (error) throw error;
+        toast.success("Inspection completed!");
+      } else {
+        // Save completion offline
+        const updatedInspection = { ...inspection, status: "completed" };
+        await saveInspectionOffline(updatedInspection);
+        await queueOperation('update', id!, updatedInspection);
+        toast.success("Inspection completed offline - will sync when online");
+      }
       navigate("/dashboard");
     } catch (error: any) {
       toast.error("Failed to complete inspection");
@@ -252,6 +339,13 @@ export default function InspectionForm() {
           </Button>
           <img src={ropeWorksLogo} alt="Rope Works" className="h-10 w-auto object-contain absolute left-1/2 transform -translate-x-1/2" />
           <div className="flex items-center gap-3">
+            {!isOnline && (
+              <Badge variant="secondary" className="gap-2">
+                <WifiOff className="w-4 h-4" />
+                Offline Mode
+              </Badge>
+            )}
+            <SyncStatusIndicator />
             <div className="text-xs text-muted-foreground">
               {autoSaving && (
                 <span className="flex items-center gap-1">
