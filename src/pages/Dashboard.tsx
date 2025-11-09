@@ -40,12 +40,19 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [inspectionToDelete, setInspectionToDelete] = useState<any>(null);
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
   const { isInstallable, isInstalled, promptInstall } = usePWAInstall();
 
   // Check if user is super admin
   const { data: isSuperAdmin } = useQuery({
     queryKey: ["is-super-admin"],
     queryFn: async () => {
+      // Skip check if offline - use cached value
+      if (!navigator.onLine) {
+        const cached = localStorage.getItem('cached-super-admin-status');
+        return cached === 'true';
+      }
+
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return false;
 
@@ -55,12 +62,34 @@ export default function Dashboard() {
         .eq("user_id", user.id)
         .eq("role", "super_admin");
 
-      return roles && roles.length > 0;
+      const isAdmin = roles && roles.length > 0;
+      
+      // Cache the result for offline use
+      localStorage.setItem('cached-super-admin-status', isAdmin.toString());
+      
+      return isAdmin;
     },
+    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
+    retry: false, // Don't retry if offline
   });
 
   useEffect(() => {
     loadInspections();
+
+    // Listen for online/offline events
+    const handleOnline = () => {
+      setIsOnline(true);
+      loadInspections(); // Reload when coming back online
+    };
+    const handleOffline = () => setIsOnline(false);
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
   }, []);
 
   const loadInspections = async () => {
@@ -234,6 +263,15 @@ export default function Dashboard() {
       </header>
 
       <main className="container mx-auto px-4 py-8">
+        {/* Offline Status Banner */}
+        {!isOnline && (
+          <div className="mb-6 p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+            <p className="text-sm text-yellow-800 dark:text-yellow-200 text-center">
+              📱 <strong>You're offline.</strong> You can still view and create inspections. Changes will sync when you're back online.
+            </p>
+          </div>
+        )}
+
         {/* Foyer Section */}
         <section className="mb-12 -mx-4">
           <AuroraBackground className="rounded-lg" showRadialGradient={true}>

@@ -9,6 +9,42 @@ const Index = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        // First check localStorage for cached session (works offline)
+        const cachedSession = localStorage.getItem('sb-ssgzcgvygnsrqalisshx-auth-token');
+        
+        if (cachedSession) {
+          // Parse cached session
+          try {
+            const parsed = JSON.parse(cachedSession);
+            if (parsed && parsed.access_token) {
+              // We have a cached session, navigate to dashboard
+              setSession(parsed);
+              setLoading(false);
+              navigate("/dashboard");
+              return;
+            }
+          } catch (e) {
+            console.error('[Auth] Error parsing cached session:', e);
+          }
+        }
+
+        // If online, verify with Supabase
+        if (navigator.onLine) {
+          const { data: { session } } = await supabase.auth.getSession();
+          setSession(session);
+          if (session) {
+            navigate("/dashboard");
+          }
+        }
+      } catch (error) {
+        console.error('[Auth] Error checking session:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
     // Set up auth state listener
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (_event, session) => {
@@ -19,14 +55,7 @@ const Index = () => {
       }
     );
 
-    // Check for existing session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      if (session) {
-        navigate("/dashboard");
-      }
-      setLoading(false);
-    });
+    checkAuth();
 
     return () => subscription.unsubscribe();
   }, [navigate]);
