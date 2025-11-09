@@ -11,6 +11,7 @@ import InspectionForm from "./pages/InspectionForm";
 import Install from "./pages/Install";
 import Capabilities from "./pages/Capabilities";
 import AuroraLanding from "./pages/AuroraLanding";
+import SuperAdminDashboard from "./pages/SuperAdminDashboard";
 import NotFound from "./pages/NotFound";
 import { InstallBanner } from "@/components/pwa/InstallBanner";
 import { UpdateNotification } from "@/components/pwa/UpdateNotification";
@@ -91,6 +92,7 @@ const App = () => (
             <Route path="/inspection/:id" element={<InspectionForm />} />
             <Route path="/install" element={<Install />} />
             <Route path="/capabilities" element={<Capabilities />} />
+            <Route path="/admin" element={<SuperAdminDashboard />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
