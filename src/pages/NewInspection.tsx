@@ -134,7 +134,7 @@ export default function NewInspection() {
         </div>
       </header>
 
-      <main className="container mx-auto px-4 py-8 max-w-3xl">
+      <main className="container mx-auto px-2 md:px-4 py-8 max-w-3xl">
         <Card>
           <CardHeader>
             <CardTitle className="text-2xl">New Inspection Report</CardTitle>

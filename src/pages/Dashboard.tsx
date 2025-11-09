@@ -262,7 +262,7 @@ export default function Dashboard() {
         </div>
       </header>
 
-      <main className="container mx-auto px-4 py-8">
+      <main className="container mx-auto px-2 md:px-4 py-8">
         {/* Offline Status Banner */}
         {!isOnline && (
           <div className="mb-6 p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">

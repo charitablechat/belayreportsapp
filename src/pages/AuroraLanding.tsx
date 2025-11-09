@@ -18,7 +18,7 @@ export default function AuroraLanding() {
           duration: 0.8,
           ease: "easeInOut",
         }}
-        className="relative flex flex-col gap-6 items-center justify-center px-4"
+        className="relative flex flex-col gap-6 items-center justify-center px-2 md:px-4"
       >
         <div className="flex items-center gap-4 mb-4">
           <img src={ropeWorksLogo} alt="Rope Works" className="h-16 w-auto object-contain" />

@@ -62,7 +62,7 @@ export default function Auth() {
   };
 
   return (
-    <div className="relative min-h-screen flex items-center justify-center p-4">
+    <div className="relative min-h-screen flex items-center justify-center p-2 md:p-4">
       <div className="absolute inset-0 z-0">
         <video 
           autoPlay 
