@@ -8,6 +8,7 @@ import Dashboard from "./pages/Dashboard";
 import NewInspection from "./pages/NewInspection";
 import InspectionForm from "./pages/InspectionForm";
 import Install from "./pages/Install";
+import Capabilities from "./pages/Capabilities";
 import NotFound from "./pages/NotFound";
 import { InstallBanner } from "@/components/pwa/InstallBanner";
 import { UpdateNotification } from "@/components/pwa/UpdateNotification";
@@ -30,6 +31,7 @@ const App = () => (
           <Route path="/inspection/new" element={<NewInspection />} />
           <Route path="/inspection/:id" element={<InspectionForm />} />
           <Route path="/install" element={<Install />} />
+          <Route path="/capabilities" element={<Capabilities />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
