@@ -4,6 +4,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import ResultSelect from "@/components/ResultSelect";
 import { Plus } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 interface EquipmentTableProps {
   category: string;
@@ -69,7 +70,12 @@ export default function EquipmentTable({ category, displayName, equipment, onUpd
                       value={item.equipment_type}
                       onChange={(e) => updateEquipment(item, "equipment_type", e.target.value)}
                       placeholder="Enter type"
-                      className="border-0 bg-transparent"
+                      className={cn(
+                        "border-0 bg-transparent",
+                        !item.equipment_type || item.equipment_type.trim() === ""
+                          ? "ring-2 ring-destructive"
+                          : ""
+                      )}
                     />
                   </td>
                   <td className="border p-2">

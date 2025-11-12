@@ -338,18 +338,23 @@ export default function InspectionForm() {
       // Validate before saving
       // Only include summary in validation if it has required fields and content
       const hasSummaryContent = summary.repairs_performed || 
-                               summary.critical_actions || 
-                               summary.future_considerations || 
-                               summary.next_inspection_date;
+                                summary.critical_actions || 
+                                summary.future_considerations || 
+                                summary.next_inspection_date;
       const summaryForValidation = (summary.id && summary.inspection_id && hasSummaryContent) 
         ? summary 
         : null;
+      
+      // Filter out incomplete equipment items before validation (allows saving work-in-progress)
+      const completeEquipment = equipment.filter(item => 
+        item.equipment_type && item.equipment_type.trim() !== ""
+      );
       
       const validation = validateInspectionPackage({
         inspection: inspectionToSave,
         systems,
         ziplines,
-        equipment,
+        equipment: completeEquipment,
         standards,
         summary: summaryForValidation,
       });
@@ -570,6 +575,32 @@ export default function InspectionForm() {
   };
 
   const completeInspection = async () => {
+    // Strict validation before completion - require ALL equipment to have types
+    const hasSummaryContent = summary.repairs_performed || 
+                              summary.critical_actions || 
+                              summary.future_considerations || 
+                              summary.next_inspection_date;
+    const summaryForValidation = (summary.id && summary.inspection_id && hasSummaryContent) 
+      ? summary 
+      : null;
+    
+    const validation = validateInspectionPackage({
+      inspection: { ...inspection, status: 'completed' },
+      systems,
+      ziplines,
+      equipment, // Use ALL equipment - no filtering
+      standards,
+      summary: summaryForValidation,
+    });
+    
+    if (!validation.success) {
+      const errorMessage = validation.errors[0].message;
+      toast.error("Cannot complete inspection", {
+        description: errorMessage
+      });
+      return;
+    }
+    
     await saveProgress();
     try {
       if (isOnline) {
