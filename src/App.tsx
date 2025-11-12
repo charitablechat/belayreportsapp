@@ -19,7 +19,8 @@ import { InstallSuccessNotification } from "@/components/pwa/InstallSuccessNotif
 import { NetworkStatusIndicator } from "@/components/pwa/NetworkStatusIndicator";
 import { SyncStatusIndicator } from "@/components/pwa/SyncStatusIndicator";
 import { PWAProvider } from "@/components/pwa/PWAProvider";
-import { syncInspections, syncPhotos } from "@/lib/sync-manager";
+import { syncAllInspectionsAtomic } from "@/lib/atomic-sync-manager";
+import { syncPhotos } from "@/lib/sync-manager";
 import { useBackgroundSync } from "@/hooks/useBackgroundSync";
 
 const queryClient = new QueryClient();
@@ -30,14 +31,14 @@ const AppContent = () => {
   useEffect(() => {
     // Sync on mount and when coming back online
     if (navigator.onLine) {
-      syncInspections();
+      syncAllInspectionsAtomic();
       syncPhotos();
     }
 
     // Periodic sync every 5 minutes
     const syncInterval = setInterval(() => {
       if (navigator.onLine) {
-        syncInspections();
+        syncAllInspectionsAtomic();
         syncPhotos();
       }
     }, 5 * 60 * 1000);
@@ -45,7 +46,7 @@ const AppContent = () => {
     // Sync when app becomes visible
     const handleVisibilityChange = () => {
       if (!document.hidden && navigator.onLine) {
-        syncInspections();
+        syncAllInspectionsAtomic();
         syncPhotos();
       }
     };

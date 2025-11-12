@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { getUnsyncedInspections } from '@/lib/offline-storage';
-import { syncInspections } from '@/lib/sync-manager';
+import { syncAllInspectionsAtomic } from '@/lib/atomic-sync-manager';
 import { useNetworkStatus } from './useNetworkStatus';
+import { toast } from 'sonner';
 
 export interface SyncStatus {
   unsyncedCount: number;
@@ -36,10 +37,13 @@ export const useSyncStatus = () => {
   }, []);
 
   const triggerSync = useCallback(async () => {
-    if (!isOnline || syncStatus.isSyncing) {
-      if (import.meta.env.DEV) {
-        console.log('[Sync Status] Sync skipped:', { isOnline, isSyncing: syncStatus.isSyncing });
-      }
+    if (!isOnline) {
+      toast.error("Cannot sync while offline");
+      return;
+    }
+    
+    if (syncStatus.isSyncing) {
+      toast.info("Sync already in progress");
       return;
     }
 
@@ -50,7 +54,7 @@ export const useSyncStatus = () => {
     }
 
     try {
-      await syncInspections();
+      await syncAllInspectionsAtomic();
       setSyncStatus(prev => ({
         ...prev,
         isSyncing: false,
@@ -68,6 +72,8 @@ export const useSyncStatus = () => {
         isSyncing: false,
         syncError: error.message || 'Sync failed',
       }));
+      
+      toast.error("Sync failed: " + error.message);
 
       if (import.meta.env.DEV) {
         console.error('[Sync Status] Sync failed:', error);

@@ -22,6 +22,7 @@ import {
   saveRelatedDataOffline,
   getRelatedDataOffline
 } from "@/lib/offline-storage";
+import { validateInspectionPackage } from "@/lib/validation-schemas";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { SyncStatusIndicator } from "@/components/pwa/SyncStatusIndicator";
 
@@ -244,6 +245,26 @@ export default function InspectionForm() {
   };
 
   const performSave = async () => {
+    // Validate before saving
+    const validation = validateInspectionPackage({
+      inspection,
+      systems,
+      ziplines,
+      equipment,
+      standards,
+      summary: summary.next_inspection_date || summary.repairs_performed ? summary : null,
+    });
+    
+    if (!validation.success) {
+      toast.error(`Validation failed: ${validation.errors[0].message}`);
+      console.error('[InspectionForm] Validation errors:', validation.errors);
+      throw new Error('Validation failed');
+    }
+    
+    if (import.meta.env.DEV) {
+      console.log('[InspectionForm] Validation passed');
+    }
+
     const saveData = {
       systems,
       ziplines,
