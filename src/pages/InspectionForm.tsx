@@ -40,12 +40,12 @@ export default function InspectionForm() {
   const [ziplines, setZiplines] = useState<any[]>([]);
   const [equipment, setEquipment] = useState<any[]>([]);
   const [standards, setStandards] = useState<any[]>([
-    { standard_name: "Local Written Operations Procedures", has_documentation: false },
-    { standard_name: "Local Written Emergency Action Plan", has_documentation: false },
-    { standard_name: "Minimum Annual Training", has_documentation: false },
-    { standard_name: "Written Pre-Use Inspection in Use", has_documentation: false },
-    { standard_name: "Inventory Tracking System in Use", has_documentation: false },
-    { standard_name: "Operational Review Every 5 Years", has_documentation: false },
+    { id: crypto.randomUUID(), standard_name: "Local Written Operations Procedures", has_documentation: false },
+    { id: crypto.randomUUID(), standard_name: "Local Written Emergency Action Plan", has_documentation: false },
+    { id: crypto.randomUUID(), standard_name: "Minimum Annual Training", has_documentation: false },
+    { id: crypto.randomUUID(), standard_name: "Written Pre-Use Inspection in Use", has_documentation: false },
+    { id: crypto.randomUUID(), standard_name: "Inventory Tracking System in Use", has_documentation: false },
+    { id: crypto.randomUUID(), standard_name: "Operational Review Every 5 Years", has_documentation: false },
   ]);
   const [summary, setSummary] = useState({
     repairs_performed: "",
@@ -475,7 +475,7 @@ export default function InspectionForm() {
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="border-b bg-card sticky top-0 z-10">
+      <header className="border-b bg-card sticky top-0 z-20">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <Button variant="ghost" onClick={() => navigate("/dashboard")}>
             <ArrowLeft className="w-4 h-4 mr-2" />

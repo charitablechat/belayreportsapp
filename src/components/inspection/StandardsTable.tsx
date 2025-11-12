@@ -19,7 +19,14 @@ const STANDARDS_LIST = [
 export default function StandardsTable({ standards, onUpdate }: StandardsTableProps) {
   const updateStandard = (index: number, has_documentation: boolean) => {
     const updated = [...standards];
-    updated[index] = { ...updated[index], has_documentation };
+    const inspectionId = window.location.pathname.split('/').pop();
+    updated[index] = { 
+      ...updated[index], 
+      id: updated[index].id || crypto.randomUUID(),
+      inspection_id: inspectionId,
+      standard_name: STANDARDS_LIST[index].name,
+      has_documentation 
+    };
     onUpdate(updated);
   };
 

@@ -9,30 +9,42 @@ interface ResultSelectProps {
 
 export default function ResultSelect({ value, onChange, includeNA = false }: ResultSelectProps) {
   const getResultColor = (result: string) => {
-    switch (result) {
-      case "Pass":
+    switch (result.toLowerCase()) {
+      case "pass":
         return "text-success border-success";
-      case "Pass w/Provisions":
+      case "pass w/provisions":
         return "text-warning border-warning";
-      case "Fail":
+      case "fail":
         return "text-destructive border-destructive";
-      case "N/A":
+      case "na":
+      case "n/a":
         return "text-muted-foreground border-muted";
       default:
         return "";
     }
   };
 
+  const getDisplayValue = (value: string) => {
+    switch (value.toLowerCase()) {
+      case "pass": return "Pass";
+      case "pass w/provisions": return "Pass w/Provisions";
+      case "fail": return "Fail";
+      case "na":
+      case "n/a": return "N/A";
+      default: return value;
+    }
+  };
+
   return (
     <Select value={value} onValueChange={onChange}>
       <SelectTrigger className={cn("w-full", getResultColor(value))}>
-        <SelectValue placeholder="Select result" />
+        <SelectValue placeholder="Select result">{getDisplayValue(value)}</SelectValue>
       </SelectTrigger>
       <SelectContent className="bg-card z-50">
-        <SelectItem value="Pass" className="text-success">Pass</SelectItem>
-        <SelectItem value="Pass w/Provisions" className="text-warning">Pass w/Provisions</SelectItem>
-        <SelectItem value="Fail" className="text-destructive">Fail</SelectItem>
-        {includeNA && <SelectItem value="N/A" className="text-muted-foreground">N/A</SelectItem>}
+        <SelectItem value="pass" className="text-success">Pass</SelectItem>
+        <SelectItem value="pass w/provisions" className="text-warning">Pass w/Provisions</SelectItem>
+        <SelectItem value="fail" className="text-destructive">Fail</SelectItem>
+        {includeNA && <SelectItem value="na" className="text-muted-foreground">N/A</SelectItem>}
       </SelectContent>
     </Select>
   );

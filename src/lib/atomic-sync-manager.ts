@@ -29,6 +29,24 @@ export async function syncInspectionAtomic(inspectionId: string) {
       throw new Error("Inspection not found in local storage");
     }
     
+    // Verify current user matches inspector_id
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      throw new Error("User not authenticated");
+    }
+    
+    if (inspection.inspector_id !== user.id) {
+      if (import.meta.env.DEV) {
+        console.error('[Atomic Sync] Inspector ID mismatch:', {
+          inspection_inspector_id: inspection.inspector_id,
+          current_user_id: user.id
+        });
+      }
+      // Fix the inspector_id to match current user
+      inspection.inspector_id = user.id;
+      await saveInspectionOffline(inspection);
+    }
+    
     const [systems, ziplines, equipment, standards, summaryArray] = await Promise.all([
       getRelatedDataOffline('systems', inspectionId),
       getRelatedDataOffline('ziplines', inspectionId),

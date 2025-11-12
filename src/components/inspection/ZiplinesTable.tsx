@@ -16,17 +16,19 @@ export default function ZiplinesTable({ ziplines, onUpdate }: ZiplinesTableProps
     onUpdate([
       ...ziplines,
       {
+        id: crypto.randomUUID(),
+        inspection_id: window.location.pathname.split('/').pop(),
         zipline_name: "",
         cable_type: "",
         cable_length: null,
         unload_tension: null,
         load_tension: null,
-        cable_result: "Pass",
+        cable_result: "pass",
         braking_system: "",
-        braking_result: "Pass",
+        braking_result: "pass",
         ead_system: "",
-        ead_result: "Pass",
-        result: "Pass",
+        ead_result: "pass",
+        result: "pass",
         comments: "",
       },
     ]);

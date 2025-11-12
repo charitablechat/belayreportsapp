@@ -13,7 +13,16 @@ interface OperatingSystemsTableProps {
 
 export default function OperatingSystemsTable({ systems, onUpdate }: OperatingSystemsTableProps) {
   const addSystem = () => {
-    onUpdate([...systems, { system_name: "", result: "Pass", comments: "" }]);
+    onUpdate([
+      ...systems, 
+      { 
+        id: crypto.randomUUID(),
+        inspection_id: window.location.pathname.split('/').pop(),
+        system_name: "", 
+        result: "pass", 
+        comments: "" 
+      }
+    ]);
   };
 
   const updateSystem = (index: number, field: string, value: any) => {
