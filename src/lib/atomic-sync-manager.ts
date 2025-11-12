@@ -35,16 +35,35 @@ export async function syncInspectionAtomic(inspectionId: string) {
       throw new Error("User not authenticated");
     }
     
+    // Check if user is super admin
+    const { data: roles } = await supabase
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", user.id)
+      .eq("role", "super_admin");
+    
+    const isSuperAdmin = roles && roles.length > 0;
+    
+    // If not super admin and inspector_id doesn't match, it's an error
+    // If super admin, preserve the original inspector_id
     if (inspection.inspector_id !== user.id) {
       if (import.meta.env.DEV) {
-        console.error('[Atomic Sync] Inspector ID mismatch:', {
+        console.log('[Atomic Sync] Inspector ID mismatch:', {
           inspection_inspector_id: inspection.inspector_id,
-          current_user_id: user.id
+          current_user_id: user.id,
+          is_super_admin: isSuperAdmin
         });
       }
-      // Fix the inspector_id to match current user
-      inspection.inspector_id = user.id;
-      await saveInspectionOffline(inspection);
+      
+      if (!isSuperAdmin) {
+        // Regular user trying to sync someone else's inspection - this is an error
+        throw new Error("Cannot sync inspection that doesn't belong to you");
+      }
+      
+      // Super admin - preserve the original inspector_id
+      if (import.meta.env.DEV) {
+        console.log('[Atomic Sync] Super admin preserving original inspector_id');
+      }
     }
     
     const [systems, ziplines, equipment, standards, summaryArray] = await Promise.all([
