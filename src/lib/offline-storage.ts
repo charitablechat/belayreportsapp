@@ -31,13 +31,38 @@ interface InspectionDB extends DBSchema {
     };
     indexes: { 'by-inspection': string; 'by-uploaded': number };
   };
+  inspection_systems: {
+    key: string;
+    value: any;
+    indexes: { 'by-inspection': string };
+  };
+  inspection_ziplines: {
+    key: string;
+    value: any;
+    indexes: { 'by-inspection': string };
+  };
+  inspection_equipment: {
+    key: string;
+    value: any;
+    indexes: { 'by-inspection': string };
+  };
+  inspection_standards: {
+    key: string;
+    value: any;
+    indexes: { 'by-inspection': string };
+  };
+  inspection_summary: {
+    key: string;
+    value: any;
+    indexes: { 'by-inspection': string };
+  };
 }
 
 let dbPromise: Promise<IDBPDatabase<InspectionDB>> | null = null;
 
 export async function getDB() {
   if (!dbPromise) {
-    dbPromise = openDB<InspectionDB>('rope-works-inspections', 3, {
+    dbPromise = openDB<InspectionDB>('rope-works-inspections', 4, {
       upgrade(db, oldVersion, newVersion, transaction) {
         let inspectionStore;
         
@@ -66,6 +91,28 @@ export async function getDB() {
           const photoStore = db.createObjectStore('photos', { keyPath: 'id' });
           photoStore.createIndex('by-inspection', 'inspectionId');
           photoStore.createIndex('by-uploaded', 'uploaded');
+        }
+        
+        // Create related data stores
+        if (!db.objectStoreNames.contains('inspection_systems')) {
+          const store = db.createObjectStore('inspection_systems', { keyPath: 'id' });
+          store.createIndex('by-inspection', 'inspection_id');
+        }
+        if (!db.objectStoreNames.contains('inspection_ziplines')) {
+          const store = db.createObjectStore('inspection_ziplines', { keyPath: 'id' });
+          store.createIndex('by-inspection', 'inspection_id');
+        }
+        if (!db.objectStoreNames.contains('inspection_equipment')) {
+          const store = db.createObjectStore('inspection_equipment', { keyPath: 'id' });
+          store.createIndex('by-inspection', 'inspection_id');
+        }
+        if (!db.objectStoreNames.contains('inspection_standards')) {
+          const store = db.createObjectStore('inspection_standards', { keyPath: 'id' });
+          store.createIndex('by-inspection', 'inspection_id');
+        }
+        if (!db.objectStoreNames.contains('inspection_summary')) {
+          const store = db.createObjectStore('inspection_summary', { keyPath: 'id' });
+          store.createIndex('by-inspection', 'inspection_id');
         }
       },
     });
@@ -208,5 +255,74 @@ export async function deleteOfflinePhoto(id: string) {
   
   if (import.meta.env.DEV) {
     console.log('[Offline Storage] Deleted photo:', id);
+  }
+}
+
+// Related data storage functions
+type RelatedDataType = 'systems' | 'ziplines' | 'equipment' | 'standards' | 'summary';
+type RelatedStoreNames = 'inspection_systems' | 'inspection_ziplines' | 'inspection_equipment' | 'inspection_standards' | 'inspection_summary';
+
+const storeNameMap: Record<RelatedDataType, RelatedStoreNames> = {
+  systems: 'inspection_systems',
+  ziplines: 'inspection_ziplines',
+  equipment: 'inspection_equipment',
+  standards: 'inspection_standards',
+  summary: 'inspection_summary',
+};
+
+export async function saveRelatedDataOffline(
+  type: RelatedDataType,
+  inspectionId: string,
+  data: any[]
+) {
+  const db = await getDB();
+  const storeName = storeNameMap[type];
+  
+  // Clear existing data for this inspection
+  const existingData = await getRelatedDataOffline(type, inspectionId);
+  for (const item of existingData) {
+    await db.delete(storeName, item.id);
+  }
+  
+  // Save new data
+  for (const item of data) {
+    const dataWithInspectionId = {
+      ...item,
+      inspection_id: inspectionId,
+      // Generate ID if not present
+      id: item.id || `${inspectionId}-${type}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+    };
+    await db.put(storeName, dataWithInspectionId);
+  }
+  
+  if (import.meta.env.DEV) {
+    console.log(`[Offline Storage] Saved ${type}:`, data.length, 'items');
+  }
+}
+
+export async function getRelatedDataOffline(
+  type: RelatedDataType,
+  inspectionId: string
+): Promise<any[]> {
+  const db = await getDB();
+  const storeName = storeNameMap[type];
+  const index = db.transaction(storeName).store.index('by-inspection');
+  return await index.getAll(inspectionId);
+}
+
+export async function clearRelatedDataOffline(
+  type: RelatedDataType,
+  inspectionId: string
+) {
+  const db = await getDB();
+  const storeName = storeNameMap[type];
+  const existingData = await getRelatedDataOffline(type, inspectionId);
+  
+  for (const item of existingData) {
+    await db.delete(storeName, item.id);
+  }
+  
+  if (import.meta.env.DEV) {
+    console.log(`[Offline Storage] Cleared ${type} for inspection:`, inspectionId);
   }
 }

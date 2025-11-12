@@ -15,7 +15,13 @@ import ZiplinesTable from "@/components/inspection/ZiplinesTable";
 import EquipmentTable from "@/components/inspection/EquipmentTable";
 import StandardsTable from "@/components/inspection/StandardsTable";
 import SummarySection from "@/components/inspection/SummarySection";
-import { saveInspectionOffline, getOfflineInspection, queueOperation } from "@/lib/offline-storage";
+import { 
+  saveInspectionOffline, 
+  getOfflineInspection, 
+  queueOperation,
+  saveRelatedDataOffline,
+  getRelatedDataOffline
+} from "@/lib/offline-storage";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { SyncStatusIndicator } from "@/components/pwa/SyncStatusIndicator";
 
@@ -121,15 +127,40 @@ export default function InspectionForm() {
 
   const loadInspection = async () => {
     try {
-      // Try offline first
+      // Load inspection header from offline first
       const offlineData = await getOfflineInspection(id!);
       
       if (offlineData) {
         setInspection(offlineData);
         
         if (import.meta.env.DEV) {
-          console.log('[InspectionForm] Loaded from offline storage');
+          console.log('[InspectionForm] Loaded inspection from offline storage');
         }
+      }
+
+      // Load all related data from offline storage first
+      const [
+        offlineSystems,
+        offlineZiplines,
+        offlineEquipment,
+        offlineStandards,
+        offlineSummary
+      ] = await Promise.all([
+        getRelatedDataOffline('systems', id!),
+        getRelatedDataOffline('ziplines', id!),
+        getRelatedDataOffline('equipment', id!),
+        getRelatedDataOffline('standards', id!),
+        getRelatedDataOffline('summary', id!)
+      ]);
+
+      if (offlineSystems.length > 0) setSystems(offlineSystems);
+      if (offlineZiplines.length > 0) setZiplines(offlineZiplines);
+      if (offlineEquipment.length > 0) setEquipment(offlineEquipment);
+      if (offlineStandards.length > 0) setStandards(offlineStandards);
+      if (offlineSummary.length > 0) setSummary(offlineSummary[0]);
+
+      if (import.meta.env.DEV) {
+        console.log('[InspectionForm] Loaded related data from offline storage');
       }
 
       // If online, fetch from Supabase and update local cache
@@ -147,45 +178,63 @@ export default function InspectionForm() {
           await saveInspectionOffline(data);
           
           if (import.meta.env.DEV) {
-            console.log('[InspectionForm] Loaded from Supabase and cached');
+            console.log('[InspectionForm] Updated inspection from Supabase');
           }
+        }
+
+        // Fetch and cache all related data
+        const { data: systemsData } = await supabase
+          .from("inspection_systems")
+          .select("*")
+          .eq("inspection_id", id);
+        if (systemsData) {
+          setSystems(systemsData);
+          await saveRelatedDataOffline('systems', id!, systemsData);
+        }
+
+        const { data: ziplinesData } = await supabase
+          .from("inspection_ziplines")
+          .select("*")
+          .eq("inspection_id", id);
+        if (ziplinesData) {
+          setZiplines(ziplinesData);
+          await saveRelatedDataOffline('ziplines', id!, ziplinesData);
+        }
+
+        const { data: equipmentData } = await supabase
+          .from("inspection_equipment")
+          .select("*")
+          .eq("inspection_id", id);
+        if (equipmentData) {
+          setEquipment(equipmentData);
+          await saveRelatedDataOffline('equipment', id!, equipmentData);
+        }
+
+        const { data: standardsData } = await supabase
+          .from("inspection_standards")
+          .select("*")
+          .eq("inspection_id", id);
+        if (standardsData && standardsData.length > 0) {
+          setStandards(standardsData);
+          await saveRelatedDataOffline('standards', id!, standardsData);
+        }
+
+        const { data: summaryData } = await supabase
+          .from("inspection_summary")
+          .select("*")
+          .eq("inspection_id", id)
+          .maybeSingle();
+        if (summaryData) {
+          setSummary(summaryData);
+          await saveRelatedDataOffline('summary', id!, [summaryData]);
+        }
+
+        if (import.meta.env.DEV) {
+          console.log('[InspectionForm] Synced and cached all data from Supabase');
         }
       } else if (!offlineData) {
         throw new Error("No offline data available");
       }
-
-      const { data: systemsData } = await supabase
-        .from("inspection_systems")
-        .select("*")
-        .eq("inspection_id", id);
-      if (systemsData) setSystems(systemsData);
-
-      const { data: ziplinesData } = await supabase
-        .from("inspection_ziplines")
-        .select("*")
-        .eq("inspection_id", id);
-      if (ziplinesData) setZiplines(ziplinesData);
-
-      const { data: equipmentData } = await supabase
-        .from("inspection_equipment")
-        .select("*")
-        .eq("inspection_id", id);
-      if (equipmentData) setEquipment(equipmentData);
-
-      const { data: standardsData } = await supabase
-        .from("inspection_standards")
-        .select("*")
-        .eq("inspection_id", id);
-      if (standardsData && standardsData.length > 0) {
-        setStandards(standardsData);
-      }
-
-      const { data: summaryData } = await supabase
-        .from("inspection_summary")
-        .select("*")
-        .eq("inspection_id", id)
-        .single();
-      if (summaryData) setSummary(summaryData);
     } catch (error: any) {
       console.error("Error loading inspection:", error);
       toast.error("Failed to load inspection");
@@ -207,11 +256,20 @@ export default function InspectionForm() {
     // Always save to offline storage first
     await saveInspectionOffline({
       ...inspection,
-      ...saveData,
+      updated_at: new Date().toISOString(),
     });
 
+    // Save all related data to offline storage
+    await Promise.all([
+      saveRelatedDataOffline('systems', id!, systems),
+      saveRelatedDataOffline('ziplines', id!, ziplines),
+      saveRelatedDataOffline('equipment', id!, equipment),
+      saveRelatedDataOffline('standards', id!, standards),
+      saveRelatedDataOffline('summary', id!, [summary]),
+    ]);
+
     if (import.meta.env.DEV) {
-      console.log('[InspectionForm] Saved to offline storage');
+      console.log('[InspectionForm] Saved all data to offline storage');
     }
 
     // If online, sync to Supabase
@@ -219,7 +277,13 @@ export default function InspectionForm() {
       try {
         // Save systems
         for (const system of systems) {
-          if (system.id) {
+          if (system.id && system.id.includes('-')) {
+            // Temporary offline ID - insert as new
+            const { id: tempId, ...systemData } = system;
+            await supabase
+              .from("inspection_systems")
+              .insert({ ...systemData, inspection_id: id });
+          } else if (system.id) {
             await supabase
               .from("inspection_systems")
               .update(system)
@@ -231,39 +295,51 @@ export default function InspectionForm() {
           }
         }
 
-    // Save ziplines
-    for (const zipline of ziplines) {
-      if (zipline.id) {
-        await supabase
-          .from("inspection_ziplines")
-          .update(zipline)
-          .eq("id", zipline.id);
-      } else {
-        await supabase
-          .from("inspection_ziplines")
-          .insert({ ...zipline, inspection_id: id });
-      }
-    }
+        // Save ziplines
+        for (const zipline of ziplines) {
+          if (zipline.id && zipline.id.includes('-')) {
+            const { id: tempId, ...ziplineData } = zipline;
+            await supabase
+              .from("inspection_ziplines")
+              .insert({ ...ziplineData, inspection_id: id });
+          } else if (zipline.id) {
+            await supabase
+              .from("inspection_ziplines")
+              .update(zipline)
+              .eq("id", zipline.id);
+          } else {
+            await supabase
+              .from("inspection_ziplines")
+              .insert({ ...zipline, inspection_id: id });
+          }
+        }
 
-    // Save equipment
-    for (const item of equipment) {
-      if (item.id) {
-        await supabase
-          .from("inspection_equipment")
-          .update(item)
-          .eq("id", item.id);
-      } else {
-        await supabase
-          .from("inspection_equipment")
-          .insert({ ...item, inspection_id: id });
-      }
-    }
+        // Save equipment
+        for (const item of equipment) {
+          if (item.id && item.id.includes('-')) {
+            const { id: tempId, ...equipmentData } = item;
+            await supabase
+              .from("inspection_equipment")
+              .insert({ ...equipmentData, inspection_id: id });
+          } else if (item.id) {
+            await supabase
+              .from("inspection_equipment")
+              .update(item)
+              .eq("id", item.id);
+          } else {
+            await supabase
+              .from("inspection_equipment")
+              .insert({ ...item, inspection_id: id });
+          }
+        }
 
-    // Save standards
-    await supabase.from("inspection_standards").delete().eq("inspection_id", id);
-    await supabase.from("inspection_standards").insert(
-      standards.map((s) => ({ ...s, inspection_id: id }))
-    );
+        // Save standards
+        await supabase.from("inspection_standards").delete().eq("inspection_id", id);
+        const standardsToInsert = standards.map(s => {
+          const { id: stdId, ...standardData } = s;
+          return { ...standardData, inspection_id: id };
+        });
+        await supabase.from("inspection_standards").insert(standardsToInsert);
 
         // Save or update summary
         const { data: existingSummary } = await supabase
@@ -278,20 +354,21 @@ export default function InspectionForm() {
             .update(summary)
             .eq("inspection_id", id);
         } else {
+          const { id: sumId, ...summaryData } = summary as any;
           await supabase
             .from("inspection_summary")
-            .insert({ ...summary, inspection_id: id });
+            .insert({ ...summaryData, inspection_id: id });
         }
 
         // Mark as synced
         await saveInspectionOffline({
           ...inspection,
-          ...saveData,
           synced_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
         });
 
         if (import.meta.env.DEV) {
-          console.log('[InspectionForm] Synced to Supabase');
+          console.log('[InspectionForm] Synced all data to Supabase');
         }
       } catch (error) {
         console.error('[InspectionForm] Failed to sync to Supabase:', error);
