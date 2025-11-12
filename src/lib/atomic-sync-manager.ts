@@ -13,6 +13,7 @@ import {
   TransactionStep 
 } from "./transaction-manager";
 import { toast } from "sonner";
+import { syncProgressEmitter } from "@/hooks/useSyncProgress";
 
 /**
  * Sync inspection with all related data atomically
@@ -239,11 +240,31 @@ export async function syncAllInspectionsAtomic() {
     console.log('[Atomic Sync] Syncing', unsynced.length, 'inspections atomically');
   }
   
+  // Emit initial progress
+  syncProgressEmitter.emit({
+    total: unsynced.length,
+    current: 0,
+    currentItem: 'Starting sync...',
+    phase: 'inspections',
+    errors: [],
+  });
+  
   let successCount = 0;
   let failCount = 0;
   const errors: Array<{ id: string; error: string }> = [];
   
-  for (const inspection of unsynced) {
+  for (let i = 0; i < unsynced.length; i++) {
+    const inspection = unsynced[i];
+    
+    // Emit progress for current item
+    syncProgressEmitter.emit({
+      total: unsynced.length,
+      current: i + 1,
+      currentItem: `Syncing inspection ${i + 1} of ${unsynced.length}...`,
+      phase: 'inspections',
+      errors,
+    });
+    
     try {
       await syncInspectionAtomic(inspection.id);
       successCount++;
@@ -253,6 +274,15 @@ export async function syncAllInspectionsAtomic() {
       console.error('[Atomic Sync] Failed:', inspection.id, error);
     }
   }
+  
+  // Emit completion
+  syncProgressEmitter.emit({
+    total: unsynced.length,
+    current: unsynced.length,
+    currentItem: 'Sync complete',
+    phase: 'complete',
+    errors,
+  });
   
   // Show results
   if (successCount > 0) {

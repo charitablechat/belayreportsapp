@@ -3,6 +3,7 @@ import { usePWAInstall } from '@/hooks/usePWAInstall';
 import { usePWAUpdate } from '@/hooks/usePWAUpdate';
 import { useNetworkStatus } from '@/hooks/useNetworkStatus';
 import { useSyncStatus } from '@/hooks/useSyncStatus';
+import { useUnsyncedPhotos } from '@/hooks/useUnsyncedPhotos';
 
 export interface PWAContextType {
   // Install state
@@ -30,6 +31,11 @@ export interface PWAContextType {
   syncError: string | null;
   triggerSync: () => Promise<void>;
   updateUnsyncedCount: () => Promise<void>;
+  
+  // Photo sync state
+  unsyncedPhotoCount: number;
+  photosByInspection: Record<string, number>;
+  updatePhotoCount: () => Promise<void>;
 }
 
 export const PWAContext = createContext<PWAContextType | null>(null);
@@ -51,6 +57,11 @@ export const PWAProvider = ({ children }: PWAProviderProps) => {
     triggerSync,
     updateUnsyncedCount 
   } = useSyncStatus();
+  const {
+    unsyncedPhotoCount,
+    photosByInspection,
+    updatePhotoCount
+  } = useUnsyncedPhotos();
 
   // Wrap updateServiceWorker to match the interface
   const updateAndReload = async () => {
@@ -83,6 +94,11 @@ export const PWAProvider = ({ children }: PWAProviderProps) => {
     syncError,
     triggerSync,
     updateUnsyncedCount,
+    
+    // Photo sync state
+    unsyncedPhotoCount,
+    photosByInspection,
+    updatePhotoCount,
   };
 
   return (

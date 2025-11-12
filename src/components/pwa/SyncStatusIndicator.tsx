@@ -10,7 +10,15 @@ import {
 } from '@/components/ui/tooltip';
 
 export const SyncStatusIndicator = () => {
-  const { unsyncedCount, isSyncing, lastSyncTime, syncError, triggerSync, isOnline } = usePWA();
+  const { 
+    unsyncedCount, 
+    isSyncing, 
+    lastSyncTime, 
+    syncError, 
+    triggerSync, 
+    isOnline,
+    unsyncedPhotoCount 
+  } = usePWA();
 
   const formatLastSync = (date: Date | null) => {
     if (!date) return 'Never';
@@ -28,14 +36,14 @@ export const SyncStatusIndicator = () => {
   const getStatusColor = () => {
     if (!isOnline) return 'secondary';
     if (syncError) return 'destructive';
-    if (unsyncedCount > 0) return 'default';
+    if (unsyncedCount > 0 || unsyncedPhotoCount > 0) return 'default';
     return 'outline';
   };
 
   const getStatusIcon = () => {
     if (isSyncing) return <RefreshCw className="w-4 h-4 animate-spin" />;
     if (syncError) return <AlertCircle className="w-4 h-4" />;
-    if (unsyncedCount > 0) return <Cloud className="w-4 h-4" />;
+    if (unsyncedCount > 0 || unsyncedPhotoCount > 0) return <Cloud className="w-4 h-4" />;
     return <Check className="w-4 h-4" />;
   };
 
@@ -43,7 +51,8 @@ export const SyncStatusIndicator = () => {
     if (!isOnline) return 'Offline';
     if (isSyncing) return 'Syncing...';
     if (syncError) return 'Sync Failed';
-    if (unsyncedCount > 0) return `${unsyncedCount} Unsynced`;
+    const totalUnsynced = unsyncedCount + unsyncedPhotoCount;
+    if (totalUnsynced > 0) return `${totalUnsynced} Unsynced`;
     return 'Synced';
   };
 
@@ -56,7 +65,7 @@ export const SyncStatusIndicator = () => {
               {getStatusIcon()}
               <span>{getStatusText()}</span>
             </Badge>
-            {isOnline && !isSyncing && unsyncedCount > 0 && (
+            {isOnline && !isSyncing && (unsyncedCount > 0 || unsyncedPhotoCount > 0) && (
               <Button
                 variant="ghost"
                 size="sm"
@@ -71,6 +80,12 @@ export const SyncStatusIndicator = () => {
         <TooltipContent>
           <div className="space-y-1 text-xs">
             <p><strong>Last sync:</strong> {formatLastSync(lastSyncTime)}</p>
+            {unsyncedCount > 0 && (
+              <p><strong>Unsynced inspections:</strong> {unsyncedCount}</p>
+            )}
+            {unsyncedPhotoCount > 0 && (
+              <p><strong>Unsynced photos:</strong> {unsyncedPhotoCount}</p>
+            )}
             {syncError && <p className="text-destructive">{syncError}</p>}
             {!isOnline && <p>Will sync when back online</p>}
           </div>

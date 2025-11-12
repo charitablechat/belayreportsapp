@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { GradientButton } from "@/components/ui/gradient-button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, LogOut, FileText, GraduationCap, ArrowRight, Lock, Download, Settings, Trash2, MoreVertical, Bell, AlertCircle } from "lucide-react";
+import { Plus, LogOut, FileText, GraduationCap, ArrowRight, Lock, Download, Settings, Trash2, MoreVertical, Bell, AlertCircle, Cloud } from "lucide-react";
 import { toast } from "sonner";
 import ropeWorksLogo from "@/assets/rope-works-logo.png";
 import acctLogo from "@/assets/acct-accredited-vendor.png";
@@ -14,10 +14,14 @@ import { AuroraBackground } from "@/components/ui/aurora-background";
 import { usePWAInstall } from "@/hooks/usePWAInstall";
 import { NetworkStatusIndicator } from "@/components/pwa/NetworkStatusIndicator";
 import { SyncStatusIndicator } from "@/components/pwa/SyncStatusIndicator";
+import { SyncControlPanel } from "@/components/pwa/SyncControlPanel";
+import { OfflineCapabilitiesBanner } from "@/components/pwa/OfflineCapabilitiesBanner";
+import { OfflineSimulator } from "@/components/dev/OfflineSimulator";
 import { PushNotificationManager } from "@/components/pwa/PushNotificationManager";
 import { ConflictResolver } from "@/components/sync/ConflictResolver";
 import { ConflictNotification } from "@/components/sync/ConflictNotification";
 import { useConflicts } from "@/hooks/useConflicts";
+import { usePWA } from "@/hooks/usePWA";
 import { getOfflineInspections, deleteOfflineInspection, queueOperation } from "@/lib/offline-storage";
 import {
   AlertDialog,
@@ -56,6 +60,7 @@ export default function Dashboard() {
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const { isInstallable, isInstalled, promptInstall } = usePWAInstall();
   const { hasConflicts, conflictCount } = useConflicts();
+  const { photosByInspection } = usePWA();
 
   // Check if user is super admin
   const { data: isSuperAdmin } = useQuery({
@@ -201,8 +206,20 @@ export default function Dashboard() {
     const isUnsynced = !inspection.synced_at || 
       (inspection.updated_at && new Date(inspection.updated_at) > new Date(inspection.synced_at));
     
+    const unsyncedPhotosCount = photosByInspection[inspection.id] || 0;
+    
     if (isUnsynced) {
-      return <Badge variant="default">Unsynced</Badge>;
+      return (
+        <div className="flex gap-2">
+          <Badge variant="default">Unsynced</Badge>
+          {unsyncedPhotosCount > 0 && (
+            <Badge variant="secondary" className="gap-1">
+              <Cloud className="w-3 h-3" />
+              {unsyncedPhotosCount}
+            </Badge>
+          )}
+        </div>
+      );
     }
     
     const variants: Record<string, { variant: any; label: string }> = {
@@ -210,7 +227,17 @@ export default function Dashboard() {
       completed: { variant: "outline", label: "Completed" },
     };
     const config = variants[inspection.status] || variants.draft;
-    return <Badge variant={config.variant}>{config.label}</Badge>;
+    return (
+      <div className="flex gap-2">
+        <Badge variant={config.variant}>{config.label}</Badge>
+        {unsyncedPhotosCount > 0 && (
+          <Badge variant="secondary" className="gap-1">
+            <Cloud className="w-3 h-3" />
+            {unsyncedPhotosCount}
+          </Badge>
+        )}
+      </div>
+    );
   };
 
   return (
@@ -222,6 +249,7 @@ export default function Dashboard() {
             <img src={acctLogo} alt="ACCT Accredited Vendor" className="h-8 md:h-12 w-auto object-contain" />
           </div>
           <div className="flex items-center gap-2 md:gap-4">
+            <SyncControlPanel />
             <NetworkStatusIndicator />
             <SyncStatusIndicator />
             {isInstallable && !isInstalled && (
@@ -310,14 +338,8 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* Offline Status Banner */}
-        {!isOnline && (
-          <div className="mb-6 p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
-            <p className="text-sm text-yellow-800 dark:text-yellow-200 text-center">
-              📱 <strong>You're offline.</strong> You can still view and create inspections. Changes will sync when you're back online.
-            </p>
-          </div>
-        )}
+        {/* Enhanced Offline Capabilities Banner */}
+        <OfflineCapabilitiesBanner />
 
         {/* Foyer Section */}
         <section className="mb-12 -mx-4">
@@ -512,6 +534,9 @@ export default function Dashboard() {
         open={conflictsDialogOpen} 
         onOpenChange={setConflictsDialogOpen}
       />
+      
+      {/* Development Tools */}
+      <OfflineSimulator />
     </div>
   );
 }
