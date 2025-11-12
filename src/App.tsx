@@ -20,10 +20,13 @@ import { NetworkStatusIndicator } from "@/components/pwa/NetworkStatusIndicator"
 import { SyncStatusIndicator } from "@/components/pwa/SyncStatusIndicator";
 import { PWAProvider } from "@/components/pwa/PWAProvider";
 import { syncInspections, syncPhotos } from "@/lib/sync-manager";
+import { useBackgroundSync } from "@/hooks/useBackgroundSync";
 
 const queryClient = new QueryClient();
 
 const AppContent = () => {
+  const { isSupported } = useBackgroundSync();
+  
   useEffect(() => {
     // Sync on mount and when coming back online
     if (navigator.onLine) {

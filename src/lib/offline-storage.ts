@@ -170,6 +170,10 @@ export async function queueOperation(type: 'create' | 'update' | 'delete', inspe
   if (import.meta.env.DEV) {
     console.log('[Offline Storage] Queued operation:', { type, inspectionId });
   }
+  
+  // Register background sync for automatic syncing
+  const { registerInspectionSync } = await import('./background-sync');
+  await registerInspectionSync();
 }
 
 export async function getQueuedOperations() {
@@ -220,6 +224,12 @@ export async function savePhotoOffline(photo: {
   
   if (import.meta.env.DEV) {
     console.log('[Offline Storage] Saved photo:', photo.id);
+  }
+  
+  // Register background sync for photos if not already uploaded
+  if (!photo.uploaded) {
+    const { registerPhotoSync } = await import('./background-sync');
+    await registerPhotoSync();
   }
 }
 
