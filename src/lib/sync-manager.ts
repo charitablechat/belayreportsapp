@@ -81,12 +81,42 @@ export async function syncInspections() {
           .eq("id", inspection.id)
           .maybeSingle();
 
-        // Conflict resolution: last-write-wins
+        // Conflict detection and logging
         if (remoteData) {
           const remoteUpdated = new Date(remoteData.updated_at).getTime();
           const localUpdated = new Date(inspection.updated_at).getTime();
           
-          if (remoteUpdated > localUpdated) {
+          // If both versions were updated within a small time window (e.g., 5 seconds),
+          // and local is not significantly newer, consider it a conflict
+          const timeDiff = Math.abs(remoteUpdated - localUpdated);
+          const isConflict = timeDiff > 5000 && remoteUpdated > localUpdated;
+          
+          if (isConflict) {
+            // Log conflict to database
+            try {
+              const { data: { user } } = await supabase.auth.getUser();
+              
+              await supabase.from('sync_conflicts').insert({
+                inspection_id: inspection.id,
+                organization_id: inspection.organization_id || user?.id || '',
+                local_updated_at: inspection.updated_at,
+                remote_updated_at: remoteData.updated_at,
+                resolved: false,
+              });
+              
+              if (import.meta.env.DEV) {
+                console.log('[Sync Manager] Conflict detected and logged:', inspection.id);
+              }
+              
+              // Skip syncing this inspection - user needs to resolve conflict
+              continue;
+            } catch (conflictError) {
+              console.error('[Sync Manager] Failed to log conflict:', conflictError);
+              // Continue with sync even if conflict logging fails
+            }
+          }
+          
+          if (remoteUpdated > localUpdated && !isConflict) {
             if (import.meta.env.DEV) {
               console.log('[Sync Manager] Remote is newer, skipping:', inspection.id);
             }

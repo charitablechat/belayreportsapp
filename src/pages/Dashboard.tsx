@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { GradientButton } from "@/components/ui/gradient-button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, LogOut, FileText, GraduationCap, ArrowRight, Lock, Download, Settings, Trash2, MoreVertical, Bell } from "lucide-react";
+import { Plus, LogOut, FileText, GraduationCap, ArrowRight, Lock, Download, Settings, Trash2, MoreVertical, Bell, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import ropeWorksLogo from "@/assets/rope-works-logo.png";
 import acctLogo from "@/assets/acct-accredited-vendor.png";
@@ -15,6 +15,9 @@ import { usePWAInstall } from "@/hooks/usePWAInstall";
 import { NetworkStatusIndicator } from "@/components/pwa/NetworkStatusIndicator";
 import { SyncStatusIndicator } from "@/components/pwa/SyncStatusIndicator";
 import { PushNotificationManager } from "@/components/pwa/PushNotificationManager";
+import { ConflictResolver } from "@/components/sync/ConflictResolver";
+import { ConflictNotification } from "@/components/sync/ConflictNotification";
+import { useConflicts } from "@/hooks/useConflicts";
 import { getOfflineInspections, deleteOfflineInspection, queueOperation } from "@/lib/offline-storage";
 import {
   AlertDialog,
@@ -49,8 +52,10 @@ export default function Dashboard() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [inspectionToDelete, setInspectionToDelete] = useState<any>(null);
   const [notificationsDialogOpen, setNotificationsDialogOpen] = useState(false);
+  const [conflictsDialogOpen, setConflictsDialogOpen] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const { isInstallable, isInstalled, promptInstall } = usePWAInstall();
+  const { hasConflicts, conflictCount } = useConflicts();
 
   // Check if user is super admin
   const { data: isSuperAdmin } = useQuery({
@@ -276,6 +281,35 @@ export default function Dashboard() {
       </header>
 
       <main className="container mx-auto px-2 md:px-4 py-8">
+        {/* Conflict Notification */}
+        <ConflictNotification onViewConflicts={() => setConflictsDialogOpen(true)} />
+
+        {/* Sync Conflicts Banner */}
+        {hasConflicts && (
+          <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400" />
+                <div>
+                  <p className="text-sm font-semibold text-red-800 dark:text-red-200">
+                    Sync Conflict{conflictCount > 1 ? 's' : ''} Detected
+                  </p>
+                  <p className="text-xs text-red-700 dark:text-red-300">
+                    {conflictCount} inspection{conflictCount > 1 ? 's have' : ' has'} conflicting versions that need resolution.
+                  </p>
+                </div>
+              </div>
+              <Button 
+                variant="destructive" 
+                size="sm"
+                onClick={() => setConflictsDialogOpen(true)}
+              >
+                Resolve Now
+              </Button>
+            </div>
+          </div>
+        )}
+
         {/* Offline Status Banner */}
         {!isOnline && (
           <div className="mb-6 p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
@@ -473,6 +507,11 @@ export default function Dashboard() {
           <PushNotificationManager />
         </DialogContent>
       </Dialog>
+
+      <ConflictResolver 
+        open={conflictsDialogOpen} 
+        onOpenChange={setConflictsDialogOpen}
+      />
     </div>
   );
 }
