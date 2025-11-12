@@ -95,6 +95,11 @@ export default function InspectionForm() {
     };
   }, [hasUnsavedChanges, saving, autoSaving]);
 
+  const normalizeResultValue = (value: string | null | undefined): string => {
+    if (!value) return 'pass';
+    return value.toLowerCase();
+  };
+
   const formatTime = (date: Date) => {
     return date.toLocaleTimeString('en-US', { 
       hour: 'numeric', 
@@ -175,9 +180,30 @@ export default function InspectionForm() {
         getRelatedDataOffline('summary', id!)
       ]);
 
-      if (offlineSystems.length > 0) setSystems(offlineSystems);
-      if (offlineZiplines.length > 0) setZiplines(offlineZiplines);
-      if (offlineEquipment.length > 0) setEquipment(offlineEquipment);
+      if (offlineSystems.length > 0) {
+        const normalizedSystems = offlineSystems.map(item => ({
+          ...item,
+          result: normalizeResultValue(item.result)
+        }));
+        setSystems(normalizedSystems);
+      }
+      if (offlineZiplines.length > 0) {
+        const normalizedZiplines = offlineZiplines.map(item => ({
+          ...item,
+          result: normalizeResultValue(item.result),
+          cable_result: normalizeResultValue(item.cable_result),
+          braking_result: normalizeResultValue(item.braking_result),
+          ead_result: normalizeResultValue(item.ead_result)
+        }));
+        setZiplines(normalizedZiplines);
+      }
+      if (offlineEquipment.length > 0) {
+        const normalizedEquipment = offlineEquipment.map(item => ({
+          ...item,
+          result: normalizeResultValue(item.result)
+        }));
+        setEquipment(normalizedEquipment);
+      }
       if (offlineStandards.length > 0) setStandards(offlineStandards);
       if (offlineSummary.length > 0) setSummary(offlineSummary[0]);
 
@@ -210,8 +236,12 @@ export default function InspectionForm() {
           .select("*")
           .eq("inspection_id", id);
         if (systemsData) {
-          setSystems(systemsData);
-          await saveRelatedDataOffline('systems', id!, systemsData);
+          const normalizedSystems = systemsData.map(item => ({
+            ...item,
+            result: normalizeResultValue(item.result)
+          }));
+          setSystems(normalizedSystems);
+          await saveRelatedDataOffline('systems', id!, normalizedSystems);
         }
 
         const { data: ziplinesData } = await supabase
@@ -219,8 +249,15 @@ export default function InspectionForm() {
           .select("*")
           .eq("inspection_id", id);
         if (ziplinesData) {
-          setZiplines(ziplinesData);
-          await saveRelatedDataOffline('ziplines', id!, ziplinesData);
+          const normalizedZiplines = ziplinesData.map(item => ({
+            ...item,
+            result: normalizeResultValue(item.result),
+            cable_result: normalizeResultValue(item.cable_result),
+            braking_result: normalizeResultValue(item.braking_result),
+            ead_result: normalizeResultValue(item.ead_result)
+          }));
+          setZiplines(normalizedZiplines);
+          await saveRelatedDataOffline('ziplines', id!, normalizedZiplines);
         }
 
         const { data: equipmentData } = await supabase
@@ -228,8 +265,12 @@ export default function InspectionForm() {
           .select("*")
           .eq("inspection_id", id);
         if (equipmentData) {
-          setEquipment(equipmentData);
-          await saveRelatedDataOffline('equipment', id!, equipmentData);
+          const normalizedEquipment = equipmentData.map(item => ({
+            ...item,
+            result: normalizeResultValue(item.result)
+          }));
+          setEquipment(normalizedEquipment);
+          await saveRelatedDataOffline('equipment', id!, normalizedEquipment);
         }
 
         const { data: standardsData } = await supabase
