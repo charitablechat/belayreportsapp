@@ -17,13 +17,27 @@ interface InspectionDB extends DBSchema {
       retries: number;
     };
   };
+  photos: {
+    key: string;
+    value: {
+      id: string;
+      inspectionId: string;
+      section: string;
+      blob: Blob;
+      fileName: string;
+      timestamp: number;
+      uploaded: boolean;
+      photoUrl?: string;
+    };
+    indexes: { 'by-inspection': string; 'by-uploaded': number };
+  };
 }
 
 let dbPromise: Promise<IDBPDatabase<InspectionDB>> | null = null;
 
 export async function getDB() {
   if (!dbPromise) {
-    dbPromise = openDB<InspectionDB>('rope-works-inspections', 2, {
+    dbPromise = openDB<InspectionDB>('rope-works-inspections', 3, {
       upgrade(db, oldVersion, newVersion, transaction) {
         let inspectionStore;
         
@@ -45,6 +59,13 @@ export async function getDB() {
         // Create operations store if it doesn't exist
         if (!db.objectStoreNames.contains('operations')) {
           db.createObjectStore('operations', { autoIncrement: true });
+        }
+        
+        // Create photos store if it doesn't exist
+        if (!db.objectStoreNames.contains('photos')) {
+          const photoStore = db.createObjectStore('photos', { keyPath: 'id' });
+          photoStore.createIndex('by-inspection', 'inspectionId');
+          photoStore.createIndex('by-uploaded', 'uploaded');
         }
       },
     });
@@ -130,5 +151,62 @@ export async function incrementOperationRetry(id: number) {
   if (operation) {
     operation.retries += 1;
     await db.put('operations', operation);
+  }
+}
+
+// Photo storage functions
+export async function savePhotoOffline(photo: {
+  id: string;
+  inspectionId: string;
+  section: string;
+  blob: Blob;
+  fileName: string;
+  uploaded?: boolean;
+  photoUrl?: string;
+}) {
+  const db = await getDB();
+  await db.put('photos', {
+    ...photo,
+    timestamp: Date.now(),
+    uploaded: photo.uploaded || false,
+  });
+  
+  if (import.meta.env.DEV) {
+    console.log('[Offline Storage] Saved photo:', photo.id);
+  }
+}
+
+export async function getOfflinePhotos(inspectionId: string) {
+  const db = await getDB();
+  const index = db.transaction('photos').store.index('by-inspection');
+  return await index.getAll(inspectionId);
+}
+
+export async function getUnuploadedPhotos() {
+  const db = await getDB();
+  const allPhotos = await db.getAll('photos');
+  return allPhotos.filter(p => !p.uploaded);
+}
+
+export async function markPhotoAsUploaded(id: string, photoUrl: string) {
+  const db = await getDB();
+  const photo = await db.get('photos', id);
+  if (photo) {
+    photo.uploaded = true;
+    photo.photoUrl = photoUrl;
+    await db.put('photos', photo);
+    
+    if (import.meta.env.DEV) {
+      console.log('[Offline Storage] Marked photo as uploaded:', id);
+    }
+  }
+}
+
+export async function deleteOfflinePhoto(id: string) {
+  const db = await getDB();
+  await db.delete('photos', id);
+  
+  if (import.meta.env.DEV) {
+    console.log('[Offline Storage] Deleted photo:', id);
   }
 }

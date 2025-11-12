@@ -4,7 +4,10 @@ import {
   saveInspectionOffline, 
   getQueuedOperations, 
   removeQueuedOperation,
-  incrementOperationRetry 
+  incrementOperationRetry,
+  getUnuploadedPhotos,
+  markPhotoAsUploaded,
+  deleteOfflinePhoto
 } from "./offline-storage";
 import { toast } from "sonner";
 
@@ -129,12 +132,94 @@ export async function syncInspections() {
   }
 }
 
+// Photo sync manager
+export async function syncPhotos() {
+  if (!navigator.onLine) {
+    if (import.meta.env.DEV) {
+      console.log('[Sync Manager] Offline - skipping photo sync');
+    }
+    return;
+  }
+
+  if (import.meta.env.DEV) {
+    console.log('[Sync Manager] Starting photo sync...');
+  }
+
+  try {
+    const unuploadedPhotos = await getUnuploadedPhotos();
+    
+    if (import.meta.env.DEV) {
+      console.log('[Sync Manager] Uploading photos:', unuploadedPhotos.length);
+    }
+
+    let successCount = 0;
+
+    for (const photo of unuploadedPhotos) {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) throw new Error("Not authenticated");
+
+        const fileExt = photo.fileName.split('.').pop();
+        const fileName = `${user.id}/${photo.inspectionId}/${Date.now()}.${fileExt}`;
+        
+        // Upload to storage
+        const { error: uploadError } = await supabase.storage
+          .from('inspection-photos')
+          .upload(fileName, photo.blob);
+
+        if (uploadError) throw uploadError;
+
+        // Get public URL
+        const { data: { publicUrl } } = supabase.storage
+          .from('inspection-photos')
+          .getPublicUrl(fileName);
+
+        // Save to database
+        const { error: dbError } = await supabase
+          .from('inspection_photos')
+          .insert({
+            inspection_id: photo.inspectionId,
+            photo_url: fileName,
+            photo_section: photo.section,
+          });
+
+        if (dbError) throw dbError;
+
+        // Mark as uploaded and remove blob from local storage
+        await markPhotoAsUploaded(photo.id, fileName);
+        successCount++;
+
+        if (import.meta.env.DEV) {
+          console.log('[Sync Manager] Uploaded photo:', photo.id);
+        }
+      } catch (error) {
+        console.error('[Sync Manager] Failed to upload photo:', photo.id, error);
+        // Continue with other photos even if one fails
+      }
+    }
+
+    if (successCount > 0) {
+      toast.success(`Uploaded ${successCount} photo(s)`);
+      
+      if (import.meta.env.DEV) {
+        console.log('[Sync Manager] Photo sync completed:', successCount);
+      }
+    }
+  } catch (error) {
+    console.error('[Sync Manager] Photo sync error:', error);
+    toast.error("Failed to sync photos");
+  }
+}
+
 // Auto-sync when coming online
 if (typeof window !== "undefined") {
   window.addEventListener("online", () => {
     if (import.meta.env.DEV) {
       console.log('[Sync Manager] Network online, triggering sync...');
     }
-    setTimeout(syncInspections, 1000);
+    setTimeout(() => {
+      syncInspections();
+      syncPhotos();
+    }, 1000);
   });
 }

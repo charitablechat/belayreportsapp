@@ -1,8 +1,10 @@
 import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Camera, Upload, X } from "lucide-react";
+import { Camera, Upload, CloudOff } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { savePhotoOffline } from "@/lib/offline-storage";
+import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 
 interface PhotoCaptureProps {
   inspectionId: string;
@@ -13,6 +15,7 @@ interface PhotoCaptureProps {
 export default function PhotoCapture({ inspectionId, section, onPhotoAdded }: PhotoCaptureProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+  const { isOnline } = useNetworkStatus();
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -25,38 +28,53 @@ export default function PhotoCapture({ inspectionId, section, onPhotoAdded }: Ph
       if (!user) throw new Error("Not authenticated");
 
       for (const file of Array.from(files)) {
-        // Upload to storage
-        const fileExt = file.name.split('.').pop();
-        const fileName = `${user.id}/${inspectionId}/${Date.now()}.${fileExt}`;
-        
-        const { error: uploadError } = await supabase.storage
-          .from('inspection-photos')
-          .upload(fileName, file);
+        if (isOnline) {
+          // Online: Upload directly to Supabase
+          const fileExt = file.name.split('.').pop();
+          const fileName = `${user.id}/${inspectionId}/${Date.now()}.${fileExt}`;
+          
+          const { error: uploadError } = await supabase.storage
+            .from('inspection-photos')
+            .upload(fileName, file);
 
-        if (uploadError) throw uploadError;
+          if (uploadError) throw uploadError;
 
-        // Get public URL
-        const { data: { publicUrl } } = supabase.storage
-          .from('inspection-photos')
-          .getPublicUrl(fileName);
+          // Save to database
+          const { error: dbError } = await supabase
+            .from('inspection_photos')
+            .insert({
+              inspection_id: inspectionId,
+              photo_url: fileName,
+              photo_section: section,
+            });
 
-        // Save to database
-        const { error: dbError } = await supabase
-          .from('inspection_photos')
-          .insert({
-            inspection_id: inspectionId,
-            photo_url: fileName,
-            photo_section: section,
+          if (dbError) throw dbError;
+        } else {
+          // Offline: Save to IndexedDB
+          const photoId = `${inspectionId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+          await savePhotoOffline({
+            id: photoId,
+            inspectionId,
+            section,
+            blob: file,
+            fileName: file.name,
+            uploaded: false,
           });
-
-        if (dbError) throw dbError;
+          
+          if (import.meta.env.DEV) {
+            console.log('[PhotoCapture] Saved photo offline:', photoId);
+          }
+        }
       }
 
-      toast.success("Photo(s) uploaded successfully");
+      toast.success(isOnline 
+        ? "Photo(s) uploaded successfully" 
+        : "Photo(s) saved offline - will upload when online"
+      );
       onPhotoAdded();
     } catch (error: any) {
-      console.error("Upload error:", error);
-      toast.error(error.message || "Failed to upload photo");
+      console.error("Photo capture error:", error);
+      toast.error(error.message || "Failed to save photo");
     } finally {
       setUploading(false);
       if (fileInputRef.current) {
@@ -86,11 +104,12 @@ export default function PhotoCapture({ inspectionId, section, onPhotoAdded }: Ph
         {uploading ? (
           <>
             <Upload className="w-4 h-4 mr-2 animate-spin" />
-            Uploading...
+            {isOnline ? 'Uploading...' : 'Saving...'}
           </>
         ) : (
           <>
-            <Camera className="w-4 h-4 mr-2" />
+            {!isOnline && <CloudOff className="w-4 h-4 mr-2" />}
+            {isOnline && <Camera className="w-4 h-4 mr-2" />}
             Add Photo
           </>
         )}
