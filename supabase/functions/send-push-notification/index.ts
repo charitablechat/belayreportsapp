@@ -6,12 +6,30 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Input validation schema
 interface NotificationPayload {
   organizationId: string;
   notificationType: string;
   title: string;
   body: string;
   data?: Record<string, any>;
+}
+
+function validateNotificationPayload(payload: any): payload is NotificationPayload {
+  if (!payload || typeof payload !== 'object') return false;
+  
+  const { organizationId, notificationType, title, body } = payload;
+  
+  // Validate required fields
+  if (typeof organizationId !== 'string' || organizationId.length === 0 || organizationId.length > 100) return false;
+  if (typeof notificationType !== 'string' || !['inspection_completed', 'sync_conflict'].includes(notificationType)) return false;
+  if (typeof title !== 'string' || title.length === 0 || title.length > 200) return false;
+  if (typeof body !== 'string' || body.length === 0 || body.length > 500) return false;
+  
+  // Validate optional data field
+  if (payload.data !== undefined && (typeof payload.data !== 'object' || Array.isArray(payload.data))) return false;
+  
+  return true;
 }
 
 serve(async (req) => {
@@ -21,18 +39,74 @@ serve(async (req) => {
   }
 
   try {
+    // Get authorization header for user authentication
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      console.error('Missing authorization header');
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized - Missing authorization header' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Create Supabase client with user's JWT for authorization check
     const supabaseClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+      { global: { headers: { Authorization: authHeader } } }
+    );
+
+    // Verify user is authenticated
+    const { data: { user }, error: authError } = await supabaseClient.auth.getUser();
+    if (authError || !user) {
+      console.error('Authentication failed:', authError);
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized - Invalid token' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Parse and validate payload
+    const payload = await req.json();
+    console.log('Received notification request from user:', user.id);
+
+    if (!validateNotificationPayload(payload)) {
+      console.error('Invalid payload:', payload);
+      return new Response(
+        JSON.stringify({ error: 'Invalid request payload' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Verify user is super_admin for the organization
+    const { data: userRoles, error: rolesError } = await supabaseClient
+      .from('user_roles')
+      .select('role')
+      .eq('user_id', user.id)
+      .eq('organization_id', payload.organizationId)
+      .eq('role', 'super_admin')
+      .single();
+
+    if (rolesError || !userRoles) {
+      console.error('User is not a super_admin for this organization:', user.id, payload.organizationId);
+      return new Response(
+        JSON.stringify({ error: 'Forbidden - Super admin access required' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    console.log('Authorization verified for super_admin:', user.id);
+
+    // Create service role client for privileged operations
+    const supabaseServiceClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    const payload: NotificationPayload = await req.json();
-    console.log('Received notification request:', payload);
-
     const { organizationId, notificationType, title, body, data } = payload;
 
     // Get all super_admins for the organization with their push subscriptions
-    const { data: superAdmins, error: rolesError } = await supabaseClient
+    const { data: superAdmins, error: fetchRolesError } = await supabaseServiceClient
       .from('user_roles')
       .select(`
         user_id,
@@ -50,9 +124,9 @@ serve(async (req) => {
       .eq('organization_id', organizationId)
       .eq('role', 'super_admin');
 
-    if (rolesError) {
-      console.error('Error fetching super admins:', rolesError);
-      throw rolesError;
+    if (fetchRolesError) {
+      console.error('Error fetching super admins:', fetchRolesError);
+      throw fetchRolesError;
     }
 
     console.log(`Found ${superAdmins?.length || 0} super admins for organization ${organizationId}`);
@@ -123,7 +197,7 @@ serve(async (req) => {
           successCount++;
 
           // Update last_used_at
-          await supabaseClient
+          await supabaseServiceClient
             .from('push_subscriptions')
             .update({ last_used_at: new Date().toISOString() })
             .eq('id', subscription.id);
@@ -135,7 +209,7 @@ serve(async (req) => {
           // If subscription is invalid (410 Gone), remove it
           if (error.statusCode === 410) {
             console.log(`Removing invalid subscription ${subscription.id}`);
-            await supabaseClient
+            await supabaseServiceClient
               .from('push_subscriptions')
               .delete()
               .eq('id', subscription.id);
@@ -144,7 +218,7 @@ serve(async (req) => {
       }
 
       // Log notification
-      await supabaseClient
+      await supabaseServiceClient
         .from('notifications_log')
         .insert({
           user_id: admin.user_id,
