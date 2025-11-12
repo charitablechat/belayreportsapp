@@ -39,7 +39,7 @@ serve(async (req) => {
   }
 
   try {
-    // Get authorization header for user authentication
+    // Get authorization header
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) {
       console.error('Missing authorization header');
@@ -49,26 +49,12 @@ serve(async (req) => {
       );
     }
 
-    // Create Supabase client with user's JWT for authorization check
-    const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-      { global: { headers: { Authorization: authHeader } } }
-    );
-
-    // Verify user is authenticated
-    const { data: { user }, error: authError } = await supabaseClient.auth.getUser();
-    if (authError || !user) {
-      console.error('Authentication failed:', authError);
-      return new Response(
-        JSON.stringify({ error: 'Unauthorized - Invalid token' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // Parse and validate payload
+    // Check if this is a service role request (from database trigger)
+    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    const isServiceRole = authHeader === `Bearer ${serviceRoleKey}`;
+    
+    // Parse and validate payload early
     const payload = await req.json();
-    console.log('Received notification request from user:', user.id);
 
     if (!validateNotificationPayload(payload)) {
       console.error('Invalid payload:', payload);
@@ -78,24 +64,50 @@ serve(async (req) => {
       );
     }
 
-    // Verify user is super_admin for the organization
-    const { data: userRoles, error: rolesError } = await supabaseClient
-      .from('user_roles')
-      .select('role')
-      .eq('user_id', user.id)
-      .eq('organization_id', payload.organizationId)
-      .eq('role', 'super_admin')
-      .single();
-
-    if (rolesError || !userRoles) {
-      console.error('User is not a super_admin for this organization:', user.id, payload.organizationId);
-      return new Response(
-        JSON.stringify({ error: 'Forbidden - Super admin access required' }),
-        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    // If not service role, verify user authentication and authorization
+    if (!isServiceRole) {
+      console.log('Authenticating user request');
+      
+      // Create Supabase client with user's JWT for authorization check
+      const supabaseClient = createClient(
+        Deno.env.get('SUPABASE_URL') ?? '',
+        Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+        { global: { headers: { Authorization: authHeader } } }
       );
-    }
 
-    console.log('Authorization verified for super_admin:', user.id);
+      // Verify user is authenticated
+      const { data: { user }, error: authError } = await supabaseClient.auth.getUser();
+      if (authError || !user) {
+        console.error('Authentication failed:', authError);
+        return new Response(
+          JSON.stringify({ error: 'Unauthorized - Invalid token' }),
+          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      console.log('Received notification request from user:', user.id);
+
+      // Verify user is super_admin for the organization
+      const { data: userRoles, error: rolesError } = await supabaseClient
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', user.id)
+        .eq('organization_id', payload.organizationId)
+        .eq('role', 'super_admin')
+        .single();
+
+      if (rolesError || !userRoles) {
+        console.error('User is not a super_admin for this organization:', user.id, payload.organizationId);
+        return new Response(
+          JSON.stringify({ error: 'Forbidden - Super admin access required' }),
+          { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      console.log('Authorization verified for super_admin:', user.id);
+    } else {
+      console.log('Service role authenticated - request from database trigger');
+    }
 
     // Create service role client for privileged operations
     const supabaseServiceClient = createClient(
