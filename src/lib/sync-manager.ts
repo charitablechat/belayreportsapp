@@ -43,8 +43,20 @@ export async function syncInspections() {
           continue;
         }
 
+        // Ensure inspector_id matches current user
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+          console.error('[Sync Manager] User not authenticated, skipping operation');
+          continue;
+        }
+
+        const dataToSync = {
+          ...op.data,
+          inspector_id: user.id, // Fix inspector_id
+        };
+
         if (op.type === 'create' || op.type === 'update') {
-          await supabase.from("inspections").upsert(op.data);
+          await supabase.from("inspections").upsert(dataToSync);
         } else if (op.type === 'delete') {
           await supabase.from("inspections").delete().eq('id', op.inspectionId);
         }
@@ -74,6 +86,19 @@ export async function syncInspections() {
     
     for (const inspection of unsynced) {
       try {
+        // Ensure inspector_id matches current user
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+          console.error('[Sync Manager] User not authenticated, skipping sync');
+          continue;
+        }
+
+        // Fix inspector_id before syncing
+        const inspectionToSync = {
+          ...inspection,
+          inspector_id: user.id,
+        };
+
         // Check if inspection exists in remote
         const { data: remoteData } = await supabase
           .from("inspections")
@@ -128,15 +153,15 @@ export async function syncInspections() {
         const { error } = await supabase
           .from("inspections")
           .upsert({
-            ...inspection,
+            ...inspectionToSync,
             synced_at: new Date().toISOString(),
           });
 
         if (error) throw error;
 
-        // Update local storage with sync timestamp
+        // Update local storage with sync timestamp and corrected inspector_id
         await saveInspectionOffline({
-          ...inspection,
+          ...inspectionToSync,
           synced_at: new Date().toISOString(),
         });
 

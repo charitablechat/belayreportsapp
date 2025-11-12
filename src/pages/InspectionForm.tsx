@@ -35,6 +35,8 @@ export default function InspectionForm() {
   const [autoSaving, setAutoSaving] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveDebounceTimer, setSaveDebounceTimer] = useState<NodeJS.Timeout | null>(null);
   const [inspection, setInspection] = useState<any>(null);
   const [systems, setSystems] = useState<any[]>([]);
   const [ziplines, setZiplines] = useState<any[]>([]);
@@ -58,20 +60,39 @@ export default function InspectionForm() {
     loadInspection();
   }, [id]);
 
-  // Track changes to inspection data
+  // Track changes to inspection data and trigger debounced auto-save
   useEffect(() => {
     if (!loading) {
       setHasUnsavedChanges(true);
+      
+      // Clear existing debounce timer
+      if (saveDebounceTimer) {
+        clearTimeout(saveDebounceTimer);
+      }
+      
+      // Set new debounce timer for 3 seconds
+      const timer = setTimeout(() => {
+        autoSaveProgress();
+      }, 3000);
+      
+      setSaveDebounceTimer(timer);
     }
   }, [systems, ziplines, equipment, standards, summary]);
 
-  // Auto-save interval (every 2 minutes)
+  // Auto-save interval (every 10 seconds as backup)
   useEffect(() => {
     const autoSaveInterval = setInterval(() => {
-      autoSaveProgress();
-    }, 120000); // 2 minutes = 120,000 ms
+      if (hasUnsavedChanges && !saving && !autoSaving) {
+        autoSaveProgress();
+      }
+    }, 10000); // 10 seconds = 10,000 ms
 
-    return () => clearInterval(autoSaveInterval);
+    return () => {
+      clearInterval(autoSaveInterval);
+      if (saveDebounceTimer) {
+        clearTimeout(saveDebounceTimer);
+      }
+    };
   }, [hasUnsavedChanges, saving, autoSaving]);
 
   const formatTime = (date: Date) => {
@@ -245,58 +266,89 @@ export default function InspectionForm() {
   };
 
   const performSave = async () => {
-    // Validate before saving
-    const validation = validateInspectionPackage({
-      inspection,
-      systems,
-      ziplines,
-      equipment,
-      standards,
-      summary: summary.next_inspection_date || summary.repairs_performed ? summary : null,
-    });
-    
-    if (!validation.success) {
-      toast.error(`Validation failed: ${validation.errors[0].message}`);
-      console.error('[InspectionForm] Validation errors:', validation.errors);
-      throw new Error('Validation failed');
-    }
-    
-    if (import.meta.env.DEV) {
-      console.log('[InspectionForm] Validation passed');
-    }
+    try {
+      // Fix inspector_id mismatch before saving
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        throw new Error('User not authenticated');
+      }
+      
+      // Ensure inspector_id matches current user
+      const inspectionToSave = {
+        ...inspection,
+        inspector_id: user.id,
+        updated_at: new Date().toISOString(),
+      };
+      
+      // Validate before saving
+      const validation = validateInspectionPackage({
+        inspection: inspectionToSave,
+        systems,
+        ziplines,
+        equipment,
+        standards,
+        summary: summary.next_inspection_date || summary.repairs_performed ? summary : null,
+      });
+      
+      if (!validation.success) {
+        const errorMsg = `Validation failed: ${validation.errors[0].message}`;
+        setSaveError(errorMsg);
+        toast.error(errorMsg);
+        console.error('[InspectionForm] Validation errors:', validation.errors);
+        throw new Error('Validation failed');
+      }
+      
+      if (import.meta.env.DEV) {
+        console.log('[InspectionForm] Validation passed');
+      }
 
-    const saveData = {
-      systems,
-      ziplines,
-      equipment,
-      standards,
-      summary,
-      updated_at: new Date().toISOString(),
-    };
+      const saveData = {
+        systems,
+        ziplines,
+        equipment,
+        standards,
+        summary,
+        updated_at: new Date().toISOString(),
+      };
 
-    // Always save to offline storage first
-    await saveInspectionOffline({
-      ...inspection,
-      updated_at: new Date().toISOString(),
-    });
+      // Always save to offline storage first - this is IMMEDIATE and never fails
+      await saveInspectionOffline(inspectionToSave);
+      setInspection(inspectionToSave);
 
-    // Save all related data to offline storage
-    await Promise.all([
-      saveRelatedDataOffline('systems', id!, systems),
-      saveRelatedDataOffline('ziplines', id!, ziplines),
-      saveRelatedDataOffline('equipment', id!, equipment),
-      saveRelatedDataOffline('standards', id!, standards),
-      saveRelatedDataOffline('summary', id!, [summary]),
-    ]);
+      // Save all related data to offline storage
+      await Promise.all([
+        saveRelatedDataOffline('systems', id!, systems),
+        saveRelatedDataOffline('ziplines', id!, ziplines),
+        saveRelatedDataOffline('equipment', id!, equipment),
+        saveRelatedDataOffline('standards', id!, standards),
+        saveRelatedDataOffline('summary', id!, [summary]),
+      ]);
 
-    if (import.meta.env.DEV) {
-      console.log('[InspectionForm] Saved all data to offline storage');
-    }
+      if (import.meta.env.DEV) {
+        console.log('[InspectionForm] Saved all data to offline storage');
+      }
+      
+      // Clear any previous save errors
+      setSaveError(null);
 
-    // If online, sync to Supabase
-    if (isOnline) {
-      try {
-        // Save systems
+      // If online, sync to Supabase
+      if (isOnline) {
+        try {
+          // Update inspection with correct inspector_id
+          const { error: inspectionError } = await supabase
+            .from("inspections")
+            .update({
+              ...inspectionToSave,
+              id: undefined, // Remove id from update
+            })
+            .eq("id", id);
+          
+          if (inspectionError) {
+            console.error('[InspectionForm] Failed to update inspection:', inspectionError);
+            throw inspectionError;
+          }
+          
+          // Save systems
         for (const system of systems) {
           if (system.id && system.id.includes('-')) {
             // Temporary offline ID - insert as new
@@ -381,32 +433,38 @@ export default function InspectionForm() {
             .insert({ ...summaryData, inspection_id: id });
         }
 
-        // Mark as synced
-        await saveInspectionOffline({
-          ...inspection,
-          synced_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        });
+          // Mark as synced
+          await saveInspectionOffline({
+            ...inspectionToSave,
+            synced_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          });
 
-        if (import.meta.env.DEV) {
-          console.log('[InspectionForm] Synced all data to Supabase');
+          if (import.meta.env.DEV) {
+            console.log('[InspectionForm] Synced all data to Supabase');
+          }
+        } catch (error) {
+          console.error('[InspectionForm] Failed to sync to Supabase:', error);
+          setSaveError('Failed to sync online - saved locally');
+          // Queue for later sync
+          await queueOperation('update', id!, saveData);
+          
+          if (import.meta.env.DEV) {
+            console.log('[InspectionForm] Queued for later sync');
+          }
         }
-      } catch (error) {
-        console.error('[InspectionForm] Failed to sync to Supabase:', error);
-        // Queue for later sync
+      } else {
+        // Queue operation when offline
         await queueOperation('update', id!, saveData);
         
         if (import.meta.env.DEV) {
-          console.log('[InspectionForm] Queued for later sync');
+          console.log('[InspectionForm] Queued for sync when online');
         }
       }
-    } else {
-      // Queue operation when offline
-      await queueOperation('update', id!, saveData);
-      
-      if (import.meta.env.DEV) {
-        console.log('[InspectionForm] Queued for sync when online');
-      }
+    } catch (error: any) {
+      console.error('[InspectionForm] Save error:', error);
+      setSaveError(error.message || 'Failed to save');
+      throw error;
     }
   };
 
@@ -418,9 +476,12 @@ export default function InspectionForm() {
       await performSave();
       setLastSaved(new Date());
       setHasUnsavedChanges(false);
-      console.log("Auto-saved successfully");
+      if (import.meta.env.DEV) {
+        console.log("Auto-saved successfully at", new Date().toLocaleTimeString());
+      }
     } catch (error: any) {
       console.error("Auto-save failed:", error);
+      setSaveError(error.message || 'Auto-save failed');
     } finally {
       setAutoSaving(false);
     }
@@ -428,6 +489,7 @@ export default function InspectionForm() {
 
   const saveProgress = async () => {
     setSaving(true);
+    setSaveError(null);
     try {
       await performSave();
       setLastSaved(new Date());
@@ -435,7 +497,9 @@ export default function InspectionForm() {
       toast.success(isOnline ? "Progress saved" : "Saved offline - will sync when online");
     } catch (error: any) {
       console.error("Save error:", error);
-      toast.error("Failed to save progress");
+      const errorMsg = error.message || "Failed to save progress";
+      setSaveError(errorMsg);
+      toast.error(errorMsg);
     } finally {
       setSaving(false);
     }
@@ -490,17 +554,33 @@ export default function InspectionForm() {
               </Badge>
             )}
             <SyncStatusIndicator />
-            <div className="text-xs text-muted-foreground">
-              {autoSaving && (
-                <span className="flex items-center gap-1">
+            <div className="text-xs">
+              {saveError && (
+                <div className="flex items-center gap-1 text-destructive">
+                  <span>⚠️ {saveError}</span>
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    className="h-5 px-2 text-xs"
+                    onClick={saveProgress}
+                  >
+                    Retry
+                  </Button>
+                </div>
+              )}
+              {!saveError && autoSaving && (
+                <span className="flex items-center gap-1 text-blue-600">
                   <Loader2 className="w-3 h-3 animate-spin" />
-                  Auto-saving...
+                  Saving...
                 </span>
               )}
-              {!autoSaving && lastSaved && (
-                <span>Last saved: {formatTime(lastSaved)}</span>
+              {!saveError && !autoSaving && lastSaved && (
+                <span className="text-green-600 flex items-center gap-1">
+                  <CheckCircle className="w-3 h-3" />
+                  Saved {formatTime(lastSaved)}
+                </span>
               )}
-              {!autoSaving && !lastSaved && hasUnsavedChanges && (
+              {!saveError && !autoSaving && !lastSaved && hasUnsavedChanges && (
                 <span className="text-yellow-600">Unsaved changes</span>
               )}
             </div>
