@@ -50,6 +50,8 @@ export default function InspectionForm() {
     { id: crypto.randomUUID(), standard_name: "Operational Review Every 5 Years", has_documentation: false },
   ]);
   const [summary, setSummary] = useState({
+    id: '',
+    inspection_id: '',
     repairs_performed: "",
     critical_actions: "",
     future_considerations: "",
@@ -205,7 +207,19 @@ export default function InspectionForm() {
         setEquipment(normalizedEquipment);
       }
       if (offlineStandards.length > 0) setStandards(offlineStandards);
-      if (offlineSummary.length > 0) setSummary(offlineSummary[0]);
+      if (offlineSummary.length > 0) {
+        setSummary(offlineSummary[0]);
+      } else {
+        // Initialize summary with required fields if it doesn't exist
+        setSummary({
+          id: crypto.randomUUID(),
+          inspection_id: id!,
+          repairs_performed: "",
+          critical_actions: "",
+          future_considerations: "",
+          next_inspection_date: "",
+        });
+      }
 
       if (import.meta.env.DEV) {
         console.log('[InspectionForm] Loaded related data from offline storage');
@@ -322,13 +336,22 @@ export default function InspectionForm() {
       };
       
       // Validate before saving
+      // Only include summary in validation if it has required fields and content
+      const hasSummaryContent = summary.repairs_performed || 
+                               summary.critical_actions || 
+                               summary.future_considerations || 
+                               summary.next_inspection_date;
+      const summaryForValidation = (summary.id && summary.inspection_id && hasSummaryContent) 
+        ? summary 
+        : null;
+      
       const validation = validateInspectionPackage({
         inspection: inspectionToSave,
         systems,
         ziplines,
         equipment,
         standards,
-        summary: summary.next_inspection_date || summary.repairs_performed ? summary : null,
+        summary: summaryForValidation,
       });
       
       if (!validation.success) {
