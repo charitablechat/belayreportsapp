@@ -42,7 +42,6 @@ export const pwaConfig = VitePWA({
   },
   workbox: {
     globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
-    navigateFallback: '/offline.html',
     navigateFallbackDenylist: [/^\/api/],
     importScripts: ['/sw-push.js', '/sw-sync.js'],
     runtimeCaching: [
