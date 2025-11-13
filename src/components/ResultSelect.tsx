@@ -14,6 +14,8 @@ export default function ResultSelect({ value, onChange, includeNA = false }: Res
         return "text-success border-success";
       case "pass w/provisions":
         return "text-warning border-warning";
+      case "pass w/ repair":
+        return "text-amber-600 border-amber-600";
       case "fail":
         return "text-destructive border-destructive";
       case "na":
@@ -28,6 +30,7 @@ export default function ResultSelect({ value, onChange, includeNA = false }: Res
     switch (value.toLowerCase()) {
       case "pass": return "Pass";
       case "pass w/provisions": return "Pass w/Provisions";
+      case "pass w/ repair": return "Pass w/ Repair";
       case "fail": return "Fail";
       case "na":
       case "n/a": return "N/A";
@@ -43,6 +46,7 @@ export default function ResultSelect({ value, onChange, includeNA = false }: Res
       <SelectContent className="bg-card z-50">
         <SelectItem value="pass" className="text-success">Pass</SelectItem>
         <SelectItem value="pass w/provisions" className="text-warning">Pass w/Provisions</SelectItem>
+        <SelectItem value="pass w/ repair" className="text-amber-600">Pass w/ Repair</SelectItem>
         <SelectItem value="fail" className="text-destructive">Fail</SelectItem>
         {includeNA && <SelectItem value="na" className="text-muted-foreground">N/A</SelectItem>}
       </SelectContent>
