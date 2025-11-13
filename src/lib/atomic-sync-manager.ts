@@ -191,10 +191,16 @@ export async function syncInspectionAtomic(inspectionId: string) {
     }
     
     if (summary) {
+      // Sanitize summary before sync - convert empty strings to null for date fields
+      const sanitizedSummary = {
+        ...summary,
+        next_inspection_date: summary.next_inspection_date === "" ? null : summary.next_inspection_date
+      };
+      
       steps.push({
         table: 'inspection_summary',
         operation: 'insert',
-        data: summary,
+        data: sanitizedSummary,
       });
     }
     
