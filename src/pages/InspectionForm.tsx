@@ -55,7 +55,7 @@ export default function InspectionForm() {
     repairs_performed: "",
     critical_actions: "",
     future_considerations: "",
-    next_inspection_date: "",
+    next_inspection_date: null,
   });
 
   useEffect(() => {
@@ -317,7 +317,7 @@ export default function InspectionForm() {
           repairs_performed: "",
           critical_actions: "",
           future_considerations: "",
-          next_inspection_date: "",
+          next_inspection_date: null,
         });
       }
 
@@ -530,12 +530,16 @@ export default function InspectionForm() {
       if (isOnline) {
         try {
           // Update inspection with correct inspector_id
+          // Sanitize inspection data - convert empty strings to null for date fields
+          const sanitizeInspection = (insp: any) => ({
+            ...insp,
+            previous_inspection_date: insp.previous_inspection_date === "" ? null : insp.previous_inspection_date,
+            id: undefined, // Remove id from update
+          });
+
           const { error: inspectionError } = await supabase
             .from("inspections")
-            .update({
-              ...inspectionToSave,
-              id: undefined, // Remove id from update
-            })
+            .update(sanitizeInspection(inspectionToSave))
             .eq("id", id);
           
           if (inspectionError) {
@@ -637,6 +641,12 @@ export default function InspectionForm() {
         await supabase.from("inspection_standards").insert(standardsToInsert);
 
         // Save or update summary
+        // Sanitize summary data - convert empty strings to null for date fields
+        const sanitizeSummary = (sum: any) => ({
+          ...sum,
+          next_inspection_date: sum.next_inspection_date === "" ? null : sum.next_inspection_date
+        });
+
         const { data: existingSummary } = await supabase
           .from("inspection_summary")
           .select("id")
@@ -646,13 +656,13 @@ export default function InspectionForm() {
         if (existingSummary) {
           await supabase
             .from("inspection_summary")
-            .update(summary)
+            .update(sanitizeSummary(summary))
             .eq("inspection_id", id);
         } else {
           const { id: sumId, ...summaryData } = summary as any;
           await supabase
             .from("inspection_summary")
-            .insert({ ...summaryData, inspection_id: id });
+            .insert(sanitizeSummary({ ...summaryData, inspection_id: id }));
         }
 
           // Mark as synced
