@@ -97,6 +97,22 @@ export default function InspectionForm() {
     };
   }, [hasUnsavedChanges, saving, autoSaving]);
 
+  // Auto-populate repairs from "pass w/ repair" items
+  useEffect(() => {
+    if (!loading) {
+      const repairsList = generateRepairsBulletList();
+      
+      // Only update if the generated list is different from current value
+      // This prevents infinite loops and unnecessary updates
+      if (repairsList !== summary.repairs_performed) {
+        setSummary(prev => ({
+          ...prev,
+          repairs_performed: repairsList
+        }));
+      }
+    }
+  }, [systems, ziplines, equipment, loading]);
+
   const formatValidationError = (error: { path: string; message: string }) => {
     const pathParts = error.path.split('.');
     
@@ -141,6 +157,57 @@ export default function InspectionForm() {
       minute: '2-digit',
       hour12: true 
     });
+  };
+
+  const generateRepairsBulletList = () => {
+    const repairs: string[] = [];
+    
+    // Collect from Operating Systems
+    systems.forEach((system) => {
+      if (system.result === 'pass w/ repair') {
+        const name = system.system_name || 'Unnamed System';
+        const comment = system.comments ? ` - ${system.comments}` : '';
+        repairs.push(`• Operating System: ${name}${comment}`);
+      }
+    });
+    
+    // Collect from Ziplines (check all result fields)
+    ziplines.forEach((zipline) => {
+      const name = zipline.zipline_name || 'Unnamed Zipline';
+      
+      // Overall result
+      if (zipline.result === 'pass w/ repair') {
+        const comment = zipline.comments ? ` - ${zipline.comments}` : '';
+        repairs.push(`• Zipline: ${name} (Overall)${comment}`);
+      }
+      
+      // Cable result
+      if (zipline.cable_result === 'pass w/ repair') {
+        repairs.push(`• Zipline: ${name} (Cable)`);
+      }
+      
+      // Braking result
+      if (zipline.braking_result === 'pass w/ repair') {
+        repairs.push(`• Zipline: ${name} (Braking System: ${zipline.braking_system || 'N/A'})`);
+      }
+      
+      // EAD result
+      if (zipline.ead_result === 'pass w/ repair') {
+        repairs.push(`• Zipline: ${name} (EAD System: ${zipline.ead_system || 'N/A'})`);
+      }
+    });
+    
+    // Collect from Equipment
+    equipment.forEach((item) => {
+      if (item.result === 'pass w/ repair') {
+        const type = item.equipment_type || 'Unnamed Equipment';
+        const category = item.equipment_category ? ` (${item.equipment_category})` : '';
+        const comment = item.comments ? ` - ${item.comments}` : '';
+        repairs.push(`• Equipment: ${type}${category}${comment}`);
+      }
+    });
+    
+    return repairs.join('\n');
   };
 
   const handleHeaderUpdate = async (field: string, value: string) => {
