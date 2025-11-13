@@ -16,7 +16,7 @@ export default function ZiplinesTable({ ziplines, onUpdate }: ZiplinesTableProps
     onUpdate([
       ...ziplines,
       {
-        id: crypto.randomUUID(),
+        id: `temp-${crypto.randomUUID()}`,
         inspection_id: window.location.pathname.split('/').pop(),
         zipline_name: "",
         cable_type: "",
