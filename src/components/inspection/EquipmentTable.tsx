@@ -20,7 +20,7 @@ export default function EquipmentTable({ category, displayName, equipment, onUpd
     onUpdate([
       ...equipment,
       {
-        id: crypto.randomUUID(),
+        id: `temp-${crypto.randomUUID()}`,
         inspection_id: window.location.pathname.split('/').pop(),
         equipment_category: category,
         equipment_type: "",

@@ -499,11 +499,22 @@ export default function InspectionForm() {
       await saveInspectionOffline(inspectionToSave);
       setInspection(inspectionToSave);
 
+      // Filter out empty/invalid records before saving
+      const validSystems = systems.filter(s => 
+        s.system_name && s.system_name.trim() !== ""
+      );
+      const validZiplines = ziplines.filter(z => 
+        z.zipline_name && z.zipline_name.trim() !== ""
+      );
+      const validEquipment = equipment.filter(e => 
+        e.equipment_type && e.equipment_type.trim() !== ""
+      );
+
       // Save all related data to offline storage
       await Promise.all([
-        saveRelatedDataOffline('systems', id!, systems),
-        saveRelatedDataOffline('ziplines', id!, ziplines),
-        saveRelatedDataOffline('equipment', id!, equipment),
+        saveRelatedDataOffline('systems', id!, validSystems),
+        saveRelatedDataOffline('ziplines', id!, validZiplines),
+        saveRelatedDataOffline('equipment', id!, validEquipment),
         saveRelatedDataOffline('standards', id!, standards),
         saveRelatedDataOffline('summary', id!, [summary]),
       ]);
@@ -533,13 +544,22 @@ export default function InspectionForm() {
           }
           
           // Save systems
-        for (const system of systems) {
-          if (system.id && system.id.includes('-')) {
+        for (const system of validSystems) {
+          if (system.id && system.id.startsWith('temp-')) {
             // Temporary offline ID - insert as new
             const { id: tempId, ...systemData } = system;
-            await supabase
+            const { data, error } = await supabase
               .from("inspection_systems")
-              .insert({ ...systemData, inspection_id: id });
+              .insert({ ...systemData, inspection_id: id })
+              .select()
+              .single();
+            
+            if (data && !error) {
+              // Update local state with the new database-generated ID
+              setSystems(prev => prev.map(s => 
+                s.id === system.id ? { ...s, id: data.id } : s
+              ));
+            }
           } else if (system.id) {
             await supabase
               .from("inspection_systems")
@@ -553,12 +573,21 @@ export default function InspectionForm() {
         }
 
         // Save ziplines
-        for (const zipline of ziplines) {
-          if (zipline.id && zipline.id.includes('-')) {
+        for (const zipline of validZiplines) {
+          if (zipline.id && zipline.id.startsWith('temp-')) {
             const { id: tempId, ...ziplineData } = zipline;
-            await supabase
+            const { data, error } = await supabase
               .from("inspection_ziplines")
-              .insert({ ...ziplineData, inspection_id: id });
+              .insert({ ...ziplineData, inspection_id: id })
+              .select()
+              .single();
+            
+            if (data && !error) {
+              // Update local state with the new database-generated ID
+              setZiplines(prev => prev.map(z => 
+                z.id === zipline.id ? { ...z, id: data.id } : z
+              ));
+            }
           } else if (zipline.id) {
             await supabase
               .from("inspection_ziplines")
@@ -572,12 +601,21 @@ export default function InspectionForm() {
         }
 
         // Save equipment
-        for (const item of equipment) {
-          if (item.id && item.id.includes('-')) {
+        for (const item of validEquipment) {
+          if (item.id && item.id.startsWith('temp-')) {
             const { id: tempId, ...equipmentData } = item;
-            await supabase
+            const { data, error } = await supabase
               .from("inspection_equipment")
-              .insert({ ...equipmentData, inspection_id: id });
+              .insert({ ...equipmentData, inspection_id: id })
+              .select()
+              .single();
+            
+            if (data && !error) {
+              // Update local state with the new database-generated ID
+              setEquipment(prev => prev.map(e => 
+                e.id === item.id ? { ...e, id: data.id } : e
+              ));
+            }
           } else if (item.id) {
             await supabase
               .from("inspection_equipment")

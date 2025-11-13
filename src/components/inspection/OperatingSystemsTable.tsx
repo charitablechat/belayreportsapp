@@ -16,7 +16,7 @@ export default function OperatingSystemsTable({ systems, onUpdate }: OperatingSy
     onUpdate([
       ...systems, 
       { 
-        id: crypto.randomUUID(),
+        id: `temp-${crypto.randomUUID()}`,
         inspection_id: window.location.pathname.split('/').pop(),
         system_name: "", 
         result: "pass", 
