@@ -353,7 +353,7 @@ export default function InspectionForm() {
     }
   };
 
-  const performSave = async () => {
+  const performSave = async (silent: boolean = false) => {
     try {
       // Fix inspector_id mismatch before saving
       const { data: { user } } = await supabase.auth.getUser();
@@ -402,10 +402,15 @@ export default function InspectionForm() {
         
         const errorMsg = `Validation warning: ${firstError}`;
         setSaveError(errorMsg);
-        toast.warning("Validation warnings found", {
-          description: firstError + (description ? `. ${description}` : ''),
-          duration: 6000,
-        });
+        
+        // Only show toast for manual saves, not auto-saves
+        if (!silent) {
+          toast.warning("Validation warnings found", {
+            description: firstError + (description ? `. ${description}` : ''),
+            duration: 6000,
+          });
+        }
+        
         console.warn('[InspectionForm] Validation warnings (saving anyway):', validation.errors);
         // Continue with save despite validation errors
       }
@@ -585,7 +590,7 @@ export default function InspectionForm() {
     
     setAutoSaving(true);
     try {
-      await performSave();
+      await performSave(true); // Silent auto-save
       setLastSaved(new Date());
       setHasUnsavedChanges(false);
       if (import.meta.env.DEV) {
@@ -603,7 +608,7 @@ export default function InspectionForm() {
     setSaving(true);
     setSaveError(null);
     try {
-      await performSave();
+      await performSave(false); // Show warnings on manual save
       setLastSaved(new Date());
       setHasUnsavedChanges(false);
       toast.success(isOnline ? "Progress saved" : "Saved offline - will sync when online");
