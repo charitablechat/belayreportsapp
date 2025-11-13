@@ -25,7 +25,7 @@ export const systemSchema = z.object({
   id: z.string().uuid(),
   inspection_id: z.string().uuid(),
   system_name: z.string().min(1, "System name is required"),
-  result: z.enum(['pass', 'fail', 'na']),
+  result: z.enum(['pass', 'pass w/provisions', 'pass w/ repair', 'fail', 'na']),
   comments: z.string().optional().nullable(),
   created_at: z.string().optional(),
 });
@@ -41,10 +41,10 @@ export const ziplineSchema = z.object({
   ead_system: z.string().optional().nullable(),
   load_tension: z.number().int().optional().nullable(),
   unload_tension: z.number().int().optional().nullable(),
-  result: z.enum(['pass', 'fail', 'na']),
-  cable_result: z.enum(['pass', 'fail', 'na']).optional().nullable(),
-  braking_result: z.enum(['pass', 'fail', 'na']).optional().nullable(),
-  ead_result: z.enum(['pass', 'fail', 'na']).optional().nullable(),
+  result: z.enum(['pass', 'pass w/provisions', 'pass w/ repair', 'fail', 'na']),
+  cable_result: z.enum(['pass', 'pass w/provisions', 'pass w/ repair', 'fail', 'na']).optional().nullable(),
+  braking_result: z.enum(['pass', 'pass w/provisions', 'pass w/ repair', 'fail', 'na']).optional().nullable(),
+  ead_result: z.enum(['pass', 'pass w/provisions', 'pass w/ repair', 'fail', 'na']).optional().nullable(),
   comments: z.string().optional().nullable(),
   created_at: z.string().optional(),
 });
@@ -57,7 +57,7 @@ export const equipmentSchema = z.object({
   equipment_category: z.string().min(1, "Equipment category is required"),
   production_year: z.number().int().min(1900).max(2100).optional().nullable(),
   quantity: z.number().int().positive().optional().nullable(),
-  result: z.enum(['pass', 'fail', 'na']),
+  result: z.enum(['pass', 'pass w/provisions', 'pass w/ repair', 'fail', 'na']),
   comments: z.string().optional().nullable(),
   created_at: z.string().optional(),
 });
