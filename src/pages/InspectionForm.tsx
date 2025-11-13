@@ -97,6 +97,39 @@ export default function InspectionForm() {
     };
   }, [hasUnsavedChanges, saving, autoSaving]);
 
+  const formatValidationError = (error: { path: string; message: string }) => {
+    const pathParts = error.path.split('.');
+    
+    let fieldName = '';
+    
+    if (pathParts[0] === 'inspection') {
+      fieldName = pathParts[1]?.replace(/_/g, ' ') || 'inspection';
+    } else if (pathParts[0] === 'systems') {
+      const index = parseInt(pathParts[1]) + 1;
+      const field = pathParts[2]?.replace(/_/g, ' ') || 'field';
+      fieldName = `Operating System #${index}: ${field}`;
+    } else if (pathParts[0] === 'ziplines') {
+      const index = parseInt(pathParts[1]) + 1;
+      const field = pathParts[2]?.replace(/_/g, ' ') || 'field';
+      fieldName = `Zipline #${index}: ${field}`;
+    } else if (pathParts[0] === 'equipment') {
+      const index = parseInt(pathParts[1]) + 1;
+      const field = pathParts[2]?.replace(/_/g, ' ') || 'field';
+      fieldName = `Equipment #${index}: ${field}`;
+    } else if (pathParts[0] === 'standards') {
+      const index = parseInt(pathParts[1]) + 1;
+      const field = pathParts[2]?.replace(/_/g, ' ') || 'field';
+      fieldName = `Standard #${index}: ${field}`;
+    } else if (pathParts[0] === 'summary') {
+      const field = pathParts[1]?.replace(/_/g, ' ') || 'field';
+      fieldName = `Summary: ${field}`;
+    } else {
+      fieldName = error.path.replace(/\./g, ' → ');
+    }
+    
+    return `${fieldName} - ${error.message}`;
+  };
+
   const normalizeResultValue = (value: string | null | undefined): string => {
     if (!value) return 'pass';
     return value.toLowerCase();
@@ -360,11 +393,21 @@ export default function InspectionForm() {
       });
       
       if (!validation.success) {
-        const errorMsg = `Validation failed: ${validation.errors[0].message}`;
+        // Format the first error with field context
+        const firstError = formatValidationError(validation.errors[0]);
+        const additionalErrorCount = validation.errors.length - 1;
+        const description = additionalErrorCount > 0 
+          ? `${additionalErrorCount} more field${additionalErrorCount > 1 ? 's' : ''} need${additionalErrorCount > 1 ? '' : 's'} attention`
+          : undefined;
+        
+        const errorMsg = `Validation warning: ${firstError}`;
         setSaveError(errorMsg);
-        toast.error(errorMsg);
-        console.error('[InspectionForm] Validation errors:', validation.errors);
-        throw new Error('Validation failed');
+        toast.warning("Validation warnings found", {
+          description: firstError + (description ? `. ${description}` : ''),
+          duration: 6000,
+        });
+        console.warn('[InspectionForm] Validation warnings (saving anyway):', validation.errors);
+        // Continue with save despite validation errors
       }
       
       if (import.meta.env.DEV) {
@@ -594,10 +637,25 @@ export default function InspectionForm() {
     });
     
     if (!validation.success) {
-      const errorMessage = validation.errors[0].message;
+      // Show first error with field context
+      const firstError = formatValidationError(validation.errors[0]);
+      const totalErrors = validation.errors.length;
+      const additionalCount = totalErrors - 1;
+      
       toast.error("Cannot complete inspection", {
-        description: errorMessage
+        description: firstError + (additionalCount > 0 ? `. ${additionalCount} more field${additionalCount > 1 ? 's' : ''} required` : ''),
+        duration: 8000,
+        action: totalErrors > 1 ? {
+          label: `View all ${totalErrors} errors`,
+          onClick: () => {
+            console.table(validation.errors.map(formatValidationError));
+            toast.info("Check console for full error list");
+          }
+        } : undefined
       });
+      
+      console.error('[InspectionForm] Completion validation errors:', 
+        validation.errors.map(formatValidationError));
       return;
     }
     
