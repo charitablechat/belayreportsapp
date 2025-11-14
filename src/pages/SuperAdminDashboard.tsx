@@ -7,9 +7,11 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Building2, Users, FileText, Bell, AlertTriangle, Radio } from "lucide-react";
 import { format } from "date-fns";
+import { useNavigate } from "react-router-dom";
 
 export default function SuperAdminDashboard() {
   const { loading } = useRequireSuperAdmin();
+  const navigate = useNavigate();
 
   // Overview stats queries
   const { data: stats } = useQuery({
@@ -313,7 +315,11 @@ export default function SuperAdminDashboard() {
             </TableHeader>
             <TableBody>
               {allInspections?.map((inspection) => (
-                <TableRow key={inspection.id}>
+                <TableRow 
+                  key={inspection.id}
+                  className="cursor-pointer hover:bg-muted/50 transition-colors"
+                  onClick={() => navigate(`/inspection/${inspection.id}`)}
+                >
                   <TableCell>{inspection.organizations?.name}</TableCell>
                   <TableCell>{inspection.location}</TableCell>
                   <TableCell>
