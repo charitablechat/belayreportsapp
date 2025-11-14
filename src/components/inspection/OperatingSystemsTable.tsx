@@ -1,10 +1,10 @@
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import ResultSelect from "@/components/ResultSelect";
 import SystemTypeSelect from "@/components/SystemTypeSelect";
+import HistoryAutocomplete from "@/components/HistoryAutocomplete";
 import { Plus } from "lucide-react";
 
 interface OperatingSystemsTableProps {
@@ -65,10 +65,11 @@ export default function OperatingSystemsTable({ systems, onUpdate }: OperatingSy
                     />
                   </td>
                   <td className="border p-2">
-                    <Input
+                    <HistoryAutocomplete
                       value={system.name || ""}
-                      onChange={(e) => updateSystem(index, "name", e.target.value)}
-                      placeholder="Enter name"
+                      onChange={(value) => updateSystem(index, "name", value)}
+                      storageKey="rope-works-operating-system-names"
+                      placeholder="Enter or select name"
                       className="border-0 bg-transparent"
                     />
                   </td>
@@ -107,10 +108,11 @@ export default function OperatingSystemsTable({ systems, onUpdate }: OperatingSy
                 
                 <div>
                   <Label className="text-xs text-muted-foreground">Name</Label>
-                  <Input
+                  <HistoryAutocomplete
                     value={system.name || ""}
-                    onChange={(e) => updateSystem(index, "name", e.target.value)}
-                    placeholder="Enter name"
+                    onChange={(value) => updateSystem(index, "name", value)}
+                    storageKey="rope-works-operating-system-names"
+                    placeholder="Enter or select name"
                   />
                 </div>
                 

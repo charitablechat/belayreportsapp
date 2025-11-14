@@ -4,6 +4,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import ResultSelect from "@/components/ResultSelect";
+import HistoryAutocomplete from "@/components/HistoryAutocomplete";
 import { Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -68,10 +69,11 @@ export default function EquipmentTable({ category, displayName, equipment, onUpd
               {categoryEquipment.map((item, index) => (
                 <tr key={index} className="hover:bg-muted/50">
                   <td className="border p-2">
-                    <Input
+                    <HistoryAutocomplete
                       value={item.equipment_type}
-                      onChange={(e) => updateEquipment(item, "equipment_type", e.target.value)}
-                      placeholder="Enter type"
+                      onChange={(value) => updateEquipment(item, "equipment_type", value)}
+                      storageKey="rope-works-equipment-types"
+                      placeholder="Enter or select type"
                       className={cn(
                         "border-0 bg-transparent",
                         !item.equipment_type || item.equipment_type.trim() === ""
@@ -126,10 +128,11 @@ export default function EquipmentTable({ category, displayName, equipment, onUpd
               <div className="space-y-3">
                 <div>
                   <Label className="text-xs text-muted-foreground">Type *</Label>
-                  <Input
+                  <HistoryAutocomplete
                     value={item.equipment_type}
-                    onChange={(e) => updateEquipment(item, "equipment_type", e.target.value)}
-                    placeholder="Enter type"
+                    onChange={(value) => updateEquipment(item, "equipment_type", value)}
+                    storageKey="rope-works-equipment-types"
+                    placeholder="Enter or select type"
                     className={cn(
                       !item.equipment_type || item.equipment_type.trim() === ""
                         ? "ring-2 ring-destructive"
