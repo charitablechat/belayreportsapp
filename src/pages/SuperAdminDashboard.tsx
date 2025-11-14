@@ -31,13 +31,27 @@ export default function SuperAdminDashboard() {
   const [isOrgsListOpen, setIsOrgsListOpen] = useState(false);
   const [isInspectionsListOpen, setIsInspectionsListOpen] = useState(false);
 
+  // Managed users query
+  const { data: managedUsers, refetch: refetchUsers } = useQuery({
+    queryKey: ["admin-managed-users"],
+    queryFn: async () => {
+      const { data, error } = await supabase.functions.invoke('admin-manage-user', {
+        body: { action: 'list' }
+      });
+
+      if (error) throw error;
+      if (!data.success) throw new Error(data.error);
+      return data.users;
+    },
+    enabled: !loading,
+  });
+
   // Overview stats queries
   const { data: stats } = useQuery({
-    queryKey: ["admin-stats"],
+    queryKey: ["admin-stats", managedUsers?.length],
     queryFn: async () => {
       const [
         { count: orgsCount },
-        { count: usersCount },
         { count: inspectionsCount },
         { data: inspectionsByStatus },
         { count: notificationsCount },
@@ -45,7 +59,6 @@ export default function SuperAdminDashboard() {
         { count: subscriptionsCount },
       ] = await Promise.all([
         supabase.from("organizations").select("*", { count: "exact", head: true }),
-        supabase.from("organization_members").select("user_id", { count: "exact", head: true }),
         supabase.from("inspections").select("*", { count: "exact", head: true }),
         supabase.from("inspections").select("status"),
         supabase.from("notifications_log").select("*", { count: "exact", head: true }).gte("sent_at", new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()),
@@ -60,7 +73,7 @@ export default function SuperAdminDashboard() {
 
       return {
         organizations: orgsCount || 0,
-        users: usersCount || 0,
+        users: managedUsers?.length || 0,
         inspections: inspectionsCount || 0,
         statusCounts: statusCounts || {},
         recentNotifications: notificationsCount || 0,
@@ -68,7 +81,7 @@ export default function SuperAdminDashboard() {
         activeSubscriptions: subscriptionsCount || 0,
       };
     },
-    enabled: !loading,
+    enabled: !loading && managedUsers !== undefined,
   });
 
   // Organizations query
@@ -203,21 +216,6 @@ export default function SuperAdminDashboard() {
 
       if (error) throw error;
       return data;
-    },
-    enabled: !loading,
-  });
-
-  // Managed users query
-  const { data: managedUsers, refetch: refetchUsers } = useQuery({
-    queryKey: ["admin-managed-users"],
-    queryFn: async () => {
-      const { data, error } = await supabase.functions.invoke('admin-manage-user', {
-        body: { action: 'list' }
-      });
-
-      if (error) throw error;
-      if (!data.success) throw new Error(data.error);
-      return data.users;
     },
     enabled: !loading,
   });
