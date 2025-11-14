@@ -1,54 +1,67 @@
-import { AuroraBackground } from "@/components/ui/aurora-background";
 import { motion } from "framer-motion";
 import { GradientButton } from "@/components/ui/gradient-button";
 import { useNavigate } from "react-router-dom";
 import ropeWorksLogo from "@/assets/rope-works-logo.png";
 import acctLogo from "@/assets/acct-accredited-vendor.png";
+import backgroundVideo from "@/assets/dashboard-background.mp4";
 
 export default function AuroraLanding() {
   const navigate = useNavigate();
 
   return (
-    <AuroraBackground>
-      <motion.div
-        initial={{ opacity: 0.0, y: 40 }}
-        whileInView={{ opacity: 1, y: 0 }}
-        transition={{
-          delay: 0.3,
-          duration: 0.8,
-          ease: "easeInOut",
-        }}
-        className="relative flex flex-col gap-6 items-center justify-center px-2 md:px-4"
-      >
-        <div className="flex items-center gap-4 mb-4">
-          <img src={ropeWorksLogo} alt="Rope Works" className="h-16 w-auto object-contain" />
-          <img src={acctLogo} alt="ACCT Accredited Vendor" className="h-16 w-auto object-contain" />
-        </div>
-        
-        <div className="text-4xl md:text-7xl font-bold text-primary dark:text-white text-center">
-          Professional Rope Course Inspections
-        </div>
-        
-        <div className="font-light text-lg md:text-2xl text-muted-foreground dark:text-neutral-200 py-4 text-center max-w-2xl">
-          Comprehensive inspection reports for rope courses, zip lines, and aerial adventure equipment
-        </div>
-        
-        <div className="flex gap-4">
-          <GradientButton 
-            className="min-w-[140px] px-10 py-5 text-lg" 
-            onClick={() => navigate('/dashboard')}
-          >
-            Get Started
-          </GradientButton>
-          <GradientButton 
-            variant="variant"
-            className="min-w-[140px] px-10 py-5 text-lg" 
-            onClick={() => navigate('/capabilities')}
-          >
-            Learn More
-          </GradientButton>
-        </div>
-      </motion.div>
-    </AuroraBackground>
+    <div className="relative min-h-screen">
+      <div className="absolute inset-0 z-0">
+        <video 
+          autoPlay 
+          loop 
+          muted 
+          playsInline
+          className="w-full h-full object-cover"
+        >
+          <source src={backgroundVideo} type="video/mp4" />
+        </video>
+      </div>
+      <div className="relative z-10 min-h-screen bg-background/80 backdrop-blur-sm flex items-center justify-center">
+        <motion.div
+          initial={{ opacity: 0.0, y: 40 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          transition={{
+            delay: 0.3,
+            duration: 0.8,
+            ease: "easeInOut",
+          }}
+          className="relative flex flex-col gap-6 items-center justify-center px-2 md:px-4"
+        >
+          <div className="flex items-center gap-4 mb-4">
+            <img src={ropeWorksLogo} alt="Rope Works" className="h-16 w-auto object-contain" />
+            <img src={acctLogo} alt="ACCT Accredited Vendor" className="h-16 w-auto object-contain" />
+          </div>
+          
+          <div className="text-4xl md:text-7xl font-bold text-primary dark:text-white text-center">
+            Professional Rope Course Inspections
+          </div>
+          
+          <div className="font-light text-lg md:text-2xl text-muted-foreground dark:text-neutral-200 py-4 text-center max-w-2xl">
+            Comprehensive inspection reports for rope courses, zip lines, and aerial adventure equipment
+          </div>
+          
+          <div className="flex gap-4">
+            <GradientButton 
+              className="min-w-[140px] px-10 py-5 text-lg" 
+              onClick={() => navigate('/dashboard')}
+            >
+              Get Started
+            </GradientButton>
+            <GradientButton 
+              variant="variant"
+              className="min-w-[140px] px-10 py-5 text-lg" 
+              onClick={() => navigate('/capabilities')}
+            >
+              Learn More
+            </GradientButton>
+          </div>
+        </motion.div>
+      </div>
+    </div>
   );
 }
