@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Building2, Users, FileText, Bell, AlertTriangle, Radio, UserPlus, Pencil, Trash2, ClipboardList } from "lucide-react";
+import { Building2, Users, FileText, Bell, AlertTriangle, Radio, UserPlus, Pencil, Trash2, ClipboardList, ArrowLeft } from "lucide-react";
 import { format } from "date-fns";
 import { useNavigate } from "react-router-dom";
 import { useState } from "react";
@@ -312,9 +312,19 @@ export default function SuperAdminDashboard() {
 
   return (
     <div className="container mx-auto p-6 space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold mb-2">Super Admin Dashboard</h1>
-        <p className="text-muted-foreground">Manage all organizations, users, and inspections</p>
+      <div className="flex items-start gap-4">
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => navigate(-1)}
+          className="mt-1"
+        >
+          <ArrowLeft className="h-5 w-5" />
+        </Button>
+        <div>
+          <h1 className="text-3xl font-bold mb-2">Super Admin Dashboard</h1>
+          <p className="text-muted-foreground">Manage all organizations, users, and inspections</p>
+        </div>
       </div>
 
       {/* Overview Stats */}
