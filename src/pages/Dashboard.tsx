@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button";
 import { GradientButton } from "@/components/ui/gradient-button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, LogOut, FileText, GraduationCap, ArrowRight, Lock, Download, Settings, Trash2, MoreVertical, Bell, AlertCircle, Cloud } from "lucide-react";
+import { Plus, LogOut, FileText, GraduationCap, ArrowRight, Lock, Download, Settings, Trash2, MoreVertical, Bell, AlertCircle, Cloud, User } from "lucide-react";
+import { UserAvatar } from "@/components/ui/user-avatar";
 import { toast } from "sonner";
 import ropeWorksLogo from "@/assets/rope-works-logo.png";
 import acctLogo from "@/assets/acct-accredited-vendor.png";
@@ -58,6 +59,7 @@ export default function Dashboard() {
   const [notificationsDialogOpen, setNotificationsDialogOpen] = useState(false);
   const [conflictsDialogOpen, setConflictsDialogOpen] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [currentUser, setCurrentUser] = useState<any>(null);
   const { isInstallable, isInstalled, promptInstall } = usePWAInstall();
   const { hasConflicts, conflictCount } = useConflicts();
   const { photosByInspection } = usePWA();
@@ -94,6 +96,21 @@ export default function Dashboard() {
 
   useEffect(() => {
     loadInspections();
+    
+    // Fetch current user
+    const fetchUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      setCurrentUser(user);
+    };
+    
+    fetchUser();
+    
+    // Listen for auth state changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (_event, session) => {
+        setCurrentUser(session?.user ?? null);
+      }
+    );
 
     // Listen for online/offline events
     const handleOnline = () => {
@@ -108,6 +125,7 @@ export default function Dashboard() {
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
+      subscription.unsubscribe();
     };
   }, []);
 
@@ -270,13 +288,19 @@ export default function Dashboard() {
             )}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="sm" className="gap-2">
-                  <Settings className="w-4 h-4" />
-                  <span className="hidden md:inline">Settings</span>
+                <Button variant="ghost" size="icon" className="rounded-full">
+                  <UserAvatar userEmail={currentUser?.email ?? null} />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuLabel>App Settings</DropdownMenuLabel>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuLabel>
+                  <div className="flex flex-col space-y-1">
+                    <p className="text-sm font-medium">Account</p>
+                    <p className="text-xs text-muted-foreground truncate">
+                      {currentUser?.email || 'user@example.com'}
+                    </p>
+                  </div>
+                </DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 {isSuperAdmin && (
                   <>
