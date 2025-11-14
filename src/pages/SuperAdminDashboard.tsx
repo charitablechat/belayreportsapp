@@ -361,17 +361,15 @@ export default function SuperAdminDashboard() {
 
       {/* Tabs for different sections */}
       <Tabs defaultValue="organizations" className="space-y-4">
-        <div className="overflow-x-auto pb-2">
-          <TabsList className="w-full justify-start">
-            <TabsTrigger value="organizations">Organizations</TabsTrigger>
-            <TabsTrigger value="users">Users</TabsTrigger>
-            <TabsTrigger value="user-management">User Management</TabsTrigger>
-            <TabsTrigger value="inspections">Inspections</TabsTrigger>
-            <TabsTrigger value="notifications">Notifications</TabsTrigger>
-            <TabsTrigger value="conflicts">Conflicts</TabsTrigger>
-            <TabsTrigger value="subscriptions">Subscriptions</TabsTrigger>
-          </TabsList>
-        </div>
+        <TabsList className="flex flex-col h-auto w-full items-stretch">
+          <TabsTrigger value="organizations" className="justify-start">Organizations</TabsTrigger>
+          <TabsTrigger value="users" className="justify-start">Users</TabsTrigger>
+          <TabsTrigger value="user-management" className="justify-start">User Management</TabsTrigger>
+          <TabsTrigger value="inspections" className="justify-start">Inspections</TabsTrigger>
+          <TabsTrigger value="notifications" className="justify-start">Notifications</TabsTrigger>
+          <TabsTrigger value="conflicts" className="justify-start">Conflicts</TabsTrigger>
+          <TabsTrigger value="subscriptions" className="justify-start">Subscriptions</TabsTrigger>
+        </TabsList>
 
         <TabsContent value="organizations" className="space-y-4">
           <Table>
