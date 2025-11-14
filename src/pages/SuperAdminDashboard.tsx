@@ -1,17 +1,29 @@
 import { useRequireSuperAdmin } from "@/hooks/useRequireSuperAdmin";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { StatCard } from "@/components/admin/StatCard";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Building2, Users, FileText, Bell, AlertTriangle, Radio } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { Building2, Users, FileText, Bell, AlertTriangle, Radio, UserPlus, Pencil, Trash2 } from "lucide-react";
 import { format } from "date-fns";
 import { useNavigate } from "react-router-dom";
+import { useState } from "react";
+import { toast } from "sonner";
+import { UserManagementDialog } from "@/components/admin/UserManagementDialog";
 
 export default function SuperAdminDashboard() {
   const { loading } = useRequireSuperAdmin();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [dialogMode, setDialogMode] = useState<'create' | 'edit'>('create');
+  const [selectedUser, setSelectedUser] = useState<any>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [userToDelete, setUserToDelete] = useState<any>(null);
 
   // Overview stats queries
   const { data: stats } = useQuery({
@@ -189,6 +201,103 @@ export default function SuperAdminDashboard() {
     enabled: !loading,
   });
 
+  // Managed users query
+  const { data: managedUsers, refetch: refetchUsers } = useQuery({
+    queryKey: ["admin-managed-users"],
+    queryFn: async () => {
+      const { data, error } = await supabase.functions.invoke('admin-manage-user', {
+        body: { action: 'list' }
+      });
+
+      if (error) throw error;
+      if (!data.success) throw new Error(data.error);
+      return data.users;
+    },
+    enabled: !loading,
+  });
+
+  // User management functions
+  const handleCreateUser = async (userData: any) => {
+    try {
+      const { data, error } = await supabase.functions.invoke('admin-manage-user', {
+        body: { 
+          action: 'create',
+          ...userData
+        }
+      });
+
+      if (error) throw error;
+      if (!data.success) throw new Error(data.error);
+
+      toast.success('User created successfully');
+      refetchUsers();
+      queryClient.invalidateQueries({ queryKey: ["admin-users"] });
+    } catch (error: any) {
+      console.error('Error creating user:', error);
+      toast.error(error.message || 'Failed to create user');
+      throw error;
+    }
+  };
+
+  const handleUpdateUser = async (userData: any) => {
+    try {
+      const { data, error } = await supabase.functions.invoke('admin-manage-user', {
+        body: { 
+          action: 'update',
+          userId: selectedUser.id,
+          ...userData
+        }
+      });
+
+      if (error) throw error;
+      if (!data.success) throw new Error(data.error);
+
+      toast.success('User updated successfully');
+      refetchUsers();
+      queryClient.invalidateQueries({ queryKey: ["admin-users"] });
+    } catch (error: any) {
+      console.error('Error updating user:', error);
+      toast.error(error.message || 'Failed to update user');
+      throw error;
+    }
+  };
+
+  const handleDeleteUser = async () => {
+    if (!userToDelete) return;
+
+    try {
+      const { data, error } = await supabase.functions.invoke('admin-manage-user', {
+        body: { 
+          action: 'delete',
+          userId: userToDelete.id
+        }
+      });
+
+      if (error) throw error;
+      if (!data.success) throw new Error(data.error);
+
+      toast.success('User deleted successfully');
+      setDeleteDialogOpen(false);
+      setUserToDelete(null);
+      refetchUsers();
+      queryClient.invalidateQueries({ queryKey: ["admin-users"] });
+    } catch (error: any) {
+      console.error('Error deleting user:', error);
+      toast.error(error.message || 'Failed to delete user');
+    }
+  };
+
+  const handleEditClick = (user: any) => {
+    setSelectedUser(user);
+    setDialogMode('edit');
+    setDialogOpen(true);
+  };
+
+  const handleDeleteClick = (user: any) => {
+    setUserToDelete(user);
+    setDeleteDialogOpen(true);
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -248,6 +357,7 @@ export default function SuperAdminDashboard() {
         <TabsList>
           <TabsTrigger value="organizations">Organizations</TabsTrigger>
           <TabsTrigger value="users">Users</TabsTrigger>
+          <TabsTrigger value="user-management">User Management</TabsTrigger>
           <TabsTrigger value="inspections">Inspections</TabsTrigger>
           <TabsTrigger value="notifications">Notifications</TabsTrigger>
           <TabsTrigger value="conflicts">Conflicts</TabsTrigger>
@@ -296,6 +406,87 @@ export default function SuperAdminDashboard() {
                     <Badge variant="outline">{user.role}</Badge>
                   </TableCell>
                   <TableCell>{format(new Date(user.created_at), "PP")}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TabsContent>
+
+        <TabsContent value="user-management" className="space-y-4">
+          <div className="flex justify-between items-center mb-4">
+            <div>
+              <h2 className="text-2xl font-semibold">User Management</h2>
+              <p className="text-sm text-muted-foreground">Create, edit, and delete user accounts</p>
+            </div>
+            <Button onClick={() => { setDialogMode('create'); setSelectedUser(null); setDialogOpen(true); }}>
+              <UserPlus className="mr-2 h-4 w-4" />
+              Add User
+            </Button>
+          </div>
+          
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Email</TableHead>
+                <TableHead>Name</TableHead>
+                <TableHead>Organizations</TableHead>
+                <TableHead>Roles</TableHead>
+                <TableHead>Last Sign In</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {managedUsers?.map((user: any) => (
+                <TableRow key={user.id}>
+                  <TableCell className="font-medium">{user.email}</TableCell>
+                  <TableCell>{user.firstName} {user.lastName}</TableCell>
+                  <TableCell>
+                    {user.organizations?.length > 0 ? (
+                      <div className="flex flex-wrap gap-1">
+                        {user.organizations.map((org: any, idx: number) => (
+                          <Badge key={idx} variant="secondary" className="text-xs">
+                            {org.name}
+                          </Badge>
+                        ))}
+                      </div>
+                    ) : (
+                      <span className="text-muted-foreground text-sm">No organizations</span>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {user.roles?.length > 0 ? (
+                      <div className="flex flex-wrap gap-1">
+                        {user.roles.map((r: any, idx: number) => (
+                          <Badge key={idx} variant="outline" className="text-xs">
+                            {r.role}
+                          </Badge>
+                        ))}
+                      </div>
+                    ) : (
+                      <span className="text-muted-foreground text-sm">No roles</span>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {user.lastSignIn ? format(new Date(user.lastSignIn), "PP p") : 'Never'}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex justify-end gap-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleEditClick(user)}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleDeleteClick(user)}
+                      >
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
+                    </div>
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -416,6 +607,35 @@ export default function SuperAdminDashboard() {
           </Table>
         </TabsContent>
       </Tabs>
+
+      {/* User Management Dialog */}
+      <UserManagementDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        mode={dialogMode}
+        user={selectedUser}
+        organizations={organizations || []}
+        onSubmit={dialogMode === 'create' ? handleCreateUser : handleUpdateUser}
+      />
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete the user account for <strong>{userToDelete?.email}</strong>.
+              This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteUser} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Delete User
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
