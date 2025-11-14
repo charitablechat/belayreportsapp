@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import ResultSelect from "@/components/ResultSelect";
+import HistoryAutocomplete from "@/components/HistoryAutocomplete";
 import { Plus } from "lucide-react";
 
 interface ZiplinesTableProps {
@@ -82,9 +83,10 @@ export default function ZiplinesTable({ ziplines, onUpdate }: ZiplinesTableProps
               {ziplines.map((zipline, index) => (
                 <tr key={index} className="hover:bg-muted/50">
                   <td className="border p-1">
-                    <Input
+                    <HistoryAutocomplete
                       value={zipline.zipline_name}
-                      onChange={(e) => updateZipline(index, "zipline_name", e.target.value)}
+                      onChange={(value) => updateZipline(index, "zipline_name", value)}
+                      storageKey="rope-works-zipline-names"
                       placeholder="Name"
                       className="border-0 bg-transparent h-8 text-xs"
                     />
@@ -205,10 +207,11 @@ export default function ZiplinesTable({ ziplines, onUpdate }: ZiplinesTableProps
               <div className="space-y-3">
                 <div>
                   <Label className="text-xs text-muted-foreground">Line Name</Label>
-                  <Input
+                  <HistoryAutocomplete
                     value={zipline.zipline_name}
-                    onChange={(e) => updateZipline(index, "zipline_name", e.target.value)}
-                    placeholder="Enter name"
+                    onChange={(value) => updateZipline(index, "zipline_name", value)}
+                    storageKey="rope-works-zipline-names"
+                    placeholder="Enter or select name"
                   />
                 </div>
                 
