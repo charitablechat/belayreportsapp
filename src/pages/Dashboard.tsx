@@ -420,6 +420,29 @@ export default function Dashboard() {
               </div>
 
               <div className="grid md:grid-cols-3 gap-6 max-w-6xl mx-auto">
+                {/* INSPECTION CARD - FUNCTIONAL */}
+                <Card 
+                  className="relative overflow-hidden hover:shadow-2xl transition-all duration-300 border-2 hover:border-blue-500 cursor-pointer group"
+                  onClick={() => navigate("/inspection/new")}
+                >
+                  <div className="absolute inset-0 bg-gradient-to-br from-blue-50 to-transparent opacity-50" />
+                  <CardHeader className="relative z-10 text-center pb-4">
+                    <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-blue-100 flex items-center justify-center group-hover:scale-110 transition-transform">
+                      <FileText className="w-8 h-8 text-blue-600" />
+                    </div>
+                    <CardTitle className="text-2xl mb-2">Inspection Report</CardTitle>
+                    <CardDescription className="text-base">
+                      Create a new equipment and facility inspection report
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="relative z-10 text-center pb-6">
+                    <GradientButton className="w-full group-hover:scale-105 transition-transform">
+                      Start Inspection
+                      <ArrowRight className="w-4 h-4 ml-2" />
+                    </GradientButton>
+                  </CardContent>
+                </Card>
+
                 {/* TRAINING CARD - MOCKUP (DISABLED) */}
                 <Card className="relative overflow-hidden border-2 opacity-60 cursor-not-allowed">
                   <Badge 
