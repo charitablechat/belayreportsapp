@@ -391,21 +391,37 @@ export default function SuperAdminDashboard() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>User ID</TableHead>
+                <TableHead>Email</TableHead>
+                <TableHead>Name</TableHead>
                 <TableHead>Organization</TableHead>
                 <TableHead>Role</TableHead>
                 <TableHead>Joined</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {usersWithRoles?.map((user) => (
-                <TableRow key={`${user.user_id}-${user.organization_id}`}>
-                  <TableCell className="font-mono text-xs">{user.user_id.slice(0, 8)}...</TableCell>
-                  <TableCell>{user.organizations?.name}</TableCell>
+              {managedUsers?.map((user: any) => (
+                <TableRow key={user.id}>
+                  <TableCell className="font-medium">{user.email}</TableCell>
                   <TableCell>
-                    <Badge variant="outline">{user.role}</Badge>
+                    {user.firstName || user.lastName 
+                      ? `${user.firstName} ${user.lastName}`.trim() 
+                      : '-'}
                   </TableCell>
-                  <TableCell>{format(new Date(user.created_at), "PP")}</TableCell>
+                  <TableCell>
+                    {user.organizations?.length > 0 
+                      ? user.organizations.map((org: any) => org.name).join(', ')
+                      : '-'}
+                  </TableCell>
+                  <TableCell>
+                    {user.roles?.length > 0 ? (
+                      <div className="flex flex-wrap gap-1">
+                        {user.roles.map((r: any, idx: number) => (
+                          <Badge key={idx} variant="outline">{r.role}</Badge>
+                        ))}
+                      </div>
+                    ) : '-'}
+                  </TableCell>
+                  <TableCell>{format(new Date(user.createdAt), "PP")}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
