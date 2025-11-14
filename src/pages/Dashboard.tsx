@@ -105,7 +105,7 @@ export default function Dashboard() {
       
       // Fetch user profile
       if (user) {
-        const { data: profile } = await supabase
+        const { data: profile } = await (supabase as any)
           .from("profiles")
           .select("*")
           .eq("id", user.id)
