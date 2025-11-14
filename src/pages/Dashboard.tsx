@@ -11,6 +11,7 @@ import { UserAvatar } from "@/components/ui/user-avatar";
 import { toast } from "sonner";
 import ropeWorksLogo from "@/assets/rope-works-logo.png";
 import acctLogo from "@/assets/acct-accredited-vendor.png";
+import dashboardBackgroundVideo from "@/assets/dashboard-background.mp4";
 import { AuroraBackground } from "@/components/ui/aurora-background";
 import { usePWAInstall } from "@/hooks/usePWAInstall";
 import { NetworkStatusIndicator } from "@/components/pwa/NetworkStatusIndicator";
@@ -271,8 +272,20 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b bg-card">
+    <div className="relative min-h-screen">
+      <div className="absolute inset-0 z-0">
+        <video 
+          autoPlay 
+          loop 
+          muted 
+          playsInline
+          className="w-full h-full object-cover"
+        >
+          <source src={dashboardBackgroundVideo} type="video/mp4" />
+        </video>
+      </div>
+      <div className="relative z-10 min-h-screen bg-background/80 backdrop-blur-sm">
+        <header className="border-b bg-card/95 backdrop-blur-sm">
         <div className="container mx-auto px-2 md:px-4 py-3 md:py-4">
           {/* Top row - Logos and user dropdown */}
           <div className="flex items-center justify-between mb-2 md:mb-0">
@@ -617,6 +630,7 @@ export default function Dashboard() {
       
       {/* Development Tools */}
       <OfflineSimulator />
+      </div>
     </div>
   );
 }
