@@ -125,12 +125,12 @@ export default function NewInspection() {
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b bg-card">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <Button variant="ghost" onClick={() => navigate("/dashboard")}>
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Back to Dashboard
+        <div className="container mx-auto px-2 md:px-4 py-4 flex items-center justify-between">
+          <Button variant="ghost" size="sm" onClick={() => navigate("/dashboard")}>
+            <ArrowLeft className="w-4 h-4" />
+            <span className="hidden sm:inline ml-2">Back to Dashboard</span>
           </Button>
-          <img src={ropeWorksLogo} alt="Rope Works" className="h-10 w-auto object-contain" />
+          <img src={ropeWorksLogo} alt="Rope Works" className="h-8 md:h-10 w-auto object-contain" />
         </div>
       </header>
 
@@ -193,7 +193,7 @@ export default function NewInspection() {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="previous_inspector">Previous Inspector</Label>
                   <Input

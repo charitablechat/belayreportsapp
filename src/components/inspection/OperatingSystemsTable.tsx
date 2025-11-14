@@ -2,6 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
 import ResultSelect from "@/components/ResultSelect";
 import SystemTypeSelect from "@/components/SystemTypeSelect";
 import { Plus } from "lucide-react";
@@ -43,7 +44,8 @@ export default function OperatingSystemsTable({ systems, onUpdate }: OperatingSy
         </div>
       </CardHeader>
       <CardContent>
-        <div className="overflow-x-auto">
+        {/* Desktop table view */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full border-collapse">
             <thead>
               <tr className="bg-blue-50 dark:bg-blue-950/20">
@@ -88,6 +90,50 @@ export default function OperatingSystemsTable({ systems, onUpdate }: OperatingSy
               ))}
             </tbody>
           </table>
+        </div>
+        
+        {/* Mobile card view */}
+        <div className="md:hidden space-y-4">
+          {systems.map((system, index) => (
+            <Card key={index} className="p-4">
+              <div className="space-y-3">
+                <div>
+                  <Label className="text-xs text-muted-foreground">Operating System</Label>
+                  <SystemTypeSelect
+                    value={system.system_name}
+                    onChange={(value) => updateSystem(index, "system_name", value)}
+                  />
+                </div>
+                
+                <div>
+                  <Label className="text-xs text-muted-foreground">Name</Label>
+                  <Input
+                    value={system.name || ""}
+                    onChange={(e) => updateSystem(index, "name", e.target.value)}
+                    placeholder="Enter name"
+                  />
+                </div>
+                
+                <div>
+                  <Label className="text-xs text-muted-foreground">Result</Label>
+                  <ResultSelect
+                    value={system.result}
+                    onChange={(value) => updateSystem(index, "result", value)}
+                  />
+                </div>
+                
+                <div>
+                  <Label className="text-xs text-muted-foreground">Comments or Required Changes</Label>
+                  <Textarea
+                    value={system.comments || ""}
+                    onChange={(e) => updateSystem(index, "comments", e.target.value)}
+                    placeholder="Enter comments..."
+                    className="min-h-[80px]"
+                  />
+                </div>
+              </div>
+            </Card>
+          ))}
         </div>
         
         <div className="mt-6 text-xs text-muted-foreground border-t pt-4">
