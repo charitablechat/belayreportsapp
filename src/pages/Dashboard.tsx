@@ -408,7 +408,7 @@ export default function Dashboard() {
 
         {/* Foyer Section */}
         <section className="mb-12 -mx-4">
-          <div className="rounded-lg bg-background/60 backdrop-blur-sm">
+          <div className="rounded-lg bg-background/40 backdrop-blur-sm">
             <div className="container mx-auto px-4 py-16">
               <div className="text-center mb-8">
                 <h2 className="text-4xl font-bold text-primary dark:text-white mb-2">
