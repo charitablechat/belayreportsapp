@@ -42,7 +42,8 @@ export const pwaConfig = VitePWA({
   },
   workbox: {
     globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
-    navigateFallbackDenylist: [/^\/api/],
+    navigateFallback: '/',
+    navigateFallbackDenylist: [/^\/api/, /offline\.html$/],
     importScripts: ['/sw-push.js', '/sw-sync.js'],
     runtimeCaching: [
       // API calls - Network first with 1 hour cache
