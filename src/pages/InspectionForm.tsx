@@ -979,11 +979,11 @@ export default function InspectionForm() {
         <InspectionHeader inspection={inspection} onUpdate={handleHeaderUpdate} />
 
         <Tabs defaultValue="details" className="space-y-6 mt-6">
-          <TabsList className="grid w-full grid-cols-4">
-            <TabsTrigger value="details">Zip Lines & Systems</TabsTrigger>
-            <TabsTrigger value="equipment">Equipment</TabsTrigger>
-            <TabsTrigger value="standards">Standards</TabsTrigger>
-            <TabsTrigger value="summary">Summary</TabsTrigger>
+          <TabsList className="flex md:grid w-full md:grid-cols-4 overflow-x-auto">
+            <TabsTrigger value="details" className="whitespace-nowrap flex-shrink-0">Zip Lines & Systems</TabsTrigger>
+            <TabsTrigger value="equipment" className="whitespace-nowrap flex-shrink-0">Equipment</TabsTrigger>
+            <TabsTrigger value="standards" className="whitespace-nowrap flex-shrink-0">Standards</TabsTrigger>
+            <TabsTrigger value="summary" className="whitespace-nowrap flex-shrink-0">Summary</TabsTrigger>
           </TabsList>
 
           <TabsContent value="details" className="space-y-6">
