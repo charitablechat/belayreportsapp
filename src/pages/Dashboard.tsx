@@ -12,7 +12,7 @@ import { toast } from "sonner";
 import ropeWorksLogo from "@/assets/rope-works-logo.png";
 import acctLogo from "@/assets/acct-accredited-vendor.png";
 import dashboardBackgroundVideo from "@/assets/dashboard-background.mp4";
-import { AuroraBackground } from "@/components/ui/aurora-background";
+
 import { usePWAInstall } from "@/hooks/usePWAInstall";
 import { NetworkStatusIndicator } from "@/components/pwa/NetworkStatusIndicator";
 import { SyncStatusIndicator } from "@/components/pwa/SyncStatusIndicator";
@@ -408,7 +408,7 @@ export default function Dashboard() {
 
         {/* Foyer Section */}
         <section className="mb-12 -mx-4">
-          <AuroraBackground className="rounded-lg" showRadialGradient={true}>
+          <div className="rounded-lg bg-background/60 backdrop-blur-sm">
             <div className="container mx-auto px-4 py-16">
               <div className="text-center mb-8">
                 <h2 className="text-4xl font-bold text-primary dark:text-white mb-2">
@@ -500,7 +500,7 @@ export default function Dashboard() {
                 </Card>
               </div>
             </div>
-          </AuroraBackground>
+          </div>
         </section>
 
         {/* Recent Reports Section */}
