@@ -24,6 +24,8 @@ import ZiplinesTable from "@/components/inspection/ZiplinesTable";
 import EquipmentTable from "@/components/inspection/EquipmentTable";
 import StandardsTable from "@/components/inspection/StandardsTable";
 import SummarySection from "@/components/inspection/SummarySection";
+import PhotoCapture from "@/components/PhotoCapture";
+import PhotoGallery from "@/components/PhotoGallery";
 import { 
   saveInspectionOffline, 
   getOfflineInspection, 
@@ -44,6 +46,7 @@ export default function InspectionForm() {
   const [autoSaving, setAutoSaving] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [photoRefreshKey, setPhotoRefreshKey] = useState(0);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveDebounceTimer, setSaveDebounceTimer] = useState<NodeJS.Timeout | null>(null);
   const [currentUser, setCurrentUser] = useState<any>(null);
@@ -989,6 +992,22 @@ export default function InspectionForm() {
           <TabsContent value="details" className="space-y-6">
             <OperatingSystemsTable systems={systems} onUpdate={setSystems} />
             <ZiplinesTable ziplines={ziplines} onUpdate={setZiplines} />
+            
+            <div className="mt-8 border-t pt-6">
+              <h3 className="text-lg font-semibold mb-4">Photos - Systems & Ziplines</h3>
+              <PhotoCapture
+                inspectionId={id!}
+                section="systems"
+                onPhotoAdded={() => setPhotoRefreshKey(prev => prev + 1)}
+              />
+              <div className="mt-4">
+                <PhotoGallery
+                  key={`systems-${photoRefreshKey}`}
+                  inspectionId={id!}
+                  section="systems"
+                />
+              </div>
+            </div>
           </TabsContent>
 
           <TabsContent value="equipment" className="space-y-6">
@@ -1040,14 +1059,62 @@ export default function InspectionForm() {
               equipment={equipment}
               onUpdate={setEquipment}
             />
+            
+            <div className="mt-8 border-t pt-6">
+              <h3 className="text-lg font-semibold mb-4">Photos - Equipment</h3>
+              <PhotoCapture
+                inspectionId={id!}
+                section="equipment"
+                onPhotoAdded={() => setPhotoRefreshKey(prev => prev + 1)}
+              />
+              <div className="mt-4">
+                <PhotoGallery
+                  key={`equipment-${photoRefreshKey}`}
+                  inspectionId={id!}
+                  section="equipment"
+                />
+              </div>
+            </div>
           </TabsContent>
 
           <TabsContent value="standards" className="space-y-4">
             <StandardsTable standards={standards} onUpdate={setStandards} />
+            
+            <div className="mt-8 border-t pt-6">
+              <h3 className="text-lg font-semibold mb-4">Photos - Standards</h3>
+              <PhotoCapture
+                inspectionId={id!}
+                section="standards"
+                onPhotoAdded={() => setPhotoRefreshKey(prev => prev + 1)}
+              />
+              <div className="mt-4">
+                <PhotoGallery
+                  key={`standards-${photoRefreshKey}`}
+                  inspectionId={id!}
+                  section="standards"
+                />
+              </div>
+            </div>
           </TabsContent>
 
           <TabsContent value="summary" className="space-y-4">
             <SummarySection summary={summary} onUpdate={setSummary} />
+            
+            <div className="mt-8 border-t pt-6">
+              <h3 className="text-lg font-semibold mb-4">Photos - Summary</h3>
+              <PhotoCapture
+                inspectionId={id!}
+                section="summary"
+                onPhotoAdded={() => setPhotoRefreshKey(prev => prev + 1)}
+              />
+              <div className="mt-4">
+                <PhotoGallery
+                  key={`summary-${photoRefreshKey}`}
+                  inspectionId={id!}
+                  section="summary"
+                />
+              </div>
+            </div>
           </TabsContent>
         </Tabs>
       </main>
