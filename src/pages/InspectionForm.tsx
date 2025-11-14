@@ -6,7 +6,16 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { ArrowLeft, Save, CheckCircle, Loader2, WifiOff, CloudOff } from "lucide-react";
+import { ArrowLeft, Save, CheckCircle, Loader2, WifiOff, CloudOff, LogOut } from "lucide-react";
+import { UserAvatar } from "@/components/ui/user-avatar";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 import ropeWorksLogo from "@/assets/rope-works-logo.png";
 import InspectionHeader from "@/components/inspection/InspectionHeader";
@@ -37,6 +46,7 @@ export default function InspectionForm() {
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveDebounceTimer, setSaveDebounceTimer] = useState<NodeJS.Timeout | null>(null);
+  const [currentUser, setCurrentUser] = useState<any>(null);
   const [inspection, setInspection] = useState<any>(null);
   const [systems, setSystems] = useState<any[]>([]);
   const [ziplines, setZiplines] = useState<any[]>([]);
@@ -60,6 +70,23 @@ export default function InspectionForm() {
 
   useEffect(() => {
     loadInspection();
+    
+    // Fetch current user
+    const fetchUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      setCurrentUser(user);
+    };
+    
+    fetchUser();
+    
+    // Listen for auth state changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (_event, session) => {
+        setCurrentUser(session?.user ?? null);
+      }
+    );
+    
+    return () => subscription.unsubscribe();
   }, [id]);
 
   // Track changes to inspection data and trigger debounced auto-save
@@ -149,6 +176,11 @@ export default function InspectionForm() {
   const normalizeResultValue = (value: string | null | undefined): string => {
     if (!value) return 'pass';
     return value.toLowerCase();
+  };
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    navigate("/");
   };
 
   const formatTime = (date: Date) => {
@@ -814,11 +846,12 @@ export default function InspectionForm() {
     <div className="min-h-screen bg-background">
       <header className="border-b bg-card sticky top-0 z-20">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <Button variant="ghost" onClick={() => navigate("/dashboard")}>
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Back
-          </Button>
-          <img src={ropeWorksLogo} alt="Rope Works" className="h-10 w-auto object-contain absolute left-1/2 transform -translate-x-1/2" />
+          <div className="flex items-center gap-4">
+            <Button variant="ghost" size="icon" onClick={() => navigate("/dashboard")}>
+              <ArrowLeft className="w-4 h-4" />
+            </Button>
+            <img src={ropeWorksLogo} alt="Rope Works" className="h-10 w-auto object-contain" />
+          </div>
           <div className="flex items-center gap-3">
             {!isOnline && (
               <Badge variant="secondary" className="gap-2">
@@ -878,6 +911,28 @@ export default function InspectionForm() {
                 )}
               </Tooltip>
             </TooltipProvider>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="rounded-full">
+                  <UserAvatar userEmail={currentUser?.email ?? null} />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuLabel>
+                  <div className="flex flex-col space-y-1">
+                    <p className="text-sm font-medium">Account</p>
+                    <p className="text-xs text-muted-foreground truncate">
+                      {currentUser?.email || 'user@example.com'}
+                    </p>
+                  </div>
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={handleSignOut}>
+                  <LogOut className="w-4 h-4 mr-2" />
+                  Sign Out
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
       </header>
