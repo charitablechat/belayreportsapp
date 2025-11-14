@@ -40,7 +40,7 @@ export default function Profile() {
       setUser(authUser);
       setEmail(authUser.email || "");
 
-      const { data: profileData, error: profileError } = await supabase
+      const { data: profileData, error: profileError } = await (supabase as any)
         .from("profiles")
         .select("*")
         .eq("id", authUser.id)
@@ -52,9 +52,9 @@ export default function Profile() {
 
       if (profileData) {
         setProfile({
-          first_name: profileData.first_name || "",
-          last_name: profileData.last_name || "",
-          avatar_url: profileData.avatar_url || "",
+          first_name: (profileData as any).first_name || "",
+          last_name: (profileData as any).last_name || "",
+          avatar_url: (profileData as any).avatar_url || "",
         });
       }
     } catch (error: any) {
@@ -115,7 +115,7 @@ export default function Profile() {
         .getPublicUrl(filePath);
 
       // Update profile with new avatar URL
-      const { error: updateError } = await supabase
+      const { error: updateError } = await (supabase as any)
         .from("profiles")
         .update({ avatar_url: publicUrl })
         .eq("id", user.id);
@@ -141,7 +141,7 @@ export default function Profile() {
 
     try {
       // Update profile
-      const { error: profileError } = await supabase
+      const { error: profileError } = await (supabase as any)
         .from("profiles")
         .upsert({
           id: user.id,
