@@ -24,7 +24,7 @@ export const inspectionSchema = z.object({
 export const systemSchema = z.object({
   id: z.string().uuid(),
   inspection_id: z.string().uuid(),
-  system_name: z.string().min(1, "System name is required"),
+  system_name: z.string().optional().nullable(),
   result: z.enum(['pass', 'pass w/provisions', 'pass w/ repair', 'fail', 'na']),
   comments: z.string().optional().nullable(),
   created_at: z.string().optional(),
@@ -34,7 +34,7 @@ export const systemSchema = z.object({
 export const ziplineSchema = z.object({
   id: z.string().uuid(),
   inspection_id: z.string().uuid(),
-  zipline_name: z.string().min(1, "Zipline name is required"),
+  zipline_name: z.string().optional().nullable(),
   cable_type: z.string().optional().nullable(),
   cable_length: z.number().int().positive().optional().nullable(),
   braking_system: z.string().optional().nullable(),
@@ -53,8 +53,8 @@ export const ziplineSchema = z.object({
 export const equipmentSchema = z.object({
   id: z.string().uuid(),
   inspection_id: z.string().uuid(),
-  equipment_type: z.string().min(1, "Equipment type is required"),
-  equipment_category: z.string().min(1, "Equipment category is required"),
+  equipment_type: z.string().optional().nullable(),
+  equipment_category: z.string().optional().nullable(),
   production_year: z.number().int().min(1900).max(2100).optional().nullable(),
   quantity: z.number().int().positive().optional().nullable(),
   result: z.enum(['pass', 'pass w/provisions', 'pass w/ repair', 'fail', 'na']),
@@ -66,7 +66,7 @@ export const equipmentSchema = z.object({
 export const standardSchema = z.object({
   id: z.string().uuid(),
   inspection_id: z.string().uuid(),
-  standard_name: z.string().min(1, "Standard name is required"),
+  standard_name: z.string().optional().nullable(),
   has_documentation: z.boolean(),
   comments: z.string().optional().nullable(),
   created_at: z.string().optional(),
