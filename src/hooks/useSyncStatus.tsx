@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 
 export interface SyncStatus {
   unsyncedCount: number;
+  unsyncedInspections: any[];
   isSyncing: boolean;
   lastSyncTime: Date | null;
   syncError: string | null;
@@ -15,6 +16,7 @@ export const useSyncStatus = () => {
   const { isOnline } = useNetworkStatus();
   const [syncStatus, setSyncStatus] = useState<SyncStatus>({
     unsyncedCount: 0,
+    unsyncedInspections: [],
     isSyncing: false,
     lastSyncTime: null,
     syncError: null,
@@ -26,6 +28,7 @@ export const useSyncStatus = () => {
       setSyncStatus(prev => ({
         ...prev,
         unsyncedCount: unsynced.length,
+        unsyncedInspections: unsynced,
       }));
 
       if (import.meta.env.DEV) {
