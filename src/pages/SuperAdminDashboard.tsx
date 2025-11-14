@@ -643,7 +643,7 @@ export default function SuperAdminDashboard() {
 
       {/* Users List Dialog */}
       <Dialog open={isUsersListOpen} onOpenChange={setIsUsersListOpen}>
-        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+        <DialogContent className="max-w-4xl max-h-[80vh] md:overflow-y-visible max-md:overflow-y-auto">
           <DialogHeader>
             <DialogTitle>All Users</DialogTitle>
           </DialogHeader>
@@ -690,7 +690,7 @@ export default function SuperAdminDashboard() {
 
       {/* Organizations List Dialog */}
       <Dialog open={isOrgsListOpen} onOpenChange={setIsOrgsListOpen}>
-        <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
+        <DialogContent className="max-w-3xl max-h-[80vh] md:overflow-y-visible max-md:overflow-y-auto">
           <DialogHeader>
             <DialogTitle>All Organizations</DialogTitle>
           </DialogHeader>
@@ -719,7 +719,7 @@ export default function SuperAdminDashboard() {
 
       {/* Inspections List Dialog */}
       <Dialog open={isInspectionsListOpen} onOpenChange={setIsInspectionsListOpen}>
-        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+        <DialogContent className="max-w-4xl max-h-[80vh] md:overflow-y-visible max-md:overflow-y-auto">
           <DialogHeader>
             <DialogTitle>All Inspections</DialogTitle>
           </DialogHeader>
