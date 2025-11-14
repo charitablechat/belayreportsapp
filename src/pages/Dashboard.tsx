@@ -505,17 +505,11 @@ export default function Dashboard() {
 
         {/* Recent Reports Section */}
         <section>
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h3 className="text-2xl font-bold">Recent Reports</h3>
-              <p className="text-muted-foreground mt-1">
-                View and manage your inspection reports
-              </p>
-            </div>
-            <GradientButton onClick={() => navigate("/inspection/new")}>
-              <Plus className="w-5 h-5 mr-2" />
-              New Inspection
-            </GradientButton>
+          <div className="mb-6">
+            <h3 className="text-2xl font-bold">Recent Reports</h3>
+            <p className="text-muted-foreground mt-1">
+              View and manage your inspection reports
+            </p>
           </div>
 
           {loading ? (
