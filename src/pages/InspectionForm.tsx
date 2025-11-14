@@ -982,7 +982,7 @@ export default function InspectionForm() {
         <InspectionHeader inspection={inspection} onUpdate={handleHeaderUpdate} />
 
         <Tabs defaultValue="details" className="space-y-6 mt-6">
-          <TabsList className="flex flex-col lg:grid lg:grid-cols-4 w-full gap-1">
+          <TabsList className="grid grid-cols-2 lg:grid-cols-4 w-full gap-1">
             <TabsTrigger value="details">Zip Lines & Systems</TabsTrigger>
             <TabsTrigger value="equipment">Equipment</TabsTrigger>
             <TabsTrigger value="standards">Standards</TabsTrigger>
