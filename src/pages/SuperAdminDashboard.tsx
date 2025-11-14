@@ -7,7 +7,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { Building2, Users, FileText, Bell, AlertTriangle, Radio, UserPlus, Pencil, Trash2 } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Building2, Users, FileText, Bell, AlertTriangle, Radio, UserPlus, Pencil, Trash2, ClipboardList } from "lucide-react";
 import { format } from "date-fns";
 import { useNavigate } from "react-router-dom";
 import { useState } from "react";
@@ -24,6 +25,11 @@ export default function SuperAdminDashboard() {
   const [selectedUser, setSelectedUser] = useState<any>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [userToDelete, setUserToDelete] = useState<any>(null);
+  
+  // Dialog states for stat cards
+  const [isUsersListOpen, setIsUsersListOpen] = useState(false);
+  const [isOrgsListOpen, setIsOrgsListOpen] = useState(false);
+  const [isInspectionsListOpen, setIsInspectionsListOpen] = useState(false);
 
   // Overview stats queries
   const { data: stats } = useQuery({
@@ -319,17 +325,20 @@ export default function SuperAdminDashboard() {
           title="Organizations"
           value={stats?.organizations || 0}
           icon={Building2}
+          onClick={() => setIsOrgsListOpen(true)}
         />
         <StatCard
           title="Total Users"
           value={stats?.users || 0}
           icon={Users}
+          onClick={() => setIsUsersListOpen(true)}
         />
         <StatCard
           title="Inspections"
           value={stats?.inspections || 0}
-          icon={FileText}
+          icon={ClipboardList}
           description={`${stats?.statusCounts?.completed || 0} completed, ${stats?.statusCounts?.draft || 0} draft`}
+          onClick={() => setIsInspectionsListOpen(true)}
         />
         <StatCard
           title="Recent Notifications"
@@ -623,6 +632,115 @@ export default function SuperAdminDashboard() {
           </Table>
         </TabsContent>
       </Tabs>
+
+      {/* Users List Dialog */}
+      <Dialog open={isUsersListOpen} onOpenChange={setIsUsersListOpen}>
+        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>All Users</DialogTitle>
+          </DialogHeader>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Email</TableHead>
+                <TableHead>Name</TableHead>
+                <TableHead>Organization</TableHead>
+                <TableHead>Role</TableHead>
+                <TableHead>Joined</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {managedUsers?.map((user: any) => (
+                <TableRow key={user.id}>
+                  <TableCell className="font-medium">{user.email}</TableCell>
+                  <TableCell>
+                    {user.firstName || user.lastName 
+                      ? `${user.firstName} ${user.lastName}`.trim() 
+                      : '-'}
+                  </TableCell>
+                  <TableCell>
+                    {user.organizations?.length > 0 
+                      ? user.organizations.map((org: any) => org.name).join(', ')
+                      : '-'}
+                  </TableCell>
+                  <TableCell>
+                    {user.roles?.length > 0 ? (
+                      <div className="flex flex-wrap gap-1">
+                        {user.roles.map((r: any, idx: number) => (
+                          <Badge key={idx} variant="outline">{r.role}</Badge>
+                        ))}
+                      </div>
+                    ) : '-'}
+                  </TableCell>
+                  <TableCell>{format(new Date(user.createdAt), "PP")}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </DialogContent>
+      </Dialog>
+
+      {/* Organizations List Dialog */}
+      <Dialog open={isOrgsListOpen} onOpenChange={setIsOrgsListOpen}>
+        <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>All Organizations</DialogTitle>
+          </DialogHeader>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Name</TableHead>
+                <TableHead>Members</TableHead>
+                <TableHead>Inspections</TableHead>
+                <TableHead>Created</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {organizations?.map((org: any) => (
+                <TableRow key={org.id}>
+                  <TableCell className="font-medium">{org.name}</TableCell>
+                  <TableCell>{org.organization_members?.[0]?.count || 0}</TableCell>
+                  <TableCell>{org.inspections?.[0]?.count || 0}</TableCell>
+                  <TableCell>{format(new Date(org.created_at), "PP")}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </DialogContent>
+      </Dialog>
+
+      {/* Inspections List Dialog */}
+      <Dialog open={isInspectionsListOpen} onOpenChange={setIsInspectionsListOpen}>
+        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>All Inspections</DialogTitle>
+          </DialogHeader>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Organization</TableHead>
+                <TableHead>Location</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Date</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {allInspections?.map((inspection) => (
+                <TableRow key={inspection.id}>
+                  <TableCell className="font-medium">{inspection.organization}</TableCell>
+                  <TableCell>{inspection.location}</TableCell>
+                  <TableCell>
+                    <Badge variant={inspection.status === 'completed' ? 'default' : 'secondary'}>
+                      {inspection.status}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>{format(new Date(inspection.inspection_date), "PP")}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </DialogContent>
+      </Dialog>
 
       {/* User Management Dialog */}
       <UserManagementDialog
