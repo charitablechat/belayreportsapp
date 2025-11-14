@@ -33,59 +33,40 @@ export const useNetworkStatus = () => {
   const retryCountRef = useRef(0);
 
   useEffect(() => {
-    // Multi-endpoint verification with retry logic
-    const verifyConnectivity = async (retryAttempt = 0): Promise<boolean> => {
+    // Clear any stale offline state on mount
+    if (localStorage.getItem(STORAGE_KEY) === 'false') {
+      console.log('[Network] Clearing stale offline state');
+      localStorage.removeItem(STORAGE_KEY);
+    }
+
+    // Lightweight connectivity verification - only as a secondary check
+    const verifyConnectivity = async (): Promise<boolean> => {
       if (verifyingRef.current) return networkStatus.isOnline;
       verifyingRef.current = true;
       
-      const timeout = isMobile ? 7000 : 5000; // Longer timeout for mobile
-      const endpoints = [
-        '/favicon.ico',
-        '/robots.txt',
-        'https://www.gstatic.com/generate_204', // Google's connectivity check
-      ];
-      
-      // Try each endpoint
-      for (const endpoint of endpoints) {
-        try {
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), timeout);
-          
-          const startTime = Date.now();
-          const response = await fetch(endpoint, {
-            method: 'HEAD',
-            cache: 'no-cache',
-            signal: controller.signal,
-          });
-          
-          clearTimeout(timeoutId);
-          const responseTime = Date.now() - startTime;
-          
-          if (response.ok || response.status === 304) {
-            if (import.meta.env.DEV) {
-              console.log(`[Network] Connected via ${endpoint} (${responseTime}ms)`);
-            }
-            verifyingRef.current = false;
-            retryCountRef.current = 0;
-            return true;
-          }
-        } catch (error) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 3000);
+        
+        const response = await fetch('/favicon.ico', {
+          method: 'HEAD',
+          cache: 'no-cache',
+          signal: controller.signal,
+        });
+        
+        clearTimeout(timeoutId);
+        
+        if (response.ok || response.status === 304) {
           if (import.meta.env.DEV) {
-            console.log(`[Network] Failed to reach ${endpoint}:`, error);
+            console.log('[Network] Verified online');
           }
-          continue; // Try next endpoint
+          verifyingRef.current = false;
+          return true;
         }
-      }
-      
-      // All endpoints failed - retry with backoff
-      if (retryAttempt < 3) {
-        const backoffDelay = Math.pow(2, retryAttempt) * 1000; // 1s, 2s, 4s
+      } catch (error) {
         if (import.meta.env.DEV) {
-          console.log(`[Network] Retry ${retryAttempt + 1}/3 after ${backoffDelay}ms`);
+          console.log('[Network] Verification failed:', error);
         }
-        await new Promise(resolve => setTimeout(resolve, backoffDelay));
-        verifyingRef.current = false;
-        return verifyConnectivity(retryAttempt + 1);
       }
       
       verifyingRef.current = false;
@@ -95,9 +76,10 @@ export const useNetworkStatus = () => {
     const updateNetworkStatus = async (skipVerification = false) => {
       const connection = (navigator as any).connection || (navigator as any).mozConnection || (navigator as any).webkitConnection;
       
-      // Always verify on mobile, even when browser says we're online
-      const shouldVerify = isMobile || !skipVerification;
-      const isActuallyOnline = shouldVerify ? await verifyConnectivity() : navigator.onLine;
+      // Trust navigator.onLine as primary source, verify only when going online
+      const browserOnline = navigator.onLine;
+      const shouldVerify = !skipVerification && browserOnline;
+      const isActuallyOnline = shouldVerify ? await verifyConnectivity() : browserOnline;
       
       const newStatus = {
         isOnline: isActuallyOnline,
@@ -117,9 +99,9 @@ export const useNetworkStatus = () => {
 
       if (import.meta.env.DEV) {
         console.log('[Network] Status updated:', {
-          isMobile,
           navigatorOnLine: navigator.onLine,
-          verifiedOnline: isActuallyOnline,
+          actualOnline: isActuallyOnline,
+          verified: shouldVerify,
           effectiveType: connection?.effectiveType,
           downlink: connection?.downlink,
           rtt: connection?.rtt,
@@ -146,24 +128,28 @@ export const useNetworkStatus = () => {
 
     const handleOffline = () => {
       if (import.meta.env.DEV) {
-        console.log('[Network Status] Browser reports offline');
+        console.log('[Network Status] Browser reports offline - trusting immediately');
       }
       // Trust offline status immediately (skip verification)
-      updateNetworkStatus(true);
+      setNetworkStatus(prev => ({ ...prev, isOnline: false }));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(false));
     };
 
     const handleConnectionChange = () => {
       if (import.meta.env.DEV) {
-        console.log('[Network Status] Connection type changed');
+        console.log('[Network Status] Connection type changed, skipping verification');
       }
+      // Don't reverify on connection type changes
       debouncedUpdate(true);
     };
 
-    // Initial verification - be patient on mobile
-    const initialDelay = isMobile ? 1000 : 500;
+    // Initial check - trust navigator.onLine primarily
     setTimeout(() => {
+      if (import.meta.env.DEV) {
+        console.log('[Network] Initial check - navigator.onLine:', navigator.onLine);
+      }
       updateNetworkStatus(false);
-    }, initialDelay);
+    }, 100);
 
     // Add event listeners
     window.addEventListener('online', handleOnline);
