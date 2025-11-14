@@ -60,6 +60,7 @@ export default function Dashboard() {
   const [conflictsDialogOpen, setConflictsDialogOpen] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [currentUser, setCurrentUser] = useState<any>(null);
+  const [userProfile, setUserProfile] = useState<any>(null);
   const { isInstallable, isInstalled, promptInstall } = usePWAInstall();
   const { hasConflicts, conflictCount } = useConflicts();
   const { photosByInspection } = usePWA();
@@ -101,6 +102,17 @@ export default function Dashboard() {
     const fetchUser = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       setCurrentUser(user);
+      
+      // Fetch user profile
+      if (user) {
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("*")
+          .eq("id", user.id)
+          .maybeSingle();
+        
+        setUserProfile(profile);
+      }
     };
     
     fetchUser();
@@ -289,7 +301,10 @@ export default function Dashboard() {
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="icon" className="rounded-full">
-                  <UserAvatar userEmail={currentUser?.email ?? null} />
+                  <UserAvatar 
+                    userEmail={currentUser?.email ?? null}
+                    avatarUrl={userProfile?.avatar_url ?? null}
+                  />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">
@@ -311,6 +326,10 @@ export default function Dashboard() {
                     <DropdownMenuSeparator />
                   </>
                 )}
+                <DropdownMenuItem onClick={() => navigate('/profile')}>
+                  <User className="w-4 h-4 mr-2" />
+                  Profile
+                </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => setNotificationsDialogOpen(true)}>
                   <Bell className="w-4 h-4 mr-2" />
                   Notifications
