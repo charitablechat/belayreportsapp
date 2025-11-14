@@ -370,6 +370,51 @@ export type Database = {
           },
         ]
       }
+      migration_audit: {
+        Row: {
+          backup_table_name: string | null
+          completed_at: string | null
+          error_message: string | null
+          id: string
+          metadata: Json | null
+          migration_name: string
+          performed_by: string | null
+          records_after: number | null
+          records_before: number | null
+          started_at: string
+          status: string
+          table_affected: string
+        }
+        Insert: {
+          backup_table_name?: string | null
+          completed_at?: string | null
+          error_message?: string | null
+          id?: string
+          metadata?: Json | null
+          migration_name: string
+          performed_by?: string | null
+          records_after?: number | null
+          records_before?: number | null
+          started_at?: string
+          status: string
+          table_affected: string
+        }
+        Update: {
+          backup_table_name?: string | null
+          completed_at?: string | null
+          error_message?: string | null
+          id?: string
+          metadata?: Json | null
+          migration_name?: string
+          performed_by?: string | null
+          records_after?: number | null
+          records_before?: number | null
+          started_at?: string
+          status?: string
+          table_affected?: string
+        }
+        Relationships: []
+      }
       notification_preferences: {
         Row: {
           created_at: string | null
@@ -476,6 +521,33 @@ export type Database = {
           created_at?: string | null
           id?: string
           name?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          avatar_url: string | null
+          created_at: string | null
+          first_name: string | null
+          id: string
+          last_name: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          avatar_url?: string | null
+          created_at?: string | null
+          first_name?: string | null
+          id: string
+          last_name?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          avatar_url?: string | null
+          created_at?: string | null
+          first_name?: string | null
+          id?: string
+          last_name?: string | null
           updated_at?: string | null
         }
         Relationships: []
@@ -588,6 +660,32 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      backup_table: {
+        Args: { p_schema_name?: string; p_table_name: string }
+        Returns: string
+      }
+      check_data_loss: {
+        Args: {
+          p_records_before: number
+          p_schema_name?: string
+          p_table_name: string
+        }
+        Returns: {
+          alert_level: string
+          has_data_loss: boolean
+          loss_percentage: number
+          records_after: number
+          records_before: number
+        }[]
+      }
+      complete_migration_audit: {
+        Args: {
+          p_audit_id: string
+          p_error_message?: string
+          p_status?: string
+        }
+        Returns: undefined
+      }
       create_audit_log: {
         Args: {
           p_action_type: string
@@ -601,6 +699,10 @@ export type Database = {
         Returns: string
       }
       get_service_role_key: { Args: never; Returns: string }
+      get_table_record_count: {
+        Args: { p_schema_name?: string; p_table_name: string }
+        Returns: number
+      }
       has_role: {
         Args: {
           _org_id: string
@@ -610,6 +712,22 @@ export type Database = {
         Returns: boolean
       }
       is_super_admin: { Args: never; Returns: boolean }
+      restore_from_backup: {
+        Args: {
+          p_backup_table_name: string
+          p_schema_name?: string
+          p_target_table_name: string
+        }
+        Returns: number
+      }
+      start_migration_audit: {
+        Args: {
+          p_metadata?: Json
+          p_migration_name: string
+          p_table_affected: string
+        }
+        Returns: string
+      }
     }
     Enums: {
       app_role: "super_admin" | "admin" | "inspector"
