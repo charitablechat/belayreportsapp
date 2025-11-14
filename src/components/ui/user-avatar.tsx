@@ -1,11 +1,12 @@
 import { User } from "lucide-react";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 interface UserAvatarProps {
   userEmail: string | null;
+  avatarUrl?: string | null;
 }
 
-export const UserAvatar = ({ userEmail }: UserAvatarProps) => {
+export const UserAvatar = ({ userEmail, avatarUrl }: UserAvatarProps) => {
   const getInitials = (email: string | null): string => {
     if (!email) return "";
     
@@ -20,6 +21,7 @@ export const UserAvatar = ({ userEmail }: UserAvatarProps) => {
 
   return (
     <Avatar className="h-9 w-9">
+      {avatarUrl && <AvatarImage src={avatarUrl} alt="User avatar" />}
       <AvatarFallback className="bg-primary text-primary-foreground">
         {initials || <User className="h-4 w-4" />}
       </AvatarFallback>
