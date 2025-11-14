@@ -154,7 +154,7 @@ export default function SystemTypeSelect({ value, onChange }: SystemTypeSelectPr
       </Select>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent>
+        <DialogContent className="max-w-md w-[calc(100vw-2rem)]">
           <DialogHeader>
             <DialogTitle>
               {editingOption ? "Edit System Type" : "Add Custom System Type"}

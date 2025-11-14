@@ -2,6 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
 import ResultSelect from "@/components/ResultSelect";
 import { Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -51,7 +52,8 @@ export default function EquipmentTable({ category, displayName, equipment, onUpd
         </div>
       </CardHeader>
       <CardContent>
-        <div className="overflow-x-auto">
+        {/* Desktop table view */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full border-collapse">
             <thead>
               <tr className="bg-blue-50 dark:bg-blue-950/20">
@@ -115,6 +117,70 @@ export default function EquipmentTable({ category, displayName, equipment, onUpd
               ))}
             </tbody>
           </table>
+        </div>
+        
+        {/* Mobile card view */}
+        <div className="md:hidden space-y-4">
+          {categoryEquipment.map((item, index) => (
+            <Card key={index} className="p-4">
+              <div className="space-y-3">
+                <div>
+                  <Label className="text-xs text-muted-foreground">Type *</Label>
+                  <Input
+                    value={item.equipment_type}
+                    onChange={(e) => updateEquipment(item, "equipment_type", e.target.value)}
+                    placeholder="Enter type"
+                    className={cn(
+                      !item.equipment_type || item.equipment_type.trim() === ""
+                        ? "ring-2 ring-destructive"
+                        : ""
+                    )}
+                  />
+                </div>
+                
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Production Year</Label>
+                    <Input
+                      type="number"
+                      value={item.production_year || ""}
+                      onChange={(e) => updateEquipment(item, "production_year", parseInt(e.target.value) || null)}
+                      placeholder="Year"
+                    />
+                  </div>
+                  
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Quantity</Label>
+                    <Input
+                      type="number"
+                      value={item.quantity || ""}
+                      onChange={(e) => updateEquipment(item, "quantity", parseInt(e.target.value) || null)}
+                      placeholder="Qty"
+                    />
+                  </div>
+                </div>
+                
+                <div>
+                  <Label className="text-xs text-muted-foreground">Result</Label>
+                  <ResultSelect
+                    value={item.result}
+                    onChange={(value) => updateEquipment(item, "result", value)}
+                    includeNA
+                  />
+                </div>
+                
+                <div>
+                  <Label className="text-xs text-muted-foreground">Comments and/or Required Changes</Label>
+                  <Textarea
+                    value={item.comments || ""}
+                    onChange={(e) => updateEquipment(item, "comments", e.target.value)}
+                    placeholder="Enter comments..."
+                    className="min-h-[80px]"
+                  />
+                </div>
+              </div>
+            </Card>
+          ))}
         </div>
       </CardContent>
     </Card>

@@ -273,31 +273,14 @@ export default function Dashboard() {
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b bg-card">
-        <div className="container mx-auto px-2 md:px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-2 md:gap-3">
-            <img src={ropeWorksLogo} alt="Rope Works" className="h-8 md:h-12 w-auto object-contain" />
-            <img src={acctLogo} alt="ACCT Accredited Vendor" className="h-8 md:h-12 w-auto object-contain" />
-          </div>
-          <div className="flex items-center gap-2 md:gap-4">
-            <SyncControlPanel />
-            <NetworkStatusIndicator />
-            <SyncStatusIndicator />
-            {isInstallable && !isInstalled && (
-              <Button 
-                variant="outline" 
-                size="sm"
-                onClick={() => {
-                  if (import.meta.env.DEV) {
-                    console.log('[Dashboard] Install App button clicked');
-                  }
-                  promptInstall();
-                }}
-                className="gap-2"
-              >
-                <Download className="w-4 h-4" />
-                <span className="hidden md:inline">Install App</span>
-              </Button>
-            )}
+        <div className="container mx-auto px-2 md:px-4 py-3 md:py-4">
+          {/* Top row - Logos and user dropdown */}
+          <div className="flex items-center justify-between mb-2 md:mb-0">
+            <div className="flex items-center gap-2 md:gap-3">
+              <img src={ropeWorksLogo} alt="Rope Works" className="h-8 md:h-12 w-auto object-contain" />
+              <img src={acctLogo} alt="ACCT Accredited Vendor" className="h-8 md:h-12 w-auto object-contain" />
+            </div>
+            
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="icon" className="rounded-full">
@@ -347,6 +330,32 @@ export default function Dashboard() {
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+          </div>
+          
+          {/* Bottom row - Status and action buttons */}
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              <SyncControlPanel />
+              <NetworkStatusIndicator />
+              <SyncStatusIndicator />
+            </div>
+            
+            {isInstallable && !isInstalled && (
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => {
+                  if (import.meta.env.DEV) {
+                    console.log('[Dashboard] Install App button clicked');
+                  }
+                  promptInstall();
+                }}
+                className="gap-2"
+              >
+                <Download className="w-4 h-4" />
+                <span className="hidden sm:inline">Install App</span>
+              </Button>
+            )}
           </div>
         </div>
       </header>

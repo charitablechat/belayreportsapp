@@ -79,7 +79,8 @@ export default function SummarySection({ summary, onUpdate }: SummarySectionProp
             These are generalized and are not a substitute for the Pre use inspection.
           </p>
           
-          <div className="overflow-x-auto">
+          {/* Desktop table view */}
+          <div className="hidden md:block overflow-x-auto">
             <table className="w-full border-collapse text-sm">
               <thead>
                 <tr className="bg-blue-50 dark:bg-blue-950/20">
@@ -114,6 +115,30 @@ export default function SummarySection({ summary, onUpdate }: SummarySectionProp
                 </tr>
               </tbody>
             </table>
+          </div>
+          
+          {/* Mobile card view */}
+          <div className="md:hidden space-y-3">
+            <Card className="p-3">
+              <p className="font-medium text-sm">Harness & Lanyards:</p>
+              <p className="text-xs text-muted-foreground mt-1">Manufacture maximum use or condition warranted at time of inspection</p>
+            </Card>
+            <Card className="p-3">
+              <p className="font-medium text-sm">Kernmantle Rope (Top Rope):</p>
+              <p className="text-xs text-muted-foreground mt-1">5 years or 1000 loads when used with top rope systems</p>
+            </Card>
+            <Card className="p-3">
+              <p className="font-medium text-sm">Kernmantle Rope (Aerial Leap):</p>
+              <p className="text-xs text-muted-foreground mt-1">5 years or 300 loads, whichever comes first when used on aerial leap activities</p>
+            </Card>
+            <Card className="p-3">
+              <p className="font-medium text-sm">Helmets:</p>
+              <p className="text-xs text-muted-foreground mt-1">Manufacture maximum use or condition warranted at time of inspection</p>
+            </Card>
+            <Card className="p-3">
+              <p className="font-medium text-sm">Hardware (Pulleys, Trolleys, Carabiners, etc.):</p>
+              <p className="text-xs text-muted-foreground mt-1">Manufacture maximum use or condition warranted at time of inspection</p>
+            </Card>
           </div>
         </div>
 

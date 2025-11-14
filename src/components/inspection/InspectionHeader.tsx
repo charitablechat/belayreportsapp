@@ -77,14 +77,14 @@ export default function InspectionHeader({ inspection, onUpdate }: InspectionHea
   return (
     <div className="space-y-6">
       <div className="text-center">
-        <h1 className="text-2xl font-bold mb-2">
-          Inspection Report for Challenge Course, Adventure Park or Canopy/Zip Line Tour
-        </h1>
+      <h1 className="text-xl md:text-2xl font-bold mb-2 px-2 md:px-0">
+        Inspection Report for Challenge Course, Adventure Park or Canopy/Zip Line Tour
+      </h1>
       </div>
 
       <Card>
         <CardContent className="pt-6">
-          <div className="grid grid-cols-2 gap-6 mb-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 mb-6">
             <div className="space-y-4">
               {renderEditableField("Facility Name", "organization", inspection?.organization)}
               {renderEditableField("Location", "location", inspection?.location)}

@@ -857,72 +857,16 @@ export default function InspectionForm() {
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b bg-card sticky top-0 z-20">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Button variant="ghost" size="icon" onClick={() => navigate("/dashboard")}>
-              <ArrowLeft className="w-4 h-4" />
-            </Button>
-            <img src={ropeWorksLogo} alt="Rope Works" className="h-10 w-auto object-contain" />
-          </div>
-          <div className="flex items-center gap-3">
-            {!isOnline && (
-              <Badge variant="secondary" className="gap-2">
-                <WifiOff className="w-4 h-4" />
-                Offline Mode
-              </Badge>
-            )}
-            <SyncStatusIndicator />
-            <div className="text-xs">
-              {saveError && (
-                <div className="flex items-center gap-1 text-destructive">
-                  <span>⚠️ {saveError}</span>
-                  <Button 
-                    variant="ghost" 
-                    size="sm" 
-                    className="h-5 px-2 text-xs"
-                    onClick={saveProgress}
-                  >
-                    Retry
-                  </Button>
-                </div>
-              )}
-              {!saveError && autoSaving && (
-                <span className="flex items-center gap-1 text-blue-600">
-                  <Loader2 className="w-3 h-3 animate-spin" />
-                  Saving...
-                </span>
-              )}
-              {!saveError && !autoSaving && lastSaved && (
-                <span className="text-green-600 flex items-center gap-1">
-                  <CheckCircle className="w-3 h-3" />
-                  Saved {formatTime(lastSaved)}
-                </span>
-              )}
-              {!saveError && !autoSaving && !lastSaved && hasUnsavedChanges && (
-                <span className="text-yellow-600">Unsaved changes</span>
-              )}
+        <div className="container mx-auto px-2 sm:px-4 py-2 sm:py-4">
+          {/* Top row - Back button, Logo, User Avatar */}
+          <div className="flex items-center justify-between mb-2 sm:mb-0">
+            <div className="flex items-center gap-2">
+              <Button variant="ghost" size="icon" onClick={() => navigate("/dashboard")}>
+                <ArrowLeft className="w-4 h-4" />
+              </Button>
+              <img src={ropeWorksLogo} alt="Rope Works" className="h-8 sm:h-10 w-auto object-contain" />
             </div>
-            <Button variant="outline" onClick={saveProgress} disabled={saving || autoSaving}>
-              <Save className="w-4 h-4 mr-2" />
-              {saving ? "Saving..." : isOnline ? "Save Progress" : "Save Locally"}
-            </Button>
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span>
-                    <Button onClick={completeInspection} disabled={saving || autoSaving || !isOnline}>
-                      <CheckCircle className="w-4 h-4 mr-2" />
-                      Complete
-                    </Button>
-                  </span>
-                </TooltipTrigger>
-                {!isOnline && (
-                  <TooltipContent>
-                    <p>Complete inspection requires internet connection</p>
-                  </TooltipContent>
-                )}
-              </Tooltip>
-            </TooltipProvider>
+            
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="icon" className="rounded-full">
@@ -953,6 +897,71 @@ export default function InspectionForm() {
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+          </div>
+          
+          {/* Bottom row - Status indicators and action buttons */}
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              {!isOnline && (
+                <Badge variant="secondary" className="gap-2 text-xs">
+                  <WifiOff className="w-3 h-3" />
+                  <span className="hidden sm:inline">Offline Mode</span>
+                </Badge>
+              )}
+              <SyncStatusIndicator />
+              <div className="text-xs hidden sm:block">
+                {saveError && (
+                  <div className="flex items-center gap-1 text-destructive">
+                    <span>⚠️ {saveError}</span>
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      className="h-5 px-2 text-xs"
+                      onClick={saveProgress}
+                    >
+                      Retry
+                    </Button>
+                  </div>
+                )}
+                {!saveError && autoSaving && (
+                  <span className="flex items-center gap-1 text-blue-600">
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                    Saving...
+                  </span>
+                )}
+                {!saveError && !autoSaving && lastSaved && (
+                  <span className="text-green-600 flex items-center gap-1">
+                    <CheckCircle className="w-3 h-3" />
+                    Saved {formatTime(lastSaved)}
+                  </span>
+                )}
+                {!saveError && !autoSaving && !lastSaved && hasUnsavedChanges && (
+                  <span className="text-yellow-600">Unsaved changes</span>
+                )}
+              </div>
+            </div>
+            
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" onClick={saveProgress} disabled={saving || autoSaving}>
+                <Save className="w-4 h-4" />
+                <span className="hidden md:inline ml-2">{saving ? "Saving..." : isOnline ? "Save Progress" : "Save Locally"}</span>
+              </Button>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span>
+                      <Button size="sm" onClick={completeInspection} disabled={saving || autoSaving || !isOnline}>
+                        <CheckCircle className="w-4 h-4" />
+                        <span className="hidden md:inline ml-2">Complete</span>
+                      </Button>
+                    </span>
+                  </TooltipTrigger>
+                  {!isOnline && (
+                    <TooltipContent>Must be online to complete inspection</TooltipContent>
+                  )}
+                </Tooltip>
+              </TooltipProvider>
+            </div>
           </div>
         </div>
       </header>

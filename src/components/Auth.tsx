@@ -74,7 +74,7 @@ export default function Auth() {
           <source src={authBackgroundVideo} type="video/mp4" />
         </video>
       </div>
-      <Card className="relative z-10 w-full max-w-md shadow-2xl backdrop-blur-sm bg-card/95">
+      <Card className="relative z-10 w-full max-w-md shadow-2xl backdrop-blur-sm bg-card/95 mx-2">
         <CardHeader className="space-y-4 text-center">
           <div className="mx-auto w-48 h-24 flex items-center justify-center">
             <img src={ropeWorksLogo} alt="Rope Works Logo" className="w-full h-full object-contain" />

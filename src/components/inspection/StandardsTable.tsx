@@ -1,6 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
 
 interface StandardsTableProps {
   standards: any[];
@@ -47,7 +48,8 @@ export default function StandardsTable({ standards, onUpdate }: StandardsTablePr
           </p>
         </div>
 
-        <div className="overflow-x-auto">
+        {/* Desktop table view */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full border-collapse">
             <thead>
               <tr className="bg-blue-50 dark:bg-blue-950/20">
@@ -83,6 +85,39 @@ export default function StandardsTable({ standards, onUpdate }: StandardsTablePr
               })}
             </tbody>
           </table>
+        </div>
+        
+        {/* Mobile card view */}
+        <div className="md:hidden space-y-4">
+          {STANDARDS_LIST.map((standard, index) => {
+            const standardData = standards[index] || { has_documentation: false };
+            return (
+              <Card key={index} className="p-4">
+                <div className="space-y-3">
+                  <div>
+                    <p className="font-medium">{standard.name}</p>
+                    <p className="text-xs text-muted-foreground mt-1">{standard.reference}</p>
+                  </div>
+                  
+                  <div className="flex items-center justify-between pt-2">
+                    <div className="flex items-center gap-2">
+                      <Checkbox
+                        id={`standard-${index}`}
+                        checked={standardData.has_documentation === true}
+                        onCheckedChange={(checked) => updateStandard(index, checked as boolean)}
+                      />
+                      <Label htmlFor={`standard-${index}`} className="text-sm cursor-pointer">
+                        Documentation available
+                      </Label>
+                    </div>
+                    {!standardData.has_documentation && (
+                      <Badge variant="destructive" className="text-xs">Missing</Badge>
+                    )}
+                  </div>
+                </div>
+              </Card>
+            );
+          })}
         </div>
 
         <div className="mt-6 text-xs text-muted-foreground border-t pt-4">
