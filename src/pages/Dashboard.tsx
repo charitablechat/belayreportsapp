@@ -406,7 +406,7 @@ export default function Dashboard() {
                 </p>
               </div>
 
-              <div className="grid md:grid-cols-2 gap-6 max-w-4xl mx-auto">
+              <div className="grid md:grid-cols-3 gap-6 max-w-6xl mx-auto">
                 {/* INSPECTION CARD - FUNCTIONAL */}
                 <Card 
                   className="relative overflow-hidden hover:shadow-2xl transition-all duration-300 border-2 hover:border-blue-500 cursor-pointer group"
@@ -448,6 +448,34 @@ export default function Dashboard() {
                     </CardTitle>
                     <CardDescription className="text-base">
                       Document training sessions and participant assessments
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="relative z-10 text-center pb-6">
+                    <Button size="lg" className="w-full" disabled>
+                      <Lock className="w-4 h-4 mr-2" />
+                      Coming Soon
+                    </Button>
+                  </CardContent>
+                </Card>
+
+                {/* DAILY COURSE ASSESSMENT CARD - MOCKUP (DISABLED) */}
+                <Card className="relative overflow-hidden border-2 opacity-60 cursor-not-allowed">
+                  <Badge 
+                    variant="secondary" 
+                    className="absolute top-4 right-4 z-20 bg-yellow-100 text-yellow-800 border-yellow-300"
+                  >
+                    Coming Soon
+                  </Badge>
+                  <div className="absolute inset-0 bg-gradient-to-br from-purple-50 to-transparent opacity-30" />
+                  <CardHeader className="relative z-10 text-center pb-4">
+                    <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-purple-100 flex items-center justify-center">
+                      <FileText className="w-8 h-8 text-purple-600" />
+                    </div>
+                    <CardTitle className="text-2xl mb-2 text-muted-foreground">
+                      Daily Course Assessment
+                    </CardTitle>
+                    <CardDescription className="text-base">
+                      Record daily operational checks and course conditions
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="relative z-10 text-center pb-6">
