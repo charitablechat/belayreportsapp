@@ -26,6 +26,7 @@ export interface PWAContextType {
   
   // Sync state
   unsyncedCount: number;
+  unsyncedInspections: any[];
   isSyncing: boolean;
   lastSyncTime: Date | null;
   syncError: string | null;
@@ -50,7 +51,8 @@ export const PWAProvider = ({ children }: PWAProviderProps) => {
   const { needRefresh: needsUpdate, offlineReady, updateServiceWorker } = usePWAUpdate();
   const { isOnline, effectiveType, downlink, rtt } = useNetworkStatus();
   const { 
-    unsyncedCount, 
+    unsyncedCount,
+    unsyncedInspections,
     isSyncing, 
     lastSyncTime, 
     syncError, 
@@ -89,6 +91,7 @@ export const PWAProvider = ({ children }: PWAProviderProps) => {
     
     // Sync state
     unsyncedCount,
+    unsyncedInspections,
     isSyncing,
     lastSyncTime,
     syncError,

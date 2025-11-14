@@ -11,7 +11,8 @@ import {
 
 export const SyncStatusIndicator = () => {
   const { 
-    unsyncedCount, 
+    unsyncedCount,
+    unsyncedInspections,
     isSyncing, 
     lastSyncTime, 
     syncError, 
@@ -80,9 +81,24 @@ export const SyncStatusIndicator = () => {
         <TooltipContent>
           <div className="space-y-1 text-xs">
             <p><strong>Last sync:</strong> {formatLastSync(lastSyncTime)}</p>
+            
             {unsyncedCount > 0 && (
-              <p><strong>Unsynced inspections:</strong> {unsyncedCount}</p>
+              <>
+                <p><strong>Unsynced inspections:</strong> {unsyncedCount}</p>
+                <div className="mt-2 space-y-1 max-h-40 overflow-y-auto">
+                  {unsyncedInspections.map((inspection) => (
+                    <div key={inspection.id} className="pl-2 border-l-2 border-muted">
+                      <p className="font-medium">{inspection.organization}</p>
+                      <p className="text-muted-foreground">{inspection.location}</p>
+                      <p className="text-muted-foreground text-[10px]">
+                        {new Date(inspection.inspection_date).toLocaleDateString()}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </>
             )}
+            
             {unsyncedPhotoCount > 0 && (
               <p><strong>Unsynced photos:</strong> {unsyncedPhotoCount}</p>
             )}
