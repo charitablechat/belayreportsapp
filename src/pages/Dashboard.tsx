@@ -184,6 +184,7 @@ export default function Dashboard() {
   const handleSignOut = async () => {
     await supabase.auth.signOut();
     toast.success("Signed out successfully");
+    navigate("/");
   };
 
   const handleDeleteClick = (e: React.MouseEvent, inspection: any) => {
