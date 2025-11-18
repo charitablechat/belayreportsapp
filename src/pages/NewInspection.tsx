@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { ArrowLeft, MapPin, CloudOff, Info, X } from "lucide-react";
+import { ArrowLeft, MapPin, CloudOff, Info, X, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import ropeWorksLogo from "@/assets/rope-works-logo.png";
 import { saveInspectionOffline, queueOperation } from "@/lib/offline-storage";
@@ -18,6 +18,7 @@ export default function NewInspection() {
   const navigate = useNavigate();
   const { isOnline } = useNetworkStatus();
   const [loading, setLoading] = useState(false);
+  const [locationLoading, setLocationLoading] = useState(false);
   const [formData, setFormData] = useState({
     organization: "",
     location: "",
@@ -30,6 +31,7 @@ export default function NewInspection() {
   });
 
   const handleLocationCapture = async () => {
+    setLocationLoading(true);
     try {
       const position = await getCurrentLocationWithAddress();
       setFormData(prev => ({
@@ -45,6 +47,8 @@ export default function NewInspection() {
       }
     } catch (error: any) {
       toast.error("Failed to get location: " + error.message);
+    } finally {
+      setLocationLoading(false);
     }
   };
 
@@ -183,8 +187,12 @@ export default function NewInspection() {
                     placeholder="Enter location"
                     className="flex-1"
                   />
-                  <Button type="button" variant="outline" onClick={handleLocationCapture}>
-                    <MapPin className={`w-4 h-4 ${formData.latitude && formData.longitude ? 'text-green-600' : ''}`} />
+                  <Button type="button" variant="outline" onClick={handleLocationCapture} disabled={locationLoading}>
+                    {locationLoading ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <MapPin className={`w-4 h-4 ${formData.latitude && formData.longitude ? 'text-green-600' : ''}`} />
+                    )}
                   </Button>
                   {formData.latitude && formData.longitude && (
                     <Button type="button" variant="outline" onClick={handleClearLocation} className="text-destructive hover:text-destructive">
