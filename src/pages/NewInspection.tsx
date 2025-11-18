@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { ArrowLeft, MapPin, CloudOff, Info } from "lucide-react";
+import { ArrowLeft, MapPin, CloudOff, Info, X } from "lucide-react";
 import { toast } from "sonner";
 import ropeWorksLogo from "@/assets/rope-works-logo.png";
 import { saveInspectionOffline, queueOperation } from "@/lib/offline-storage";
@@ -46,6 +46,16 @@ export default function NewInspection() {
     } catch (error: any) {
       toast.error("Failed to get location: " + error.message);
     }
+  };
+
+  const handleClearLocation = () => {
+    setFormData(prev => ({
+      ...prev,
+      location: "",
+      latitude: null,
+      longitude: null,
+    }));
+    toast.success("Location cleared");
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -176,6 +186,11 @@ export default function NewInspection() {
                   <Button type="button" variant="outline" onClick={handleLocationCapture}>
                     <MapPin className={`w-4 h-4 ${formData.latitude && formData.longitude ? 'text-green-600' : ''}`} />
                   </Button>
+                  {formData.latitude && formData.longitude && (
+                    <Button type="button" variant="outline" onClick={handleClearLocation} className="text-destructive hover:text-destructive">
+                      <X className="w-4 h-4" />
+                    </Button>
+                  )}
                 </div>
                 {formData.latitude && formData.longitude && (
                   <div className="space-y-1 mt-1">
