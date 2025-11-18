@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { GradientButton } from "@/components/ui/gradient-button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, LogOut, FileText, GraduationCap, ArrowRight, Lock, Download, Settings, Trash2, MoreVertical, Bell, AlertCircle, Cloud, User } from "lucide-react";
+import { Plus, LogOut, FileText, GraduationCap, ArrowRight, Lock, Download, Settings, Trash2, MoreVertical, Bell, AlertCircle, Cloud, User, Loader2 } from "lucide-react";
 import { UserAvatar } from "@/components/ui/user-avatar";
 import { toast } from "sonner";
 import ropeWorksLogo from "@/assets/rope-works-logo.png";
@@ -55,6 +55,7 @@ export default function Dashboard() {
   const navigate = useNavigate();
   const [inspections, setInspections] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [signingOut, setSigningOut] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [inspectionToDelete, setInspectionToDelete] = useState<any>(null);
   const [notificationsDialogOpen, setNotificationsDialogOpen] = useState(false);
@@ -187,8 +188,15 @@ export default function Dashboard() {
   };
 
   const handleSignOut = async () => {
-    await supabase.auth.signOut();
-    toast.success("Signed out successfully");
+    setSigningOut(true);
+    try {
+      await supabase.auth.signOut();
+      toast.success("Signed out successfully");
+    } catch (error) {
+      console.error("Error signing out:", error);
+      toast.error("Failed to sign out");
+      setSigningOut(false);
+    }
   };
 
   const handleDeleteClick = (e: React.MouseEvent, inspection: any) => {
@@ -346,9 +354,13 @@ export default function Dashboard() {
                   Install Instructions
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={handleSignOut}>
-                  <LogOut className="w-4 h-4 mr-2" />
-                  Sign Out
+                <DropdownMenuItem onClick={handleSignOut} disabled={signingOut}>
+                  {signingOut ? (
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <LogOut className="w-4 h-4 mr-2" />
+                  )}
+                  {signingOut ? "Signing out..." : "Sign Out"}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
