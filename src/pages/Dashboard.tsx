@@ -280,6 +280,10 @@ export default function Dashboard() {
           muted 
           playsInline
           className="w-full h-full object-cover"
+          onLoadedMetadata={(e) => {
+            const video = e.currentTarget;
+            video.playbackRate = 0.7;
+          }}
         >
           <source src={dashboardBackgroundVideo} type="video/mp4" />
         </video>
