@@ -70,6 +70,10 @@ export default function Auth() {
           muted 
           playsInline
           className="w-full h-full object-cover"
+          onLoadedMetadata={(e) => {
+            const video = e.currentTarget;
+            video.playbackRate = 0.7;
+          }}
         >
           <source src={authBackgroundVideo} type="video/mp4" />
         </video>

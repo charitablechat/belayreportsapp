@@ -17,6 +17,10 @@ export default function AuroraLanding() {
           muted 
           playsInline
           className="w-full h-full object-cover"
+          onLoadedMetadata={(e) => {
+            const video = e.currentTarget;
+            video.playbackRate = 0.7;
+          }}
         >
           <source src={backgroundVideo} type="video/mp4" />
         </video>
