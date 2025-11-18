@@ -12,7 +12,7 @@ import { toast } from "sonner";
 import ropeWorksLogo from "@/assets/rope-works-logo.png";
 import { saveInspectionOffline, queueOperation } from "@/lib/offline-storage";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
-import { getCurrentLocation as getLocation } from "@/lib/geolocation";
+import { getCurrentLocationWithAddress } from "@/lib/geolocation";
 
 export default function NewInspection() {
   const navigate = useNavigate();
@@ -31,13 +31,14 @@ export default function NewInspection() {
 
   const handleLocationCapture = async () => {
     try {
-      const position = await getLocation();
+      const position = await getCurrentLocationWithAddress();
       setFormData(prev => ({
         ...prev,
+        location: position.address,
         latitude: position.latitude,
         longitude: position.longitude,
       }));
-      toast.success(`Location captured: ${position.latitude.toFixed(6)}, ${position.longitude.toFixed(6)}`);
+      toast.success(`Location captured: ${position.address}`);
       
       if (import.meta.env.DEV) {
         console.log('[NewInspection] Location captured:', position);
