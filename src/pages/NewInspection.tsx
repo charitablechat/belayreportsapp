@@ -178,9 +178,15 @@ export default function NewInspection() {
                   </Button>
                 </div>
                 {formData.latitude && formData.longitude && (
-                  <p className="text-sm text-muted-foreground mt-1">
-                    Coordinates: {formData.latitude.toFixed(6)}, {formData.longitude.toFixed(6)}
-                  </p>
+                  <div className="space-y-1 mt-1">
+                    <p className="text-sm text-muted-foreground">
+                      Coordinates: {formData.latitude.toFixed(6)}, {formData.longitude.toFixed(6)}
+                    </p>
+                    <div className="flex items-start gap-1.5 text-xs text-muted-foreground">
+                      <Info className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
+                      <span>Location name auto-filled from GPS. You can edit it manually if needed.</span>
+                    </div>
+                  </div>
                 )}
               </div>
 
