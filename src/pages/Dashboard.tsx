@@ -120,8 +120,13 @@ export default function Dashboard() {
     
     // Listen for auth state changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
+      (event, session) => {
         setCurrentUser(session?.user ?? null);
+        
+        // Redirect to login page when user signs out
+        if (event === 'SIGNED_OUT' || !session) {
+          navigate("/");
+        }
       }
     );
 
@@ -184,7 +189,6 @@ export default function Dashboard() {
   const handleSignOut = async () => {
     await supabase.auth.signOut();
     toast.success("Signed out successfully");
-    navigate("/");
   };
 
   const handleDeleteClick = (e: React.MouseEvent, inspection: any) => {
