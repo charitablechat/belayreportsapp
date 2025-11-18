@@ -14,6 +14,7 @@ import acctLogo from "@/assets/acct-accredited-vendor.png";
 import dashboardBackgroundVideo from "@/assets/dashboard-background.mp4";
 
 import { usePWAInstall } from "@/hooks/usePWAInstall";
+import { useSessionTimeout } from "@/hooks/useSessionTimeout";
 import { NetworkStatusIndicator } from "@/components/pwa/NetworkStatusIndicator";
 import { SyncStatusIndicator } from "@/components/pwa/SyncStatusIndicator";
 import { SyncControlPanel } from "@/components/pwa/SyncControlPanel";
@@ -66,6 +67,9 @@ export default function Dashboard() {
   const { isInstallable, isInstalled, promptInstall } = usePWAInstall();
   const { hasConflicts, conflictCount } = useConflicts();
   const { photosByInspection } = usePWA();
+  
+  // Monitor session timeout
+  useSessionTimeout();
 
   // Check if user is super admin
   const { data: isSuperAdmin } = useQuery({
