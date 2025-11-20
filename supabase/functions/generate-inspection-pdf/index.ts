@@ -661,7 +661,7 @@ serve(async (req) => {
 
     return new Response(
       JSON.stringify({
-        pdf: base64Pdf,
+        pdfData: base64Pdf,
         fileName,
         size: pdfBytes.length,
       }),
