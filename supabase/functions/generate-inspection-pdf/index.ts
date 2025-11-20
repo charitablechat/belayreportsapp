@@ -100,6 +100,21 @@ serve(async (req) => {
     const helveticaFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
     const helveticaBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
     
+    // Fetch and embed ACCT logo from public bucket
+    let logoImage = null;
+    try {
+      const { data: logoFile } = await supabase.storage
+        .from('inspection-photos')
+        .download('acct-logo.jpg');
+      
+      if (logoFile) {
+        const logoBytes = await logoFile.arrayBuffer();
+        logoImage = await pdfDoc.embedJpg(new Uint8Array(logoBytes));
+      }
+    } catch (logoError) {
+      console.error('Failed to load logo, will use text-only header:', logoError);
+    }
+    
     const pageWidth = 612;
     const pageHeight = 792;
     const margin = 50;
@@ -163,9 +178,27 @@ serve(async (req) => {
     };
 
     const drawACCTHeader = (page: any) => {
-      page.drawText('ACCT', { x: margin, y: pageHeight - margin - 10, size: 10, font: helveticaBold });
-      page.drawText('ACCREDITED VENDOR', { x: margin, y: pageHeight - margin - 24, size: 8, font: helveticaFont });
-      page.drawText('ROPES/CHALLENGE COURSE', { x: margin, y: pageHeight - margin - 36, size: 8, font: helveticaFont });
+      // Draw logo if available
+      if (logoImage) {
+        const logoWidth = 40;
+        const logoHeight = 40;
+        page.drawImage(logoImage, {
+          x: margin,
+          y: pageHeight - margin - logoHeight,
+          width: logoWidth,
+          height: logoHeight,
+        });
+        
+        // Position text next to logo
+        page.drawText('ACCT', { x: margin + logoWidth + 10, y: pageHeight - margin - 10, size: 10, font: helveticaBold });
+        page.drawText('ACCREDITED VENDOR', { x: margin + logoWidth + 10, y: pageHeight - margin - 24, size: 8, font: helveticaFont });
+        page.drawText('ROPES/CHALLENGE COURSE', { x: margin + logoWidth + 10, y: pageHeight - margin - 36, size: 8, font: helveticaFont });
+      } else {
+        // Fallback to text-only header
+        page.drawText('ACCT', { x: margin, y: pageHeight - margin - 10, size: 10, font: helveticaBold });
+        page.drawText('ACCREDITED VENDOR', { x: margin, y: pageHeight - margin - 24, size: 8, font: helveticaFont });
+        page.drawText('ROPES/CHALLENGE COURSE', { x: margin, y: pageHeight - margin - 36, size: 8, font: helveticaFont });
+      }
     };
 
     const formatDate = (dateStr: string | null): string => {
