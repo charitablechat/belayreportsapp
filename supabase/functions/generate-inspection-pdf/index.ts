@@ -132,8 +132,12 @@ serve(async (req) => {
     const sanitizeText = (text: string | null | undefined): string => {
       if (!text) return '';
       return String(text)
+        .replace(/\r\n/g, ' ')  // Replace Windows newlines
+        .replace(/\n/g, ' ')     // Replace Unix newlines
+        .replace(/\r/g, ' ')     // Replace old Mac newlines
         .replace(/○/g, '•')
         .replace(/[^\x00-\xFF]/g, ' ')
+        .replace(/\s+/g, ' ')    // Replace multiple spaces with single space
         .trim();
     };
 
