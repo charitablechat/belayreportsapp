@@ -836,15 +836,29 @@ export default function InspectionForm() {
           .eq("id", id);
 
         if (error) throw error;
-        toast.success("Inspection completed!");
+        
+        // Update local state to reflect completion
+        setInspection({ ...inspection, status: "completed" });
+        
+        toast.success("Inspection completed!", {
+          description: "You can now generate the PDF report or return to the dashboard.",
+          duration: 5000
+        });
       } else {
         // Save completion offline
         const updatedInspection = { ...inspection, status: "completed" };
         await saveInspectionOffline(updatedInspection);
         await queueOperation('update', id!, updatedInspection);
-        toast.success("Inspection completed offline - will sync when online");
+        
+        // Update local state to reflect completion
+        setInspection(updatedInspection);
+        
+        toast.success("Inspection completed offline - will sync when online", {
+          description: "You can now generate the PDF report or return to the dashboard.",
+          duration: 5000
+        });
       }
-      navigate("/dashboard");
+      // Stay on the inspection page - don't navigate away
     } catch (error: any) {
       toast.error("Failed to complete inspection");
     }
