@@ -258,18 +258,8 @@ export default function Dashboard() {
     
     const unsyncedPhotosCount = photosByInspection[inspection.id] || 0;
     
-    // Status badge configuration
-    const variants: Record<string, { variant: any; label: string }> = {
-      draft: { variant: "secondary", label: "Draft" },
-      completed: { variant: "outline", label: "Completed" },
-    };
-    const config = variants[inspection.status] || variants.draft;
-    
     return (
       <div className="flex gap-2">
-        {/* Always show the status badge */}
-        <Badge variant={config.variant}>{config.label}</Badge>
-        
         {/* Show sync status badge */}
         {isUnsynced ? (
           <Badge variant="default">Unsynced</Badge>
