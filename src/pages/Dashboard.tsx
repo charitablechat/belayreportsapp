@@ -556,10 +556,19 @@ export default function Dashboard() {
               {inspections.map((inspection) => (
                 <Card
                   key={inspection.id}
-                  className="cursor-pointer hover:shadow-lg transition-shadow group"
+                  className="cursor-pointer hover:shadow-lg transition-shadow group relative overflow-hidden"
                   onClick={() => navigate(`/inspection/${inspection.id}`)}
                 >
-                  <CardHeader>
+                  {/* Watermark for completed inspections */}
+                  {inspection.status === 'completed' && (
+                    <div className="absolute inset-0 z-10 pointer-events-none flex items-center justify-center">
+                      <div className="text-6xl md:text-7xl font-bold text-green-500/20 rotate-[-45deg] whitespace-nowrap select-none">
+                        COMPLETED
+                      </div>
+                    </div>
+                  )}
+                  
+                  <CardHeader className="relative z-20">
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex-1 min-w-0">
                         <CardTitle className="text-lg truncate">{inspection.organization}</CardTitle>
@@ -590,7 +599,7 @@ export default function Dashboard() {
                       </div>
                     </div>
                   </CardHeader>
-                  <CardContent>
+                  <CardContent className="relative z-20">
                     <div className="text-sm text-muted-foreground space-y-1">
                       <p>
                         <span className="font-medium">Date:</span>{" "}
