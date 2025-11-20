@@ -147,6 +147,46 @@ serve(async (req) => {
       return new Date(date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
     };
 
+    // ACCT Header for all pages
+    const drawACCTHeader = (page: any, yPos: number) => {
+      drawText(page, 'ACCT', margin, yPos, { size: 10, bold: true });
+      drawText(page, 'ACCREDITED VENDOR', margin, yPos - 12, { size: 8 });
+      drawText(page, 'ROPES/CHALLENGE COURSE', margin, yPos - 22, { size: 8 });
+      
+      // ACCT logo placeholder (text-based)
+      page.drawRectangle({ 
+        x: margin - 2, 
+        y: yPos - 35, 
+        width: 120, 
+        height: 35, 
+        borderColor: rgb(0, 0, 0), 
+        borderWidth: 1 
+      });
+      
+      return yPos - 45; // Return new yPos after header
+    };
+
+    // Consistent page footer
+    const drawPageFooter = (page: any, pageNumber: number, totalPages: number) => {
+      const footerY = 35;
+      
+      // Company info
+      drawText(page, 'Rope Works Inc., PO Box 1074, Dripping Springs, TX 78620', 
+        margin, footerY, { size: 7, color: rgb(0.5, 0.5, 0.5) });
+      
+      // Disclaimer (on all pages except cover)
+      if (pageNumber > 1) {
+        drawText(page, 'The information contained in this report has been documented by a Qualified Professional.', 
+          margin, footerY - 10, { size: 7, color: rgb(0.4, 0.4, 0.4) });
+        drawText(page, 'This report is effective for one year from the date of inspection.', 
+          margin, footerY - 18, { size: 7, color: rgb(0.4, 0.4, 0.4) });
+      }
+      
+      // Page number
+      drawText(page, `Page ${pageNumber} of ${totalPages}`, 
+        pageWidth - margin - 70, footerY, { size: 8, color: rgb(0.5, 0.5, 0.5) });
+    };
+
     const drawHighlightedTableRow = (page: any, x: number, y: number, width: number, height: number, result: string) => {
       const resultLower = result.toLowerCase();
       let bgColor = rgb(1, 1, 1);
@@ -161,55 +201,92 @@ serve(async (req) => {
       page.drawRectangle({ x, y, width, height, borderColor: rgb(0.7, 0.7, 0.7), borderWidth: 0.5 });
     };
 
-    // Cover Page
+    // === COVER PAGE ===
     let page = addPage();
-    let yPos = pageHeight - 80;
+    let yPos = pageHeight - 60;
 
-    drawText(page, 'INSPECTION REPORT', margin, yPos, { size: 20, bold: true });
-    yPos -= 25;
-    drawText(page, 'Challenge Course, Adventure Park & Canopy/Zip Line Tour', margin, yPos, { size: 11 });
-    yPos -= 40;
+    // ACCT Header
+    yPos = drawACCTHeader(page, yPos);
+    yPos -= 5;
 
-    // Organization table
-    page.drawRectangle({ x: margin, y: yPos - 55, width: tableWidth, height: 55, borderColor: rgb(0, 0, 0), borderWidth: 1 });
-    page.drawLine({ start: { x: margin, y: yPos - 27.5 }, end: { x: margin + tableWidth, y: yPos - 27.5 }, thickness: 1, color: rgb(0, 0, 0) });
-    page.drawLine({ start: { x: margin + 120, y: yPos }, end: { x: margin + 120, y: yPos - 55 }, thickness: 1, color: rgb(0, 0, 0) });
-    
-    drawText(page, 'Organization:', margin + 5, yPos - 17, { size: 10, bold: true });
-    drawText(page, inspection.organization, margin + 125, yPos - 17, { size: 10 });
-    drawText(page, 'Location:', margin + 5, yPos - 44, { size: 10, bold: true });
-    drawText(page, inspection.location, margin + 125, yPos - 44, { size: 10 });
-    yPos -= 65;
+    // Title
+    drawText(page, 'Professional Inspection for Aerial Adventure Programs', margin, yPos, { size: 14, bold: true });
+    yPos -= 30;
 
+    // Organization Table (3 columns)
+    const orgTableHeight = 50;
+    page.drawRectangle({ x: margin, y: yPos - orgTableHeight, width: tableWidth, height: orgTableHeight, borderColor: rgb(0, 0, 0), borderWidth: 1 });
+
+    // Vertical dividers for 3 columns
+    page.drawLine({ start: { x: margin + tableWidth/3, y: yPos }, end: { x: margin + tableWidth/3, y: yPos - orgTableHeight }, thickness: 1 });
+    page.drawLine({ start: { x: margin + 2*tableWidth/3, y: yPos }, end: { x: margin + 2*tableWidth/3, y: yPos - orgTableHeight }, thickness: 1 });
+
+    // Horizontal divider (header row)
+    page.drawLine({ start: { x: margin, y: yPos - 22 }, end: { x: margin + tableWidth, y: yPos - 22 }, thickness: 1 });
+
+    // Column 1: Organization
+    drawText(page, 'Organization:', margin + 5, yPos - 14, { size: 9, bold: true });
+    drawText(page, inspection.organization || 'N/A', margin + 5, yPos - 38, { size: 9 });
+
+    // Column 2: Location
+    drawText(page, 'Location:', margin + tableWidth/3 + 5, yPos - 14, { size: 9, bold: true });
+    drawText(page, inspection.location || 'N/A', margin + tableWidth/3 + 5, yPos - 38, { size: 9 });
+
+    // Column 3: Onsite Contact
+    drawText(page, 'Onsite Contact:', margin + 2*tableWidth/3 + 5, yPos - 14, { size: 9, bold: true });
+    drawText(page, inspection.onsite_contact || 'N/A', margin + 2*tableWidth/3 + 5, yPos - 38, { size: 9 });
+
+    yPos -= orgTableHeight + 15;
+
+    // Inspector/Date Table (2 columns, 3 rows)
+    const inspTableHeight = 75;
     const inspectorName = profile ? `${profile.first_name || ''} ${profile.last_name || ''}`.trim() : 'Unknown';
-    
-    page.drawRectangle({ x: margin, y: yPos - 82.5, width: tableWidth, height: 82.5, borderColor: rgb(0, 0, 0), borderWidth: 1 });
-    page.drawLine({ start: { x: margin, y: yPos - 27.5 }, end: { x: margin + tableWidth, y: yPos - 27.5 }, thickness: 1, color: rgb(0, 0, 0) });
-    page.drawLine({ start: { x: margin, y: yPos - 55 }, end: { x: margin + tableWidth, y: yPos - 55 }, thickness: 1, color: rgb(0, 0, 0) });
-    page.drawLine({ start: { x: margin + 120, y: yPos }, end: { x: margin + 120, y: yPos - 82.5 }, thickness: 1, color: rgb(0, 0, 0) });
-    
-    drawText(page, 'Inspector:', margin + 5, yPos - 17, { size: 10, bold: true });
-    drawText(page, inspectorName, margin + 125, yPos - 17, { size: 10 });
-    drawText(page, 'Inspection Date:', margin + 5, yPos - 44, { size: 10, bold: true });
-    drawText(page, formatDate(inspection.inspection_date), margin + 125, yPos - 44, { size: 10 });
-    drawText(page, 'Onsite Contact:', margin + 5, yPos - 71, { size: 10, bold: true });
-    drawText(page, inspection.onsite_contact || 'N/A', margin + 125, yPos - 71, { size: 10 });
-    yPos -= 100;
+
+    page.drawRectangle({ x: margin, y: yPos - inspTableHeight, width: tableWidth, height: inspTableHeight, borderColor: rgb(0, 0, 0), borderWidth: 1 });
+
+    // Vertical divider (2 columns)
+    page.drawLine({ start: { x: margin + tableWidth/2, y: yPos }, end: { x: margin + tableWidth/2, y: yPos - inspTableHeight }, thickness: 1 });
+
+    // Horizontal dividers (3 rows)
+    page.drawLine({ start: { x: margin, y: yPos - 25 }, end: { x: margin + tableWidth, y: yPos - 25 }, thickness: 1 });
+    page.drawLine({ start: { x: margin, y: yPos - 50 }, end: { x: margin + tableWidth, y: yPos - 50 }, thickness: 1 });
+
+    // Row 1
+    drawText(page, 'Inspected by:', margin + 5, yPos - 16, { size: 9, bold: true });
+    drawText(page, inspectorName, margin + 5, yPos - 23, { size: 9 });
+    drawText(page, 'Date of Inspection:', margin + tableWidth/2 + 5, yPos - 16, { size: 9, bold: true });
+    drawText(page, formatDate(inspection.inspection_date), margin + tableWidth/2 + 5, yPos - 23, { size: 9 });
+
+    // Row 2
+    drawText(page, 'Previously Inspected by:', margin + 5, yPos - 41, { size: 9, bold: true });
+    drawText(page, inspection.previous_inspector || 'N/A', margin + 5, yPos - 48, { size: 9 });
+    drawText(page, 'Prev. Inspection Date:', margin + tableWidth/2 + 5, yPos - 41, { size: 9, bold: true });
+    drawText(page, formatDate(inspection.previous_inspection_date), margin + tableWidth/2 + 5, yPos - 48, { size: 9 });
+
+    yPos -= inspTableHeight + 20;
 
     // Known Course History
-    drawText(page, 'Known Course History:', margin, yPos, { size: 11, bold: true });
+    drawText(page, 'Known Course History', margin, yPos, { size: 11, bold: true });
     yPos -= 15;
-    yPos = drawText(page, inspection.course_history || 'No prior history on file', margin, yPos, { size: 9, maxWidth: tableWidth });
-    yPos -= 25;
+    yPos = drawText(page, inspection.course_history || 'No prior history documented.', margin, yPos, { size: 9, maxWidth: tableWidth });
+    yPos -= 20;
+
+    // Full Disclaimer Paragraph
+    yPos = drawText(page, 'This report covers the condition of the aerial adventure site for the date of inspection reflected on this form. The inspection provided is strictly an evaluation of the structural condition of the course elements and equipment. The inspection does not include training on how to operate the equipment, nor how to operate the course. The inspection only verifies the existence of written local operating procedures (LOP), an emergency action plan (EAP), and training documentation. The inspection does not perform a review or evaluate the LOP, EAP and training documentation. Potential problems can occur afterwards due to vandalism, improper use, weather, etc. Rope Works Inc. is not responsible for modifications or repairs made to the challenge course by anyone other than a Rope Works Inc. employee. We recommend you conduct your own periodic internal monitoring at a minimum on a quarterly basis. At a minimum an annual professional inspection is required by a qualified professional to be in compliance with the Association for Challenge Course Technology ANSI/ACCT current published standards.', margin, yPos, { size: 7, maxWidth: tableWidth });
+    yPos -= 20;
 
     // Reminders and Requirements
-    drawText(page, 'Reminders and Requirements:', margin, yPos, { size: 11, bold: true });
+    drawText(page, 'Reminders and Requirements', margin, yPos, { size: 11, bold: true });
     yPos -= 15;
-    drawText(page, '• All operating systems, ziplines, and equipment have been evaluated according to ACCT standards', margin + 10, yPos, { size: 9 });
-    yPos -= 15;
-    drawText(page, '• This report includes recommendations for immediate action and ongoing maintenance', margin + 10, yPos, { size: 9 });
-    yPos -= 15;
-    drawText(page, '• Next inspection should occur within 12 months from inspection date', margin + 10, yPos, { size: 9 });
+    drawText(page, '• Employers are required to issue staff appropriate fall protection for the duties to be performed.', margin, yPos, { size: 8 });
+    yPos -= 12;
+    drawText(page, '• A Periodic Internal Monitoring of the aerial activities on your site shall be conducted by qualified personnel.', margin, yPos, { size: 8 });
+    yPos -= 12;
+    drawText(page, '• Proper identification, tracking, and documentation of ALL equipment used for operations shall be kept and available at your annual professional inspection.', margin, yPos, { size: 8 });
+    yPos -= 12;
+    drawText(page, '• Proper staff training should be provided for the operation of all aerial activities and equipment on your site.', margin, yPos, { size: 8 });
+    yPos -= 12;
+    drawText(page, '• Operational Reviews shall be conducted once every five years.', margin, yPos, { size: 8 });
 
     // Definitions Page (EXPANDED)
     page = addPage();
@@ -224,10 +301,12 @@ serve(async (req) => {
     yPos -= 15;
     drawText(page, 'N/A: Not applicable or not inspected.', margin, yPos, { size: 10 });
 
-    // Systems Page
+    // === OPERATING SYSTEMS PAGE ===
     page = addPage();
-    yPos = pageHeight - 80;
-    drawText(page, 'Systems Inspection', margin, yPos, { size: 16, bold: true });
+    yPos = pageHeight - 60;
+    yPos = drawACCTHeader(page, yPos);
+
+    drawText(page, 'Operating Systems', margin, yPos, { size: 14, bold: true });
     yPos -= 20;
 
     const systemTableHeader = ['Operating System | Name', 'Result', 'Comments or Required Changes'];
@@ -253,166 +332,315 @@ serve(async (req) => {
       yPos -= rowHeight - 20;
     });
 
-    // Ziplines Page
+    // === ZIPLINES PAGE ===
     page = addPage();
-    yPos = pageHeight - 80;
-    drawText(page, 'Ziplines Inspection', margin, yPos, { size: 16, bold: true });
+    yPos = pageHeight - 60;
+    yPos = drawACCTHeader(page, yPos);
+
+    drawText(page, 'SYSTEMS - ZIPLINES', margin, yPos, { size: 14, bold: true });
+    yPos -= 22;
+
+    // Cable Type KEY (matching template exactly)
+    drawText(page, 'Cable Type KEY: GAC = Galvanized Aircraft Cable, SS = Super Swaged', margin, yPos, { size: 8 });
+    yPos -= 11;
+    drawText(page, 'Braking System KEY: ZS = Zip Stop, FB = Friction Break, SB = Spring Bank, G = Gravity', margin, yPos, { size: 8 });
+    yPos -= 11;
+    drawText(page, 'EAD System KEY: ZS = Zip Stop, AP = Auto Pulley', margin, yPos, { size: 8 });
+    yPos -= 22;
+
+    // Filter populated ziplines
+    const populatedZiplines = ziplines.filter((z: any) => z.zipline_name && z.result);
+
+    if (populatedZiplines.length === 0) {
+      drawText(page, 'No ziplines inspected', margin, yPos, { size: 10, color: rgb(0.5, 0.5, 0.5) });
+    } else {
+      populatedZiplines.forEach((zipline: any) => {
+        // TWO-ROW TABLE FORMAT
+        const rowHeight = 70;
+        
+        // Draw highlighting for entire block
+        drawHighlightedTableRow(page, margin, yPos - rowHeight, tableWidth, rowHeight, zipline.result);
+        
+        // === ROW 1: Main Info ===
+        const row1Y = yPos - 15;
+        const colWidths = [110, 85, 95, 85, 75, tableWidth - 450];
+        const colX = [
+          margin + 5, 
+          margin + 115, 
+          margin + 200, 
+          margin + 295, 
+          margin + 380, 
+          margin + 455
+        ];
+        
+        // Row 1 headers (bold)
+        drawText(page, 'Zip Cable Line', colX[0], row1Y, { size: 8, bold: true });
+        drawText(page, 'Cable Length (feet)', colX[1], row1Y, { size: 8, bold: true });
+        drawText(page, 'Unload Tension (lbf)', colX[2], row1Y, { size: 8, bold: true });
+        drawText(page, 'Load Tension (lbf)', colX[3], row1Y, { size: 8, bold: true });
+        drawText(page, 'Result:', colX[4], row1Y, { size: 8, bold: true });
+        drawText(page, 'Comments:', colX[5], row1Y, { size: 8, bold: true });
+        
+        // Row 1 data
+        drawText(page, zipline.zipline_name || '', colX[0], row1Y - 12, { size: 9 });
+        drawText(page, zipline.cable_length?.toString() || '', colX[1], row1Y - 12, { size: 9 });
+        drawText(page, zipline.unload_tension?.toString() || '', colX[2], row1Y - 12, { size: 9 });
+        drawText(page, zipline.load_tension?.toString() || '', colX[3], row1Y - 12, { size: 9 });
+        drawText(page, zipline.result || '', colX[4], row1Y - 12, { size: 9 });
+        drawText(page, zipline.comments || '', colX[5], row1Y - 12, { size: 8, maxWidth: colWidths[5] - 10 });
+        
+        // === ROW 2: Cable/Braking/EAD ===
+        const row2Y = yPos - 45;
+        
+        drawText(page, 'Cable', colX[0], row2Y, { size: 8, bold: true });
+        drawText(page, 'Braking System', colX[2], row2Y, { size: 8, bold: true });
+        drawText(page, 'EAD System', colX[3] + 20, row2Y, { size: 8, bold: true });
+        
+        drawText(page, zipline.cable_type || 'N/A', colX[0], row2Y - 12, { size: 9 });
+        drawText(page, zipline.braking_system || 'N/A', colX[2], row2Y - 12, { size: 9 });
+        drawText(page, zipline.ead_system || 'N/A', colX[3] + 20, row2Y - 12, { size: 9 });
+        
+        // Horizontal divider between rows
+        page.drawLine({ 
+          start: { x: margin, y: yPos - 35 }, 
+          end: { x: margin + tableWidth, y: yPos - 35 }, 
+          thickness: 0.5, 
+          color: rgb(0.7, 0.7, 0.7) 
+        });
+        
+        // Border around entire two-row block
+        page.drawRectangle({ 
+          x: margin, 
+          y: yPos - rowHeight, 
+          width: tableWidth, 
+          height: rowHeight, 
+          borderColor: rgb(0.7, 0.7, 0.7), 
+          borderWidth: 1 
+        });
+        
+        yPos -= rowHeight + 10;
+        
+        // Check if new page needed
+        if (yPos < 150) {
+          page = addPage();
+          yPos = pageHeight - 60;
+          yPos = drawACCTHeader(page, yPos);
+        }
+      });
+    }
+
+    // === EQUIPMENT PAGES (grouped by category) ===
+    // Filter and group by category
+    const populatedEquipment = equipment.filter((e: any) => e.equipment_type && e.result);
+    const equipmentByCategory: { [key: string]: any[] } = {};
+
+    populatedEquipment.forEach((eq: any) => {
+      const category = eq.equipment_category || 'other';
+      if (!equipmentByCategory[category]) {
+        equipmentByCategory[category] = [];
+      }
+      equipmentByCategory[category].push(eq);
+    });
+
+    // Category display names
+    const categoryNames: { [key: string]: string } = {
+      'harness': 'EQUIPMENT - HARNESS',
+      'helmets': 'EQUIPMENT - HELMETS',
+      'trolleys': 'EQUIPMENT - TROLLEYS AND PULLEYS',
+      'carabiners': 'EQUIPMENT - CONNECTORS (CARABINERS & QUICKLINKS)',
+      'rope': 'EQUIPMENT - KERNMANTLE ROPE',
+      'belay': 'EQUIPMENT - BELAY/DESCENT DEVICE',
+      'lanyard': 'EQUIPMENT - LANYARD',
+      'other': 'EQUIPMENT - OTHER'
+    };
+
+    let firstEquipmentPage = true;
+
+    Object.keys(equipmentByCategory).forEach(category => {
+      // New page for each category (or if space runs out)
+      if (!firstEquipmentPage || yPos < 300) {
+        page = addPage();
+        yPos = pageHeight - 60;
+        yPos = drawACCTHeader(page, yPos);
+      }
+      firstEquipmentPage = false;
+      
+      // Category header
+      drawText(page, categoryNames[category] || category.toUpperCase(), margin, yPos, { size: 12, bold: true });
+      yPos -= 18;
+      
+      // Warning for failed equipment in this category
+      const hasFailed = equipmentByCategory[category].some((e: any) => e.result.toLowerCase().includes('fail'));
+      if (hasFailed) {
+        drawText(page, '⚠ WARNING: Failed equipment must be retired or repaired before use', margin, yPos, { size: 9, bold: true, color: rgb(0.94, 0.27, 0.27) });
+        yPos -= 18;
+      }
+      
+      // Table header
+      const eqColWidths = [150, 100, 70, 80, tableWidth - 400];
+      const eqColX = [margin + 5, margin + 155, margin + 255, margin + 325, margin + 405];
+      
+      page.drawRectangle({ x: margin, y: yPos - 20, width: tableWidth, height: 20, color: rgb(0.8, 0.8, 0.8) });
+      drawText(page, 'Type', eqColX[0], yPos - 14, { size: 9, bold: true });
+      drawText(page, 'Production Year', eqColX[1], yPos - 14, { size: 9, bold: true });
+      drawText(page, 'Quantity', eqColX[2], yPos - 14, { size: 9, bold: true });
+      drawText(page, 'Result:', eqColX[3], yPos - 14, { size: 9, bold: true });
+      drawText(page, 'Comments and/or Required Changes', eqColX[4], yPos - 14, { size: 8, bold: true });
+      yPos -= 20;
+      
+      // Table rows
+      equipmentByCategory[category].forEach((eq: any) => {
+        const rowHeight = 40;
+        
+        drawHighlightedTableRow(page, margin, yPos - rowHeight, tableWidth, rowHeight, eq.result);
+        
+        drawText(page, eq.equipment_type || '', eqColX[0], yPos - 15, { size: 9, maxWidth: eqColWidths[0] - 10 });
+        drawText(page, eq.production_year?.toString() || 'N/A', eqColX[1], yPos - 15, { size: 9 });
+        drawText(page, eq.quantity?.toString() || 'N/A', eqColX[2], yPos - 15, { size: 9 });
+        drawText(page, eq.result || '', eqColX[3], yPos - 15, { size: 9 });
+        drawText(page, eq.comments || '', eqColX[4], yPos - 15, { size: 8, maxWidth: eqColWidths[4] - 10 });
+        
+        yPos -= rowHeight;
+        
+        // New page if needed
+        if (yPos < 150) {
+          page = addPage();
+          yPos = pageHeight - 60;
+          yPos = drawACCTHeader(page, yPos);
+        }
+      });
+      
+      yPos -= 20; // Space between categories
+    });
+
+    // === STANDARDS & DOCUMENTATION PAGE ===
+    page = addPage();
+    yPos = pageHeight - 60;
+    yPos = drawACCTHeader(page, yPos);
+
+    drawText(page, 'Standards & Documentation', margin, yPos, { size: 14, bold: true });
     yPos -= 20;
 
-    // Zipline KEYs
-    drawText(page, 'Cable Type KEY: G=Galvanized | S=Stainless Steel', margin, yPos, { size: 8 });
-    yPos -= 15;
-    drawText(page, 'Braking System KEY: BS=Bungee Spring | CM=Compression | FR=Friction | HS=Hydraulic Spring', margin, yPos, { size: 8 });
-    yPos -= 15;
-    drawText(page, 'EAD System KEY: SA=Self Arresting | ZP=Zip Pole | BL=Belay Line | NO=None', margin, yPos, { size: 8 });
+    drawText(page, 'Documentation Verification per ACCT Standards:', margin, yPos, { size: 10, bold: true });
+    yPos -= 18;
+
+    // Table header
+    const stdColWidths = [320, 100, tableWidth - 420];
+    const stdColX = [margin + 5, margin + 325, margin + 425];
+
+    page.drawRectangle({ x: margin, y: yPos - 20, width: tableWidth, height: 20, color: rgb(0.8, 0.8, 0.8) });
+    drawText(page, 'Standard/Requirement', stdColX[0], yPos - 14, { size: 9, bold: true });
+    drawText(page, 'Documentation Present', stdColX[1], yPos - 14, { size: 9, bold: true });
+    drawText(page, 'Comments', stdColX[2], yPos - 14, { size: 9, bold: true });
+    yPos -= 20;
+
+    // Standards rows with YES/NO checkboxes
+    standards.forEach((std: any) => {
+      const rowHeight = 35;
+      
+      // Draw border
+      page.drawRectangle({ 
+        x: margin, 
+        y: yPos - rowHeight, 
+        width: tableWidth, 
+        height: rowHeight, 
+        borderColor: rgb(0.7, 0.7, 0.7), 
+        borderWidth: 0.5 
+      });
+      
+      // Standard name
+      drawText(page, std.standard_name, stdColX[0], yPos - 18, { size: 9, maxWidth: stdColWidths[0] - 10 });
+      
+      // YES/NO with checkbox symbols
+      const docStatus = std.has_documentation ? '☑ YES  ☐ NO' : '☐ YES  ☑ NO';
+      drawText(page, docStatus, stdColX[1], yPos - 18, { size: 9, bold: true });
+      
+      // Comments
+      drawText(page, std.comments || '', stdColX[2], yPos - 18, { size: 8, maxWidth: stdColWidths[2] - 10 });
+      
+      yPos -= rowHeight;
+      
+      // New page if needed
+      if (yPos < 150) {
+        page = addPage();
+        yPos = pageHeight - 60;
+        yPos = drawACCTHeader(page, yPos);
+      }
+    });
+
+    // === SUMMARY PAGE ===
+    page = addPage();
+    yPos = pageHeight - 60;
+    yPos = drawACCTHeader(page, yPos);
+
+    drawText(page, 'Inspection Summary', margin, yPos, { size: 14, bold: true });
     yPos -= 25;
-
-    const ziplineTableHeader = ['Zipline Name', 'Cable', 'Braking', 'EAD', 'Result', 'Comments'];
-    const ziplineColumnWidths = [100, 50, 50, 50, 60, tableWidth - 310];
-    const ziplineColumnX = [margin, margin + 100, margin + 150, margin + 200, margin + 250, margin + 310];
-
-    // Draw table header
-    page.drawRectangle({ x: margin, y: yPos - 20, width: tableWidth, height: 20, color: rgb(0.8, 0.8, 0.8) });
-    ziplineTableHeader.forEach((header, i) => {
-      drawText(page, header, ziplineColumnX[i] + 5, yPos - 14, { size: 10, bold: true });
-    });
-    yPos -= 20;
-
-    // Draw table rows (filtered for populated rows)
-    ziplines.filter(z => z.zipline_name && z.result).forEach(zipline => {
-      const rowHeight = 60;
-      drawHighlightedTableRow(page, margin, yPos - rowHeight, tableWidth, rowHeight, zipline.result);
-
-      drawText(page, zipline.zipline_name, margin + 5, yPos - 17, { size: 9, maxWidth: ziplineColumnWidths[0] - 10 });
-      drawText(page, zipline.cable_type || 'N/A', margin + 105, yPos - 17, { size: 9, maxWidth: ziplineColumnWidths[1] - 10 });
-      drawText(page, zipline.braking_system || 'N/A', margin + 155, yPos - 17, { size: 9, maxWidth: ziplineColumnWidths[2] - 10 });
-      drawText(page, zipline.ead_system || 'N/A', margin + 205, yPos - 17, { size: 9, maxWidth: ziplineColumnWidths[3] - 10 });
-      drawText(page, zipline.result, margin + 255, yPos - 17, { size: 9, maxWidth: ziplineColumnWidths[4] - 10 });
-      yPos = drawText(page, zipline.comments || 'N/A', margin + 315, yPos - 17, { size: 9, maxWidth: ziplineColumnWidths[5] - 10 });
-
-      yPos -= rowHeight - 20;
-    });
-
-    // Equipment Page
-    page = addPage();
-    yPos = pageHeight - 80;
-    drawText(page, 'Equipment Inspection', margin, yPos, { size: 16, bold: true });
-    yPos -= 20;
-    
-    // Equipment Warning
-    drawText(page, '⚠ WARNING: Failed equipment must be retired or repaired before use', margin, yPos, { size: 10, bold: true, color: rgb(0.94, 0.27, 0.27) });
-    yPos -= 25;
-
-    const equipmentTableHeader = ['Equipment Type', 'Production Year', 'Quantity', 'Result', 'Comments'];
-    const equipmentColumnWidths = [150, 80, 60, 80, tableWidth - 370];
-    const equipmentColumnX = [margin, margin + 150, margin + 230, margin + 290, margin + 370];
-
-    // Draw table header
-    page.drawRectangle({ x: margin, y: yPos - 20, width: tableWidth, height: 20, color: rgb(0.8, 0.8, 0.8) });
-    equipmentTableHeader.forEach((header, i) => {
-      drawText(page, header, equipmentColumnX[i] + 5, yPos - 14, { size: 10, bold: true });
-    });
-    yPos -= 20;
-
-    // Draw table rows (filtered for populated rows)
-    equipment.filter(e => e.equipment_type && e.result).forEach(equip => {
-      const rowHeight = 60;
-      drawHighlightedTableRow(page, margin, yPos - rowHeight, tableWidth, rowHeight, equip.result);
-
-      drawText(page, equip.equipment_type, margin + 5, yPos - 17, { size: 9, maxWidth: equipmentColumnWidths[0] - 10 });
-      drawText(page, equip.production_year?.toString() || 'N/A', margin + 155, yPos - 17, { size: 9, maxWidth: equipmentColumnWidths[1] - 10 });
-      drawText(page, equip.quantity?.toString() || 'N/A', margin + 235, yPos - 17, { size: 9, maxWidth: equipmentColumnWidths[2] - 10 });
-      drawText(page, equip.result, margin + 295, yPos - 17, { size: 9, maxWidth: equipmentColumnWidths[3] - 10 });
-      yPos = drawText(page, equip.comments || 'N/A', margin + 375, yPos - 17, { size: 9, maxWidth: equipmentColumnWidths[4] - 10 });
-
-      yPos -= rowHeight - 20;
-    });
-
-    // Standards Page
-    page = addPage();
-    yPos = pageHeight - 80;
-    drawText(page, 'Standards Inspection', margin, yPos, { size: 16, bold: true });
-    yPos -= 20;
-
-    const standardTableHeader = ['Standard', 'Result', 'Notes'];
-    const standardColumnWidths = [200, 80, tableWidth - 200 - 80];
-    const standardColumnX = [margin, margin + 200, margin + 200 + 80];
-
-    // Draw table header
-    page.drawRectangle({ x: margin, y: yPos - 20, width: tableWidth, height: 20, color: rgb(0.8, 0.8, 0.8) });
-    standardTableHeader.forEach((header, i) => {
-      drawText(page, header, standardColumnX[i] + 5, yPos - 14, { size: 10, bold: true });
-    });
-    yPos -= 20;
-
-    // Draw table rows
-    standards.forEach(standard => {
-      const rowHeight = 60;
-      const hasDoc = standard.has_documentation ? 'Pass' : 'Fail';
-      drawHighlightedTableRow(page, margin, yPos - rowHeight, tableWidth, rowHeight, hasDoc);
-
-      drawText(page, standard.standard_name, margin + 5, yPos - 17, { size: 10, maxWidth: standardColumnWidths[0] - 10 });
-      drawText(page, hasDoc, margin + 205, yPos - 17, { size: 10, maxWidth: standardColumnWidths[1] - 10 });
-      yPos = drawText(page, standard.comments || 'N/A', margin + 285, yPos - 17, { size: 10, maxWidth: standardColumnWidths[2] - 10 });
-
-      yPos -= rowHeight - 20;
-    });
-
-    // Summary Page
-    page = addPage();
-    yPos = pageHeight - 80;
-    drawText(page, 'Summary', margin, yPos, { size: 16, bold: true });
-    yPos -= 20;
 
     if (summary) {
       // Repairs & Alterations
-      drawText(page, 'Repairs & Alterations Performed:', margin, yPos, { size: 12, bold: true });
-      yPos -= 15;
-      yPos = drawText(page, summary.repairs_performed || 'None reported', margin, yPos, { size: 10, maxWidth: tableWidth });
+      drawText(page, 'Repairs, Alterations performed:', margin, yPos, { size: 11, bold: true });
+      yPos -= 13;
+      yPos = drawText(page, summary.repairs_performed || 'None documented', margin, yPos, { size: 9, maxWidth: tableWidth });
+      yPos -= 20;
+      
+      // Comments
+      drawText(page, 'Comments:', margin, yPos, { size: 11, bold: true });
+      yPos -= 13;
+      yPos = drawText(page, summary.critical_actions || 'None', margin, yPos, { size: 9, maxWidth: tableWidth });
       yPos -= 25;
-
-      // Critical Actions - RED BORDERED BOX
-      const boxHeight = 80;
+      
+      // CRITICAL ACTIONS - RED BORDERED BOX
+      const criticalBoxHeight = 75;
       page.drawRectangle({
-        x: margin - 5,
-        y: yPos - boxHeight,
-        width: tableWidth + 10,
-        height: boxHeight,
+        x: margin - 3,
+        y: yPos - criticalBoxHeight,
+        width: tableWidth + 6,
+        height: criticalBoxHeight,
         borderColor: rgb(0.94, 0.27, 0.27),
-        borderWidth: 2,
+        borderWidth: 3,
       });
-      drawText(page, '⚠ CRITICAL ACTIONS REQUIRED', margin, yPos - 15, { size: 11, bold: true, color: rgb(0.94, 0.27, 0.27) });
-      yPos = drawText(page, summary.critical_actions || 'None identified', margin, yPos - 30, { size: 10, maxWidth: tableWidth - 10 });
-      yPos -= boxHeight - 30 + 20;
-
+      drawText(page, '⚠ CRITICAL ACTIONS', margin + 5, yPos - 18, { size: 11, bold: true, color: rgb(0.94, 0.27, 0.27) });
+      yPos = drawText(page, summary.critical_actions || 'No critical actions required at this time.', margin + 5, yPos - 32, { size: 9, maxWidth: tableWidth - 10 });
+      yPos -= criticalBoxHeight - 32 + 20;
+      
       // Future Considerations
-      drawText(page, 'Future Considerations:', margin, yPos, { size: 12, bold: true });
-      yPos -= 15;
-      yPos = drawText(page, summary.future_considerations || 'None noted', margin, yPos, { size: 10, maxWidth: tableWidth });
-      yPos -= 25;
-
+      drawText(page, 'Future Considerations:', margin, yPos, { size: 11, bold: true });
+      yPos -= 13;
+      yPos = drawText(page, summary.future_considerations || 'None noted', margin, yPos, { size: 9, maxWidth: tableWidth });
+      yPos -= 20;
+      
       // Next Inspection Date
-      drawText(page, 'Next Inspection Date:', margin, yPos, { size: 12, bold: true });
-      yPos -= 15;
-      drawText(page, formatDate(summary.next_inspection_date) + ' (within 12 months)', margin, yPos, { size: 10 });
+      drawText(page, 'Next inspection date:', margin, yPos, { size: 11, bold: true });
+      yPos -= 13;
+      const nextInspDate = summary.next_inspection_date 
+        ? formatDate(summary.next_inspection_date) + ' (within 12 months of last inspection)'
+        : 'To be determined (within 12 months of ' + formatDate(inspection.inspection_date) + ')';
+      drawText(page, nextInspDate, margin, yPos, { size: 9 });
+      yPos -= 25;
+      
+      // General Rope Works Inspection Retirement Guidelines
+      drawText(page, 'General Rope Works Inspection Retirement Guidelines:', margin, yPos, { size: 10, bold: true });
+      yPos -= 13;
+      drawText(page, '• Rope: 5-7 years from production date (heavy use), 7-10 years (moderate use)', margin + 10, yPos, { size: 8 });
+      yPos -= 11;
+      drawText(page, '• Webbing/Slings: 3-5 years from production date', margin + 10, yPos, { size: 8 });
+      yPos -= 11;
+      drawText(page, '• Carabiners/Hardware: 10+ years with proper inspection and no damage', margin + 10, yPos, { size: 8 });
+      yPos -= 11;
+      drawText(page, '• Helmets: Follow manufacturer guidelines (typically 5-10 years)', margin + 10, yPos, { size: 8 });
+      yPos -= 11;
+      drawText(page, '• Harnesses: 5-7 years from production date with regular use', margin + 10, yPos, { size: 8 });
+      yPos -= 11;
+      drawText(page, '• Always retire equipment that shows signs of damage, excessive wear, or has been involved in a fall', margin + 10, yPos, { size: 8, bold: true });
+      
     } else {
-      drawText(page, 'No summary available.', margin, yPos, { size: 10 });
+      drawText(page, 'No summary information available.', margin, yPos, { size: 10 });
     }
     
-    // Add footer to all pages
-    const pages = pdfDoc.getPages();
-    pages.forEach((p, idx) => {
-      p.drawText('Rope Works Inc., PO Box 1074, Dripping Springs, TX 78620', {
-        x: margin, y: 30, size: 8, font: helveticaFont, color: rgb(0.5, 0.5, 0.5)
-      });
-      p.drawText(`Page ${idx + 1} of ${pages.length}`, {
-        x: pageWidth - margin - 60, y: 30, size: 8, font: helveticaFont, color: rgb(0.5, 0.5, 0.5)
-      });
-      if (idx > 0) {
-        p.drawText('The information contained in this report has been documented by a Qualified Professional', {
-          x: margin, y: 15, size: 7, font: helveticaFont, color: rgb(0.6, 0.6, 0.6)
-        });
-      }
+    // === ADD FOOTERS TO ALL PAGES ===
+    const allPages = pdfDoc.getPages();
+    allPages.forEach((p, idx) => {
+      drawPageFooter(p, idx + 1, allPages.length);
     });
     
     // Save and return PDF
