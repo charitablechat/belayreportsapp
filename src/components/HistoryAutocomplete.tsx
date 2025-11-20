@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Check, ChevronsUpDown } from "lucide-react";
+import { Check, ChevronsUpDown, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
@@ -94,6 +94,13 @@ export default function HistoryAutocomplete({
     }
   };
 
+  const handleDelete = (optionToDelete: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const updated = historyOptions.filter(opt => opt !== optionToDelete);
+    setHistoryOptions(updated);
+    localStorage.setItem(storageKey, JSON.stringify(updated));
+  };
+
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
@@ -135,14 +142,24 @@ export default function HistoryAutocomplete({
                       key={option}
                       value={option}
                       onSelect={() => handleSelect(option)}
+                      className="flex items-center justify-between group"
                     >
-                      <Check
-                        className={cn(
-                          "mr-2 h-4 w-4",
-                          value === option ? "opacity-100" : "opacity-0"
-                        )}
-                      />
-                      {option}
+                      <div className="flex items-center flex-1">
+                        <Check
+                          className={cn(
+                            "mr-2 h-4 w-4",
+                            value === option ? "opacity-100" : "opacity-0"
+                          )}
+                        />
+                        {option}
+                      </div>
+                      <button
+                        onClick={(e) => handleDelete(option, e)}
+                        className="opacity-0 group-hover:opacity-100 hover:text-destructive transition-opacity p-1"
+                        aria-label={`Delete ${option}`}
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
                     </CommandItem>
                   ))}
                 </ScrollArea>
