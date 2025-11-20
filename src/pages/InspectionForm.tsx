@@ -867,16 +867,35 @@ export default function InspectionForm() {
 
       if (error) throw error;
 
-      if (data?.pdfUrl) {
+      if (data?.pdfData) {
+        // Convert base64 to blob
+        const byteCharacters = atob(data.pdfData);
+        const byteNumbers = new Array(byteCharacters.length);
+        for (let i = 0; i < byteCharacters.length; i++) {
+          byteNumbers[i] = byteCharacters.charCodeAt(i);
+        }
+        const byteArray = new Uint8Array(byteNumbers);
+        const blob = new Blob([byteArray], { type: 'application/pdf' });
+        
+        // Create blob URL and open it
+        const blobUrl = URL.createObjectURL(blob);
+        window.open(blobUrl, '_blank');
+        
+        // Also offer download option
+        const downloadLink = document.createElement('a');
+        downloadLink.href = blobUrl;
+        downloadLink.download = data.fileName || 'inspection-report.pdf';
+        
         toast.success('PDF generated successfully!', {
           action: {
             label: 'Download',
-            onClick: () => window.open(data.pdfUrl, '_blank')
+            onClick: () => downloadLink.click()
           },
           duration: 10000,
         });
-        // Also auto-download
-        window.open(data.pdfUrl, '_blank');
+        
+        // Clean up blob URL after some time
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
       }
     } catch (error: any) {
       console.error('PDF generation error:', error);

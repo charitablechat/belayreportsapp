@@ -446,16 +446,14 @@ serve(async (req) => {
       console.error('Record error:', recordError);
     }
 
-    // Get signed URL
-    const { data: signedUrl } = await supabaseClient.storage
-      .from('inspection-reports')
-      .createSignedUrl(fileName, 900); // 15 minutes
-
     console.log('PDF generated successfully:', fileName);
+
+    // Convert PDF bytes to base64 for transfer
+    const base64Pdf = btoa(String.fromCharCode(...new Uint8Array(pdfBytes)));
 
     return new Response(
       JSON.stringify({ 
-        pdfUrl: signedUrl?.signedUrl,
+        pdfData: base64Pdf,
         fileName,
         fileSize: pdfBytes.length,
       }),
