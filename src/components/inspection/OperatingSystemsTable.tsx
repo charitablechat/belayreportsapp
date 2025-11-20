@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
+import { RichTextEditor } from "@/components/ui/rich-text-editor";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import ResultSelect from "@/components/ResultSelect";
@@ -80,11 +80,11 @@ export default function OperatingSystemsTable({ systems, onUpdate }: OperatingSy
                     />
                   </td>
                   <td className="border p-2">
-                    <Textarea
-                      value={system.comments || ""}
-                      onChange={(e) => updateSystem(index, "comments", e.target.value)}
+                    <RichTextEditor
+                      content={system.comments || ""}
+                      onChange={(value) => updateSystem(index, "comments", value)}
                       placeholder="Enter comments..."
-                      className="border-0 bg-transparent min-h-[60px]"
+                      className="border-0 bg-transparent"
                     />
                   </td>
                 </tr>
@@ -126,11 +126,10 @@ export default function OperatingSystemsTable({ systems, onUpdate }: OperatingSy
                 
                 <div>
                   <Label className="text-xs text-muted-foreground">Comments or Required Changes</Label>
-                  <Textarea
-                    value={system.comments || ""}
-                    onChange={(e) => updateSystem(index, "comments", e.target.value)}
+                  <RichTextEditor
+                    content={system.comments || ""}
+                    onChange={(value) => updateSystem(index, "comments", value)}
                     placeholder="Enter comments..."
-                    className="min-h-[80px]"
                   />
                 </div>
               </div>

@@ -61,6 +61,33 @@ All colors MUST be HSL.
     --sidebar-ring: 217.2 91.2% 59.8%;
   }
 
+  /* Rich Text Editor Styles */
+  .ProseMirror {
+    outline: none;
+  }
+
+  .ProseMirror p {
+    margin: 0.5em 0;
+  }
+
+  .ProseMirror ul {
+    margin: 0.5em 0;
+    padding-left: 1.5em;
+    list-style-type: disc;
+  }
+
+  .ProseMirror li {
+    margin: 0.25em 0;
+  }
+
+  .ProseMirror strong {
+    font-weight: 600;
+  }
+
+  .ProseMirror em {
+    font-style: italic;
+  }
+
   .dark {
     --background: 222 47% 11%;
     --foreground: 210 40% 98%;

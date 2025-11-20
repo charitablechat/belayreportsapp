@@ -1,9 +1,7 @@
-import { useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+import { RichTextEditor } from "@/components/ui/rich-text-editor";
 import { Input } from "@/components/ui/input";
-import { useAutoResizeTextarea } from "@/hooks/useAutoResizeTextarea";
 
 interface SummarySectionProps {
   summary: any;
@@ -11,14 +9,6 @@ interface SummarySectionProps {
 }
 
 export default function SummarySection({ summary, onUpdate }: SummarySectionProps) {
-  const repairsRef = useRef<HTMLTextAreaElement>(null);
-  const criticalActionsRef = useRef<HTMLTextAreaElement>(null);
-  const futureConsiderationsRef = useRef<HTMLTextAreaElement>(null);
-
-  useAutoResizeTextarea(repairsRef, summary.repairs_performed || "");
-  useAutoResizeTextarea(criticalActionsRef, summary.critical_actions || "");
-  useAutoResizeTextarea(futureConsiderationsRef, summary.future_considerations || "");
-
   const updateField = (field: string, value: any) => {
     onUpdate({ ...summary, [field]: value });
   };
@@ -33,12 +23,10 @@ export default function SummarySection({ summary, onUpdate }: SummarySectionProp
           <Label className="text-base font-semibold">
             Repairs, Alterations performed during inspection:
           </Label>
-          <Textarea
-            ref={repairsRef}
-            value={summary.repairs_performed || ""}
-            onChange={(e) => updateField("repairs_performed", e.target.value)}
+          <RichTextEditor
+            content={summary.repairs_performed || ""}
+            onChange={(value) => updateField("repairs_performed", value)}
             placeholder="Enter details of repairs and alterations performed..."
-            className="resize-none min-h-[100px]"
           />
         </div>
 
@@ -49,12 +37,10 @@ export default function SummarySection({ summary, onUpdate }: SummarySectionProp
           <p className="text-xs text-muted-foreground italic">
             *Critical Action = Required Changes Prior to use of Activity, Element, or Equipment
           </p>
-          <Textarea
-            ref={criticalActionsRef}
-            value={summary.critical_actions || ""}
-            onChange={(e) => updateField("critical_actions", e.target.value)}
+          <RichTextEditor
+            content={summary.critical_actions || ""}
+            onChange={(value) => updateField("critical_actions", value)}
             placeholder="Enter critical actions required..."
-            className="resize-none min-h-[100px]"
           />
         </div>
 
@@ -65,12 +51,10 @@ export default function SummarySection({ summary, onUpdate }: SummarySectionProp
           <p className="text-xs text-muted-foreground">
             (includes but not limited to age of course, recommended updates, suggestions, industry future)
           </p>
-          <Textarea
-            ref={futureConsiderationsRef}
-            value={summary.future_considerations || ""}
-            onChange={(e) => updateField("future_considerations", e.target.value)}
+          <RichTextEditor
+            content={summary.future_considerations || ""}
+            onChange={(value) => updateField("future_considerations", value)}
             placeholder="Enter future considerations..."
-            className="resize-none min-h-[100px]"
           />
         </div>
 

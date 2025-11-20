@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
+import { RichTextEditor } from "@/components/ui/rich-text-editor";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -187,11 +187,11 @@ export default function ZiplinesTable({ ziplines, onUpdate }: ZiplinesTableProps
                     />
                   </td>
                   <td className="border p-1">
-                    <Textarea
-                      value={zipline.comments || ""}
-                      onChange={(e) => updateZipline(index, "comments", e.target.value)}
+                    <RichTextEditor
+                      content={zipline.comments || ""}
+                      onChange={(value) => updateZipline(index, "comments", value)}
                       placeholder="Comments..."
-                      className="border-0 bg-transparent min-h-[60px] text-xs"
+                      className="border-0 bg-transparent"
                     />
                   </td>
                 </tr>
@@ -337,11 +337,10 @@ export default function ZiplinesTable({ ziplines, onUpdate }: ZiplinesTableProps
                 
                 <div>
                   <Label className="text-xs text-muted-foreground">Comments</Label>
-                  <Textarea
-                    value={zipline.comments || ""}
-                    onChange={(e) => updateZipline(index, "comments", e.target.value)}
+                  <RichTextEditor
+                    content={zipline.comments || ""}
+                    onChange={(value) => updateZipline(index, "comments", value)}
                     placeholder="Enter comments..."
-                    className="min-h-[80px]"
                   />
                 </div>
               </div>
