@@ -558,8 +558,8 @@ export default function Dashboard() {
                 >
                   {/* Watermark for completed inspections */}
                   {inspection.status === 'completed' && (
-                    <div className="absolute inset-0 z-10 pointer-events-none flex items-center justify-center">
-                      <div className="text-4xl md:text-5xl font-bold text-green-500/20 rotate-[-45deg] whitespace-nowrap select-none scale-90">
+                    <div className="absolute inset-0 z-10 pointer-events-none flex items-center justify-center p-4">
+                      <div className="text-2xl md:text-3xl font-bold text-green-500/20 rotate-[-45deg] whitespace-nowrap select-none scale-75">
                         COMPLETED
                       </div>
                     </div>
