@@ -448,8 +448,8 @@ serve(async (req) => {
 
     console.log('PDF generated successfully:', fileName);
 
-    // Convert PDF bytes to base64 for transfer
-    const base64Pdf = btoa(String.fromCharCode(...new Uint8Array(pdfBytes)));
+    // Convert PDF bytes to base64 using proper encoding
+    const base64Pdf = btoa(pdfBytes.reduce((data, byte) => data + String.fromCharCode(byte), ''));
 
     return new Response(
       JSON.stringify({ 
