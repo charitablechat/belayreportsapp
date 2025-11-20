@@ -472,7 +472,7 @@ serve(async (req) => {
       // Warning for failed equipment in this category
       const hasFailed = equipmentByCategory[category].some((e: any) => e.result.toLowerCase().includes('fail'));
       if (hasFailed) {
-        drawText(page, '⚠ WARNING: Failed equipment must be retired or repaired before use', margin, yPos, { size: 9, bold: true, color: rgb(0.94, 0.27, 0.27) });
+        drawText(page, '(!) WARNING: Failed equipment must be retired or repaired before use', margin, yPos, { size: 9, bold: true, color: rgb(0.94, 0.27, 0.27) });
         yPos -= 18;
       }
       
@@ -552,7 +552,7 @@ serve(async (req) => {
       drawText(page, std.standard_name, stdColX[0], yPos - 18, { size: 9, maxWidth: stdColWidths[0] - 10 });
       
       // YES/NO with checkbox symbols
-      const docStatus = std.has_documentation ? '☑ YES  ☐ NO' : '☐ YES  ☑ NO';
+      const docStatus = std.has_documentation ? '[X] YES  [ ] NO' : '[ ] YES  [X] NO';
       drawText(page, docStatus, stdColX[1], yPos - 18, { size: 9, bold: true });
       
       // Comments
@@ -599,7 +599,7 @@ serve(async (req) => {
         borderColor: rgb(0.94, 0.27, 0.27),
         borderWidth: 3,
       });
-      drawText(page, '⚠ CRITICAL ACTIONS', margin + 5, yPos - 18, { size: 11, bold: true, color: rgb(0.94, 0.27, 0.27) });
+      drawText(page, '(!) CRITICAL ACTIONS', margin + 5, yPos - 18, { size: 11, bold: true, color: rgb(0.94, 0.27, 0.27) });
       yPos = drawText(page, summary.critical_actions || 'No critical actions required at this time.', margin + 5, yPos - 32, { size: 9, maxWidth: tableWidth - 10 });
       yPos -= criticalBoxHeight - 32 + 20;
       
