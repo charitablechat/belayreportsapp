@@ -129,14 +129,51 @@ serve(async (req) => {
     const veryLightGray = rgb(0.9, 0.9, 0.9);
     const black = rgb(0, 0, 0);
 
+    // Convert HTML to plain text with formatting markers
+    const htmlToText = (html: string | null | undefined): string => {
+      if (!html) return '';
+      let text = String(html);
+      
+      // Handle bold tags
+      text = text.replace(/<strong>(.*?)<\/strong>/gi, '**$1**');
+      text = text.replace(/<b>(.*?)<\/b>/gi, '**$1**');
+      
+      // Handle italic tags
+      text = text.replace(/<em>(.*?)<\/em>/gi, '*$1*');
+      text = text.replace(/<i>(.*?)<\/i>/gi, '*$1*');
+      
+      // Handle bullet lists
+      text = text.replace(/<ul>/gi, '\n');
+      text = text.replace(/<\/ul>/gi, '\n');
+      text = text.replace(/<li>(.*?)<\/li>/gi, '• $1\n');
+      
+      // Handle paragraphs
+      text = text.replace(/<p>(.*?)<\/p>/gi, '$1\n');
+      text = text.replace(/<br\s*\/?>/gi, '\n');
+      
+      // Remove any remaining HTML tags
+      text = text.replace(/<[^>]*>/g, '');
+      
+      // Decode HTML entities
+      text = text.replace(/&nbsp;/g, ' ');
+      text = text.replace(/&amp;/g, '&');
+      text = text.replace(/&lt;/g, '<');
+      text = text.replace(/&gt;/g, '>');
+      text = text.replace(/&quot;/g, '"');
+      
+      return text;
+    };
+
     const sanitizeText = (text: string | null | undefined): string => {
       if (!text) return '';
+      
+      // First convert HTML to text with formatting markers
+      text = htmlToText(text);
+      
       return String(text)
-        .replace(/\r\n/g, ' ')  // Replace Windows newlines
-        .replace(/\n/g, ' ')     // Replace Unix newlines
-        .replace(/\r/g, ' ')     // Replace old Mac newlines
+        .replace(/\r\n/g, ' ')  // Replace Windows newlines (except from bullet lists)
         .replace(/○/g, '•')
-        .replace(/[^\x00-\xFF]/g, ' ')
+        .replace(/[^\x00-\xFF\n]/g, ' ')  // Keep newlines for bullet lists
         .replace(/\s+/g, ' ')    // Replace multiple spaces with single space
         .trim();
     };
@@ -147,7 +184,7 @@ serve(async (req) => {
       return date.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
     };
 
-    // Enhanced text drawing with proper wrapping and line height
+    // Enhanced text drawing with support for bold/italic and proper wrapping
     const drawWrappedText = (
       page: any,
       text: string,
@@ -163,48 +200,100 @@ serve(async (req) => {
       } = {}
     ): number => {
       const fontSize = options.size || 10;
-      const font = options.font || helveticaFont;
+      let font = options.font || helveticaFont;
       const color = options.color || black;
       const lineHeight = options.lineHeight || fontSize * 1.4;
       const align = options.align || 'left';
 
       text = sanitizeText(text);
-      const words = text.split(' ');
-      const lines: string[] = [];
-      let currentLine = '';
-
-      for (const word of words) {
-        const testLine = currentLine ? `${currentLine} ${word}` : word;
-        const testWidth = font.widthOfTextAtSize(testLine, fontSize);
-        
-        if (testWidth > maxWidth && currentLine) {
-          lines.push(currentLine);
-          currentLine = word;
-        } else {
-          currentLine = testLine;
-        }
-      }
-      if (currentLine) lines.push(currentLine);
-
+      
+      // Split by newlines first (for bullet lists)
+      const paragraphs = text.split('\n').filter(p => p.trim());
+      
       let currentY = y;
-      for (const line of lines) {
-        const lineWidth = font.widthOfTextAtSize(line, fontSize);
-        let drawX = x;
+      
+      for (const paragraph of paragraphs) {
+        // Parse text with formatting markers
+        const segments: Array<{ text: string; bold: boolean; italic: boolean }> = [];
+        let remainingText = paragraph;
         
-        if (align === 'center') {
-          drawX = x + (maxWidth - lineWidth) / 2;
-        } else if (align === 'right') {
-          drawX = x + maxWidth - lineWidth;
+        while (remainingText.length > 0) {
+          // Check for bold markers
+          const boldMatch = remainingText.match(/^\*\*(.*?)\*\*/);
+          if (boldMatch) {
+            segments.push({ text: boldMatch[1], bold: true, italic: false });
+            remainingText = remainingText.slice(boldMatch[0].length);
+            continue;
+          }
+          
+          // Check for italic markers
+          const italicMatch = remainingText.match(/^\*(.*?)\*/);
+          if (italicMatch) {
+            segments.push({ text: italicMatch[1], bold: false, italic: true });
+            remainingText = remainingText.slice(italicMatch[0].length);
+            continue;
+          }
+          
+          // Regular text until next marker
+          const nextMarker = remainingText.search(/\*{1,2}/);
+          if (nextMarker === -1) {
+            segments.push({ text: remainingText, bold: false, italic: false });
+            break;
+          } else {
+            segments.push({ text: remainingText.slice(0, nextMarker), bold: false, italic: false });
+            remainingText = remainingText.slice(nextMarker);
+          }
         }
-
-        page.drawText(line, {
-          x: drawX,
-          y: currentY,
-          size: fontSize,
-          font,
-          color,
-        });
-        currentY -= lineHeight;
+        
+        // Now wrap and draw the segments
+        const words: Array<{ text: string; font: any }> = [];
+        for (const segment of segments) {
+          const segmentFont = segment.bold ? helveticaBold : helveticaFont;
+          const segmentWords = segment.text.split(' ').map(w => ({ text: w, font: segmentFont }));
+          words.push(...segmentWords);
+        }
+        
+        const lines: Array<Array<{ text: string; font: any }>> = [];
+        let currentLine: Array<{ text: string; font: any }> = [];
+        let currentLineWidth = 0;
+        
+        for (const word of words) {
+          const wordWidth = word.font.widthOfTextAtSize(word.text, fontSize);
+          const spaceWidth = word.font.widthOfTextAtSize(' ', fontSize);
+          const testWidth = currentLineWidth + (currentLine.length > 0 ? spaceWidth : 0) + wordWidth;
+          
+          if (testWidth > maxWidth && currentLine.length > 0) {
+            lines.push(currentLine);
+            currentLine = [word];
+            currentLineWidth = wordWidth;
+          } else {
+            currentLine.push(word);
+            currentLineWidth = testWidth;
+          }
+        }
+        if (currentLine.length > 0) lines.push(currentLine);
+        
+        // Draw each line with proper formatting
+        for (const line of lines) {
+          let drawX = x;
+          
+          for (let i = 0; i < line.length; i++) {
+            const word = line[i];
+            const wordText = i === 0 ? word.text : ' ' + word.text;
+            
+            page.drawText(wordText, {
+              x: drawX,
+              y: currentY,
+              size: fontSize,
+              font: word.font,
+              color: color,
+            });
+            
+            drawX += word.font.widthOfTextAtSize(wordText, fontSize);
+          }
+          
+          currentY -= lineHeight;
+        }
       }
 
       return currentY;
