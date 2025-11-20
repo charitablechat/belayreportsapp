@@ -36,11 +36,13 @@ import {
 import { validateInspectionPackage } from "@/lib/validation-schemas";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { SyncStatusIndicator } from "@/components/pwa/SyncStatusIndicator";
+import { usePWA } from "@/hooks/usePWA";
 
 export default function InspectionForm() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { isOnline } = useNetworkStatus();
+  const { triggerSync } = usePWA();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [autoSaving, setAutoSaving] = useState(false);
@@ -700,6 +702,10 @@ export default function InspectionForm() {
       if (import.meta.env.DEV) {
         console.log("Auto-saved successfully at", new Date().toLocaleTimeString());
       }
+      // Trigger sync after successful save
+      if (isOnline) {
+        triggerSync().catch(err => console.error("Auto-sync failed:", err));
+      }
     } catch (error: any) {
       console.error("Auto-save failed:", error);
       setSaveError(error.message || 'Auto-save failed');
@@ -716,6 +722,10 @@ export default function InspectionForm() {
       setLastSaved(new Date());
       setHasUnsavedChanges(false);
       toast.success(isOnline ? "Progress saved" : "Saved offline - will sync when online");
+      // Trigger sync after successful save
+      if (isOnline) {
+        await triggerSync();
+      }
     } catch (error: any) {
       console.error("Save error:", error);
       const errorMsg = error.message || "Failed to save progress";
