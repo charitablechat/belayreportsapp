@@ -893,25 +893,25 @@ export default function InspectionForm() {
         const byteArray = new Uint8Array(byteNumbers);
         const blob = new Blob([byteArray], { type: 'application/pdf' });
         
-        // Create blob URL and open it
+        // Create blob URL
         const blobUrl = URL.createObjectURL(blob);
-        window.open(blobUrl, '_blank');
         
-        // Also offer download option
+        // Automatically trigger download instead of window.open (avoids Chrome blocking)
         const downloadLink = document.createElement('a');
         downloadLink.href = blobUrl;
-        downloadLink.download = data.fileName || 'inspection-report.pdf';
+        downloadLink.download = data.fileName || `inspection-report-${Date.now()}.pdf`;
+        downloadLink.style.display = 'none';
+        document.body.appendChild(downloadLink);
+        downloadLink.click();
+        document.body.removeChild(downloadLink);
         
-        toast.success('PDF generated successfully!', {
-          action: {
-            label: 'Download',
-            onClick: () => downloadLink.click()
-          },
-          duration: 10000,
+        toast.success('PDF downloaded successfully!', {
+          description: 'Check your downloads folder',
+          duration: 5000,
         });
         
-        // Clean up blob URL after some time
-        setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
+        // Clean up blob URL after download
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 5000);
       } else if (data?.pdfUrl) {
         // Old format: signed URL to storage
         console.log('Using old pdfUrl format:', data.pdfUrl);
@@ -924,23 +924,23 @@ export default function InspectionForm() {
         
         const blob = await response.blob();
         const blobUrl = URL.createObjectURL(blob);
-        window.open(blobUrl, '_blank');
         
-        // Also offer download option
+        // Automatically trigger download instead of window.open (avoids Chrome blocking)
         const downloadLink = document.createElement('a');
         downloadLink.href = blobUrl;
-        downloadLink.download = 'inspection-report.pdf';
+        downloadLink.download = `inspection-report-${Date.now()}.pdf`;
+        downloadLink.style.display = 'none';
+        document.body.appendChild(downloadLink);
+        downloadLink.click();
+        document.body.removeChild(downloadLink);
         
-        toast.success('PDF generated successfully!', {
-          action: {
-            label: 'Download',
-            onClick: () => downloadLink.click()
-          },
-          duration: 10000,
+        toast.success('PDF downloaded successfully!', {
+          description: 'Check your downloads folder',
+          duration: 5000,
         });
         
-        // Clean up blob URL after some time
-        setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
+        // Clean up blob URL after download
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 5000);
       } else {
         throw new Error('No PDF data received from server');
       }
