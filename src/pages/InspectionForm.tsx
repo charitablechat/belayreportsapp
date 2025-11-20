@@ -865,90 +865,312 @@ export default function InspectionForm() {
   };
 
   const handleGeneratePDF = async () => {
-    if (!id || inspection?.status !== 'completed') {
-      toast.error('Inspection must be completed before generating PDF');
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('[PDF Generation] STARTING');
+    console.log('[PDF Generation] Inspection ID:', id);
+    console.log('[PDF Generation] Inspection Status:', inspection?.status);
+    console.log('[PDF Generation] Organization:', inspection?.organization);
+    console.log('[PDF Generation] Location:', inspection?.location);
+    console.log('[PDF Generation] Online Status:', isOnline);
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    
+    // Validation checks
+    if (!id) {
+      console.error('[PDF Generation] FAILED: No inspection ID provided');
+      toast.error('Cannot generate PDF: No inspection ID');
+      return;
+    }
+    
+    if (inspection?.status !== 'completed') {
+      console.error('[PDF Generation] FAILED: Inspection not completed', {
+        currentStatus: inspection?.status,
+        requiredStatus: 'completed'
+      });
+      toast.error('Inspection must be completed before generating PDF', {
+        description: `Current status: ${inspection?.status || 'unknown'}`
+      });
       return;
     }
 
     setGeneratingPdf(true);
+    console.log('[PDF Generation] State updated: generatingPdf = true');
+
     try {
+      console.log('[PDF Generation] Invoking edge function...');
+      console.log('[PDF Generation] Request payload:', { 
+        inspectionId: id,
+        timestamp: new Date().toISOString()
+      });
+      
+      const startTime = performance.now();
+      
       const { data, error } = await supabase.functions.invoke(
         'generate-inspection-pdf',
         {
-          body: { inspectionId: id }
+          body: { inspectionId: id, regenerate: true }
         }
       );
+      
+      const endTime = performance.now();
+      const duration = Math.round(endTime - startTime);
+      
+      console.log('[PDF Generation] Edge function response received');
+      console.log('[PDF Generation] Response time:', duration + 'ms');
+      console.log('[PDF Generation] Response data:', {
+        hasData: !!data,
+        hasError: !!error,
+        dataKeys: data ? Object.keys(data) : [],
+      });
 
-      if (error) throw error;
-
-      // Handle both new format (pdfData) and old format (pdfUrl)
-      if (data?.pdfData) {
-        // New format: base64 PDF data
-        console.log('Using new pdfData format');
-        const byteCharacters = atob(data.pdfData);
-        const byteNumbers = new Array(byteCharacters.length);
-        for (let i = 0; i < byteCharacters.length; i++) {
-          byteNumbers[i] = byteCharacters.charCodeAt(i);
-        }
-        const byteArray = new Uint8Array(byteNumbers);
-        const blob = new Blob([byteArray], { type: 'application/pdf' });
-        
-        // Create blob URL
-        const blobUrl = URL.createObjectURL(blob);
-        
-        // Automatically trigger download instead of window.open (avoids Chrome blocking)
-        const downloadLink = document.createElement('a');
-        downloadLink.href = blobUrl;
-        downloadLink.download = data.fileName || `inspection-report-${Date.now()}.pdf`;
-        downloadLink.style.display = 'none';
-        document.body.appendChild(downloadLink);
-        downloadLink.click();
-        document.body.removeChild(downloadLink);
-        
-        toast.success('PDF downloaded successfully!', {
-          description: 'Check your downloads folder',
-          duration: 5000,
+      if (error) {
+        console.error('[PDF Generation] Edge function returned error:', {
+          message: error.message,
+          status: error.status,
+          statusText: error.statusText,
+          details: error
         });
         
-        // Clean up blob URL after download
-        setTimeout(() => URL.revokeObjectURL(blobUrl), 5000);
-      } else if (data?.pdfUrl) {
-        // Old format: signed URL to storage
-        console.log('Using old pdfUrl format:', data.pdfUrl);
-        
-        // Fetch the PDF from the storage URL
-        const response = await fetch(data.pdfUrl);
-        if (!response.ok) {
-          throw new Error('Failed to fetch PDF from storage');
+        // Specific error handling based on error type
+        if (error.message?.toLowerCase().includes('failed to fetch') || 
+            error.message?.toLowerCase().includes('network')) {
+          throw new Error('NETWORK_ERROR: Unable to reach PDF generation service. Please check your internet connection and try again.');
+        } else if (error.message?.toLowerCase().includes('unauthorized') || 
+                   error.message?.toLowerCase().includes('auth') ||
+                   error.status === 401 || error.status === 403) {
+          throw new Error('AUTH_ERROR: Authentication failed. Please log out and log in again.');
+        } else if (error.status === 500) {
+          throw new Error('SERVER_ERROR: PDF generation service is experiencing issues. Please try again in a few moments.');
+        } else if (error.status === 404) {
+          throw new Error('NOT_FOUND: Inspection data not found. Please refresh and try again.');
+        } else {
+          throw new Error(`FUNCTION_ERROR: ${error.message || 'Unknown edge function error'}`);
         }
-        
-        const blob = await response.blob();
-        const blobUrl = URL.createObjectURL(blob);
-        
-        // Automatically trigger download instead of window.open (avoids Chrome blocking)
-        const downloadLink = document.createElement('a');
-        downloadLink.href = blobUrl;
-        downloadLink.download = `inspection-report-${Date.now()}.pdf`;
-        downloadLink.style.display = 'none';
-        document.body.appendChild(downloadLink);
-        downloadLink.click();
-        document.body.removeChild(downloadLink);
-        
-        toast.success('PDF downloaded successfully!', {
-          description: 'Check your downloads folder',
-          duration: 5000,
-        });
-        
-        // Clean up blob URL after download
-        setTimeout(() => URL.revokeObjectURL(blobUrl), 5000);
-      } else {
-        throw new Error('No PDF data received from server');
       }
+
+      if (!data) {
+        console.error('[PDF Generation] No data returned from edge function');
+        throw new Error('RESPONSE_ERROR: No response data received from PDF generation service');
+      }
+
+      // Determine which format was returned
+      if (data.pdfData) {
+        console.log('[PDF Generation] Processing pdfData format (base64)');
+        console.log('[PDF Generation] Base64 string length:', data.pdfData.length);
+        console.log('[PDF Generation] Estimated PDF size:', Math.round(data.pdfData.length * 0.75 / 1024) + ' KB');
+        console.log('[PDF Generation] Filename:', data.fileName);
+        
+        // File size validation (warn if > 10MB)
+        const estimatedSize = data.pdfData.length * 0.75;
+        if (estimatedSize > 10 * 1024 * 1024) {
+          console.warn('[PDF Generation] Large file detected:', Math.round(estimatedSize / 1024 / 1024) + ' MB');
+          toast.loading('Downloading large PDF file...', { duration: 3000 });
+        }
+        
+        try {
+          console.log('[PDF Generation] Decoding base64 to binary...');
+          const byteCharacters = atob(data.pdfData);
+          const byteNumbers = new Array(byteCharacters.length);
+          for (let i = 0; i < byteCharacters.length; i++) {
+            byteNumbers[i] = byteCharacters.charCodeAt(i);
+          }
+          const byteArray = new Uint8Array(byteNumbers);
+          console.log('[PDF Generation] Binary array created:', byteArray.length, 'bytes');
+          
+          const blob = new Blob([byteArray], { type: 'application/pdf' });
+          console.log('[PDF Generation] Blob created:', blob.size, 'bytes,', blob.type);
+          
+          const blobUrl = URL.createObjectURL(blob);
+          console.log('[PDF Generation] Blob URL created:', blobUrl);
+          
+          // Trigger download
+          const downloadLink = document.createElement('a');
+          downloadLink.href = blobUrl;
+          downloadLink.download = data.fileName || `inspection-${inspection.organization}-${Date.now()}.pdf`;
+          downloadLink.style.display = 'none';
+          document.body.appendChild(downloadLink);
+          console.log('[PDF Generation] Triggering download:', downloadLink.download);
+          downloadLink.click();
+          document.body.removeChild(downloadLink);
+          
+          toast.success('PDF downloaded successfully!', {
+            description: `File: ${downloadLink.download} (${Math.round(blob.size / 1024)} KB)`,
+            duration: 5000,
+          });
+          
+          console.log('[PDF Generation] ✅ SUCCESS - PDF downloaded');
+          
+          // Clean up blob URL after download
+          setTimeout(() => {
+            URL.revokeObjectURL(blobUrl);
+            console.log('[PDF Generation] Blob URL cleaned up');
+          }, 5000);
+          
+        } catch (decodeError: any) {
+          console.error('[PDF Generation] Base64 decode error:', decodeError);
+          throw new Error('DECODE_ERROR: Failed to decode PDF data. The file may be corrupted.');
+        }
+        
+      } else if (data.pdfUrl) {
+        console.log('[PDF Generation] Processing pdfUrl format (storage URL)');
+        console.log('[PDF Generation] PDF URL:', data.pdfUrl);
+        
+        try {
+          console.log('[PDF Generation] Fetching PDF from storage...');
+          const response = await fetch(data.pdfUrl);
+          console.log('[PDF Generation] Fetch response:', {
+            ok: response.ok,
+            status: response.status,
+            statusText: response.statusText,
+            contentType: response.headers.get('content-type'),
+            contentLength: response.headers.get('content-length')
+          });
+          
+          if (!response.ok) {
+            throw new Error(`FETCH_ERROR: Failed to download PDF (${response.status} ${response.statusText})`);
+          }
+          
+          const blob = await response.blob();
+          console.log('[PDF Generation] Blob received:', blob.size, 'bytes,', blob.type);
+          
+          if (blob.size === 0) {
+            throw new Error('EMPTY_FILE: Downloaded PDF file is empty');
+          }
+          
+          const blobUrl = URL.createObjectURL(blob);
+          console.log('[PDF Generation] Blob URL created:', blobUrl);
+          
+          const downloadLink = document.createElement('a');
+          downloadLink.href = blobUrl;
+          downloadLink.download = `inspection-${inspection.organization}-${Date.now()}.pdf`;
+          downloadLink.style.display = 'none';
+          document.body.appendChild(downloadLink);
+          console.log('[PDF Generation] Triggering download:', downloadLink.download);
+          downloadLink.click();
+          document.body.removeChild(downloadLink);
+          
+          toast.success('PDF downloaded successfully!', {
+            description: `File: ${downloadLink.download} (${Math.round(blob.size / 1024)} KB)`,
+            duration: 5000,
+          });
+          
+          console.log('[PDF Generation] ✅ SUCCESS - PDF downloaded');
+          
+          setTimeout(() => {
+            URL.revokeObjectURL(blobUrl);
+            console.log('[PDF Generation] Blob URL cleaned up');
+          }, 5000);
+          
+        } catch (fetchError: any) {
+          console.error('[PDF Generation] Storage fetch error:', fetchError);
+          throw new Error(`STORAGE_ERROR: ${fetchError.message}`);
+        }
+        
+      } else {
+        console.error('[PDF Generation] Invalid response format:', {
+          hasData: !!data,
+          hasPdfData: !!data.pdfData,
+          hasPdfUrl: !!data.pdfUrl,
+          dataKeys: Object.keys(data)
+        });
+        throw new Error('FORMAT_ERROR: Invalid response format from PDF service. Expected pdfData or pdfUrl.');
+      }
+
     } catch (error: any) {
-      console.error('PDF generation error:', error);
-      toast.error('Failed to generate PDF: ' + (error.message || 'Unknown error'));
+      console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.error('[PDF Generation] ❌ FAILED');
+      console.error('[PDF Generation] Error type:', error.constructor.name);
+      console.error('[PDF Generation] Error message:', error.message);
+      console.error('[PDF Generation] Full error:', error);
+      console.error('[PDF Generation] Stack trace:', error.stack);
+      console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      
+      // Parse error message to determine type
+      const errorMessage = error.message || '';
+      
+      if (errorMessage.startsWith('NETWORK_ERROR')) {
+        toast.error('Network Connection Error', {
+          description: 'Unable to reach the PDF service. Check your internet connection and try again.',
+          duration: 7000,
+          action: {
+            label: 'Retry',
+            onClick: () => {
+              console.log('[PDF Generation] User triggered retry after network error');
+              handleGeneratePDF();
+            }
+          }
+        });
+      } else if (errorMessage.startsWith('AUTH_ERROR')) {
+        toast.error('Authentication Failed', {
+          description: 'Your session may have expired. Please log out and log in again.',
+          duration: 10000,
+          action: {
+            label: 'Log Out',
+            onClick: async () => {
+              console.log('[PDF Generation] User triggered logout after auth error');
+              await supabase.auth.signOut();
+              navigate('/');
+            }
+          }
+        });
+      } else if (errorMessage.startsWith('SERVER_ERROR')) {
+        toast.error('Server Error', {
+          description: 'The PDF generation service is experiencing issues. Please try again in a few moments.',
+          duration: 7000,
+          action: {
+            label: 'Retry',
+            onClick: () => handleGeneratePDF()
+          }
+        });
+      } else if (errorMessage.startsWith('NOT_FOUND')) {
+        toast.error('Inspection Not Found', {
+          description: 'The inspection data could not be found. Try refreshing the page.',
+          duration: 7000,
+          action: {
+            label: 'Refresh',
+            onClick: () => window.location.reload()
+          }
+        });
+      } else if (errorMessage.startsWith('DECODE_ERROR')) {
+        toast.error('PDF Decode Error', {
+          description: 'Failed to process the PDF file. The data may be corrupted. Please try regenerating.',
+          duration: 7000
+        });
+      } else if (errorMessage.startsWith('STORAGE_ERROR') || errorMessage.startsWith('FETCH_ERROR')) {
+        toast.error('Download Failed', {
+          description: 'Failed to download the PDF file. Please check your connection and try again.',
+          duration: 7000,
+          action: {
+            label: 'Retry',
+            onClick: () => handleGeneratePDF()
+          }
+        });
+      } else if (errorMessage.startsWith('EMPTY_FILE')) {
+        toast.error('Empty PDF File', {
+          description: 'The generated PDF is empty. Please try regenerating the report.',
+          duration: 7000
+        });
+      } else if (errorMessage.startsWith('FORMAT_ERROR')) {
+        toast.error('Invalid Response Format', {
+          description: 'Received unexpected response from PDF service. Please contact support if this persists.',
+          duration: 7000
+        });
+      } else {
+        // Generic fallback error
+        toast.error('PDF Generation Failed', {
+          description: errorMessage || 'An unexpected error occurred. Please try again.',
+          duration: 7000,
+          action: {
+            label: 'Retry',
+            onClick: () => handleGeneratePDF()
+          }
+        });
+      }
+      
     } finally {
       setGeneratingPdf(false);
+      console.log('[PDF Generation] State updated: generatingPdf = false');
+      console.log('[PDF Generation] Process completed at:', new Date().toISOString());
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
     }
   };
 
