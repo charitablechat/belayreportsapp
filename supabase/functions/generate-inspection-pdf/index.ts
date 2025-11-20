@@ -107,7 +107,17 @@ serve(async (req) => {
     
     const addPage = () => pdfDoc.addPage([pageWidth, pageHeight]);
     
+    // Sanitize text to replace Unicode characters not supported by WinAnsi encoding
+    const sanitizeText = (text: string): string => {
+      if (!text) return '';
+      return text
+        .replace(/○/g, '•')  // Replace white circle with bullet (supported by WinAnsi)
+        .replace(/[^\x00-\xFF]/g, '?');  // Replace any other non-Latin1 characters with ?
+    };
+    
     const drawText = (page: any, text: string, x: number, y: number, options: any = {}) => {
+      // Sanitize text before processing
+      text = sanitizeText(text);
       const maxWidth = options.maxWidth || (pageWidth - x - margin);
       const lines = [];
       let currentLine = '';
