@@ -194,8 +194,24 @@ serve(async (req) => {
     drawText(page, formatDate(inspection.inspection_date), margin + 125, yPos - 44, { size: 10 });
     drawText(page, 'Onsite Contact:', margin + 5, yPos - 71, { size: 10, bold: true });
     drawText(page, inspection.onsite_contact || 'N/A', margin + 125, yPos - 71, { size: 10 });
+    yPos -= 100;
 
-    // Definitions Page
+    // Known Course History
+    drawText(page, 'Known Course History:', margin, yPos, { size: 11, bold: true });
+    yPos -= 15;
+    yPos = drawText(page, inspection.course_history || 'No prior history on file', margin, yPos, { size: 9, maxWidth: tableWidth });
+    yPos -= 25;
+
+    // Reminders and Requirements
+    drawText(page, 'Reminders and Requirements:', margin, yPos, { size: 11, bold: true });
+    yPos -= 15;
+    drawText(page, '• All operating systems, ziplines, and equipment have been evaluated according to ACCT standards', margin + 10, yPos, { size: 9 });
+    yPos -= 15;
+    drawText(page, '• This report includes recommendations for immediate action and ongoing maintenance', margin + 10, yPos, { size: 9 });
+    yPos -= 15;
+    drawText(page, '• Next inspection should occur within 12 months from inspection date', margin + 10, yPos, { size: 9 });
+
+    // Definitions Page (EXPANDED)
     page = addPage();
     yPos = pageHeight - 80;
     drawText(page, 'Definitions', margin, yPos, { size: 16, bold: true });
@@ -214,9 +230,9 @@ serve(async (req) => {
     drawText(page, 'Systems Inspection', margin, yPos, { size: 16, bold: true });
     yPos -= 20;
 
-    const systemTableHeader = ['System', 'Standard', 'Result', 'Notes'];
-    const systemColumnWidths = [150, 150, 80, tableWidth - 150 - 150 - 80];
-    const systemColumnX = [margin, margin + 150, margin + 150 + 150, margin + 150 + 150 + 80];
+    const systemTableHeader = ['Operating System | Name', 'Result', 'Comments or Required Changes'];
+    const systemColumnWidths = [200, 80, tableWidth - 280];
+    const systemColumnX = [margin, margin + 200, margin + 280];
 
     // Draw table header
     page.drawRectangle({ x: margin, y: yPos - 20, width: tableWidth, height: 20, color: rgb(0.8, 0.8, 0.8) });
@@ -225,15 +241,14 @@ serve(async (req) => {
     });
     yPos -= 20;
 
-    // Draw table rows
-    systems.forEach(system => {
+    // Draw table rows (filtered for populated rows)
+    systems.filter(s => s.system_name && s.result).forEach(system => {
       const rowHeight = 60;
       drawHighlightedTableRow(page, margin, yPos - rowHeight, tableWidth, rowHeight, system.result);
 
-      drawText(page, system.name, margin + 5, yPos - 17, { size: 10, maxWidth: systemColumnWidths[0] - 10 });
-      drawText(page, system.standard, margin + 155, yPos - 17, { size: 10, maxWidth: systemColumnWidths[1] - 10 });
-      drawText(page, system.result, margin + 305, yPos - 17, { size: 10, maxWidth: systemColumnWidths[2] - 10 });
-      yPos = drawText(page, system.notes || 'N/A', margin + 385, yPos - 17, { size: 10, maxWidth: systemColumnWidths[3] - 10 });
+      drawText(page, system.system_name, margin + 5, yPos - 17, { size: 10, maxWidth: systemColumnWidths[0] - 10 });
+      drawText(page, system.result, margin + 205, yPos - 17, { size: 10, maxWidth: systemColumnWidths[1] - 10 });
+      yPos = drawText(page, system.comments || 'N/A', margin + 285, yPos - 17, { size: 10, maxWidth: systemColumnWidths[2] - 10 });
 
       yPos -= rowHeight - 20;
     });
@@ -244,9 +259,17 @@ serve(async (req) => {
     drawText(page, 'Ziplines Inspection', margin, yPos, { size: 16, bold: true });
     yPos -= 20;
 
-    const ziplineTableHeader = ['Zipline', 'Standard', 'Result', 'Notes'];
-    const ziplineColumnWidths = [150, 150, 80, tableWidth - 150 - 150 - 80];
-    const ziplineColumnX = [margin, margin + 150, margin + 150 + 150, margin + 150 + 150 + 80];
+    // Zipline KEYs
+    drawText(page, 'Cable Type KEY: G=Galvanized | S=Stainless Steel', margin, yPos, { size: 8 });
+    yPos -= 15;
+    drawText(page, 'Braking System KEY: BS=Bungee Spring | CM=Compression | FR=Friction | HS=Hydraulic Spring', margin, yPos, { size: 8 });
+    yPos -= 15;
+    drawText(page, 'EAD System KEY: SA=Self Arresting | ZP=Zip Pole | BL=Belay Line | NO=None', margin, yPos, { size: 8 });
+    yPos -= 25;
+
+    const ziplineTableHeader = ['Zipline Name', 'Cable', 'Braking', 'EAD', 'Result', 'Comments'];
+    const ziplineColumnWidths = [100, 50, 50, 50, 60, tableWidth - 310];
+    const ziplineColumnX = [margin, margin + 100, margin + 150, margin + 200, margin + 250, margin + 310];
 
     // Draw table header
     page.drawRectangle({ x: margin, y: yPos - 20, width: tableWidth, height: 20, color: rgb(0.8, 0.8, 0.8) });
@@ -255,15 +278,17 @@ serve(async (req) => {
     });
     yPos -= 20;
 
-    // Draw table rows
-    ziplines.forEach(zipline => {
+    // Draw table rows (filtered for populated rows)
+    ziplines.filter(z => z.zipline_name && z.result).forEach(zipline => {
       const rowHeight = 60;
       drawHighlightedTableRow(page, margin, yPos - rowHeight, tableWidth, rowHeight, zipline.result);
 
-      drawText(page, zipline.name, margin + 5, yPos - 17, { size: 10, maxWidth: ziplineColumnWidths[0] - 10 });
-      drawText(page, zipline.standard, margin + 155, yPos - 17, { size: 10, maxWidth: ziplineColumnWidths[1] - 10 });
-      drawText(page, zipline.result, margin + 305, yPos - 17, { size: 10, maxWidth: ziplineColumnWidths[2] - 10 });
-      yPos = drawText(page, zipline.notes || 'N/A', margin + 385, yPos - 17, { size: 10, maxWidth: ziplineColumnWidths[3] - 10 });
+      drawText(page, zipline.zipline_name, margin + 5, yPos - 17, { size: 9, maxWidth: ziplineColumnWidths[0] - 10 });
+      drawText(page, zipline.cable_type || 'N/A', margin + 105, yPos - 17, { size: 9, maxWidth: ziplineColumnWidths[1] - 10 });
+      drawText(page, zipline.braking_system || 'N/A', margin + 155, yPos - 17, { size: 9, maxWidth: ziplineColumnWidths[2] - 10 });
+      drawText(page, zipline.ead_system || 'N/A', margin + 205, yPos - 17, { size: 9, maxWidth: ziplineColumnWidths[3] - 10 });
+      drawText(page, zipline.result, margin + 255, yPos - 17, { size: 9, maxWidth: ziplineColumnWidths[4] - 10 });
+      yPos = drawText(page, zipline.comments || 'N/A', margin + 315, yPos - 17, { size: 9, maxWidth: ziplineColumnWidths[5] - 10 });
 
       yPos -= rowHeight - 20;
     });
@@ -273,10 +298,14 @@ serve(async (req) => {
     yPos = pageHeight - 80;
     drawText(page, 'Equipment Inspection', margin, yPos, { size: 16, bold: true });
     yPos -= 20;
+    
+    // Equipment Warning
+    drawText(page, '⚠ WARNING: Failed equipment must be retired or repaired before use', margin, yPos, { size: 10, bold: true, color: rgb(0.94, 0.27, 0.27) });
+    yPos -= 25;
 
-    const equipmentTableHeader = ['Equipment', 'Standard', 'Result', 'Notes'];
-    const equipmentColumnWidths = [150, 150, 80, tableWidth - 150 - 150 - 80];
-    const equipmentColumnX = [margin, margin + 150, margin + 150 + 150, margin + 150 + 150 + 80];
+    const equipmentTableHeader = ['Equipment Type', 'Production Year', 'Quantity', 'Result', 'Comments'];
+    const equipmentColumnWidths = [150, 80, 60, 80, tableWidth - 370];
+    const equipmentColumnX = [margin, margin + 150, margin + 230, margin + 290, margin + 370];
 
     // Draw table header
     page.drawRectangle({ x: margin, y: yPos - 20, width: tableWidth, height: 20, color: rgb(0.8, 0.8, 0.8) });
@@ -285,15 +314,16 @@ serve(async (req) => {
     });
     yPos -= 20;
 
-    // Draw table rows
-    equipment.forEach(equipment => {
+    // Draw table rows (filtered for populated rows)
+    equipment.filter(e => e.equipment_type && e.result).forEach(equip => {
       const rowHeight = 60;
-      drawHighlightedTableRow(page, margin, yPos - rowHeight, tableWidth, rowHeight, equipment.result);
+      drawHighlightedTableRow(page, margin, yPos - rowHeight, tableWidth, rowHeight, equip.result);
 
-      drawText(page, equipment.name, margin + 5, yPos - 17, { size: 10, maxWidth: equipmentColumnWidths[0] - 10 });
-      drawText(page, equipment.standard, margin + 155, yPos - 17, { size: 10, maxWidth: equipmentColumnWidths[1] - 10 });
-      drawText(page, equipment.result, margin + 305, yPos - 17, { size: 10, maxWidth: equipmentColumnWidths[2] - 10 });
-      yPos = drawText(page, equipment.notes || 'N/A', margin + 385, yPos - 17, { size: 10, maxWidth: equipmentColumnWidths[3] - 10 });
+      drawText(page, equip.equipment_type, margin + 5, yPos - 17, { size: 9, maxWidth: equipmentColumnWidths[0] - 10 });
+      drawText(page, equip.production_year?.toString() || 'N/A', margin + 155, yPos - 17, { size: 9, maxWidth: equipmentColumnWidths[1] - 10 });
+      drawText(page, equip.quantity?.toString() || 'N/A', margin + 235, yPos - 17, { size: 9, maxWidth: equipmentColumnWidths[2] - 10 });
+      drawText(page, equip.result, margin + 295, yPos - 17, { size: 9, maxWidth: equipmentColumnWidths[3] - 10 });
+      yPos = drawText(page, equip.comments || 'N/A', margin + 375, yPos - 17, { size: 9, maxWidth: equipmentColumnWidths[4] - 10 });
 
       yPos -= rowHeight - 20;
     });
@@ -318,11 +348,12 @@ serve(async (req) => {
     // Draw table rows
     standards.forEach(standard => {
       const rowHeight = 60;
-      drawHighlightedTableRow(page, margin, yPos - rowHeight, tableWidth, rowHeight, standard.result);
+      const hasDoc = standard.has_documentation ? 'Pass' : 'Fail';
+      drawHighlightedTableRow(page, margin, yPos - rowHeight, tableWidth, rowHeight, hasDoc);
 
-      drawText(page, standard.name, margin + 5, yPos - 17, { size: 10, maxWidth: standardColumnWidths[0] - 10 });
-      drawText(page, standard.result, margin + 205, yPos - 17, { size: 10, maxWidth: standardColumnWidths[1] - 10 });
-      yPos = drawText(page, standard.notes || 'N/A', margin + 285, yPos - 17, { size: 10, maxWidth: standardColumnWidths[2] - 10 });
+      drawText(page, standard.standard_name, margin + 5, yPos - 17, { size: 10, maxWidth: standardColumnWidths[0] - 10 });
+      drawText(page, hasDoc, margin + 205, yPos - 17, { size: 10, maxWidth: standardColumnWidths[1] - 10 });
+      yPos = drawText(page, standard.comments || 'N/A', margin + 285, yPos - 17, { size: 10, maxWidth: standardColumnWidths[2] - 10 });
 
       yPos -= rowHeight - 20;
     });
@@ -334,22 +365,55 @@ serve(async (req) => {
     yPos -= 20;
 
     if (summary) {
-      drawText(page, 'General Notes:', margin, yPos, { size: 12, bold: true });
+      // Repairs & Alterations
+      drawText(page, 'Repairs & Alterations Performed:', margin, yPos, { size: 12, bold: true });
       yPos -= 15;
-      yPos = drawText(page, summary.general_notes || 'N/A', margin, yPos, { size: 10 });
-      yPos -= 20;
+      yPos = drawText(page, summary.repairs_performed || 'None reported', margin, yPos, { size: 10, maxWidth: tableWidth });
+      yPos -= 25;
 
-      drawText(page, 'Recommendations:', margin, yPos, { size: 12, bold: true });
-      yPos -= 15;
-      yPos = drawText(page, summary.recommendations || 'N/A', margin, yPos, { size: 10 });
-      yPos -= 20;
+      // Critical Actions - RED BORDERED BOX
+      const boxHeight = 80;
+      page.drawRectangle({
+        x: margin - 5,
+        y: yPos - boxHeight,
+        width: tableWidth + 10,
+        height: boxHeight,
+        borderColor: rgb(0.94, 0.27, 0.27),
+        borderWidth: 2,
+      });
+      drawText(page, '⚠ CRITICAL ACTIONS REQUIRED', margin, yPos - 15, { size: 11, bold: true, color: rgb(0.94, 0.27, 0.27) });
+      yPos = drawText(page, summary.critical_actions || 'None identified', margin, yPos - 30, { size: 10, maxWidth: tableWidth - 10 });
+      yPos -= boxHeight - 30 + 20;
 
-      drawText(page, 'Overall Result:', margin, yPos, { size: 12, bold: true });
+      // Future Considerations
+      drawText(page, 'Future Considerations:', margin, yPos, { size: 12, bold: true });
       yPos -= 15;
-      drawText(page, summary.overall_result || 'N/A', margin, yPos, { size: 10 });
+      yPos = drawText(page, summary.future_considerations || 'None noted', margin, yPos, { size: 10, maxWidth: tableWidth });
+      yPos -= 25;
+
+      // Next Inspection Date
+      drawText(page, 'Next Inspection Date:', margin, yPos, { size: 12, bold: true });
+      yPos -= 15;
+      drawText(page, formatDate(summary.next_inspection_date) + ' (within 12 months)', margin, yPos, { size: 10 });
     } else {
       drawText(page, 'No summary available.', margin, yPos, { size: 10 });
     }
+    
+    // Add footer to all pages
+    const pages = pdfDoc.getPages();
+    pages.forEach((p, idx) => {
+      p.drawText('Rope Works Inc., PO Box 1074, Dripping Springs, TX 78620', {
+        x: margin, y: 30, size: 8, font: helveticaFont, color: rgb(0.5, 0.5, 0.5)
+      });
+      p.drawText(`Page ${idx + 1} of ${pages.length}`, {
+        x: pageWidth - margin - 60, y: 30, size: 8, font: helveticaFont, color: rgb(0.5, 0.5, 0.5)
+      });
+      if (idx > 0) {
+        p.drawText('The information contained in this report has been documented by a Qualified Professional', {
+          x: margin, y: 15, size: 7, font: helveticaFont, color: rgb(0.6, 0.6, 0.6)
+        });
+      }
+    });
     
     // Save and return PDF
     const pdfBytes = await pdfDoc.save();
