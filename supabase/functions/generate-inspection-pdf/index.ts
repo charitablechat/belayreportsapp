@@ -455,20 +455,20 @@ serve(async (req) => {
       { name: 'OTHER EQUIPMENT', category: 'Other', page: 9 }
     ];
 
-    let currentPage: any = null;
+    // Initialize first equipment page
     let currentPageNum = 5;
-    let pageYPos = 0;
+    let currentPage = pdfDoc.addPage([pageWidth, pageHeight]);
+    drawACCTHeader(currentPage);
+    let pageYPos = pageHeight - 80;
 
     for (const cat of equipmentCategories) {
       const items = equipment?.filter(e => e.equipment_category === cat.category) || [];
       
       if (cat.page !== currentPageNum) {
-        if (currentPage) {
-          drawPageFooter(currentPage, currentPageNum);
-        }
+        drawPageFooter(currentPage, currentPageNum);
+        currentPageNum = cat.page;
         currentPage = pdfDoc.addPage([pageWidth, pageHeight]);
         drawACCTHeader(currentPage);
-        currentPageNum = cat.page;
         pageYPos = pageHeight - 80;
       }
 
@@ -521,9 +521,7 @@ serve(async (req) => {
       pageYPos -= 10;
     }
 
-    if (currentPage) {
-      drawPageFooter(currentPage, currentPageNum);
-    }
+    drawPageFooter(currentPage, currentPageNum);
 
     // PAGE 10 - ACCT STANDARDS
     const page10 = pdfDoc.addPage([pageWidth, pageHeight]);
