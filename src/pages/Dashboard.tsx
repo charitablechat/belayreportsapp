@@ -253,32 +253,25 @@ export default function Dashboard() {
   };
 
   const getStatusBadge = (inspection: any) => {
-    const isUnsynced = !inspection.synced_at || 
-      (inspection.updated_at && new Date(inspection.updated_at) > new Date(inspection.synced_at));
-    
     const unsyncedPhotosCount = photosByInspection[inspection.id] || 0;
     
     return (
       <div className="flex gap-2">
-        {/* Show sync status badge */}
-        {isUnsynced ? (
-          <Badge variant="default">Unsynced</Badge>
-        ) : (
-          inspection.synced_at && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Badge variant="outline" className="gap-1 cursor-help">
-                  <Check className="w-3 h-3" />
-                  Synced
-                </Badge>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p className="text-xs">
-                  Last synced: {format(new Date(inspection.synced_at), "PPp")}
-                </p>
-              </TooltipContent>
-            </Tooltip>
-          )
+        {/* Show sync status badge only when synced */}
+        {inspection.synced_at && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Badge variant="outline" className="gap-1 cursor-help">
+                <Check className="w-3 h-3" />
+                Synced
+              </Badge>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p className="text-xs">
+                Last synced: {format(new Date(inspection.synced_at), "PPp")}
+              </p>
+            </TooltipContent>
+          </Tooltip>
         )}
         
         {/* Show unsynced photos count if any */}
