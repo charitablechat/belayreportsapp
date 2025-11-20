@@ -92,8 +92,8 @@ serve(async (req) => {
       supabase.from('inspection_ziplines').select('*').eq('inspection_id', inspectionId),
       supabase.from('inspection_equipment').select('*').eq('inspection_id', inspectionId),
       supabase.from('inspection_standards').select('*').eq('inspection_id', inspectionId),
-      supabase.from('inspection_summary').select('*').eq('inspection_id', inspectionId).single(),
-      supabase.from('profiles').select('first_name, last_name').eq('id', inspection.inspector_id).single()
+      supabase.from('inspection_summary').select('*').eq('inspection_id', inspectionId).maybeSingle(),
+      supabase.from('profiles').select('first_name, last_name').eq('id', inspection.inspector_id).maybeSingle()
     ]);
 
     const pdfDoc = await PDFDocument.create();
