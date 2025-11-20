@@ -9,6 +9,8 @@ import { Badge } from "@/components/ui/badge";
 import { Plus, LogOut, FileText, GraduationCap, ArrowRight, Lock, Download, Settings, Trash2, MoreVertical, Bell, AlertCircle, Cloud, User, Loader2, Check } from "lucide-react";
 import { UserAvatar } from "@/components/ui/user-avatar";
 import { toast } from "sonner";
+import { format } from "date-fns";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import ropeWorksLogo from "@/assets/rope-works-logo.png";
 import acctLogo from "@/assets/acct-accredited-vendor.png";
 import dashboardBackgroundVideo from "@/assets/dashboard-background.mp4";
@@ -273,10 +275,19 @@ export default function Dashboard() {
           <Badge variant="default">Unsynced</Badge>
         ) : (
           inspection.synced_at && (
-            <Badge variant="outline" className="gap-1">
-              <Check className="w-3 h-3" />
-              Synced
-            </Badge>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Badge variant="outline" className="gap-1 cursor-help">
+                  <Check className="w-3 h-3" />
+                  Synced
+                </Badge>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p className="text-xs">
+                  Last synced: {format(new Date(inspection.synced_at), "PPp")}
+                </p>
+              </TooltipContent>
+            </Tooltip>
           )
         )}
         
