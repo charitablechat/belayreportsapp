@@ -135,6 +135,47 @@ export type Database = {
           },
         ]
       }
+      inspection_reports: {
+        Row: {
+          file_size_bytes: number | null
+          generated_at: string | null
+          generated_by: string | null
+          id: string
+          inspection_id: string
+          metadata: Json | null
+          pdf_url: string
+          version: number | null
+        }
+        Insert: {
+          file_size_bytes?: number | null
+          generated_at?: string | null
+          generated_by?: string | null
+          id?: string
+          inspection_id: string
+          metadata?: Json | null
+          pdf_url: string
+          version?: number | null
+        }
+        Update: {
+          file_size_bytes?: number | null
+          generated_at?: string | null
+          generated_by?: string | null
+          id?: string
+          inspection_id?: string
+          metadata?: Json | null
+          pdf_url?: string
+          version?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inspection_reports_inspection_id_fkey"
+            columns: ["inspection_id"]
+            isOneToOne: false
+            referencedRelation: "inspections"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       inspection_standards: {
         Row: {
           comments: string | null

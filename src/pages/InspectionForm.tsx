@@ -6,7 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { ArrowLeft, Save, CheckCircle, Loader2, WifiOff, CloudOff, LogOut, User } from "lucide-react";
+import { ArrowLeft, Save, CheckCircle, Loader2, WifiOff, CloudOff, LogOut, User, FileText } from "lucide-react";
 import { UserAvatar } from "@/components/ui/user-avatar";
 import {
   DropdownMenu,
@@ -44,6 +44,7 @@ export default function InspectionForm() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [autoSaving, setAutoSaving] = useState(false);
+  const [generatingPdf, setGeneratingPdf] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [photoRefreshKey, setPhotoRefreshKey] = useState(0);
@@ -849,6 +850,42 @@ export default function InspectionForm() {
     }
   };
 
+  const handleGeneratePDF = async () => {
+    if (!id || inspection?.status !== 'completed') {
+      toast.error('Inspection must be completed before generating PDF');
+      return;
+    }
+
+    setGeneratingPdf(true);
+    try {
+      const { data, error } = await supabase.functions.invoke(
+        'generate-inspection-pdf',
+        {
+          body: { inspectionId: id }
+        }
+      );
+
+      if (error) throw error;
+
+      if (data?.pdfUrl) {
+        toast.success('PDF generated successfully!', {
+          action: {
+            label: 'Download',
+            onClick: () => window.open(data.pdfUrl, '_blank')
+          },
+          duration: 10000,
+        });
+        // Also auto-download
+        window.open(data.pdfUrl, '_blank');
+      }
+    } catch (error: any) {
+      console.error('PDF generation error:', error);
+      toast.error('Failed to generate PDF: ' + (error.message || 'Unknown error'));
+    } finally {
+      setGeneratingPdf(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
@@ -964,6 +1001,37 @@ export default function InspectionForm() {
                   )}
                 </Tooltip>
               </TooltipProvider>
+              {inspection?.status === 'completed' && (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span>
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          onClick={handleGeneratePDF} 
+                          disabled={generatingPdf || !isOnline}
+                        >
+                          {generatingPdf ? (
+                            <>
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                              <span className="hidden md:inline ml-2">Generating...</span>
+                            </>
+                          ) : (
+                            <>
+                              <FileText className="w-4 h-4" />
+                              <span className="hidden md:inline ml-2">Generate PDF</span>
+                            </>
+                          )}
+                        </Button>
+                      </span>
+                    </TooltipTrigger>
+                    {!isOnline && (
+                      <TooltipContent>Must be online to generate PDF</TooltipContent>
+                    )}
+                  </Tooltip>
+                </TooltipProvider>
+              )}
             </div>
           </div>
         </div>
