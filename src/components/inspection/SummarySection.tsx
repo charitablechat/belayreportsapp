@@ -1,7 +1,9 @@
+import { useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
+import { useAutoResizeTextarea } from "@/hooks/useAutoResizeTextarea";
 
 interface SummarySectionProps {
   summary: any;
@@ -9,6 +11,14 @@ interface SummarySectionProps {
 }
 
 export default function SummarySection({ summary, onUpdate }: SummarySectionProps) {
+  const repairsRef = useRef<HTMLTextAreaElement>(null);
+  const criticalActionsRef = useRef<HTMLTextAreaElement>(null);
+  const futureConsiderationsRef = useRef<HTMLTextAreaElement>(null);
+
+  useAutoResizeTextarea(repairsRef, summary.repairs_performed || "");
+  useAutoResizeTextarea(criticalActionsRef, summary.critical_actions || "");
+  useAutoResizeTextarea(futureConsiderationsRef, summary.future_considerations || "");
+
   const updateField = (field: string, value: any) => {
     onUpdate({ ...summary, [field]: value });
   };
@@ -24,11 +34,11 @@ export default function SummarySection({ summary, onUpdate }: SummarySectionProp
             Repairs, Alterations performed during inspection:
           </Label>
           <Textarea
-            rows={4}
+            ref={repairsRef}
             value={summary.repairs_performed || ""}
             onChange={(e) => updateField("repairs_performed", e.target.value)}
             placeholder="Enter details of repairs and alterations performed..."
-            className="resize-none"
+            className="resize-none min-h-[100px]"
           />
         </div>
 
@@ -40,11 +50,11 @@ export default function SummarySection({ summary, onUpdate }: SummarySectionProp
             *Critical Action = Required Changes Prior to use of Activity, Element, or Equipment
           </p>
           <Textarea
-            rows={4}
+            ref={criticalActionsRef}
             value={summary.critical_actions || ""}
             onChange={(e) => updateField("critical_actions", e.target.value)}
             placeholder="Enter critical actions required..."
-            className="resize-none"
+            className="resize-none min-h-[100px]"
           />
         </div>
 
@@ -56,11 +66,11 @@ export default function SummarySection({ summary, onUpdate }: SummarySectionProp
             (includes but not limited to age of course, recommended updates, suggestions, industry future)
           </p>
           <Textarea
-            rows={4}
+            ref={futureConsiderationsRef}
             value={summary.future_considerations || ""}
             onChange={(e) => updateField("future_considerations", e.target.value)}
             placeholder="Enter future considerations..."
-            className="resize-none"
+            className="resize-none min-h-[100px]"
           />
         </div>
 
