@@ -315,14 +315,26 @@ serve(async (req) => {
           yPos = pageHeight - margin - 30;
         }
 
-        const checkmark = std.has_documentation ? '✓' : '✗';
+        const status = std.has_documentation ? 'YES' : 'NO';
         const color = std.has_documentation ? rgb(0.06, 0.73, 0.51) : rgb(0.94, 0.27, 0.27);
         
-        drawText(page, checkmark, margin, yPos, { size: 12, color, bold: true });
-        drawText(page, std.standard_name, margin + 20, yPos, { size: 10 });
+        // Draw colored box for status
+        page.drawRectangle({
+          x: margin,
+          y: yPos - 12,
+          width: 30,
+          height: 14,
+          color: color,
+        });
+        
+        // Draw status text in white
+        drawText(page, status, margin + 3, yPos - 8, { size: 8, color: rgb(1, 1, 1), bold: true });
+        
+        // Draw standard name
+        drawText(page, std.standard_name, margin + 40, yPos, { size: 10 });
         yPos -= 15;
         if (std.comments) {
-          drawText(page, `  ${std.comments}`, margin + 20, yPos, { size: 8, color: rgb(0.5, 0.5, 0.5) });
+          drawText(page, `  ${std.comments}`, margin + 40, yPos, { size: 8, color: rgb(0.5, 0.5, 0.5) });
           yPos -= 15;
         }
         yPos -= 5;
