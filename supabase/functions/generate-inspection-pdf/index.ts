@@ -118,24 +118,32 @@ serve(async (req) => {
     const drawText = (page: any, text: string, x: number, y: number, options: any = {}) => {
       // Sanitize text before processing
       text = sanitizeText(text);
+      
+      // Split by newlines first to handle multi-line text
+      const paragraphs = text.split(/\n+/);
       const maxWidth = options.maxWidth || (pageWidth - x - margin);
       const lines = [];
-      let currentLine = '';
-      const words = text.split(' ');
       
-      for (const word of words) {
-        const testLine = currentLine ? `${currentLine} ${word}` : word;
-        const font = options.bold ? helveticaBold : helveticaFont;
-        const testWidth = font.widthOfTextAtSize(testLine, options.size || 10);
+      for (const paragraph of paragraphs) {
+        if (!paragraph.trim()) continue;
         
-        if (testWidth > maxWidth && currentLine) {
-          lines.push(currentLine);
-          currentLine = word;
-        } else {
-          currentLine = testLine;
+        let currentLine = '';
+        const words = paragraph.split(' ');
+        
+        for (const word of words) {
+          const testLine = currentLine ? `${currentLine} ${word}` : word;
+          const font = options.bold ? helveticaBold : helveticaFont;
+          const testWidth = font.widthOfTextAtSize(testLine, options.size || 10);
+          
+          if (testWidth > maxWidth && currentLine) {
+            lines.push(currentLine);
+            currentLine = word;
+          } else {
+            currentLine = testLine;
+          }
         }
+        if (currentLine) lines.push(currentLine);
       }
-      if (currentLine) lines.push(currentLine);
       
       let currentY = y;
       for (const line of lines) {
