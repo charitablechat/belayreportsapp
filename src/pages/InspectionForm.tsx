@@ -881,8 +881,10 @@ export default function InspectionForm() {
 
       if (error) throw error;
 
+      // Handle both new format (pdfData) and old format (pdfUrl)
       if (data?.pdfData) {
-        // Convert base64 to blob
+        // New format: base64 PDF data
+        console.log('Using new pdfData format');
         const byteCharacters = atob(data.pdfData);
         const byteNumbers = new Array(byteCharacters.length);
         for (let i = 0; i < byteCharacters.length; i++) {
@@ -910,6 +912,37 @@ export default function InspectionForm() {
         
         // Clean up blob URL after some time
         setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
+      } else if (data?.pdfUrl) {
+        // Old format: signed URL to storage
+        console.log('Using old pdfUrl format:', data.pdfUrl);
+        
+        // Fetch the PDF from the storage URL
+        const response = await fetch(data.pdfUrl);
+        if (!response.ok) {
+          throw new Error('Failed to fetch PDF from storage');
+        }
+        
+        const blob = await response.blob();
+        const blobUrl = URL.createObjectURL(blob);
+        window.open(blobUrl, '_blank');
+        
+        // Also offer download option
+        const downloadLink = document.createElement('a');
+        downloadLink.href = blobUrl;
+        downloadLink.download = 'inspection-report.pdf';
+        
+        toast.success('PDF generated successfully!', {
+          action: {
+            label: 'Download',
+            onClick: () => downloadLink.click()
+          },
+          duration: 10000,
+        });
+        
+        // Clean up blob URL after some time
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
+      } else {
+        throw new Error('No PDF data received from server');
       }
     } catch (error: any) {
       console.error('PDF generation error:', error);
