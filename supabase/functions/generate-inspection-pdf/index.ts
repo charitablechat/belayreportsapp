@@ -900,17 +900,8 @@ serve(async (req) => {
         height: checkboxSize,
         borderColor: mediumGray,
         borderWidth: 1,
+        color: hasDoc ? rgb(0, 0.6, 0) : undefined,
       });
-      
-      if (hasDoc) {
-        page10.drawText('✓', {
-          x: pageWidth - margin - 97,
-          y: yPos - 18,
-          size: 12,
-          font: helveticaBold,
-          color: rgb(0, 0.5, 0),
-        });
-      }
 
       page10.drawText('YES', {
         x: pageWidth - margin - 82,
@@ -927,17 +918,8 @@ serve(async (req) => {
         height: checkboxSize,
         borderColor: mediumGray,
         borderWidth: 1,
+        color: !hasDoc ? rgb(0.7, 0.1, 0.1) : undefined,
       });
-      
-      if (!hasDoc) {
-        page10.drawText('✓', {
-          x: pageWidth - margin - 42,
-          y: yPos - 18,
-          size: 12,
-          font: helveticaBold,
-          color: rgb(0.7, 0, 0),
-        });
-      }
 
       page10.drawText('NO', {
         x: pageWidth - margin - 28,
