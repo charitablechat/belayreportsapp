@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { GradientButton } from "@/components/ui/gradient-button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, LogOut, FileText, GraduationCap, ArrowRight, Lock, Download, Settings, Trash2, MoreVertical, Bell, AlertCircle, Cloud, User, Loader2 } from "lucide-react";
+import { Plus, LogOut, FileText, GraduationCap, ArrowRight, Lock, Download, Settings, Trash2, MoreVertical, Bell, AlertCircle, Cloud, User, Loader2, Check } from "lucide-react";
 import { UserAvatar } from "@/components/ui/user-avatar";
 import { toast } from "sonner";
 import ropeWorksLogo from "@/assets/rope-works-logo.png";
@@ -256,28 +256,31 @@ export default function Dashboard() {
     
     const unsyncedPhotosCount = photosByInspection[inspection.id] || 0;
     
-    if (isUnsynced) {
-      return (
-        <div className="flex gap-2">
-          <Badge variant="default">Unsynced</Badge>
-          {unsyncedPhotosCount > 0 && (
-            <Badge variant="secondary" className="gap-1">
-              <Cloud className="w-3 h-3" />
-              {unsyncedPhotosCount}
-            </Badge>
-          )}
-        </div>
-      );
-    }
-    
+    // Status badge configuration
     const variants: Record<string, { variant: any; label: string }> = {
       draft: { variant: "secondary", label: "Draft" },
       completed: { variant: "outline", label: "Completed" },
     };
     const config = variants[inspection.status] || variants.draft;
+    
     return (
       <div className="flex gap-2">
+        {/* Always show the status badge */}
         <Badge variant={config.variant}>{config.label}</Badge>
+        
+        {/* Show sync status badge */}
+        {isUnsynced ? (
+          <Badge variant="default">Unsynced</Badge>
+        ) : (
+          inspection.synced_at && (
+            <Badge variant="outline" className="gap-1">
+              <Check className="w-3 h-3" />
+              Synced
+            </Badge>
+          )
+        )}
+        
+        {/* Show unsynced photos count if any */}
         {unsyncedPhotosCount > 0 && (
           <Badge variant="secondary" className="gap-1">
             <Cloud className="w-3 h-3" />
