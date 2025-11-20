@@ -36,7 +36,7 @@ export default function OperatingSystemsTable({ systems, onUpdate }: OperatingSy
     <Card>
       <CardHeader>
         <div className="flex items-center justify-between">
-          <CardTitle>Operating Systems</CardTitle>
+          <CardTitle>Operating Systems and Zip Lines</CardTitle>
           <Button onClick={addSystem} size="sm">
             <Plus className="w-4 h-4 mr-2" />
             Add System
