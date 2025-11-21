@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
-import { WifiOff, Check, X, ChevronDown, ChevronUp } from 'lucide-react';
+import { WifiOff, Check, X, ChevronDown, ChevronUp, RefreshCw } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { usePWA } from '@/hooks/usePWA';
 
@@ -28,6 +28,10 @@ export const OfflineCapabilitiesBanner = () => {
 
   const handleExpand = () => {
     setIsExpanded(!isExpanded);
+  };
+
+  const handleRefresh = () => {
+    window.location.reload();
   };
 
   // Don't show if online
@@ -58,6 +62,15 @@ export const OfflineCapabilitiesBanner = () => {
                 You're Working Offline
               </AlertTitle>
               <div className="flex gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleRefresh}
+                  className="h-6 px-2 text-blue-700 dark:text-blue-300"
+                  title="Refresh application"
+                >
+                  <RefreshCw className="h-4 w-4" />
+                </Button>
                 <Button
                   variant="ghost"
                   size="sm"
