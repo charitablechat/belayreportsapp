@@ -11,18 +11,9 @@ const STORAGE_KEY = 'last-network-status';
 const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 
 export const useNetworkStatus = () => {
-  // Start with optimistic state or last known state
-  const getInitialState = (): boolean => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      return stored ? JSON.parse(stored) : true; // Optimistic: assume online
-    } catch {
-      return true;
-    }
-  };
-
+  // ALWAYS start optimistically online - let events drive offline detection
   const [networkStatus, setNetworkStatus] = useState<NetworkStatus>({
-    isOnline: getInitialState(),
+    isOnline: true,
     effectiveType: null,
     downlink: null,
     rtt: null,
@@ -33,11 +24,9 @@ export const useNetworkStatus = () => {
   const retryCountRef = useRef(0);
 
   useEffect(() => {
-    // Always start with optimistic online state and clear any stale data
-    console.log('[Network] Initializing - clearing stale offline state');
+    // Clear stale data
     localStorage.removeItem(STORAGE_KEY);
-    setNetworkStatus(prev => ({ ...prev, isOnline: navigator.onLine }));
-
+    
     // Lightweight connectivity verification - only as a secondary check
     const verifyConnectivity = async (): Promise<boolean> => {
       if (verifyingRef.current) return networkStatus.isOnline;
@@ -142,17 +131,13 @@ export const useNetworkStatus = () => {
       debouncedUpdate(true);
     };
 
-    // Initial check - always start assuming online
-    setNetworkStatus(prev => ({ ...prev, isOnline: true }));
-    setTimeout(() => {
+    // Initial check - only mark offline if browser says so
+    if (!navigator.onLine) {
       if (import.meta.env.DEV) {
-        console.log('[Network] Initial check - navigator.onLine:', navigator.onLine);
+        console.log('[Network] Initial check - browser is offline');
       }
-      // Only update if truly offline
-      if (!navigator.onLine) {
-        updateNetworkStatus(false);
-      }
-    }, 100);
+      setNetworkStatus(prev => ({ ...prev, isOnline: false }));
+    }
 
     // Add event listeners
     window.addEventListener('online', handleOnline);
