@@ -33,11 +33,10 @@ export const useNetworkStatus = () => {
   const retryCountRef = useRef(0);
 
   useEffect(() => {
-    // Clear any stale offline state on mount
-    if (localStorage.getItem(STORAGE_KEY) === 'false') {
-      console.log('[Network] Clearing stale offline state');
-      localStorage.removeItem(STORAGE_KEY);
-    }
+    // Always start with optimistic online state and clear any stale data
+    console.log('[Network] Initializing - clearing stale offline state');
+    localStorage.removeItem(STORAGE_KEY);
+    setNetworkStatus(prev => ({ ...prev, isOnline: navigator.onLine }));
 
     // Lightweight connectivity verification - only as a secondary check
     const verifyConnectivity = async (): Promise<boolean> => {
@@ -143,12 +142,16 @@ export const useNetworkStatus = () => {
       debouncedUpdate(true);
     };
 
-    // Initial check - trust navigator.onLine primarily
+    // Initial check - always start assuming online
+    setNetworkStatus(prev => ({ ...prev, isOnline: true }));
     setTimeout(() => {
       if (import.meta.env.DEV) {
         console.log('[Network] Initial check - navigator.onLine:', navigator.onLine);
       }
-      updateNetworkStatus(false);
+      // Only update if truly offline
+      if (!navigator.onLine) {
+        updateNetworkStatus(false);
+      }
     }, 100);
 
     // Add event listeners
