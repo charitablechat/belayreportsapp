@@ -23,6 +23,7 @@ import { PWAProvider } from "@/components/pwa/PWAProvider";
 import { syncAllInspectionsAtomic } from "@/lib/atomic-sync-manager";
 import { syncPhotos } from "@/lib/sync-manager";
 import { useBackgroundSync } from "@/hooks/useBackgroundSync";
+import ContactDeveloper from "@/components/ContactDeveloper";
 
 const queryClient = new QueryClient();
 
@@ -76,6 +77,9 @@ const App = () => (
           <InstallBanner />
           <UpdateNotification />
           <InstallSuccessNotification />
+          
+          {/* Global Contact Developer Button */}
+          <ContactDeveloper />
           
           <Routes>
             <Route path="/" element={<Index />} />
