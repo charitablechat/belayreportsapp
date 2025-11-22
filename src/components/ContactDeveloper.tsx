@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { MessageCircle, Send, X } from "lucide-react";
+import { useState } from "react";
+import { MessageCircle, Send, X, Upload, Image as ImageIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,8 +11,6 @@ import { supabase } from "@/integrations/supabase/client";
 import { usePWA } from "@/hooks/usePWA";
 
 interface ContactForm {
-  name: string;
-  email: string;
   subject: string;
   message: string;
 }
@@ -22,47 +20,45 @@ export default function ContactDeveloper() {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState<ContactForm>({
-    name: "",
-    email: "",
     subject: "",
     message: "",
   });
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
 
-  useEffect(() => {
-    // Auto-fill user data if authenticated
-    const loadUserData = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        setForm(prev => ({
-          ...prev,
-          email: user.email || "",
-        }));
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
 
-        // Try to get profile data
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("first_name, last_name")
-          .eq("id", user.id)
-          .single();
-
-        if (profile) {
-          setForm(prev => ({
-            ...prev,
-            name: `${profile.first_name || ""} ${profile.last_name || ""}`.trim(),
-          }));
-        }
-      }
-    };
-
-    if (open) {
-      loadUserData();
+    // Validate file type
+    if (!file.type.startsWith("image/")) {
+      toast.error("Please select an image file");
+      return;
     }
-  }, [open]);
+
+    // Validate file size (5MB max)
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("Image size must be less than 5MB");
+      return;
+    }
+
+    setImageFile(file);
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setImagePreview(reader.result as string);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const clearImage = () => {
+    setImageFile(null);
+    setImagePreview(null);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!form.name || !form.email || !form.subject || !form.message) {
+    if (!form.subject || !form.message) {
       toast.error("Please fill in all fields");
       return;
     }
@@ -80,19 +76,43 @@ export default function ContactDeveloper() {
     setLoading(true);
 
     try {
+      let imageUrl: string | undefined;
+
+      // Upload image if selected
+      if (imageFile) {
+        const fileName = `${Date.now()}_${imageFile.name}`;
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from("contact-attachments")
+          .upload(fileName, imageFile, {
+            cacheControl: "3600",
+            upsert: false,
+          });
+
+        if (uploadError) throw uploadError;
+
+        // Get public URL
+        const { data: { publicUrl } } = supabase.storage
+          .from("contact-attachments")
+          .getPublicUrl(uploadData.path);
+
+        imageUrl = publicUrl;
+      }
+
       const { error } = await supabase.functions.invoke("send-contact-email", {
         body: {
-          name: form.name,
-          email: form.email,
+          name: "Kale Dabling",
+          email: "kale@myaisummit.dev",
           subject: form.subject,
           message: form.message,
+          imageUrl,
         },
       });
 
       if (error) throw error;
 
       toast.success("Message sent successfully!");
-      setForm(prev => ({ ...prev, subject: "", message: "" }));
+      setForm({ subject: "", message: "" });
+      clearImage();
       setOpen(false);
     } catch (error: any) {
       console.error("Error sending message:", error);
@@ -123,24 +143,22 @@ export default function ContactDeveloper() {
           </SheetHeader>
           <form onSubmit={handleSubmit} className="space-y-4 mt-6">
             <div className="space-y-2">
-              <Label htmlFor="name">Name</Label>
+              <Label htmlFor="name">Developer Name</Label>
               <Input
                 id="name"
-                value={form.name}
-                onChange={(e) => setForm(prev => ({ ...prev, name: e.target.value }))}
-                placeholder="Your name"
-                required
+                value="Kale Dabling"
+                disabled
+                className="bg-muted cursor-not-allowed"
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="email">Developer Email</Label>
               <Input
                 id="email"
                 type="email"
-                value={form.email}
-                onChange={(e) => setForm(prev => ({ ...prev, email: e.target.value }))}
-                placeholder="your.email@example.com"
-                required
+                value="kale@myaisummit.dev"
+                disabled
+                className="bg-muted cursor-not-allowed"
               />
             </div>
             <div className="space-y-2">
@@ -174,6 +192,50 @@ export default function ContactDeveloper() {
               />
               <p className="text-xs text-muted-foreground text-right">
                 {form.message.length}/1000 characters
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="image">Attach Image (Optional)</Label>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => document.getElementById("image")?.click()}
+                >
+                  <Upload className="h-4 w-4 mr-2" />
+                  {imageFile ? imageFile.name : "Choose Image"}
+                </Button>
+                <Input
+                  id="image"
+                  type="file"
+                  accept="image/*"
+                  onChange={handleImageSelect}
+                  className="hidden"
+                />
+                {imageFile && (
+                  <Button 
+                    type="button" 
+                    variant="ghost" 
+                    size="icon"
+                    onClick={clearImage}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+              {imagePreview && (
+                <div className="relative mt-2 rounded border bg-muted p-2">
+                  <ImageIcon className="h-4 w-4 absolute top-3 left-3 text-muted-foreground" />
+                  <img 
+                    src={imagePreview} 
+                    alt="Preview" 
+                    className="w-full h-auto max-h-48 object-contain rounded"
+                  />
+                </div>
+              )}
+              <p className="text-xs text-muted-foreground">
+                Max file size: 5MB. Formats: JPG, PNG, GIF, WebP
               </p>
             </div>
             {!isOnline && (

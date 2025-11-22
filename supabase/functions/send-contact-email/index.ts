@@ -11,6 +11,7 @@ interface ContactEmailRequest {
   email: string;
   subject: string;
   message: string;
+  imageUrl?: string;
 }
 
 const handler = async (req: Request): Promise<Response> => {
@@ -20,7 +21,7 @@ const handler = async (req: Request): Promise<Response> => {
   }
 
   try {
-    const { name, email, subject, message }: ContactEmailRequest = await req.json();
+    const { name, email, subject, message, imageUrl }: ContactEmailRequest = await req.json();
 
     // Validate required fields
     if (!name || !email || !subject || !message) {
@@ -77,6 +78,11 @@ const handler = async (req: Request): Promise<Response> => {
           <p><strong>Subject:</strong> ${subjectText}</p>
           <p><strong>Message:</strong></p>
           <p>${message.replace(/\n/g, "<br>")}</p>
+          ${imageUrl ? `
+            <h3>Attached Image:</h3>
+            <p><a href="${imageUrl}">View full size image</a></p>
+            <img src="${imageUrl}" alt="Attachment" style="max-width: 600px; height: auto; margin-top: 10px; border: 1px solid #ddd; border-radius: 4px;" />
+          ` : ''}
           <hr>
           <p style="color: #666; font-size: 12px;">
             Reply to this email to respond directly to ${email}
