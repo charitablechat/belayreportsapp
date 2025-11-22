@@ -5,18 +5,38 @@ import { GradientButton } from "@/components/ui/gradient-button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { toast } from "sonner";
-import { Eye, EyeOff } from "lucide-react";
+import { Eye, EyeOff, WifiOff } from "lucide-react";
+import { usePWA } from "@/hooks/usePWA";
 import ropeWorksLogo from "@/assets/rope-works-logo.png";
 import authBackgroundVideo from "@/assets/auth-background.mp4";
 
 export default function Auth() {
+  const { isOnline } = usePWA();
   const [loading, setLoading] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isSignUp, setIsSignUp] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [isForgotPassword, setIsForgotPassword] = useState(false);
+  
+  // Check if there's a cached session
+  const hasCachedSession = () => {
+    try {
+      const cachedSession = localStorage.getItem('sb-ssgzcgvygnsrqalisshx-auth-token');
+      if (cachedSession) {
+        const parsed = JSON.parse(cachedSession);
+        if (parsed && parsed.access_token) {
+          const expiresAt = parsed.expires_at;
+          return expiresAt && expiresAt * 1000 > Date.now();
+        }
+      }
+    } catch {
+      return false;
+    }
+    return false;
+  };
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -119,6 +139,17 @@ export default function Auth() {
           </CardDescription>
         </CardHeader>
         <CardContent>
+          {!isOnline && (
+            <Alert className="mb-4 border-orange-500/50 bg-orange-500/10">
+              <WifiOff className="h-4 w-4 text-orange-500" />
+              <AlertDescription className="text-sm">
+                <span className="font-semibold">You're offline.</span>{" "}
+                {hasCachedSession() 
+                  ? "Your cached credentials will be used to access the dashboard."
+                  : "Sign in requires an internet connection."}
+              </AlertDescription>
+            </Alert>
+          )}
           <form onSubmit={isForgotPassword ? handleForgotPassword : handleAuth} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
