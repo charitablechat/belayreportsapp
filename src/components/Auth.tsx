@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { GradientButton } from "@/components/ui/gradient-button";
@@ -7,12 +8,13 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { toast } from "sonner";
-import { Eye, EyeOff, WifiOff } from "lucide-react";
+import { Eye, EyeOff, WifiOff, ArrowRight } from "lucide-react";
 import { usePWA } from "@/hooks/usePWA";
 import ropeWorksLogo from "@/assets/rope-works-logo.png";
 import authBackgroundVideo from "@/assets/auth-background.mp4";
 
 export default function Auth() {
+  const navigate = useNavigate();
   const { isOnline } = usePWA();
   const [loading, setLoading] = useState(false);
   const [email, setEmail] = useState("");
@@ -36,6 +38,10 @@ export default function Auth() {
       return false;
     }
     return false;
+  };
+
+  const handleGoToDashboard = () => {
+    navigate("/dashboard");
   };
 
   const handleAuth = async (e: React.FormEvent) => {
@@ -149,6 +155,15 @@ export default function Auth() {
                   : "Sign in requires an internet connection."}
               </AlertDescription>
             </Alert>
+          )}
+          {!isOnline && hasCachedSession() && (
+            <GradientButton
+              type="button"
+              onClick={handleGoToDashboard}
+              className="w-full mb-4"
+            >
+              Go to Dashboard <ArrowRight className="ml-2 h-4 w-4" />
+            </GradientButton>
           )}
           <form onSubmit={isForgotPassword ? handleForgotPassword : handleAuth} className="space-y-4">
             <div className="space-y-2">
