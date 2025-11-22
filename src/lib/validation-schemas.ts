@@ -3,18 +3,18 @@ import { z } from 'zod';
 // Inspection validation schema
 export const inspectionSchema = z.object({
   id: z.string().uuid(),
-  organization: z.string().min(1, "Organization is required"),
-  location: z.string().min(1, "Location is required"),
+  organization: z.string().min(1, "Organization is required").max(255),
+  location: z.string().min(1, "Location is required").max(500),
   inspection_date: z.string().min(1, "Inspection date is required"),
   status: z.enum(['draft', 'in_progress', 'completed']),
   inspector_id: z.string().uuid(),
   organization_id: z.string().uuid().optional().nullable(),
-  onsite_contact: z.string().optional().nullable(),
-  course_history: z.string().optional().nullable(),
-  previous_inspector: z.string().optional().nullable(),
+  onsite_contact: z.string().max(255).optional().nullable(),
+  course_history: z.string().max(5000).optional().nullable(),
+  previous_inspector: z.string().max(255).optional().nullable(),
   previous_inspection_date: z.string().optional().nullable(),
-  latitude: z.number().optional().nullable(),
-  longitude: z.number().optional().nullable(),
+  latitude: z.number().min(-90).max(90).optional().nullable(),
+  longitude: z.number().min(-180).max(180).optional().nullable(),
   created_at: z.string(),
   updated_at: z.string(),
   synced_at: z.string().optional().nullable(),
@@ -26,7 +26,7 @@ export const systemSchema = z.object({
   inspection_id: z.string().uuid(),
   system_name: z.string().optional().nullable(),
   result: z.enum(['pass', 'pass w/provisions', 'fail', 'na']),
-  comments: z.string().optional().nullable(),
+  comments: z.string().max(2000).optional().nullable(),
   created_at: z.string().optional(),
 });
 
@@ -45,7 +45,7 @@ export const ziplineSchema = z.object({
   cable_result: z.enum(['pass', 'pass w/provisions', 'fail', 'na']).optional().nullable(),
   braking_result: z.enum(['pass', 'pass w/provisions', 'fail', 'na']).optional().nullable(),
   ead_result: z.enum(['pass', 'pass w/provisions', 'fail', 'na']).optional().nullable(),
-  comments: z.string().optional().nullable(),
+  comments: z.string().max(2000).optional().nullable(),
   created_at: z.string().optional(),
 });
 
@@ -58,7 +58,7 @@ export const equipmentSchema = z.object({
   production_year: z.number().int().min(1900).max(2100).optional().nullable(),
   quantity: z.number().int().positive().optional().nullable(),
   result: z.enum(['pass', 'pass w/provisions', 'fail', 'na']),
-  comments: z.string().optional().nullable(),
+  comments: z.string().max(2000).optional().nullable(),
   created_at: z.string().optional(),
 });
 
@@ -68,7 +68,7 @@ export const standardSchema = z.object({
   inspection_id: z.string().uuid(),
   standard_name: z.string().optional().nullable(),
   has_documentation: z.boolean(),
-  comments: z.string().optional().nullable(),
+  comments: z.string().max(2000).optional().nullable(),
   created_at: z.string().optional(),
 });
 
@@ -76,9 +76,9 @@ export const standardSchema = z.object({
 export const summarySchema = z.object({
   id: z.string().uuid(),
   inspection_id: z.string().uuid(),
-  repairs_performed: z.string().optional().nullable(),
-  critical_actions: z.string().optional().nullable(),
-  future_considerations: z.string().optional().nullable(),
+  repairs_performed: z.string().max(5000).optional().nullable(),
+  critical_actions: z.string().max(5000).optional().nullable(),
+  future_considerations: z.string().max(5000).optional().nullable(),
   next_inspection_date: z.string().optional().nullable(),
   created_at: z.string().optional(),
 });
