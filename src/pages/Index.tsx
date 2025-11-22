@@ -11,7 +11,35 @@ const Index = () => {
   useEffect(() => {
     const checkAuth = async () => {
       try {
-        // Always try to verify with Supabase first (with timeout)
+        // If offline, check cached session immediately without Supabase call
+        if (!navigator.onLine) {
+          console.log('[Auth] Offline detected, checking cached session');
+          const cachedSession = localStorage.getItem('sb-ssgzcgvygnsrqalisshx-auth-token');
+          
+          if (cachedSession) {
+            try {
+              const parsed = JSON.parse(cachedSession);
+              if (parsed && parsed.access_token) {
+                // Verify the token hasn't expired
+                const expiresAt = parsed.expires_at;
+                if (expiresAt && expiresAt * 1000 > Date.now()) {
+                  console.log('[Auth] Valid cached session found, navigating to dashboard');
+                  setSession(parsed);
+                  navigate("/dashboard");
+                  return;
+                }
+              }
+            } catch (e) {
+              console.error('[Auth] Error parsing cached session:', e);
+            }
+          }
+          
+          // No valid cached session while offline
+          setLoading(false);
+          return;
+        }
+
+        // Online: verify with Supabase (with timeout)
         const timeoutPromise = new Promise((_, reject) => 
           setTimeout(() => reject(new Error('Auth check timeout')), 5000)
         );
