@@ -1,7 +1,12 @@
 /**
  * Background Sync API utilities
  * Enables automatic data synchronization even when the app is closed
+ * 
+ * Note: iOS Safari does not support Background Sync API
+ * For iOS, we fall back to polling and visibility-based sync
  */
+
+import { isIOS } from './mobile-detection';
 
 // Type augmentation for Background Sync API
 interface SyncManager {
@@ -13,10 +18,27 @@ interface ServiceWorkerRegistration {
   readonly sync: SyncManager;
 }
 
+let pollingInterval: NodeJS.Timeout | null = null;
+
 /**
  * Register background sync for inspection data
+ * Falls back to localStorage flag on iOS
  */
 export async function registerInspectionSync(): Promise<boolean> {
+  // iOS fallback: use localStorage to track pending syncs
+  if (isIOS()) {
+    try {
+      localStorage.setItem('pending-inspection-sync', Date.now().toString());
+      if (import.meta.env.DEV) {
+        console.log('[Background Sync] iOS: Marked inspections for sync');
+      }
+      return true;
+    } catch (error) {
+      console.error('[Background Sync] iOS: Failed to mark for sync:', error);
+      return false;
+    }
+  }
+  
   if (!('serviceWorker' in navigator) || !('SyncManager' in window)) {
     if (import.meta.env.DEV) {
       console.warn('[Background Sync] Not supported in this browser');
@@ -41,8 +63,23 @@ export async function registerInspectionSync(): Promise<boolean> {
 
 /**
  * Register background sync for photos
+ * Falls back to localStorage flag on iOS
  */
 export async function registerPhotoSync(): Promise<boolean> {
+  // iOS fallback: use localStorage to track pending syncs
+  if (isIOS()) {
+    try {
+      localStorage.setItem('pending-photo-sync', Date.now().toString());
+      if (import.meta.env.DEV) {
+        console.log('[Background Sync] iOS: Marked photos for sync');
+      }
+      return true;
+    } catch (error) {
+      console.error('[Background Sync] iOS: Failed to mark for sync:', error);
+      return false;
+    }
+  }
+  
   if (!('serviceWorker' in navigator) || !('SyncManager' in window)) {
     if (import.meta.env.DEV) {
       console.warn('[Background Sync] Not supported in this browser');
@@ -67,9 +104,37 @@ export async function registerPhotoSync(): Promise<boolean> {
 
 /**
  * Check if background sync is supported
+ * iOS always returns false (not supported)
  */
 export function isBackgroundSyncSupported(): boolean {
+  if (isIOS()) return false;
   return 'serviceWorker' in navigator && 'SyncManager' in window;
+}
+
+/**
+ * Check if there are pending syncs (iOS fallback)
+ */
+export function hasPendingSyncs(): boolean {
+  if (!isIOS()) return false;
+  
+  const pendingInspections = localStorage.getItem('pending-inspection-sync');
+  const pendingPhotos = localStorage.getItem('pending-photo-sync');
+  
+  return !!(pendingInspections || pendingPhotos);
+}
+
+/**
+ * Clear pending sync flags (iOS fallback)
+ */
+export function clearPendingSyncs(): void {
+  if (!isIOS()) return;
+  
+  localStorage.removeItem('pending-inspection-sync');
+  localStorage.removeItem('pending-photo-sync');
+  
+  if (import.meta.env.DEV) {
+    console.log('[Background Sync] iOS: Cleared pending sync flags');
+  }
 }
 
 /**

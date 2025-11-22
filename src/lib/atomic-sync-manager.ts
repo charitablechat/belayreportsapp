@@ -14,6 +14,7 @@ import {
 } from "./transaction-manager";
 import { toast } from "sonner";
 import { syncProgressEmitter } from "@/hooks/useSyncProgress";
+import { getMobileCapabilities } from "./mobile-detection";
 
 /**
  * Sync inspection with all related data atomically
@@ -233,6 +234,8 @@ export async function syncInspectionAtomic(inspectionId: string) {
  * Sync all unsynced inspections atomically
  */
 export async function syncAllInspectionsAtomic() {
+  const capabilities = getMobileCapabilities();
+  
   if (!navigator.onLine) {
     if (import.meta.env.DEV) {
       console.log('[Atomic Sync] Offline - skipping sync');
@@ -243,7 +246,12 @@ export async function syncAllInspectionsAtomic() {
   const unsynced = await getUnsyncedInspections();
   
   if (import.meta.env.DEV) {
-    console.log('[Atomic Sync] Syncing', unsynced.length, 'inspections atomically');
+    console.log('[Atomic Sync] Starting sync for all unsynced inspections', {
+      count: unsynced.length,
+      platform: capabilities.isIOS ? 'iOS' : capabilities.isAndroid ? 'Android' : 'Desktop',
+      browser: capabilities.browser,
+      isPWA: capabilities.isPWA,
+    });
   }
   
   // Emit initial progress
@@ -259,25 +267,48 @@ export async function syncAllInspectionsAtomic() {
   let failCount = 0;
   const errors: Array<{ id: string; error: string }> = [];
   
+  // Mobile devices get retry logic
+  const maxRetries = capabilities.isMobile ? 3 : 1;
+  
   for (let i = 0; i < unsynced.length; i++) {
     const inspection = unsynced[i];
+    let retryCount = 0;
+    let synced = false;
     
-    // Emit progress for current item
-    syncProgressEmitter.emit({
-      total: unsynced.length,
-      current: i + 1,
-      currentItem: `Syncing inspection ${i + 1} of ${unsynced.length}...`,
-      phase: 'inspections',
-      errors,
-    });
-    
-    try {
-      await syncInspectionAtomic(inspection.id);
-      successCount++;
-    } catch (error: any) {
-      failCount++;
-      errors.push({ id: inspection.id, error: error.message });
-      console.error('[Atomic Sync] Failed:', inspection.id, error);
+    while (retryCount < maxRetries && !synced) {
+      // Emit progress for current item
+      syncProgressEmitter.emit({
+        total: unsynced.length,
+        current: i + 1,
+        currentItem: `${inspection.organization} - ${inspection.location}${retryCount > 0 ? ` (retry ${retryCount})` : ''}`,
+        phase: 'inspections',
+        errors,
+      });
+      
+      try {
+        await syncInspectionAtomic(inspection.id);
+        successCount++;
+        synced = true;
+        
+        if (import.meta.env.DEV) {
+          console.log(`[Atomic Sync] Synced ${i + 1}/${unsynced.length}:`, inspection.id);
+        }
+      } catch (error: any) {
+        retryCount++;
+        
+        if (retryCount < maxRetries) {
+          // Exponential backoff for retries
+          const delay = Math.min(1000 * Math.pow(2, retryCount - 1), 5000);
+          if (import.meta.env.DEV) {
+            console.log(`[Atomic Sync] Retry ${retryCount}/${maxRetries} for ${inspection.id} after ${delay}ms`);
+          }
+          await new Promise(resolve => setTimeout(resolve, delay));
+        } else {
+          failCount++;
+          errors.push({ id: inspection.id, error: error.message });
+          console.error('[Atomic Sync] Failed to sync inspection after retries:', inspection.id, error);
+        }
+      }
     }
   }
   
