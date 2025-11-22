@@ -14,6 +14,15 @@ interface ContactEmailRequest {
   imageUrl?: string;
 }
 
+function escapeHtml(unsafe: string): string {
+  return unsafe
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
 const handler = async (req: Request): Promise<Response> => {
   // Handle CORS preflight requests
   if (req.method === "OPTIONS") {
@@ -74,18 +83,18 @@ const handler = async (req: Request): Promise<Response> => {
         subject: `[ACCT Inspector] ${subjectText} from ${name}`,
         html: `
           <h2>New Contact Form Submission</h2>
-          <p><strong>From:</strong> ${name} (${email})</p>
-          <p><strong>Subject:</strong> ${subjectText}</p>
+          <p><strong>From:</strong> ${escapeHtml(name)} (${escapeHtml(email)})</p>
+          <p><strong>Subject:</strong> ${escapeHtml(subjectText)}</p>
           <p><strong>Message:</strong></p>
-          <p>${message.replace(/\n/g, "<br>")}</p>
+          <p>${escapeHtml(message).replace(/\n/g, "<br>")}</p>
           ${imageUrl ? `
             <h3>Attached Image:</h3>
-            <p><a href="${imageUrl}">View full size image</a></p>
-            <img src="${imageUrl}" alt="Attachment" style="max-width: 600px; height: auto; margin-top: 10px; border: 1px solid #ddd; border-radius: 4px;" />
+            <p><a href="${escapeHtml(imageUrl)}">View full size image</a></p>
+            <img src="${escapeHtml(imageUrl)}" alt="Attachment" style="max-width: 600px; height: auto; margin-top: 10px; border: 1px solid #ddd; border-radius: 4px;" />
           ` : ''}
           <hr>
           <p style="color: #666; font-size: 12px;">
-            Reply to this email to respond directly to ${email}
+            Reply to this email to respond directly to ${escapeHtml(email)}
           </p>
         `,
         reply_to: email,
@@ -111,11 +120,11 @@ const handler = async (req: Request): Promise<Response> => {
         to: [email],
         subject: "We received your message!",
         html: `
-          <h1>Thank you for contacting us, ${name}!</h1>
-          <p>We have received your message regarding: <strong>${subjectText}</strong></p>
+          <h1>Thank you for contacting us, ${escapeHtml(name)}!</h1>
+          <p>We have received your message regarding: <strong>${escapeHtml(subjectText)}</strong></p>
           <p>Our team will review your message and get back to you as soon as possible.</p>
           <p><strong>Your message:</strong></p>
-          <p>${message.replace(/\n/g, "<br>")}</p>
+          <p>${escapeHtml(message).replace(/\n/g, "<br>")}</p>
           <hr>
           <p>Best regards,<br>The ACCT Inspector Team</p>
         `,
