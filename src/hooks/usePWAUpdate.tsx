@@ -20,23 +20,64 @@ export const usePWAUpdate = (): PWAUpdateStatus => {
         }
         setRegistration(reg);
         
-        // Only set offline ready once
+        // Check if there's already an update waiting
+        if (reg.waiting) {
+          setNeedRefresh(true);
+          if (import.meta.env.DEV) {
+            console.log('[PWA Update] Update already waiting');
+          }
+        }
+        
+        // Set offline ready
         if (!offlineReady) {
           setOfflineReady(true);
         }
 
         // Check for updates every hour
-        setInterval(() => {
+        const intervalId = setInterval(() => {
           if (import.meta.env.DEV) {
-            console.log('[PWA Update] Checking for updates...');
+            console.log('[PWA Update] Auto-checking for updates...');
           }
           reg.update();
         }, 60 * 60 * 1000); // 1 hour
+
+        return () => clearInterval(intervalId);
       }).catch((error) => {
         if (import.meta.env.DEV) {
           console.error('[PWA Update] Service Worker registration error:', error);
         }
       });
+
+      // Listen for new service worker waiting to activate
+      const handleControllerChange = () => {
+        if (import.meta.env.DEV) {
+          console.log('[PWA Update] New service worker activated');
+        }
+        window.location.reload();
+      };
+
+      navigator.serviceWorker.addEventListener('controllerchange', handleControllerChange);
+
+      // Listen for updatefound events
+      navigator.serviceWorker.ready.then((reg) => {
+        reg.addEventListener('updatefound', () => {
+          const newWorker = reg.installing;
+          if (newWorker) {
+            newWorker.addEventListener('statechange', () => {
+              if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                setNeedRefresh(true);
+                if (import.meta.env.DEV) {
+                  console.log('[PWA Update] New version available');
+                }
+              }
+            });
+          }
+        });
+      });
+
+      return () => {
+        navigator.serviceWorker.removeEventListener('controllerchange', handleControllerChange);
+      };
     }
   }, [offlineReady]);
 

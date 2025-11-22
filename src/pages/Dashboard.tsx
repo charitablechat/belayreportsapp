@@ -21,6 +21,7 @@ import { NetworkStatusIndicator } from "@/components/pwa/NetworkStatusIndicator"
 import { SyncStatusIndicator } from "@/components/pwa/SyncStatusIndicator";
 import { SyncControlPanel } from "@/components/pwa/SyncControlPanel";
 import { OfflineCapabilitiesBanner } from "@/components/pwa/OfflineCapabilitiesBanner";
+import { ManualUpdateButton } from "@/components/pwa/ManualUpdateButton";
 import { OfflineSimulator } from "@/components/dev/OfflineSimulator";
 import { PushNotificationManager } from "@/components/pwa/PushNotificationManager";
 import { ConflictResolver } from "@/components/sync/ConflictResolver";
@@ -373,6 +374,7 @@ export default function Dashboard() {
               <SyncControlPanel />
               <NetworkStatusIndicator />
               <SyncStatusIndicator />
+              <ManualUpdateButton />
             </div>
             
             {isInstallable && !isInstalled && (
