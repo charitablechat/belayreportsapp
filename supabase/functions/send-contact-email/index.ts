@@ -1,7 +1,4 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
-import { Resend } from "npm:resend@2.0.0";
-
-const resend = new Resend(Deno.env.get("RESEND_API_KEY"));
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -56,41 +53,67 @@ const handler = async (req: Request): Promise<Response> => {
 
     const subjectText = subjectMap[subject] || subject;
 
+    // Send email using Resend API directly
+    const resendApiKey = Deno.env.get("RESEND_API_KEY");
+    
+    if (!resendApiKey) {
+      throw new Error("RESEND_API_KEY not configured");
+    }
+
     // Send email to developer
-    const emailResponse = await resend.emails.send({
-      from: "ACCT Inspector <onboarding@resend.dev>",
-      to: ["developer@example.com"], // Replace with actual developer email
-      subject: `[ACCT Inspector] ${subjectText} from ${name}`,
-      html: `
-        <h2>New Contact Form Submission</h2>
-        <p><strong>From:</strong> ${name} (${email})</p>
-        <p><strong>Subject:</strong> ${subjectText}</p>
-        <p><strong>Message:</strong></p>
-        <p>${message.replace(/\n/g, "<br>")}</p>
-        <hr>
-        <p style="color: #666; font-size: 12px;">
-          Reply to this email to respond directly to ${email}
-        </p>
-      `,
-      replyTo: email,
+    const emailResponse = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${resendApiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from: "ACCT Inspector <onboarding@resend.dev>",
+        to: ["developer@example.com"], // Replace with actual developer email
+        subject: `[ACCT Inspector] ${subjectText} from ${name}`,
+        html: `
+          <h2>New Contact Form Submission</h2>
+          <p><strong>From:</strong> ${name} (${email})</p>
+          <p><strong>Subject:</strong> ${subjectText}</p>
+          <p><strong>Message:</strong></p>
+          <p>${message.replace(/\n/g, "<br>")}</p>
+          <hr>
+          <p style="color: #666; font-size: 12px;">
+            Reply to this email to respond directly to ${email}
+          </p>
+        `,
+        reply_to: email,
+      }),
     });
 
-    console.log("Contact email sent successfully:", emailResponse);
+    if (!emailResponse.ok) {
+      const error = await emailResponse.text();
+      throw new Error(`Failed to send email: ${error}`);
+    }
+
+    console.log("Contact email sent successfully");
 
     // Send confirmation email to user
-    await resend.emails.send({
-      from: "ACCT Inspector <onboarding@resend.dev>",
-      to: [email],
-      subject: "We received your message!",
-      html: `
-        <h1>Thank you for contacting us, ${name}!</h1>
-        <p>We have received your message regarding: <strong>${subjectText}</strong></p>
-        <p>Our team will review your message and get back to you as soon as possible.</p>
-        <p><strong>Your message:</strong></p>
-        <p>${message.replace(/\n/g, "<br>")}</p>
-        <hr>
-        <p>Best regards,<br>The ACCT Inspector Team</p>
-      `,
+    await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${resendApiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from: "ACCT Inspector <onboarding@resend.dev>",
+        to: [email],
+        subject: "We received your message!",
+        html: `
+          <h1>Thank you for contacting us, ${name}!</h1>
+          <p>We have received your message regarding: <strong>${subjectText}</strong></p>
+          <p>Our team will review your message and get back to you as soon as possible.</p>
+          <p><strong>Your message:</strong></p>
+          <p>${message.replace(/\n/g, "<br>")}</p>
+          <hr>
+          <p>Best regards,<br>The ACCT Inspector Team</p>
+        `,
+      }),
     });
 
     return new Response(JSON.stringify({ success: true }), {
