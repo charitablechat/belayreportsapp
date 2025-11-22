@@ -19,12 +19,8 @@ export const useRequireSuperAdmin = () => {
           return;
         }
 
-        // Check if user has super_admin role
-        const { data: roles, error } = await supabase
-          .from("user_roles")
-          .select("role")
-          .eq("user_id", user.id)
-          .eq("role", "super_admin");
+        // Use server-side RPC function to check super admin status
+        const { data: isSuperAdmin, error } = await supabase.rpc('is_super_admin');
 
         if (error) {
           console.error("Error checking super admin status:", error);
@@ -33,10 +29,9 @@ export const useRequireSuperAdmin = () => {
           return;
         }
 
-        const hasSuper = roles && roles.length > 0;
-        setIsSuperAdmin(hasSuper);
+        setIsSuperAdmin(isSuperAdmin);
 
-        if (!hasSuper) {
+        if (!isSuperAdmin) {
           toast({
             title: "Access Denied",
             description: "You don't have permission to access this page.",
