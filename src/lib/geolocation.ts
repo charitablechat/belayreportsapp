@@ -36,7 +36,7 @@ export async function getCurrentLocation(): Promise<Location> {
 export async function reverseGeocode(latitude: number, longitude: number): Promise<string> {
   try {
     const response = await fetch(
-      `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=10&addressdetails=1`,
+      `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=16&addressdetails=1`,
       {
         headers: {
           'Accept': 'application/json',
@@ -55,10 +55,13 @@ export async function reverseGeocode(latitude: number, longitude: number): Promi
     const address = data.address;
     const locationParts = [];
     
-    if (address.town) locationParts.push(address.town);
-    else if (address.city) locationParts.push(address.city);
+    // Prioritize city/town with better fallback order
+    if (address.city) locationParts.push(address.city);
+    else if (address.town) locationParts.push(address.town);
+    else if (address.municipality) locationParts.push(address.municipality);
     else if (address.village) locationParts.push(address.village);
     else if (address.hamlet) locationParts.push(address.hamlet);
+    else if (address.county) locationParts.push(address.county);
     
     if (address.state) locationParts.push(address.state);
     
