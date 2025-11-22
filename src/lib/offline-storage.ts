@@ -1,4 +1,5 @@
 import { openDB, DBSchema, IDBPDatabase } from 'idb';
+import { checkStorageQuota, requestPersistentStorage } from './mobile-detection';
 
 interface InspectionDB extends DBSchema {
   inspections: {
@@ -59,9 +60,54 @@ interface InspectionDB extends DBSchema {
 }
 
 let dbPromise: Promise<IDBPDatabase<InspectionDB>> | null = null;
+let storageWarningShown = false;
+
+/**
+ * Check if IndexedDB is available and healthy
+ */
+export async function checkIndexedDBHealth(): Promise<boolean> {
+  if (!('indexedDB' in window)) {
+    console.error('[Offline Storage] IndexedDB not available');
+    return false;
+  }
+
+  try {
+    // Try to open a test database
+    const testDb = await openDB('health-check', 1);
+    testDb.close();
+    return true;
+  } catch (error) {
+    console.error('[Offline Storage] IndexedDB health check failed:', error);
+    return false;
+  }
+}
+
+/**
+ * Request persistent storage and check quota
+ */
+async function ensureStorage(): Promise<void> {
+  // Request persistent storage (important on mobile)
+  const isPersisted = await requestPersistentStorage();
+  
+  if (!isPersisted && !storageWarningShown) {
+    console.warn('[Offline Storage] Persistent storage not granted - data may be cleared by browser');
+    storageWarningShown = true;
+  }
+
+  // Check storage quota
+  const quota = await checkStorageQuota();
+  
+  if (quota.percentUsed > 80 && !storageWarningShown) {
+    console.warn('[Offline Storage] Storage almost full:', quota.percentUsed.toFixed(2) + '%');
+    storageWarningShown = true;
+  }
+}
 
 export async function getDB() {
   if (!dbPromise) {
+    // Ensure storage is available before opening DB
+    await ensureStorage();
+    
     dbPromise = openDB<InspectionDB>('rope-works-inspections', 4, {
       upgrade(db, oldVersion, newVersion, transaction) {
         let inspectionStore;
@@ -121,11 +167,22 @@ export async function getDB() {
 }
 
 export async function saveInspectionOffline(inspection: any) {
-  const db = await getDB();
-  await db.put('inspections', inspection);
-  
-  if (import.meta.env.DEV) {
-    console.log('[Offline Storage] Saved inspection:', inspection.id);
+  try {
+    const db = await getDB();
+    await db.put('inspections', inspection);
+    
+    if (import.meta.env.DEV) {
+      console.log('[Offline Storage] Saved inspection:', inspection.id);
+    }
+  } catch (error: any) {
+    console.error('[Offline Storage] Failed to save inspection:', error);
+    
+    // Check if it's a quota error
+    if (error.name === 'QuotaExceededError') {
+      throw new Error('Storage quota exceeded. Please sync and clear old data.');
+    }
+    
+    throw error;
   }
 }
 
@@ -215,21 +272,38 @@ export async function savePhotoOffline(photo: {
   uploaded?: boolean;
   photoUrl?: string;
 }) {
-  const db = await getDB();
-  await db.put('photos', {
-    ...photo,
-    timestamp: Date.now(),
-    uploaded: photo.uploaded || false,
-  });
-  
-  if (import.meta.env.DEV) {
-    console.log('[Offline Storage] Saved photo:', photo.id);
-  }
-  
-  // Register background sync for photos if not already uploaded
-  if (!photo.uploaded) {
-    const { registerPhotoSync } = await import('./background-sync');
-    await registerPhotoSync();
+  try {
+    const db = await getDB();
+    
+    // Check storage before saving large blobs
+    const quota = await checkStorageQuota();
+    if (quota.percentUsed > 90) {
+      throw new Error('Storage almost full. Please sync photos to free up space.');
+    }
+    
+    await db.put('photos', {
+      ...photo,
+      timestamp: Date.now(),
+      uploaded: photo.uploaded || false,
+    });
+    
+    if (import.meta.env.DEV) {
+      console.log('[Offline Storage] Saved photo:', photo.id);
+    }
+    
+    // Register background sync for photos if not already uploaded
+    if (!photo.uploaded) {
+      const { registerPhotoSync } = await import('./background-sync');
+      await registerPhotoSync();
+    }
+  } catch (error: any) {
+    console.error('[Offline Storage] Failed to save photo:', error);
+    
+    if (error.name === 'QuotaExceededError') {
+      throw new Error('Storage quota exceeded. Please sync photos to free up space.');
+    }
+    
+    throw error;
   }
 }
 

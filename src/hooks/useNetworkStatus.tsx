@@ -1,10 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
+import { supabase } from '@/integrations/supabase/client';
 
 export interface NetworkStatus {
   isOnline: boolean;
   effectiveType: string | null;
   downlink: number | null;
   rtt: number | null;
+  isVerified: boolean;
 }
 
 const STORAGE_KEY = 'last-network-status';
@@ -17,21 +19,54 @@ export const useNetworkStatus = () => {
     effectiveType: null,
     downlink: null,
     rtt: null,
+    isVerified: false,
   });
   
   const debounceTimerRef = useRef<NodeJS.Timeout>();
   const verifyingRef = useRef(false);
   const retryCountRef = useRef(0);
+  const lastVerifyTimeRef = useRef<number>(0);
 
   useEffect(() => {
     // Clear stale data
     localStorage.removeItem(STORAGE_KEY);
     
-    // Lightweight connectivity verification - only as a secondary check
+    // Enhanced connectivity verification with Supabase ping
     const verifyConnectivity = async (): Promise<boolean> => {
       if (verifyingRef.current) return networkStatus.isOnline;
+      
+      // Rate limit: only verify once every 5 seconds
+      const now = Date.now();
+      if (now - lastVerifyTimeRef.current < 5000) {
+        return networkStatus.isOnline;
+      }
+      lastVerifyTimeRef.current = now;
+      
       verifyingRef.current = true;
       
+      try {
+        // Try Supabase health check first (more reliable for actual functionality)
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
+        
+        const { error } = await supabase.auth.getSession();
+        clearTimeout(timeoutId);
+        
+        // No error means we can reach Supabase
+        if (!error || error.message !== 'Failed to fetch') {
+          if (import.meta.env.DEV) {
+            console.log('[Network] Verified online via Supabase');
+          }
+          verifyingRef.current = false;
+          return true;
+        }
+      } catch (error: any) {
+        if (import.meta.env.DEV) {
+          console.log('[Network] Supabase verification failed:', error.message);
+        }
+      }
+      
+      // Fallback to favicon check
       try {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 3000);
@@ -46,14 +81,14 @@ export const useNetworkStatus = () => {
         
         if (response.ok || response.status === 304) {
           if (import.meta.env.DEV) {
-            console.log('[Network] Verified online');
+            console.log('[Network] Verified online via favicon');
           }
           verifyingRef.current = false;
           return true;
         }
       } catch (error) {
         if (import.meta.env.DEV) {
-          console.log('[Network] Verification failed:', error);
+          console.log('[Network] Favicon verification failed:', error);
         }
       }
       
@@ -74,6 +109,7 @@ export const useNetworkStatus = () => {
         effectiveType: connection?.effectiveType || null,
         downlink: connection?.downlink || null,
         rtt: connection?.rtt || null,
+        isVerified: shouldVerify,
       };
       
       setNetworkStatus(newStatus);

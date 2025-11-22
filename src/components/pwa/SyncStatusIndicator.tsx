@@ -1,7 +1,8 @@
-import { RefreshCw, AlertCircle, Check, Cloud } from 'lucide-react';
+import { RefreshCw, AlertCircle, Check, Cloud, Smartphone } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { usePWA } from '@/hooks/usePWA';
+import { isMobile, isIOS } from '@/lib/mobile-detection';
 import {
   Tooltip,
   TooltipContent,
@@ -20,6 +21,9 @@ export const SyncStatusIndicator = () => {
     isOnline,
     unsyncedPhotoCount 
   } = usePWA();
+  
+  const isMobileDevice = isMobile();
+  const isIOSDevice = isIOS();
 
   const formatLastSync = (date: Date | null) => {
     if (!date) return 'Never';
@@ -62,25 +66,36 @@ export const SyncStatusIndicator = () => {
       <Tooltip>
         <TooltipTrigger asChild>
           <div className="flex items-center gap-2">
-            <Badge variant={getStatusColor()} className="gap-2">
+            <Badge 
+              variant={getStatusColor()} 
+              className={`gap-2 ${isMobileDevice ? 'text-sm px-3 py-1.5' : ''}`}
+            >
               {getStatusIcon()}
               <span>{getStatusText()}</span>
+              {isMobileDevice && <Smartphone className="w-3 h-3 opacity-60" />}
             </Badge>
             {isOnline && !isSyncing && (unsyncedCount > 0 || unsyncedPhotoCount > 0) && (
               <Button
                 variant="ghost"
-                size="sm"
+                size={isMobileDevice ? "default" : "sm"}
                 onClick={triggerSync}
-                className="h-8 px-2"
+                className={isMobileDevice ? "h-10 px-4" : "h-8 px-2"}
               >
-                <RefreshCw className="w-4 h-4" />
+                <RefreshCw className={isMobileDevice ? "w-5 h-5" : "w-4 h-4"} />
+                {isMobileDevice && <span className="ml-2">Sync</span>}
               </Button>
             )}
           </div>
         </TooltipTrigger>
-        <TooltipContent>
+        <TooltipContent className={isMobileDevice ? "max-w-xs" : ""}>
           <div className="space-y-1 text-xs">
             <p><strong>Last sync:</strong> {formatLastSync(lastSyncTime)}</p>
+            
+            {isIOSDevice && (
+              <p className="text-muted-foreground italic">
+                iOS: Auto-sync every 30 seconds when app is active
+              </p>
+            )}
             
             {unsyncedCount > 0 && (
               <>

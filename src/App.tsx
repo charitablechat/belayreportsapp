@@ -23,27 +23,44 @@ import { PWAProvider } from "@/components/pwa/PWAProvider";
 import { syncAllInspectionsAtomic } from "@/lib/atomic-sync-manager";
 import { syncPhotos } from "@/lib/sync-manager";
 import { useBackgroundSync } from "@/hooks/useBackgroundSync";
+import { useIOSSync } from "@/hooks/useIOSSync";
+import { isMobile, logMobileCapabilities } from "@/lib/mobile-detection";
 import ContactDeveloper from "@/components/ContactDeveloper";
 
 const queryClient = new QueryClient();
 
 const AppContent = () => {
   const { isSupported } = useBackgroundSync();
+  const { isIOSDevice } = useIOSSync(); // iOS-specific sync behavior
+  const isMobileDevice = isMobile();
   
   useEffect(() => {
+    // Log mobile capabilities on mount
+    if (import.meta.env.DEV) {
+      logMobileCapabilities();
+    }
+    
     // Sync on mount and when coming back online
     if (navigator.onLine) {
       syncAllInspectionsAtomic();
       syncPhotos();
     }
 
-    // Periodic sync every 5 minutes
+    // iOS uses its own sync hook, so skip these for iOS
+    if (isIOSDevice) {
+      if (import.meta.env.DEV) {
+        console.log('[App] iOS detected - using iOS-specific sync behavior');
+      }
+      return;
+    }
+
+    // Periodic sync - more aggressive on mobile (1 min vs 5 min)
     const syncInterval = setInterval(() => {
       if (navigator.onLine) {
         syncAllInspectionsAtomic();
         syncPhotos();
       }
-    }, 5 * 60 * 1000);
+    }, isMobileDevice ? 60 * 1000 : 5 * 60 * 1000);
 
     // Sync when app becomes visible
     const handleVisibilityChange = () => {
@@ -59,7 +76,7 @@ const AppContent = () => {
       clearInterval(syncInterval);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, []);
+  }, [isIOSDevice, isMobileDevice]);
 
   return null;
 };
