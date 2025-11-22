@@ -5,7 +5,7 @@ self.addEventListener('push', (event) => {
   if (isDev) console.log('[Service Worker] Push notification received:', event);
 
   if (!event.data) {
-    console.log('[Service Worker] Push event has no data');
+    if (isDev) console.log('[Service Worker] Push event has no data');
     return;
   }
 
@@ -27,7 +27,7 @@ self.addEventListener('push', (event) => {
       self.registration.showNotification(data.title, options)
     );
   } catch (error) {
-    console.error('[Service Worker] Error parsing push notification:', error);
+    if (isDev) console.error('[Service Worker] Error parsing push notification:', error);
   }
 });
 
