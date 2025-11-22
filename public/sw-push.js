@@ -1,6 +1,8 @@
 // Push notification handler for service worker
+const isDev = self.location.hostname === 'localhost' || self.location.hostname === '127.0.0.1';
+
 self.addEventListener('push', (event) => {
-  console.log('[Service Worker] Push notification received:', event);
+  if (isDev) console.log('[Service Worker] Push notification received:', event);
 
   if (!event.data) {
     console.log('[Service Worker] Push event has no data');
@@ -9,7 +11,7 @@ self.addEventListener('push', (event) => {
 
   try {
     const data = event.data.json();
-    console.log('[Service Worker] Push notification data:', data);
+    if (isDev) console.log('[Service Worker] Push notification data:', data);
 
     const options = {
       body: data.body,
@@ -30,7 +32,7 @@ self.addEventListener('push', (event) => {
 });
 
 self.addEventListener('notificationclick', (event) => {
-  console.log('[Service Worker] Notification clicked:', event);
+  if (isDev) console.log('[Service Worker] Notification clicked:', event);
   
   event.notification.close();
 
@@ -59,5 +61,5 @@ self.addEventListener('notificationclick', (event) => {
 });
 
 self.addEventListener('notificationclose', (event) => {
-  console.log('[Service Worker] Notification closed:', event);
+  if (isDev) console.log('[Service Worker] Notification closed:', event);
 });
