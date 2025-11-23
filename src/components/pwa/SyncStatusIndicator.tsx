@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { usePWA } from '@/hooks/usePWA';
 import { isMobile, isIOS } from '@/lib/mobile-detection';
 import { triggerHaptic } from '@/lib/haptics';
+import { useState, useEffect } from 'react';
 import {
   Tooltip,
   TooltipContent,
@@ -25,6 +26,25 @@ export const SyncStatusIndicator = () => {
   
   const isMobileDevice = isMobile();
   const isIOSDevice = isIOS();
+  const [justSynced, setJustSynced] = useState(false);
+  const [previousSyncingState, setPreviousSyncingState] = useState(false);
+
+  // Detect when sync completes
+  useEffect(() => {
+    if (previousSyncingState && !isSyncing && !syncError) {
+      // Sync just completed successfully
+      setJustSynced(true);
+      triggerHaptic('success');
+      
+      // Reset animation after 2 seconds
+      const timer = setTimeout(() => {
+        setJustSynced(false);
+      }, 2000);
+      
+      return () => clearTimeout(timer);
+    }
+    setPreviousSyncingState(isSyncing);
+  }, [isSyncing, syncError, previousSyncingState]);
 
   const formatLastSync = (date: Date | null) => {
     if (!date) return 'Never';
@@ -80,10 +100,12 @@ export const SyncStatusIndicator = () => {
                 variant="default"
                 size="sm"
                 onClick={handleSyncWithHaptic}
-                className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90"
+                className={`gap-2 bg-primary text-primary-foreground hover:bg-primary/90 transition-all ${
+                  justSynced ? 'animate-scale-in' : ''
+                }`}
               >
-                <Check className="w-4 h-4" />
-                <span>Sync</span>
+                <Check className={`w-4 h-4 ${justSynced ? 'animate-fade-in' : ''}`} />
+                <span>{justSynced ? 'Synced!' : 'Sync'}</span>
               </Button>
             ) : (
               <Badge 
