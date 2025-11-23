@@ -321,10 +321,19 @@ export async function getOfflinePhotos(inspectionId: string) {
   return await index.getAll(inspectionId);
 }
 
-export async function getUnuploadedPhotos() {
+export async function getUnuploadedPhotos(userId?: string) {
   const db = await getDB();
   const allPhotos = await db.getAll('photos');
-  return allPhotos.filter(p => !p.uploaded);
+  let unuploaded = allPhotos.filter(p => !p.uploaded);
+  
+  // Filter by user's inspections if userId provided
+  if (userId) {
+    const userInspections = await getUnsyncedInspections(userId);
+    const userInspectionIds = new Set(userInspections.map(i => i.id));
+    unuploaded = unuploaded.filter(p => userInspectionIds.has(p.inspectionId));
+  }
+  
+  return unuploaded;
 }
 
 export async function markPhotoAsUploaded(id: string, photoUrl: string) {
