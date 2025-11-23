@@ -433,6 +433,7 @@ export type Database = {
           created_at: string | null
           id: string
           inspection_id: string
+          name: string | null
           result: string
           system_name: string
         }
@@ -441,6 +442,7 @@ export type Database = {
           created_at?: string | null
           id?: string
           inspection_id: string
+          name?: string | null
           result: string
           system_name: string
         }
@@ -449,6 +451,7 @@ export type Database = {
           created_at?: string | null
           id?: string
           inspection_id?: string
+          name?: string | null
           result?: string
           system_name?: string
         }
