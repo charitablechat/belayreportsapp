@@ -309,70 +309,91 @@ serve(async (req) => {
       : '';
 
     const tableWidth = pageWidth - 80;
-    const col1 = tableWidth * 0.33;
-    const col2 = tableWidth * 0.33;
-    const col3 = tableWidth * 0.34;
 
-    // Row 1
-    page.drawRectangle({
-      x: 40,
-      y: yPos - 25,
-      width: tableWidth,
-      height: 25,
-      borderColor: rgb(0, 0, 0),
-      borderWidth: 0.75,
+    // Row 1: Organization, Location, Onsite Contact (form-style with underlines)
+    const row1Y = yPos;
+    
+    // Organization
+    page.drawText('Organization:', { x: 40, y: row1Y, size: 9, font: boldFont });
+    page.drawLine({
+      start: { x: 115, y: row1Y - 2 },
+      end: { x: 195, y: row1Y - 2 },
+      thickness: 0.5,
+      color: rgb(0, 0, 0)
     });
-    
-    page.drawText('Organization:', { x: 44, y: yPos - 10, size: 7.5, font: boldFont });
-    page.drawText(sanitizeText(inspection.organization), { x: 44, y: yPos - 20, size: 9, font: font });
-    page.drawLine({ start: { x: 40 + col1, y: yPos }, end: { x: 40 + col1, y: yPos - 25 }, thickness: 0.75, color: rgb(0, 0, 0) });
-    
-    page.drawText('Location:', { x: 44 + col1, y: yPos - 10, size: 7.5, font: boldFont });
-    page.drawText(sanitizeText(inspection.location), { x: 44 + col1, y: yPos - 20, size: 9, font: font });
-    page.drawLine({ start: { x: 40 + col1 + col2, y: yPos }, end: { x: 40 + col1 + col2, y: yPos - 25 }, thickness: 0.75, color: rgb(0, 0, 0) });
-    
-    page.drawText('Onsite Contact:', { x: 44 + col1 + col2, y: yPos - 10, size: 7.5, font: boldFont });
-    page.drawText(sanitizeText(inspection.onsite_contact), { x: 44 + col1 + col2, y: yPos - 20, size: 9, font: font });
+    page.drawText(sanitizeText(inspection.organization), { x: 118, y: row1Y - 1, size: 9, font: font });
 
-    yPos -= 25;
-
-    // Row 2
-    page.drawRectangle({
-      x: 40,
-      y: yPos - 25,
-      width: tableWidth,
-      height: 25,
-      borderColor: rgb(0, 0, 0),
-      borderWidth: 0.75,
+    // Location
+    page.drawText('Location:', { x: 205, y: row1Y, size: 9, font: boldFont });
+    page.drawLine({
+      start: { x: 260, y: row1Y - 2 },
+      end: { x: 350, y: row1Y - 2 },
+      thickness: 0.5,
+      color: rgb(0, 0, 0)
     });
-    
-    page.drawText('Inspected by:', { x: 44, y: yPos - 10, size: 7.5, font: boldFont });
-    page.drawText(sanitizeText(inspectorName), { x: 44, y: yPos - 20, size: 9, font: font });
-    page.drawLine({ start: { x: 40 + col1 + col2, y: yPos }, end: { x: 40 + col1 + col2, y: yPos - 25 }, thickness: 0.75, color: rgb(0, 0, 0) });
-    
-    page.drawText('Date of Inspection:', { x: 44 + col1 + col2, y: yPos - 10, size: 7.5, font: boldFont });
-    page.drawText(formatDate(inspection.inspection_date), { x: 44 + col1 + col2, y: yPos - 20, size: 9, font: font });
+    page.drawText(sanitizeText(inspection.location), { x: 263, y: row1Y - 1, size: 9, font: font });
 
-    yPos -= 25;
-
-    // Row 3
-    page.drawRectangle({
-      x: 40,
-      y: yPos - 25,
-      width: tableWidth,
-      height: 25,
-      borderColor: rgb(0, 0, 0),
-      borderWidth: 0.75,
+    // Onsite Contact
+    page.drawText('Onsite Contact:', { x: 360, y: row1Y, size: 9, font: boldFont });
+    page.drawLine({
+      start: { x: 445, y: row1Y - 2 },
+      end: { x: pageWidth - 40, y: row1Y - 2 },
+      thickness: 0.5,
+      color: rgb(0, 0, 0)
     });
-    
-    page.drawText('Previous Inspector:', { x: 44, y: yPos - 10, size: 7.5, font: boldFont });
-    page.drawText(sanitizeText(inspection.previous_inspector), { x: 44, y: yPos - 20, size: 9, font: font });
-    page.drawLine({ start: { x: 40 + col1 + col2, y: yPos }, end: { x: 40 + col1 + col2, y: yPos - 25 }, thickness: 0.75, color: rgb(0, 0, 0) });
-    
-    page.drawText('Prev. Inspection Date:', { x: 44 + col1 + col2, y: yPos - 10, size: 7.5, font: boldFont });
-    page.drawText(formatDate(inspection.previous_inspection_date), { x: 44 + col1 + col2, y: yPos - 20, size: 9, font: font });
+    page.drawText(sanitizeText(inspection.onsite_contact || 'N/A'), { x: 448, y: row1Y - 1, size: 9, font: font });
 
-    yPos -= 28;
+    yPos = row1Y - 28;
+
+    // Row 2: Inspected by, Date of Inspection
+    const row2Y = yPos;
+
+    // Inspected by
+    page.drawText('Inspected by:', { x: 40, y: row2Y, size: 9, font: boldFont });
+    page.drawLine({
+      start: { x: 115, y: row2Y - 2 },
+      end: { x: 270, y: row2Y - 2 },
+      thickness: 0.5,
+      color: rgb(0, 0, 0)
+    });
+    page.drawText(sanitizeText(inspectorName || 'N/A'), { x: 118, y: row2Y - 1, size: 9, font: font });
+
+    // Date of Inspection
+    page.drawText('Date of Inspection:', { x: 290, y: row2Y, size: 9, font: boldFont });
+    page.drawLine({
+      start: { x: 395, y: row2Y - 2 },
+      end: { x: pageWidth - 40, y: row2Y - 2 },
+      thickness: 0.5,
+      color: rgb(0, 0, 0)
+    });
+    page.drawText('☐ ' + formatDate(inspection.inspection_date), { x: 398, y: row2Y - 1, size: 9, font: font });
+
+    yPos = row2Y - 28;
+
+    // Row 3: Previous Inspector, Prev. Inspection Date
+    const row3Y = yPos;
+
+    // Previous Inspector
+    page.drawText('Previous Inspector:', { x: 40, y: row3Y, size: 9, font: boldFont });
+    page.drawLine({
+      start: { x: 145, y: row3Y - 2 },
+      end: { x: 270, y: row3Y - 2 },
+      thickness: 0.5,
+      color: rgb(0, 0, 0)
+    });
+    page.drawText(sanitizeText(inspection.previous_inspector || 'N/A'), { x: 148, y: row3Y - 1, size: 9, font: font });
+
+    // Prev. Inspection Date
+    page.drawText('Prev. Inspection Date:', { x: 290, y: row3Y, size: 9, font: boldFont });
+    page.drawLine({
+      start: { x: 415, y: row3Y - 2 },
+      end: { x: pageWidth - 40, y: row3Y - 2 },
+      thickness: 0.5,
+      color: rgb(0, 0, 0)
+    });
+    page.drawText('☐ ' + (inspection.previous_inspection_date ? formatDate(inspection.previous_inspection_date) : 'N/A'), { x: 418, y: row3Y - 1, size: 9, font: font });
+
+    yPos = row3Y - 28;
 
     // Course History
     page.drawText('Known Course History', {
