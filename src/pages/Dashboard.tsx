@@ -371,7 +371,9 @@ export default function Dashboard() {
           {/* Bottom row - Status and action buttons */}
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2 flex-wrap">
-              <SyncControlPanel />
+              <div className="hidden md:flex">
+                <SyncControlPanel />
+              </div>
               <NetworkStatusIndicator />
               <SyncStatusIndicator />
               {/* Show update button on desktop only in horizontal row */}
