@@ -2,6 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { RichTextEditor } from "@/components/ui/rich-text-editor";
 import { Input } from "@/components/ui/input";
+import { convertCircleBulletsToHtml } from "@/lib/bullet-converter";
 interface SummarySectionProps {
   summary: any;
   onUpdate: (summary: any) => void;
@@ -24,7 +25,7 @@ export default function SummarySection({ summary, onUpdate, onImmediateSave }: S
             Repairs, Alterations performed during inspection:
           </Label>
           <RichTextEditor
-            content={summary.repairs_performed || ""}
+            content={convertCircleBulletsToHtml(summary.repairs_performed || "")}
             onChange={(value) => updateField("repairs_performed", value)}
             onBlur={onImmediateSave}
             placeholder="Enter details of repairs and alterations performed..."
@@ -39,7 +40,7 @@ export default function SummarySection({ summary, onUpdate, onImmediateSave }: S
             *Critical Action = Required Changes Prior to use of Activity, Element, or Equipment
           </p>
           <RichTextEditor
-            content={summary.critical_actions || ""}
+            content={convertCircleBulletsToHtml(summary.critical_actions || "")}
             onChange={(value) => updateField("critical_actions", value)}
             onBlur={onImmediateSave}
             placeholder="Enter critical actions required..."
@@ -54,7 +55,7 @@ export default function SummarySection({ summary, onUpdate, onImmediateSave }: S
             (includes but not limited to age of course, recommended updates, suggestions, industry future)
           </p>
           <RichTextEditor
-            content={summary.future_considerations || ""}
+            content={convertCircleBulletsToHtml(summary.future_considerations || "")}
             onChange={(value) => updateField("future_considerations", value)}
             onBlur={onImmediateSave}
             placeholder="Enter future considerations..."
