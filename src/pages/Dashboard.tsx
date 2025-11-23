@@ -416,8 +416,23 @@ export default function Dashboard() {
                   Device Capabilities
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => navigate('/install')}>
+                  <FileText className="w-4 h-4 mr-2" />
                   Install Instructions
                 </DropdownMenuItem>
+                
+                {isInstallable && !isInstalled && (
+                  <DropdownMenuItem onClick={promptInstall}>
+                    <Download className="w-4 h-4 mr-2" />
+                    Install App
+                  </DropdownMenuItem>
+                )}
+                
+                <DropdownMenuItem asChild>
+                  <div className="w-full px-2 py-1.5">
+                    <ManualUpdateButton />
+                  </div>
+                </DropdownMenuItem>
+                
                 <DropdownMenuItem onClick={() => setContactSheetOpen(true)}>
                   <MessageCircle className="w-4 h-4 mr-2" />
                   Contact Developer
@@ -435,36 +450,9 @@ export default function Dashboard() {
             </DropdownMenu>
           </div>
           
-          {/* Bottom row - Sync controls and action buttons */}
-          <div className="flex flex-wrap items-center justify-between gap-2 overflow-hidden">
-            <div className="flex items-center gap-2 flex-wrap">
-              <div className="hidden md:flex">
-                <SyncControlPanel />
-              </div>
-              {/* Show update button on desktop only in horizontal row */}
-              <div className="hidden md:flex">
-                <ManualUpdateButton />
-              </div>
-            </div>
-            
-            <div className="flex items-center gap-2">
-              {isInstallable && !isInstalled && (
-                <Button 
-                  variant="outline" 
-                  size="sm"
-                  onClick={() => {
-                    if (import.meta.env.DEV) {
-                      console.log('[Dashboard] Install App button clicked');
-                    }
-                    promptInstall();
-                  }}
-                  className="gap-2"
-                >
-                <Download className="w-4 h-4" />
-                <span>Install App</span>
-                </Button>
-              )}
-            </div>
+          {/* Bottom row - Sync controls */}
+          <div className="flex items-center gap-2">
+            <SyncControlPanel />
           </div>
           
           {/* Mobile only - Update button below online badge */}
