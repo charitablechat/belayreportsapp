@@ -96,7 +96,7 @@ export default function SuperAdminDashboard() {
         .select(`
           *,
           organization_members(count),
-          inspections(count, inspection_date)
+          inspections(inspection_date)
         `)
         .order("name", { ascending: true });
 
@@ -415,7 +415,7 @@ export default function SuperAdminDashboard() {
                   </TableRow>
                 ) : (
                   organizations?.map((org) => {
-                    const inspectionCount = org.inspections?.[0]?.count || 0;
+                    const inspectionCount = org.inspections?.length || 0;
                     const lastInspectionDate = org.inspections && org.inspections.length > 0
                       ? org.inspections.reduce((latest: any, insp: any) => {
                           if (!insp.inspection_date) return latest;
