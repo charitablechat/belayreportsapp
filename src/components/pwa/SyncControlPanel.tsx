@@ -63,7 +63,7 @@ export const SyncControlPanel = () => {
           className="relative gradient-button"
           size="lg"
         >
-          <RefreshCw className={`h-4 w-4 mr-2 ${isSyncing ? 'animate-spin' : ''}`} />
+          <RefreshCw className={`h-4 w-4 mr-2 hidden md:inline ${isSyncing ? 'animate-spin' : ''}`} />
           Sync Now
           {totalUnsynced > 0 && (
             <Badge 
