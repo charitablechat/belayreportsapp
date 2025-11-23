@@ -19,7 +19,7 @@ export const ConflictNotification = ({ onViewConflicts }: ConflictNotificationPr
         {
           description: `${conflictCount} inspection${conflictCount > 1 ? 's have' : ' has'} conflicting versions. Please resolve to continue syncing.`,
           icon: <AlertCircle className="w-5 h-5" />,
-          duration: 10000, // Show for 10 seconds
+          duration: 60000,
           action: {
             label: 'Resolve',
             onClick: onViewConflicts,

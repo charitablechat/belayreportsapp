@@ -18,7 +18,7 @@ export const UpdateNotification = () => {
 
       toast.success('Update Available', {
         description: 'A new version of the app is available',
-        duration: 10000,
+        duration: 60000,
         id: 'update-available',
         action: {
           label: 'Update Now',

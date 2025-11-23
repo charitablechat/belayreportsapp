@@ -54,7 +54,7 @@ export const InstallSuccessNotification = () => {
             </ul>
           </div>
         ),
-        duration: 8000,
+        duration: 60000,
         icon: <PartyPopper className="w-5 h-5" />,
       });
     };
