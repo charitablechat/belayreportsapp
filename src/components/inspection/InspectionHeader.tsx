@@ -1,87 +1,40 @@
-import { useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Pencil, Check, X } from "lucide-react";
-import { Button } from "@/components/ui/button";
 
 interface InspectionHeaderProps {
   inspection: any;
   onUpdate: (field: string, value: string) => void;
+  onImmediateSave?: () => void;
 }
 
-export default function InspectionHeader({ inspection, onUpdate }: InspectionHeaderProps) {
-  const [editingField, setEditingField] = useState<string | null>(null);
-  const [editValue, setEditValue] = useState("");
-
-  const startEdit = (field: string, currentValue: string) => {
-    setEditingField(field);
-    setEditValue(currentValue || "");
-  };
-
-  const cancelEdit = () => {
-    setEditingField(null);
-    setEditValue("");
-  };
-
-  const saveEdit = (field: string) => {
-    onUpdate(field, editValue);
-    setEditingField(null);
-    setEditValue("");
-  };
-
-  const renderEditableField = (label: string, field: string, value: string, type: string = "text", isTextarea: boolean = false) => {
-    const isEditing = editingField === field;
-    
+export default function InspectionHeader({ inspection, onUpdate, onImmediateSave }: InspectionHeaderProps) {
+  const renderField = (label: string, field: string, value: string, type: string = "text", isTextarea: boolean = false) => {
     return (
       <div>
         <Label className="text-sm text-muted-foreground">{label}</Label>
-        {isEditing ? (
-          <div className="flex items-start gap-2">
-            {isTextarea ? (
-              <Textarea
-                value={editValue}
-                onChange={(e) => setEditValue(e.target.value)}
-                className="min-h-[100px]"
-                autoFocus
-                onKeyDown={(e) => {
-                  if (e.key === "Escape") cancelEdit();
-                }}
-              />
-            ) : (
-              <Input
-                type={type}
-                value={editValue}
-                onChange={(e) => setEditValue(e.target.value)}
-                className="h-8"
-                autoFocus
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") saveEdit(field);
-                  if (e.key === "Escape") cancelEdit();
-                }}
-              />
-            )}
-            <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => saveEdit(field)}>
-              <Check className="h-4 w-4 text-green-600" />
-            </Button>
-            <Button size="icon" variant="ghost" className="h-8 w-8" onClick={cancelEdit}>
-              <X className="h-4 w-4 text-red-600" />
-            </Button>
-          </div>
+        {isTextarea ? (
+          <Textarea
+            value={value || ""}
+            onChange={(e) => onUpdate(field, e.target.value)}
+            onBlur={onImmediateSave}
+            className="min-h-[100px]"
+            placeholder={`Enter ${label.toLowerCase()}...`}
+          />
         ) : (
-          <div className="flex items-center gap-2 group">
-            <p className={`font-medium flex-1 ${isTextarea ? 'whitespace-pre-wrap' : ''}`}>{value || "N/A"}</p>
-            <Button
-              size="icon"
-              variant="ghost"
-              className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
-              onClick={() => startEdit(field, value)}
-            >
-              <Pencil className="h-3 w-3" />
-            </Button>
-          </div>
+          <Input
+            type={type}
+            value={value || ""}
+            onChange={(e) => onUpdate(field, e.target.value)}
+            onBlur={onImmediateSave}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                onImmediateSave?.();
+              }
+            }}
+            placeholder={`Enter ${label.toLowerCase()}...`}
+          />
         )}
       </div>
     );
@@ -99,19 +52,19 @@ export default function InspectionHeader({ inspection, onUpdate }: InspectionHea
         <CardContent className="pt-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 mb-6">
             <div className="space-y-4">
-              {renderEditableField("Facility Name", "organization", inspection?.organization)}
-              {renderEditableField("Location", "location", inspection?.location)}
-              {renderEditableField("Onsite Contact", "onsite_contact", inspection?.onsite_contact)}
+              {renderField("Facility Name", "organization", inspection?.organization)}
+              {renderField("Location", "location", inspection?.location)}
+              {renderField("Onsite Contact", "onsite_contact", inspection?.onsite_contact)}
             </div>
             <div className="space-y-4">
-              {renderEditableField("Inspection Date", "inspection_date", inspection?.inspection_date, "date")}
-              {renderEditableField("Previous Inspector", "previous_inspector", inspection?.previous_inspector)}
-              {renderEditableField("Prev. Inspection Date", "previous_inspection_date", inspection?.previous_inspection_date, "date")}
+              {renderField("Inspection Date", "inspection_date", inspection?.inspection_date, "date")}
+              {renderField("Previous Inspector", "previous_inspector", inspection?.previous_inspector)}
+              {renderField("Prev. Inspection Date", "previous_inspection_date", inspection?.previous_inspection_date, "date")}
             </div>
           </div>
 
           <div className="mb-6">
-            {renderEditableField("Known Course History", "course_history", inspection?.course_history, "text", true)}
+            {renderField("Known Course History", "course_history", inspection?.course_history, "text", true)}
           </div>
 
           <div className="border-l-4 border-primary pl-4 mb-6">
