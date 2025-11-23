@@ -31,7 +31,7 @@ export function useSessionTimeout() {
           toast.warning(
             `Your session will expire in ${minutesRemaining} minute${minutesRemaining !== 1 ? 's' : ''}`,
             {
-              duration: 10000,
+              duration: 60000,
               action: {
                 label: "Refresh Session",
                 onClick: async () => {

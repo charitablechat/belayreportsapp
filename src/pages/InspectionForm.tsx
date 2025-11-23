@@ -1036,7 +1036,7 @@ export default function InspectionForm() {
         const estimatedSize = data.pdfData.length * 0.75;
         if (estimatedSize > 10 * 1024 * 1024) {
           console.warn('[PDF Generation] Large file detected:', Math.round(estimatedSize / 1024 / 1024) + ' MB');
-          toast.loading('Downloading large PDF file...', { duration: 3000 });
+          toast.loading('Downloading large PDF file...', { duration: 60000 });
         }
         
         try {
