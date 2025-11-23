@@ -2,6 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { RichTextEditor } from "@/components/ui/rich-text-editor";
 import { Input } from "@/components/ui/input";
+import { BulletMigrationButton } from "./BulletMigrationButton";
 
 interface SummarySectionProps {
   summary: any;
@@ -16,8 +17,9 @@ export default function SummarySection({ summary, onUpdate, onImmediateSave }: S
 
   return (
     <Card>
-      <CardHeader>
+      <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle>Report Summary</CardTitle>
+        <BulletMigrationButton />
       </CardHeader>
       <CardContent className="space-y-6">
         <div className="space-y-2">
