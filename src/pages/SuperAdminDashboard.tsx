@@ -8,13 +8,14 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Building2, Users, FileText, Bell, AlertTriangle, Radio, UserPlus, Pencil, Trash2, ClipboardList, ArrowLeft } from "lucide-react";
+import { Building2, Users, FileText, Bell, AlertTriangle, Radio, UserPlus, Pencil, Trash2, ClipboardList, ArrowLeft, Merge } from "lucide-react";
 import { format } from "date-fns";
 import { useNavigate } from "react-router-dom";
 import { useState } from "react";
 import { toast } from "sonner";
 import { UserManagementDialog } from "@/components/admin/UserManagementDialog";
 import { FormCMSManager } from "@/components/admin/FormCMSManager";
+import { MergeOrganizationsDialog } from "@/components/admin/MergeOrganizationsDialog";
 
 export default function SuperAdminDashboard() {
   const { loading } = useRequireSuperAdmin();
@@ -26,6 +27,7 @@ export default function SuperAdminDashboard() {
   const [selectedUser, setSelectedUser] = useState<any>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [userToDelete, setUserToDelete] = useState<any>(null);
+  const [isMergeDialogOpen, setIsMergeDialogOpen] = useState(false);
   
   // Dialog states for stat cards
   const [isUsersListOpen, setIsUsersListOpen] = useState(false);
@@ -384,6 +386,15 @@ export default function SuperAdminDashboard() {
         </TabsList>
 
         <TabsContent value="organizations" className="space-y-4">
+          <div className="flex justify-end mb-4">
+            <Button
+              variant="outline"
+              onClick={() => setIsMergeDialogOpen(true)}
+            >
+              <Merge className="h-4 w-4 mr-2" />
+              Merge Duplicates
+            </Button>
+          </div>
           <div className="rounded-md border">
             <Table>
               <TableHeader>
@@ -825,6 +836,12 @@ export default function SuperAdminDashboard() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Merge Organizations Dialog */}
+      <MergeOrganizationsDialog
+        open={isMergeDialogOpen}
+        onOpenChange={setIsMergeDialogOpen}
+      />
     </div>
   );
 }

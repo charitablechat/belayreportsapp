@@ -917,6 +917,16 @@ export type Database = {
         }
         Returns: string
       }
+      find_duplicate_organizations: {
+        Args: never
+        Returns: {
+          group_key: string
+          org_ids: string[]
+          org_names: string[]
+          total_inspections: number
+          total_members: number
+        }[]
+      }
       get_or_create_organization: {
         Args: { org_name: string }
         Returns: string
@@ -935,6 +945,14 @@ export type Database = {
         Returns: boolean
       }
       is_super_admin: { Args: never; Returns: boolean }
+      merge_organizations: {
+        Args: {
+          p_new_name?: string
+          p_source_org_ids: string[]
+          p_target_org_id: string
+        }
+        Returns: Json
+      }
       restore_from_backup: {
         Args: {
           p_backup_table_name: string
