@@ -364,11 +364,16 @@ export default function Dashboard() {
       <div className="relative z-10 min-h-screen bg-background/80 backdrop-blur-sm">
         <header className="border-b bg-card/95 backdrop-blur-sm">
         <div className="container mx-auto px-2 md:px-4 py-3 md:py-4">
-          {/* Top row - Logos and user dropdown */}
-          <div className="flex items-center justify-between mb-2 md:mb-0">
+          {/* Top row - Logos, status indicators, and user dropdown */}
+          <div className="flex items-center justify-between gap-4 mb-2 md:mb-0">
             <div className="flex items-center gap-2 md:gap-3">
               <img src={ropeWorksLogo} alt="Rope Works" className="h-8 md:h-12 w-auto object-contain" />
               <img src={acctLogo} alt="ACCT Accredited Vendor" className="h-8 md:h-12 w-auto object-contain" />
+            </div>
+            
+            <div className="flex items-center gap-2 flex-1 justify-start ml-4">
+              <NetworkStatusIndicator />
+              <SyncStatusIndicator />
             </div>
             
             <DropdownMenu>
@@ -426,14 +431,12 @@ export default function Dashboard() {
             </DropdownMenu>
           </div>
           
-          {/* Bottom row - Status and action buttons */}
+          {/* Bottom row - Sync controls and action buttons */}
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2 flex-wrap">
               <div className="hidden md:flex">
                 <SyncControlPanel />
               </div>
-              <NetworkStatusIndicator />
-              <SyncStatusIndicator />
               {/* Show update button on desktop only in horizontal row */}
               <div className="hidden md:flex">
                 <ManualUpdateButton />
