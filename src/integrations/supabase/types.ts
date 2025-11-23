@@ -56,6 +56,184 @@ export type Database = {
         }
         Relationships: []
       }
+      form_field_options: {
+        Row: {
+          created_at: string | null
+          display_order: number
+          field_id: string
+          id: string
+          is_active: boolean
+          metadata: Json | null
+          option_key: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          display_order?: number
+          field_id: string
+          id?: string
+          is_active?: boolean
+          metadata?: Json | null
+          option_key: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          display_order?: number
+          field_id?: string
+          id?: string
+          is_active?: boolean
+          metadata?: Json | null
+          option_key?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "form_field_options_field_id_fkey"
+            columns: ["field_id"]
+            isOneToOne: false
+            referencedRelation: "form_fields"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      form_fields: {
+        Row: {
+          created_at: string | null
+          display_order: number
+          field_key: string
+          field_type: string
+          id: string
+          is_active: boolean
+          is_required: boolean
+          metadata: Json | null
+          section_id: string
+          updated_at: string | null
+          validation_rules: Json | null
+        }
+        Insert: {
+          created_at?: string | null
+          display_order?: number
+          field_key: string
+          field_type: string
+          id?: string
+          is_active?: boolean
+          is_required?: boolean
+          metadata?: Json | null
+          section_id: string
+          updated_at?: string | null
+          validation_rules?: Json | null
+        }
+        Update: {
+          created_at?: string | null
+          display_order?: number
+          field_key?: string
+          field_type?: string
+          id?: string
+          is_active?: boolean
+          is_required?: boolean
+          metadata?: Json | null
+          section_id?: string
+          updated_at?: string | null
+          validation_rules?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "form_fields_section_id_fkey"
+            columns: ["section_id"]
+            isOneToOne: false
+            referencedRelation: "form_sections"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      form_sections: {
+        Row: {
+          created_at: string | null
+          display_order: number
+          id: string
+          is_active: boolean
+          section_key: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          display_order?: number
+          id?: string
+          is_active?: boolean
+          section_key: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          display_order?: number
+          id?: string
+          is_active?: boolean
+          section_key?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      form_translations: {
+        Row: {
+          created_at: string | null
+          entity_id: string
+          entity_type: string
+          id: string
+          language_code: string
+          translation_key: string
+          translation_value: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          entity_id: string
+          entity_type: string
+          id?: string
+          language_code?: string
+          translation_key: string
+          translation_value: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          entity_id?: string
+          entity_type?: string
+          id?: string
+          language_code?: string
+          translation_key?: string
+          translation_value?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      form_versions: {
+        Row: {
+          configuration: Json
+          created_at: string | null
+          created_by: string | null
+          id: string
+          notes: string | null
+          version_number: number
+        }
+        Insert: {
+          configuration: Json
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          notes?: string | null
+          version_number: number
+        }
+        Update: {
+          configuration?: Json
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          notes?: string | null
+          version_number?: number
+        }
+        Relationships: []
+      }
       inspection_equipment: {
         Row: {
           comments: string | null
