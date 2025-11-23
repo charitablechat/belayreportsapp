@@ -70,7 +70,8 @@ const handler = async (req: Request): Promise<Response> => {
       throw new Error("RESEND_API_KEY not configured");
     }
 
-    // Send email to developer
+    // Send email to developer (using verified test email for Resend test mode)
+    // NOTE: For production, verify your domain at resend.com/domains and update the 'from' address
     const emailResponse = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {
@@ -79,7 +80,7 @@ const handler = async (req: Request): Promise<Response> => {
       },
       body: JSON.stringify({
         from: "ACCT Inspector <onboarding@resend.dev>",
-        to: ["developer@example.com"], // Replace with actual developer email
+        to: ["kale@myaisummit.dev"], // Using verified email for test mode
         subject: `[ACCT Inspector] ${subjectText} from ${name}`,
         html: `
           <h2>New Contact Form Submission</h2>
@@ -102,34 +103,13 @@ const handler = async (req: Request): Promise<Response> => {
     });
 
     if (!emailResponse.ok) {
-      const error = await emailResponse.text();
-      throw new Error(`Failed to send email: ${error}`);
+      const errorText = await emailResponse.text();
+      console.error("Resend API error:", errorText);
+      throw new Error(`Failed to send email: ${errorText}`);
     }
 
-    console.log("Contact email sent successfully");
-
-    // Send confirmation email to user
-    await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${resendApiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        from: "ACCT Inspector <onboarding@resend.dev>",
-        to: [email],
-        subject: "We received your message!",
-        html: `
-          <h1>Thank you for contacting us, ${escapeHtml(name)}!</h1>
-          <p>We have received your message regarding: <strong>${escapeHtml(subjectText)}</strong></p>
-          <p>Our team will review your message and get back to you as soon as possible.</p>
-          <p><strong>Your message:</strong></p>
-          <p>${escapeHtml(message).replace(/\n/g, "<br>")}</p>
-          <hr>
-          <p>Best regards,<br>The ACCT Inspector Team</p>
-        `,
-      }),
-    });
+    const emailResult = await emailResponse.json();
+    console.log("Contact email sent successfully:", emailResult);
 
     return new Response(JSON.stringify({ success: true }), {
       status: 200,
