@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { GradientButton } from "@/components/ui/gradient-button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, LogOut, FileText, GraduationCap, ArrowRight, Lock, Download, Settings, Trash2, MoreVertical, Bell, AlertCircle, Cloud, User, Loader2, Check, RefreshCw } from "lucide-react";
+import { Plus, LogOut, FileText, GraduationCap, ArrowRight, Lock, Download, Settings, Trash2, MoreVertical, Bell, AlertCircle, Cloud, User, Loader2, Check, RefreshCw, MessageCircle } from "lucide-react";
 import { UserAvatar } from "@/components/ui/user-avatar";
 import { toast } from "sonner";
 import { format } from "date-fns";
@@ -32,6 +32,7 @@ import { useConflicts } from "@/hooks/useConflicts";
 import { usePWA } from "@/hooks/usePWA";
 import { usePullToRefresh } from "@/hooks/usePullToRefresh";
 import { getOfflineInspections, deleteOfflineInspection, queueOperation } from "@/lib/offline-storage";
+import { ContactDeveloperSheet } from "@/components/ContactDeveloperSheet";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -67,6 +68,7 @@ export default function Dashboard() {
   const [inspectionToDelete, setInspectionToDelete] = useState<any>(null);
   const [notificationsDialogOpen, setNotificationsDialogOpen] = useState(false);
   const [conflictsDialogOpen, setConflictsDialogOpen] = useState(false);
+  const [contactSheetOpen, setContactSheetOpen] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [userProfile, setUserProfile] = useState<any>(null);
@@ -438,22 +440,34 @@ export default function Dashboard() {
               </div>
             </div>
             
-            {isInstallable && !isInstalled && (
+            <div className="flex items-center gap-2">
               <Button 
                 variant="outline" 
                 size="sm"
-                onClick={() => {
-                  if (import.meta.env.DEV) {
-                    console.log('[Dashboard] Install App button clicked');
-                  }
-                  promptInstall();
-                }}
+                onClick={() => setContactSheetOpen(true)}
                 className="gap-2"
               >
-                <Download className="w-4 h-4" />
-                <span className="hidden sm:inline">Install App</span>
+                <MessageCircle className="w-4 h-4" />
+                <span className="hidden sm:inline">Contact Dev</span>
               </Button>
-            )}
+              
+              {isInstallable && !isInstalled && (
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => {
+                    if (import.meta.env.DEV) {
+                      console.log('[Dashboard] Install App button clicked');
+                    }
+                    promptInstall();
+                  }}
+                  className="gap-2"
+                >
+                  <Download className="w-4 h-4" />
+                  <span className="hidden sm:inline">Install App</span>
+                </Button>
+              )}
+            </div>
           </div>
           
           {/* Mobile only - Update button below online badge */}
@@ -737,6 +751,11 @@ export default function Dashboard() {
       <ConflictResolver 
         open={conflictsDialogOpen} 
         onOpenChange={setConflictsDialogOpen}
+      />
+      
+      <ContactDeveloperSheet 
+        open={contactSheetOpen} 
+        onOpenChange={setContactSheetOpen}
       />
       
       {/* Development Tools */}

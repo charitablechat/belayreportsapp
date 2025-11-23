@@ -25,7 +25,7 @@ import { syncPhotos } from "@/lib/sync-manager";
 import { useBackgroundSync } from "@/hooks/useBackgroundSync";
 import { useIOSSync } from "@/hooks/useIOSSync";
 import { isMobile, logMobileCapabilities } from "@/lib/mobile-detection";
-import ContactDeveloper from "@/components/ContactDeveloper";
+
 
 const queryClient = new QueryClient();
 
@@ -94,9 +94,6 @@ const App = () => (
           <InstallBanner />
           <UpdateNotification />
           <InstallSuccessNotification />
-          
-          {/* Global Contact Developer Button */}
-          <ContactDeveloper />
           
           <Routes>
             <Route path="/" element={<Index />} />
