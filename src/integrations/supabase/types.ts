@@ -917,6 +917,10 @@ export type Database = {
         }
         Returns: string
       }
+      get_or_create_organization: {
+        Args: { org_name: string }
+        Returns: string
+      }
       get_service_role_key: { Args: never; Returns: string }
       get_table_record_count: {
         Args: { p_schema_name?: string; p_table_name: string }
