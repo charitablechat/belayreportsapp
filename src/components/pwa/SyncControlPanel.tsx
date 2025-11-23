@@ -8,6 +8,7 @@ import { usePWA } from '@/hooks/usePWA';
 import { useSyncProgress } from '@/hooks/useSyncProgress';
 import confetti from 'canvas-confetti';
 import { motion, AnimatePresence } from 'framer-motion';
+import { triggerHaptic } from '@/lib/haptics';
 
 export const SyncControlPanel = () => {
   const { isOnline, unsyncedCount, isSyncing, triggerSync, unsyncedPhotoCount } = usePWA();
@@ -19,12 +20,14 @@ export const SyncControlPanel = () => {
   const shouldShowButton = isOnline && totalUnsynced > 0;
 
   const handleSync = async () => {
+    triggerHaptic('medium'); // Haptic feedback when sync starts
     setShowProgressModal(true);
     setSyncComplete(false);
     
     try {
       await triggerSync();
       setSyncComplete(true);
+      triggerHaptic('success'); // Success haptic when sync completes
       
       // Trigger confetti
       confetti({
@@ -40,6 +43,7 @@ export const SyncControlPanel = () => {
       }, 2000);
     } catch (error) {
       // Error is handled by the hook
+      triggerHaptic('error'); // Error haptic on sync failure
       setSyncComplete(false);
     }
   };

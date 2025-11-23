@@ -3,6 +3,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { usePWA } from '@/hooks/usePWA';
 import { isMobile, isIOS } from '@/lib/mobile-detection';
+import { triggerHaptic } from '@/lib/haptics';
 import {
   Tooltip,
   TooltipContent,
@@ -65,10 +66,7 @@ export const SyncStatusIndicator = () => {
   const showSyncButton = isMobileDevice && isOnline && !isSyncing && unsyncedCount === 0 && unsyncedPhotoCount === 0;
 
   const handleSyncWithHaptic = () => {
-    // Trigger haptic feedback on mobile devices
-    if (isMobileDevice && 'vibrate' in navigator) {
-      navigator.vibrate(50); // Short 50ms vibration
-    }
+    triggerHaptic('medium');
     triggerSync();
   };
 

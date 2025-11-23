@@ -14,6 +14,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import ropeWorksLogo from "@/assets/rope-works-logo.png";
 import acctLogo from "@/assets/acct-accredited-vendor.png";
 import dashboardBackgroundVideo from "@/assets/dashboard-background.mp4";
+import { triggerHaptic } from "@/lib/haptics";
 
 import { usePWAInstall } from "@/hooks/usePWAInstall";
 import { useSessionTimeout } from "@/hooks/useSessionTimeout";
@@ -75,6 +76,7 @@ export default function Dashboard() {
   // Pull to refresh for mobile
   const { isPulling, pullDistance, shouldTriggerRefresh, isActive } = usePullToRefresh({
     onRefresh: async () => {
+      triggerHaptic('medium'); // Haptic feedback when refresh triggers
       await triggerSync();
       await loadInspections();
     },
@@ -218,12 +220,15 @@ export default function Dashboard() {
 
   const handleDeleteClick = (e: React.MouseEvent, inspection: any) => {
     e.stopPropagation();
+    triggerHaptic('light'); // Light haptic when opening delete dialog
     setInspectionToDelete(inspection);
     setDeleteDialogOpen(true);
   };
 
   const handleDeleteConfirm = async () => {
     if (!inspectionToDelete) return;
+
+    triggerHaptic('warning'); // Warning haptic for destructive action
 
     try {
       // Delete from offline storage
@@ -238,6 +243,7 @@ export default function Dashboard() {
 
         if (error) throw error;
         
+        triggerHaptic('success'); // Success haptic after deletion
         toast.success("Inspection deleted successfully");
         
         if (import.meta.env.DEV) {
@@ -246,6 +252,7 @@ export default function Dashboard() {
       } else {
         // Queue for later deletion
         await queueOperation('delete', inspectionToDelete.id, inspectionToDelete);
+        triggerHaptic('success'); // Success haptic for offline deletion
         toast.success("Inspection deleted offline - will sync when online");
         
         if (import.meta.env.DEV) {
@@ -259,6 +266,7 @@ export default function Dashboard() {
       setInspectionToDelete(null);
     } catch (error: any) {
       console.error("Error deleting inspection:", error);
+      triggerHaptic('error'); // Error haptic on failure
       toast.error("Failed to delete inspection");
     }
   };
@@ -494,7 +502,10 @@ export default function Dashboard() {
                 {/* INSPECTION CARD - FUNCTIONAL */}
                 <Card 
                   className="relative overflow-hidden hover:shadow-2xl transition-all duration-300 border-2 hover:border-blue-500 cursor-pointer group"
-                  onClick={() => navigate("/inspection/new")}
+                  onClick={() => {
+                    triggerHaptic('light'); // Haptic feedback when starting new inspection
+                    navigate("/inspection/new");
+                  }}
                 >
                   <div className="absolute inset-0 bg-gradient-to-br from-blue-50 to-transparent opacity-50" />
                   <CardHeader className="relative z-10 text-center pb-4">
@@ -592,7 +603,13 @@ export default function Dashboard() {
               <CardContent className="py-12 text-center">
                 <FileText className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
                 <p className="text-muted-foreground">No inspections yet</p>
-                <GradientButton onClick={() => navigate("/inspection/new")} className="mt-4">
+                <GradientButton 
+                  onClick={() => {
+                    triggerHaptic('light');
+                    navigate("/inspection/new");
+                  }} 
+                  className="mt-4"
+                >
                   Create your first inspection
                 </GradientButton>
               </CardContent>
@@ -603,7 +620,10 @@ export default function Dashboard() {
                 <Card
                   key={inspection.id}
                   className="cursor-pointer hover:shadow-lg transition-shadow group relative overflow-hidden"
-                  onClick={() => navigate(`/inspection/${inspection.id}`)}
+                  onClick={() => {
+                    triggerHaptic('light'); // Haptic feedback when opening inspection
+                    navigate(`/inspection/${inspection.id}`);
+                  }}
                 >
                   {/* Watermark for completed inspections */}
                   {inspection.status === 'completed' && (
