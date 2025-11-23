@@ -95,7 +95,6 @@ export default function SuperAdminDashboard() {
         .from("organizations")
         .select(`
           *,
-          organization_members(count),
           inspections(inspection_date)
         `)
         .order("name", { ascending: true });
@@ -400,7 +399,6 @@ export default function SuperAdminDashboard() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Organization</TableHead>
-                  <TableHead className="text-center">Members</TableHead>
                   <TableHead className="text-center">Inspections</TableHead>
                   <TableHead>Last Inspection</TableHead>
                   <TableHead>Created</TableHead>
@@ -409,7 +407,7 @@ export default function SuperAdminDashboard() {
               <TableBody>
                 {organizations?.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
+                    <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
                       No organizations found
                     </TableCell>
                   </TableRow>
@@ -429,11 +427,6 @@ export default function SuperAdminDashboard() {
                     return (
                       <TableRow key={org.id}>
                         <TableCell className="font-medium">{org.name}</TableCell>
-                        <TableCell className="text-center">
-                          <Badge variant="secondary">
-                            {org.organization_members?.[0]?.count || 0}
-                          </Badge>
-                        </TableCell>
                         <TableCell className="text-center">
                           <Badge variant={inspectionCount > 0 ? "default" : "outline"}>
                             {inspectionCount}
