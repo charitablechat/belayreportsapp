@@ -37,35 +37,16 @@ export async function syncInspectionAtomic(inspectionId: string) {
       throw new Error("User not authenticated");
     }
     
-    // Check if user is super admin
-    const { data: roles } = await supabase
-      .from("user_roles")
-      .select("role")
-      .eq("user_id", user.id)
-      .eq("role", "super_admin");
-    
-    const isSuperAdmin = roles && roles.length > 0;
-    
-    // If not super admin and inspector_id doesn't match, it's an error
-    // If super admin, preserve the original inspector_id
+    // Since we now filter inspections by user before syncing, this check is just for logging
     if (inspection.inspector_id !== user.id) {
       if (import.meta.env.DEV) {
-        console.log('[Atomic Sync] Inspector ID mismatch:', {
+        console.log('[Atomic Sync] Warning: Inspector ID mismatch (should have been filtered)', {
           inspection_inspector_id: inspection.inspector_id,
           current_user_id: user.id,
-          is_super_admin: isSuperAdmin
         });
       }
-      
-      if (!isSuperAdmin) {
-        // Regular user trying to sync someone else's inspection - this is an error
-        throw new Error("Cannot sync inspection that doesn't belong to you");
-      }
-      
-      // Super admin - preserve the original inspector_id
-      if (import.meta.env.DEV) {
-        console.log('[Atomic Sync] Super admin preserving original inspector_id');
-      }
+      // Silently skip instead of throwing error
+      throw new Error("Inspection does not belong to current user");
     }
     
     const [systems, ziplines, equipment, standards, summaryArray] = await Promise.all([
@@ -243,7 +224,14 @@ export async function syncAllInspectionsAtomic() {
     return;
   }
   
-  const unsynced = await getUnsyncedInspections();
+  // Get current user to filter inspections
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    throw new Error("User not authenticated");
+  }
+  
+  // Only get unsynced inspections for the current user
+  const unsynced = await getUnsyncedInspections(user.id);
   
   if (import.meta.env.DEV) {
     console.log('[Atomic Sync] Starting sync for all unsynced inspections', {

@@ -201,13 +201,21 @@ export async function deleteOfflineInspection(id: string) {
   await db.delete('inspections', id);
 }
 
-export async function getUnsyncedInspections() {
+export async function getUnsyncedInspections(userId?: string) {
   const db = await getDB();
   const allInspections = await db.getAll('inspections');
-  const unsynced = allInspections.filter(i => !i.synced_at || i.updated_at > i.synced_at);
+  let unsynced = allInspections.filter(i => !i.synced_at || i.updated_at > i.synced_at);
+  
+  // Filter by user if userId provided
+  if (userId) {
+    unsynced = unsynced.filter(i => i.inspector_id === userId);
+  }
   
   if (import.meta.env.DEV) {
-    console.log('[Offline Storage] Unsynced inspections:', unsynced.length);
+    console.log('[Offline Storage] Unsynced inspections:', {
+      total: unsynced.length,
+      userId: userId ? userId.substring(0, 8) + '...' : 'all',
+    });
   }
   
   return unsynced;
