@@ -5,10 +5,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { 
   Settings, 
@@ -17,7 +15,6 @@ import {
   Save, 
   Plus, 
   Trash2,
-  GripVertical,
   AlertCircle
 } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -36,12 +33,38 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { DraggableSection } from "./DraggableSection";
+import { DraggableField } from "./DraggableField";
+import { DraggableOption } from "./DraggableOption";
 
 export const FormCMSManager = () => {
   const [selectedLanguage, setSelectedLanguage] = useState('en');
   const [editingField, setEditingField] = useState<string | null>(null);
   const { formConfig, isLoading } = useFormConfiguration(selectedLanguage);
-  const { updateField, updateTranslation, createFieldOption, deleteFieldOption } = useFormManagement();
+  const { 
+    updateField, 
+    updateTranslation, 
+    createFieldOption, 
+    deleteFieldOption,
+    reorderSections,
+    reorderFields,
+    reorderOptions
+  } = useFormManagement();
 
   const [newOptionDialog, setNewOptionDialog] = useState<{ open: boolean; fieldId: string | null }>({
     open: false,
@@ -49,6 +72,19 @@ export const FormCMSManager = () => {
   });
   const [newOptionKey, setNewOptionKey] = useState('');
   const [newOptionLabel, setNewOptionLabel] = useState('');
+  const [localSections, setLocalSections] = useState(formConfig || []);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  // Update local state when formConfig changes
+  if (formConfig && formConfig !== localSections) {
+    setLocalSections(formConfig);
+  }
 
   if (isLoading) {
     return (
@@ -93,6 +129,99 @@ export const FormCMSManager = () => {
   const handleDeleteOption = async (optionId: string) => {
     if (confirm('Are you sure you want to delete this option?')) {
       await deleteFieldOption.mutateAsync(optionId);
+    }
+  };
+
+  const handleSectionDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+
+    if (over && active.id !== over.id) {
+      const oldIndex = localSections.findIndex(s => s.id === active.id);
+      const newIndex = localSections.findIndex(s => s.id === over.id);
+
+      const newSections = arrayMove(localSections, oldIndex, newIndex);
+      setLocalSections(newSections);
+
+      // Update display_order in database
+      const updates = newSections.map((section, index) => ({
+        id: section.id,
+        display_order: index
+      }));
+      reorderSections.mutate(updates);
+    }
+  };
+
+  const handleFieldDragEnd = (sectionId: string) => (event: DragEndEvent) => {
+    const { active, over } = event;
+
+    if (over && active.id !== over.id) {
+      const section = localSections.find(s => s.id === sectionId);
+      if (!section || !section.fields) return;
+
+      const oldIndex = section.fields.findIndex(f => f.id === active.id);
+      const newIndex = section.fields.findIndex(f => f.id === over.id);
+
+      const newFields = arrayMove(section.fields, oldIndex, newIndex);
+      
+      setLocalSections(prev =>
+        prev.map(s =>
+          s.id === sectionId ? { ...s, fields: newFields } : s
+        )
+      );
+
+      // Update display_order in database
+      const updates = newFields.map((field, index) => ({
+        id: field.id,
+        display_order: index
+      }));
+      reorderFields.mutate(updates);
+    }
+  };
+
+  const handleOptionDragEnd = (fieldId: string) => (event: DragEndEvent) => {
+    const { active, over } = event;
+
+    if (over && active.id !== over.id) {
+      let targetField = null;
+      let targetSection = null;
+
+      for (const section of localSections) {
+        const field = section.fields?.find(f => f.id === fieldId);
+        if (field) {
+          targetField = field;
+          targetSection = section;
+          break;
+        }
+      }
+
+      if (!targetField || !targetField.options || targetField.options.length === 0) return;
+
+      const oldIndex = targetField.options.findIndex(o => o.id === active.id);
+      const newIndex = targetField.options.findIndex(o => o.id === over.id);
+
+      if (oldIndex === -1 || newIndex === -1) return;
+
+      const newOptions = arrayMove([...targetField.options], oldIndex, newIndex);
+
+      setLocalSections(prev =>
+        prev.map(s =>
+          s.id === targetSection?.id
+            ? {
+                ...s,
+                fields: s.fields?.map(f =>
+                  f.id === fieldId ? { ...f, options: newOptions } : f
+                )
+              }
+            : s
+        )
+      );
+
+      // Update display_order in database
+      const updates = newOptions.map((option, index) => ({
+        id: option.id,
+        display_order: index
+      }));
+      reorderOptions.mutate(updates);
     }
   };
 
@@ -143,20 +272,28 @@ export const FormCMSManager = () => {
 
         <TabsContent value="fields" className="space-y-4">
           <ScrollArea className="h-[600px]">
-            {formConfig?.map((section) => (
-              <Card key={section.id} className="mb-4">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <GripVertical className="w-4 h-4 text-muted-foreground" />
-                    {section.label}
-                  </CardTitle>
-                  <CardDescription>
-                    Section Key: {section.section_key}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  {section.fields?.map((field) => (
-                    <div key={field.id} className="p-4 border rounded-lg space-y-3">
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragEnd={handleSectionDragEnd}
+            >
+              <SortableContext
+                items={localSections.map(s => s.id)}
+                strategy={verticalListSortingStrategy}
+              >
+                {localSections.map((section) => (
+                  <DraggableSection key={section.id} section={section}>
+                    <DndContext
+                      sensors={sensors}
+                      collisionDetection={closestCenter}
+                      onDragEnd={handleFieldDragEnd(section.id)}
+                    >
+                      <SortableContext
+                        items={section.fields?.map(f => f.id) || []}
+                        strategy={verticalListSortingStrategy}
+                      >
+                        {section.fields?.map((field) => (
+                          <DraggableField key={field.id} id={field.id}>
                       <div className="flex items-center justify-between">
                         <div className="space-y-1 flex-1">
                           {editingField === field.id ? (
@@ -200,72 +337,82 @@ export const FormCMSManager = () => {
                         </div>
                       </div>
 
-                      {(field.field_type === 'select' || field.field_type === 'radio') && (
-                        <div className="space-y-2 pl-4 border-l-2">
-                          <div className="flex items-center justify-between">
-                            <Label className="text-sm font-medium">Options:</Label>
-                            <Dialog 
-                              open={newOptionDialog.open && newOptionDialog.fieldId === field.id}
-                              onOpenChange={(open) => setNewOptionDialog({ open, fieldId: open ? field.id : null })}
-                            >
-                              <DialogTrigger asChild>
-                                <Button size="sm" variant="outline">
-                                  <Plus className="w-4 h-4 mr-1" />
-                                  Add Option
-                                </Button>
-                              </DialogTrigger>
-                              <DialogContent>
-                                <DialogHeader>
-                                  <DialogTitle>Add New Option</DialogTitle>
-                                  <DialogDescription>
-                                    Create a new option for this field
-                                  </DialogDescription>
-                                </DialogHeader>
-                                <div className="space-y-4">
-                                  <div>
-                                    <Label>Option Key (internal)</Label>
-                                    <Input
-                                      value={newOptionKey}
-                                      onChange={(e) => setNewOptionKey(e.target.value)}
-                                      placeholder="e.g., excellent"
-                                    />
-                                  </div>
-                                  <div>
-                                    <Label>Display Label</Label>
-                                    <Input
-                                      value={newOptionLabel}
-                                      onChange={(e) => setNewOptionLabel(e.target.value)}
-                                      placeholder="e.g., Excellent"
-                                    />
-                                  </div>
-                                  <Button onClick={handleAddOption} className="w-full">
-                                    Add Option
-                                  </Button>
+                            {(field.field_type === 'select' || field.field_type === 'radio') && (
+                              <div className="space-y-2 pl-4 border-l-2">
+                                <div className="flex items-center justify-between">
+                                  <Label className="text-sm font-medium">Options:</Label>
+                                  <Dialog 
+                                    open={newOptionDialog.open && newOptionDialog.fieldId === field.id}
+                                    onOpenChange={(open) => setNewOptionDialog({ open, fieldId: open ? field.id : null })}
+                                  >
+                                    <DialogTrigger asChild>
+                                      <Button size="sm" variant="outline">
+                                        <Plus className="w-4 h-4 mr-1" />
+                                        Add Option
+                                      </Button>
+                                    </DialogTrigger>
+                                    <DialogContent>
+                                      <DialogHeader>
+                                        <DialogTitle>Add New Option</DialogTitle>
+                                        <DialogDescription>
+                                          Create a new option for this field
+                                        </DialogDescription>
+                                      </DialogHeader>
+                                      <div className="space-y-4">
+                                        <div>
+                                          <Label>Option Key (internal)</Label>
+                                          <Input
+                                            value={newOptionKey}
+                                            onChange={(e) => setNewOptionKey(e.target.value)}
+                                            placeholder="e.g., excellent"
+                                          />
+                                        </div>
+                                        <div>
+                                          <Label>Display Label</Label>
+                                          <Input
+                                            value={newOptionLabel}
+                                            onChange={(e) => setNewOptionLabel(e.target.value)}
+                                            placeholder="e.g., Excellent"
+                                          />
+                                        </div>
+                                        <Button onClick={handleAddOption} className="w-full">
+                                          Add Option
+                                        </Button>
+                                      </div>
+                                    </DialogContent>
+                                  </Dialog>
                                 </div>
-                              </DialogContent>
-                            </Dialog>
-                          </div>
-                          <div className="space-y-1">
-                            {field.options?.map((option) => (
-                              <div key={option.id} className="flex items-center justify-between p-2 bg-muted rounded">
-                                <span className="text-sm">{option.label}</span>
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  onClick={() => handleDeleteOption(option.id)}
+                                <DndContext
+                                  sensors={sensors}
+                                  collisionDetection={closestCenter}
+                                  onDragEnd={handleOptionDragEnd(field.id)}
                                 >
-                                  <Trash2 className="w-4 h-4 text-destructive" />
-                                </Button>
+                                  <SortableContext
+                                    items={field.options?.map(o => o.id) || []}
+                                    strategy={verticalListSortingStrategy}
+                                  >
+                                    <div className="space-y-1">
+                                      {field.options?.map((option) => (
+                                        <DraggableOption
+                                          key={option.id}
+                                          id={option.id}
+                                          label={option.label || option.option_key}
+                                          onDelete={() => handleDeleteOption(option.id)}
+                                        />
+                                      ))}
+                                    </div>
+                                  </SortableContext>
+                                </DndContext>
                               </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </CardContent>
-              </Card>
-            ))}
+                            )}
+                          </DraggableField>
+                        ))}
+                      </SortableContext>
+                    </DndContext>
+                  </DraggableSection>
+                ))}
+              </SortableContext>
+            </DndContext>
           </ScrollArea>
         </TabsContent>
 

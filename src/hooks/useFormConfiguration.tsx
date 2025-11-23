@@ -280,10 +280,100 @@ export const useFormManagement = () => {
     }
   });
 
+  const reorderSections = useMutation({
+    mutationFn: async (sections: { id: string; display_order: number }[]) => {
+      const updates = sections.map(section => 
+        supabase
+          .from('form_sections')
+          .update({ display_order: section.display_order })
+          .eq('id', section.id)
+      );
+
+      const results = await Promise.all(updates);
+      const errors = results.filter(r => r.error);
+      if (errors.length > 0) throw errors[0].error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['form-configuration'] });
+      toast({
+        title: "Sections reordered",
+        description: "Section order has been updated successfully"
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Error reordering sections",
+        description: error.message,
+        variant: "destructive"
+      });
+    }
+  });
+
+  const reorderFields = useMutation({
+    mutationFn: async (fields: { id: string; display_order: number }[]) => {
+      const updates = fields.map(field => 
+        supabase
+          .from('form_fields')
+          .update({ display_order: field.display_order })
+          .eq('id', field.id)
+      );
+
+      const results = await Promise.all(updates);
+      const errors = results.filter(r => r.error);
+      if (errors.length > 0) throw errors[0].error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['form-configuration'] });
+      toast({
+        title: "Fields reordered",
+        description: "Field order has been updated successfully"
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Error reordering fields",
+        description: error.message,
+        variant: "destructive"
+      });
+    }
+  });
+
+  const reorderOptions = useMutation({
+    mutationFn: async (options: { id: string; display_order: number }[]) => {
+      const updates = options.map(option => 
+        supabase
+          .from('form_field_options')
+          .update({ display_order: option.display_order })
+          .eq('id', option.id)
+      );
+
+      const results = await Promise.all(updates);
+      const errors = results.filter(r => r.error);
+      if (errors.length > 0) throw errors[0].error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['form-configuration'] });
+      toast({
+        title: "Options reordered",
+        description: "Option order has been updated successfully"
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Error reordering options",
+        description: error.message,
+        variant: "destructive"
+      });
+    }
+  });
+
   return {
     updateField,
     updateTranslation,
     createFieldOption,
-    deleteFieldOption
+    deleteFieldOption,
+    reorderSections,
+    reorderFields,
+    reorderOptions
   };
 };
