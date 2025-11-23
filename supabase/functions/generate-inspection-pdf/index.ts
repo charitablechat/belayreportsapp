@@ -100,7 +100,6 @@ serve(async (req) => {
     const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
     const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
     
-    // Fetch and embed ACCT logo
     let acctLogoImage = null;
     try {
       const { data: logoFile } = await supabase.storage
@@ -160,6 +159,30 @@ serve(async (req) => {
       return date.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
     };
 
+    const calculateTextHeight = (text: string, maxWidth: number, fontSize: number, currentFont: any): number => {
+      const sanitized = sanitizeText(text);
+      if (!sanitized) return fontSize * 1.2;
+      
+      const words = sanitized.split(' ');
+      const lines: string[] = [];
+      let currentLine = '';
+
+      for (const word of words) {
+        const testLine = currentLine ? `${currentLine} ${word}` : word;
+        const testWidth = currentFont.widthOfTextAtSize(testLine, fontSize);
+
+        if (testWidth > maxWidth && currentLine) {
+          lines.push(currentLine);
+          currentLine = word;
+        } else {
+          currentLine = testLine;
+        }
+      }
+      if (currentLine) lines.push(currentLine);
+
+      return Math.max(lines.length * fontSize * 1.2, fontSize * 1.2);
+    };
+
     const drawWrappedText = (page: PDFPage, text: string, x: number, y: number, maxWidth: number, fontSize: number, currentFont: any, maxHeight: number = 1000): number => {
       const sanitized = sanitizeText(text);
       const words = sanitized.split(' ');
@@ -198,14 +221,14 @@ serve(async (req) => {
     const drawHeader = (page: PDFPage) => {
       page.drawText('ROPE WORKS', {
         x: 50,
-        y: pageHeight - 50,
+        y: pageHeight - 40,
         size: 14,
         font: boldFont,
         color: rgb(0.2, 0.2, 0.2),
       });
       page.drawText('ROPES/CHALLENGE COURSE', {
         x: 50,
-        y: pageHeight - 65,
+        y: pageHeight - 54,
         size: 8,
         font: font,
         color: rgb(0.4, 0.4, 0.4),
@@ -214,21 +237,21 @@ serve(async (req) => {
       if (acctLogoImage) {
         page.drawImage(acctLogoImage, {
           x: pageWidth - 110,
-          y: pageHeight - 80,
+          y: pageHeight - 70,
           width: 60,
           height: 60,
         });
       } else {
         page.drawText('ACCT', {
           x: pageWidth - 110,
-          y: pageHeight - 50,
+          y: pageHeight - 40,
           size: 12,
           font: boldFont,
           color: rgb(0.2, 0.2, 0.2),
         });
         page.drawText('ACCREDITED VENDOR', {
           x: pageWidth - 110,
-          y: pageHeight - 64,
+          y: pageHeight - 54,
           size: 7,
           font: font,
           color: rgb(0.4, 0.4, 0.4),
@@ -249,9 +272,11 @@ serve(async (req) => {
       });
     };
 
+    let pageNumber = 1;
+
     // PAGE 1: COVER PAGE
     let page = pdfDoc.addPage([pageWidth, pageHeight]);
-    let yPos = pageHeight - 80;
+    let yPos = pageHeight - 60;
 
     drawHeader(page);
 
@@ -263,7 +288,7 @@ serve(async (req) => {
       color: rgb(0, 0, 0),
     });
 
-    yPos -= 40;
+    yPos -= 30;
 
     const inspectorName = inspectorProfile 
       ? `${inspectorProfile.first_name || ''} ${inspectorProfile.last_name || ''}`.trim()
@@ -333,7 +358,7 @@ serve(async (req) => {
     page.drawText('Prev. Inspection Date:', { x: 55 + col1 + col2, y: yPos - 12, size: 8, font: boldFont });
     page.drawText(formatDate(inspection.previous_inspection_date), { x: 55 + col1 + col2, y: yPos - 24, size: 9, font: font });
 
-    yPos -= 50;
+    yPos -= 40;
 
     // Course History
     page.drawText('Known Course History', {
@@ -344,7 +369,7 @@ serve(async (req) => {
       color: rgb(0, 0, 0),
     });
 
-    yPos -= 25;
+    yPos -= 20;
     
     page.drawRectangle({
       x: 50,
@@ -358,13 +383,13 @@ serve(async (req) => {
     const historyText = sanitizeText(inspection.course_history) || 'No course history recorded';
     drawWrappedText(page, historyText, 55, yPos - 10, tableWidth - 10, 10, font, 80);
 
-    yPos -= 110;
+    yPos -= 100;
 
     // Disclaimer
     const disclaimerText = 'This report covers the condition of the aerial adventure site for the date of inspection reflected on this form. The inspection provided is strictly an evaluation of the structural condition of the course elements and equipment. The inspection does not include training on how to operate the equipment, nor how to operate the course. The inspection only verifies the existence of written local operating procedures (LOP), an emergency action plan (EAP), and training documentation. The inspection does not perform a review or evaluate the LOP, EAP and training documentation. Potential problems can occur afterwards due to vandalism, improper use, weather, etc. Rope Works Inc. is not responsible for modifications or repairs made to the challenge course by anyone other than a Rope Works Inc. employee. We recommend you conduct your own periodic internal monitoring at a minimum on a quarterly basis. At a minimum an annual professional inspection is required by a qualified professional to be in compliance with the Association for Challenge Course Technology ANSI/ACCT current published standards.';
     yPos = drawWrappedText(page, disclaimerText, 50, yPos, pageWidth - 100, 9, font, 500);
 
-    yPos -= 30;
+    yPos -= 20;
 
     // Reminders
     page.drawText('Reminders and Requirements', {
@@ -375,7 +400,7 @@ serve(async (req) => {
       color: rgb(0, 0, 0),
     });
 
-    yPos -= 20;
+    yPos -= 15;
 
     const reminders = [
       'Employers are required to issue staff appropriate fall protection for the duties to be performed.',
@@ -394,14 +419,14 @@ serve(async (req) => {
         color: rgb(0, 0, 0),
       });
       yPos = drawWrappedText(page, reminder, 70, yPos, pageWidth - 120, 10, font, 150);
-      yPos -= 8;
+      yPos -= 6;
     }
 
-    drawFooter(page, 1);
+    drawFooter(page, pageNumber++);
 
-    // PAGE 2: DEFINITIONS
+    // PAGE 2: DEFINITIONS AND KEY (CONSOLIDATED)
     page = pdfDoc.addPage([pageWidth, pageHeight]);
-    yPos = pageHeight - 80;
+    yPos = pageHeight - 60;
     drawHeader(page);
 
     page.drawText('All inspections include the following when applicable:', {
@@ -412,7 +437,7 @@ serve(async (req) => {
       color: rgb(0, 0, 0),
     });
 
-    yPos -= 40;
+    yPos -= 25;
 
     const definitions = [
       { title: 'Lifeline HDW', description: 'Represents all hardware associated with the Life Safety System including but not limited to: wire rope, bolts, wire rope terminations, & redundant terminations.' },
@@ -423,94 +448,95 @@ serve(async (req) => {
     ];
 
     for (const def of definitions) {
-      page.drawText(def.title, { x: 50, y: yPos, size: 11, font: boldFont });
-      yPos -= 18;
-      yPos = drawWrappedText(page, def.description, 50, yPos, pageWidth - 100, 10, font, 80);
-      yPos -= 15;
+      page.drawText(def.title, { x: 50, y: yPos, size: 10, font: boldFont });
+      yPos -= 14;
+      yPos = drawWrappedText(page, def.description, 50, yPos, pageWidth - 100, 9, font, 80);
+      yPos -= 12;
     }
 
-    yPos -= 20;
+    yPos -= 15;
 
     // Inspection Key
-    page.drawText('Inspection Key', { x: 50, y: yPos, size: 12, font: boldFont });
-    yPos -= 25;
+    page.drawText('Inspection Key', { x: 50, y: yPos, size: 11, font: boldFont });
+    yPos -= 18;
 
     const inspectionKey = [
-      { title: 'Pass', description: 'The equipment or operating system meets all manufacturer specifications, industry standards, and operational safety requirements at the time of inspection. No corrective actions are necessary. The item is approved for continued use until the next scheduled inspection.' },
-      { title: 'Pass with Provisions', description: 'The equipment or operating system is generally in acceptable condition but requires minor corrective action, repair, or follow-up maintenance that does not pose an immediate safety concern. A written comment will accompany any Pass with Provisions rating, detailing the issue and recommended corrective action. If the provision is not resolved or verified as corrected by time indicated or the next annual inspection, the item will be reclassified as a Fail until compliance is achieved.' },
-      { title: 'Fail', description: 'The equipment or operating system does not meet minimum safety or operational standards and presents a potential or immediate hazard. The item must be removed from service and repaired, replaced, or corrected before being used again. Documentation of corrective actions is required prior to reinspection and approval for use.' },
+      { title: 'Pass', description: 'The equipment or operating system meets all manufacturer specifications, industry standards, and operational safety requirements at the time of inspection.' },
+      { title: 'Pass with Provisions', description: 'The equipment or operating system is generally in acceptable condition but requires minor corrective action, repair, or follow-up maintenance that does not pose an immediate safety concern.' },
+      { title: 'Fail', description: 'The equipment or operating system does not meet minimum safety or operational standards and presents a potential or immediate hazard. The item must be removed from service.' },
       { title: 'N/A', description: 'Not applicable, Not inspected, or inaccessible/not available at the time of inspection.' }
     ];
 
     for (const key of inspectionKey) {
-      page.drawText(key.title, { x: 50, y: yPos, size: 11, font: boldFont });
-      yPos -= 18;
-      yPos = drawWrappedText(page, key.description, 50, yPos, pageWidth - 100, 10, font, 100);
-      yPos -= 15;
+      page.drawText(key.title, { x: 50, y: yPos, size: 10, font: boldFont });
+      yPos -= 14;
+      yPos = drawWrappedText(page, key.description, 50, yPos, pageWidth - 100, 9, font, 80);
+      yPos -= 12;
     }
 
-    drawFooter(page, 2);
+    drawFooter(page, pageNumber++);
 
     // PAGE 3: OPERATING SYSTEMS
-    page = pdfDoc.addPage([pageWidth, pageHeight]);
-    yPos = pageHeight - 80;
-    drawHeader(page);
-
-    page.drawText('OPERATING SYSTEMS', { x: pageWidth / 2 - 90, y: yPos, size: 16, font: boldFont });
-    yPos -= 40;
-
-    // Table
-    const sysColWidths = [180, 100, 232];
-    const sysRowHeight = 25;
-    const sysTableWidth = sysColWidths.reduce((a, b) => a + b, 0);
-
-    page.drawRectangle({
-      x: 50,
-      y: yPos - sysRowHeight,
-      width: sysTableWidth,
-      height: sysRowHeight,
-      color: rgb(0.9, 0.9, 0.9),
-      borderColor: rgb(0, 0, 0),
-      borderWidth: 1,
-    });
-
-    page.drawText('System Name', { x: 55, y: yPos - 16, size: 10, font: boldFont });
-    page.drawText('Result', { x: 55 + sysColWidths[0], y: yPos - 16, size: 10, font: boldFont });
-    page.drawText('Comments', { x: 55 + sysColWidths[0] + sysColWidths[1], y: yPos - 16, size: 10, font: boldFont });
-    yPos -= sysRowHeight;
-
     if (systems && systems.length > 0) {
+      page = pdfDoc.addPage([pageWidth, pageHeight]);
+      yPos = pageHeight - 60;
+      drawHeader(page);
+
+      page.drawText('OPERATING SYSTEMS', { x: pageWidth / 2 - 90, y: yPos, size: 16, font: boldFont });
+      yPos -= 30;
+
+      const sysColWidths = [180, 100, 232];
+      const sysTableWidth = sysColWidths.reduce((a, b) => a + b, 0);
+
+      page.drawRectangle({
+        x: 50,
+        y: yPos - 20,
+        width: sysTableWidth,
+        height: 20,
+        color: rgb(0.9, 0.9, 0.9),
+        borderColor: rgb(0, 0, 0),
+        borderWidth: 1,
+      });
+
+      page.drawText('System Name', { x: 55, y: yPos - 14, size: 9, font: boldFont });
+      page.drawText('Result', { x: 55 + sysColWidths[0], y: yPos - 14, size: 9, font: boldFont });
+      page.drawText('Comments', { x: 55 + sysColWidths[0] + sysColWidths[1], y: yPos - 14, size: 9, font: boldFont });
+      yPos -= 20;
+
       for (const sys of systems) {
+        const commentHeight = calculateTextHeight(sys.comments || '', sysColWidths[2] - 10, 8, font);
+        const rowHeight = Math.max(20, Math.min(commentHeight + 10, 50));
+
         page.drawRectangle({
           x: 50,
-          y: yPos - sysRowHeight,
+          y: yPos - rowHeight,
           width: sysTableWidth,
-          height: sysRowHeight,
+          height: rowHeight,
           borderColor: rgb(0, 0, 0),
           borderWidth: 0.5,
         });
 
-        page.drawText(sanitizeText(sys.system_name), { x: 55, y: yPos - 16, size: 9, font: font });
-        page.drawText(sanitizeText(sys.result), { x: 55 + sysColWidths[0], y: yPos - 16, size: 9, font: font });
-        drawWrappedText(page, sanitizeText(sys.comments), 55 + sysColWidths[0] + sysColWidths[1], yPos - 10, sysColWidths[2] - 10, 9, font, sysRowHeight - 10);
-        yPos -= sysRowHeight;
+        const systemName = sys.name ? `${sanitizeText(sys.system_name)} (${sanitizeText(sys.name)})` : sanitizeText(sys.system_name);
+        page.drawText(systemName, { x: 55, y: yPos - 14, size: 8, font: font });
+        page.drawText(sanitizeText(sys.result), { x: 55 + sysColWidths[0], y: yPos - 14, size: 8, font: font });
+        drawWrappedText(page, sanitizeText(sys.comments), 55 + sysColWidths[0] + sysColWidths[1], yPos - 8, sysColWidths[2] - 10, 8, font, rowHeight - 8);
+        yPos -= rowHeight;
       }
+
+      drawFooter(page, pageNumber++);
     }
 
-    drawFooter(page, 3);
-
-    // PAGE 4: ZIPLINES
+    // PAGE 4: ZIPLINES (CONDITIONAL)
     if (ziplines && ziplines.length > 0) {
       page = pdfDoc.addPage([pageWidth, pageHeight]);
-      yPos = pageHeight - 80;
+      yPos = pageHeight - 60;
       drawHeader(page);
 
       page.drawText('ZIPLINES', { x: pageWidth / 2 - 50, y: yPos, size: 16, font: boldFont });
-      yPos -= 25;
+      yPos -= 20;
       page.drawText('SYSTEMS - ZIPLINES', { x: pageWidth / 2 - 70, y: yPos, size: 12, font: boldFont });
-      yPos -= 30;
+      yPos -= 25;
 
-      // KEY definitions
       const keyLines = [
         'Cable Type KEY: GAC = Galvanized Aircraft Cable, SS = Super Swaged',
         'Braking System KEY: ZS = Zip Stop, FB = Friction Break, SB = Spring Bank, G = Gravity',
@@ -518,23 +544,20 @@ serve(async (req) => {
       ];
 
       for (const keyLine of keyLines) {
-        page.drawText(keyLine, { x: 50, y: yPos, size: 9, font: font });
-        yPos -= 15;
+        page.drawText(keyLine, { x: 50, y: yPos, size: 8, font: font });
+        yPos -= 12;
       }
 
       yPos -= 10;
 
-      // Zipline table
       const zipColWidths = [90, 70, 70, 70, 70, 142];
-      const zipRowHeight = 25;
       const zipTableWidth = zipColWidths.reduce((a, b) => a + b, 0);
 
-      // Header
       page.drawRectangle({
         x: 50,
-        y: yPos - zipRowHeight,
+        y: yPos - 20,
         width: zipTableWidth,
-        height: zipRowHeight,
+        height: 20,
         color: rgb(0.9, 0.9, 0.9),
         borderColor: rgb(0, 0, 0),
         borderWidth: 1,
@@ -543,184 +566,184 @@ serve(async (req) => {
       const zipHeaders = ['Zipline', 'Length (ft)', 'Unload (lbf)', 'Load (lbf)', 'Result', 'Comments'];
       let xPos = 50;
       for (let i = 0; i < zipHeaders.length; i++) {
-        page.drawText(zipHeaders[i], { x: xPos + 5, y: yPos - 16, size: 9, font: boldFont });
+        page.drawText(zipHeaders[i], { x: xPos + 5, y: yPos - 14, size: 8, font: boldFont });
         xPos += zipColWidths[i];
       }
 
-      yPos -= zipRowHeight;
+      yPos -= 20;
 
       for (const zip of ziplines) {
-        // Row 1
+        const commentHeight = calculateTextHeight(zip.comments || '', zipColWidths[5] - 10, 8, font);
+        const rowHeight = Math.max(20, Math.min(commentHeight + 10, 40));
+
         page.drawRectangle({
           x: 50,
-          y: yPos - zipRowHeight,
+          y: yPos - rowHeight,
           width: zipTableWidth,
-          height: zipRowHeight,
+          height: rowHeight,
           borderColor: rgb(0, 0, 0),
           borderWidth: 0.5,
         });
 
         xPos = 50;
-        page.drawText(sanitizeText(zip.zipline_name), { x: xPos + 5, y: yPos - 16, size: 9, font: font });
+        page.drawText(sanitizeText(zip.zipline_name), { x: xPos + 5, y: yPos - 14, size: 8, font: font });
         xPos += zipColWidths[0];
-        page.drawText(String(zip.cable_length || ''), { x: xPos + 5, y: yPos - 16, size: 9, font: font });
+        page.drawText(String(zip.cable_length || ''), { x: xPos + 5, y: yPos - 14, size: 8, font: font });
         xPos += zipColWidths[1];
-        page.drawText(String(zip.unload_tension || ''), { x: xPos + 5, y: yPos - 16, size: 9, font: font });
+        page.drawText(String(zip.unload_tension || ''), { x: xPos + 5, y: yPos - 14, size: 8, font: font });
         xPos += zipColWidths[2];
-        page.drawText(String(zip.load_tension || ''), { x: xPos + 5, y: yPos - 16, size: 9, font: font });
+        page.drawText(String(zip.load_tension || ''), { x: xPos + 5, y: yPos - 14, size: 8, font: font });
         xPos += zipColWidths[3];
-        page.drawText(sanitizeText(zip.result), { x: xPos + 5, y: yPos - 16, size: 9, font: font });
+        page.drawText(sanitizeText(zip.result), { x: xPos + 5, y: yPos - 14, size: 8, font: font });
         xPos += zipColWidths[4];
-        drawWrappedText(page, sanitizeText(zip.comments), xPos + 5, yPos - 10, zipColWidths[5] - 10, 8, font, zipRowHeight - 10);
+        drawWrappedText(page, sanitizeText(zip.comments), xPos + 5, yPos - 8, zipColWidths[5] - 10, 8, font, rowHeight - 8);
 
-        yPos -= zipRowHeight;
+        yPos -= rowHeight;
 
-        // Row 2 - Details
         page.drawRectangle({
           x: 50,
-          y: yPos - zipRowHeight,
+          y: yPos - 18,
           width: zipTableWidth,
-          height: zipRowHeight,
+          height: 18,
           borderColor: rgb(0, 0, 0),
           borderWidth: 0.5,
         });
 
         const detailText = `Cable: ${sanitizeText(zip.cable_type)} | Braking System: ${sanitizeText(zip.braking_system)} | EAD System: ${sanitizeText(zip.ead_system)}`;
-        page.drawText(detailText, { x: 55, y: yPos - 16, size: 8, font: font });
-        yPos -= zipRowHeight + 5;
+        page.drawText(detailText, { x: 55, y: yPos - 12, size: 7, font: font });
+        yPos -= 20;
       }
 
-      yPos -= 30;
-
-      // Program Equipment Inspected
-      page.drawText('Program Equipment Inspected', { x: 50, y: yPos, size: 12, font: boldFont });
-      yPos -= 25;
-      const equipmentDisclaimer = 'Any equipment that FAILS must be immediately removed from service and no longer used as part of the current operational inventory. It is the responsibility of the client to read, understand, and follow all manufacturer guidelines, notices and recalls for the equipment used for your site\'s operations. This includes proper documentation and';
-      drawWrappedText(page, equipmentDisclaimer, 50, yPos, pageWidth - 100, 9, font, 150);
-
-      drawFooter(page, 4);
+      drawFooter(page, pageNumber++);
     }
 
-    // PAGES 5-9: EQUIPMENT
-    const equipmentCategories = [
-      { title: 'HARNESSES', key: 'Harness' },
-      { title: 'HELMETS', key: 'Helmet' },
-      { title: 'LANYARDS', key: 'Lanyard' },
-      { title: 'CONNECTORS (CARABINERS & QUICKLINKS)', key: 'Connector' },
-      { title: 'KERNMANTLE ROPE', key: 'Rope' },
-      { title: 'BELAY/DESCENT DEVICE', key: 'Belay Device' },
-      { title: 'TROLLEYS AND PULLEYS', key: 'Trolley' },
-      { title: 'OTHER EQUIPMENT', key: 'Other' }
-    ];
+    // EQUIPMENT PAGES (CONSOLIDATED)
+    if (equipment && equipment.length > 0) {
+      const equipmentCategories = [
+        { title: 'HARNESSES', key: 'Harness' },
+        { title: 'HELMETS', key: 'Helmet' },
+        { title: 'LANYARDS', key: 'Lanyard' },
+        { title: 'CONNECTORS (CARABINERS & QUICKLINKS)', key: 'Connector' },
+        { title: 'KERNMANTLE ROPE', key: 'Rope' },
+        { title: 'BELAY/DESCENT DEVICE', key: 'Belay Device' },
+        { title: 'TROLLEYS AND PULLEYS', key: 'Trolley' },
+        { title: 'OTHER EQUIPMENT', key: 'Other' }
+      ];
 
-    let pageNumber = 5;
-    let isFirstEquipmentPage = true;
-
-    for (const category of equipmentCategories) {
       page = pdfDoc.addPage([pageWidth, pageHeight]);
-      yPos = pageHeight - 80;
+      yPos = pageHeight - 60;
       drawHeader(page);
 
-      if (isFirstEquipmentPage) {
-        const inventoryDisclaimer = 'Inventory tracking of each item used for course operations. This should be done according to a written checklist that is monitored by the course manager or other qualified person at your site. Records should be available at your annual inspection that include and indicate the date of purchase, date of first use and the equipment shall be identifiable by the serial number/tag or other unique identifier that matches your written documentation and the manufacturer retirement criteria. If you are unable to produce this information and tracking, it will be pulled from service and noted on the inspection report.';
-        yPos = drawWrappedText(page, inventoryDisclaimer, 50, yPos, pageWidth - 100, 9, font, 150);
-        yPos -= 30;
-        isFirstEquipmentPage = false;
-      }
+      const inventoryDisclaimer = 'Inventory tracking of each item used for course operations. This should be done according to a written checklist that is monitored by the course manager or other qualified person at your site. Records should be available at your annual inspection that include and indicate the date of purchase, date of first use and the equipment shall be identifiable by the serial number/tag or other unique identifier that matches your written documentation and the manufacturer retirement criteria.';
+      yPos = drawWrappedText(page, inventoryDisclaimer, 50, yPos, pageWidth - 100, 8, font, 120);
+      yPos -= 20;
 
-      page.drawText(`EQUIPMENT - ${category.title}`, { x: 50, y: yPos, size: 14, font: boldFont });
-      yPos -= 30;
+      for (const category of equipmentCategories) {
+        const items = equipment.filter(e => e.equipment_category === category.key);
+        if (items.length === 0) continue;
 
-      const items = equipment?.filter(e => e.equipment_category === category.key) || [];
+        if (yPos < 200) {
+          drawFooter(page, pageNumber++);
+          page = pdfDoc.addPage([pageWidth, pageHeight]);
+          yPos = pageHeight - 60;
+          drawHeader(page);
+        }
 
-      // Equipment table
-      const eqColWidths = [150, 50, 40, 90, 182];
-      const eqRowHeight = 25;
-      const eqTableWidth = eqColWidths.reduce((a, b) => a + b, 0);
+        page.drawText(`EQUIPMENT - ${category.title}`, { x: 50, y: yPos, size: 12, font: boldFont });
+        yPos -= 20;
 
-      // Header
-      page.drawRectangle({
-        x: 50,
-        y: yPos - eqRowHeight,
-        width: eqTableWidth,
-        height: eqRowHeight,
-        color: rgb(0.9, 0.9, 0.9),
-        borderColor: rgb(0, 0, 0),
-        borderWidth: 1,
-      });
+        const eqColWidths = [150, 50, 40, 90, 182];
+        const eqTableWidth = eqColWidths.reduce((a, b) => a + b, 0);
 
-      const eqHeaders = ['Type', 'Year', 'Qty', 'Result', 'Comments'];
-      let xPos = 50;
-      for (let i = 0; i < eqHeaders.length; i++) {
-        page.drawText(eqHeaders[i], { x: xPos + 5, y: yPos - 16, size: 10, font: boldFont });
-        xPos += eqColWidths[i];
-      }
+        page.drawRectangle({
+          x: 50,
+          y: yPos - 18,
+          width: eqTableWidth,
+          height: 18,
+          color: rgb(0.9, 0.9, 0.9),
+          borderColor: rgb(0, 0, 0),
+          borderWidth: 1,
+        });
 
-      yPos -= eqRowHeight;
+        const eqHeaders = ['Type', 'Year', 'Qty', 'Result', 'Comments'];
+        let xPos = 50;
+        for (let i = 0; i < eqHeaders.length; i++) {
+          page.drawText(eqHeaders[i], { x: xPos + 5, y: yPos - 12, size: 9, font: boldFont });
+          xPos += eqColWidths[i];
+        }
 
-      if (items.length > 0) {
+        yPos -= 18;
+
         for (const item of items) {
+          const commentHeight = calculateTextHeight(item.comments || '', eqColWidths[4] - 8, 8, font);
+          const rowHeight = Math.max(20, Math.min(commentHeight + 10, 40));
+
+          if (yPos - rowHeight < 80) {
+            drawFooter(page, pageNumber++);
+            page = pdfDoc.addPage([pageWidth, pageHeight]);
+            yPos = pageHeight - 60;
+            drawHeader(page);
+          }
+
           page.drawRectangle({
             x: 50,
-            y: yPos - eqRowHeight,
+            y: yPos - rowHeight,
             width: eqTableWidth,
-            height: eqRowHeight,
+            height: rowHeight,
             borderColor: rgb(0, 0, 0),
             borderWidth: 0.5,
           });
 
           xPos = 50;
-          drawWrappedText(page, sanitizeText(item.equipment_type), xPos + 5, yPos - 10, eqColWidths[0] - 10, 9, font, eqRowHeight - 10);
+          drawWrappedText(page, sanitizeText(item.equipment_type), xPos + 5, yPos - 8, eqColWidths[0] - 8, 8, font, rowHeight - 8);
           xPos += eqColWidths[0];
-          page.drawText(String(item.production_year || ''), { x: xPos + 5, y: yPos - 16, size: 9, font: font });
+          page.drawText(String(item.production_year || ''), { x: xPos + 5, y: yPos - 14, size: 8, font: font });
           xPos += eqColWidths[1];
-          page.drawText(String(item.quantity || ''), { x: xPos + 5, y: yPos - 16, size: 9, font: font });
+          page.drawText(String(item.quantity || ''), { x: xPos + 5, y: yPos - 14, size: 8, font: font });
           xPos += eqColWidths[2];
-          page.drawText(sanitizeText(item.result), { x: xPos + 5, y: yPos - 16, size: 9, font: font });
+          page.drawText(sanitizeText(item.result), { x: xPos + 5, y: yPos - 14, size: 8, font: font });
           xPos += eqColWidths[3];
-          drawWrappedText(page, sanitizeText(item.comments), xPos + 5, yPos - 10, eqColWidths[4] - 10, 8, font, eqRowHeight - 10);
+          drawWrappedText(page, sanitizeText(item.comments), xPos + 5, yPos - 8, eqColWidths[4] - 8, 8, font, rowHeight - 8);
 
-          yPos -= eqRowHeight;
+          yPos -= rowHeight;
         }
+
+        yPos -= 15;
       }
 
-      drawFooter(page, pageNumber);
-      pageNumber++;
+      drawFooter(page, pageNumber++);
     }
 
-    // PAGE 10: ACCT STANDARDS
+    // ACCT STANDARDS PAGE
     page = pdfDoc.addPage([pageWidth, pageHeight]);
-    yPos = pageHeight - 80;
+    yPos = pageHeight - 60;
     drawHeader(page);
 
     page.drawText('ACCT Operations Standards Criteria', { x: pageWidth / 2 - 140, y: yPos, size: 16, font: boldFont });
-    yPos -= 30;
+    yPos -= 25;
 
-    const standardsIntro = 'The following documentation is currently required by the ANSI/ACCT 03-2019 Operations Standards. If your program does not have the following in existence it is noted below. It is your responsibility to ensure these are located or created and available. If these documents have been made available during the professional inspection it is noted below. It is important to recognize these documents are not reviewed by the professional inspector for content. They are only verified of their existence for program operations.';
-    yPos = drawWrappedText(page, standardsIntro, 50, yPos, pageWidth - 100, 10, font, 120);
-    yPos -= 30;
+    const standardsIntro = 'The following documentation is currently required by the ANSI/ACCT 03-2019 Operations Standards. If your program does not have the following in existence it is noted below. It is your responsibility to ensure these are located or created and available.';
+    yPos = drawWrappedText(page, standardsIntro, 50, yPos, pageWidth - 100, 9, font, 100);
+    yPos -= 20;
 
-    // Standards table
     const stdColWidths = [320, 130, 25, 25];
-    const stdRowHeight = 30;
     const stdTableWidth = stdColWidths.reduce((a, b) => a + b, 0);
 
-    // Header
     page.drawRectangle({
       x: 50,
-      y: yPos - stdRowHeight,
+      y: yPos - 25,
       width: stdTableWidth,
-      height: stdRowHeight,
+      height: 25,
       color: rgb(0.9, 0.9, 0.9),
       borderColor: rgb(0, 0, 0),
       borderWidth: 1,
     });
 
-    page.drawText('Standard', { x: 55, y: yPos - 18, size: 10, font: boldFont });
-    page.drawText('Reference', { x: 55 + stdColWidths[0], y: yPos - 18, size: 10, font: boldFont });
-    page.drawText('YES', { x: 55 + stdColWidths[0] + stdColWidths[1] + 2, y: yPos - 18, size: 9, font: boldFont });
-    page.drawText('NO', { x: 55 + stdColWidths[0] + stdColWidths[1] + stdColWidths[2] + 4, y: yPos - 18, size: 9, font: boldFont });
-    yPos -= stdRowHeight;
+    page.drawText('Standard', { x: 55, y: yPos - 16, size: 9, font: boldFont });
+    page.drawText('Reference', { x: 55 + stdColWidths[0], y: yPos - 16, size: 9, font: boldFont });
+    page.drawText('YES', { x: 55 + stdColWidths[0] + stdColWidths[1] + 2, y: yPos - 16, size: 8, font: boldFont });
+    page.drawText('NO', { x: 55 + stdColWidths[0] + stdColWidths[1] + stdColWidths[2] + 4, y: yPos - 16, size: 8, font: boldFont });
+    yPos -= 25;
 
     const standardsList = [
       { name: 'Local Written Operations Procedures', ref: '(CHPT 2. ANSI/ACCT B.2.4)' },
@@ -736,114 +759,104 @@ serve(async (req) => {
 
       page.drawRectangle({
         x: 50,
-        y: yPos - stdRowHeight,
+        y: yPos - 25,
         width: stdTableWidth,
-        height: stdRowHeight,
+        height: 25,
         borderColor: rgb(0, 0, 0),
         borderWidth: 0.5,
       });
 
-      drawWrappedText(page, standard.name, 55, yPos - 10, stdColWidths[0] - 10, 9, font, stdRowHeight - 10);
-      page.drawText(standard.ref, { x: 55 + stdColWidths[0], y: yPos - 15, size: 9, font: font });
+      drawWrappedText(page, standard.name, 55, yPos - 8, stdColWidths[0] - 10, 8, font, 20);
+      page.drawText(standard.ref, { x: 55 + stdColWidths[0], y: yPos - 14, size: 8, font: font });
 
-      // YES checkbox
       page.drawRectangle({
         x: 55 + stdColWidths[0] + stdColWidths[1],
-        y: yPos - 20,
-        width: 20,
-        height: 20,
+        y: yPos - 18,
+        width: 18,
+        height: 18,
         borderColor: rgb(0, 0, 0),
         borderWidth: 1,
         color: hasDoc ? rgb(0, 0.6, 0) : undefined,
       });
 
-      // NO checkbox
       page.drawRectangle({
         x: 55 + stdColWidths[0] + stdColWidths[1] + stdColWidths[2],
-        y: yPos - 20,
-        width: 20,
-        height: 20,
+        y: yPos - 18,
+        width: 18,
+        height: 18,
         borderColor: rgb(0, 0, 0),
         borderWidth: 1,
         color: !hasDoc ? rgb(0.7, 0.1, 0.1) : undefined,
       });
 
-      yPos -= stdRowHeight;
+      yPos -= 25;
     }
 
-    yPos -= 20;
+    yPos -= 15;
     const standardsComments = standards?.map(s => s.comments).filter(c => c).join('; ') || 'None';
-    yPos = drawWrappedText(page, `Comments: ${standardsComments}`, 50, yPos, pageWidth - 100, 9, font, 100);
+    yPos = drawWrappedText(page, `Comments: ${standardsComments}`, 50, yPos, pageWidth - 100, 9, font, 80);
 
-    drawFooter(page, 10);
+    drawFooter(page, pageNumber++);
 
-    // PAGE 11: SUMMARY
+    // SUMMARY PAGE
     page = pdfDoc.addPage([pageWidth, pageHeight]);
-    yPos = pageHeight - 80;
+    yPos = pageHeight - 60;
     drawHeader(page);
 
-    // QCP Note
     const qcpNote = 'A QCP is a Qualified Course Professional that meets the criteria outlined by the ACCT. Operations & Emergency procedures must be written and specific to the site\'s local operations procedures.';
-    yPos = drawWrappedText(page, qcpNote, 50, yPos, pageWidth - 100, 9, font, 50);
-    yPos -= 30;
+    yPos = drawWrappedText(page, qcpNote, 50, yPos, pageWidth - 100, 8, font, 40);
+    yPos -= 20;
 
     page.drawText('REPORT SUMMARY', { x: pageWidth / 2 - 90, y: yPos, size: 16, font: boldFont });
-    yPos -= 40;
+    yPos -= 30;
 
-    // Repairs performed
-    page.drawText('Repairs, Alterations performed during inspection:', { x: 50, y: yPos, size: 11, font: boldFont });
-    yPos -= 20;
-    page.drawText('Comments:', { x: 50, y: yPos, size: 10, font: boldFont });
-    yPos -= 15;
+    page.drawText('Repairs, Alterations performed during inspection:', { x: 50, y: yPos, size: 10, font: boldFont });
+    yPos -= 12;
+    page.drawText('Comments:', { x: 50, y: yPos, size: 9, font: boldFont });
+    yPos -= 12;
     const repairsText = htmlToText(summary?.repairs_performed || 'None reported');
-    yPos = drawWrappedText(page, repairsText, 50, yPos, pageWidth - 100, 10, font, 100);
-    yPos -= 30;
+    yPos = drawWrappedText(page, repairsText, 50, yPos, pageWidth - 100, 9, font, 80);
+    yPos -= 20;
 
-    // Critical actions
-    page.drawText('Critical Actions Required', { x: 50, y: yPos, size: 11, font: boldFont });
-    yPos -= 15;
+    page.drawText('Critical Actions Required', { x: 50, y: yPos, size: 10, font: boldFont });
+    yPos -= 12;
     page.drawText('*Critical Action = Required Changes Prior to use of Activity, Element, or Equipment', {
-      x: 50, y: yPos, size: 8, font: font, color: rgb(0.5, 0.5, 0.5)
+      x: 50, y: yPos, size: 7, font: font, color: rgb(0.5, 0.5, 0.5)
     });
-    yPos -= 15;
-    page.drawText('Comments:', { x: 50, y: yPos, size: 10, font: boldFont });
-    yPos -= 15;
+    yPos -= 12;
+    page.drawText('Comments:', { x: 50, y: yPos, size: 9, font: boldFont });
+    yPos -= 12;
     const criticalText = htmlToText(summary?.critical_actions || 'None identified');
-    yPos = drawWrappedText(page, criticalText, 50, yPos, pageWidth - 100, 10, font, 100);
-    yPos -= 30;
+    yPos = drawWrappedText(page, criticalText, 50, yPos, pageWidth - 100, 9, font, 80);
+    yPos -= 20;
 
-    // Future considerations
-    page.drawText('Future Considerations', { x: 50, y: yPos, size: 11, font: boldFont });
-    yPos -= 15;
+    page.drawText('Future Considerations', { x: 50, y: yPos, size: 10, font: boldFont });
+    yPos -= 12;
     page.drawText('(includes but not limited to age of course, recommended updates, suggestions, industry future)', {
-      x: 50, y: yPos, size: 8, font: font, color: rgb(0.5, 0.5, 0.5)
+      x: 50, y: yPos, size: 7, font: font, color: rgb(0.5, 0.5, 0.5)
     });
-    yPos -= 15;
-    page.drawText('Comments:', { x: 50, y: yPos, size: 10, font: boldFont });
-    yPos -= 15;
+    yPos -= 12;
+    page.drawText('Comments:', { x: 50, y: yPos, size: 9, font: boldFont });
+    yPos -= 12;
     const futureText = htmlToText(summary?.future_considerations || 'None at this time');
-    yPos = drawWrappedText(page, futureText, 50, yPos, pageWidth - 100, 10, font, 100);
-    yPos -= 30;
+    yPos = drawWrappedText(page, futureText, 50, yPos, pageWidth - 100, 9, font, 80);
+    yPos -= 20;
 
-    // Next inspection date
-    page.drawText('Next inspection date:', { x: 50, y: yPos, size: 11, font: boldFont });
-    yPos -= 15;
-    page.drawText(formatDate(summary?.next_inspection_date) || 'Not specified', { x: 50, y: yPos, size: 10, font: font });
-    yPos -= 30;
+    page.drawText('Next inspection date:', { x: 50, y: yPos, size: 10, font: boldFont });
+    yPos -= 12;
+    page.drawText(formatDate(summary?.next_inspection_date) || 'Not specified', { x: 50, y: yPos, size: 9, font: font });
+    yPos -= 20;
 
-    // Retirement guidelines
-    page.drawText('General Rope Works Inspection Retirement Guidelines:', { x: 50, y: yPos, size: 12, font: boldFont });
-    yPos -= 18;
+    page.drawText('General Rope Works Inspection Retirement Guidelines:', { x: 50, y: yPos, size: 11, font: boldFont });
+    yPos -= 12;
     page.drawText('These are generalized and are not a substitute for the Pre use inspection.', {
-      x: 50, y: yPos, size: 8, font: font, color: rgb(0.5, 0.5, 0.5)
+      x: 50, y: yPos, size: 7, font: font, color: rgb(0.5, 0.5, 0.5)
     });
-    yPos -= 25;
+    yPos -= 18;
 
-    // Table
     const guideColWidths = [180, 332];
-    const guideRowHeight = 25;
+    const guideRowHeight = 20;
 
-    // Header
     page.drawRectangle({
       x: 50,
       y: yPos - guideRowHeight,
@@ -854,20 +867,20 @@ serve(async (req) => {
       borderWidth: 1,
     });
 
-    page.drawText('Item', { x: 55, y: yPos - 16, size: 10, font: boldFont });
-    page.drawText('Retirement Guideline', { x: 55 + guideColWidths[0], y: yPos - 16, size: 10, font: boldFont });
+    page.drawText('Item', { x: 55, y: yPos - 14, size: 9, font: boldFont });
+    page.drawText('Retirement Criteria', { x: 55 + guideColWidths[0], y: yPos - 14, size: 9, font: boldFont });
     yPos -= guideRowHeight;
 
-    const guidelineItems = [
-      { item: 'Harness:', guideline: 'Manufacture maximum use or condition warranted at time of inspection' },
-      { item: 'Lanyards:', guideline: 'Manufacture maximum use or condition warranted at time of inspection' },
-      { item: 'Kernmantle Rope', guideline: '5 years or 1000 loads when used with top rope systems' },
-      { item: 'Kernmantle Rope', guideline: '5 years or 300 loads, whichever comes first when used on aerial leap activities' },
-      { item: 'Helmets:', guideline: 'Manufacture maximum use or condition warranted at time of inspection' },
-      { item: 'Pulleys, Trolleys, Carabiners, Belay/descent devices, Cable grabs:', guideline: 'Manufacture maximum use or condition warranted at time of inspection' }
+    const retirementGuidelines = [
+      { item: 'Rope/Webbing', criteria: '10 years from first use' },
+      { item: 'Harness/Lanyard', criteria: '10 years from first use' },
+      { item: 'Helmet', criteria: '10 years from first use (verify with manufacturer)' },
+      { item: 'Carabiners/Quicklinks', criteria: 'No specific lifespan - retire based on condition' },
+      { item: 'Belay Devices/Pulleys', criteria: 'No specific lifespan - retire based on condition' },
+      { item: 'Metal Equipment', criteria: 'Inspect for cracks, deformation, wear, corrosion' }
     ];
 
-    for (const guide of guidelineItems) {
+    for (const guide of retirementGuidelines) {
       page.drawRectangle({
         x: 50,
         y: yPos - guideRowHeight,
@@ -877,50 +890,45 @@ serve(async (req) => {
         borderWidth: 0.5,
       });
 
-      page.drawText(guide.item, { x: 55, y: yPos - 16, size: 9, font: font });
-      drawWrappedText(page, guide.guideline, 55 + guideColWidths[0], yPos - 10, guideColWidths[1] - 10, 9, font, guideRowHeight - 10);
+      page.drawText(guide.item, { x: 55, y: yPos - 14, size: 8, font: font });
+      drawWrappedText(page, guide.criteria, 55 + guideColWidths[0], yPos - 8, guideColWidths[1] - 10, 8, font, guideRowHeight - 8);
       yPos -= guideRowHeight;
     }
 
-    drawFooter(page, 11);
+    drawFooter(page, pageNumber++);
 
-    // Save and upload PDF
     const pdfBytes = await pdfDoc.save();
-    const fileName = `inspection_${inspectionId}_${Date.now()}.pdf`;
-    
-    const { error: uploadError } = await supabase.storage
+    const filename = `inspection-${inspectionId}-${Date.now()}.pdf`;
+
+    const { data: uploadData, error: uploadError } = await supabase.storage
       .from('inspection-reports')
-      .upload(fileName, pdfBytes, {
+      .upload(filename, pdfBytes, {
         contentType: 'application/pdf',
-        upsert: false,
+        upsert: true
       });
 
     if (uploadError) {
-      console.error('Upload error:', uploadError);
       throw uploadError;
     }
 
-    const { error: insertError } = await supabase
-      .from('inspection_reports')
-      .insert({
-        inspection_id: inspectionId,
-        pdf_url: fileName,
-        generated_by: user.id,
-        file_size_bytes: pdfBytes.length,
-      });
+    const { data: publicUrl } = supabase.storage
+      .from('inspection-reports')
+      .getPublicUrl(filename);
 
-    if (insertError) {
-      console.error('Insert error:', insertError);
-      throw insertError;
-    }
-
-    const base64Pdf = btoa(String.fromCharCode(...pdfBytes));
+    await supabase.from('inspection_reports').insert({
+      inspection_id: inspectionId,
+      pdf_url: publicUrl.publicUrl,
+      generated_by: user.id,
+      file_size_bytes: pdfBytes.length,
+      version: 1
+    });
 
     return new Response(
-      JSON.stringify({
-        pdfData: base64Pdf,
-        fileName,
-        size: pdfBytes.length,
+      JSON.stringify({ 
+        url: publicUrl.publicUrl,
+        pdfData: btoa(String.fromCharCode(...pdfBytes)),
+        filename: filename,
+        size: pdfBytes.length
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -929,7 +937,7 @@ serve(async (req) => {
 
   } catch (error) {
     console.error('Error generating PDF:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Failed to generate PDF';
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
     return new Response(
       JSON.stringify({ error: errorMessage }),
       {
