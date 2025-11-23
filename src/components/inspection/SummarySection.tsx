@@ -2,8 +2,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { RichTextEditor } from "@/components/ui/rich-text-editor";
 import { Input } from "@/components/ui/input";
-import { convertCircleBulletsToHtml } from "@/lib/bullet-converter";
-
 interface SummarySectionProps {
   summary: any;
   onUpdate: (summary: any) => void;
@@ -12,13 +10,7 @@ interface SummarySectionProps {
 
 export default function SummarySection({ summary, onUpdate, onImmediateSave }: SummarySectionProps) {
   const updateField = (field: string, value: any) => {
-    // Auto-convert circle bullets to HTML lists for specific fields
-    const fieldsToConvert = ['repairs_performed', 'critical_actions', 'future_considerations'];
-    const convertedValue = fieldsToConvert.includes(field) 
-      ? convertCircleBulletsToHtml(value)
-      : value;
-    
-    onUpdate({ ...summary, [field]: convertedValue });
+    onUpdate({ ...summary, [field]: value });
   };
 
   return (

@@ -37,6 +37,7 @@ import { validateInspectionPackage } from "@/lib/validation-schemas";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { SyncStatusIndicator } from "@/components/pwa/SyncStatusIndicator";
 import { usePWA } from "@/hooks/usePWA";
+import { convertCircleBulletsToHtml } from "@/lib/bullet-converter";
 
 export default function InspectionForm() {
   const { id } = useParams();
@@ -159,10 +160,10 @@ export default function InspectionForm() {
 
     return {
       criticalActions: criticalActions.length > 0 
-        ? criticalActions.join('\n') 
+        ? convertCircleBulletsToHtml(criticalActions.join('\n'))
         : '',
       repairsPerformed: repairsPerformed.length > 0 
-        ? repairsPerformed.join('\n') 
+        ? convertCircleBulletsToHtml(repairsPerformed.join('\n'))
         : ''
     };
   };
