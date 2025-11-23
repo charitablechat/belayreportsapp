@@ -94,9 +94,9 @@ export default function SuperAdminDashboard() {
         .select(`
           *,
           organization_members(count),
-          inspections(count)
+          inspections(count, inspection_date)
         `)
-        .order("created_at", { ascending: false });
+        .order("name", { ascending: true });
 
       if (error) throw error;
       return data;
@@ -384,26 +384,67 @@ export default function SuperAdminDashboard() {
         </TabsList>
 
         <TabsContent value="organizations" className="space-y-4">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Organization</TableHead>
-                <TableHead>Members</TableHead>
-                <TableHead>Inspections</TableHead>
-                <TableHead>Created</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {organizations?.map((org) => (
-                <TableRow key={org.id}>
-                  <TableCell className="font-medium">{org.name}</TableCell>
-                  <TableCell>{org.organization_members?.[0]?.count || 0}</TableCell>
-                  <TableCell>{org.inspections?.[0]?.count || 0}</TableCell>
-                  <TableCell>{format(new Date(org.created_at), "PP")}</TableCell>
+          <div className="rounded-md border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Organization</TableHead>
+                  <TableHead className="text-center">Members</TableHead>
+                  <TableHead className="text-center">Inspections</TableHead>
+                  <TableHead>Last Inspection</TableHead>
+                  <TableHead>Created</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {organizations?.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
+                      No organizations found
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  organizations?.map((org) => {
+                    const inspectionCount = org.inspections?.[0]?.count || 0;
+                    const lastInspectionDate = org.inspections && org.inspections.length > 0
+                      ? org.inspections.reduce((latest: any, insp: any) => {
+                          if (!insp.inspection_date) return latest;
+                          if (!latest || new Date(insp.inspection_date) > new Date(latest)) {
+                            return insp.inspection_date;
+                          }
+                          return latest;
+                        }, null)
+                      : null;
+
+                    return (
+                      <TableRow key={org.id}>
+                        <TableCell className="font-medium">{org.name}</TableCell>
+                        <TableCell className="text-center">
+                          <Badge variant="secondary">
+                            {org.organization_members?.[0]?.count || 0}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <Badge variant={inspectionCount > 0 ? "default" : "outline"}>
+                            {inspectionCount}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          {lastInspectionDate ? (
+                            <span className="text-sm">{format(new Date(lastInspectionDate), "PP")}</span>
+                          ) : (
+                            <span className="text-sm text-muted-foreground">No inspections</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {format(new Date(org.created_at), "PP")}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
+                )}
+              </TableBody>
+            </Table>
+          </div>
         </TabsContent>
 
         <TabsContent value="users" className="space-y-4">
