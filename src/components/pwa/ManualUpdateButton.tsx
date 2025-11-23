@@ -85,9 +85,6 @@ export const ManualUpdateButton = () => {
     }
   };
 
-  // Only show on mobile
-  if (!isMobile()) return null;
-
   return (
     <div className="flex items-center gap-1">
       <Button
