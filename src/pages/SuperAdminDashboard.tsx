@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Building2, Users, FileText, Bell, AlertTriangle, Radio, UserPlus, Pencil, Trash2, ClipboardList, ArrowLeft, Merge } from "lucide-react";
+import { Building2, Users, FileText, Bell, AlertTriangle, Radio, UserPlus, Pencil, Trash2, ClipboardList, ArrowLeft, Merge, Clock, TrendingUp, Calendar, UserCheck } from "lucide-react";
 import { format } from "date-fns";
 import { useNavigate } from "react-router-dom";
 import { useState } from "react";
@@ -222,6 +222,88 @@ export default function SuperAdminDashboard() {
     enabled: !loading,
   });
 
+  // Average completion time query
+  const { data: avgCompletionTime } = useQuery({
+    queryKey: ["avg-completion-time"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("inspections")
+        .select("created_at, updated_at")
+        .eq("status", "completed")
+        .not("updated_at", "is", null);
+      
+      if (error) throw error;
+      
+      if (!data || data.length === 0) return 0;
+      
+      const totalHours = data.reduce((sum, inspection) => {
+        const created = new Date(inspection.created_at).getTime();
+        const updated = new Date(inspection.updated_at).getTime();
+        return sum + (updated - created) / (1000 * 60 * 60);
+      }, 0);
+      
+      return totalHours / data.length;
+    },
+    enabled: !loading,
+  });
+
+  // Completion rate query
+  const { data: completionRate } = useQuery({
+    queryKey: ["completion-rate"],
+    queryFn: async () => {
+      const { count: totalCount, error: totalError } = await supabase
+        .from("inspections")
+        .select("*", { count: "exact", head: true });
+      
+      const { count: completedCount, error: completedError } = await supabase
+        .from("inspections")
+        .select("*", { count: "exact", head: true })
+        .eq("status", "completed");
+      
+      if (totalError || completedError) throw totalError || completedError;
+      
+      const total = totalCount || 0;
+      const completed = completedCount || 0;
+      
+      return total > 0 ? (completed / total) * 100 : 0;
+    },
+    enabled: !loading,
+  });
+
+  // Inspections this month query
+  const { data: inspectionsThisMonth } = useQuery({
+    queryKey: ["inspections-this-month"],
+    queryFn: async () => {
+      const now = new Date();
+      const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+      
+      const { count, error } = await supabase
+        .from("inspections")
+        .select("*", { count: "exact", head: true })
+        .gte("created_at", firstDay);
+      
+      if (error) throw error;
+      return count || 0;
+    },
+    enabled: !loading,
+  });
+
+  // Active inspectors query
+  const { data: activeInspectors } = useQuery({
+    queryKey: ["active-inspectors"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("inspections")
+        .select("inspector_id");
+      
+      if (error) throw error;
+      
+      const uniqueInspectors = new Set(data?.map(i => i.inspector_id) || []);
+      return uniqueInspectors.size;
+    },
+    enabled: !loading,
+  });
+
   // User management functions
   const handleCreateUser = async (userData: any) => {
     try {
@@ -358,7 +440,7 @@ export default function SuperAdminDashboard() {
         />
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <StatCard
           title="Unresolved Conflicts"
           value={stats?.unresolvedConflicts || 0}
@@ -368,6 +450,33 @@ export default function SuperAdminDashboard() {
           title="Active Subscriptions"
           value={stats?.activeSubscriptions || 0}
           icon={Radio}
+        />
+        <StatCard
+          title="Avg Completion Time"
+          value={avgCompletionTime ? `${avgCompletionTime.toFixed(1)}h` : "0h"}
+          icon={Clock}
+          description="Average time to complete"
+        />
+        <StatCard
+          title="Completion Rate"
+          value={completionRate ? `${completionRate.toFixed(1)}%` : "0%"}
+          icon={TrendingUp}
+          description="Completed inspections"
+        />
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2">
+        <StatCard
+          title="This Month"
+          value={inspectionsThisMonth || 0}
+          icon={Calendar}
+          description="Inspections created"
+        />
+        <StatCard
+          title="Active Inspectors"
+          value={activeInspectors || 0}
+          icon={UserCheck}
+          description="Unique inspectors"
         />
       </div>
 
