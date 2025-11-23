@@ -278,12 +278,12 @@ export default function Dashboard() {
     const isCurrentlySyncing = isSyncing && progress.currentItem === inspection.id;
     
     return (
-      <div className="flex gap-2">
+      <div className="flex gap-1 items-center flex-nowrap">
         {/* Show syncing indicator when actively syncing this inspection */}
         {isCurrentlySyncing && (
-          <Badge variant="default" className="gap-1 bg-primary text-primary-foreground animate-pulse">
+          <Badge variant="default" className="gap-1 bg-primary text-primary-foreground animate-pulse text-xs px-2 py-0">
             <RefreshCw className="w-3 h-3 animate-spin" />
-            Syncing
+            <span className="hidden sm:inline">Syncing</span>
           </Badge>
         )}
         
@@ -291,9 +291,9 @@ export default function Dashboard() {
         {!isCurrentlySyncing && inspection.synced_at && (
           <Tooltip>
             <TooltipTrigger asChild>
-              <Badge variant="outline" className="gap-1 cursor-help">
+              <Badge variant="outline" className="gap-1 cursor-help text-xs px-2 py-0">
                 <Check className="w-3 h-3" />
-                Synced
+                <span className="hidden sm:inline">Synced</span>
               </Badge>
             </TooltipTrigger>
             <TooltipContent>
@@ -306,7 +306,7 @@ export default function Dashboard() {
         
         {/* Show unsynced photos count if any */}
         {unsyncedPhotosCount > 0 && (
-          <Badge variant="secondary" className="gap-1">
+          <Badge variant="secondary" className="gap-1 text-xs px-2 py-0">
             <Cloud className="w-3 h-3" />
             {unsyncedPhotosCount}
           </Badge>
