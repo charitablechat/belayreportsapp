@@ -11,9 +11,10 @@ import { Plus } from "lucide-react";
 interface ZiplinesTableProps {
   ziplines: any[];
   onUpdate: (ziplines: any[]) => void;
+  onImmediateSave?: () => void;
 }
 
-export default function ZiplinesTable({ ziplines, onUpdate }: ZiplinesTableProps) {
+export default function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: ZiplinesTableProps) {
   const addZipline = () => {
     onUpdate([
       ...ziplines,
@@ -86,6 +87,7 @@ export default function ZiplinesTable({ ziplines, onUpdate }: ZiplinesTableProps
                     <HistoryAutocomplete
                       value={zipline.zipline_name}
                       onChange={(value) => updateZipline(index, "zipline_name", value)}
+                      onBlur={onImmediateSave}
                       storageKey="rope-works-zipline-names"
                       placeholder="Name"
                       className="border-0 bg-transparent h-8 text-xs"
@@ -110,6 +112,8 @@ export default function ZiplinesTable({ ziplines, onUpdate }: ZiplinesTableProps
                       type="number"
                       value={zipline.cable_length || ""}
                       onChange={(e) => updateZipline(index, "cable_length", parseFloat(e.target.value) || null)}
+                      onBlur={onImmediateSave}
+                      onKeyDown={(e) => e.key === 'Enter' && onImmediateSave?.()}
                       placeholder="ft"
                       className="border-0 bg-transparent h-8 text-xs"
                     />
@@ -119,6 +123,8 @@ export default function ZiplinesTable({ ziplines, onUpdate }: ZiplinesTableProps
                       type="number"
                       value={zipline.unload_tension || ""}
                       onChange={(e) => updateZipline(index, "unload_tension", parseFloat(e.target.value) || null)}
+                      onBlur={onImmediateSave}
+                      onKeyDown={(e) => e.key === 'Enter' && onImmediateSave?.()}
                       placeholder="lbf"
                       className="border-0 bg-transparent h-8 text-xs"
                     />
@@ -128,6 +134,8 @@ export default function ZiplinesTable({ ziplines, onUpdate }: ZiplinesTableProps
                       type="number"
                       value={zipline.load_tension || ""}
                       onChange={(e) => updateZipline(index, "load_tension", parseFloat(e.target.value) || null)}
+                      onBlur={onImmediateSave}
+                      onKeyDown={(e) => e.key === 'Enter' && onImmediateSave?.()}
                       placeholder="lbf"
                       className="border-0 bg-transparent h-8 text-xs"
                     />
@@ -210,6 +218,7 @@ export default function ZiplinesTable({ ziplines, onUpdate }: ZiplinesTableProps
                   <HistoryAutocomplete
                     value={zipline.zipline_name}
                     onChange={(value) => updateZipline(index, "zipline_name", value)}
+                    onBlur={onImmediateSave}
                     storageKey="rope-works-zipline-names"
                     placeholder="Enter or select name"
                   />
@@ -238,6 +247,8 @@ export default function ZiplinesTable({ ziplines, onUpdate }: ZiplinesTableProps
                       type="number"
                       value={zipline.cable_length || ""}
                       onChange={(e) => updateZipline(index, "cable_length", parseFloat(e.target.value) || null)}
+                      onBlur={onImmediateSave}
+                      onKeyDown={(e) => e.key === 'Enter' && onImmediateSave?.()}
                       placeholder="Length"
                     />
                   </div>
@@ -250,6 +261,8 @@ export default function ZiplinesTable({ ziplines, onUpdate }: ZiplinesTableProps
                       type="number"
                       value={zipline.unload_tension || ""}
                       onChange={(e) => updateZipline(index, "unload_tension", parseFloat(e.target.value) || null)}
+                      onBlur={onImmediateSave}
+                      onKeyDown={(e) => e.key === 'Enter' && onImmediateSave?.()}
                       placeholder="Unload"
                     />
                   </div>
@@ -260,6 +273,8 @@ export default function ZiplinesTable({ ziplines, onUpdate }: ZiplinesTableProps
                       type="number"
                       value={zipline.load_tension || ""}
                       onChange={(e) => updateZipline(index, "load_tension", parseFloat(e.target.value) || null)}
+                      onBlur={onImmediateSave}
+                      onKeyDown={(e) => e.key === 'Enter' && onImmediateSave?.()}
                       placeholder="Load"
                     />
                   </div>

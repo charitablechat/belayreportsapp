@@ -20,6 +20,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 interface HistoryAutocompleteProps {
   value: string;
   onChange: (value: string) => void;
+  onBlur?: () => void;
   storageKey: string;
   placeholder?: string;
   className?: string;
@@ -28,6 +29,7 @@ interface HistoryAutocompleteProps {
 export default function HistoryAutocomplete({
   value,
   onChange,
+  onBlur,
   storageKey,
   placeholder = "Select or type...",
   className,
@@ -91,6 +93,7 @@ export default function HistoryAutocomplete({
       onChange(inputValue.trim());
       setOpen(false);
       setInputValue("");
+      onBlur?.();
     }
   };
 
@@ -113,6 +116,14 @@ export default function HistoryAutocomplete({
             !value && "text-muted-foreground",
             className
           )}
+          onBlur={() => {
+            // Delay to allow selection to complete
+            setTimeout(() => {
+              if (!open && value) {
+                onBlur?.();
+              }
+            }, 200);
+          }}
         >
           <span className="truncate">{value || placeholder}</span>
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
