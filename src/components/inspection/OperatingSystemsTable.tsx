@@ -10,9 +10,10 @@ import { Plus } from "lucide-react";
 interface OperatingSystemsTableProps {
   systems: any[];
   onUpdate: (systems: any[]) => void;
+  onImmediateSave?: () => void;
 }
 
-export default function OperatingSystemsTable({ systems, onUpdate }: OperatingSystemsTableProps) {
+export default function OperatingSystemsTable({ systems, onUpdate, onImmediateSave }: OperatingSystemsTableProps) {
   const addSystem = () => {
     onUpdate([
       ...systems, 
@@ -68,6 +69,7 @@ export default function OperatingSystemsTable({ systems, onUpdate }: OperatingSy
                     <HistoryAutocomplete
                       value={system.name || ""}
                       onChange={(value) => updateSystem(index, "name", value)}
+                      onBlur={onImmediateSave}
                       storageKey="rope-works-operating-system-names"
                       placeholder="Enter or select name"
                       className="border-0 bg-transparent"
@@ -111,6 +113,7 @@ export default function OperatingSystemsTable({ systems, onUpdate }: OperatingSy
                   <HistoryAutocomplete
                     value={system.name || ""}
                     onChange={(value) => updateSystem(index, "name", value)}
+                    onBlur={onImmediateSave}
                     storageKey="rope-works-operating-system-names"
                     placeholder="Enter or select name"
                   />

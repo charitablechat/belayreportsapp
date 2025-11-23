@@ -13,9 +13,10 @@ interface EquipmentTableProps {
   displayName: string;
   equipment: any[];
   onUpdate: (equipment: any[]) => void;
+  onImmediateSave?: () => void;
 }
 
-export default function EquipmentTable({ category, displayName, equipment, onUpdate }: EquipmentTableProps) {
+export default function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediateSave }: EquipmentTableProps) {
   const categoryEquipment = equipment.filter((item) => item.equipment_category === category);
 
   const addEquipment = () => {
@@ -72,6 +73,7 @@ export default function EquipmentTable({ category, displayName, equipment, onUpd
                     <HistoryAutocomplete
                       value={item.equipment_type}
                       onChange={(value) => updateEquipment(item, "equipment_type", value)}
+                      onBlur={onImmediateSave}
                       storageKey="rope-works-equipment-types"
                       placeholder="Enter or select type"
                       className={cn(
@@ -87,6 +89,8 @@ export default function EquipmentTable({ category, displayName, equipment, onUpd
                       type="number"
                       value={item.production_year || ""}
                       onChange={(e) => updateEquipment(item, "production_year", parseInt(e.target.value) || null)}
+                      onBlur={onImmediateSave}
+                      onKeyDown={(e) => e.key === 'Enter' && onImmediateSave?.()}
                       placeholder="Year"
                       className="border-0 bg-transparent"
                     />
@@ -96,6 +100,8 @@ export default function EquipmentTable({ category, displayName, equipment, onUpd
                       type="number"
                       value={item.quantity || ""}
                       onChange={(e) => updateEquipment(item, "quantity", parseInt(e.target.value) || null)}
+                      onBlur={onImmediateSave}
+                      onKeyDown={(e) => e.key === 'Enter' && onImmediateSave?.()}
                       placeholder="Qty"
                       className="border-0 bg-transparent"
                     />
@@ -131,6 +137,7 @@ export default function EquipmentTable({ category, displayName, equipment, onUpd
                   <HistoryAutocomplete
                     value={item.equipment_type}
                     onChange={(value) => updateEquipment(item, "equipment_type", value)}
+                    onBlur={onImmediateSave}
                     storageKey="rope-works-equipment-types"
                     placeholder="Enter or select type"
                     className={cn(
@@ -148,6 +155,8 @@ export default function EquipmentTable({ category, displayName, equipment, onUpd
                       type="number"
                       value={item.production_year || ""}
                       onChange={(e) => updateEquipment(item, "production_year", parseInt(e.target.value) || null)}
+                      onBlur={onImmediateSave}
+                      onKeyDown={(e) => e.key === 'Enter' && onImmediateSave?.()}
                       placeholder="Year"
                     />
                   </div>
@@ -158,6 +167,8 @@ export default function EquipmentTable({ category, displayName, equipment, onUpd
                       type="number"
                       value={item.quantity || ""}
                       onChange={(e) => updateEquipment(item, "quantity", parseInt(e.target.value) || null)}
+                      onBlur={onImmediateSave}
+                      onKeyDown={(e) => e.key === 'Enter' && onImmediateSave?.()}
                       placeholder="Qty"
                     />
                   </div>

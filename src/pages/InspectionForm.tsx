@@ -813,6 +813,35 @@ export default function InspectionForm() {
     }
   };
 
+  const triggerImmediateSave = async () => {
+    if (saving || autoSaving) return;
+    
+    // Clear existing debounce timer
+    if (saveDebounceTimer) {
+      clearTimeout(saveDebounceTimer);
+      setSaveDebounceTimer(null);
+    }
+    
+    setAutoSaving(true);
+    try {
+      await performSave(true); // Silent immediate save
+      setLastSaved(new Date());
+      setHasUnsavedChanges(false);
+      if (import.meta.env.DEV) {
+        console.log("Immediate save triggered at", new Date().toLocaleTimeString());
+      }
+      // Trigger sync after successful save
+      if (isOnline) {
+        triggerSync().catch(err => console.error("Immediate sync failed:", err));
+      }
+    } catch (error: any) {
+      console.error("Immediate save failed:", error);
+      setSaveError(error.message || 'Immediate save failed');
+    } finally {
+      setAutoSaving(false);
+    }
+  };
+
   const autoSaveProgress = async () => {
     if (!hasUnsavedChanges || saving || autoSaving) return;
     
@@ -1419,8 +1448,8 @@ export default function InspectionForm() {
           </TabsList>
 
           <TabsContent value="details" className="space-y-6">
-            <OperatingSystemsTable systems={systems} onUpdate={setSystems} />
-            <ZiplinesTable ziplines={ziplines} onUpdate={setZiplines} />
+            <OperatingSystemsTable systems={systems} onUpdate={setSystems} onImmediateSave={triggerImmediateSave} />
+            <ZiplinesTable ziplines={ziplines} onUpdate={setZiplines} onImmediateSave={triggerImmediateSave} />
             
             <div className="mt-8 border-t pt-6">
               <h3 className="text-lg font-semibold mb-4">Photos - Systems & Ziplines</h3>
@@ -1445,30 +1474,35 @@ export default function InspectionForm() {
               displayName="Harnesses"
               equipment={equipment}
               onUpdate={setEquipment}
+              onImmediateSave={triggerImmediateSave}
             />
             <EquipmentTable
               category="helmets"
               displayName="Helmets"
               equipment={equipment}
               onUpdate={setEquipment}
+              onImmediateSave={triggerImmediateSave}
             />
             <EquipmentTable
               category="lanyards"
               displayName="Lanyards"
               equipment={equipment}
               onUpdate={setEquipment}
+              onImmediateSave={triggerImmediateSave}
             />
             <EquipmentTable
               category="connectors"
               displayName="Connectors (Carabiners & Quicklinks)"
               equipment={equipment}
               onUpdate={setEquipment}
+              onImmediateSave={triggerImmediateSave}
             />
             <EquipmentTable
               category="rope"
               displayName="Kernmantle Rope"
               equipment={equipment}
               onUpdate={setEquipment}
+              onImmediateSave={triggerImmediateSave}
             />
             <EquipmentTable
               category="belay"
