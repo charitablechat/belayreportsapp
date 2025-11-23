@@ -465,8 +465,8 @@ export default function Dashboard() {
                   }}
                   className="gap-2"
                 >
-                  <Download className="w-4 h-4" />
-                  <span className="hidden sm:inline">Install App</span>
+                <Download className="w-4 h-4" />
+                <span>Install App</span>
                 </Button>
               )}
             </div>
