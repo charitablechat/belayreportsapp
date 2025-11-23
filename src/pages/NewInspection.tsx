@@ -12,6 +12,7 @@ import { toast } from "sonner";
 import ropeWorksLogo from "@/assets/rope-works-logo.png";
 import { saveInspectionOffline, queueOperation } from "@/lib/offline-storage";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
+import { OrganizationAutocomplete } from "@/components/OrganizationAutocomplete";
 import { getCurrentLocationWithAddress } from "@/lib/geolocation";
 
 export default function NewInspection() {
@@ -167,12 +168,10 @@ export default function NewInspection() {
             <form onSubmit={handleSubmit} className="space-y-6">
               <div className="space-y-2">
                 <Label htmlFor="organization">Organization *</Label>
-                <Input
-                  id="organization"
+                <OrganizationAutocomplete
                   value={formData.organization}
-                  onChange={(e) => setFormData(prev => ({ ...prev, organization: e.target.value }))}
-                  required
-                  placeholder="Enter organization name"
+                  onChange={(value) => setFormData(prev => ({ ...prev, organization: value }))}
+                  disabled={loading}
                 />
               </div>
 
