@@ -2,7 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { RichTextEditor } from "@/components/ui/rich-text-editor";
 import { Input } from "@/components/ui/input";
-import { BulletMigrationButton } from "./BulletMigrationButton";
+import { convertCircleBulletsToHtml } from "@/lib/bullet-converter";
 
 interface SummarySectionProps {
   summary: any;
@@ -12,14 +12,19 @@ interface SummarySectionProps {
 
 export default function SummarySection({ summary, onUpdate, onImmediateSave }: SummarySectionProps) {
   const updateField = (field: string, value: any) => {
-    onUpdate({ ...summary, [field]: value });
+    // Auto-convert circle bullets to HTML lists for specific fields
+    const fieldsToConvert = ['repairs_performed', 'critical_actions', 'future_considerations'];
+    const convertedValue = fieldsToConvert.includes(field) 
+      ? convertCircleBulletsToHtml(value)
+      : value;
+    
+    onUpdate({ ...summary, [field]: convertedValue });
   };
 
   return (
     <Card>
-      <CardHeader className="flex flex-row items-center justify-between">
+      <CardHeader>
         <CardTitle>Report Summary</CardTitle>
-        <BulletMigrationButton />
       </CardHeader>
       <CardContent className="space-y-6">
         <div className="space-y-2">
