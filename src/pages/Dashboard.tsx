@@ -18,6 +18,7 @@ import { triggerHaptic } from "@/lib/haptics";
 
 import { usePWAInstall } from "@/hooks/usePWAInstall";
 import { useSessionTimeout } from "@/hooks/useSessionTimeout";
+import { useSyncProgress } from "@/hooks/useSyncProgress";
 import { NetworkStatusIndicator } from "@/components/pwa/NetworkStatusIndicator";
 import { SyncStatusIndicator } from "@/components/pwa/SyncStatusIndicator";
 import { SyncControlPanel } from "@/components/pwa/SyncControlPanel";
@@ -72,6 +73,7 @@ export default function Dashboard() {
   const { isInstallable, isInstalled, promptInstall } = usePWAInstall();
   const { hasConflicts, conflictCount } = useConflicts();
   const { photosByInspection, triggerSync, isSyncing } = usePWA();
+  const { progress } = useSyncProgress();
   
   // Pull to refresh for mobile
   const { isPulling, pullDistance, shouldTriggerRefresh, isActive } = usePullToRefresh({
@@ -273,11 +275,20 @@ export default function Dashboard() {
 
   const getStatusBadge = (inspection: any) => {
     const unsyncedPhotosCount = photosByInspection[inspection.id] || 0;
+    const isCurrentlySyncing = isSyncing && progress.currentItem === inspection.id;
     
     return (
       <div className="flex gap-2">
+        {/* Show syncing indicator when actively syncing this inspection */}
+        {isCurrentlySyncing && (
+          <Badge variant="default" className="gap-1 bg-primary text-primary-foreground animate-pulse">
+            <RefreshCw className="w-3 h-3 animate-spin" />
+            Syncing
+          </Badge>
+        )}
+        
         {/* Show sync status badge only when synced */}
-        {inspection.synced_at && (
+        {!isCurrentlySyncing && inspection.synced_at && (
           <Tooltip>
             <TooltipTrigger asChild>
               <Badge variant="outline" className="gap-1 cursor-help">
@@ -616,15 +627,20 @@ export default function Dashboard() {
             </Card>
           ) : (
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {inspections.map((inspection) => (
-                <Card
-                  key={inspection.id}
-                  className="cursor-pointer hover:shadow-lg transition-shadow group relative overflow-hidden"
-                  onClick={() => {
-                    triggerHaptic('light'); // Haptic feedback when opening inspection
-                    navigate(`/inspection/${inspection.id}`);
-                  }}
-                >
+              {inspections.map((inspection) => {
+                const isCurrentlySyncing = isSyncing && progress.currentItem === inspection.id;
+                
+                return (
+                  <Card
+                    key={inspection.id}
+                    className={`cursor-pointer hover:shadow-lg transition-shadow group relative overflow-hidden ${
+                      isCurrentlySyncing ? 'shimmer-loading' : ''
+                    }`}
+                    onClick={() => {
+                      triggerHaptic('light'); // Haptic feedback when opening inspection
+                      navigate(`/inspection/${inspection.id}`);
+                    }}
+                  >
                   {/* Watermark for completed inspections */}
                   {inspection.status === 'completed' && (
                     <div className="absolute inset-0 z-10 pointer-events-none flex items-center justify-center p-4">
@@ -678,7 +694,8 @@ export default function Dashboard() {
                     </div>
                   </CardContent>
                 </Card>
-              ))}
+              );
+              })}
             </div>
           )}
         </section>
