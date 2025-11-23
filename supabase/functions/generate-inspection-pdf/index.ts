@@ -366,7 +366,7 @@ serve(async (req) => {
       thickness: 0.5,
       color: rgb(0, 0, 0)
     });
-    page.drawText('☐ ' + formatDate(inspection.inspection_date), { x: 398, y: row2Y - 1, size: 9, font: font });
+    page.drawText(formatDate(inspection.inspection_date), { x: 398, y: row2Y - 1, size: 9, font: font });
 
     yPos = row2Y - 28;
 
@@ -391,7 +391,7 @@ serve(async (req) => {
       thickness: 0.5,
       color: rgb(0, 0, 0)
     });
-    page.drawText('☐ ' + (inspection.previous_inspection_date ? formatDate(inspection.previous_inspection_date) : 'N/A'), { x: 418, y: row3Y - 1, size: 9, font: font });
+    page.drawText((inspection.previous_inspection_date ? formatDate(inspection.previous_inspection_date) : 'N/A'), { x: 418, y: row3Y - 1, size: 9, font: font });
 
     yPos = row3Y - 28;
 
