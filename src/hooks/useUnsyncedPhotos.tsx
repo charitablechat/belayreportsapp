@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { getUnuploadedPhotos } from '@/lib/offline-storage';
+import { supabase } from '@/integrations/supabase/client';
 
 export interface UnsyncedPhotosStatus {
   unsyncedPhotoCount: number;
@@ -14,7 +15,18 @@ export const useUnsyncedPhotos = () => {
 
   const updatePhotoCount = useCallback(async () => {
     try {
-      const unuploaded = await getUnuploadedPhotos();
+      // Get current user to filter photos
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        console.error('[Unsynced Photos] No authenticated user');
+        setStatus({
+          unsyncedPhotoCount: 0,
+          photosByInspection: {},
+        });
+        return;
+      }
+      
+      const unuploaded = await getUnuploadedPhotos(user.id);
       
       // Group by inspection
       const byInspection: Record<string, number> = {};
