@@ -534,6 +534,7 @@ export type Database = {
           id: string
           inspection_date: string
           inspector_id: string
+          last_opened_at: string | null
           latitude: number | null
           location: string
           longitude: number | null
@@ -552,6 +553,7 @@ export type Database = {
           id?: string
           inspection_date?: string
           inspector_id: string
+          last_opened_at?: string | null
           latitude?: number | null
           location: string
           longitude?: number | null
@@ -570,6 +572,7 @@ export type Database = {
           id?: string
           inspection_date?: string
           inspector_id?: string
+          last_opened_at?: string | null
           latitude?: number | null
           location?: string
           longitude?: number | null
