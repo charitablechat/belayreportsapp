@@ -116,7 +116,19 @@ export default function ContactDeveloper() {
       setOpen(false);
     } catch (error: any) {
       console.error("Error sending message:", error);
-      toast.error(error.message || "Failed to send message");
+      
+      // Provide user-friendly error messages based on error type
+      let errorMessage = "Failed to send message. Please try again.";
+      
+      if (error.message?.includes("403") || error.message?.includes("validation_error")) {
+        errorMessage = "Email service is temporarily unavailable. Please try again later.";
+      } else if (error.message?.includes("network") || error.message?.includes("fetch")) {
+        errorMessage = "Network error. Please check your connection and try again.";
+      } else if (error.message?.includes("storage")) {
+        errorMessage = "Failed to upload image. Please try a smaller image.";
+      }
+      
+      toast.error(errorMessage);
     } finally {
       setLoading(false);
     }
