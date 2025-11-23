@@ -14,6 +14,7 @@ import { useNavigate } from "react-router-dom";
 import { useState } from "react";
 import { toast } from "sonner";
 import { UserManagementDialog } from "@/components/admin/UserManagementDialog";
+import { FormCMSManager } from "@/components/admin/FormCMSManager";
 
 export default function SuperAdminDashboard() {
   const { loading } = useRequireSuperAdmin();
@@ -376,6 +377,7 @@ export default function SuperAdminDashboard() {
           <TabsTrigger value="users" className="justify-start">Users</TabsTrigger>
           <TabsTrigger value="user-management" className="justify-start">User Management</TabsTrigger>
           <TabsTrigger value="inspections" className="justify-start">Inspections</TabsTrigger>
+          <TabsTrigger value="form-cms" className="justify-start">Form CMS</TabsTrigger>
           <TabsTrigger value="notifications" className="justify-start">Notifications</TabsTrigger>
           <TabsTrigger value="conflicts" className="justify-start">Conflicts</TabsTrigger>
           <TabsTrigger value="subscriptions" className="justify-start">Subscriptions</TabsTrigger>
@@ -557,6 +559,10 @@ export default function SuperAdminDashboard() {
               ))}
             </TableBody>
           </Table>
+        </TabsContent>
+
+        <TabsContent value="form-cms" className="space-y-4">
+          <FormCMSManager />
         </TabsContent>
 
         <TabsContent value="notifications" className="space-y-4">
