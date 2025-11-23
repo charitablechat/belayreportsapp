@@ -374,7 +374,10 @@ export default function Dashboard() {
               <SyncControlPanel />
               <NetworkStatusIndicator />
               <SyncStatusIndicator />
-              <ManualUpdateButton />
+              {/* Show update button on desktop only in horizontal row */}
+              <div className="hidden md:flex">
+                <ManualUpdateButton />
+              </div>
             </div>
             
             {isInstallable && !isInstalled && (
@@ -393,6 +396,12 @@ export default function Dashboard() {
                 <span className="hidden sm:inline">Install App</span>
               </Button>
             )}
+          </div>
+          
+          {/* Mobile only - Update button below online badge */}
+          <div className="flex md:hidden flex-col gap-2 mt-2 items-start">
+            <NetworkStatusIndicator />
+            <ManualUpdateButton />
           </div>
         </div>
       </header>
