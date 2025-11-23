@@ -418,6 +418,10 @@ export default function Dashboard() {
                 <DropdownMenuItem onClick={() => navigate('/install')}>
                   Install Instructions
                 </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setContactSheetOpen(true)}>
+                  <MessageCircle className="w-4 h-4 mr-2" />
+                  Contact Developer
+                </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={handleSignOut} disabled={signingOut}>
                   {signingOut ? (
@@ -441,15 +445,6 @@ export default function Dashboard() {
               <div className="hidden md:flex">
                 <ManualUpdateButton />
               </div>
-              <Button 
-                variant="outline" 
-                size="sm"
-                onClick={() => setContactSheetOpen(true)}
-                className="gap-2"
-              >
-                <MessageCircle className="w-4 h-4" />
-                <span className="hidden sm:inline">Contact Dev</span>
-              </Button>
             </div>
             
             <div className="flex items-center gap-2">
