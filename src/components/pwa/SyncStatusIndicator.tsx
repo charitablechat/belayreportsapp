@@ -64,6 +64,14 @@ export const SyncStatusIndicator = () => {
   // Show blue sync button on mobile when everything is synced
   const showSyncButton = isMobileDevice && isOnline && !isSyncing && unsyncedCount === 0 && unsyncedPhotoCount === 0;
 
+  const handleSyncWithHaptic = () => {
+    // Trigger haptic feedback on mobile devices
+    if (isMobileDevice && 'vibrate' in navigator) {
+      navigator.vibrate(50); // Short 50ms vibration
+    }
+    triggerSync();
+  };
+
   return (
     <TooltipProvider>
       <Tooltip>
@@ -73,7 +81,7 @@ export const SyncStatusIndicator = () => {
               <Button
                 variant="default"
                 size="sm"
-                onClick={triggerSync}
+                onClick={handleSyncWithHaptic}
                 className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90"
               >
                 <Check className="w-4 h-4" />
