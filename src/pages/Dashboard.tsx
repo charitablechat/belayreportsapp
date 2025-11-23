@@ -363,7 +363,7 @@ export default function Dashboard() {
       </div>
       <div className="relative z-10 min-h-screen bg-background/80 backdrop-blur-sm">
         <header className="border-b bg-card/95 backdrop-blur-sm">
-        <div className="container mx-auto px-2 md:px-4 py-3 md:py-4">
+        <div className="container mx-auto px-1 md:px-4 py-3 md:py-4">
           {/* Top row - Logos, status indicators, and user dropdown */}
           <div className="flex items-center justify-between gap-4 mb-3">
             <div className="flex items-center gap-2 md:gap-3">
@@ -436,7 +436,7 @@ export default function Dashboard() {
           </div>
           
           {/* Bottom row - Sync controls and action buttons */}
-          <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center justify-between gap-2 overflow-hidden">
             <div className="flex items-center gap-2 flex-wrap">
               <div className="hidden md:flex">
                 <SyncControlPanel />
@@ -474,7 +474,7 @@ export default function Dashboard() {
         </div>
       </header>
 
-      <main className="container mx-auto px-2 md:px-4 py-8">
+      <main className="container mx-auto px-1 md:px-4 py-8">
         {/* Conflict Notification */}
         <ConflictNotification onViewConflicts={() => setConflictsDialogOpen(true)} />
 
@@ -508,9 +508,9 @@ export default function Dashboard() {
         <OfflineCapabilitiesBanner />
 
         {/* Foyer Section */}
-        <section className="mb-12 -mx-4">
+        <section className="mb-12">
           <div className="rounded-lg bg-background/40 backdrop-blur-sm">
-            <div className="container mx-auto px-4 py-16">
+            <div className="container mx-auto px-2 md:px-4 py-16">
               <div className="text-center mb-8">
                 <h2 className="text-4xl font-bold text-primary dark:text-white mb-2">
                   Welcome to Rope Works
