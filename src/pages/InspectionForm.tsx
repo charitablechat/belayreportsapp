@@ -441,6 +441,13 @@ export default function InspectionForm() {
 
       // If online, fetch from Supabase and update local cache
       if (isOnline) {
+        // Update last_opened_at timestamp
+        const now = new Date().toISOString();
+        await supabase
+          .from("inspections")
+          .update({ last_opened_at: now })
+          .eq("id", id);
+
         const { data, error } = await supabase
           .from("inspections")
           .select("*")

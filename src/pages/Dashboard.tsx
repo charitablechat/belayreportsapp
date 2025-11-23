@@ -190,6 +190,7 @@ export default function Dashboard() {
         const { data, error } = await supabase
           .from("inspections")
           .select("*")
+          .order("last_opened_at", { ascending: false, nullsFirst: false })
           .order("created_at", { ascending: false });
 
         if (error) throw error;
