@@ -439,7 +439,6 @@ export default function Dashboard() {
           
           {/* Mobile only - Update button below online badge */}
           <div className="flex md:hidden flex-col gap-2 mt-2 items-start">
-            <NetworkStatusIndicator />
             <ManualUpdateButton />
           </div>
         </div>

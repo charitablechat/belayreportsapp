@@ -61,19 +61,34 @@ export const SyncStatusIndicator = () => {
     return 'Synced';
   };
 
+  // Show blue sync button on mobile when everything is synced
+  const showSyncButton = isMobileDevice && isOnline && !isSyncing && unsyncedCount === 0 && unsyncedPhotoCount === 0;
+
   return (
     <TooltipProvider>
       <Tooltip>
         <TooltipTrigger asChild>
           <div className="flex items-center gap-2">
-            <Badge 
-              variant={getStatusColor()} 
-              className={`gap-2 ${isMobileDevice ? 'text-sm px-3 py-1.5' : ''}`}
-            >
-              {getStatusIcon()}
-              <span>{getStatusText()}</span>
-              {isMobileDevice && <Smartphone className="w-3 h-3 opacity-60" />}
-            </Badge>
+            {showSyncButton ? (
+              <Button
+                variant="default"
+                size="sm"
+                onClick={triggerSync}
+                className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90"
+              >
+                <Check className="w-4 h-4" />
+                <span>Sync</span>
+              </Button>
+            ) : (
+              <Badge 
+                variant={getStatusColor()} 
+                className={`gap-2 ${isMobileDevice ? 'text-sm px-3 py-1.5' : ''}`}
+              >
+                {getStatusIcon()}
+                <span>{getStatusText()}</span>
+                {isMobileDevice && <Smartphone className="w-3 h-3 opacity-60" />}
+              </Badge>
+            )}
             {isOnline && !isSyncing && (unsyncedCount > 0 || unsyncedPhotoCount > 0) && (
               <div className="hidden md:flex">
                 <Button
