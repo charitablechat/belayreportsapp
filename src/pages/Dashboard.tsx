@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { GradientButton } from "@/components/ui/gradient-button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, LogOut, FileText, GraduationCap, ArrowRight, Lock, Download, Settings, Trash2, MoreVertical, Bell, AlertCircle, Cloud, User, Loader2, Check } from "lucide-react";
+import { Plus, LogOut, FileText, GraduationCap, ArrowRight, Lock, Download, Settings, Trash2, MoreVertical, Bell, AlertCircle, Cloud, User, Loader2, Check, RefreshCw } from "lucide-react";
 import { UserAvatar } from "@/components/ui/user-avatar";
 import { toast } from "sonner";
 import { format } from "date-fns";
@@ -28,6 +28,7 @@ import { ConflictResolver } from "@/components/sync/ConflictResolver";
 import { ConflictNotification } from "@/components/sync/ConflictNotification";
 import { useConflicts } from "@/hooks/useConflicts";
 import { usePWA } from "@/hooks/usePWA";
+import { usePullToRefresh } from "@/hooks/usePullToRefresh";
 import { getOfflineInspections, deleteOfflineInspection, queueOperation } from "@/lib/offline-storage";
 import {
   AlertDialog,
@@ -69,7 +70,16 @@ export default function Dashboard() {
   const [userProfile, setUserProfile] = useState<any>(null);
   const { isInstallable, isInstalled, promptInstall } = usePWAInstall();
   const { hasConflicts, conflictCount } = useConflicts();
-  const { photosByInspection } = usePWA();
+  const { photosByInspection, triggerSync, isSyncing } = usePWA();
+  
+  // Pull to refresh for mobile
+  const { isPulling, pullDistance, shouldTriggerRefresh, isActive } = usePullToRefresh({
+    onRefresh: async () => {
+      await triggerSync();
+      await loadInspections();
+    },
+    isRefreshing: isSyncing,
+  });
   
   // Monitor session timeout
   useSessionTimeout();
@@ -288,6 +298,33 @@ export default function Dashboard() {
 
   return (
     <div className="relative min-h-screen">
+      {/* Pull to Refresh Indicator - Mobile Only */}
+      {isActive && (
+        <div 
+          className="fixed top-0 left-0 right-0 z-50 flex items-center justify-center md:hidden"
+          style={{
+            height: `${Math.min(pullDistance, 80)}px`,
+            opacity: pullDistance / 80,
+            transition: isPulling ? 'none' : 'all 0.3s ease-out',
+          }}
+        >
+          <div className="bg-background/95 backdrop-blur-sm rounded-full p-3 shadow-lg border border-border">
+            <RefreshCw 
+              className={`w-6 h-6 text-primary ${shouldTriggerRefresh ? 'animate-spin' : ''}`}
+              style={{
+                transform: `rotate(${pullDistance * 2}deg)`,
+                transition: shouldTriggerRefresh ? 'none' : 'transform 0.1s ease-out',
+              }}
+            />
+          </div>
+          {shouldTriggerRefresh && (
+            <span className="ml-2 text-sm font-medium text-foreground">
+              Release to sync
+            </span>
+          )}
+        </div>
+      )}
+      
       <div className="absolute inset-0 z-0">
         <video 
           autoPlay 

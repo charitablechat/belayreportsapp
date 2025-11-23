@@ -75,15 +75,16 @@ export const SyncStatusIndicator = () => {
               {isMobileDevice && <Smartphone className="w-3 h-3 opacity-60" />}
             </Badge>
             {isOnline && !isSyncing && (unsyncedCount > 0 || unsyncedPhotoCount > 0) && (
-              <Button
-                variant="ghost"
-                size={isMobileDevice ? "default" : "sm"}
-                onClick={triggerSync}
-                className={isMobileDevice ? "h-10 px-4" : "h-8 px-2"}
-              >
-                <RefreshCw className={isMobileDevice ? "w-5 h-5" : "w-4 h-4"} />
-                {isMobileDevice && <span className="ml-2">Sync</span>}
-              </Button>
+              <div className="hidden md:flex">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={triggerSync}
+                  className="h-8 px-2"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                </Button>
+              </div>
             )}
           </div>
         </TooltipTrigger>
