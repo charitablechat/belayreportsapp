@@ -441,9 +441,6 @@ export default function Dashboard() {
               <div className="hidden md:flex">
                 <ManualUpdateButton />
               </div>
-            </div>
-            
-            <div className="flex items-center gap-2">
               <Button 
                 variant="outline" 
                 size="sm"
@@ -453,7 +450,9 @@ export default function Dashboard() {
                 <MessageCircle className="w-4 h-4" />
                 <span className="hidden sm:inline">Contact Dev</span>
               </Button>
-              
+            </div>
+            
+            <div className="flex items-center gap-2">
               {isInstallable && !isInstalled && (
                 <Button 
                   variant="outline" 
