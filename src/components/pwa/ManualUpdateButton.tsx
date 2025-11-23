@@ -11,14 +11,18 @@ import {
 import { usePWA } from '@/hooks/usePWA';
 import { toast } from 'sonner';
 import { isMobile } from '@/lib/mobile-detection';
+import { triggerHaptic } from '@/lib/haptics';
 
 export const ManualUpdateButton = () => {
   const { needsUpdate, updateAndReload } = usePWA();
   const [checking, setChecking] = useState(false);
 
   const handleCheckForUpdates = async () => {
+    triggerHaptic('light'); // Haptic feedback when checking for updates
+    
     if (needsUpdate) {
       // Update is already available
+      triggerHaptic('success');
       updateAndReload();
       return;
     }
@@ -48,6 +52,8 @@ export const ManualUpdateButton = () => {
   };
 
   const handleForceRefresh = async () => {
+    triggerHaptic('warning'); // Warning haptic for cache clearing
+    
     try {
       toast.loading('Clearing cache and refreshing...', { id: 'force-refresh' });
       
