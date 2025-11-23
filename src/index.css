@@ -342,3 +342,11 @@ All colors MUST be HSL.
     --border-color-2: hsla(180, 50%, 90%, 0.75);
   }
 }
+
+/* Hide the Sync button/icon globally */
+button[aria-label="Sync"],
+button[title="Sync"],
+[role="button"][aria-label="Sync"],
+[role="button"][title="Sync"] {
+  display: none !important;
+}
