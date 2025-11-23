@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils';
 interface RichTextEditorProps {
   content: string;
   onChange: (content: string) => void;
+  onBlur?: () => void;
   placeholder?: string;
   className?: string;
 }
@@ -13,6 +14,7 @@ interface RichTextEditorProps {
 export const RichTextEditor = ({
   content,
   onChange,
+  onBlur,
   placeholder = 'Enter comments...',
   className,
 }: RichTextEditorProps) => {
@@ -29,6 +31,9 @@ export const RichTextEditor = ({
     content,
     onUpdate: ({ editor }) => {
       onChange(editor.getHTML());
+    },
+    onBlur: () => {
+      onBlur?.();
     },
     editorProps: {
       attributes: {

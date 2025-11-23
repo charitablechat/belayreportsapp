@@ -6,9 +6,10 @@ import { Input } from "@/components/ui/input";
 interface SummarySectionProps {
   summary: any;
   onUpdate: (summary: any) => void;
+  onImmediateSave?: () => void;
 }
 
-export default function SummarySection({ summary, onUpdate }: SummarySectionProps) {
+export default function SummarySection({ summary, onUpdate, onImmediateSave }: SummarySectionProps) {
   const updateField = (field: string, value: any) => {
     onUpdate({ ...summary, [field]: value });
   };
@@ -26,6 +27,7 @@ export default function SummarySection({ summary, onUpdate }: SummarySectionProp
           <RichTextEditor
             content={summary.repairs_performed || ""}
             onChange={(value) => updateField("repairs_performed", value)}
+            onBlur={onImmediateSave}
             placeholder="Enter details of repairs and alterations performed..."
           />
         </div>
@@ -40,6 +42,7 @@ export default function SummarySection({ summary, onUpdate }: SummarySectionProp
           <RichTextEditor
             content={summary.critical_actions || ""}
             onChange={(value) => updateField("critical_actions", value)}
+            onBlur={onImmediateSave}
             placeholder="Enter critical actions required..."
           />
         </div>
@@ -54,6 +57,7 @@ export default function SummarySection({ summary, onUpdate }: SummarySectionProp
           <RichTextEditor
             content={summary.future_considerations || ""}
             onChange={(value) => updateField("future_considerations", value)}
+            onBlur={onImmediateSave}
             placeholder="Enter future considerations..."
           />
         </div>
@@ -64,6 +68,12 @@ export default function SummarySection({ summary, onUpdate }: SummarySectionProp
             type="date"
             value={summary.next_inspection_date || ""}
             onChange={(e) => updateField("next_inspection_date", e.target.value)}
+            onBlur={onImmediateSave}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                onImmediateSave?.();
+              }
+            }}
           />
         </div>
 

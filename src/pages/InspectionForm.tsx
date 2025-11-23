@@ -1437,7 +1437,7 @@ export default function InspectionForm() {
           </Alert>
         )}
 
-        <InspectionHeader inspection={inspection} onUpdate={handleHeaderUpdate} />
+        <InspectionHeader inspection={inspection} onUpdate={handleHeaderUpdate} onImmediateSave={triggerImmediateSave} />
 
         <Tabs defaultValue="details" className="space-y-6 mt-6">
           <TabsList className="grid grid-cols-2 lg:grid-cols-4 w-full gap-2 h-auto p-2">
@@ -1561,7 +1561,7 @@ export default function InspectionForm() {
           </TabsContent>
 
           <TabsContent value="summary" className="space-y-4">
-            <SummarySection summary={summary} onUpdate={setSummary} />
+            <SummarySection summary={summary} onUpdate={setSummary} onImmediateSave={triggerImmediateSave} />
             
             <div className="mt-8 border-t pt-6">
               <h3 className="text-lg font-semibold mb-4">Photos - Summary</h3>
