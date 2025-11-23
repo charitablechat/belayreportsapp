@@ -1,0 +1,166 @@
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.78.0';
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
+
+interface SummaryRecord {
+  id: string;
+  repairs_performed?: string;
+  critical_actions?: string;
+  future_considerations?: string;
+}
+
+function convertCircleBulletsToHtml(text: string | null | undefined): { converted: string; hasChanges: boolean } {
+  if (!text || !text.includes('○')) {
+    return { converted: text || '', hasChanges: false };
+  }
+
+  const lines = text.split('\n');
+  const result: string[] = [];
+  let inList = false;
+  let hasChanges = false;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const trimmed = line.trim();
+
+    // Check if line starts with circle bullet
+    if (trimmed.startsWith('○')) {
+      hasChanges = true;
+      const content = trimmed.substring(1).trim();
+      
+      if (!inList) {
+        result.push('<ul>');
+        inList = true;
+      }
+      
+      result.push(`<li>${content}</li>`);
+    } else {
+      // Not a bullet point
+      if (inList) {
+        result.push('</ul>');
+        inList = false;
+      }
+      
+      if (trimmed) {
+        result.push(`<p>${trimmed}</p>`);
+      }
+    }
+  }
+
+  // Close list if still open
+  if (inList) {
+    result.push('</ul>');
+  }
+
+  return {
+    converted: result.join(''),
+    hasChanges
+  };
+}
+
+Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { headers: corsHeaders });
+  }
+
+  try {
+    const supabaseClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+      {
+        auth: {
+          persistSession: false,
+        },
+      }
+    );
+
+    console.log('Fetching all inspection summaries...');
+
+    // Fetch all inspection summaries
+    const { data: summaries, error: fetchError } = await supabaseClient
+      .from('inspection_summary')
+      .select('id, repairs_performed, critical_actions, future_considerations');
+
+    if (fetchError) {
+      throw fetchError;
+    }
+
+    console.log(`Found ${summaries?.length || 0} summaries to process`);
+
+    let updatedCount = 0;
+    const updateResults: Array<{ id: string; fields: string[] }> = [];
+
+    for (const summary of (summaries || [])) {
+      const updates: Partial<SummaryRecord> = {};
+      const updatedFields: string[] = [];
+
+      // Convert repairs_performed
+      const repairs = convertCircleBulletsToHtml(summary.repairs_performed);
+      if (repairs.hasChanges) {
+        updates.repairs_performed = repairs.converted;
+        updatedFields.push('repairs_performed');
+      }
+
+      // Convert critical_actions
+      const critical = convertCircleBulletsToHtml(summary.critical_actions);
+      if (critical.hasChanges) {
+        updates.critical_actions = critical.converted;
+        updatedFields.push('critical_actions');
+      }
+
+      // Convert future_considerations
+      const future = convertCircleBulletsToHtml(summary.future_considerations);
+      if (future.hasChanges) {
+        updates.future_considerations = future.converted;
+        updatedFields.push('future_considerations');
+      }
+
+      // Update if any changes were made
+      if (Object.keys(updates).length > 0) {
+        const { error: updateError } = await supabaseClient
+          .from('inspection_summary')
+          .update(updates)
+          .eq('id', summary.id);
+
+        if (updateError) {
+          console.error(`Error updating summary ${summary.id}:`, updateError);
+        } else {
+          updatedCount++;
+          updateResults.push({ id: summary.id, fields: updatedFields });
+          console.log(`Updated summary ${summary.id}: ${updatedFields.join(', ')}`);
+        }
+      }
+    }
+
+    const response = {
+      success: true,
+      totalSummaries: summaries?.length || 0,
+      updatedCount,
+      updates: updateResults,
+      message: `Successfully converted ${updatedCount} inspection summaries from circle bullets to checkmark lists`
+    };
+
+    console.log('Migration complete:', response);
+
+    return new Response(JSON.stringify(response), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      status: 200,
+    });
+
+  } catch (error) {
+    console.error('Migration error:', error);
+    return new Response(
+      JSON.stringify({
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error occurred',
+      }),
+      {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 500,
+      }
+    );
+  }
+});
