@@ -26,17 +26,23 @@ function convertCircleBulletsToHtml(text: string | null | undefined): { converte
     const line = lines[i];
     const trimmed = line.trim();
 
-    // Check if line starts with circle bullet
-    if (trimmed.startsWith('○')) {
+    // Check if line contains circle bullets
+    if (trimmed.includes('○')) {
       hasChanges = true;
-      const content = trimmed.substring(1).trim();
       
-      if (!inList) {
-        result.push('<ul>');
-        inList = true;
+      // Split by ○ to handle multiple bullets on the same line
+      const segments = trimmed.split('○').filter(s => s.trim());
+      
+      for (const segment of segments) {
+        const content = segment.trim();
+        
+        if (!inList) {
+          result.push('<ul>');
+          inList = true;
+        }
+        
+        result.push(`<li>${content}</li>`);
       }
-      
-      result.push(`<li>${content}</li>`);
     } else {
       // Not a bullet point
       if (inList) {
