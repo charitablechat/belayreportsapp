@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
-import { PDFDocument, PDFPage, rgb, StandardFonts } from "https://esm.sh/pdf-lib@1.17.1";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import puppeteer from "https://deno.land/x/puppeteer@16.2.0/mod.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -13,962 +13,125 @@ serve(async (req) => {
   }
 
   try {
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      throw new Error('Missing authorization header');
+    }
+
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseServiceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    
-    const authHeader = req.headers.get('Authorization')!;
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
     const token = authHeader.replace('Bearer ', '');
-    const supabase = createClient(supabaseUrl, supabaseServiceRoleKey);
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
 
-    const { data: { user }, error: userError } = await supabase.auth.getUser(token);
-    if (userError || !user) {
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-        status: 401,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+    if (authError || !user) {
+      throw new Error('Unauthorized');
     }
 
-    const { inspectionId, regenerate = false } = await req.json();
+    const { inspectionId } = await req.json();
 
-    const { data: inspection, error: inspectionError } = await supabase
-      .from('inspections')
-      .select('*')
-      .eq('id', inspectionId)
-      .single();
-
-    if (inspectionError || !inspection) {
-      return new Response(JSON.stringify({ error: 'Inspection not found' }), {
-        status: 404,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+    if (!inspectionId) {
+      throw new Error('Inspection ID is required');
     }
 
-    const { data: userRoles } = await supabase
-      .from('user_roles')
-      .select('role')
-      .eq('user_id', user.id);
+    console.log('Fetching inspection data for:', inspectionId);
 
-    const isSuperAdmin = userRoles?.some(r => r.role === 'super_admin');
-    const isAssignedInspector = inspection.inspector_id === user.id;
-
-    if (!isSuperAdmin && !isAssignedInspector) {
-      return new Response(JSON.stringify({ error: 'Unauthorized to generate this report' }), {
-        status: 403,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-
-    if (!regenerate) {
-      const { data: existingReport } = await supabase
-        .from('inspection_reports')
-        .select('pdf_url')
-        .eq('inspection_id', inspectionId)
-        .order('generated_at', { ascending: false })
-        .limit(1)
-        .single();
-
-      if (existingReport?.pdf_url) {
-        const { data: signedUrl } = await supabase.storage
-          .from('inspection-reports')
-          .createSignedUrl(existingReport.pdf_url.split('/').pop()!, 3600);
-
-        if (signedUrl) {
-          return new Response(JSON.stringify({ url: signedUrl.signedUrl }), {
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          });
-        }
-      }
-    }
-
+    // Fetch all data
     const [
-      { data: systems },
-      { data: ziplines },
-      { data: equipment },
-      { data: standards },
-      { data: summary },
-      { data: inspectorProfile }
+      { data: inspection, error: inspectionError },
+      { data: systems, error: systemsError },
+      { data: ziplines, error: ziplinesError },
+      { data: equipment, error: equipmentError },
+      { data: standards, error: standardsError },
+      { data: summary, error: summaryError },
+      { data: inspectorProfile, error: profileError }
     ] = await Promise.all([
+      supabase.from('inspections').select('*').eq('id', inspectionId).single(),
       supabase.from('inspection_systems').select('*').eq('inspection_id', inspectionId),
       supabase.from('inspection_ziplines').select('*').eq('inspection_id', inspectionId),
       supabase.from('inspection_equipment').select('*').eq('inspection_id', inspectionId),
       supabase.from('inspection_standards').select('*').eq('inspection_id', inspectionId),
       supabase.from('inspection_summary').select('*').eq('inspection_id', inspectionId).maybeSingle(),
-      supabase.from('profiles').select('first_name, last_name').eq('id', inspection.inspector_id).maybeSingle()
+      supabase.from('profiles').select('*').eq('id', user.id).single()
     ]);
 
-    const pdfDoc = await PDFDocument.create();
-    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-    const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-    
-    let acctLogoImage = null;
-    try {
-      const { data: logoFile } = await supabase.storage
-        .from('inspection-photos')
-        .download('acct-logo.jpg');
-      
-      if (logoFile) {
-        const logoBytes = await logoFile.arrayBuffer();
-        acctLogoImage = await pdfDoc.embedJpg(new Uint8Array(logoBytes));
-      }
-    } catch (logoError) {
-      console.error('Failed to load ACCT logo:', logoError);
+    if (inspectionError) throw inspectionError;
+
+    // Authorization check
+    const isSuperAdmin = await supabase.from('user_roles').select('role').eq('user_id', user.id).eq('role', 'super_admin').single();
+    if (!isSuperAdmin.data && inspection.inspector_id !== user.id) {
+      throw new Error('Unauthorized to generate this report');
     }
 
-    const pageWidth = 612;
-    const pageHeight = 792;
+    console.log('Generating PDF with Puppeteer...');
 
-    const htmlToText = (html: string | null | undefined): string => {
-      if (!html) return '';
-      let text = String(html);
-      
-      text = text.replace(/<strong>(.*?)<\/strong>/gi, '**$1**');
-      text = text.replace(/<b>(.*?)<\/b>/gi, '**$1**');
-      text = text.replace(/<em>(.*?)<\/em>/gi, '*$1*');
-      text = text.replace(/<i>(.*?)<\/i>/gi, '*$1*');
-      text = text.replace(/<ul>/gi, '\n');
-      text = text.replace(/<\/ul>/gi, '\n');
-      text = text.replace(/<li>(.*?)<\/li>/gi, '• $1\n');
-      text = text.replace(/<p>(.*?)<\/p>/gi, '$1\n');
-      text = text.replace(/<br\s*\/?>/gi, '\n');
-      text = text.replace(/<[^>]*>/g, '');
-      text = text.replace(/&nbsp;/g, ' ');
-      text = text.replace(/&amp;/g, '&');
-      text = text.replace(/&lt;/g, '<');
-      text = text.replace(/&gt;/g, '>');
-      text = text.replace(/&quot;/g, '"');
-      
-      return text;
-    };
+    const browser = await puppeteer.launch({
+      headless: true,
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
+    });
 
-    const sanitizeText = (text: string | null | undefined): string => {
-      if (!text) return '';
-      text = htmlToText(text);
-      return String(text)
-        .replace(/\r\n/g, ' ')
-        .replace(/\n/g, ' ')
-        .replace(/\r/g, ' ')
-        .replace(/○/g, '•')
-        .replace(/[^\x00-\xFF]/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim();
-    };
+    const page = await browser.newPage();
+    await page.setContent(generateHTML(inspection, systems || [], ziplines || [], equipment || [], standards || [], summary, inspectorProfile), {
+      waitUntil: 'networkidle0'
+    });
 
-    const formatDate = (dateStr: string | null): string => {
-      if (!dateStr) return '';
-      const date = new Date(dateStr);
-      return date.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
-    };
-
-    const calculateTextHeight = (text: string, maxWidth: number, fontSize: number, currentFont: any): number => {
-      const sanitized = sanitizeText(text);
-      if (!sanitized) return fontSize * 1.15;
-      
-      const words = sanitized.split(' ');
-      const lines: string[] = [];
-      let currentLine = '';
-
-      for (const word of words) {
-        const testLine = currentLine ? `${currentLine} ${word}` : word;
-        const testWidth = currentFont.widthOfTextAtSize(testLine, fontSize);
-
-        if (testWidth > maxWidth && currentLine) {
-          lines.push(currentLine);
-          currentLine = word;
-        } else {
-          currentLine = testLine;
-        }
+    const pdfBuffer = await page.pdf({
+      format: 'Letter',
+      printBackground: true,
+      margin: {
+        top: '0.5in',
+        bottom: '0.75in',
+        left: '0.5in',
+        right: '0.5in'
       }
-      if (currentLine) lines.push(currentLine);
-
-      return Math.max(lines.length * fontSize * 1.15, fontSize * 1.15);
-    };
-
-    const drawWrappedText = (page: PDFPage, text: string, x: number, y: number, maxWidth: number, fontSize: number, currentFont: any, maxHeight: number = 1000): number => {
-      const sanitized = sanitizeText(text);
-      const words = sanitized.split(' ');
-      const lines: string[] = [];
-      let currentLine = '';
-
-      for (const word of words) {
-        const testLine = currentLine ? `${currentLine} ${word}` : word;
-        const testWidth = currentFont.widthOfTextAtSize(testLine, fontSize);
-
-        if (testWidth > maxWidth && currentLine) {
-          lines.push(currentLine);
-          currentLine = word;
-        } else {
-          currentLine = testLine;
-        }
-      }
-      if (currentLine) lines.push(currentLine);
-
-      let yPos = y;
-      for (const line of lines) {
-        if (y - yPos > maxHeight) break;
-        page.drawText(line, {
-          x,
-          y: yPos,
-          size: fontSize,
-          font: currentFont,
-          color: rgb(0, 0, 0),
-        });
-        yPos -= fontSize * 1.15;
-      }
-
-      return yPos;
-    };
-
-    const drawHeader = (page: PDFPage) => {
-      page.drawText('ROPE WORKS', {
-        x: 40,
-        y: pageHeight - 38,
-        size: 13,
-        font: boldFont,
-        color: rgb(0.2, 0.2, 0.2),
-      });
-      page.drawText('ROPES/CHALLENGE COURSE', {
-        x: 40,
-        y: pageHeight - 50,
-        size: 7.5,
-        font: font,
-        color: rgb(0.4, 0.4, 0.4),
-      });
-
-      if (acctLogoImage) {
-        page.drawImage(acctLogoImage, {
-          x: pageWidth - 100,
-          y: pageHeight - 65,
-          width: 60,
-          height: 60,
-        });
-      } else {
-        page.drawText('ACCT', {
-          x: pageWidth - 100,
-          y: pageHeight - 38,
-          size: 11,
-          font: boldFont,
-          color: rgb(0.2, 0.2, 0.2),
-        });
-        page.drawText('ACCREDITED VENDOR', {
-          x: pageWidth - 100,
-          y: pageHeight - 50,
-          size: 6.5,
-          font: font,
-          color: rgb(0.4, 0.4, 0.4),
-        });
-      }
-      
-      page.drawLine({
-        start: { x: 40, y: pageHeight - 70 },
-        end: { x: pageWidth - 40, y: pageHeight - 70 },
-        thickness: 0.5,
-        color: rgb(0.7, 0.7, 0.7)
-      });
-    };
-
-    const drawFooter = (page: PDFPage, pageNumber: number) => {
-      page.drawLine({
-        start: { x: 40, y: 55 },
-        end: { x: pageWidth - 40, y: 55 },
-        thickness: 0.5,
-        color: rgb(0.7, 0.7, 0.7)
-      });
-      
-      const footerText = "The information contained in this report has been documented by a Qualified Professional. This report is effective for one year from the date of inspection. Issued by: Rope Works Inc., PO Box 1074, Dripping Springs, TX 78620";
-      drawWrappedText(page, footerText, 40, 50, pageWidth - 80, 6.5, font, 35);
-      
-      page.drawText(`${pageNumber}`, {
-        x: pageWidth / 2 - 5,
-        y: 28,
-        size: 7.5,
-        font: font,
-        color: rgb(0.4, 0.4, 0.4),
-      });
-    };
-
-    let pageNumber = 1;
-
-    // PAGE 1: COVER PAGE
-    let page = pdfDoc.addPage([pageWidth, pageHeight]);
-    let yPos = pageHeight - 80;
-
-    drawHeader(page);
-
-    page.drawText('Professional Inspection for Aerial Adventure Programs', {
-      x: pageWidth / 2 - 210,
-      y: yPos,
-      size: 15,
-      font: boldFont,
-      color: rgb(0, 0, 0),
     });
 
-    yPos -= 20;
+    await browser.close();
 
-    const inspectorName = inspectorProfile 
-      ? `${inspectorProfile.first_name || ''} ${inspectorProfile.last_name || ''}`.trim()
-      : '';
+    console.log('PDF generated, uploading to storage...');
 
-    const tableWidth = pageWidth - 80;
-
-    // Row 1: Organization, Location, Onsite Contact (form-style with underlines)
-    const row1Y = yPos;
-    
-    // Organization
-    page.drawText('Organization:', { x: 40, y: row1Y, size: 9, font: boldFont });
-    page.drawLine({
-      start: { x: 115, y: row1Y - 2 },
-      end: { x: 195, y: row1Y - 2 },
-      thickness: 0.5,
-      color: rgb(0, 0, 0)
-    });
-    page.drawText(sanitizeText(inspection.organization), { x: 118, y: row1Y - 1, size: 9, font: font });
-
-    // Location
-    page.drawText('Location:', { x: 205, y: row1Y, size: 9, font: boldFont });
-    page.drawLine({
-      start: { x: 260, y: row1Y - 2 },
-      end: { x: 350, y: row1Y - 2 },
-      thickness: 0.5,
-      color: rgb(0, 0, 0)
-    });
-    page.drawText(sanitizeText(inspection.location), { x: 263, y: row1Y - 1, size: 9, font: font });
-
-    // Onsite Contact
-    page.drawText('Onsite Contact:', { x: 360, y: row1Y, size: 9, font: boldFont });
-    page.drawLine({
-      start: { x: 445, y: row1Y - 2 },
-      end: { x: pageWidth - 40, y: row1Y - 2 },
-      thickness: 0.5,
-      color: rgb(0, 0, 0)
-    });
-    page.drawText(sanitizeText(inspection.onsite_contact || 'N/A'), { x: 448, y: row1Y - 1, size: 9, font: font });
-
-    yPos = row1Y - 28;
-
-    // Row 2: Inspected by, Date of Inspection
-    const row2Y = yPos;
-
-    // Inspected by
-    page.drawText('Inspected by:', { x: 40, y: row2Y, size: 9, font: boldFont });
-    page.drawLine({
-      start: { x: 115, y: row2Y - 2 },
-      end: { x: 270, y: row2Y - 2 },
-      thickness: 0.5,
-      color: rgb(0, 0, 0)
-    });
-    page.drawText(sanitizeText(inspectorName || 'N/A'), { x: 118, y: row2Y - 1, size: 9, font: font });
-
-    // Date of Inspection
-    page.drawText('Date of Inspection:', { x: 290, y: row2Y, size: 9, font: boldFont });
-    page.drawLine({
-      start: { x: 395, y: row2Y - 2 },
-      end: { x: pageWidth - 40, y: row2Y - 2 },
-      thickness: 0.5,
-      color: rgb(0, 0, 0)
-    });
-    page.drawText(formatDate(inspection.inspection_date), { x: 398, y: row2Y - 1, size: 9, font: font });
-
-    yPos = row2Y - 28;
-
-    // Row 3: Previous Inspector, Prev. Inspection Date
-    const row3Y = yPos;
-
-    // Previous Inspector
-    page.drawText('Previous Inspector:', { x: 40, y: row3Y, size: 9, font: boldFont });
-    page.drawLine({
-      start: { x: 145, y: row3Y - 2 },
-      end: { x: 270, y: row3Y - 2 },
-      thickness: 0.5,
-      color: rgb(0, 0, 0)
-    });
-    page.drawText(sanitizeText(inspection.previous_inspector || 'N/A'), { x: 148, y: row3Y - 1, size: 9, font: font });
-
-    // Prev. Inspection Date
-    page.drawText('Prev. Inspection Date:', { x: 290, y: row3Y, size: 9, font: boldFont });
-    page.drawLine({
-      start: { x: 415, y: row3Y - 2 },
-      end: { x: pageWidth - 40, y: row3Y - 2 },
-      thickness: 0.5,
-      color: rgb(0, 0, 0)
-    });
-    page.drawText((inspection.previous_inspection_date ? formatDate(inspection.previous_inspection_date) : 'N/A'), { x: 418, y: row3Y - 1, size: 9, font: font });
-
-    yPos = row3Y - 28;
-
-    // Course History
-    page.drawText('Known Course History', {
-      x: 40,
-      y: yPos,
-      size: 13,
-      font: boldFont,
-      color: rgb(0, 0, 0),
-    });
-
-    yPos -= 16;
-    
-    const historyText = sanitizeText(inspection.course_history) || 'No course history recorded';
-    const historyHeight = Math.min(Math.max(calculateTextHeight(historyText, tableWidth - 10, 9, font) + 10, 60), 80);
-    
-    page.drawRectangle({
-      x: 40,
-      y: yPos - historyHeight,
-      width: tableWidth,
-      height: historyHeight,
-      borderColor: rgb(0, 0, 0),
-      borderWidth: 0.75,
-    });
-
-    drawWrappedText(page, historyText, 44, yPos - 8, tableWidth - 8, 9, font, historyHeight - 10);
-
-    yPos -= historyHeight + 15;
-
-    // Disclaimer
-    const disclaimerText = 'This report covers the condition of the aerial adventure site for the date of inspection reflected on this form. The inspection provided is strictly an evaluation of the structural condition of the course elements and equipment. The inspection does not include training on how to operate the equipment, nor how to operate the course. The inspection only verifies the existence of written local operating procedures (LOP), an emergency action plan (EAP), and training documentation. The inspection does not perform a review or evaluate the LOP, EAP and training documentation. Potential problems can occur afterwards due to vandalism, improper use, weather, etc. Rope Works Inc. is not responsible for modifications or repairs made to the challenge course by anyone other than a Rope Works Inc. employee. We recommend you conduct your own periodic internal monitoring at a minimum on a quarterly basis. At a minimum an annual professional inspection is required by a qualified professional to be in compliance with the Association for Challenge Course Technology ANSI/ACCT current published standards.';
-    yPos = drawWrappedText(page, disclaimerText, 40, yPos, pageWidth - 80, 8.5, font, 500);
-
-    yPos -= 15;
-
-    // Reminders
-    page.drawText('Reminders and Requirements', {
-      x: 40,
-      y: yPos,
-      size: 11,
-      font: boldFont,
-      color: rgb(0, 0, 0),
-    });
-
-    yPos -= 12;
-
-    const reminders = [
-      'Employers are required to issue staff appropriate fall protection for the duties to be performed.',
-      'A Periodic Internal Monitoring of the aerial activities on your site shall be conducted by qualified personnel.',
-      'Proper identification, tracking, and documentation of ALL equipment used for operations shall be kept and available at your annual professional inspection.',
-      'Proper staff training should be provided for the operation of all aerial activities and equipment on your site.',
-      'Operational Reviews shall be conducted once every five years.'
-    ];
-
-    for (const reminder of reminders) {
-      page.drawText('•', {
-        x: 44,
-        y: yPos,
-        size: 9,
-        font: font,
-        color: rgb(0, 0, 0),
-      });
-      yPos = drawWrappedText(page, reminder, 58, yPos, pageWidth - 100, 9, font, 150);
-      yPos -= 4;
-    }
-
-    drawFooter(page, pageNumber++);
-
-    // PAGE 2: DEFINITIONS AND KEY (CONSOLIDATED)
-    page = pdfDoc.addPage([pageWidth, pageHeight]);
-    yPos = pageHeight - 80;
-    drawHeader(page);
-
-    page.drawText('All inspections include the following when applicable:', {
-      x: pageWidth / 2 - 175,
-      y: yPos,
-      size: 13,
-      font: boldFont,
-      color: rgb(0, 0, 0),
-    });
-
-    yPos -= 18;
-
-    const definitions = [
-      { title: 'Lifeline HDW', description: 'Represents all hardware associated with the Life Safety System including but not limited to: wire rope, bolts, wire rope terminations, & redundant terminations.' },
-      { title: 'Activity HDW', description: 'Represents all hardware associated with the element execution. This includes but is not limited to: foot cables, platforms, hand ropes/cables, boards, etc.' },
-      { title: 'Environment', description: 'This represents the surrounding area of the activity/element. This includes but is not limited to: ground cover, trees, rocks, & terrain.' },
-      { title: 'Equipment', description: 'This represents the equipment utilized in the operation of the course activities. This includes but is not limited to: rope, carabiners, helmets, belay devices, pulleys, trolleys, lanyards, etc.' },
-      { title: 'Pass/Pass with Provisions/Fail', description: 'This represents the overall rating for the system based on the condition of the items inspected on the day of the inspection. Rope Works Inc. inspects all challenge course and canopy/zip line tours to the standards set forth by the ACCT. Any deviation from the ACCT standards in regards to the inspection criteria will be addressed in the Comment section.' }
-    ];
-
-    for (const def of definitions) {
-      page.drawText(def.title, { x: 40, y: yPos, size: 9.5, font: boldFont });
-      yPos -= 10;
-      yPos = drawWrappedText(page, def.description, 40, yPos, pageWidth - 80, 8.5, font, 60);
-      yPos -= 8;
-    }
-
-    yPos -= 10;
-
-    // Inspection Key
-    page.drawText('Inspection Key', { x: 40, y: yPos, size: 10.5, font: boldFont });
-    yPos -= 12;
-
-    const inspectionKey = [
-      { title: 'Pass', description: 'The equipment or operating system meets all manufacturer specifications, industry standards, and operational safety requirements at the time of inspection.' },
-      { title: 'Pass with Provisions', description: 'The equipment or operating system is generally in acceptable condition but requires minor corrective action, repair, or follow-up maintenance that does not pose an immediate safety concern.' },
-      { title: 'Fail', description: 'The equipment or operating system does not meet minimum safety or operational standards and presents a potential or immediate hazard. The item must be removed from service.' },
-      { title: 'N/A', description: 'Not applicable, Not inspected, or inaccessible/not available at the time of inspection.' }
-    ];
-
-    for (const key of inspectionKey) {
-      page.drawText(key.title, { x: 40, y: yPos, size: 9.5, font: boldFont });
-      yPos -= 10;
-      yPos = drawWrappedText(page, key.description, 40, yPos, pageWidth - 80, 8.5, font, 60);
-      yPos -= 10;
-    }
-
-    drawFooter(page, pageNumber++);
-
-    // PAGE 3: OPERATING SYSTEMS
-    if (systems && systems.length > 0) {
-      page = pdfDoc.addPage([pageWidth, pageHeight]);
-      yPos = pageHeight - 80;
-      drawHeader(page);
-
-      page.drawText('OPERATING SYSTEMS', { x: pageWidth / 2 - 85, y: yPos, size: 15, font: boldFont });
-      yPos -= 22;
-
-      const sysColWidths = [180, 95, 257];
-      const sysTableWidth = sysColWidths.reduce((a, b) => a + b, 0);
-
-      page.drawRectangle({
-        x: 40,
-        y: yPos - 16,
-        width: sysTableWidth,
-        height: 16,
-        color: rgb(0.9, 0.9, 0.9),
-        borderColor: rgb(0, 0, 0),
-        borderWidth: 0.75,
-      });
-
-      page.drawText('System Name', { x: 44, y: yPos - 11, size: 8.5, font: boldFont });
-      page.drawText('Result', { x: 44 + sysColWidths[0], y: yPos - 11, size: 8.5, font: boldFont });
-      page.drawText('Comments', { x: 44 + sysColWidths[0] + sysColWidths[1], y: yPos - 11, size: 8.5, font: boldFont });
-      yPos -= 16;
-
-      for (const sys of systems) {
-        const commentHeight = calculateTextHeight(sys.comments || '', sysColWidths[2] - 10, 8, font);
-        const rowHeight = Math.max(16, Math.min(commentHeight + 8, 40));
-
-        page.drawRectangle({
-          x: 40,
-          y: yPos - rowHeight,
-          width: sysTableWidth,
-          height: rowHeight,
-          borderColor: rgb(0, 0, 0),
-          borderWidth: 0.5,
-        });
-
-        const systemName = sys.name ? `${sanitizeText(sys.system_name)} (${sanitizeText(sys.name)})` : sanitizeText(sys.system_name);
-        page.drawText(systemName, { x: 44, y: yPos - 11, size: 8, font: font });
-        page.drawText(sanitizeText(sys.result), { x: 44 + sysColWidths[0], y: yPos - 11, size: 8, font: font });
-        drawWrappedText(page, sanitizeText(sys.comments), 44 + sysColWidths[0] + sysColWidths[1], yPos - 7, sysColWidths[2] - 10, 8, font, rowHeight - 8);
-        yPos -= rowHeight;
-      }
-
-      drawFooter(page, pageNumber++);
-    }
-
-    // PAGE 4: ZIPLINES (CONDITIONAL)
-    if (ziplines && ziplines.length > 0) {
-      page = pdfDoc.addPage([pageWidth, pageHeight]);
-      yPos = pageHeight - 80;
-      drawHeader(page);
-
-      page.drawText('ZIPLINES', { x: pageWidth / 2 - 45, y: yPos, size: 15, font: boldFont });
-      yPos -= 18;
-      page.drawText('SYSTEMS - ZIPLINES', { x: pageWidth / 2 - 65, y: yPos, size: 11, font: boldFont });
-      yPos -= 20;
-
-      const keyLines = [
-        'Cable Type KEY: GAC = Galvanized Aircraft Cable, SS = Super Swaged',
-        'Braking System KEY: ZS = Zip Stop, FB = Friction Break, SB = Spring Bank, G = Gravity',
-        'EAD System KEY - ZS = Zip Step, AP = Auto P'
-      ];
-
-      for (const keyLine of keyLines) {
-        page.drawText(keyLine, { x: 40, y: yPos, size: 7.5, font: font });
-        yPos -= 8;
-      }
-
-      yPos -= 8;
-
-      const zipColWidths = [88, 68, 68, 68, 68, 172];
-      const zipTableWidth = zipColWidths.reduce((a, b) => a + b, 0);
-
-      page.drawRectangle({
-        x: 40,
-        y: yPos - 16,
-        width: zipTableWidth,
-        height: 16,
-        color: rgb(0.9, 0.9, 0.9),
-        borderColor: rgb(0, 0, 0),
-        borderWidth: 0.75,
-      });
-
-      const zipHeaders = ['Zipline', 'Length (ft)', 'Unload (lbf)', 'Load (lbf)', 'Result', 'Comments'];
-      let xPos = 40;
-      for (let i = 0; i < zipHeaders.length; i++) {
-        page.drawText(zipHeaders[i], { x: xPos + 4, y: yPos - 11, size: 7.5, font: boldFont });
-        xPos += zipColWidths[i];
-      }
-
-      yPos -= 16;
-
-      for (const zip of ziplines) {
-        const commentHeight = calculateTextHeight(zip.comments || '', zipColWidths[5] - 8, 7.5, font);
-        const rowHeight = Math.max(18, Math.min(commentHeight + 8, 35));
-
-        page.drawRectangle({
-          x: 40,
-          y: yPos - rowHeight,
-          width: zipTableWidth,
-          height: rowHeight,
-          borderColor: rgb(0, 0, 0),
-          borderWidth: 0.5,
-        });
-
-        xPos = 40;
-        page.drawText(sanitizeText(zip.zipline_name), { x: xPos + 4, y: yPos - 11, size: 7.5, font: font });
-        xPos += zipColWidths[0];
-        page.drawText(String(zip.cable_length || ''), { x: xPos + 4, y: yPos - 11, size: 7.5, font: font });
-        xPos += zipColWidths[1];
-        page.drawText(String(zip.unload_tension || ''), { x: xPos + 4, y: yPos - 11, size: 7.5, font: font });
-        xPos += zipColWidths[2];
-        page.drawText(String(zip.load_tension || ''), { x: xPos + 4, y: yPos - 11, size: 7.5, font: font });
-        xPos += zipColWidths[3];
-        page.drawText(sanitizeText(zip.result), { x: xPos + 4, y: yPos - 11, size: 7.5, font: font });
-        xPos += zipColWidths[4];
-        drawWrappedText(page, sanitizeText(zip.comments), xPos + 4, yPos - 7, zipColWidths[5] - 8, 7.5, font, rowHeight - 8);
-
-        yPos -= rowHeight;
-
-        page.drawRectangle({
-          x: 40,
-          y: yPos - 15,
-          width: zipTableWidth,
-          height: 15,
-          borderColor: rgb(0, 0, 0),
-          borderWidth: 0.5,
-        });
-
-        const detailText = `Cable: ${sanitizeText(zip.cable_type)} | Braking System: ${sanitizeText(zip.braking_system)} | EAD System: ${sanitizeText(zip.ead_system)}`;
-        page.drawText(detailText, { x: 44, y: yPos - 10, size: 6.5, font: font });
-        yPos -= 15;
-      }
-
-      drawFooter(page, pageNumber++);
-    }
-
-    // EQUIPMENT PAGES (CONSOLIDATED)
-    if (equipment && equipment.length > 0) {
-      const equipmentCategories = [
-        { title: 'HARNESSES', key: 'Harness' },
-        { title: 'HELMETS', key: 'Helmet' },
-        { title: 'LANYARDS', key: 'Lanyard' },
-        { title: 'CONNECTORS (CARABINERS & QUICKLINKS)', key: 'Connector' },
-        { title: 'KERNMANTLE ROPE', key: 'Rope' },
-        { title: 'BELAY/DESCENT DEVICE', key: 'Belay Device' },
-        { title: 'TROLLEYS AND PULLEYS', key: 'Trolley' },
-        { title: 'OTHER EQUIPMENT', key: 'Other' }
-      ];
-
-      page = pdfDoc.addPage([pageWidth, pageHeight]);
-      yPos = pageHeight - 80;
-      drawHeader(page);
-
-      const inventoryDisclaimer = 'Inventory tracking of each item used for course operations. This should be done according to a written checklist that is monitored by the course manager or other qualified person at your site. Records should be available at your annual inspection that include and indicate the date of purchase, date of first use and the equipment shall be identifiable by the serial number/tag or other unique identifier that matches your written documentation and the manufacturer retirement criteria.';
-      yPos = drawWrappedText(page, inventoryDisclaimer, 40, yPos, pageWidth - 80, 7.5, font, 80);
-      yPos -= 15;
-
-      for (const category of equipmentCategories) {
-        const items = equipment.filter(e => e.equipment_category === category.key);
-        if (items.length === 0) continue;
-
-        if (yPos < 200) {
-          drawFooter(page, pageNumber++);
-          page = pdfDoc.addPage([pageWidth, pageHeight]);
-          yPos = pageHeight - 80;
-          drawHeader(page);
-        }
-
-        page.drawText(`EQUIPMENT - ${category.title}`, { x: 40, y: yPos, size: 11, font: boldFont });
-        yPos -= 16;
-
-        const eqColWidths = [148, 48, 38, 88, 210];
-        const eqTableWidth = eqColWidths.reduce((a, b) => a + b, 0);
-
-        page.drawRectangle({
-          x: 40,
-          y: yPos - 15,
-          width: eqTableWidth,
-          height: 15,
-          color: rgb(0.9, 0.9, 0.9),
-          borderColor: rgb(0, 0, 0),
-          borderWidth: 0.75,
-        });
-
-        const eqHeaders = ['Type', 'Year', 'Qty', 'Result', 'Comments'];
-        let xPos = 40;
-        for (let i = 0; i < eqHeaders.length; i++) {
-          page.drawText(eqHeaders[i], { x: xPos + 4, y: yPos - 10, size: 8.5, font: boldFont });
-          xPos += eqColWidths[i];
-        }
-
-        yPos -= 15;
-
-        for (const item of items) {
-          const commentHeight = calculateTextHeight(item.comments || '', eqColWidths[4] - 8, 7.5, font);
-          const rowHeight = Math.max(18, Math.min(commentHeight + 8, 35));
-
-          if (yPos - rowHeight < 80) {
-            drawFooter(page, pageNumber++);
-            page = pdfDoc.addPage([pageWidth, pageHeight]);
-            yPos = pageHeight - 80;
-            drawHeader(page);
-          }
-
-          page.drawRectangle({
-            x: 40,
-            y: yPos - rowHeight,
-            width: eqTableWidth,
-            height: rowHeight,
-            borderColor: rgb(0, 0, 0),
-            borderWidth: 0.5,
-          });
-
-          xPos = 40;
-          drawWrappedText(page, sanitizeText(item.equipment_type), xPos + 4, yPos - 7, eqColWidths[0] - 8, 7.5, font, rowHeight - 8);
-          xPos += eqColWidths[0];
-          page.drawText(String(item.production_year || ''), { x: xPos + 4, y: yPos - 11, size: 7.5, font: font });
-          xPos += eqColWidths[1];
-          page.drawText(String(item.quantity || ''), { x: xPos + 4, y: yPos - 11, size: 7.5, font: font });
-          xPos += eqColWidths[2];
-          page.drawText(sanitizeText(item.result), { x: xPos + 4, y: yPos - 11, size: 7.5, font: font });
-          xPos += eqColWidths[3];
-          drawWrappedText(page, sanitizeText(item.comments), xPos + 4, yPos - 7, eqColWidths[4] - 8, 7.5, font, rowHeight - 8);
-
-          yPos -= rowHeight;
-        }
-
-        yPos -= 10;
-      }
-
-      drawFooter(page, pageNumber++);
-    }
-
-    // ACCT STANDARDS PAGE
-    page = pdfDoc.addPage([pageWidth, pageHeight]);
-    yPos = pageHeight - 80;
-    drawHeader(page);
-
-    page.drawText('ACCT Operations Standards Criteria', { x: pageWidth / 2 - 135, y: yPos, size: 15, font: boldFont });
-    yPos -= 20;
-
-    const standardsIntro = 'The following documentation is currently required by the ANSI/ACCT 03-2019 Operations Standards. If your program does not have the following in existence it is noted below. It is your responsibility to ensure these are located or created and available.';
-    yPos = drawWrappedText(page, standardsIntro, 40, yPos, pageWidth - 80, 8.5, font, 70);
-    yPos -= 15;
-
-    const stdColWidths = [325, 125, 22, 22];
-    const stdTableWidth = stdColWidths.reduce((a, b) => a + b, 0);
-
-    page.drawRectangle({
-      x: 40,
-      y: yPos - 20,
-      width: stdTableWidth,
-      height: 20,
-      color: rgb(0.9, 0.9, 0.9),
-      borderColor: rgb(0, 0, 0),
-      borderWidth: 0.75,
-    });
-
-    page.drawText('Standard', { x: 44, y: yPos - 13, size: 8.5, font: boldFont });
-    page.drawText('Reference', { x: 44 + stdColWidths[0], y: yPos - 13, size: 8.5, font: boldFont });
-    page.drawText('YES', { x: 44 + stdColWidths[0] + stdColWidths[1] + 2, y: yPos - 13, size: 7.5, font: boldFont });
-    page.drawText('NO', { x: 44 + stdColWidths[0] + stdColWidths[1] + stdColWidths[2] + 2, y: yPos - 13, size: 7.5, font: boldFont });
-    yPos -= 20;
-
-    const standardsList = [
-      { name: 'Local Written Operations Procedures', ref: '(CHPT 2. ANSI/ACCT B.2.4)' },
-      { name: 'Local Written Emergency Action Plan', ref: '(CHPT 2 ANSI/ACCT B.2.5)' },
-      { name: 'Minimum Annual Training', ref: '(CHPT 3 ANSI/ACCT B.1.2)' },
-      { name: 'Written Pre-Use Inspection in Use', ref: '(CHPT 2 ANSI/ACCT B.2.13)' },
-      { name: 'Inventory Tracking System in Use', ref: '(CHPT 1 ANSI/ACCT I.3.2.1)' },
-      { name: 'Operational Review Every 5 Years', ref: '(CHPT 2 ANSI/ACCT B.2.7)' }
-    ];
-
-    for (const standard of standardsList) {
-      const hasDoc = standards?.some(s => s.standard_name === standard.name && s.has_documentation) || false;
-
-      page.drawRectangle({
-        x: 40,
-        y: yPos - 20,
-        width: stdTableWidth,
-        height: 20,
-        borderColor: rgb(0, 0, 0),
-        borderWidth: 0.5,
-      });
-
-      drawWrappedText(page, standard.name, 44, yPos - 7, stdColWidths[0] - 10, 7.5, font, 18);
-      page.drawText(standard.ref, { x: 44 + stdColWidths[0], y: yPos - 12, size: 7.5, font: font });
-
-      page.drawRectangle({
-        x: 44 + stdColWidths[0] + stdColWidths[1],
-        y: yPos - 15,
-        width: 15,
-        height: 15,
-        borderColor: rgb(0, 0, 0),
-        borderWidth: 0.75,
-        color: hasDoc ? rgb(0, 0.6, 0) : undefined,
-      });
-
-      page.drawRectangle({
-        x: 44 + stdColWidths[0] + stdColWidths[1] + stdColWidths[2],
-        y: yPos - 15,
-        width: 15,
-        height: 15,
-        borderColor: rgb(0, 0, 0),
-        borderWidth: 0.75,
-        color: !hasDoc ? rgb(0.7, 0.1, 0.1) : undefined,
-      });
-
-      yPos -= 20;
-    }
-
-    yPos -= 12;
-    const standardsComments = standards?.map(s => s.comments).filter(c => c).join('; ') || 'None';
-    yPos = drawWrappedText(page, `Comments: ${standardsComments}`, 40, yPos, pageWidth - 80, 8.5, font, 60);
-
-    drawFooter(page, pageNumber++);
-
-    // SUMMARY PAGE
-    page = pdfDoc.addPage([pageWidth, pageHeight]);
-    yPos = pageHeight - 80;
-    drawHeader(page);
-
-    const qcpNote = 'A QCP is a Qualified Course Professional that meets the criteria outlined by the ACCT. Operations & Emergency procedures must be written and specific to the site\'s local operations procedures.';
-    yPos = drawWrappedText(page, qcpNote, 40, yPos, pageWidth - 80, 7.5, font, 30);
-    yPos -= 15;
-
-    page.drawText('REPORT SUMMARY', { x: pageWidth / 2 - 85, y: yPos, size: 15, font: boldFont });
-    yPos -= 20;
-
-    page.drawText('Repairs, Alterations performed during inspection:', { x: 40, y: yPos, size: 9.5, font: boldFont });
-    yPos -= 8;
-    page.drawText('Comments:', { x: 40, y: yPos, size: 8.5, font: boldFont });
-    yPos -= 10;
-    const repairsText = htmlToText(summary?.repairs_performed || 'None reported');
-    yPos = drawWrappedText(page, repairsText, 40, yPos, pageWidth - 80, 8.5, font, 60);
-    yPos -= 15;
-
-    page.drawText('Critical Actions Required', { x: 40, y: yPos, size: 9.5, font: boldFont });
-    yPos -= 8;
-    page.drawText('*Critical Action = Required Changes Prior to use of Activity, Element, or Equipment', {
-      x: 40, y: yPos, size: 6.5, font: font, color: rgb(0.5, 0.5, 0.5)
-    });
-    yPos -= 10;
-    page.drawText('Comments:', { x: 40, y: yPos, size: 8.5, font: boldFont });
-    yPos -= 10;
-    const criticalText = htmlToText(summary?.critical_actions || 'None identified');
-    yPos = drawWrappedText(page, criticalText, 40, yPos, pageWidth - 80, 8.5, font, 60);
-    yPos -= 15;
-
-    page.drawText('Future Considerations', { x: 40, y: yPos, size: 9.5, font: boldFont });
-    yPos -= 8;
-    page.drawText('(includes but not limited to age of course, recommended updates, suggestions, industry future)', {
-      x: 40, y: yPos, size: 6.5, font: font, color: rgb(0.5, 0.5, 0.5)
-    });
-    yPos -= 10;
-    page.drawText('Comments:', { x: 40, y: yPos, size: 8.5, font: boldFont });
-    yPos -= 10;
-    const futureText = htmlToText(summary?.future_considerations || 'None at this time');
-    yPos = drawWrappedText(page, futureText, 40, yPos, pageWidth - 80, 8.5, font, 60);
-    yPos -= 15;
-
-    page.drawText('Next inspection date:', { x: 40, y: yPos, size: 9.5, font: boldFont });
-    yPos -= 10;
-    page.drawText(formatDate(summary?.next_inspection_date) || 'Not specified', { x: 40, y: yPos, size: 8.5, font: font });
-    yPos -= 16;
-
-    page.drawText('General Rope Works Inspection Retirement Guidelines:', { x: 40, y: yPos, size: 10.5, font: boldFont });
-    yPos -= 10;
-    page.drawText('These are generalized and are not a substitute for the Pre use inspection.', {
-      x: 40, y: yPos, size: 6.5, font: font, color: rgb(0.5, 0.5, 0.5)
-    });
-    yPos -= 14;
-
-    const guideColWidths = [175, 357];
-    const guideRowHeight = 18;
-
-    page.drawRectangle({
-      x: 40,
-      y: yPos - guideRowHeight,
-      width: guideColWidths[0] + guideColWidths[1],
-      height: guideRowHeight,
-      color: rgb(0.85, 0.92, 0.98),
-      borderColor: rgb(0, 0, 0),
-      borderWidth: 0.75,
-    });
-
-    page.drawText('Item', { x: 44, y: yPos - 12, size: 8.5, font: boldFont });
-    page.drawText('Retirement Criteria', { x: 44 + guideColWidths[0], y: yPos - 12, size: 8.5, font: boldFont });
-    yPos -= guideRowHeight;
-
-    const retirementGuidelines = [
-      { item: 'Rope/Webbing', criteria: '10 years from first use' },
-      { item: 'Harness/Lanyard', criteria: '10 years from first use' },
-      { item: 'Helmet', criteria: '10 years from first use (verify with manufacturer)' },
-      { item: 'Carabiners/Quicklinks', criteria: 'No specific lifespan - retire based on condition' },
-      { item: 'Belay Devices/Pulleys', criteria: 'No specific lifespan - retire based on condition' },
-      { item: 'Metal Equipment', criteria: 'Inspect for cracks, deformation, wear, corrosion' }
-    ];
-
-    for (const guide of retirementGuidelines) {
-      page.drawRectangle({
-        x: 40,
-        y: yPos - guideRowHeight,
-        width: guideColWidths[0] + guideColWidths[1],
-        height: guideRowHeight,
-        borderColor: rgb(0, 0, 0),
-        borderWidth: 0.5,
-      });
-
-      page.drawText(guide.item, { x: 44, y: yPos - 12, size: 7.5, font: font });
-      drawWrappedText(page, guide.criteria, 44 + guideColWidths[0], yPos - 7, guideColWidths[1] - 8, 7.5, font, guideRowHeight - 4);
-      yPos -= guideRowHeight;
-    }
-
-    drawFooter(page, pageNumber++);
-
-    const pdfBytes = await pdfDoc.save();
-    const filename = `inspection-${inspectionId}-${Date.now()}.pdf`;
-
-    const { data: uploadData, error: uploadError } = await supabase.storage
+    // Upload to storage
+    const fileName = `inspection-${inspectionId}-${Date.now()}.pdf`;
+    const { error: uploadError } = await supabase.storage
       .from('inspection-reports')
-      .upload(filename, pdfBytes, {
+      .upload(fileName, pdfBuffer, {
         contentType: 'application/pdf',
         upsert: true
       });
 
-    if (uploadError) {
-      throw uploadError;
-    }
+    if (uploadError) throw uploadError;
 
-    const { data: publicUrl } = supabase.storage
+    // Get public URL
+    const { data: { publicUrl } } = supabase.storage
       .from('inspection-reports')
-      .getPublicUrl(filename);
+      .getPublicUrl(fileName);
 
-    await supabase.from('inspection_reports').insert({
-      inspection_id: inspectionId,
-      pdf_url: publicUrl.publicUrl,
-      generated_by: user.id,
-      file_size_bytes: pdfBytes.length,
-      version: 1
-    });
+    // Save to database
+    const { data: reportData, error: reportError } = await supabase
+      .from('inspection_reports')
+      .insert({
+        inspection_id: inspectionId,
+        pdf_url: fileName,
+        generated_by: user.id,
+        file_size_bytes: pdfBuffer.length
+      })
+      .select()
+      .single();
+
+    if (reportError) throw reportError;
+
+    console.log('Report saved successfully');
 
     return new Response(
       JSON.stringify({ 
-        url: publicUrl.publicUrl,
-        pdfData: btoa(String.fromCharCode(...pdfBytes)),
-        filename: filename,
-        size: pdfBytes.length
+        success: true, 
+        url: publicUrl,
+        report: reportData
       }),
-      {
+      { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 200 
       }
     );
 
@@ -977,10 +140,737 @@ serve(async (req) => {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
     return new Response(
       JSON.stringify({ error: errorMessage }),
-      {
-        status: 500,
+      { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 500 
       }
     );
   }
 });
+
+function generateHTML(
+  inspection: any,
+  systems: any[],
+  ziplines: any[],
+  equipment: any[],
+  standards: any[],
+  summary: any,
+  inspectorProfile: any
+): string {
+  const inspectorName = inspectorProfile 
+    ? `${inspectorProfile.first_name || ''} ${inspectorProfile.last_name || ''}`.trim() || 'Inspector'
+    : 'Inspector';
+
+  return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="UTF-8">
+      <style>${getStyles()}</style>
+    </head>
+    <body>
+      ${generateCoverPage(inspection, inspectorName)}
+      ${generateDefinitionsPage()}
+      ${generateSystemsPage(systems)}
+      ${ziplines.length > 0 ? generateZiplinesPage(ziplines) : ''}
+      ${equipment.length > 0 ? generateEquipmentPage(equipment) : ''}
+      ${generateStandardsPage(standards)}
+      ${generateSummaryPage(summary, inspection)}
+    </body>
+    </html>
+  `;
+}
+
+function getStyles(): string {
+  return `
+    @page {
+      size: Letter;
+      margin: 0.5in 0.5in 0.75in 0.5in;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Helvetica', 'Arial', sans-serif;
+      font-size: 10pt;
+      color: #000;
+      line-height: 1.4;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+
+    .page {
+      page-break-after: always;
+      position: relative;
+      min-height: 100vh;
+    }
+
+    .page:last-child {
+      page-break-after: avoid;
+    }
+
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 15px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid #999;
+    }
+
+    .header-left img,
+    .header-right img {
+      height: 50px;
+      width: auto;
+    }
+
+    .header-center {
+      text-align: center;
+      flex: 1;
+      padding: 0 20px;
+    }
+
+    .header-center h1 {
+      font-size: 10pt;
+      color: #666;
+      font-weight: normal;
+      letter-spacing: 0.5px;
+    }
+
+    .title {
+      text-align: center;
+      font-size: 13pt;
+      font-weight: bold;
+      margin: 15px 0;
+    }
+
+    .form-row {
+      display: flex;
+      gap: 20px;
+      margin-bottom: 12px;
+    }
+
+    .form-field {
+      flex: 1;
+    }
+
+    .form-field label {
+      font-size: 9pt;
+      color: #000;
+      font-weight: normal;
+      display: block;
+      margin-bottom: 2px;
+    }
+
+    .form-field .value {
+      border-bottom: 1px solid #000;
+      padding: 2px 5px;
+      min-height: 18px;
+      font-size: 9pt;
+    }
+
+    .section-heading {
+      font-size: 10pt;
+      font-weight: bold;
+      margin: 15px 0 8px 0;
+    }
+
+    .history-box {
+      border: 1px solid #000;
+      padding: 10px;
+      margin: 10px 0;
+      min-height: 50px;
+      font-size: 9pt;
+      line-height: 1.3;
+    }
+
+    .disclaimer,
+    .reminders {
+      font-size: 8pt;
+      line-height: 1.35;
+      margin: 12px 0;
+      text-align: justify;
+    }
+
+    .disclaimer p {
+      margin-bottom: 8px;
+    }
+
+    .reminders ul {
+      margin-left: 18px;
+      margin-top: 5px;
+    }
+
+    .reminders li {
+      margin-bottom: 4px;
+    }
+
+    .footer {
+      position: fixed;
+      bottom: 0;
+      left: 0.5in;
+      right: 0.5in;
+      text-align: center;
+      font-size: 7pt;
+      color: #666;
+      padding: 8px 0;
+      border-top: 1px solid #ccc;
+    }
+
+    .definitions-section {
+      margin: 15px 0;
+    }
+
+    .def-item {
+      margin-bottom: 10px;
+    }
+
+    .def-item h3 {
+      font-size: 10pt;
+      font-weight: bold;
+      margin-bottom: 3px;
+    }
+
+    .def-item p {
+      font-size: 9pt;
+      line-height: 1.3;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 12px 0;
+      font-size: 9pt;
+    }
+
+    table th {
+      background-color: #e8e8e8;
+      padding: 6px 8px;
+      text-align: left;
+      border: 1px solid #999;
+      font-weight: bold;
+      font-size: 9pt;
+    }
+
+    table td {
+      padding: 5px 8px;
+      border: 1px solid #999;
+      vertical-align: top;
+      font-size: 9pt;
+    }
+
+    .page-break {
+      page-break-before: always;
+    }
+
+    h2 {
+      font-size: 11pt;
+      font-weight: bold;
+      margin: 15px 0 10px 0;
+    }
+
+    h3 {
+      font-size: 10pt;
+      font-weight: bold;
+      margin: 12px 0 6px 0;
+    }
+
+    .equipment-section {
+      margin-bottom: 20px;
+    }
+
+    .equipment-section h3 {
+      background-color: #f5f5f5;
+      padding: 5px 8px;
+      border-left: 3px solid #666;
+      margin-bottom: 8px;
+    }
+  `;
+}
+
+function generateCoverPage(inspection: any, inspectorName: string): string {
+  return `
+    <div class="page">
+      <div class="header">
+        <div class="header-left">
+          <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=" alt="ACCT">
+        </div>
+        <div class="header-center">
+          <h1>ROPES/CHALLENGE COURSE</h1>
+        </div>
+        <div class="header-right">
+          <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=" alt="Rope Works">
+        </div>
+      </div>
+
+      <div class="title">
+        Professional Inspection for Aerial Adventure Programs
+      </div>
+
+      <div class="form-row">
+        <div class="form-field">
+          <label>Organization:</label>
+          <div class="value">${sanitize(inspection.organization)}</div>
+        </div>
+        <div class="form-field">
+          <label>Location:</label>
+          <div class="value">${sanitize(inspection.location)}</div>
+        </div>
+        <div class="form-field">
+          <label>Onsite Contact:</label>
+          <div class="value">${sanitize(inspection.onsite_contact || '')}</div>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-field">
+          <label>Inspected by:</label>
+          <div class="value">${sanitize(inspectorName)}</div>
+        </div>
+        <div class="form-field">
+          <label>Date of Inspection:</label>
+          <div class="value">${formatDate(inspection.inspection_date)}</div>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-field">
+          <label>Previously Inspector:</label>
+          <div class="value">${sanitize(inspection.previous_inspector || '')}</div>
+        </div>
+        <div class="form-field">
+          <label>Prev. Inspection Date:</label>
+          <div class="value">${inspection.previous_inspection_date ? formatDate(inspection.previous_inspection_date) : 'N/A'}</div>
+        </div>
+      </div>
+
+      <div class="section-heading">Known Course History</div>
+      <div class="history-box">
+        ${sanitize(inspection.course_history || '')}
+      </div>
+
+      <div class="disclaimer">
+        <p>This report covers the condition of the aerial adventure site for the date of inspection reflected on this form. The inspection provided is strictly an evaluation of the structural condition of the course elements and equipment. The inspection does not include training on how to operate the equipment, nor how to operate the course. The inspection only verifies the existence of written local operating procedures (LOP), an emergency action plan (EAP), and training documentation. The inspection does not perform a review or evaluate the LOP, EAP and training documentation. Potential problems can occur afterwards due to vandalism, improper use, weather, etc. Rope Works Inc. is not responsible for modifications or repairs made to the challenge course by anyone other than a Rope Works Inc. employee. We recommend you conduct your own periodic internal monitoring at a minimum on a quarterly basis. At a minimum an annual professional inspection is required by a qualified professional to be in compliance with the Association for Challenge Course Technology ANSI/ACCT current published standards.</p>
+      </div>
+
+      <div class="section-heading">Reminders and Requirements</div>
+      <div class="reminders">
+        <ul>
+          <li>Employers are required to issue staff appropriate fall protection for the duties to be performed.</li>
+          <li>A Periodic Internal Monitoring of the aerial activities on your site shall be conducted by qualified personnel.</li>
+          <li>Proper identification, tracking, and documentation of ALL equipment used for operations shall be kept and available at your annual professional inspection.</li>
+          <li>Proper staff training should be provided for the operation of all aerial activities and equipment on your site.</li>
+          <li>Operational Reviews shall be conducted once every five years.</li>
+        </ul>
+      </div>
+
+      <div class="footer">
+        The information contained in this report has been documented by a Qualified Professional. This report is effective for one year from the date of inspection. Issued by: Rope Works Inc., PO Box 1074, Dripping Springs, TX 78620
+      </div>
+    </div>
+  `;
+}
+
+function generateDefinitionsPage(): string {
+  return `
+    <div class="page page-break">
+      <div class="header">
+        <div class="header-left">
+          <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=" alt="ACCT">
+        </div>
+        <div class="header-center">
+          <h1>ROPES/CHALLENGE COURSE</h1>
+        </div>
+        <div class="header-right">
+          <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=" alt="Rope Works">
+        </div>
+      </div>
+
+      <h2>All inspections include the following when applicable:</h2>
+
+      <div class="definitions-section">
+        <div class="def-item">
+          <h3>Lifeline HDW</h3>
+          <p>Represents all hardware associated with the Life Safety System including but not limited to: wire rope, bolts, wire rope terminations, & redundant terminations.</p>
+        </div>
+
+        <div class="def-item">
+          <h3>Activity HDW</h3>
+          <p>Represents all hardware associated with the element execution. This includes but is not limited to: foot cables, platforms, hand ropes/cables, boards, etc.</p>
+        </div>
+
+        <div class="def-item">
+          <h3>Environment</h3>
+          <p>This represents the surrounding area of the activity/element. This includes but is not limited to: ground cover, trees, rocks, & terrain.</p>
+        </div>
+
+        <div class="def-item">
+          <h3>Equipment</h3>
+          <p>This represents the equipment utilized in the operation of the course activities. This includes but is not limited to: rope, carabiners, helmets, belay devices, pulleys, trolleys, lanyards, etc.</p>
+        </div>
+
+        <div class="def-item">
+          <h3>Pass/Pass with Provisions/Fail</h3>
+          <p>This represents the overall rating for the system based on the condition of the items inspected on the day of the inspection. Rope Works Inc. inspects all challenge course and canopy/zip line tours to the standards set forth by the ACCT. Any deviation from the ACCT standards in regards to the inspection criteria will be addressed in the Comment section.</p>
+        </div>
+      </div>
+
+      <h2>Inspection Key</h2>
+
+      <div class="definitions-section">
+        <div class="def-item">
+          <h3>Pass</h3>
+          <p>The equipment or operating system meets all manufacturer specifications, industry standards, and operational safety requirements at the time of inspection. No corrective actions are necessary. The item is approved for continued use until the next scheduled inspection.</p>
+        </div>
+
+        <div class="def-item">
+          <h3>Pass with Provisions</h3>
+          <p>The equipment or operating system is generally in acceptable condition but requires minor corrective action, repair, or follow-up maintenance that does not pose an immediate safety concern.</p>
+        </div>
+
+        <div class="def-item">
+          <h3>Fail</h3>
+          <p>The equipment or operating system does not meet current safety standards or manufacturer specifications and poses a potential safety risk. Immediate corrective action is required before the item can be returned to service.</p>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function generateSystemsPage(systems: any[]): string {
+  if (!systems || systems.length === 0) {
+    return `
+      <div class="page page-break">
+        <div class="header">
+          <div class="header-left">
+            <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=" alt="ACCT">
+          </div>
+          <div class="header-center">
+            <h1>ROPES/CHALLENGE COURSE</h1>
+          </div>
+          <div class="header-right">
+            <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=" alt="Rope Works">
+          </div>
+        </div>
+        <h2>Operating Systems</h2>
+        <p>No operating systems recorded for this inspection.</p>
+      </div>
+    `;
+  }
+
+  const rows = systems.map(sys => `
+    <tr>
+      <td>${sanitize(sys.system_name || sys.name)}</td>
+      <td>${sanitize(sys.result)}</td>
+      <td>${sanitize(sys.comments || '')}</td>
+    </tr>
+  `).join('');
+
+  return `
+    <div class="page page-break">
+      <div class="header">
+        <div class="header-left">
+          <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=" alt="ACCT">
+        </div>
+        <div class="header-center">
+          <h1>ROPES/CHALLENGE COURSE</h1>
+        </div>
+        <div class="header-right">
+          <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=" alt="Rope Works">
+        </div>
+      </div>
+
+      <h2>Operating Systems</h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th style="width: 30%">System Name</th>
+            <th style="width: 20%">Result</th>
+            <th style="width: 50%">Comments</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function generateZiplinesPage(ziplines: any[]): string {
+  const rows = ziplines.map(zip => `
+    <tr>
+      <td>${sanitize(zip.zipline_name)}</td>
+      <td>${sanitize(zip.cable_type || '')}</td>
+      <td>${zip.cable_length || 'N/A'}</td>
+      <td>${zip.load_tension || 'N/A'}</td>
+      <td>${zip.unload_tension || 'N/A'}</td>
+      <td>${sanitize(zip.cable_result || '')}</td>
+      <td>${sanitize(zip.braking_system || '')}</td>
+      <td>${sanitize(zip.braking_result || '')}</td>
+      <td>${sanitize(zip.ead_system || '')}</td>
+      <td>${sanitize(zip.ead_result || '')}</td>
+      <td>${sanitize(zip.result)}</td>
+      <td>${sanitize(zip.comments || '')}</td>
+    </tr>
+  `).join('');
+
+  return `
+    <div class="page page-break">
+      <div class="header">
+        <div class="header-left">
+          <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=" alt="ACCT">
+        </div>
+        <div class="header-center">
+          <h1>ROPES/CHALLENGE COURSE</h1>
+        </div>
+        <div class="header-right">
+          <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=" alt="Rope Works">
+        </div>
+      </div>
+
+      <h2>Ziplines</h2>
+
+      <table style="font-size: 8pt;">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Cable Type</th>
+            <th>Length</th>
+            <th>Load</th>
+            <th>Unload</th>
+            <th>Cable Result</th>
+            <th>Brake System</th>
+            <th>Brake Result</th>
+            <th>EAD System</th>
+            <th>EAD Result</th>
+            <th>Result</th>
+            <th>Comments</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function generateEquipmentPage(equipment: any[]): string {
+  const categories = [...new Set(equipment.map(e => e.equipment_category))];
+  
+  const sections = categories.map(category => {
+    const items = equipment.filter(e => e.equipment_category === category);
+    const rows = items.map(item => `
+      <tr>
+        <td>${sanitize(item.equipment_type)}</td>
+        <td>${item.quantity || 'N/A'}</td>
+        <td>${item.production_year || 'N/A'}</td>
+        <td>${sanitize(item.result)}</td>
+        <td>${sanitize(item.comments || '')}</td>
+      </tr>
+    `).join('');
+
+    return `
+      <div class="equipment-section">
+        <h3>${sanitize(category)}</h3>
+        <table>
+          <thead>
+            <tr>
+              <th style="width: 30%">Type</th>
+              <th style="width: 10%">Quantity</th>
+              <th style="width: 15%">Year</th>
+              <th style="width: 15%">Result</th>
+              <th style="width: 30%">Comments</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows}
+          </tbody>
+        </table>
+      </div>
+    `;
+  }).join('');
+
+  return `
+    <div class="page page-break">
+      <div class="header">
+        <div class="header-left">
+          <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=" alt="ACCT">
+        </div>
+        <div class="header-center">
+          <h1>ROPES/CHALLENGE COURSE</h1>
+        </div>
+        <div class="header-right">
+          <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=" alt="Rope Works">
+        </div>
+      </div>
+
+      <h2>Equipment</h2>
+      ${sections}
+    </div>
+  `;
+}
+
+function generateStandardsPage(standards: any[]): string {
+  if (!standards || standards.length === 0) {
+    return `
+      <div class="page page-break">
+        <div class="header">
+          <div class="header-left">
+            <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=" alt="ACCT">
+          </div>
+          <div class="header-center">
+            <h1>ROPES/CHALLENGE COURSE</h1>
+          </div>
+          <div class="header-right">
+            <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=" alt="Rope Works">
+          </div>
+        </div>
+        <h2>ACCT Standards</h2>
+        <p>No standards recorded for this inspection.</p>
+      </div>
+    `;
+  }
+
+  const rows = standards.map(std => `
+    <tr>
+      <td>${sanitize(std.standard_name)}</td>
+      <td style="text-align: center;">${std.has_documentation ? '✓' : '✗'}</td>
+      <td>${sanitize(std.comments || '')}</td>
+    </tr>
+  `).join('');
+
+  return `
+    <div class="page page-break">
+      <div class="header">
+        <div class="header-left">
+          <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=" alt="ACCT">
+        </div>
+        <div class="header-center">
+          <h1>ROPES/CHALLENGE COURSE</h1>
+        </div>
+        <div class="header-right">
+          <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=" alt="Rope Works">
+        </div>
+      </div>
+
+      <h2>ACCT Standards</h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th style="width: 40%">Standard Name</th>
+            <th style="width: 20%">Documentation</th>
+            <th style="width: 40%">Comments</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function generateSummaryPage(summary: any, inspection: any): string {
+  return `
+    <div class="page page-break">
+      <div class="header">
+        <div class="header-left">
+          <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=" alt="ACCT">
+        </div>
+        <div class="header-center">
+          <h1>ROPES/CHALLENGE COURSE</h1>
+        </div>
+        <div class="header-right">
+          <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=" alt="Rope Works">
+        </div>
+      </div>
+
+      <h2>Summary</h2>
+
+      <div class="section-heading">Repairs Performed</div>
+      <div style="border: 1px solid #999; padding: 8px; margin-bottom: 15px; min-height: 60px; font-size: 9pt;">
+        ${sanitize(summary?.repairs_performed || '')}
+      </div>
+
+      <div class="section-heading">Critical Actions</div>
+      <div style="border: 1px solid #999; padding: 8px; margin-bottom: 15px; min-height: 60px; font-size: 9pt;">
+        ${sanitize(summary?.critical_actions || '')}
+      </div>
+
+      <div class="section-heading">Future Considerations</div>
+      <div style="border: 1px solid #999; padding: 8px; margin-bottom: 15px; min-height: 60px; font-size: 9pt;">
+        ${sanitize(summary?.future_considerations || '')}
+      </div>
+
+      <div class="form-field" style="margin-top: 20px;">
+        <label>Next Inspection Date:</label>
+        <div class="value">${summary?.next_inspection_date ? formatDate(summary.next_inspection_date) : 'Not specified'}</div>
+      </div>
+
+      <h3 style="margin-top: 25px;">General Rope Works Inspection Retirement Guidelines</h3>
+      
+      <table>
+        <thead>
+          <tr>
+            <th style="width: 40%">Item</th>
+            <th style="width: 60%">Retirement Criteria</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Rope</td>
+            <td>Any sign of heat damage, chemical damage, glazing, discoloration, core damage, or excessive wear</td>
+          </tr>
+          <tr>
+            <td>Webbing/Slings</td>
+            <td>Cuts, tears, abrasions, heat damage, chemical damage, or excessive wear</td>
+          </tr>
+          <tr>
+            <td>Carabiners</td>
+            <td>Gate binding, excessive wear, deep grooves, cracks, distortion, or corrosion</td>
+          </tr>
+          <tr>
+            <td>Harnesses</td>
+            <td>Cuts, burns, excessive wear, loose stitching, or damaged hardware</td>
+          </tr>
+          <tr>
+            <td>Helmets</td>
+            <td>Cracks, dents, UV damage, or damage from impact</td>
+          </tr>
+          <tr>
+            <td>Belay Devices</td>
+            <td>Excessive wear, cracks, deformation, or impaired function</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function sanitize(text: string): string {
+  if (!text) return '';
+  return String(text)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;')
+    .replace(/\n/g, '<br>');
+}
+
+function formatDate(dateString: string): string {
+  if (!dateString) return '';
+  const date = new Date(dateString);
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const year = date.getFullYear();
+  return `${month}/${day}/${year}`;
+}
