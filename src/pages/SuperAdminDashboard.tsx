@@ -400,7 +400,7 @@ export default function SuperAdminDashboard() {
         <Button
           variant="ghost"
           size="icon"
-          onClick={() => navigate(-1)}
+          onClick={() => navigate('/dashboard')}
           className="mt-1"
         >
           <ArrowLeft className="h-5 w-5" />
