@@ -64,18 +64,20 @@ serve(async (req) => {
       throw new Error('Unauthorized to generate this report');
     }
 
-    console.log('Loading PDF template from storage...');
+    console.log('Loading PDF template from public assets...');
 
-    // Load the PDF template from Supabase Storage
-    const { data: templateData, error: templateError } = await supabase.storage
-      .from('inspection-reports')
-      .download('template.pdf');
+    // Get the app URL from the request origin or construct it
+    const appUrl = req.headers.get('origin') || 'https://93f93be1-56ac-449d-97cf-041ac1649624.lovableproject.com';
+    const templateUrl = `${appUrl}/inspection-template.pdf`;
     
-    if (templateError || !templateData) {
-      throw new Error(`Failed to load PDF template: ${templateError?.message || 'Template not found'}`);
+    console.log('Fetching template from:', templateUrl);
+    
+    const templateResponse = await fetch(templateUrl);
+    if (!templateResponse.ok) {
+      throw new Error(`Failed to load PDF template: ${templateResponse.status} ${templateResponse.statusText}`);
     }
     
-    const templateBytes = await templateData.arrayBuffer();
+    const templateBytes = await templateResponse.arrayBuffer();
     const pdfDoc = await PDFDocument.load(templateBytes);
     
     console.log('PDF template loaded successfully');
