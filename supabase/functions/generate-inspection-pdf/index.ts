@@ -66,46 +66,20 @@ serve(async (req) => {
 
     console.log('Loading PDF template from storage...');
 
-    // Try to load the template from storage
+    // Load the template from storage
     const { data: templateData, error: downloadError } = await supabase.storage
       .from('pdf-templates')
       .download('inspection-template.pdf');
     
-    let templateBytes: ArrayBuffer;
-    
     if (downloadError || !templateData) {
-      // Template doesn't exist in storage, try to fetch from public URL and upload it
-      console.log('Template not found in storage, fetching from public URL...');
-      
-      const appUrl = req.headers.get('origin') || Deno.env.get('SUPABASE_URL')?.replace('//', '//lovableproject.com');
-      const publicTemplateUrl = `${appUrl}/inspection-template.pdf`;
-      
-      const publicResponse = await fetch(publicTemplateUrl);
-      if (!publicResponse.ok) {
-        throw new Error(`Failed to load PDF template from public URL: ${publicResponse.status}`);
-      }
-      
-      const publicBytes = await publicResponse.arrayBuffer();
-      
-      // Upload to storage for future use
-      const { error: uploadError } = await supabase.storage
-        .from('pdf-templates')
-        .upload('inspection-template.pdf', publicBytes, {
-          contentType: 'application/pdf',
-          upsert: true
-        });
-      
-      if (uploadError) {
-        console.warn('Failed to cache template in storage:', uploadError);
-      } else {
-        console.log('Template successfully cached in storage');
-      }
-      
-      templateBytes = publicBytes;
-    } else {
-      templateBytes = await templateData.arrayBuffer();
-      console.log('Template loaded from storage successfully');
+      console.error('Template not found in storage:', downloadError);
+      throw new Error(
+        'PDF template not found. Please upload the template first by going to the Super Admin Dashboard and clicking "Upload PDF Template".'
+      );
     }
+    
+    const templateBytes = await templateData.arrayBuffer();
+    console.log('Template loaded from storage successfully');
     
     const pdfDoc = await PDFDocument.load(templateBytes);
 
