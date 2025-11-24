@@ -131,11 +131,7 @@ serve(async (req) => {
     console.log('Report saved successfully');
 
     return new Response(
-      JSON.stringify({ 
-        success: true, 
-        url: publicUrl,
-        report: reportData
-      }),
+      JSON.stringify({ pdfUrl: publicUrl }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 200 
