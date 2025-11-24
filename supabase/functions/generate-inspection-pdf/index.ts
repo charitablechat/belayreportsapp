@@ -66,9 +66,13 @@ serve(async (req) => {
 
     console.log('Loading PDF template and filling form fields...');
 
-    // Load the PDF template
-    const templatePath = new URL('./template.pdf', import.meta.url).pathname;
-    const templateBytes = await Deno.readFile(templatePath);
+    // Load the PDF template using fetch (works in Deno Deploy)
+    const templateUrl = new URL('./template.pdf', import.meta.url);
+    const templateResponse = await fetch(templateUrl);
+    if (!templateResponse.ok) {
+      throw new Error(`Failed to load PDF template: ${templateResponse.statusText}`);
+    }
+    const templateBytes = await templateResponse.arrayBuffer();
     const pdfDoc = await PDFDocument.load(templateBytes);
 
     // Get the form from the PDF
