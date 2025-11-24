@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Building2, Users, FileText, Bell, AlertTriangle, Radio, UserPlus, Pencil, Trash2, ClipboardList, ArrowLeft, Merge, Clock, TrendingUp, Calendar, UserCheck, Upload } from "lucide-react";
+import { Building2, Users, FileText, Bell, AlertTriangle, Radio, UserPlus, Pencil, Trash2, ClipboardList, ArrowLeft, Merge, Clock, TrendingUp, Calendar, UserCheck } from "lucide-react";
 import { format } from "date-fns";
 import { useNavigate } from "react-router-dom";
 import { useState } from "react";
@@ -16,7 +16,6 @@ import { toast } from "sonner";
 import { UserManagementDialog } from "@/components/admin/UserManagementDialog";
 import { FormCMSManager } from "@/components/admin/FormCMSManager";
 import { MergeOrganizationsDialog } from "@/components/admin/MergeOrganizationsDialog";
-import { uploadPdfTemplate } from "@/utils/uploadTemplate";
 
 export default function SuperAdminDashboard() {
   const { loading } = useRequireSuperAdmin();
@@ -410,22 +409,6 @@ export default function SuperAdminDashboard() {
           <h1 className="text-3xl font-bold mb-2">Super Admin Dashboard</h1>
           <p className="text-muted-foreground">Manage all organizations, users, and inspections</p>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={async () => {
-            try {
-              toast.loading('Uploading PDF template to storage...');
-              await uploadPdfTemplate();
-              toast.success('PDF template uploaded successfully!');
-            } catch (error: any) {
-              toast.error(error.message || 'Failed to upload template');
-            }
-          }}
-        >
-          <Upload className="h-4 w-4 mr-2" />
-          Upload PDF Template
-        </Button>
       </div>
 
       {/* Overview Stats */}
