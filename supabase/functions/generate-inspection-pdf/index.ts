@@ -82,22 +82,14 @@ serve(async (req) => {
     console.log('Template loaded from storage successfully');
     
     const pdfDoc = await PDFDocument.load(templateBytes);
-
-    // Get the form from the PDF
-    const form = pdfDoc.getForm();
-    const fields = form.getFields();
+    const pages = pdfDoc.getPages();
+    const firstPage = pages[0];
     
-    console.log(`Found ${fields.length} form fields in template`);
-
-    // Helper to safely set text field
-    const setTextField = (fieldName: string, value: string | null | undefined) => {
-      try {
-        const field = form.getTextField(fieldName);
-        field.setText(value || '');
-      } catch (e) {
-        console.log(`Field not found or error: ${fieldName}`);
-      }
-    };
+    // Embed fonts
+    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+    
+    console.log('Drawing inspection data on PDF template');
 
     // Helper to format date
     const formatDate = (dateString: string | null | undefined) => {
@@ -106,80 +98,248 @@ serve(async (req) => {
       return date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
     };
 
+    // Helper to draw text with wrapping
+    const drawText = (page: PDFPage, text: string, x: number, y: number, options: any = {}) => {
+      if (!text) return y;
+      const { maxWidth = 500, fontSize = 10, font: textFont = font, lineHeight = 12 } = options;
+      
+      const words = text.split(' ');
+      let line = '';
+      let currentY = y;
+      
+      for (const word of words) {
+        const testLine = line + (line ? ' ' : '') + word;
+        const width = textFont.widthOfTextAtSize(testLine, fontSize);
+        
+        if (width > maxWidth && line) {
+          page.drawText(line, { x, y: currentY, size: fontSize, font: textFont, color: rgb(0, 0, 0) });
+          line = word;
+          currentY -= lineHeight;
+        } else {
+          line = testLine;
+        }
+      }
+      
+      if (line) {
+        page.drawText(line, { x, y: currentY, size: fontSize, font: textFont, color: rgb(0, 0, 0) });
+        currentY -= lineHeight;
+      }
+      
+      return currentY;
+    };
+
     // Get inspector name
     const inspectorName = inspectorProfile 
       ? `${inspectorProfile.first_name || ''} ${inspectorProfile.last_name || ''}`.trim() || 'Inspector'
       : 'Inspector';
 
-    // Fill in the form fields
-    // Header information
-    setTextField('facility_name', inspection.organization);
-    setTextField('location', inspection.location);
-    setTextField('inspection_date', formatDate(inspection.inspection_date));
-    setTextField('inspector_name', inspectorName);
-    setTextField('onsite_contact', inspection.onsite_contact);
-    setTextField('previous_inspection_date', formatDate(inspection.previous_inspection_date));
-    setTextField('previous_inspector', inspection.previous_inspector);
-    setTextField('course_history', inspection.course_history);
+    const pageHeight = firstPage.getHeight();
+    let currentY = pageHeight - 100;
+
+    // Header Section (adjust coordinates based on your template)
+    firstPage.drawText('INSPECTION REPORT', { x: 200, y: currentY, size: 18, font: boldFont, color: rgb(0, 0, 0) });
+    currentY -= 30;
+
+    // Facility Information
+    firstPage.drawText('Facility:', { x: 50, y: currentY, size: 11, font: boldFont, color: rgb(0, 0, 0) });
+    firstPage.drawText(inspection.organization || '', { x: 120, y: currentY, size: 10, font, color: rgb(0, 0, 0) });
+    currentY -= 15;
+
+    firstPage.drawText('Location:', { x: 50, y: currentY, size: 11, font: boldFont, color: rgb(0, 0, 0) });
+    firstPage.drawText(inspection.location || '', { x: 120, y: currentY, size: 10, font, color: rgb(0, 0, 0) });
+    currentY -= 15;
+
+    firstPage.drawText('Date:', { x: 50, y: currentY, size: 11, font: boldFont, color: rgb(0, 0, 0) });
+    firstPage.drawText(formatDate(inspection.inspection_date), { x: 120, y: currentY, size: 10, font, color: rgb(0, 0, 0) });
+    currentY -= 15;
+
+    firstPage.drawText('Inspector:', { x: 50, y: currentY, size: 11, font: boldFont, color: rgb(0, 0, 0) });
+    firstPage.drawText(inspectorName, { x: 120, y: currentY, size: 10, font, color: rgb(0, 0, 0) });
+    currentY -= 15;
+
+    if (inspection.onsite_contact) {
+      firstPage.drawText('Contact:', { x: 50, y: currentY, size: 11, font: boldFont, color: rgb(0, 0, 0) });
+      firstPage.drawText(inspection.onsite_contact, { x: 120, y: currentY, size: 10, font, color: rgb(0, 0, 0) });
+      currentY -= 15;
+    }
+
+    if (inspection.previous_inspection_date || inspection.previous_inspector) {
+      currentY -= 10;
+      firstPage.drawText('Previous Inspection:', { x: 50, y: currentY, size: 11, font: boldFont, color: rgb(0, 0, 0) });
+      currentY -= 15;
+      if (inspection.previous_inspection_date) {
+        firstPage.drawText(`Date: ${formatDate(inspection.previous_inspection_date)}`, { x: 70, y: currentY, size: 9, font, color: rgb(0, 0, 0) });
+        currentY -= 12;
+      }
+      if (inspection.previous_inspector) {
+        firstPage.drawText(`Inspector: ${inspection.previous_inspector}`, { x: 70, y: currentY, size: 9, font, color: rgb(0, 0, 0) });
+        currentY -= 12;
+      }
+    }
+
+    // Course History
+    if (inspection.course_history) {
+      currentY -= 10;
+      firstPage.drawText('Course History:', { x: 50, y: currentY, size: 11, font: boldFont, color: rgb(0, 0, 0) });
+      currentY -= 15;
+      currentY = drawText(firstPage, inspection.course_history, 70, currentY, { maxWidth: 450, fontSize: 9 });
+    }
+
+    // Add new page if needed
+    const addPageIfNeeded = () => {
+      if (currentY < 100) {
+        const newPage = pdfDoc.addPage([595.28, 841.89]); // A4 size
+        currentY = newPage.getHeight() - 50;
+        return newPage;
+      }
+      return firstPage;
+    };
+
+    let activePage = addPageIfNeeded();
 
     // Operating Systems
     if (systems && systems.length > 0) {
+      currentY -= 20;
+      activePage = addPageIfNeeded();
+      activePage.drawText('OPERATING SYSTEMS', { x: 50, y: currentY, size: 12, font: boldFont, color: rgb(0, 0, 0) });
+      currentY -= 20;
+
       systems.forEach((system, index) => {
-        setTextField(`system_${index + 1}_name`, system.system_name);
-        setTextField(`system_${index + 1}_result`, system.result);
-        setTextField(`system_${index + 1}_comments`, system.comments);
+        activePage = addPageIfNeeded();
+        activePage.drawText(`${index + 1}. ${system.system_name || 'Unnamed'}`, { x: 60, y: currentY, size: 10, font: boldFont, color: rgb(0, 0, 0) });
+        currentY -= 14;
+        activePage.drawText(`Result: ${system.result || 'N/A'}`, { x: 70, y: currentY, size: 9, font, color: rgb(0, 0, 0) });
+        currentY -= 12;
+        if (system.comments) {
+          currentY = drawText(activePage, `Comments: ${system.comments}`, 70, currentY, { maxWidth: 450, fontSize: 9 });
+        }
+        currentY -= 10;
       });
     }
 
     // Ziplines
     if (ziplines && ziplines.length > 0) {
+      currentY -= 20;
+      activePage = addPageIfNeeded();
+      activePage.drawText('ZIPLINES', { x: 50, y: currentY, size: 12, font: boldFont, color: rgb(0, 0, 0) });
+      currentY -= 20;
+
       ziplines.forEach((zipline, index) => {
-        setTextField(`zipline_${index + 1}_name`, zipline.zipline_name);
-        setTextField(`zipline_${index + 1}_cable_type`, zipline.cable_type);
-        setTextField(`zipline_${index + 1}_cable_length`, zipline.cable_length?.toString());
-        setTextField(`zipline_${index + 1}_cable_result`, zipline.cable_result);
-        setTextField(`zipline_${index + 1}_braking_system`, zipline.braking_system);
-        setTextField(`zipline_${index + 1}_braking_result`, zipline.braking_result);
-        setTextField(`zipline_${index + 1}_ead_system`, zipline.ead_system);
-        setTextField(`zipline_${index + 1}_ead_result`, zipline.ead_result);
-        setTextField(`zipline_${index + 1}_load_tension`, zipline.load_tension?.toString());
-        setTextField(`zipline_${index + 1}_unload_tension`, zipline.unload_tension?.toString());
-        setTextField(`zipline_${index + 1}_result`, zipline.result);
-        setTextField(`zipline_${index + 1}_comments`, zipline.comments);
+        activePage = addPageIfNeeded();
+        activePage.drawText(`${index + 1}. ${zipline.zipline_name || 'Unnamed'}`, { x: 60, y: currentY, size: 10, font: boldFont, color: rgb(0, 0, 0) });
+        currentY -= 14;
+        
+        if (zipline.cable_type) {
+          activePage.drawText(`Cable Type: ${zipline.cable_type}`, { x: 70, y: currentY, size: 9, font, color: rgb(0, 0, 0) });
+          currentY -= 12;
+        }
+        if (zipline.cable_length) {
+          activePage.drawText(`Cable Length: ${zipline.cable_length}ft`, { x: 70, y: currentY, size: 9, font, color: rgb(0, 0, 0) });
+          currentY -= 12;
+        }
+        activePage.drawText(`Result: ${zipline.result || 'N/A'}`, { x: 70, y: currentY, size: 9, font, color: rgb(0, 0, 0) });
+        currentY -= 12;
+        
+        if (zipline.comments) {
+          currentY = drawText(activePage, `Comments: ${zipline.comments}`, 70, currentY, { maxWidth: 450, fontSize: 9 });
+        }
+        currentY -= 10;
       });
     }
 
     // Equipment
     if (equipment && equipment.length > 0) {
+      currentY -= 20;
+      activePage = addPageIfNeeded();
+      activePage.drawText('EQUIPMENT', { x: 50, y: currentY, size: 12, font: boldFont, color: rgb(0, 0, 0) });
+      currentY -= 20;
+
       equipment.forEach((item, index) => {
-        setTextField(`equipment_${index + 1}_category`, item.equipment_category);
-        setTextField(`equipment_${index + 1}_type`, item.equipment_type);
-        setTextField(`equipment_${index + 1}_quantity`, item.quantity?.toString());
-        setTextField(`equipment_${index + 1}_year`, item.production_year?.toString());
-        setTextField(`equipment_${index + 1}_result`, item.result);
-        setTextField(`equipment_${index + 1}_comments`, item.comments);
+        activePage = addPageIfNeeded();
+        activePage.drawText(`${index + 1}. ${item.equipment_type || 'Unnamed'}`, { x: 60, y: currentY, size: 10, font: boldFont, color: rgb(0, 0, 0) });
+        currentY -= 14;
+        
+        activePage.drawText(`Category: ${item.equipment_category || 'N/A'}`, { x: 70, y: currentY, size: 9, font, color: rgb(0, 0, 0) });
+        currentY -= 12;
+        
+        if (item.quantity) {
+          activePage.drawText(`Quantity: ${item.quantity}`, { x: 70, y: currentY, size: 9, font, color: rgb(0, 0, 0) });
+          currentY -= 12;
+        }
+        if (item.production_year) {
+          activePage.drawText(`Year: ${item.production_year}`, { x: 70, y: currentY, size: 9, font, color: rgb(0, 0, 0) });
+          currentY -= 12;
+        }
+        
+        activePage.drawText(`Result: ${item.result || 'N/A'}`, { x: 70, y: currentY, size: 9, font, color: rgb(0, 0, 0) });
+        currentY -= 12;
+        
+        if (item.comments) {
+          currentY = drawText(activePage, `Comments: ${item.comments}`, 70, currentY, { maxWidth: 450, fontSize: 9 });
+        }
+        currentY -= 10;
       });
     }
 
     // Standards
     if (standards && standards.length > 0) {
+      currentY -= 20;
+      activePage = addPageIfNeeded();
+      activePage.drawText('STANDARDS', { x: 50, y: currentY, size: 12, font: boldFont, color: rgb(0, 0, 0) });
+      currentY -= 20;
+
       standards.forEach((standard, index) => {
-        setTextField(`standard_${index + 1}_name`, standard.standard_name);
-        setTextField(`standard_${index + 1}_documentation`, standard.has_documentation ? 'Yes' : 'No');
-        setTextField(`standard_${index + 1}_comments`, standard.comments);
+        activePage = addPageIfNeeded();
+        activePage.drawText(`${index + 1}. ${standard.standard_name || 'Unnamed'}`, { x: 60, y: currentY, size: 10, font: boldFont, color: rgb(0, 0, 0) });
+        currentY -= 14;
+        
+        activePage.drawText(`Documentation: ${standard.has_documentation ? 'Yes' : 'No'}`, { x: 70, y: currentY, size: 9, font, color: rgb(0, 0, 0) });
+        currentY -= 12;
+        
+        if (standard.comments) {
+          currentY = drawText(activePage, `Comments: ${standard.comments}`, 70, currentY, { maxWidth: 450, fontSize: 9 });
+        }
+        currentY -= 10;
       });
     }
 
     // Summary
     if (summary) {
-      setTextField('repairs_performed', summary.repairs_performed);
-      setTextField('critical_actions', summary.critical_actions);
-      setTextField('future_considerations', summary.future_considerations);
-      setTextField('next_inspection_date', formatDate(summary.next_inspection_date));
-    }
+      currentY -= 20;
+      activePage = addPageIfNeeded();
+      activePage.drawText('INSPECTION SUMMARY', { x: 50, y: currentY, size: 12, font: boldFont, color: rgb(0, 0, 0) });
+      currentY -= 20;
 
-    // Flatten the form to make it non-editable
-    form.flatten();
+      if (summary.repairs_performed) {
+        activePage.drawText('Repairs Performed:', { x: 60, y: currentY, size: 10, font: boldFont, color: rgb(0, 0, 0) });
+        currentY -= 14;
+        currentY = drawText(activePage, summary.repairs_performed, 70, currentY, { maxWidth: 450, fontSize: 9 });
+        currentY -= 10;
+      }
+
+      if (summary.critical_actions) {
+        activePage = addPageIfNeeded();
+        activePage.drawText('Critical Actions:', { x: 60, y: currentY, size: 10, font: boldFont, color: rgb(0, 0, 0) });
+        currentY -= 14;
+        currentY = drawText(activePage, summary.critical_actions, 70, currentY, { maxWidth: 450, fontSize: 9 });
+        currentY -= 10;
+      }
+
+      if (summary.future_considerations) {
+        activePage = addPageIfNeeded();
+        activePage.drawText('Future Considerations:', { x: 60, y: currentY, size: 10, font: boldFont, color: rgb(0, 0, 0) });
+        currentY -= 14;
+        currentY = drawText(activePage, summary.future_considerations, 70, currentY, { maxWidth: 450, fontSize: 9 });
+        currentY -= 10;
+      }
+
+      if (summary.next_inspection_date) {
+        activePage = addPageIfNeeded();
+        activePage.drawText('Next Inspection Date:', { x: 60, y: currentY, size: 10, font: boldFont, color: rgb(0, 0, 0) });
+        activePage.drawText(formatDate(summary.next_inspection_date), { x: 200, y: currentY, size: 10, font, color: rgb(0, 0, 0) });
+        currentY -= 14;
+      }
+    }
 
     const pdfBytes = await pdfDoc.save();
 
