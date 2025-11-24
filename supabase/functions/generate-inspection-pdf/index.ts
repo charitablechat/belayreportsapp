@@ -64,16 +64,21 @@ serve(async (req) => {
       throw new Error('Unauthorized to generate this report');
     }
 
-    console.log('Loading PDF template and filling form fields...');
+    console.log('Loading PDF template from storage...');
 
-    // Load the PDF template using fetch (works in Deno Deploy)
-    const templateUrl = new URL('./template.pdf', import.meta.url);
-    const templateResponse = await fetch(templateUrl);
-    if (!templateResponse.ok) {
-      throw new Error(`Failed to load PDF template: ${templateResponse.statusText}`);
+    // Load the PDF template from Supabase Storage
+    const { data: templateData, error: templateError } = await supabase.storage
+      .from('inspection-reports')
+      .download('template.pdf');
+    
+    if (templateError || !templateData) {
+      throw new Error(`Failed to load PDF template: ${templateError?.message || 'Template not found'}`);
     }
-    const templateBytes = await templateResponse.arrayBuffer();
+    
+    const templateBytes = await templateData.arrayBuffer();
     const pdfDoc = await PDFDocument.load(templateBytes);
+    
+    console.log('PDF template loaded successfully');
 
     // Get the form from the PDF
     const form = pdfDoc.getForm();
