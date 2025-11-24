@@ -225,7 +225,8 @@ class PDFHelper {
     font: any,
     lineHeight: number = size * 1.3
   ): number {
-    const words = text.split(' ');
+    const sanitized = this.sanitizeText(text);
+    const words = sanitized.split(' ');
     let line = '';
     let currentY = y;
 
@@ -290,7 +291,7 @@ class PDFHelper {
         color: rgb(0, 0, 0),
       });
 
-      page.drawText(value, {
+      page.drawText(this.sanitizeText(value), {
         x: x + 5,
         y: this.y - 12,
         size: 9,
@@ -301,8 +302,8 @@ class PDFHelper {
 
     // Row 1: Organization, Location, Onsite Contact
     const fieldWidth = 150;
-    drawFormField('Organization:', inspection.organization, this.MARGIN, fieldWidth);
-    drawFormField('Location:', inspection.location, this.MARGIN + fieldWidth + 20, fieldWidth);
+    drawFormField('Organization:', inspection.organization || '', this.MARGIN, fieldWidth);
+    drawFormField('Location:', inspection.location || '', this.MARGIN + fieldWidth + 20, fieldWidth);
     drawFormField('Onsite Contact:', inspection.onsite_contact || '', this.MARGIN + (fieldWidth + 20) * 2, 130);
     this.y -= 35;
 
@@ -676,7 +677,7 @@ class PDFHelper {
     for (const category of categories) {
       page = this.checkSpace(100);
 
-      page.drawText(category, {
+      page.drawText(this.sanitizeText(category), {
         x: this.MARGIN,
         y: this.y,
         size: 10,
@@ -922,6 +923,18 @@ class PDFHelper {
 
   private truncate(text: string, maxLength: number): string {
     if (!text) return '';
-    return text.length > maxLength ? text.substring(0, maxLength - 3) + '...' : text;
+    const sanitized = this.sanitizeText(text);
+    return sanitized.length > maxLength ? sanitized.substring(0, maxLength - 3) + '...' : sanitized;
+  }
+
+  private sanitizeText(text: string): string {
+    if (!text) return '';
+    // Replace newlines, tabs, and other control characters with spaces
+    // Also replace any other characters that WinAnsi can't encode
+    return text
+      .replace(/[\n\r\t]/g, ' ')  // Replace newlines and tabs with spaces
+      .replace(/[^\x20-\x7E\xA0-\xFF]/g, '')  // Remove characters outside WinAnsi range
+      .replace(/\s+/g, ' ')  // Collapse multiple spaces
+      .trim();
   }
 }
