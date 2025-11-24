@@ -1,6 +1,13 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import puppeteer from "https://deno.land/x/puppeteer@16.2.0/mod.ts";
+// @ts-ignore - pdfmake types are incomplete
+import pdfMake from "https://esm.sh/pdfmake@0.2.7/build/pdfmake.js";
+// @ts-ignore - pdfmake types are incomplete
+import pdfFonts from "https://esm.sh/pdfmake@0.2.7/build/vfs_fonts.js";
+
+// Configure pdfMake fonts
+// @ts-ignore - pdfmake types are incomplete
+pdfMake.vfs = pdfFonts.pdfMake?.vfs || pdfFonts.vfs;
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -76,369 +83,414 @@ serve(async (req) => {
       return html.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').trim();
     };
 
-    const escapeHtml = (text: string) => {
-      return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
-    };
-
     const inspectorName = `${inspectorProfile?.first_name || ''} ${inspectorProfile?.last_name || ''}`.trim() || 'Inspector';
 
-    console.log('Generating HTML template...');
+    console.log('Building PDF document definition...');
 
-    const htmlContent = `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <style>
-    @page { margin: 0.75in; size: letter; }
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { 
-      font-family: Arial, sans-serif; 
-      font-size: 10pt; 
-      line-height: 1.4; 
-      color: #000;
-    }
-    .header { 
-      text-align: center; 
-      margin-bottom: 20px; 
-      padding-bottom: 15px;
-      border-bottom: 3px solid #003366;
-    }
-    .header h1 { 
-      font-size: 18pt; 
-      color: #003366; 
-      margin-bottom: 8px;
-      font-weight: bold;
-    }
-    .header .subtitle { 
-      font-size: 12pt; 
-      color: #666; 
-      margin-bottom: 12px;
-    }
-    .logos {
-      display: flex;
-      justify-content: center;
-      gap: 30px;
-      margin: 15px 0;
-      font-weight: bold;
-      color: #003366;
-    }
-    .section { 
-      margin-bottom: 25px; 
-      page-break-inside: avoid;
-    }
-    .section-title { 
-      font-size: 14pt; 
-      font-weight: bold; 
-      color: #003366; 
-      margin-bottom: 10px;
-      padding-bottom: 5px;
-      border-bottom: 2px solid #003366;
-    }
-    .info-grid { 
-      display: grid; 
-      grid-template-columns: 150px 1fr; 
-      gap: 8px 15px; 
-      margin-bottom: 15px;
-    }
-    .info-label { 
-      font-weight: bold; 
-      color: #333;
-    }
-    .info-value { 
-      color: #000;
-    }
-    table { 
-      width: 100%; 
-      border-collapse: collapse; 
-      margin: 10px 0;
-      page-break-inside: auto;
-    }
-    th { 
-      background-color: #003366; 
-      color: white; 
-      padding: 8px; 
-      text-align: left; 
-      font-weight: bold;
-      font-size: 10pt;
-    }
-    td { 
-      padding: 8px; 
-      border: 1px solid #ddd;
-      vertical-align: top;
-    }
-    tr { 
-      page-break-inside: avoid;
-    }
-    tr:nth-child(even) { 
-      background-color: #f9f9f9; 
-    }
-    .pass { color: #2d5016; font-weight: bold; }
-    .fail { color: #8b0000; font-weight: bold; }
-    .attention { color: #cc6600; font-weight: bold; }
-    .comment { 
-      font-style: italic; 
-      color: #555; 
-      font-size: 9pt;
-      margin-top: 4px;
-    }
-    .footer { 
-      margin-top: 30px; 
-      padding-top: 15px; 
-      border-top: 2px solid #003366; 
-      text-align: center;
-      font-size: 9pt;
-      color: #666;
-    }
-    .disclaimer {
-      background-color: #fff3cd;
-      border: 1px solid #ffc107;
-      padding: 12px;
-      margin: 15px 0;
-      font-size: 9pt;
-      page-break-inside: avoid;
-    }
-    .page-break { page-break-after: always; }
-    .category-heading {
-      font-size: 12pt;
-      font-weight: bold;
-      color: #003366;
-      margin: 20px 0 10px;
-      padding-top: 15px;
-      border-top: 1px solid #ccc;
-    }
-  </style>
-</head>
-<body>
-  <div class="header">
-    <h1>Challenge Course Inspection Report</h1>
-    <div class="subtitle">Association for Challenge Course Technology (ACCT) Standards</div>
-    <div class="logos">
-      <div>ACCT Accredited Vendor</div>
-      <div>•</div>
-      <div>Rope Works LLC</div>
-    </div>
-  </div>
-
-  <div class="section">
-    <div class="section-title">Facility Information</div>
-    <div class="info-grid">
-      <div class="info-label">Facility Name:</div>
-      <div class="info-value">${escapeHtml(inspection.organization || 'N/A')}</div>
-      <div class="info-label">Location:</div>
-      <div class="info-value">${escapeHtml(inspection.location || 'N/A')}</div>
-      <div class="info-label">Onsite Contact:</div>
-      <div class="info-value">${escapeHtml(inspection.onsite_contact || 'N/A')}</div>
-      <div class="info-label">Inspection Date:</div>
-      <div class="info-value">${formatDate(inspection.inspection_date)}</div>
-      <div class="info-label">Inspector:</div>
-      <div class="info-value">${escapeHtml(inspectorName)}</div>
-      <div class="info-label">Previous Inspection:</div>
-      <div class="info-value">${formatDate(inspection.previous_inspection_date)} by ${escapeHtml(inspection.previous_inspector || 'N/A')}</div>
-    </div>
-  </div>
-
-  ${inspection.course_history ? `
-  <div class="section">
-    <div class="section-title">Course History</div>
-    <div>${escapeHtml(stripHtml(inspection.course_history))}</div>
-  </div>
-  ` : ''}
-
-  <div class="page-break"></div>
-
-  ${systems && systems.length > 0 ? `
-  <div class="section">
-    <div class="section-title">Operating Systems</div>
-    <table>
-      <thead>
-        <tr>
-          <th style="width: 30%;">System Name</th>
-          <th style="width: 20%;">Result</th>
-          <th style="width: 50%;">Comments</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${systems.map(sys => `
-        <tr>
-          <td>${escapeHtml(sys.system_name || sys.name || 'N/A')}</td>
-          <td class="${sys.result === 'Pass' ? 'pass' : sys.result === 'Fail' ? 'fail' : 'attention'}">
-            ${escapeHtml(sys.result || 'N/A')}
-          </td>
-          <td>${escapeHtml(stripHtml(sys.comments) || '-')}</td>
-        </tr>
-        `).join('')}
-      </tbody>
-    </table>
-  </div>
-  ` : ''}
-
-  ${ziplines && ziplines.length > 0 ? `
-  <div class="section">
-    <div class="section-title">Ziplines</div>
-    <table>
-      <thead>
-        <tr>
-          <th>Zipline Name</th>
-          <th>Cable Type</th>
-          <th>Length (ft)</th>
-          <th>Braking System</th>
-          <th>EAD System</th>
-          <th>Result</th>
-          <th>Comments</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${ziplines.map(zip => `
-        <tr>
-          <td>${escapeHtml(zip.zipline_name || 'N/A')}</td>
-          <td>${escapeHtml(zip.cable_type || 'N/A')}</td>
-          <td>${zip.cable_length || 'N/A'}</td>
-          <td>${escapeHtml(zip.braking_system || 'N/A')}</td>
-          <td>${escapeHtml(zip.ead_system || 'N/A')}</td>
-          <td class="${zip.result === 'Pass' ? 'pass' : zip.result === 'Fail' ? 'fail' : 'attention'}">
-            ${escapeHtml(zip.result || 'N/A')}
-          </td>
-          <td>${escapeHtml(stripHtml(zip.comments) || '-')}</td>
-        </tr>
-        `).join('')}
-      </tbody>
-    </table>
-  </div>
-  ` : ''}
-
-  ${equipment && equipment.length > 0 ? `
-  <div class="page-break"></div>
-  <div class="section">
-    <div class="section-title">Equipment</div>
-    ${['PPE', 'Hardware', 'Software', 'Belay Devices'].map(category => {
-      const items = equipment.filter(e => e.equipment_category === category);
-      if (items.length === 0) return '';
-      return `
-      <div class="category-heading">${category}</div>
-      <table>
-        <thead>
-          <tr>
-            <th>Type</th>
-            <th>Quantity</th>
-            <th>Year</th>
-            <th>Result</th>
-            <th>Comments</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${items.map(eq => `
-          <tr>
-            <td>${escapeHtml(eq.equipment_type || 'N/A')}</td>
-            <td>${eq.quantity || 'N/A'}</td>
-            <td>${eq.production_year || 'N/A'}</td>
-            <td class="${eq.result === 'Pass' ? 'pass' : eq.result === 'Fail' ? 'fail' : 'attention'}">
-              ${escapeHtml(eq.result || 'N/A')}
-            </td>
-            <td>${escapeHtml(stripHtml(eq.comments) || '-')}</td>
-          </tr>
-          `).join('')}
-        </tbody>
-      </table>
-      `;
-    }).join('')}
-  </div>
-  ` : ''}
-
-  ${standards && standards.length > 0 ? `
-  <div class="page-break"></div>
-  <div class="section">
-    <div class="section-title">Standards Compliance</div>
-    <table>
-      <thead>
-        <tr>
-          <th style="width: 50%;">Standard</th>
-          <th style="width: 20%;">Documentation</th>
-          <th style="width: 30%;">Comments</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${standards.map(std => `
-        <tr>
-          <td>${escapeHtml(std.standard_name || 'N/A')}</td>
-          <td>${std.has_documentation ? '✓ Yes' : '✗ No'}</td>
-          <td>${escapeHtml(stripHtml(std.comments) || '-')}</td>
-        </tr>
-        `).join('')}
-      </tbody>
-    </table>
-  </div>
-  ` : ''}
-
-  ${summary ? `
-  <div class="page-break"></div>
-  <div class="section">
-    <div class="section-title">Summary</div>
-    
-    ${summary.critical_actions ? `
-    <div style="margin-bottom: 15px;">
-      <strong style="color: #8b0000;">Critical Actions Required:</strong>
-      <div style="margin-top: 5px;">${escapeHtml(stripHtml(summary.critical_actions))}</div>
-    </div>
-    ` : ''}
-    
-    ${summary.repairs_performed ? `
-    <div style="margin-bottom: 15px;">
-      <strong>Repairs Performed:</strong>
-      <div style="margin-top: 5px;">${escapeHtml(stripHtml(summary.repairs_performed))}</div>
-    </div>
-    ` : ''}
-    
-    ${summary.future_considerations ? `
-    <div style="margin-bottom: 15px;">
-      <strong>Future Considerations:</strong>
-      <div style="margin-top: 5px;">${escapeHtml(stripHtml(summary.future_considerations))}</div>
-    </div>
-    ` : ''}
-    
-    ${summary.next_inspection_date ? `
-    <div class="info-grid" style="margin-top: 20px;">
-      <div class="info-label">Next Inspection Due:</div>
-      <div class="info-value">${formatDate(summary.next_inspection_date)}</div>
-    </div>
-    ` : ''}
-  </div>
-  ` : ''}
-
-  <div class="disclaimer">
-    <strong>DISCLAIMER:</strong> This inspection report is based on visual observation and testing of the equipment and facilities at the time of inspection. The inspector makes no warranty, expressed or implied, that all defects have been discovered or that no defects exist other than those noted. This report does not constitute approval or acceptance of the facilities for any particular use.
-  </div>
-
-  <div class="footer">
-    <div><strong>Rope Works LLC</strong></div>
-    <div>ACCT Accredited Vendor</div>
-    <div style="margin-top: 8px;">Report Generated: ${formatDate(new Date().toISOString())}</div>
-  </div>
-</body>
-</html>
-    `.trim();
-
-    console.log('Launching headless browser...');
-    const browser = await puppeteer.launch({
-      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
-    });
-
-    const page = await browser.newPage();
-    await page.setContent(htmlContent, { waitUntil: 'networkidle0' });
-
-    console.log('Converting HTML to PDF...');
-    const pdfBytes = await page.pdf({
-      format: 'Letter',
-      printBackground: true,
-      margin: {
-        top: '0.75in',
-        right: '0.75in',
-        bottom: '0.75in',
-        left: '0.75in',
+    // Build document content
+    const content: any[] = [
+      // Header
+      {
+        text: 'Challenge Course Inspection Report',
+        style: 'header',
+        alignment: 'center'
       },
+      {
+        text: 'Association for Challenge Course Technology (ACCT) Standards',
+        style: 'subheader',
+        alignment: 'center',
+        margin: [0, 0, 0, 5]
+      },
+      {
+        text: 'ACCT Accredited Vendor  •  Rope Works LLC',
+        alignment: 'center',
+        bold: true,
+        color: '#003366',
+        margin: [0, 0, 0, 20]
+      },
+      
+      // Facility Information
+      {
+        text: 'Facility Information',
+        style: 'sectionHeader'
+      },
+      {
+        columns: [
+          { width: 120, text: 'Facility Name:', bold: true },
+          { width: '*', text: inspection.organization || 'N/A' }
+        ],
+        margin: [0, 0, 0, 5]
+      },
+      {
+        columns: [
+          { width: 120, text: 'Location:', bold: true },
+          { width: '*', text: inspection.location || 'N/A' }
+        ],
+        margin: [0, 0, 0, 5]
+      },
+      {
+        columns: [
+          { width: 120, text: 'Onsite Contact:', bold: true },
+          { width: '*', text: inspection.onsite_contact || 'N/A' }
+        ],
+        margin: [0, 0, 0, 5]
+      },
+      {
+        columns: [
+          { width: 120, text: 'Inspection Date:', bold: true },
+          { width: '*', text: formatDate(inspection.inspection_date) }
+        ],
+        margin: [0, 0, 0, 5]
+      },
+      {
+        columns: [
+          { width: 120, text: 'Inspector:', bold: true },
+          { width: '*', text: inspectorName }
+        ],
+        margin: [0, 0, 0, 5]
+      },
+      {
+        columns: [
+          { width: 120, text: 'Previous Inspection:', bold: true },
+          { width: '*', text: `${formatDate(inspection.previous_inspection_date)} by ${inspection.previous_inspector || 'N/A'}` }
+        ],
+        margin: [0, 0, 0, 15]
+      }
+    ];
+
+    // Course History
+    if (inspection.course_history) {
+      content.push(
+        {
+          text: 'Course History',
+          style: 'sectionHeader',
+          pageBreak: 'before'
+        },
+        {
+          text: stripHtml(inspection.course_history),
+          margin: [0, 0, 0, 15]
+        }
+      );
+    }
+
+    // Operating Systems
+    if (systems && systems.length > 0) {
+      content.push(
+        {
+          text: 'Operating Systems',
+          style: 'sectionHeader',
+          pageBreak: 'before'
+        },
+        {
+          table: {
+            headerRows: 1,
+            widths: ['30%', '20%', '50%'],
+            body: [
+              [
+                { text: 'System Name', style: 'tableHeader' },
+                { text: 'Result', style: 'tableHeader' },
+                { text: 'Comments', style: 'tableHeader' }
+              ],
+              ...systems.map(sys => [
+                sys.system_name || sys.name || 'N/A',
+                {
+                  text: sys.result || 'N/A',
+                  color: sys.result === 'Pass' ? '#2d5016' : sys.result === 'Fail' ? '#8b0000' : '#cc6600',
+                  bold: true
+                },
+                stripHtml(sys.comments) || '-'
+              ])
+            ]
+          },
+          layout: {
+            fillColor: function (rowIndex: number) {
+              return rowIndex === 0 ? '#003366' : (rowIndex % 2 === 0 ? '#f9f9f9' : null);
+            }
+          },
+          margin: [0, 0, 0, 15]
+        }
+      );
+    }
+
+    // Ziplines
+    if (ziplines && ziplines.length > 0) {
+      content.push(
+        {
+          text: 'Ziplines',
+          style: 'sectionHeader',
+          pageBreak: 'before'
+        },
+        {
+          table: {
+            headerRows: 1,
+            widths: ['15%', '12%', '10%', '15%', '12%', '12%', '24%'],
+            body: [
+              [
+                { text: 'Name', style: 'tableHeader' },
+                { text: 'Cable Type', style: 'tableHeader' },
+                { text: 'Length', style: 'tableHeader' },
+                { text: 'Braking', style: 'tableHeader' },
+                { text: 'EAD', style: 'tableHeader' },
+                { text: 'Result', style: 'tableHeader' },
+                { text: 'Comments', style: 'tableHeader' }
+              ],
+              ...ziplines.map(zip => [
+                zip.zipline_name || 'N/A',
+                zip.cable_type || 'N/A',
+                zip.cable_length ? `${zip.cable_length}ft` : 'N/A',
+                zip.braking_system || 'N/A',
+                zip.ead_system || 'N/A',
+                {
+                  text: zip.result || 'N/A',
+                  color: zip.result === 'Pass' ? '#2d5016' : zip.result === 'Fail' ? '#8b0000' : '#cc6600',
+                  bold: true
+                },
+                stripHtml(zip.comments) || '-'
+              ])
+            ]
+          },
+          layout: {
+            fillColor: function (rowIndex: number) {
+              return rowIndex === 0 ? '#003366' : (rowIndex % 2 === 0 ? '#f9f9f9' : null);
+            }
+          },
+          margin: [0, 0, 0, 15]
+        }
+      );
+    }
+
+    // Equipment by Category
+    if (equipment && equipment.length > 0) {
+      content.push({
+        text: 'Equipment',
+        style: 'sectionHeader',
+        pageBreak: 'before'
+      });
+
+      const categories = ['PPE', 'Hardware', 'Software', 'Belay Devices'];
+      
+      for (const category of categories) {
+        const items = equipment.filter(e => e.equipment_category === category);
+        if (items.length === 0) continue;
+
+        content.push(
+          {
+            text: category,
+            style: 'categoryHeader',
+            margin: [0, 10, 0, 5]
+          },
+          {
+            table: {
+              headerRows: 1,
+              widths: ['25%', '15%', '15%', '15%', '30%'],
+              body: [
+                [
+                  { text: 'Type', style: 'tableHeader' },
+                  { text: 'Quantity', style: 'tableHeader' },
+                  { text: 'Year', style: 'tableHeader' },
+                  { text: 'Result', style: 'tableHeader' },
+                  { text: 'Comments', style: 'tableHeader' }
+                ],
+                ...items.map(eq => [
+                  eq.equipment_type || 'N/A',
+                  eq.quantity?.toString() || 'N/A',
+                  eq.production_year?.toString() || 'N/A',
+                  {
+                    text: eq.result || 'N/A',
+                    color: eq.result === 'Pass' ? '#2d5016' : eq.result === 'Fail' ? '#8b0000' : '#cc6600',
+                    bold: true
+                  },
+                  stripHtml(eq.comments) || '-'
+                ])
+              ]
+            },
+            layout: {
+              fillColor: function (rowIndex: number) {
+                return rowIndex === 0 ? '#003366' : (rowIndex % 2 === 0 ? '#f9f9f9' : null);
+              }
+            },
+            margin: [0, 0, 0, 10]
+          }
+        );
+      }
+    }
+
+    // Standards
+    if (standards && standards.length > 0) {
+      content.push(
+        {
+          text: 'Standards Compliance',
+          style: 'sectionHeader',
+          pageBreak: 'before'
+        },
+        {
+          table: {
+            headerRows: 1,
+            widths: ['50%', '20%', '30%'],
+            body: [
+              [
+                { text: 'Standard', style: 'tableHeader' },
+                { text: 'Documentation', style: 'tableHeader' },
+                { text: 'Comments', style: 'tableHeader' }
+              ],
+              ...standards.map(std => [
+                std.standard_name || 'N/A',
+                std.has_documentation ? '✓ Yes' : '✗ No',
+                stripHtml(std.comments) || '-'
+              ])
+            ]
+          },
+          layout: {
+            fillColor: function (rowIndex: number) {
+              return rowIndex === 0 ? '#003366' : (rowIndex % 2 === 0 ? '#f9f9f9' : null);
+            }
+          },
+          margin: [0, 0, 0, 15]
+        }
+      );
+    }
+
+    // Summary
+    if (summary) {
+      content.push({
+        text: 'Summary',
+        style: 'sectionHeader',
+        pageBreak: 'before'
+      });
+
+      if (summary.critical_actions) {
+        content.push(
+          {
+            text: 'Critical Actions Required:',
+            bold: true,
+            color: '#8b0000',
+            margin: [0, 0, 0, 5]
+          },
+          {
+            text: stripHtml(summary.critical_actions),
+            margin: [0, 0, 0, 10]
+          }
+        );
+      }
+
+      if (summary.repairs_performed) {
+        content.push(
+          {
+            text: 'Repairs Performed:',
+            bold: true,
+            margin: [0, 0, 0, 5]
+          },
+          {
+            text: stripHtml(summary.repairs_performed),
+            margin: [0, 0, 0, 10]
+          }
+        );
+      }
+
+      if (summary.future_considerations) {
+        content.push(
+          {
+            text: 'Future Considerations:',
+            bold: true,
+            margin: [0, 0, 0, 5]
+          },
+          {
+            text: stripHtml(summary.future_considerations),
+            margin: [0, 0, 0, 10]
+          }
+        );
+      }
+
+      if (summary.next_inspection_date) {
+        content.push({
+          columns: [
+            { width: 150, text: 'Next Inspection Due:', bold: true },
+            { width: '*', text: formatDate(summary.next_inspection_date) }
+          ],
+          margin: [0, 10, 0, 0]
+        });
+      }
+    }
+
+    // Disclaimer
+    content.push(
+      {
+        text: '',
+        pageBreak: 'before'
+      },
+      {
+        text: [
+          { text: 'DISCLAIMER: ', bold: true },
+          { text: 'This inspection report is based on visual observation and testing of the equipment and facilities at the time of inspection. The inspector makes no warranty, expressed or implied, that all defects have been discovered or that no defects exist other than those noted. This report does not constitute approval or acceptance of the facilities for any particular use.' }
+        ],
+        background: '#fff3cd',
+        margin: [0, 0, 0, 20],
+        padding: 10
+      }
+    );
+
+    // Footer
+    content.push({
+      text: [
+        { text: 'Rope Works LLC\n', bold: true },
+        'ACCT Accredited Vendor\n',
+        `Report Generated: ${formatDate(new Date().toISOString())}`
+      ],
+      alignment: 'center',
+      fontSize: 9,
+      color: '#666',
+      margin: [0, 20, 0, 0]
     });
 
-    await browser.close();
+    // Document definition
+    const docDefinition = {
+      content,
+      styles: {
+        header: {
+          fontSize: 18,
+          bold: true,
+          color: '#003366',
+          margin: [0, 0, 0, 5] as [number, number, number, number]
+        },
+        subheader: {
+          fontSize: 12,
+          color: '#666'
+        },
+        sectionHeader: {
+          fontSize: 14,
+          bold: true,
+          color: '#003366',
+          margin: [0, 15, 0, 10] as [number, number, number, number]
+        },
+        categoryHeader: {
+          fontSize: 12,
+          bold: true,
+          color: '#003366'
+        },
+        tableHeader: {
+          color: 'white',
+          fillColor: '#003366',
+          bold: true
+        }
+      },
+      defaultStyle: {
+        fontSize: 10,
+        lineHeight: 1.3
+      },
+      pageMargins: [54, 54, 54, 54] as [number, number, number, number]
+    };
+
+    console.log('Generating PDF with pdfMake...');
+
+    // Generate PDF
+    const pdfDocGenerator = pdfMake.createPdf(docDefinition);
+    
+    const pdfBytes = await new Promise<Uint8Array>((resolve, reject) => {
+      pdfDocGenerator.getBuffer((buffer: Uint8Array) => {
+        resolve(buffer);
+      });
+    });
+
     console.log('PDF generated, uploading to storage...');
 
     // Upload to storage
