@@ -1,13 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-// @ts-ignore - pdfmake types are incomplete
-import pdfMake from "https://esm.sh/pdfmake@0.2.7/build/pdfmake.js";
-// @ts-ignore - pdfmake types are incomplete
-import pdfFonts from "https://esm.sh/pdfmake@0.2.7/build/vfs_fonts.js";
-
-// Configure pdfMake fonts
-// @ts-ignore - pdfmake types are incomplete
-pdfMake.vfs = pdfFonts.pdfMake?.vfs || pdfFonts.vfs;
+import { jsPDF } from "https://esm.sh/jspdf@2.5.1";
+import "https://esm.sh/jspdf-autotable@3.8.2";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -85,187 +79,218 @@ serve(async (req) => {
 
     const inspectorName = `${inspectorProfile?.first_name || ''} ${inspectorProfile?.last_name || ''}`.trim() || 'Inspector';
 
-    console.log('Building PDF document definition...');
+    console.log('Creating PDF document with jsPDF...');
 
-    // Build document content
-    const content: any[] = [
-      // Header
-      {
-        text: 'Challenge Course Inspection Report',
-        style: 'header',
-        alignment: 'center'
-      },
-      {
-        text: 'Association for Challenge Course Technology (ACCT) Standards',
-        style: 'subheader',
-        alignment: 'center',
-        margin: [0, 0, 0, 5]
-      },
-      {
-        text: 'ACCT Accredited Vendor  •  Rope Works LLC',
-        alignment: 'center',
-        bold: true,
-        color: '#003366',
-        margin: [0, 0, 0, 20]
-      },
-      
-      // Facility Information
-      {
-        text: 'Facility Information',
-        style: 'sectionHeader'
-      },
-      {
-        columns: [
-          { width: 120, text: 'Facility Name:', bold: true },
-          { width: '*', text: inspection.organization || 'N/A' }
-        ],
-        margin: [0, 0, 0, 5]
-      },
-      {
-        columns: [
-          { width: 120, text: 'Location:', bold: true },
-          { width: '*', text: inspection.location || 'N/A' }
-        ],
-        margin: [0, 0, 0, 5]
-      },
-      {
-        columns: [
-          { width: 120, text: 'Onsite Contact:', bold: true },
-          { width: '*', text: inspection.onsite_contact || 'N/A' }
-        ],
-        margin: [0, 0, 0, 5]
-      },
-      {
-        columns: [
-          { width: 120, text: 'Inspection Date:', bold: true },
-          { width: '*', text: formatDate(inspection.inspection_date) }
-        ],
-        margin: [0, 0, 0, 5]
-      },
-      {
-        columns: [
-          { width: 120, text: 'Inspector:', bold: true },
-          { width: '*', text: inspectorName }
-        ],
-        margin: [0, 0, 0, 5]
-      },
-      {
-        columns: [
-          { width: 120, text: 'Previous Inspection:', bold: true },
-          { width: '*', text: `${formatDate(inspection.previous_inspection_date)} by ${inspection.previous_inspector || 'N/A'}` }
-        ],
-        margin: [0, 0, 0, 15]
+    // Create PDF
+    const doc = new jsPDF({
+      orientation: 'portrait',
+      unit: 'mm',
+      format: 'letter'
+    });
+
+    let yPos = 20;
+    const leftMargin = 20;
+    const rightMargin = 196;
+    const pageWidth = 216;
+    const pageHeight = 279;
+
+    // Helper to add new page if needed
+    const checkPageBreak = (spaceNeeded: number) => {
+      if (yPos + spaceNeeded > pageHeight - 20) {
+        doc.addPage();
+        yPos = 20;
       }
+    };
+
+    // Helper to wrap text
+    const addWrappedText = (text: string, x: number, maxWidth: number, fontSize: number = 10) => {
+      doc.setFontSize(fontSize);
+      const lines = doc.splitTextToSize(text, maxWidth);
+      lines.forEach((line: string) => {
+        checkPageBreak(7);
+        doc.text(line, x, yPos);
+        yPos += 5;
+      });
+    };
+
+    // Header
+    doc.setFontSize(18);
+    doc.setTextColor(0, 51, 102);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Challenge Course Inspection Report', pageWidth / 2, yPos, { align: 'center' });
+    yPos += 8;
+
+    doc.setFontSize(12);
+    doc.setTextColor(102, 102, 102);
+    doc.setFont('helvetica', 'normal');
+    doc.text('Association for Challenge Course Technology (ACCT) Standards', pageWidth / 2, yPos, { align: 'center' });
+    yPos += 6;
+
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.text('ACCT Accredited Vendor  •  Rope Works LLC', pageWidth / 2, yPos, { align: 'center' });
+    yPos += 10;
+
+    // Line separator
+    doc.setDrawColor(0, 51, 102);
+    doc.setLineWidth(0.5);
+    doc.line(leftMargin, yPos, rightMargin, yPos);
+    yPos += 8;
+
+    // Facility Information
+    doc.setFontSize(14);
+    doc.setTextColor(0, 51, 102);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Facility Information', leftMargin, yPos);
+    yPos += 8;
+
+    doc.setFontSize(10);
+    doc.setTextColor(0, 0, 0);
+    
+    const facilityInfo = [
+      ['Facility Name:', inspection.organization || 'N/A'],
+      ['Location:', inspection.location || 'N/A'],
+      ['Onsite Contact:', inspection.onsite_contact || 'N/A'],
+      ['Inspection Date:', formatDate(inspection.inspection_date)],
+      ['Inspector:', inspectorName],
+      ['Previous Inspection:', `${formatDate(inspection.previous_inspection_date)} by ${inspection.previous_inspector || 'N/A'}`]
     ];
+
+    facilityInfo.forEach(([label, value]) => {
+      doc.setFont('helvetica', 'bold');
+      doc.text(label, leftMargin, yPos);
+      doc.setFont('helvetica', 'normal');
+      const lines = doc.splitTextToSize(value, 120);
+      lines.forEach((line: string, index: number) => {
+        doc.text(line, leftMargin + 45, yPos + (index * 5));
+      });
+      yPos += Math.max(5, lines.length * 5);
+    });
 
     // Course History
     if (inspection.course_history) {
-      content.push(
-        {
-          text: 'Course History',
-          style: 'sectionHeader',
-          pageBreak: 'before'
-        },
-        {
-          text: stripHtml(inspection.course_history),
-          margin: [0, 0, 0, 15]
-        }
-      );
+      yPos += 5;
+      checkPageBreak(20);
+      doc.setFontSize(14);
+      doc.setTextColor(0, 51, 102);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Course History', leftMargin, yPos);
+      yPos += 6;
+      
+      doc.setFontSize(10);
+      doc.setTextColor(0, 0, 0);
+      doc.setFont('helvetica', 'normal');
+      addWrappedText(stripHtml(inspection.course_history), leftMargin, rightMargin - leftMargin);
+      yPos += 5;
     }
 
     // Operating Systems
     if (systems && systems.length > 0) {
-      content.push(
-        {
-          text: 'Operating Systems',
-          style: 'sectionHeader',
-          pageBreak: 'before'
+      doc.addPage();
+      yPos = 20;
+      
+      doc.setFontSize(14);
+      doc.setTextColor(0, 51, 102);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Operating Systems', leftMargin, yPos);
+      yPos += 8;
+
+      // @ts-ignore - autoTable is added via plugin
+      doc.autoTable({
+        startY: yPos,
+        head: [['System Name', 'Result', 'Comments']],
+        body: systems.map(sys => [
+          sys.system_name || sys.name || 'N/A',
+          sys.result || 'N/A',
+          stripHtml(sys.comments) || '-'
+        ]),
+        styles: { fontSize: 9, cellPadding: 3 },
+        headStyles: { fillColor: [0, 51, 102], textColor: 255, fontStyle: 'bold' },
+        alternateRowStyles: { fillColor: [249, 249, 249] },
+        columnStyles: {
+          0: { cellWidth: 50 },
+          1: { cellWidth: 30 },
+          2: { cellWidth: 'auto' }
         },
-        {
-          table: {
-            headerRows: 1,
-            widths: ['30%', '20%', '50%'],
-            body: [
-              [
-                { text: 'System Name', style: 'tableHeader' },
-                { text: 'Result', style: 'tableHeader' },
-                { text: 'Comments', style: 'tableHeader' }
-              ],
-              ...systems.map(sys => [
-                sys.system_name || sys.name || 'N/A',
-                {
-                  text: sys.result || 'N/A',
-                  color: sys.result === 'Pass' ? '#2d5016' : sys.result === 'Fail' ? '#8b0000' : '#cc6600',
-                  bold: true
-                },
-                stripHtml(sys.comments) || '-'
-              ])
-            ]
-          },
-          layout: {
-            fillColor: function (rowIndex: number) {
-              return rowIndex === 0 ? '#003366' : (rowIndex % 2 === 0 ? '#f9f9f9' : null);
-            }
-          },
-          margin: [0, 0, 0, 15]
+        didParseCell: function (data: any) {
+          if (data.section === 'body' && data.column.index === 1) {
+            const result = data.cell.raw;
+            if (result === 'Pass') data.cell.styles.textColor = [45, 80, 22];
+            else if (result === 'Fail') data.cell.styles.textColor = [139, 0, 0];
+            else data.cell.styles.textColor = [204, 102, 0];
+            data.cell.styles.fontStyle = 'bold';
+          }
         }
-      );
+      });
+
+      // @ts-ignore
+      yPos = doc.lastAutoTable.finalY + 10;
     }
 
     // Ziplines
     if (ziplines && ziplines.length > 0) {
-      content.push(
-        {
-          text: 'Ziplines',
-          style: 'sectionHeader',
-          pageBreak: 'before'
+      checkPageBreak(40);
+      if (yPos > pageHeight - 80) {
+        doc.addPage();
+        yPos = 20;
+      }
+      
+      doc.setFontSize(14);
+      doc.setTextColor(0, 51, 102);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Ziplines', leftMargin, yPos);
+      yPos += 8;
+
+      // @ts-ignore
+      doc.autoTable({
+        startY: yPos,
+        head: [['Name', 'Cable', 'Length', 'Braking', 'EAD', 'Result', 'Comments']],
+        body: ziplines.map(zip => [
+          zip.zipline_name || 'N/A',
+          zip.cable_type || 'N/A',
+          zip.cable_length ? `${zip.cable_length}ft` : 'N/A',
+          zip.braking_system || 'N/A',
+          zip.ead_system || 'N/A',
+          zip.result || 'N/A',
+          stripHtml(zip.comments) || '-'
+        ]),
+        styles: { fontSize: 8, cellPadding: 2 },
+        headStyles: { fillColor: [0, 51, 102], textColor: 255, fontStyle: 'bold' },
+        alternateRowStyles: { fillColor: [249, 249, 249] },
+        columnStyles: {
+          0: { cellWidth: 25 },
+          1: { cellWidth: 20 },
+          2: { cellWidth: 15 },
+          3: { cellWidth: 20 },
+          4: { cellWidth: 15 },
+          5: { cellWidth: 18 },
+          6: { cellWidth: 'auto' }
         },
-        {
-          table: {
-            headerRows: 1,
-            widths: ['15%', '12%', '10%', '15%', '12%', '12%', '24%'],
-            body: [
-              [
-                { text: 'Name', style: 'tableHeader' },
-                { text: 'Cable Type', style: 'tableHeader' },
-                { text: 'Length', style: 'tableHeader' },
-                { text: 'Braking', style: 'tableHeader' },
-                { text: 'EAD', style: 'tableHeader' },
-                { text: 'Result', style: 'tableHeader' },
-                { text: 'Comments', style: 'tableHeader' }
-              ],
-              ...ziplines.map(zip => [
-                zip.zipline_name || 'N/A',
-                zip.cable_type || 'N/A',
-                zip.cable_length ? `${zip.cable_length}ft` : 'N/A',
-                zip.braking_system || 'N/A',
-                zip.ead_system || 'N/A',
-                {
-                  text: zip.result || 'N/A',
-                  color: zip.result === 'Pass' ? '#2d5016' : zip.result === 'Fail' ? '#8b0000' : '#cc6600',
-                  bold: true
-                },
-                stripHtml(zip.comments) || '-'
-              ])
-            ]
-          },
-          layout: {
-            fillColor: function (rowIndex: number) {
-              return rowIndex === 0 ? '#003366' : (rowIndex % 2 === 0 ? '#f9f9f9' : null);
-            }
-          },
-          margin: [0, 0, 0, 15]
+        didParseCell: function (data: any) {
+          if (data.section === 'body' && data.column.index === 5) {
+            const result = data.cell.raw;
+            if (result === 'Pass') data.cell.styles.textColor = [45, 80, 22];
+            else if (result === 'Fail') data.cell.styles.textColor = [139, 0, 0];
+            else data.cell.styles.textColor = [204, 102, 0];
+            data.cell.styles.fontStyle = 'bold';
+          }
         }
-      );
+      });
+
+      // @ts-ignore
+      yPos = doc.lastAutoTable.finalY + 10;
     }
 
     // Equipment by Category
     if (equipment && equipment.length > 0) {
-      content.push({
-        text: 'Equipment',
-        style: 'sectionHeader',
-        pageBreak: 'before'
-      });
+      doc.addPage();
+      yPos = 20;
+      
+      doc.setFontSize(14);
+      doc.setTextColor(0, 51, 102);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Equipment', leftMargin, yPos);
+      yPos += 8;
 
       const categories = ['PPE', 'Hardware', 'Software', 'Belay Devices'];
       
@@ -273,231 +298,185 @@ serve(async (req) => {
         const items = equipment.filter(e => e.equipment_category === category);
         if (items.length === 0) continue;
 
-        content.push(
-          {
-            text: category,
-            style: 'categoryHeader',
-            margin: [0, 10, 0, 5]
+        checkPageBreak(40);
+        
+        doc.setFontSize(12);
+        doc.setTextColor(0, 51, 102);
+        doc.setFont('helvetica', 'bold');
+        doc.text(category, leftMargin, yPos);
+        yPos += 6;
+
+        // @ts-ignore
+        doc.autoTable({
+          startY: yPos,
+          head: [['Type', 'Qty', 'Year', 'Result', 'Comments']],
+          body: items.map(eq => [
+            eq.equipment_type || 'N/A',
+            eq.quantity?.toString() || 'N/A',
+            eq.production_year?.toString() || 'N/A',
+            eq.result || 'N/A',
+            stripHtml(eq.comments) || '-'
+          ]),
+          styles: { fontSize: 9, cellPadding: 2 },
+          headStyles: { fillColor: [0, 51, 102], textColor: 255, fontStyle: 'bold' },
+          alternateRowStyles: { fillColor: [249, 249, 249] },
+          columnStyles: {
+            0: { cellWidth: 40 },
+            1: { cellWidth: 15 },
+            2: { cellWidth: 15 },
+            3: { cellWidth: 25 },
+            4: { cellWidth: 'auto' }
           },
-          {
-            table: {
-              headerRows: 1,
-              widths: ['25%', '15%', '15%', '15%', '30%'],
-              body: [
-                [
-                  { text: 'Type', style: 'tableHeader' },
-                  { text: 'Quantity', style: 'tableHeader' },
-                  { text: 'Year', style: 'tableHeader' },
-                  { text: 'Result', style: 'tableHeader' },
-                  { text: 'Comments', style: 'tableHeader' }
-                ],
-                ...items.map(eq => [
-                  eq.equipment_type || 'N/A',
-                  eq.quantity?.toString() || 'N/A',
-                  eq.production_year?.toString() || 'N/A',
-                  {
-                    text: eq.result || 'N/A',
-                    color: eq.result === 'Pass' ? '#2d5016' : eq.result === 'Fail' ? '#8b0000' : '#cc6600',
-                    bold: true
-                  },
-                  stripHtml(eq.comments) || '-'
-                ])
-              ]
-            },
-            layout: {
-              fillColor: function (rowIndex: number) {
-                return rowIndex === 0 ? '#003366' : (rowIndex % 2 === 0 ? '#f9f9f9' : null);
-              }
-            },
-            margin: [0, 0, 0, 10]
+          didParseCell: function (data: any) {
+            if (data.section === 'body' && data.column.index === 3) {
+              const result = data.cell.raw;
+              if (result === 'Pass') data.cell.styles.textColor = [45, 80, 22];
+              else if (result === 'Fail') data.cell.styles.textColor = [139, 0, 0];
+              else data.cell.styles.textColor = [204, 102, 0];
+              data.cell.styles.fontStyle = 'bold';
+            }
           }
-        );
+        });
+
+        // @ts-ignore
+        yPos = doc.lastAutoTable.finalY + 8;
       }
     }
 
     // Standards
     if (standards && standards.length > 0) {
-      content.push(
-        {
-          text: 'Standards Compliance',
-          style: 'sectionHeader',
-          pageBreak: 'before'
-        },
-        {
-          table: {
-            headerRows: 1,
-            widths: ['50%', '20%', '30%'],
-            body: [
-              [
-                { text: 'Standard', style: 'tableHeader' },
-                { text: 'Documentation', style: 'tableHeader' },
-                { text: 'Comments', style: 'tableHeader' }
-              ],
-              ...standards.map(std => [
-                std.standard_name || 'N/A',
-                std.has_documentation ? '✓ Yes' : '✗ No',
-                stripHtml(std.comments) || '-'
-              ])
-            ]
-          },
-          layout: {
-            fillColor: function (rowIndex: number) {
-              return rowIndex === 0 ? '#003366' : (rowIndex % 2 === 0 ? '#f9f9f9' : null);
-            }
-          },
-          margin: [0, 0, 0, 15]
+      doc.addPage();
+      yPos = 20;
+      
+      doc.setFontSize(14);
+      doc.setTextColor(0, 51, 102);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Standards Compliance', leftMargin, yPos);
+      yPos += 8;
+
+      // @ts-ignore
+      doc.autoTable({
+        startY: yPos,
+        head: [['Standard', 'Documentation', 'Comments']],
+        body: standards.map(std => [
+          std.standard_name || 'N/A',
+          std.has_documentation ? 'Yes' : 'No',
+          stripHtml(std.comments) || '-'
+        ]),
+        styles: { fontSize: 9, cellPadding: 3 },
+        headStyles: { fillColor: [0, 51, 102], textColor: 255, fontStyle: 'bold' },
+        alternateRowStyles: { fillColor: [249, 249, 249] },
+        columnStyles: {
+          0: { cellWidth: 80 },
+          1: { cellWidth: 35 },
+          2: { cellWidth: 'auto' }
         }
-      );
+      });
+
+      // @ts-ignore
+      yPos = doc.lastAutoTable.finalY + 10;
     }
 
     // Summary
     if (summary) {
-      content.push({
-        text: 'Summary',
-        style: 'sectionHeader',
-        pageBreak: 'before'
-      });
+      doc.addPage();
+      yPos = 20;
+      
+      doc.setFontSize(14);
+      doc.setTextColor(0, 51, 102);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Summary', leftMargin, yPos);
+      yPos += 8;
 
       if (summary.critical_actions) {
-        content.push(
-          {
-            text: 'Critical Actions Required:',
-            bold: true,
-            color: '#8b0000',
-            margin: [0, 0, 0, 5]
-          },
-          {
-            text: stripHtml(summary.critical_actions),
-            margin: [0, 0, 0, 10]
-          }
-        );
+        doc.setFontSize(10);
+        doc.setTextColor(139, 0, 0);
+        doc.setFont('helvetica', 'bold');
+        doc.text('Critical Actions Required:', leftMargin, yPos);
+        yPos += 6;
+        doc.setTextColor(0, 0, 0);
+        doc.setFont('helvetica', 'normal');
+        addWrappedText(stripHtml(summary.critical_actions), leftMargin, rightMargin - leftMargin);
+        yPos += 5;
       }
 
       if (summary.repairs_performed) {
-        content.push(
-          {
-            text: 'Repairs Performed:',
-            bold: true,
-            margin: [0, 0, 0, 5]
-          },
-          {
-            text: stripHtml(summary.repairs_performed),
-            margin: [0, 0, 0, 10]
-          }
-        );
+        checkPageBreak(20);
+        doc.setFontSize(10);
+        doc.setTextColor(0, 0, 0);
+        doc.setFont('helvetica', 'bold');
+        doc.text('Repairs Performed:', leftMargin, yPos);
+        yPos += 6;
+        doc.setFont('helvetica', 'normal');
+        addWrappedText(stripHtml(summary.repairs_performed), leftMargin, rightMargin - leftMargin);
+        yPos += 5;
       }
 
       if (summary.future_considerations) {
-        content.push(
-          {
-            text: 'Future Considerations:',
-            bold: true,
-            margin: [0, 0, 0, 5]
-          },
-          {
-            text: stripHtml(summary.future_considerations),
-            margin: [0, 0, 0, 10]
-          }
-        );
+        checkPageBreak(20);
+        doc.setFont('helvetica', 'bold');
+        doc.text('Future Considerations:', leftMargin, yPos);
+        yPos += 6;
+        doc.setFont('helvetica', 'normal');
+        addWrappedText(stripHtml(summary.future_considerations), leftMargin, rightMargin - leftMargin);
+        yPos += 5;
       }
 
       if (summary.next_inspection_date) {
-        content.push({
-          columns: [
-            { width: 150, text: 'Next Inspection Due:', bold: true },
-            { width: '*', text: formatDate(summary.next_inspection_date) }
-          ],
-          margin: [0, 10, 0, 0]
-        });
+        checkPageBreak(10);
+        doc.setFont('helvetica', 'bold');
+        doc.text('Next Inspection Due:', leftMargin, yPos);
+        doc.setFont('helvetica', 'normal');
+        doc.text(formatDate(summary.next_inspection_date), leftMargin + 50, yPos);
+        yPos += 8;
       }
     }
 
     // Disclaimer
-    content.push(
-      {
-        text: '',
-        pageBreak: 'before'
-      },
-      {
-        text: [
-          { text: 'DISCLAIMER: ', bold: true },
-          { text: 'This inspection report is based on visual observation and testing of the equipment and facilities at the time of inspection. The inspector makes no warranty, expressed or implied, that all defects have been discovered or that no defects exist other than those noted. This report does not constitute approval or acceptance of the facilities for any particular use.' }
-        ],
-        background: '#fff3cd',
-        margin: [0, 0, 0, 20],
-        padding: 10
-      }
-    );
+    doc.addPage();
+    yPos = 20;
+    
+    doc.setFillColor(255, 243, 205);
+    doc.rect(leftMargin - 2, yPos - 5, rightMargin - leftMargin + 4, 30, 'F');
+    
+    doc.setFontSize(9);
+    doc.setTextColor(0, 0, 0);
+    doc.setFont('helvetica', 'bold');
+    doc.text('DISCLAIMER:', leftMargin, yPos);
+    yPos += 5;
+    doc.setFont('helvetica', 'normal');
+    const disclaimerText = 'This inspection report is based on visual observation and testing of the equipment and facilities at the time of inspection. The inspector makes no warranty, expressed or implied, that all defects have been discovered or that no defects exist other than those noted. This report does not constitute approval or acceptance of the facilities for any particular use.';
+    const disclaimerLines = doc.splitTextToSize(disclaimerText, rightMargin - leftMargin - 2);
+    disclaimerLines.forEach((line: string) => {
+      doc.text(line, leftMargin, yPos);
+      yPos += 4;
+    });
 
     // Footer
-    content.push({
-      text: [
-        { text: 'Rope Works LLC\n', bold: true },
-        'ACCT Accredited Vendor\n',
-        `Report Generated: ${formatDate(new Date().toISOString())}`
-      ],
-      alignment: 'center',
-      fontSize: 9,
-      color: '#666',
-      margin: [0, 20, 0, 0]
-    });
+    yPos += 15;
+    doc.setFontSize(9);
+    doc.setTextColor(102, 102, 102);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Rope Works LLC', pageWidth / 2, yPos, { align: 'center' });
+    yPos += 4;
+    doc.setFont('helvetica', 'normal');
+    doc.text('ACCT Accredited Vendor', pageWidth / 2, yPos, { align: 'center' });
+    yPos += 4;
+    doc.text(`Report Generated: ${formatDate(new Date().toISOString())}`, pageWidth / 2, yPos, { align: 'center' });
 
-    // Document definition
-    const docDefinition = {
-      content,
-      styles: {
-        header: {
-          fontSize: 18,
-          bold: true,
-          color: '#003366',
-          margin: [0, 0, 0, 5] as [number, number, number, number]
-        },
-        subheader: {
-          fontSize: 12,
-          color: '#666'
-        },
-        sectionHeader: {
-          fontSize: 14,
-          bold: true,
-          color: '#003366',
-          margin: [0, 15, 0, 10] as [number, number, number, number]
-        },
-        categoryHeader: {
-          fontSize: 12,
-          bold: true,
-          color: '#003366'
-        },
-        tableHeader: {
-          color: 'white',
-          fillColor: '#003366',
-          bold: true
-        }
-      },
-      defaultStyle: {
-        fontSize: 10,
-        lineHeight: 1.3
-      },
-      pageMargins: [54, 54, 54, 54] as [number, number, number, number]
-    };
+    console.log('PDF generated, converting to bytes...');
 
-    console.log('Generating PDF with pdfMake...');
+    // Get PDF as ArrayBuffer
+    const pdfBytes = doc.output('arraybuffer');
+    const pdfUint8Array = new Uint8Array(pdfBytes);
 
-    // Generate PDF
-    const pdfDocGenerator = pdfMake.createPdf(docDefinition);
-    
-    const pdfBytes = await new Promise<Uint8Array>((resolve, reject) => {
-      pdfDocGenerator.getBuffer((buffer: Uint8Array) => {
-        resolve(buffer);
-      });
-    });
-
-    console.log('PDF generated, uploading to storage...');
+    console.log('Uploading to storage...');
 
     // Upload to storage
     const fileName = `inspection-${inspection.organization?.replace(/[^a-z0-9]/gi, '_')}-${Date.now()}.pdf`;
     const { error: uploadError } = await supabase.storage
       .from('inspection-reports')
-      .upload(fileName, pdfBytes, {
+      .upload(fileName, pdfUint8Array, {
         contentType: 'application/pdf',
         upsert: true
       });
@@ -518,7 +497,7 @@ serve(async (req) => {
         inspection_id: inspectionId,
         pdf_url: fileName,
         generated_by: user.id,
-        file_size_bytes: pdfBytes.length
+        file_size_bytes: pdfUint8Array.length
       });
 
     console.log('Report saved successfully');
