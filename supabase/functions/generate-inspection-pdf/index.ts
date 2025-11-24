@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { PDFDocument, StandardFonts, rgb, PDFPage } from "https://esm.sh/pdf-lib@1.17.1";
+import puppeteer from "https://deno.land/x/puppeteer@16.2.0/mod.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -64,304 +64,385 @@ serve(async (req) => {
       throw new Error('Unauthorized to generate this report');
     }
 
-    console.log('Loading PDF template from storage...');
-
-    // Load the template from storage
-    const { data: templateData, error: downloadError } = await supabase.storage
-      .from('pdf-templates')
-      .download('inspection-template.pdf');
-    
-    if (downloadError || !templateData) {
-      console.error('Template not found in storage:', downloadError);
-      throw new Error(
-        'PDF template not found. Please upload the template first by going to the Super Admin Dashboard and clicking "Upload PDF Template".'
-      );
-    }
-    
-    const templateBytes = await templateData.arrayBuffer();
-    console.log('Template loaded from storage successfully');
-    
-    const pdfDoc = await PDFDocument.load(templateBytes);
-    const pages = pdfDoc.getPages();
-    const firstPage = pages[0];
-    
-    // Embed fonts
-    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-    const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-    
-    console.log('Drawing inspection data on PDF template');
-
-    // Helper to format date
-    const formatDate = (dateString: string | null | undefined) => {
-      if (!dateString) return '';
-      const date = new Date(dateString);
+    // Helper functions
+    const formatDate = (dateStr: string | null) => {
+      if (!dateStr) return 'N/A';
+      const date = new Date(dateStr);
       return date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
     };
 
-    // Helper to draw text with wrapping and newline handling
-    const drawText = (page: PDFPage, text: string, x: number, y: number, options: any = {}) => {
-      if (!text) return y;
-      const { maxWidth = 500, fontSize = 10, font: textFont = font, lineHeight = 12 } = options;
-      
-      // Clean text - remove null bytes and other problematic characters
-      const cleanedText = text.replace(/\0/g, '').replace(/\r/g, '');
-      
-      // Split by newlines first to preserve intentional line breaks
-      const paragraphs = cleanedText.split('\n');
-      let currentY = y;
-      
-      for (const paragraph of paragraphs) {
-        if (!paragraph.trim()) {
-          // Empty line - just add spacing
-          currentY -= lineHeight;
-          continue;
-        }
-        
-        // Word wrap each paragraph
-        const words = paragraph.split(' ');
-        let line = '';
-        
-        for (const word of words) {
-          const testLine = line + (line ? ' ' : '') + word;
-          const width = textFont.widthOfTextAtSize(testLine, fontSize);
-          
-          if (width > maxWidth && line) {
-            page.drawText(line, { x, y: currentY, size: fontSize, font: textFont, color: rgb(0, 0, 0) });
-            line = word;
-            currentY -= lineHeight;
-          } else {
-            line = testLine;
-          }
-        }
-        
-        if (line) {
-          page.drawText(line, { x, y: currentY, size: fontSize, font: textFont, color: rgb(0, 0, 0) });
-          currentY -= lineHeight;
-        }
-      }
-      
-      return currentY;
+    const stripHtml = (html: string | null) => {
+      if (!html) return '';
+      return html.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').trim();
     };
 
-    // Get inspector name
-    const inspectorName = inspectorProfile 
-      ? `${inspectorProfile.first_name || ''} ${inspectorProfile.last_name || ''}`.trim() || 'Inspector'
-      : 'Inspector';
-
-    const pageHeight = firstPage.getHeight();
-    let currentY = pageHeight - 100;
-
-    // Header Section (adjust coordinates based on your template)
-    firstPage.drawText('INSPECTION REPORT', { x: 200, y: currentY, size: 18, font: boldFont, color: rgb(0, 0, 0) });
-    currentY -= 30;
-
-    // Facility Information
-    firstPage.drawText('Facility:', { x: 50, y: currentY, size: 11, font: boldFont, color: rgb(0, 0, 0) });
-    firstPage.drawText(inspection.organization || '', { x: 120, y: currentY, size: 10, font, color: rgb(0, 0, 0) });
-    currentY -= 15;
-
-    firstPage.drawText('Location:', { x: 50, y: currentY, size: 11, font: boldFont, color: rgb(0, 0, 0) });
-    firstPage.drawText(inspection.location || '', { x: 120, y: currentY, size: 10, font, color: rgb(0, 0, 0) });
-    currentY -= 15;
-
-    firstPage.drawText('Date:', { x: 50, y: currentY, size: 11, font: boldFont, color: rgb(0, 0, 0) });
-    firstPage.drawText(formatDate(inspection.inspection_date), { x: 120, y: currentY, size: 10, font, color: rgb(0, 0, 0) });
-    currentY -= 15;
-
-    firstPage.drawText('Inspector:', { x: 50, y: currentY, size: 11, font: boldFont, color: rgb(0, 0, 0) });
-    firstPage.drawText(inspectorName, { x: 120, y: currentY, size: 10, font, color: rgb(0, 0, 0) });
-    currentY -= 15;
-
-    if (inspection.onsite_contact) {
-      firstPage.drawText('Contact:', { x: 50, y: currentY, size: 11, font: boldFont, color: rgb(0, 0, 0) });
-      firstPage.drawText(inspection.onsite_contact, { x: 120, y: currentY, size: 10, font, color: rgb(0, 0, 0) });
-      currentY -= 15;
-    }
-
-    if (inspection.previous_inspection_date || inspection.previous_inspector) {
-      currentY -= 10;
-      firstPage.drawText('Previous Inspection:', { x: 50, y: currentY, size: 11, font: boldFont, color: rgb(0, 0, 0) });
-      currentY -= 15;
-      if (inspection.previous_inspection_date) {
-        firstPage.drawText(`Date: ${formatDate(inspection.previous_inspection_date)}`, { x: 70, y: currentY, size: 9, font, color: rgb(0, 0, 0) });
-        currentY -= 12;
-      }
-      if (inspection.previous_inspector) {
-        firstPage.drawText(`Inspector: ${inspection.previous_inspector}`, { x: 70, y: currentY, size: 9, font, color: rgb(0, 0, 0) });
-        currentY -= 12;
-      }
-    }
-
-    // Course History
-    if (inspection.course_history) {
-      currentY -= 10;
-      firstPage.drawText('Course History:', { x: 50, y: currentY, size: 11, font: boldFont, color: rgb(0, 0, 0) });
-      currentY -= 15;
-      currentY = drawText(firstPage, inspection.course_history, 70, currentY, { maxWidth: 450, fontSize: 9 });
-    }
-
-    // Add new page if needed
-    const addPageIfNeeded = () => {
-      if (currentY < 100) {
-        const newPage = pdfDoc.addPage([595.28, 841.89]); // A4 size
-        currentY = newPage.getHeight() - 50;
-        return newPage;
-      }
-      return firstPage;
+    const escapeHtml = (text: string) => {
+      return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
     };
 
-    let activePage = addPageIfNeeded();
+    const inspectorName = `${inspectorProfile?.first_name || ''} ${inspectorProfile?.last_name || ''}`.trim() || 'Inspector';
 
-    // Operating Systems
-    if (systems && systems.length > 0) {
-      currentY -= 20;
-      activePage = addPageIfNeeded();
-      activePage.drawText('OPERATING SYSTEMS', { x: 50, y: currentY, size: 12, font: boldFont, color: rgb(0, 0, 0) });
-      currentY -= 20;
+    console.log('Generating HTML template...');
 
-      systems.forEach((system, index) => {
-        activePage = addPageIfNeeded();
-        activePage.drawText(`${index + 1}. ${system.system_name || 'Unnamed'}`, { x: 60, y: currentY, size: 10, font: boldFont, color: rgb(0, 0, 0) });
-        currentY -= 14;
-        activePage.drawText(`Result: ${system.result || 'N/A'}`, { x: 70, y: currentY, size: 9, font, color: rgb(0, 0, 0) });
-        currentY -= 12;
-        if (system.comments) {
-          currentY = drawText(activePage, `Comments: ${system.comments}`, 70, currentY, { maxWidth: 450, fontSize: 9 });
-        }
-        currentY -= 10;
-      });
+    const htmlContent = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    @page { margin: 0.75in; size: letter; }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      font-family: Arial, sans-serif; 
+      font-size: 10pt; 
+      line-height: 1.4; 
+      color: #000;
     }
-
-    // Ziplines
-    if (ziplines && ziplines.length > 0) {
-      currentY -= 20;
-      activePage = addPageIfNeeded();
-      activePage.drawText('ZIPLINES', { x: 50, y: currentY, size: 12, font: boldFont, color: rgb(0, 0, 0) });
-      currentY -= 20;
-
-      ziplines.forEach((zipline, index) => {
-        activePage = addPageIfNeeded();
-        activePage.drawText(`${index + 1}. ${zipline.zipline_name || 'Unnamed'}`, { x: 60, y: currentY, size: 10, font: boldFont, color: rgb(0, 0, 0) });
-        currentY -= 14;
-        
-        if (zipline.cable_type) {
-          activePage.drawText(`Cable Type: ${zipline.cable_type}`, { x: 70, y: currentY, size: 9, font, color: rgb(0, 0, 0) });
-          currentY -= 12;
-        }
-        if (zipline.cable_length) {
-          activePage.drawText(`Cable Length: ${zipline.cable_length}ft`, { x: 70, y: currentY, size: 9, font, color: rgb(0, 0, 0) });
-          currentY -= 12;
-        }
-        activePage.drawText(`Result: ${zipline.result || 'N/A'}`, { x: 70, y: currentY, size: 9, font, color: rgb(0, 0, 0) });
-        currentY -= 12;
-        
-        if (zipline.comments) {
-          currentY = drawText(activePage, `Comments: ${zipline.comments}`, 70, currentY, { maxWidth: 450, fontSize: 9 });
-        }
-        currentY -= 10;
-      });
+    .header { 
+      text-align: center; 
+      margin-bottom: 20px; 
+      padding-bottom: 15px;
+      border-bottom: 3px solid #003366;
     }
-
-    // Equipment
-    if (equipment && equipment.length > 0) {
-      currentY -= 20;
-      activePage = addPageIfNeeded();
-      activePage.drawText('EQUIPMENT', { x: 50, y: currentY, size: 12, font: boldFont, color: rgb(0, 0, 0) });
-      currentY -= 20;
-
-      equipment.forEach((item, index) => {
-        activePage = addPageIfNeeded();
-        activePage.drawText(`${index + 1}. ${item.equipment_type || 'Unnamed'}`, { x: 60, y: currentY, size: 10, font: boldFont, color: rgb(0, 0, 0) });
-        currentY -= 14;
-        
-        activePage.drawText(`Category: ${item.equipment_category || 'N/A'}`, { x: 70, y: currentY, size: 9, font, color: rgb(0, 0, 0) });
-        currentY -= 12;
-        
-        if (item.quantity) {
-          activePage.drawText(`Quantity: ${item.quantity}`, { x: 70, y: currentY, size: 9, font, color: rgb(0, 0, 0) });
-          currentY -= 12;
-        }
-        if (item.production_year) {
-          activePage.drawText(`Year: ${item.production_year}`, { x: 70, y: currentY, size: 9, font, color: rgb(0, 0, 0) });
-          currentY -= 12;
-        }
-        
-        activePage.drawText(`Result: ${item.result || 'N/A'}`, { x: 70, y: currentY, size: 9, font, color: rgb(0, 0, 0) });
-        currentY -= 12;
-        
-        if (item.comments) {
-          currentY = drawText(activePage, `Comments: ${item.comments}`, 70, currentY, { maxWidth: 450, fontSize: 9 });
-        }
-        currentY -= 10;
-      });
+    .header h1 { 
+      font-size: 18pt; 
+      color: #003366; 
+      margin-bottom: 8px;
+      font-weight: bold;
     }
-
-    // Standards
-    if (standards && standards.length > 0) {
-      currentY -= 20;
-      activePage = addPageIfNeeded();
-      activePage.drawText('STANDARDS', { x: 50, y: currentY, size: 12, font: boldFont, color: rgb(0, 0, 0) });
-      currentY -= 20;
-
-      standards.forEach((standard, index) => {
-        activePage = addPageIfNeeded();
-        activePage.drawText(`${index + 1}. ${standard.standard_name || 'Unnamed'}`, { x: 60, y: currentY, size: 10, font: boldFont, color: rgb(0, 0, 0) });
-        currentY -= 14;
-        
-        activePage.drawText(`Documentation: ${standard.has_documentation ? 'Yes' : 'No'}`, { x: 70, y: currentY, size: 9, font, color: rgb(0, 0, 0) });
-        currentY -= 12;
-        
-        if (standard.comments) {
-          currentY = drawText(activePage, `Comments: ${standard.comments}`, 70, currentY, { maxWidth: 450, fontSize: 9 });
-        }
-        currentY -= 10;
-      });
+    .header .subtitle { 
+      font-size: 12pt; 
+      color: #666; 
+      margin-bottom: 12px;
     }
-
-    // Summary
-    if (summary) {
-      currentY -= 20;
-      activePage = addPageIfNeeded();
-      activePage.drawText('INSPECTION SUMMARY', { x: 50, y: currentY, size: 12, font: boldFont, color: rgb(0, 0, 0) });
-      currentY -= 20;
-
-      if (summary.repairs_performed) {
-        activePage.drawText('Repairs Performed:', { x: 60, y: currentY, size: 10, font: boldFont, color: rgb(0, 0, 0) });
-        currentY -= 14;
-        currentY = drawText(activePage, summary.repairs_performed, 70, currentY, { maxWidth: 450, fontSize: 9 });
-        currentY -= 10;
-      }
-
-      if (summary.critical_actions) {
-        activePage = addPageIfNeeded();
-        activePage.drawText('Critical Actions:', { x: 60, y: currentY, size: 10, font: boldFont, color: rgb(0, 0, 0) });
-        currentY -= 14;
-        currentY = drawText(activePage, summary.critical_actions, 70, currentY, { maxWidth: 450, fontSize: 9 });
-        currentY -= 10;
-      }
-
-      if (summary.future_considerations) {
-        activePage = addPageIfNeeded();
-        activePage.drawText('Future Considerations:', { x: 60, y: currentY, size: 10, font: boldFont, color: rgb(0, 0, 0) });
-        currentY -= 14;
-        currentY = drawText(activePage, summary.future_considerations, 70, currentY, { maxWidth: 450, fontSize: 9 });
-        currentY -= 10;
-      }
-
-      if (summary.next_inspection_date) {
-        activePage = addPageIfNeeded();
-        activePage.drawText('Next Inspection Date:', { x: 60, y: currentY, size: 10, font: boldFont, color: rgb(0, 0, 0) });
-        activePage.drawText(formatDate(summary.next_inspection_date), { x: 200, y: currentY, size: 10, font, color: rgb(0, 0, 0) });
-        currentY -= 14;
-      }
+    .logos {
+      display: flex;
+      justify-content: center;
+      gap: 30px;
+      margin: 15px 0;
+      font-weight: bold;
+      color: #003366;
     }
+    .section { 
+      margin-bottom: 25px; 
+      page-break-inside: avoid;
+    }
+    .section-title { 
+      font-size: 14pt; 
+      font-weight: bold; 
+      color: #003366; 
+      margin-bottom: 10px;
+      padding-bottom: 5px;
+      border-bottom: 2px solid #003366;
+    }
+    .info-grid { 
+      display: grid; 
+      grid-template-columns: 150px 1fr; 
+      gap: 8px 15px; 
+      margin-bottom: 15px;
+    }
+    .info-label { 
+      font-weight: bold; 
+      color: #333;
+    }
+    .info-value { 
+      color: #000;
+    }
+    table { 
+      width: 100%; 
+      border-collapse: collapse; 
+      margin: 10px 0;
+      page-break-inside: auto;
+    }
+    th { 
+      background-color: #003366; 
+      color: white; 
+      padding: 8px; 
+      text-align: left; 
+      font-weight: bold;
+      font-size: 10pt;
+    }
+    td { 
+      padding: 8px; 
+      border: 1px solid #ddd;
+      vertical-align: top;
+    }
+    tr { 
+      page-break-inside: avoid;
+    }
+    tr:nth-child(even) { 
+      background-color: #f9f9f9; 
+    }
+    .pass { color: #2d5016; font-weight: bold; }
+    .fail { color: #8b0000; font-weight: bold; }
+    .attention { color: #cc6600; font-weight: bold; }
+    .comment { 
+      font-style: italic; 
+      color: #555; 
+      font-size: 9pt;
+      margin-top: 4px;
+    }
+    .footer { 
+      margin-top: 30px; 
+      padding-top: 15px; 
+      border-top: 2px solid #003366; 
+      text-align: center;
+      font-size: 9pt;
+      color: #666;
+    }
+    .disclaimer {
+      background-color: #fff3cd;
+      border: 1px solid #ffc107;
+      padding: 12px;
+      margin: 15px 0;
+      font-size: 9pt;
+      page-break-inside: avoid;
+    }
+    .page-break { page-break-after: always; }
+    .category-heading {
+      font-size: 12pt;
+      font-weight: bold;
+      color: #003366;
+      margin: 20px 0 10px;
+      padding-top: 15px;
+      border-top: 1px solid #ccc;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>Challenge Course Inspection Report</h1>
+    <div class="subtitle">Association for Challenge Course Technology (ACCT) Standards</div>
+    <div class="logos">
+      <div>ACCT Accredited Vendor</div>
+      <div>•</div>
+      <div>Rope Works LLC</div>
+    </div>
+  </div>
 
-    const pdfBytes = await pdfDoc.save();
+  <div class="section">
+    <div class="section-title">Facility Information</div>
+    <div class="info-grid">
+      <div class="info-label">Facility Name:</div>
+      <div class="info-value">${escapeHtml(inspection.organization || 'N/A')}</div>
+      <div class="info-label">Location:</div>
+      <div class="info-value">${escapeHtml(inspection.location || 'N/A')}</div>
+      <div class="info-label">Onsite Contact:</div>
+      <div class="info-value">${escapeHtml(inspection.onsite_contact || 'N/A')}</div>
+      <div class="info-label">Inspection Date:</div>
+      <div class="info-value">${formatDate(inspection.inspection_date)}</div>
+      <div class="info-label">Inspector:</div>
+      <div class="info-value">${escapeHtml(inspectorName)}</div>
+      <div class="info-label">Previous Inspection:</div>
+      <div class="info-value">${formatDate(inspection.previous_inspection_date)} by ${escapeHtml(inspection.previous_inspector || 'N/A')}</div>
+    </div>
+  </div>
 
+  ${inspection.course_history ? `
+  <div class="section">
+    <div class="section-title">Course History</div>
+    <div>${escapeHtml(stripHtml(inspection.course_history))}</div>
+  </div>
+  ` : ''}
+
+  <div class="page-break"></div>
+
+  ${systems && systems.length > 0 ? `
+  <div class="section">
+    <div class="section-title">Operating Systems</div>
+    <table>
+      <thead>
+        <tr>
+          <th style="width: 30%;">System Name</th>
+          <th style="width: 20%;">Result</th>
+          <th style="width: 50%;">Comments</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${systems.map(sys => `
+        <tr>
+          <td>${escapeHtml(sys.system_name || sys.name || 'N/A')}</td>
+          <td class="${sys.result === 'Pass' ? 'pass' : sys.result === 'Fail' ? 'fail' : 'attention'}">
+            ${escapeHtml(sys.result || 'N/A')}
+          </td>
+          <td>${escapeHtml(stripHtml(sys.comments) || '-')}</td>
+        </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  </div>
+  ` : ''}
+
+  ${ziplines && ziplines.length > 0 ? `
+  <div class="section">
+    <div class="section-title">Ziplines</div>
+    <table>
+      <thead>
+        <tr>
+          <th>Zipline Name</th>
+          <th>Cable Type</th>
+          <th>Length (ft)</th>
+          <th>Braking System</th>
+          <th>EAD System</th>
+          <th>Result</th>
+          <th>Comments</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${ziplines.map(zip => `
+        <tr>
+          <td>${escapeHtml(zip.zipline_name || 'N/A')}</td>
+          <td>${escapeHtml(zip.cable_type || 'N/A')}</td>
+          <td>${zip.cable_length || 'N/A'}</td>
+          <td>${escapeHtml(zip.braking_system || 'N/A')}</td>
+          <td>${escapeHtml(zip.ead_system || 'N/A')}</td>
+          <td class="${zip.result === 'Pass' ? 'pass' : zip.result === 'Fail' ? 'fail' : 'attention'}">
+            ${escapeHtml(zip.result || 'N/A')}
+          </td>
+          <td>${escapeHtml(stripHtml(zip.comments) || '-')}</td>
+        </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  </div>
+  ` : ''}
+
+  ${equipment && equipment.length > 0 ? `
+  <div class="page-break"></div>
+  <div class="section">
+    <div class="section-title">Equipment</div>
+    ${['PPE', 'Hardware', 'Software', 'Belay Devices'].map(category => {
+      const items = equipment.filter(e => e.equipment_category === category);
+      if (items.length === 0) return '';
+      return `
+      <div class="category-heading">${category}</div>
+      <table>
+        <thead>
+          <tr>
+            <th>Type</th>
+            <th>Quantity</th>
+            <th>Year</th>
+            <th>Result</th>
+            <th>Comments</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${items.map(eq => `
+          <tr>
+            <td>${escapeHtml(eq.equipment_type || 'N/A')}</td>
+            <td>${eq.quantity || 'N/A'}</td>
+            <td>${eq.production_year || 'N/A'}</td>
+            <td class="${eq.result === 'Pass' ? 'pass' : eq.result === 'Fail' ? 'fail' : 'attention'}">
+              ${escapeHtml(eq.result || 'N/A')}
+            </td>
+            <td>${escapeHtml(stripHtml(eq.comments) || '-')}</td>
+          </tr>
+          `).join('')}
+        </tbody>
+      </table>
+      `;
+    }).join('')}
+  </div>
+  ` : ''}
+
+  ${standards && standards.length > 0 ? `
+  <div class="page-break"></div>
+  <div class="section">
+    <div class="section-title">Standards Compliance</div>
+    <table>
+      <thead>
+        <tr>
+          <th style="width: 50%;">Standard</th>
+          <th style="width: 20%;">Documentation</th>
+          <th style="width: 30%;">Comments</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${standards.map(std => `
+        <tr>
+          <td>${escapeHtml(std.standard_name || 'N/A')}</td>
+          <td>${std.has_documentation ? '✓ Yes' : '✗ No'}</td>
+          <td>${escapeHtml(stripHtml(std.comments) || '-')}</td>
+        </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  </div>
+  ` : ''}
+
+  ${summary ? `
+  <div class="page-break"></div>
+  <div class="section">
+    <div class="section-title">Summary</div>
+    
+    ${summary.critical_actions ? `
+    <div style="margin-bottom: 15px;">
+      <strong style="color: #8b0000;">Critical Actions Required:</strong>
+      <div style="margin-top: 5px;">${escapeHtml(stripHtml(summary.critical_actions))}</div>
+    </div>
+    ` : ''}
+    
+    ${summary.repairs_performed ? `
+    <div style="margin-bottom: 15px;">
+      <strong>Repairs Performed:</strong>
+      <div style="margin-top: 5px;">${escapeHtml(stripHtml(summary.repairs_performed))}</div>
+    </div>
+    ` : ''}
+    
+    ${summary.future_considerations ? `
+    <div style="margin-bottom: 15px;">
+      <strong>Future Considerations:</strong>
+      <div style="margin-top: 5px;">${escapeHtml(stripHtml(summary.future_considerations))}</div>
+    </div>
+    ` : ''}
+    
+    ${summary.next_inspection_date ? `
+    <div class="info-grid" style="margin-top: 20px;">
+      <div class="info-label">Next Inspection Due:</div>
+      <div class="info-value">${formatDate(summary.next_inspection_date)}</div>
+    </div>
+    ` : ''}
+  </div>
+  ` : ''}
+
+  <div class="disclaimer">
+    <strong>DISCLAIMER:</strong> This inspection report is based on visual observation and testing of the equipment and facilities at the time of inspection. The inspector makes no warranty, expressed or implied, that all defects have been discovered or that no defects exist other than those noted. This report does not constitute approval or acceptance of the facilities for any particular use.
+  </div>
+
+  <div class="footer">
+    <div><strong>Rope Works LLC</strong></div>
+    <div>ACCT Accredited Vendor</div>
+    <div style="margin-top: 8px;">Report Generated: ${formatDate(new Date().toISOString())}</div>
+  </div>
+</body>
+</html>
+    `.trim();
+
+    console.log('Launching headless browser...');
+    const browser = await puppeteer.launch({
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+    });
+
+    const page = await browser.newPage();
+    await page.setContent(htmlContent, { waitUntil: 'networkidle0' });
+
+    console.log('Converting HTML to PDF...');
+    const pdfBytes = await page.pdf({
+      format: 'Letter',
+      printBackground: true,
+      margin: {
+        top: '0.75in',
+        right: '0.75in',
+        bottom: '0.75in',
+        left: '0.75in',
+      },
+    });
+
+    await browser.close();
     console.log('PDF generated, uploading to storage...');
 
     // Upload to storage
-    const fileName = `inspection-${inspectionId}-${Date.now()}.pdf`;
+    const fileName = `inspection-${inspection.organization?.replace(/[^a-z0-9]/gi, '_')}-${Date.now()}.pdf`;
     const { error: uploadError } = await supabase.storage
       .from('inspection-reports')
       .upload(fileName, pdfBytes, {
@@ -371,32 +452,27 @@ serve(async (req) => {
 
     if (uploadError) throw uploadError;
 
-    // Create signed URL for secure access (expires in 1 hour)
+    // Create signed URL
     const { data: signedUrlData, error: signedUrlError } = await supabase.storage
       .from('inspection-reports')
       .createSignedUrl(fileName, 3600);
 
     if (signedUrlError) throw signedUrlError;
-    const signedUrl = signedUrlData.signedUrl;
 
     // Save to database
-    const { data: reportData, error: reportError } = await supabase
+    await supabase
       .from('inspection_reports')
       .insert({
         inspection_id: inspectionId,
         pdf_url: fileName,
         generated_by: user.id,
         file_size_bytes: pdfBytes.length
-      })
-      .select()
-      .single();
-
-    if (reportError) throw reportError;
+      });
 
     console.log('Report saved successfully');
 
     return new Response(
-      JSON.stringify({ pdfUrl: signedUrl }),
+      JSON.stringify({ pdfUrl: signedUrlData.signedUrl }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 200 
@@ -415,4 +491,3 @@ serve(async (req) => {
     );
   }
 });
-
