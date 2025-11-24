@@ -109,10 +109,13 @@ serve(async (req) => {
 
     if (uploadError) throw uploadError;
 
-    // Get public URL
-    const { data: { publicUrl } } = supabase.storage
+    // Create signed URL for secure access (expires in 1 hour)
+    const { data: signedUrlData, error: signedUrlError } = await supabase.storage
       .from('inspection-reports')
-      .getPublicUrl(fileName);
+      .createSignedUrl(fileName, 3600);
+
+    if (signedUrlError) throw signedUrlError;
+    const signedUrl = signedUrlData.signedUrl;
 
     // Save to database
     const { data: reportData, error: reportError } = await supabase
@@ -131,7 +134,7 @@ serve(async (req) => {
     console.log('Report saved successfully');
 
     return new Response(
-      JSON.stringify({ pdfUrl: publicUrl }),
+      JSON.stringify({ pdfUrl: signedUrl }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 200 
