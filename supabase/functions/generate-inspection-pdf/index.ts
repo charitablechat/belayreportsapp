@@ -98,31 +98,46 @@ serve(async (req) => {
       return date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
     };
 
-    // Helper to draw text with wrapping
+    // Helper to draw text with wrapping and newline handling
     const drawText = (page: PDFPage, text: string, x: number, y: number, options: any = {}) => {
       if (!text) return y;
       const { maxWidth = 500, fontSize = 10, font: textFont = font, lineHeight = 12 } = options;
       
-      const words = text.split(' ');
-      let line = '';
+      // Clean text - remove null bytes and other problematic characters
+      const cleanedText = text.replace(/\0/g, '').replace(/\r/g, '');
+      
+      // Split by newlines first to preserve intentional line breaks
+      const paragraphs = cleanedText.split('\n');
       let currentY = y;
       
-      for (const word of words) {
-        const testLine = line + (line ? ' ' : '') + word;
-        const width = textFont.widthOfTextAtSize(testLine, fontSize);
-        
-        if (width > maxWidth && line) {
-          page.drawText(line, { x, y: currentY, size: fontSize, font: textFont, color: rgb(0, 0, 0) });
-          line = word;
+      for (const paragraph of paragraphs) {
+        if (!paragraph.trim()) {
+          // Empty line - just add spacing
           currentY -= lineHeight;
-        } else {
-          line = testLine;
+          continue;
         }
-      }
-      
-      if (line) {
-        page.drawText(line, { x, y: currentY, size: fontSize, font: textFont, color: rgb(0, 0, 0) });
-        currentY -= lineHeight;
+        
+        // Word wrap each paragraph
+        const words = paragraph.split(' ');
+        let line = '';
+        
+        for (const word of words) {
+          const testLine = line + (line ? ' ' : '') + word;
+          const width = textFont.widthOfTextAtSize(testLine, fontSize);
+          
+          if (width > maxWidth && line) {
+            page.drawText(line, { x, y: currentY, size: fontSize, font: textFont, color: rgb(0, 0, 0) });
+            line = word;
+            currentY -= lineHeight;
+          } else {
+            line = testLine;
+          }
+        }
+        
+        if (line) {
+          page.drawText(line, { x, y: currentY, size: fontSize, font: textFont, color: rgb(0, 0, 0) });
+          currentY -= lineHeight;
+        }
       }
       
       return currentY;
