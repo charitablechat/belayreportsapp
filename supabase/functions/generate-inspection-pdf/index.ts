@@ -72,7 +72,9 @@ serve(async (req) => {
     });
 
     const page = await browser.newPage();
-    await page.setContent(generateHTML(inspection, systems || [], ziplines || [], equipment || [], standards || [], summary, inspectorProfile), {
+    const htmlContent = await generateHTML(inspection, systems || [], ziplines || [], equipment || [], standards || [], summary, inspectorProfile);
+    
+    await page.setContent(htmlContent, {
       waitUntil: 'networkidle0'
     });
 
@@ -148,7 +150,12 @@ serve(async (req) => {
   }
 });
 
-function generateHTML(
+// Logo base64 strings - these are embedded ACCT and Rope Works logos
+// To update: convert your logo images to base64 and replace these strings
+const ACCT_LOGO_BASE64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
+const ROPE_WORKS_LOGO_BASE64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
+
+async function generateHTML(
   inspection: any,
   systems: any[],
   ziplines: any[],
@@ -156,7 +163,7 @@ function generateHTML(
   standards: any[],
   summary: any,
   inspectorProfile: any
-): string {
+): Promise<string> {
   const inspectorName = inspectorProfile 
     ? `${inspectorProfile.first_name || ''} ${inspectorProfile.last_name || ''}`.trim() || 'Inspector'
     : 'Inspector';
@@ -169,13 +176,13 @@ function generateHTML(
       <style>${getStyles()}</style>
     </head>
     <body>
-      ${generateCoverPage(inspection, inspectorName)}
-      ${generateDefinitionsPage()}
-      ${generateSystemsPage(systems)}
-      ${ziplines.length > 0 ? generateZiplinesPage(ziplines) : ''}
-      ${equipment.length > 0 ? generateEquipmentPage(equipment) : ''}
-      ${generateStandardsPage(standards)}
-      ${generateSummaryPage(summary, inspection)}
+      ${generateCoverPage(inspection, inspectorName, ACCT_LOGO_BASE64, ROPE_WORKS_LOGO_BASE64)}
+      ${generateDefinitionsPage(ACCT_LOGO_BASE64, ROPE_WORKS_LOGO_BASE64)}
+      ${generateSystemsPage(systems, ACCT_LOGO_BASE64, ROPE_WORKS_LOGO_BASE64)}
+      ${ziplines.length > 0 ? generateZiplinesPage(ziplines, ACCT_LOGO_BASE64, ROPE_WORKS_LOGO_BASE64) : ''}
+      ${equipment.length > 0 ? generateEquipmentPage(equipment, ACCT_LOGO_BASE64, ROPE_WORKS_LOGO_BASE64) : ''}
+      ${generateStandardsPage(standards, ACCT_LOGO_BASE64, ROPE_WORKS_LOGO_BASE64)}
+      ${generateSummaryPage(summary, inspection, ACCT_LOGO_BASE64, ROPE_WORKS_LOGO_BASE64)}
     </body>
     </html>
   `;
@@ -392,18 +399,18 @@ function getStyles(): string {
   `;
 }
 
-function generateCoverPage(inspection: any, inspectorName: string): string {
+function generateCoverPage(inspection: any, inspectorName: string, acctLogo: string, ropeWorksLogo: string): string {
   return `
     <div class="page">
       <div class="header">
         <div class="header-left">
-          <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=" alt="ACCT">
+          <img src="data:image/png;base64,${acctLogo}" alt="ACCT">
         </div>
         <div class="header-center">
           <h1>ROPES/CHALLENGE COURSE</h1>
         </div>
         <div class="header-right">
-          <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=" alt="Rope Works">
+          <img src="data:image/png;base64,${ropeWorksLogo}" alt="Rope Works">
         </div>
       </div>
 
@@ -475,18 +482,18 @@ function generateCoverPage(inspection: any, inspectorName: string): string {
   `;
 }
 
-function generateDefinitionsPage(): string {
+function generateDefinitionsPage(acctLogo: string, ropeWorksLogo: string): string {
   return `
     <div class="page page-break">
       <div class="header">
         <div class="header-left">
-          <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=" alt="ACCT">
+          <img src="data:image/png;base64,${acctLogo}" alt="ACCT">
         </div>
         <div class="header-center">
           <h1>ROPES/CHALLENGE COURSE</h1>
         </div>
         <div class="header-right">
-          <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=" alt="Rope Works">
+          <img src="data:image/png;base64,${ropeWorksLogo}" alt="Rope Works">
         </div>
       </div>
 
@@ -541,19 +548,19 @@ function generateDefinitionsPage(): string {
   `;
 }
 
-function generateSystemsPage(systems: any[]): string {
+function generateSystemsPage(systems: any[], acctLogo: string, ropeWorksLogo: string): string {
   if (!systems || systems.length === 0) {
     return `
       <div class="page page-break">
         <div class="header">
           <div class="header-left">
-            <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=" alt="ACCT">
+            <img src="data:image/png;base64,${acctLogo}" alt="ACCT">
           </div>
           <div class="header-center">
             <h1>ROPES/CHALLENGE COURSE</h1>
           </div>
           <div class="header-right">
-            <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=" alt="Rope Works">
+            <img src="data:image/png;base64,${ropeWorksLogo}" alt="Rope Works">
           </div>
         </div>
         <h2>Operating Systems</h2>
@@ -574,13 +581,13 @@ function generateSystemsPage(systems: any[]): string {
     <div class="page page-break">
       <div class="header">
         <div class="header-left">
-          <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=" alt="ACCT">
+          <img src="data:image/png;base64,${acctLogo}" alt="ACCT">
         </div>
         <div class="header-center">
           <h1>ROPES/CHALLENGE COURSE</h1>
         </div>
         <div class="header-right">
-          <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=" alt="Rope Works">
+          <img src="data:image/png;base64,${ropeWorksLogo}" alt="Rope Works">
         </div>
       </div>
 
@@ -602,7 +609,7 @@ function generateSystemsPage(systems: any[]): string {
   `;
 }
 
-function generateZiplinesPage(ziplines: any[]): string {
+function generateZiplinesPage(ziplines: any[], acctLogo: string, ropeWorksLogo: string): string {
   const rows = ziplines.map(zip => `
     <tr>
       <td>${sanitize(zip.zipline_name)}</td>
@@ -624,13 +631,13 @@ function generateZiplinesPage(ziplines: any[]): string {
     <div class="page page-break">
       <div class="header">
         <div class="header-left">
-          <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=" alt="ACCT">
+          <img src="data:image/png;base64,${acctLogo}" alt="ACCT">
         </div>
         <div class="header-center">
           <h1>ROPES/CHALLENGE COURSE</h1>
         </div>
         <div class="header-right">
-          <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=" alt="Rope Works">
+          <img src="data:image/png;base64,${ropeWorksLogo}" alt="Rope Works">
         </div>
       </div>
 
@@ -661,7 +668,7 @@ function generateZiplinesPage(ziplines: any[]): string {
   `;
 }
 
-function generateEquipmentPage(equipment: any[]): string {
+function generateEquipmentPage(equipment: any[], acctLogo: string, ropeWorksLogo: string): string {
   const categories = [...new Set(equipment.map(e => e.equipment_category))];
   
   const sections = categories.map(category => {
@@ -701,13 +708,13 @@ function generateEquipmentPage(equipment: any[]): string {
     <div class="page page-break">
       <div class="header">
         <div class="header-left">
-          <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=" alt="ACCT">
+          <img src="data:image/png;base64,${acctLogo}" alt="ACCT">
         </div>
         <div class="header-center">
           <h1>ROPES/CHALLENGE COURSE</h1>
         </div>
         <div class="header-right">
-          <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=" alt="Rope Works">
+          <img src="data:image/png;base64,${ropeWorksLogo}" alt="Rope Works">
         </div>
       </div>
 
@@ -717,19 +724,19 @@ function generateEquipmentPage(equipment: any[]): string {
   `;
 }
 
-function generateStandardsPage(standards: any[]): string {
+function generateStandardsPage(standards: any[], acctLogo: string, ropeWorksLogo: string): string {
   if (!standards || standards.length === 0) {
     return `
       <div class="page page-break">
         <div class="header">
           <div class="header-left">
-            <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=" alt="ACCT">
+            <img src="data:image/png;base64,${acctLogo}" alt="ACCT">
           </div>
           <div class="header-center">
             <h1>ROPES/CHALLENGE COURSE</h1>
           </div>
           <div class="header-right">
-            <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=" alt="Rope Works">
+            <img src="data:image/png;base64,${ropeWorksLogo}" alt="Rope Works">
           </div>
         </div>
         <h2>ACCT Standards</h2>
@@ -750,13 +757,13 @@ function generateStandardsPage(standards: any[]): string {
     <div class="page page-break">
       <div class="header">
         <div class="header-left">
-          <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=" alt="ACCT">
+          <img src="data:image/png;base64,${acctLogo}" alt="ACCT">
         </div>
         <div class="header-center">
           <h1>ROPES/CHALLENGE COURSE</h1>
         </div>
         <div class="header-right">
-          <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=" alt="Rope Works">
+          <img src="data:image/png;base64,${ropeWorksLogo}" alt="Rope Works">
         </div>
       </div>
 
@@ -778,18 +785,18 @@ function generateStandardsPage(standards: any[]): string {
   `;
 }
 
-function generateSummaryPage(summary: any, inspection: any): string {
+function generateSummaryPage(summary: any, inspection: any, acctLogo: string, ropeWorksLogo: string): string {
   return `
     <div class="page page-break">
       <div class="header">
         <div class="header-left">
-          <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=" alt="ACCT">
+          <img src="data:image/png;base64,${acctLogo}" alt="ACCT">
         </div>
         <div class="header-center">
           <h1>ROPES/CHALLENGE COURSE</h1>
         </div>
         <div class="header-right">
-          <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=" alt="Rope Works">
+          <img src="data:image/png;base64,${ropeWorksLogo}" alt="Rope Works">
         </div>
       </div>
 
@@ -803,7 +810,7 @@ function generateSummaryPage(summary: any, inspection: any): string {
       <div class="section-heading">Critical Actions</div>
       <div style="border: 1px solid #999; padding: 8px; margin-bottom: 15px; min-height: 60px; font-size: 9pt;">
         ${sanitize(summary?.critical_actions || '')}
-      </div>
+      </</div>
 
       <div class="section-heading">Future Considerations</div>
       <div style="border: 1px solid #999; padding: 8px; margin-bottom: 15px; min-height: 60px; font-size: 9pt;">
