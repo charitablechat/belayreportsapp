@@ -26,8 +26,7 @@ import StandardsTable from "@/components/inspection/StandardsTable";
 import SummarySection from "@/components/inspection/SummarySection";
 import PhotoCapture from "@/components/PhotoCapture";
 import PhotoGallery from "@/components/PhotoGallery";
-import PdfPreviewDialog from "@/components/inspection/PdfPreviewDialog";
-import { 
+import {
   saveInspectionOffline, 
   getOfflineInspection, 
   queueOperation,
@@ -56,9 +55,6 @@ export default function InspectionForm() {
   const [saveDebounceTimer, setSaveDebounceTimer] = useState<NodeJS.Timeout | null>(null);
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [userProfile, setUserProfile] = useState<any>(null);
-  const [pdfPreviewOpen, setPdfPreviewOpen] = useState(false);
-  const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string>("");
-  const [pdfFileName, setPdfFileName] = useState<string>("");
   const [inspection, setInspection] = useState<any>(null);
   const [systems, setSystems] = useState<any[]>([]);
   const [ziplines, setZiplines] = useState<any[]>([]);
@@ -1147,13 +1143,23 @@ export default function InspectionForm() {
         throw new Error('FORMAT_ERROR: Invalid response format from PDF service. Expected pdfData or pdfUrl.');
       }
 
-      // Show preview dialog
-      setPdfPreviewUrl(blobUrl);
-      setPdfFileName(fileName);
-      setPdfPreviewOpen(true);
+      // Trigger download directly
+      const downloadLink = document.createElement('a');
+      downloadLink.href = blobUrl;
+      downloadLink.download = fileName;
+      downloadLink.style.display = 'none';
+      document.body.appendChild(downloadLink);
+      downloadLink.click();
+      document.body.removeChild(downloadLink);
       
-      toast.success('PDF generated successfully!', {
-        description: 'Preview the PDF below and download when ready.',
+      // Clean up blob URL after download
+      setTimeout(() => {
+        URL.revokeObjectURL(blobUrl);
+        console.log('[PDF Generation] Blob URL cleaned up');
+      }, 1000);
+      
+      toast.success('PDF downloaded successfully!', {
+        description: 'Your inspection report has been saved.',
         duration: 5000,
       });
       
@@ -1252,35 +1258,6 @@ export default function InspectionForm() {
       console.log('[PDF Generation] State updated: generatingPdf = false');
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     }
-  };
-
-  const handleDownloadPdf = () => {
-    if (!pdfPreviewUrl || !pdfFileName) return;
-    
-    const downloadLink = document.createElement('a');
-    downloadLink.href = pdfPreviewUrl;
-    downloadLink.download = pdfFileName;
-    downloadLink.style.display = 'none';
-    document.body.appendChild(downloadLink);
-    downloadLink.click();
-    document.body.removeChild(downloadLink);
-    
-    toast.success('PDF downloaded successfully!');
-    console.log('[PDF Download] Downloaded:', pdfFileName);
-  };
-
-  const handleClosePdfPreview = () => {
-    setPdfPreviewOpen(false);
-    
-    // Clean up blob URL after a delay
-    setTimeout(() => {
-      if (pdfPreviewUrl) {
-        URL.revokeObjectURL(pdfPreviewUrl);
-        setPdfPreviewUrl("");
-        setPdfFileName("");
-        console.log('[PDF Preview] Blob URL cleaned up');
-      }
-    }, 1000);
   };
 
   if (loading) {
@@ -1588,14 +1565,6 @@ export default function InspectionForm() {
           </TabsContent>
         </Tabs>
       </main>
-
-      <PdfPreviewDialog
-        open={pdfPreviewOpen}
-        onOpenChange={handleClosePdfPreview}
-        pdfUrl={pdfPreviewUrl}
-        fileName={pdfFileName}
-        onDownload={handleDownloadPdf}
-      />
     </div>
   );
 }
