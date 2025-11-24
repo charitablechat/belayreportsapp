@@ -26,6 +26,7 @@ import StandardsTable from "@/components/inspection/StandardsTable";
 import SummarySection from "@/components/inspection/SummarySection";
 import PhotoCapture from "@/components/PhotoCapture";
 import PhotoGallery from "@/components/PhotoGallery";
+import PdfPreviewDialog from "@/components/inspection/PdfPreviewDialog";
 import { 
   saveInspectionOffline, 
   getOfflineInspection, 
@@ -55,6 +56,9 @@ export default function InspectionForm() {
   const [saveDebounceTimer, setSaveDebounceTimer] = useState<NodeJS.Timeout | null>(null);
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [userProfile, setUserProfile] = useState<any>(null);
+  const [pdfPreviewOpen, setPdfPreviewOpen] = useState(false);
+  const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string>("");
+  const [pdfFileName, setPdfFileName] = useState<string>("");
   const [inspection, setInspection] = useState<any>(null);
   const [systems, setSystems] = useState<any[]>([]);
   const [ziplines, setZiplines] = useState<any[]>([]);
@@ -1064,19 +1068,17 @@ export default function InspectionForm() {
         throw new Error('RESPONSE_ERROR: No response data received from PDF generation service');
       }
 
-      // Determine which format was returned
+      // Determine which format was returned and create blob URL for preview
+      let blobUrl = '';
+      let fileName = '';
+      
       if (data.pdfData) {
         console.log('[PDF Generation] Processing pdfData format (base64)');
         console.log('[PDF Generation] Base64 string length:', data.pdfData.length);
         console.log('[PDF Generation] Estimated PDF size:', Math.round(data.pdfData.length * 0.75 / 1024) + ' KB');
         console.log('[PDF Generation] Filename:', data.fileName);
         
-        // File size validation (warn if > 10MB)
-        const estimatedSize = data.pdfData.length * 0.75;
-        if (estimatedSize > 10 * 1024 * 1024) {
-          console.warn('[PDF Generation] Large file detected:', Math.round(estimatedSize / 1024 / 1024) + ' MB');
-          toast.loading('Downloading large PDF file...', { duration: 60000 });
-        }
+        fileName = data.fileName || `inspection-${inspection.organization}-${Date.now()}.pdf`;
         
         try {
           console.log('[PDF Generation] Decoding base64 to binary...');
@@ -1091,31 +1093,8 @@ export default function InspectionForm() {
           const blob = new Blob([byteArray], { type: 'application/pdf' });
           console.log('[PDF Generation] Blob created:', blob.size, 'bytes,', blob.type);
           
-          const blobUrl = URL.createObjectURL(blob);
-          console.log('[PDF Generation] Blob URL created:', blobUrl);
-          
-          // Trigger download
-          const downloadLink = document.createElement('a');
-          downloadLink.href = blobUrl;
-          downloadLink.download = data.fileName || `inspection-${inspection.organization}-${Date.now()}.pdf`;
-          downloadLink.style.display = 'none';
-          document.body.appendChild(downloadLink);
-          console.log('[PDF Generation] Triggering download:', downloadLink.download);
-          downloadLink.click();
-          document.body.removeChild(downloadLink);
-          
-          toast.success('PDF downloaded successfully!', {
-            description: `File: ${downloadLink.download} (${Math.round(blob.size / 1024)} KB)`,
-            duration: 5000,
-          });
-          
-          console.log('[PDF Generation] ✅ SUCCESS - PDF downloaded');
-          
-          // Clean up blob URL after download
-          setTimeout(() => {
-            URL.revokeObjectURL(blobUrl);
-            console.log('[PDF Generation] Blob URL cleaned up');
-          }, 5000);
+          blobUrl = URL.createObjectURL(blob);
+          console.log('[PDF Generation] Blob URL created for preview:', blobUrl);
           
         } catch (decodeError: any) {
           console.error('[PDF Generation] Base64 decode error:', decodeError);
@@ -1125,6 +1104,8 @@ export default function InspectionForm() {
       } else if (data.pdfUrl) {
         console.log('[PDF Generation] Processing pdfUrl format (storage URL)');
         console.log('[PDF Generation] PDF URL:', data.pdfUrl);
+        
+        fileName = `inspection-${inspection.organization}-${Date.now()}.pdf`;
         
         try {
           console.log('[PDF Generation] Fetching PDF from storage...');
@@ -1148,29 +1129,8 @@ export default function InspectionForm() {
             throw new Error('EMPTY_FILE: Downloaded PDF file is empty');
           }
           
-          const blobUrl = URL.createObjectURL(blob);
-          console.log('[PDF Generation] Blob URL created:', blobUrl);
-          
-          const downloadLink = document.createElement('a');
-          downloadLink.href = blobUrl;
-          downloadLink.download = `inspection-${inspection.organization}-${Date.now()}.pdf`;
-          downloadLink.style.display = 'none';
-          document.body.appendChild(downloadLink);
-          console.log('[PDF Generation] Triggering download:', downloadLink.download);
-          downloadLink.click();
-          document.body.removeChild(downloadLink);
-          
-          toast.success('PDF downloaded successfully!', {
-            description: `File: ${downloadLink.download} (${Math.round(blob.size / 1024)} KB)`,
-            duration: 5000,
-          });
-          
-          console.log('[PDF Generation] ✅ SUCCESS - PDF downloaded');
-          
-          setTimeout(() => {
-            URL.revokeObjectURL(blobUrl);
-            console.log('[PDF Generation] Blob URL cleaned up');
-          }, 5000);
+          blobUrl = URL.createObjectURL(blob);
+          console.log('[PDF Generation] Blob URL created for preview:', blobUrl);
           
         } catch (fetchError: any) {
           console.error('[PDF Generation] Storage fetch error:', fetchError);
@@ -1187,6 +1147,18 @@ export default function InspectionForm() {
         throw new Error('FORMAT_ERROR: Invalid response format from PDF service. Expected pdfData or pdfUrl.');
       }
 
+      // Show preview dialog
+      setPdfPreviewUrl(blobUrl);
+      setPdfFileName(fileName);
+      setPdfPreviewOpen(true);
+      
+      toast.success('PDF generated successfully!', {
+        description: 'Preview the PDF below and download when ready.',
+        duration: 5000,
+      });
+      
+      console.log('[PDF Generation] ✅ SUCCESS - PDF preview ready');
+
     } catch (error: any) {
       console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
       console.error('[PDF Generation] ❌ FAILED');
@@ -1199,22 +1171,20 @@ export default function InspectionForm() {
       // Parse error message to determine type
       const errorMessage = error.message || '';
       
+      // User-friendly error toasts with actionable next steps
       if (errorMessage.startsWith('NETWORK_ERROR')) {
-        toast.error('Network Connection Error', {
-          description: 'Unable to reach the PDF service. Check your internet connection and try again.',
+        toast.error('Network Connection Issue', {
+          description: 'Unable to reach the PDF generation service. Check your internet connection and try again.',
           duration: 7000,
           action: {
             label: 'Retry',
-            onClick: () => {
-              console.log('[PDF Generation] User triggered retry after network error');
-              handleGeneratePDF();
-            }
+            onClick: () => handleGeneratePDF()
           }
         });
       } else if (errorMessage.startsWith('AUTH_ERROR')) {
-        toast.error('Authentication Failed', {
+        toast.error('Authentication Required', {
           description: 'Your session may have expired. Please log out and log in again.',
-          duration: 10000,
+          duration: 7000,
           action: {
             label: 'Log Out',
             onClick: async () => {
@@ -1277,13 +1247,40 @@ export default function InspectionForm() {
           }
         });
       }
-      
     } finally {
       setGeneratingPdf(false);
       console.log('[PDF Generation] State updated: generatingPdf = false');
-      console.log('[PDF Generation] Process completed at:', new Date().toISOString());
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     }
+  };
+
+  const handleDownloadPdf = () => {
+    if (!pdfPreviewUrl || !pdfFileName) return;
+    
+    const downloadLink = document.createElement('a');
+    downloadLink.href = pdfPreviewUrl;
+    downloadLink.download = pdfFileName;
+    downloadLink.style.display = 'none';
+    document.body.appendChild(downloadLink);
+    downloadLink.click();
+    document.body.removeChild(downloadLink);
+    
+    toast.success('PDF downloaded successfully!');
+    console.log('[PDF Download] Downloaded:', pdfFileName);
+  };
+
+  const handleClosePdfPreview = () => {
+    setPdfPreviewOpen(false);
+    
+    // Clean up blob URL after a delay
+    setTimeout(() => {
+      if (pdfPreviewUrl) {
+        URL.revokeObjectURL(pdfPreviewUrl);
+        setPdfPreviewUrl("");
+        setPdfFileName("");
+        console.log('[PDF Preview] Blob URL cleaned up');
+      }
+    }, 1000);
   };
 
   if (loading) {
@@ -1591,6 +1588,14 @@ export default function InspectionForm() {
           </TabsContent>
         </Tabs>
       </main>
+
+      <PdfPreviewDialog
+        open={pdfPreviewOpen}
+        onOpenChange={handleClosePdfPreview}
+        pdfUrl={pdfPreviewUrl}
+        fileName={pdfFileName}
+        onDownload={handleDownloadPdf}
+      />
     </div>
   );
 }
