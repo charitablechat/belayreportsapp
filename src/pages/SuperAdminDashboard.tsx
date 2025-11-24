@@ -484,7 +484,6 @@ export default function SuperAdminDashboard() {
       <Tabs defaultValue="organizations" className="space-y-4">
         <TabsList className="flex flex-col h-auto w-full items-stretch">
           <TabsTrigger value="organizations" className="justify-start">Organizations</TabsTrigger>
-          <TabsTrigger value="users" className="justify-start">Users</TabsTrigger>
           <TabsTrigger value="user-management" className="justify-start">User Management</TabsTrigger>
           <TabsTrigger value="inspections" className="justify-start">Inspections</TabsTrigger>
           <TabsTrigger value="form-cms" className="justify-start">Form CMS</TabsTrigger>
@@ -558,47 +557,6 @@ export default function SuperAdminDashboard() {
               </TableBody>
             </Table>
           </div>
-        </TabsContent>
-
-        <TabsContent value="users" className="space-y-4">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Email</TableHead>
-                <TableHead>Name</TableHead>
-                <TableHead>Organization</TableHead>
-                <TableHead>Role</TableHead>
-                <TableHead>Joined</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {managedUsers?.map((user: any) => (
-                <TableRow key={user.id}>
-                  <TableCell className="font-medium">{user.email}</TableCell>
-                  <TableCell>
-                    {user.firstName || user.lastName 
-                      ? `${user.firstName} ${user.lastName}`.trim() 
-                      : '-'}
-                  </TableCell>
-                  <TableCell>
-                    {user.organizations?.length > 0 
-                      ? user.organizations.map((org: any) => org.name).join(', ')
-                      : '-'}
-                  </TableCell>
-                  <TableCell>
-                    {user.roles?.length > 0 ? (
-                      <div className="flex flex-wrap gap-1">
-                        {user.roles.map((r: any, idx: number) => (
-                          <Badge key={idx} variant="outline">{r.role}</Badge>
-                        ))}
-                      </div>
-                    ) : '-'}
-                  </TableCell>
-                  <TableCell>{format(new Date(user.createdAt), "PP")}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
         </TabsContent>
 
         <TabsContent value="user-management" className="space-y-4">
