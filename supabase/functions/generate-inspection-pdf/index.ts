@@ -786,7 +786,7 @@ class PDFHelper {
         });
 
         page.drawText(this.truncate(std.standard_name, 30), { x: this.MARGIN + 5, y: this.y - 17, size: 9, font: this.font });
-        page.drawText(std.has_documentation ? '✓' : '✗', { x: this.MARGIN + 255, y: this.y - 17, size: 9, font: this.font });
+        page.drawText(std.has_documentation ? 'Yes' : 'No', { x: this.MARGIN + 255, y: this.y - 17, size: 9, font: this.font });
         page.drawText(this.truncate(std.comments || '', 25), { x: this.MARGIN + 330, y: this.y - 17, size: 9, font: this.font });
 
         this.y -= rowHeight;
