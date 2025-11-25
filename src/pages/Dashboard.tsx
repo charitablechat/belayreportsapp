@@ -455,11 +455,6 @@ export default function Dashboard() {
           <div className="flex items-center gap-2">
             <SyncControlPanel />
           </div>
-          
-          {/* Mobile only - Update button below online badge */}
-          <div className="flex md:hidden flex-col gap-2 mt-2 items-start">
-            <ManualUpdateButton />
-          </div>
         </div>
       </header>
 
