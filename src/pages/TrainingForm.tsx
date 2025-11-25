@@ -392,7 +392,7 @@ export default function TrainingForm() {
           <TabsList className="grid w-full grid-cols-4 lg:grid-cols-7">
             <TabsTrigger value="info">Info</TabsTrigger>
             <TabsTrigger value="delivery">Training Format</TabsTrigger>
-            <TabsTrigger value="systems">Training OS</TabsTrigger>
+            <TabsTrigger value="systems">Trained OS</TabsTrigger>
             <TabsTrigger value="attention">Required Actions</TabsTrigger>
             <TabsTrigger value="verifiable">Verified During Training</TabsTrigger>
             <TabsTrigger value="summary">Summary</TabsTrigger>
