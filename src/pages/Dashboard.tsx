@@ -604,16 +604,18 @@ export default function Dashboard() {
                 View and manage your inspection reports
               </p>
             </div>
-            <Select value={inspectorFilter} onValueChange={setInspectorFilter}>
-              <SelectTrigger className="w-full sm:w-[220px] bg-card border-border z-50">
-                <SelectValue placeholder="Filter by inspector" />
-              </SelectTrigger>
-              <SelectContent className="bg-card border-border z-50">
-                <SelectItem value="all">All Inspectors</SelectItem>
-                <SelectItem value="a-z">Name: A to Z</SelectItem>
-                <SelectItem value="z-a">Name: Z to A</SelectItem>
-              </SelectContent>
-            </Select>
+            {isSuperAdmin && (
+              <Select value={inspectorFilter} onValueChange={setInspectorFilter}>
+                <SelectTrigger className="w-full sm:w-[220px] bg-card border-border z-50">
+                  <SelectValue placeholder="Filter by inspector" />
+                </SelectTrigger>
+                <SelectContent className="bg-card border-border z-50">
+                  <SelectItem value="all">All Inspectors</SelectItem>
+                  <SelectItem value="a-z">Name: A to Z</SelectItem>
+                  <SelectItem value="z-a">Name: Z to A</SelectItem>
+                </SelectContent>
+              </Select>
+            )}
           </div>
 
           {loading ? (
