@@ -365,20 +365,17 @@ serve(async (req) => {
     
     <div class="section">
       <div class="disclaimer">
-        This professional inspection only covers activities/elements that are accessible and identifiable at the time of inspection. 
-        This inspection does not provide a comprehensive assessment of structural integrity, nor does it constitute an engineering report. 
-        All structural concerns should be referred to a qualified structural engineer. This report is valid for one year from the date 
-        of inspection. The inspector assumes no liability for changes, modifications, or damage that may occur after the inspection date.
+        This professional inspection only covers activities/elements that are accessible and identifiable at the time of inspection. This inspection does not cover any life support (LOP) or system which was not accessible and/or identifiable at the time of inspection. The inspector assumes no liability with respect to LOP or systems which were not accessible and/or identifiable. Inspection does not include verification of Emergency Action Plans (EAP), nor was the training, qualifications and/or certifications of staff verified. Though this report may call attention to particular safety concerns, the inspector assumes no responsibility for vandalism and/or sabotage. It is recommended that quarterly monitoring protocols be implemented, and operational reviews are recommended for any system that is determined at a later time to require one or any system known to be five years or older. This report is effective for one year from the date of inspection. Annual inspections of aerial adventure programs are an industry standard in accordance with both ANSI and ACCT Standards.
       </div>
       
       <div class="reminders">
         <div class="reminders-title">Reminders and Requirements:</div>
         <ul>
-          <li>All belay devices, harnesses, and personal protective equipment must be inspected according to manufacturer specifications and ACCT standards.</li>
-          <li>Daily operational checks should be performed before opening any aerial adventure course to participants.</li>
-          <li>All staff must maintain current certifications in Challenge Course Operations and Emergency Response.</li>
-          <li>Documentation of all equipment retirements, repairs, and maintenance must be maintained on-site.</li>
-          <li>Any "Pass with Provisions" or "Fail" ratings must be addressed before resuming operations on affected elements.</li>
+          <li>Employers of those utilizing any form of fall protection, are required by federal and state law to provide adequate training and/or supervision in their use.</li>
+          <li>Periodic Internal Monitoring should include both scheduled and unscheduled spot checks of equipment &amp; systems. Informal Internal Monitoring should be completed at the beginning of each day/program. Formal Internal Monitoring should be performed on an established schedule (typically weekly, biweekly or monthly).</li>
+          <li>All life support hardware &amp; equipment should be tracked so as to allow for documentation of usage, inspection, maintenance and retirement. (ie Numbered and maintained on an inspection and maintenance log.)</li>
+          <li>Staff should have documented adequate training in all aspects of the operations they are responsible for, including but not limited to rescue systems and emergency action plans.</li>
+          <li>Programs are required to perform an Operational Review every five years or after any significant change to the operation or when recommended in any annual inspection. Operational reviews are more rigorous and thorough than an annual inspection. An operational review will address ALL aspects of the program operation.</li>
         </ul>
       </div>
     </div>
@@ -386,7 +383,7 @@ serve(async (req) => {
     <div class="page-break"></div>
     
     <div class="section">
-      <h2 class="section-title">Inspection Methodology</h2>
+      <h2 class="section-title">All inspections include the following when applicable:</h2>
       
       <table class="key-table">
         <tr>
@@ -395,23 +392,27 @@ serve(async (req) => {
         </tr>
         <tr>
           <td>Lifeline HDW</td>
-          <td>Hardware components directly supporting participant fall protection systems (cables, anchors, connections)</td>
+          <td>Represents all hardware associated with the functioning of the life support system, Participants Direct Life Support (PDLS), including but not limited to: steel cable, hardware, anchors/attachment points, connections, terminations, and dynamic components.</td>
         </tr>
         <tr>
           <td>Activity HDW</td>
-          <td>Hardware components supporting activity elements (platforms, handrails, structural connections)</td>
+          <td>Represents all hardware associated with element execution, operational hardware, activity structure, and activity attachments, including but not limited to: wooden platforms, activity structure, ladder/stair construction, wooden handrails, and activity attachments.</td>
         </tr>
         <tr>
           <td>Environment</td>
-          <td>Natural elements affecting course safety (trees, vegetation, ground conditions, weather damage)</td>
+          <td>This represents the surrounding area that could affect the operation of the element including but not limited to: trees used for PDLS and Activity Hardware, trees used for anchor, trees in the activity field, and natural hazards.</td>
         </tr>
         <tr>
           <td>Equipment</td>
-          <td>Movable safety equipment (harnesses, helmets, belay devices, carabiners)</td>
+          <td>This represents the equipment utilized in the operation of the element. Equipment is typically issued to the participant or group, but can also be a tool used for participant or facilitator management, including but not limited to: harnesses, helmets, trolleys, pulleys, ropes, and carabiners.</td>
         </tr>
       </table>
       
-      <h3 style="margin-top: 20px; margin-bottom: 10px; font-size: 12pt;">Inspection Results Key:</h3>
+      <div style="margin-top: 20px; margin-bottom: 15px; line-height: 1.6;">
+        <strong>Pass/Pass with Provisions/Fail:</strong> These are the overall ratings that can be assigned to an element, piece of equipment, or system. The overall rating is based upon the individual ratings assigned to the categories described above. In order for the overall rating to be a Pass, ALL categories must be rated as a Pass. If one or more categories are not rated as a Pass, the overall rating will be a Pass with Provisions or a Fail. ACCT Standards require that all Aerial Adventure programs be inspected on at least an annual basis by a qualified professional.
+      </div>
+      
+      <h3 style="margin-top: 20px; margin-bottom: 10px; font-size: 12pt;">Inspection Key:</h3>
       
       <table class="key-table">
         <tr>
@@ -420,19 +421,19 @@ serve(async (req) => {
         </tr>
         <tr>
           <td>Pass</td>
-          <td>Component meets all safety standards and is approved for continued use without restrictions.</td>
+          <td>Indicates the item inspected meets manufacturer specifications, industry standards, and all operational safety requirements at the time of this scheduled inspection.</td>
         </tr>
         <tr>
           <td>Pass with Provisions</td>
-          <td>Component is functional but requires attention. Minor repairs, adjustments, or monitoring needed. Document specific provisions in comments.</td>
+          <td>Indicates the item inspected is in acceptable condition however a minor corrective action, adjustment, or area in need of special monitoring has been identified.</td>
         </tr>
         <tr>
           <td>Fail</td>
-          <td>Component does not meet safety standards. Immediate removal from service required. Do not use until repaired or replaced and re-inspected.</td>
+          <td>Indicates the item inspected does not meet critical safety standards and should be immediately removed from service. The item should not be returned to service until repaired or replaced and verified by a qualified professional.</td>
         </tr>
         <tr>
           <td>N/A</td>
-          <td>Not applicable to this element or not present at time of inspection.</td>
+          <td>Indicates the criterion is not applicable to the element or item or the element or item was not accessible at time of inspection. In these cases the rating of N/A does not indicate a Pass or Fail for that criteria.</td>
         </tr>
       </table>
     </div>
