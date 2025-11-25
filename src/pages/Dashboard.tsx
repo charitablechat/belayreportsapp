@@ -377,6 +377,7 @@ export default function Dashboard() {
             <div className="flex items-center gap-2 md:gap-3">
               <img src={ropeWorksLogo} alt="Rope Works" className="h-8 md:h-12 w-auto object-contain" />
               <img src={acctLogo} alt="ACCT Accredited Vendor" className="h-8 md:h-12 w-auto object-contain" />
+              <SyncControlPanel />
             </div>
             
             <div className="flex items-center gap-2">
@@ -470,11 +471,6 @@ export default function Dashboard() {
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
-          </div>
-          
-          {/* Bottom row - Sync controls */}
-          <div className="flex items-center gap-2">
-            <SyncControlPanel />
           </div>
         </div>
       </header>
