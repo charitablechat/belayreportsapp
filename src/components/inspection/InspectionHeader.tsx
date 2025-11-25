@@ -56,13 +56,6 @@ export default function InspectionHeader({ inspection, userProfile, onUpdate, on
         <CardContent className="pt-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 mb-6">
             <div className="space-y-4">
-              {renderField("Facility Name", "organization", inspection?.organization)}
-              {renderField("Location", "location", inspection?.location)}
-              {renderField("Onsite Contact", "onsite_contact", inspection?.onsite_contact)}
-              {renderField("Previous Inspector", "previous_inspector", inspection?.previous_inspector)}
-            </div>
-            <div className="space-y-4">
-              {renderField("Inspection Date", "inspection_date", inspection?.inspection_date, "date")}
               <div>
                 <Label className="text-sm text-muted-foreground">Inspector</Label>
                 <Input
@@ -71,7 +64,14 @@ export default function InspectionHeader({ inspection, userProfile, onUpdate, on
                   className="bg-muted/50 cursor-not-allowed"
                 />
               </div>
+              {renderField("Facility Name", "organization", inspection?.organization)}
+              {renderField("Location", "location", inspection?.location)}
+              {renderField("Onsite Contact", "onsite_contact", inspection?.onsite_contact)}
+              {renderField("Previous Inspector", "previous_inspector", inspection?.previous_inspector)}
+            </div>
+            <div className="space-y-4">
               {renderField("ACCT#", "acct_number", inspection?.acct_number)}
+              {renderField("Inspection Date", "inspection_date", inspection?.inspection_date, "date")}
               {renderField("Prev. Inspection Date", "previous_inspection_date", inspection?.previous_inspection_date, "date")}
             </div>
           </div>
