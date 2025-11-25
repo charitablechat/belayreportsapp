@@ -36,7 +36,7 @@ export const NetworkStatusIndicator = () => {
         }
         toast.dismiss('offline-notification');
         toast.success('Connection restored', {
-          description: effectiveType ? `Connected via ${effectiveType}` : 'You are back online',
+          description: 'You are back online',
           icon: <Cloud className="w-4 h-4" />,
         });
         previousOnlineStatus.current = isOnline;
@@ -70,7 +70,6 @@ export const NetworkStatusIndicator = () => {
         <>
           <Wifi className="w-4 h-4" />
           <span>Online</span>
-          {effectiveType && <span className="text-xs opacity-70">({effectiveType})</span>}
         </>
       ) : (
         <>
