@@ -14,6 +14,7 @@ import VerifiableItemsSection from "@/components/training/VerifiableItemsSection
 import TrainingSummarySection from "@/components/training/TrainingSummarySection";
 import PhotoGallery from "@/components/PhotoGallery";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
+import { format } from "date-fns";
 
 export default function TrainingForm() {
   const { id } = useParams();
@@ -33,7 +34,7 @@ export default function TrainingForm() {
   const [summary, setSummary] = useState<any>(null);
   const autoSaveTimer = useRef<NodeJS.Timeout | null>(null);
 
-  // Auto-populate person submitting with current user's name
+  // Auto-populate person submitting and submission date
   useEffect(() => {
     const fetchUserProfile = async () => {
       try {
@@ -46,13 +47,28 @@ export default function TrainingForm() {
           .eq('id', user.id)
           .single();
 
-        if (profile && summary && !summary.person_submitting) {
-          const fullName = [profile.first_name, profile.last_name]
-            .filter(Boolean)
-            .join(' ');
+        if (profile && summary) {
+          const updates: any = {};
           
-          if (fullName) {
-            setSummary({ ...summary, person_submitting: fullName });
+          // Auto-populate person submitting if empty
+          if (!summary.person_submitting) {
+            const fullName = [profile.first_name, profile.last_name]
+              .filter(Boolean)
+              .join(' ');
+            
+            if (fullName) {
+              updates.person_submitting = fullName;
+            }
+          }
+          
+          // Auto-populate submission date if empty
+          if (!summary.submission_date) {
+            updates.submission_date = format(new Date(), 'yyyy-MM-dd');
+          }
+          
+          // Only update if there are changes
+          if (Object.keys(updates).length > 0) {
+            setSummary({ ...summary, ...updates });
           }
         }
       } catch (error) {
