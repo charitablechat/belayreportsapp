@@ -391,7 +391,7 @@ export default function TrainingForm() {
         <Tabs defaultValue="info" className="space-y-6">
           <TabsList className="grid w-full grid-cols-4 lg:grid-cols-7">
             <TabsTrigger value="info">Info</TabsTrigger>
-            <TabsTrigger value="delivery">Delivery</TabsTrigger>
+            <TabsTrigger value="delivery">Training Format</TabsTrigger>
             <TabsTrigger value="systems">Systems</TabsTrigger>
             <TabsTrigger value="attention">Attention</TabsTrigger>
             <TabsTrigger value="verifiable">Verifiable</TabsTrigger>
