@@ -394,10 +394,11 @@ export default function Dashboard() {
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="icon" className="rounded-full">
-                  <UserAvatar 
-                    userEmail={currentUser?.email ?? null}
-                    avatarUrl={userProfile?.avatar_url ?? null}
-                  />
+              <UserAvatar 
+                userEmail={currentUser?.email ?? null}
+                avatarUrl={userProfile?.avatar_url ?? null}
+                isSuperAdmin={isSuperAdmin}
+              />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">
