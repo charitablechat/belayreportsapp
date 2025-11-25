@@ -1423,7 +1423,7 @@ export default function InspectionForm() {
         {!isOnline && (
           <Alert className="mb-6 border-warning bg-warning/10">
             <CloudOff className="h-4 w-4 text-warning" />
-            <AlertDescription className="text-warning-foreground">
+            <AlertDescription className="text-gray-900 dark:text-gray-100">
               📴 Working offline - data will sync when online
             </AlertDescription>
           </Alert>
