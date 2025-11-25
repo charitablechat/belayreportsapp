@@ -1,31 +1,10 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.4";
+import { fetchTrainingData, formatTrainingContent } from "../_shared/training-formatter.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
-
-const stripHtml = (html: string) => {
-  if (!html) return '';
-  let text = html.replace(/<[^>]*>/g, '');
-  text = text.replace(/&amp;/g, '&');
-  text = text.replace(/&lt;/g, '<');
-  text = text.replace(/&gt;/g, '>');
-  text = text.replace(/&quot;/g, '"');
-  text = text.replace(/&#39;/g, "'");
-  text = text.replace(/&apos;/g, "'");
-  text = text.replace(/&nbsp;/g, ' ');
-  text = text.replace(/&copy;/g, '©');
-  text = text.replace(/&reg;/g, '®');
-  text = text.replace(/&trade;/g, '™');
-  return text.trim();
-};
-
-const formatDate = (dateStr: string) => {
-  if (!dateStr) return '';
-  const date = new Date(dateStr);
-  return date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
 };
 
 serve(async (req) => {
@@ -44,31 +23,9 @@ serve(async (req) => {
       throw new Error('Training ID is required');
     }
 
-    // Fetch training data
-    const { data: training, error: trainingError } = await supabase
-      .from('trainings')
-      .select('*')
-      .eq('id', trainingId)
-      .single();
-
-    if (trainingError) throw trainingError;
-
-    // Fetch related data
-    const [approachesRes, systemsRes, attentionRes, verifiableRes, systemsInPlaceRes, summaryRes] = await Promise.all([
-      supabase.from('training_delivery_approaches').select('*').eq('training_id', trainingId),
-      supabase.from('training_operating_systems').select('*').eq('training_id', trainingId),
-      supabase.from('training_immediate_attention').select('*').eq('training_id', trainingId),
-      supabase.from('training_verifiable_items').select('*').eq('training_id', trainingId),
-      supabase.from('training_systems_in_place').select('*').eq('training_id', trainingId),
-      supabase.from('training_summary').select('*').eq('training_id', trainingId).single()
-    ]);
-
-    const approaches = approachesRes.data || [];
-    const systems = systemsRes.data || [];
-    const attention = attentionRes.data || [];
-    const verifiable = verifiableRes.data || [];
-    const systemsInPlace = systemsInPlaceRes.data || [];
-    const summary = summaryRes.data || null;
+    // Fetch training data using shared formatter
+    const trainingData = await fetchTrainingData(trainingId, supabase);
+    const content = formatTrainingContent(trainingData);
 
     // Generate HTML
     const html = `<!DOCTYPE html>
@@ -76,7 +33,7 @@ serve(async (req) => {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Training Report - ${stripHtml(training.organization)}</title>
+  <title>Training Report - ${content.facilityInfo.organization}</title>
   <style>
     * {
       margin: 0;
@@ -128,6 +85,15 @@ serve(async (req) => {
       margin-bottom: 15px;
       border-radius: 4px;
     }
+    .standards-box {
+      background: #dbeafe;
+      padding: 15px;
+      border-radius: 4px;
+      margin-bottom: 30px;
+      color: #1e40af;
+      font-size: 14px;
+      line-height: 1.6;
+    }
     .info-grid {
       display: grid;
       grid-template-columns: repeat(2, 1fr);
@@ -159,12 +125,37 @@ serve(async (req) => {
       border-left: 3px solid #3b82f6;
       border-radius: 2px;
     }
+    li strong {
+      color: #1e293b;
+    }
+    li .description {
+      color: #64748b;
+      font-size: 14px;
+      margin-top: 4px;
+    }
     .text-content {
       padding: 15px;
       background: #f8fafc;
       border-radius: 4px;
       white-space: pre-wrap;
       line-height: 1.8;
+    }
+    .disclaimer {
+      background: #fef3c7;
+      padding: 15px;
+      border-radius: 4px;
+      border-left: 4px solid #f59e0b;
+      margin-top: 30px;
+    }
+    .disclaimer-title {
+      font-weight: 700;
+      color: #92400e;
+      margin-bottom: 8px;
+    }
+    .disclaimer-text {
+      color: #78350f;
+      font-size: 13px;
+      line-height: 1.6;
     }
     .footer {
       margin-top: 40px;
@@ -207,104 +198,115 @@ serve(async (req) => {
       <div class="info-grid">
         <div class="info-item">
           <div class="info-label">Organization</div>
-          <div class="info-value">${stripHtml(training.organization)}</div>
+          <div class="info-value">${content.facilityInfo.organization}</div>
         </div>
         <div class="info-item">
           <div class="info-label">Training Dates</div>
-          <div class="info-value">${formatDate(training.start_date)} - ${formatDate(training.end_date)}</div>
+          <div class="info-value">${content.facilityInfo.startDate} - ${content.facilityInfo.endDate}</div>
         </div>
         <div class="info-item">
           <div class="info-label">Trainer of Record</div>
-          <div class="info-value">${stripHtml(training.trainer_of_record || 'N/A')}</div>
+          <div class="info-value">${content.facilityInfo.trainerOfRecord}</div>
         </div>
         <div class="info-item">
           <div class="info-label">Trainee Names</div>
-          <div class="info-value">${stripHtml(training.trainee_names || 'N/A')}</div>
+          <div class="info-value">${content.facilityInfo.traineeNames}</div>
         </div>
       </div>
     </div>
 
-    ${approaches.length > 0 ? `
+    <div class="standards-box">
+      ${content.standardsText}
+    </div>
+
+    ${content.deliveryApproaches.length > 0 ? `
     <div class="section">
       <div class="section-title">Delivery Approach</div>
       <ul>
-        ${approaches.map(a => `<li>${stripHtml(a.approach)}</li>`).join('')}
+        ${content.deliveryApproaches.map(approach => `<li>☑ ${approach}</li>`).join('')}
       </ul>
     </div>
     ` : ''}
 
-    ${systems.length > 0 ? `
+    ${content.operatingSystems.length > 0 ? `
     <div class="section">
       <div class="section-title">Trained Operating Systems</div>
       <ul>
-        ${systems.map(sys => `
+        ${content.operatingSystems.map(sys => `
           <li>
-            <strong>${stripHtml(sys.system_name)}</strong>
-            ${sys.other_description ? `<br><span style="color: #64748b;">${stripHtml(sys.other_description)}</span>` : ''}
+            <strong>☑ ${sys.name}</strong>
+            ${sys.description ? `<div class="description">${sys.description}</div>` : ''}
           </li>
         `).join('')}
       </ul>
     </div>
     ` : ''}
 
-    ${attention.length > 0 ? `
-    <div class="section">
-      <div class="section-title">Actions Requiring Immediate Attention</div>
-      <ul>
-        ${attention.map(item => `<li>${stripHtml(item.item)}</li>`).join('')}
-      </ul>
-    </div>
-    ` : ''}
-
-    ${verifiable.length > 0 ? `
+    ${content.verifiableItems.length > 0 ? `
     <div class="section">
       <div class="section-title">Items Verified During Training</div>
       <ul>
-        ${verifiable.map(item => `<li>${stripHtml(item.item)}</li>`).join('')}
+        ${content.verifiableItems.map(item => `<li>☑ ${item}</li>`).join('')}
       </ul>
     </div>
     ` : ''}
 
-    ${systemsInPlace.length > 0 ? `
+    ${content.systemsInPlace.length > 0 ? `
     <div class="section">
       <div class="section-title">Systems in Place</div>
       <ul>
-        ${systemsInPlace.map(item => `<li>${stripHtml(item.system_item)}</li>`).join('')}
+        ${content.systemsInPlace.map(item => `<li>☑ ${item}</li>`).join('')}
       </ul>
     </div>
     ` : ''}
 
-    ${summary ? `
+    ${content.immediateAttention.length > 0 ? `
     <div class="section">
-      <div class="section-title">Summary</div>
-      ${summary.observations ? `
+      <div class="section-title" style="background: #dc2626;">Actions Requiring Immediate Attention</div>
+      <ul>
+        ${content.immediateAttention.map(item => `<li style="border-left-color: #dc2626;">⚠ ${item}</li>`).join('')}
+      </ul>
+    </div>
+    ` : ''}
+
+    ${content.summary.observations || content.summary.recommendations ? `
+    <div class="section">
+      <div class="section-title">Training Summary</div>
+      ${content.summary.observations ? `
         <div style="margin-bottom: 20px;">
           <div class="info-label" style="margin-bottom: 8px;">Observations</div>
-          <div class="text-content">${stripHtml(summary.observations)}</div>
+          <div class="text-content">${content.summary.observations}</div>
         </div>
       ` : ''}
-      ${summary.recommendations ? `
+      ${content.summary.recommendations ? `
         <div style="margin-bottom: 20px;">
           <div class="info-label" style="margin-bottom: 8px;">Recommendations</div>
-          <div class="text-content">${stripHtml(summary.recommendations)}</div>
+          <div class="text-content">${content.summary.recommendations}</div>
         </div>
       ` : ''}
+      ${content.summary.personSubmitting || content.summary.submissionDate ? `
       <div class="info-grid">
-        ${summary.person_submitting ? `
+        ${content.summary.personSubmitting ? `
         <div class="info-item">
           <div class="info-label">Person Submitting</div>
-          <div class="info-value">${stripHtml(summary.person_submitting)}</div>
+          <div class="info-value">${content.summary.personSubmitting}</div>
         </div>
         ` : ''}
-        ${summary.submission_date ? `
+        ${content.summary.submissionDate ? `
         <div class="info-item">
           <div class="info-label">Submission Date</div>
-          <div class="info-value">${formatDate(summary.submission_date)}</div>
+          <div class="info-value">${content.summary.submissionDate}</div>
         </div>
         ` : ''}
       </div>
+      ` : ''}
     </div>
     ` : ''}
+
+    <div class="disclaimer">
+      <div class="disclaimer-title">DISCLAIMER</div>
+      <div class="disclaimer-text">${content.disclaimer}</div>
+    </div>
 
     <div class="footer">
       <p>Generated on ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
