@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { jsPDF } from "https://esm.sh/jspdf@2.5.2";
 import "https://esm.sh/jspdf-autotable@3.8.2";
 
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -103,12 +104,46 @@ serve(async (req) => {
       return text.trim();
     };
 
+    // Fetch and add Unicode-compatible font
+    let customFontLoaded = false;
+    let fontData = '';
+    try {
+      // Fetch Roboto Regular font from Google Fonts
+      const fontUrl = 'https://fonts.gstatic.com/s/roboto/v30/KFOmCnqEu92Fr1Mu4mxK.woff';
+      const fontResponse = await fetch(fontUrl);
+      if (fontResponse.ok) {
+        const fontBlob = await fontResponse.arrayBuffer();
+        const fontArray = new Uint8Array(fontBlob);
+        fontData = btoa(String.fromCharCode(...fontArray));
+        
+        console.log('Custom font loaded successfully');
+        customFontLoaded = true;
+      }
+    } catch (error) {
+      console.error('Failed to load custom font, using default:', error);
+    }
+
     // Create PDF
     const doc = new jsPDF({
       orientation: 'portrait',
       unit: 'mm',
       format: 'a4'
     }) as any;
+
+    // Add custom font if loaded
+    if (customFontLoaded && fontData) {
+      try {
+        doc.addFileToVFS('Roboto-Regular.ttf', fontData);
+        doc.addFont('Roboto-Regular.ttf', 'Roboto', 'normal');
+        doc.setFont('Roboto');
+        console.log('Roboto font set as default');
+      } catch (error) {
+        console.error('Failed to add font to PDF:', error);
+        doc.setFont('helvetica'); // Fallback
+      }
+    } else {
+      doc.setFont('helvetica');
+    }
 
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
@@ -249,7 +284,7 @@ serve(async (req) => {
       doc.line(margin, yPos, pageWidth - margin, yPos);
       yPos += 5;
       
-      const approachData = deliveryApproaches.map((a: any) => ['[X] ' + stripHtml(a.approach)]);
+      const approachData = deliveryApproaches.map((a: any) => ['☑ ' + stripHtml(a.approach)]);
       
       doc.autoTable({
         startY: yPos,
@@ -257,6 +292,7 @@ serve(async (req) => {
         body: approachData,
         theme: 'striped',
         styles: {
+          font: customFontLoaded ? 'Roboto' : 'helvetica',
           fontSize: 10,
           cellPadding: 3,
           textColor: [0, 0, 0]
@@ -284,7 +320,7 @@ serve(async (req) => {
       const systemsData = operatingSystems.map((s: any) => {
         const text = s.other_description ? stripHtml(s.system_name) : stripHtml(s.system_name);
         const desc = stripHtml(s.other_description) || '';
-        return ['[X] ' + text, desc];
+        return ['☑ ' + text, desc];
       });
       
       doc.autoTable({
@@ -293,6 +329,7 @@ serve(async (req) => {
         body: systemsData,
         theme: 'striped',
         styles: {
+          font: customFontLoaded ? 'Roboto' : 'helvetica',
           fontSize: 10,
           cellPadding: 3,
           textColor: [0, 0, 0]
@@ -327,7 +364,7 @@ serve(async (req) => {
       doc.text('CHECK ONLY THOSE THAT WERE VERIFIABLE AND IN PLACE DURING TRAINING.', margin, yPos);
       yPos += 5;
       
-      const itemsData = verifiableItems.map((v: any) => ['[X] ' + stripHtml(v.item)]);
+      const itemsData = verifiableItems.map((v: any) => ['☑ ' + stripHtml(v.item)]);
       
       doc.autoTable({
         startY: yPos,
@@ -335,6 +372,7 @@ serve(async (req) => {
         body: itemsData,
         theme: 'striped',
         styles: {
+          font: customFontLoaded ? 'Roboto' : 'helvetica',
           fontSize: 10,
           cellPadding: 3,
           textColor: [0, 0, 0]
@@ -359,7 +397,7 @@ serve(async (req) => {
       doc.line(margin, yPos, pageWidth - margin, yPos);
       yPos += 5;
       
-      const systemsData = systemsInPlace.map((s: any) => ['[X] ' + stripHtml(s.system_item)]);
+      const systemsData = systemsInPlace.map((s: any) => ['☑ ' + stripHtml(s.system_item)]);
       
       doc.autoTable({
         startY: yPos,
@@ -367,6 +405,7 @@ serve(async (req) => {
         body: systemsData,
         theme: 'striped',
         styles: {
+          font: customFontLoaded ? 'Roboto' : 'helvetica',
           fontSize: 10,
           cellPadding: 3,
           textColor: [0, 0, 0]
@@ -385,13 +424,13 @@ serve(async (req) => {
       doc.setFontSize(14);
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(211, 47, 47);
-      doc.text('[!] Immediate Attention', margin, yPos);
+      doc.text('⚠ Immediate Attention', margin, yPos);
       yPos += 8;
       doc.setDrawColor(211, 47, 47);
       doc.line(margin, yPos, pageWidth - margin, yPos);
       yPos += 5;
       
-      const attentionData = immediateAttention.map((i: any) => ['[!] ' + stripHtml(i.item)]);
+      const attentionData = immediateAttention.map((i: any) => ['⚠ ' + stripHtml(i.item)]);
       
       doc.autoTable({
         startY: yPos,
@@ -399,6 +438,7 @@ serve(async (req) => {
         body: attentionData,
         theme: 'striped',
         styles: {
+          font: customFontLoaded ? 'Roboto' : 'helvetica',
           fontSize: 10,
           cellPadding: 3,
           textColor: [211, 47, 47]
