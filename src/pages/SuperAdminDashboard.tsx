@@ -150,7 +150,8 @@ export default function SuperAdminDashboard() {
         .from("inspections")
         .select(`
           *,
-          organizations(name)
+          organizations(name),
+          inspector:profiles!inspector_id(first_name, last_name)
         `)
         .order("created_at", { ascending: false })
         .limit(100);
@@ -649,6 +650,7 @@ export default function SuperAdminDashboard() {
                 <TableHead>Status</TableHead>
                 <TableHead>Date</TableHead>
                 <TableHead>Created</TableHead>
+                <TableHead>Inspector</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -667,6 +669,11 @@ export default function SuperAdminDashboard() {
                   </TableCell>
                   <TableCell>{format(new Date(inspection.inspection_date), "PP")}</TableCell>
                   <TableCell>{format(new Date(inspection.created_at), "PP")}</TableCell>
+                  <TableCell>
+                    {inspection.inspector?.first_name && inspection.inspector?.last_name
+                      ? `${inspection.inspector.first_name} ${inspection.inspector.last_name}`
+                      : 'Unknown'}
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
