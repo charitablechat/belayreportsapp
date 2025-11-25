@@ -74,7 +74,18 @@ serve(async (req) => {
 
     const stripHtml = (html: string | null) => {
       if (!html) return '';
-      return html.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').trim();
+      let text = html.replace(/<[^>]*>/g, '');
+      text = text.replace(/&amp;/g, '&');
+      text = text.replace(/&lt;/g, '<');
+      text = text.replace(/&gt;/g, '>');
+      text = text.replace(/&quot;/g, '"');
+      text = text.replace(/&#39;/g, "'");
+      text = text.replace(/&nbsp;/g, ' ');
+      text = text.replace(/&apos;/g, "'");
+      text = text.replace(/&copy;/g, '©');
+      text = text.replace(/&reg;/g, '®');
+      text = text.replace(/&trade;/g, '™');
+      return text.trim();
     };
 
     const inspectorName = `${inspectorProfile?.first_name || ''} ${inspectorProfile?.last_name || ''}`.trim() || 'Inspector';
@@ -159,12 +170,12 @@ serve(async (req) => {
 
     // Create facility info table
     const facilityData: any[] = [
-      ['Facility Name', inspection.organization || 'N/A'],
-      ['Location', inspection.location || 'N/A'],
-      ['Onsite Contact', inspection.onsite_contact || 'N/A'],
+      ['Facility Name', stripHtml(inspection.organization) || 'N/A'],
+      ['Location', stripHtml(inspection.location) || 'N/A'],
+      ['Onsite Contact', stripHtml(inspection.onsite_contact) || 'N/A'],
       ['Inspection Date', formatDate(inspection.inspection_date)],
       ['Inspector', inspectorName],
-      ['Previous Inspection', `${formatDate(inspection.previous_inspection_date)} by ${inspection.previous_inspector || 'N/A'}`]
+      ['Previous Inspection', `${formatDate(inspection.previous_inspection_date)} by ${stripHtml(inspection.previous_inspector) || 'N/A'}`]
     ];
 
     doc.autoTable({
@@ -245,7 +256,7 @@ serve(async (req) => {
         startY: yPos,
         head: [['System Name', 'Result', 'Comments']],
         body: systems.map(sys => [
-          sys.system_name || sys.name || 'N/A',
+          stripHtml(sys.system_name || sys.name) || 'N/A',
           sys.result || 'N/A',
           stripHtml(sys.comments) || '-'
         ]),
@@ -292,11 +303,11 @@ serve(async (req) => {
         startY: yPos,
         head: [['Name', 'Cable', 'Length', 'Braking', 'EAD', 'Result', 'Comments']],
         body: ziplines.map(zip => [
-          zip.zipline_name || 'N/A',
-          zip.cable_type || 'N/A',
+          stripHtml(zip.zipline_name) || 'N/A',
+          stripHtml(zip.cable_type) || 'N/A',
           zip.cable_length ? `${zip.cable_length}ft` : 'N/A',
-          zip.braking_system || 'N/A',
-          zip.ead_system || 'N/A',
+          stripHtml(zip.braking_system) || 'N/A',
+          stripHtml(zip.ead_system) || 'N/A',
           zip.result || 'N/A',
           stripHtml(zip.comments) || '-'
         ]),
@@ -364,7 +375,7 @@ serve(async (req) => {
           startY: yPos,
           head: [['Type', 'Qty', 'Year', 'Result', 'Comments']],
           body: items.map(eq => [
-            eq.equipment_type || 'N/A',
+            stripHtml(eq.equipment_type) || 'N/A',
             eq.quantity?.toString() || 'N/A',
             eq.production_year?.toString() || 'N/A',
             eq.result || 'N/A',
@@ -416,7 +427,7 @@ serve(async (req) => {
         startY: yPos,
         head: [['Standard', 'Documentation', 'Comments']],
         body: standards.map(std => [
-          std.standard_name || 'N/A',
+          stripHtml(std.standard_name) || 'N/A',
           std.has_documentation ? 'Yes' : 'No',
           stripHtml(std.comments) || '-'
         ]),
