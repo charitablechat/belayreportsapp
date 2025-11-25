@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { jsPDF } from "https://esm.sh/jspdf@2.5.2";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -84,354 +85,366 @@ serve(async (req) => {
       return date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
     };
 
-    // Build HTML content
-    const htmlContent = `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <title>Training Report - ${training.organization}</title>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { 
-      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
-      line-height: 1.5; 
-      color: #1e293b; 
-      padding: 30px 40px;
-      max-width: 1000px;
-      margin: 0 auto;
-    }
-    .header { 
-      text-align: center; 
-      margin-bottom: 25px; 
-      border-bottom: 4px solid #1e40af; 
-      padding-bottom: 15px; 
-    }
-    h1 { 
-      color: #1e40af; 
-      font-size: 32px; 
-      font-weight: 700;
-      margin-bottom: 5px;
-      letter-spacing: 1px;
-    }
-    .report-title { 
-      color: #475569; 
-      font-size: 20px; 
-      font-weight: 600;
-      margin-top: 8px;
-    }
-    h2 { 
-      color: #1e40af; 
-      font-size: 18px; 
-      font-weight: 600;
-      margin-top: 20px; 
-      margin-bottom: 12px;
-      padding-bottom: 6px;
-      border-bottom: 2px solid #cbd5e1; 
-    }
-    h3 { 
-      color: #334155; 
-      font-size: 15px; 
-      font-weight: 600;
-      margin-top: 15px;
-      margin-bottom: 8px;
-    }
-    .standards-text { 
-      background: #dbeafe; 
-      padding: 15px 18px; 
-      border-radius: 6px; 
-      margin: 18px 0; 
-      font-size: 13px; 
-      line-height: 1.6;
-      border-left: 4px solid #1e40af;
-    }
-    .section { 
-      margin: 18px 0; 
-      padding: 0;
-    }
-    .info-grid { 
-      display: grid; 
-      grid-template-columns: repeat(2, 1fr); 
-      gap: 12px; 
-      margin: 12px 0; 
-    }
-    .info-item { 
-      padding: 10px 12px; 
-      background: #f8fafc; 
-      border-left: 3px solid #1e40af;
-      border-radius: 4px;
-    }
-    .info-label { 
-      font-weight: 600; 
-      color: #64748b; 
-      font-size: 11px; 
-      text-transform: uppercase; 
-      letter-spacing: 0.5px;
-      margin-bottom: 4px;
-    }
-    .info-value { 
-      color: #1e293b; 
-      font-size: 14px;
-      line-height: 1.4;
-    }
-    .info-item-full {
-      grid-column: 1 / -1;
-      padding: 10px 12px; 
-      background: #f8fafc; 
-      border-left: 3px solid #1e40af;
-      border-radius: 4px;
-    }
-    .checkbox-list { 
-      margin: 10px 0; 
-    }
-    .checkbox-item { 
-      padding: 8px 0 8px 5px; 
-      border-bottom: 1px solid #e2e8f0;
-      font-size: 13px;
-      line-height: 1.4;
-    }
-    .checkbox-item:last-child { 
-      border-bottom: none; 
-    }
-    .helper-text {
-      color: #64748b;
-      font-size: 12px;
-      font-style: italic;
-      margin-bottom: 10px;
-      padding: 8px 12px;
-      background: #f1f5f9;
-      border-radius: 4px;
-      line-height: 1.5;
-    }
-    .disclaimer-box { 
-      background: #fef3c7; 
-      border-left: 4px solid #f59e0b; 
-      padding: 15px 18px; 
-      margin: 15px 0; 
-      font-size: 12px;
-      border-radius: 4px;
-      line-height: 1.6;
-    }
-    .disclaimer-box strong {
-      display: block;
-      margin-bottom: 8px;
-      color: #92400e;
-      font-size: 13px;
-    }
-    .verification-text {
-      background: #ecfdf5;
-      border-left: 4px solid #10b981;
-      padding: 12px 15px;
-      margin: 12px 0;
-      font-size: 12px;
-      border-radius: 4px;
-      line-height: 1.5;
-      color: #064e3b;
-    }
-    .content-text {
-      font-size: 13px;
-      line-height: 1.6;
-      color: #334155;
-      margin: 10px 0;
-    }
-    .footer { 
-      margin-top: 30px; 
-      padding-top: 15px; 
-      border-top: 2px solid #cbd5e1; 
-      text-align: center; 
-      color: #64748b; 
-      font-size: 11px;
-      line-height: 1.8;
-    }
-    .footer strong {
-      font-size: 13px;
-      color: #1e40af;
-    }
-    @media print {
-      body { padding: 20px; }
-      .section { page-break-inside: avoid; }
-    }
-  </style>
-</head>
-<body>
-  <div class="header">
-    <h1>ROPE WORKS INC.</h1>
-    <div class="report-title">Training Report</div>
-  </div>
+    // Create PDF
+    const doc = new jsPDF({
+      orientation: 'portrait',
+      unit: 'mm',
+      format: 'a4'
+    });
 
-  <div class="section">
-    <h2>Training Information</h2>
-    <div class="info-grid">
-      <div class="info-item">
-        <div class="info-label">Training Site</div>
-        <div class="info-value">${training.organization || 'N/A'}</div>
-      </div>
-      <div class="info-item">
-        <div class="info-label">Start Date</div>
-        <div class="info-value">${formatDate(training.start_date)}</div>
-      </div>
-      <div class="info-item">
-        <div class="info-label">End Date</div>
-        <div class="info-value">${formatDate(training.end_date)}</div>
-      </div>
-      <div class="info-item">
-        <div class="info-label">Trainer(s) of Record</div>
-        <div class="info-value">${training.trainer_of_record || 'N/A'}</div>
-      </div>
-      ${training.trainee_names ? `
-      <div class="info-item-full">
-        <div class="info-label">Trainee Names</div>
-        <div class="info-value">${training.trainee_names.replace(/\n/g, '<br>')}</div>
-      </div>
-      ` : ''}
-    </div>
-  </div>
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const margin = 20;
+    const contentWidth = pageWidth - (2 * margin);
+    let yPos = margin;
 
-  <div class="standards-text">
-    Rope Works Inc. completed a site visit for training and operations on the above date(s). 
-    LISTED BELOW are the operating systems on your site we trained or reviewed in accordance with 
-    Rope Works Inc. operational procedures and the Association for Challenge Course Technology (ACCT) 
-    operational and training standards. Standards applied include ANSI/ACCT 03-2016 and ANSI/ACCT 03-2019.
-  </div>
+    // Helper to add new page if needed
+    const checkPageBreak = (neededSpace: number) => {
+      if (yPos + neededSpace > pageHeight - margin) {
+        doc.addPage();
+        yPos = margin;
+        return true;
+      }
+      return false;
+    };
 
-  ${deliveryApproaches && deliveryApproaches.length > 0 ? `
-  <div class="section">
-    <h2>Delivery Approach</h2>
-    <div class="checkbox-list">
-      ${deliveryApproaches.map(a => `
-        <div class="checkbox-item">☑ ${a.approach}</div>
-      `).join('')}
-    </div>
-  </div>
-  ` : ''}
+    // Helper to wrap text
+    const addWrappedText = (text: string, fontSize: number, isBold = false) => {
+      doc.setFontSize(fontSize);
+      doc.setFont('helvetica', isBold ? 'bold' : 'normal');
+      const lines = doc.splitTextToSize(text, contentWidth);
+      const lineHeight = fontSize * 0.4;
+      
+      checkPageBreak(lines.length * lineHeight);
+      
+      lines.forEach((line: string) => {
+        if (yPos > pageHeight - margin) {
+          doc.addPage();
+          yPos = margin;
+        }
+        doc.text(line, margin, yPos);
+        yPos += lineHeight;
+      });
+    };
 
-  ${operatingSystems && operatingSystems.length > 0 ? `
-  <div class="section">
-    <h2>Operating Systems</h2>
-    <div class="checkbox-list">
-      ${operatingSystems.map(s => `
-        <div class="checkbox-item">
-          ☑ ${s.system_name}${s.other_description ? ` - ${s.other_description}` : ''}
-        </div>
-      `).join('')}
-    </div>
-  </div>
-  ` : ''}
+    // Header
+    doc.setFillColor(30, 64, 175);
+    doc.rect(0, 0, pageWidth, 35, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(24);
+    doc.setFont('helvetica', 'bold');
+    doc.text('ROPE WORKS INC.', pageWidth / 2, 15, { align: 'center' });
+    doc.setFontSize(16);
+    doc.setFont('helvetica', 'normal');
+    doc.text('Training Report', pageWidth / 2, 25, { align: 'center' });
+    
+    yPos = 45;
+    doc.setTextColor(0, 0, 0);
 
-  ${verifiableItems && verifiableItems.length > 0 ? `
-  <div class="section">
-    <h2>Verifiable Items During Training</h2>
-    <div class="disclaimer-box">
-      <strong>IMPORTANT DOCUMENTATION REQUIREMENTS</strong>
-      It is the responsibility of the client to read, understand, and follow all manufacturer guidelines, notices and recalls for the equipment used for your site's operations. This includes proper documentation and inventory tracking of each item used for course operations. This should be done according to a written checklist that is monitored by the course manager or other qualified person at your site. Records should be available at your annual inspection that include and indicate the date of purchase, date of first use and the equipment shall be identifiable by the serial number/tag or other unique identifier that matches your written documentation and the manufacturer retirement criteria.
-    </div>
-    <div class="helper-text">
-      <strong>CHECK ONLY THOSE THAT WERE VERIFIABLE AND IN PLACE DURING TRAINING.</strong>
-    </div>
-    <div class="checkbox-list">
-      ${verifiableItems.map(v => `
-        <div class="checkbox-item">☑ ${v.item}</div>
-      `).join('')}
-    </div>
-  </div>
-  ` : ''}
+    // Training Information
+    doc.setFontSize(14);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(30, 64, 175);
+    doc.text('Training Information', margin, yPos);
+    yPos += 8;
+    
+    doc.setDrawColor(203, 213, 225);
+    doc.line(margin, yPos, pageWidth - margin, yPos);
+    yPos += 8;
 
-  ${systemsInPlace && systemsInPlace.length > 0 ? `
-  <div class="section">
-    <h2>Systems in Place</h2>
-    <div class="helper-text">
-      <strong>Check ONLY if the following are in place:</strong><br>
-      The following were either addressed in discussion with training participants or a staff supervisor. We recommend following up to address any unchecked areas.
-    </div>
-    <div class="checkbox-list">
-      ${systemsInPlace.map(s => `
-        <div class="checkbox-item">☑ ${s.system_item}</div>
-      `).join('')}
-    </div>
-  </div>
-  ` : ''}
+    doc.setFontSize(10);
+    doc.setTextColor(0, 0, 0);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Training Site:', margin, yPos);
+    doc.setFont('helvetica', 'normal');
+    doc.text(training.organization || 'N/A', margin + 40, yPos);
+    yPos += 6;
 
-  ${immediateAttention && immediateAttention.length > 0 ? `
-  <div class="section">
-    <h2>Immediate Attention</h2>
-    <div class="checkbox-list">
-      ${immediateAttention.map(i => `
-        <div class="checkbox-item">☑ ${i.item}</div>
-      `).join('')}
-    </div>
-  </div>
-  ` : ''}
+    doc.setFont('helvetica', 'bold');
+    doc.text('Start Date:', margin, yPos);
+    doc.setFont('helvetica', 'normal');
+    doc.text(formatDate(training.start_date), margin + 40, yPos);
+    yPos += 6;
 
-  ${summary ? `
-  <div class="section">
-    <h2>Training Summary</h2>
-    ${summary.observations ? `
-      <h3>Training Observations</h3>
-      <div class="helper-text">
-        This area lists/describes any observations at the time of training pertaining to staff, equipment function, or operations:
-      </div>
-      <div class="content-text">${summary.observations}</div>
-    ` : ''}
-    ${summary.recommendations ? `
-      <h3>Training Recommendations</h3>
-      <div class="helper-text">
-        This area lists recommendations from the trainer after visiting your site regarding staff, equipment function, or operations:
-      </div>
-      <div class="content-text">${summary.recommendations}</div>
-    ` : ''}
-  </div>
-  ` : ''}
+    doc.setFont('helvetica', 'bold');
+    doc.text('End Date:', margin, yPos);
+    doc.setFont('helvetica', 'normal');
+    doc.text(formatDate(training.end_date), margin + 40, yPos);
+    yPos += 6;
 
-  ${summary?.person_submitting || summary?.submission_date ? `
-  <div class="section">
-    <h2>Report Verification</h2>
-    <div class="verification-text">
-      The trainer listed on this report verifies the report is complete and ready for client submission on the following date.
-    </div>
-    <div class="info-grid">
-      ${summary.person_submitting ? `
-        <div class="info-item">
-          <div class="info-label">Person Submitting Form</div>
-          <div class="info-value">${summary.person_submitting}</div>
-        </div>
-      ` : ''}
-      ${summary.submission_date ? `
-        <div class="info-item">
-          <div class="info-label">Submission Date</div>
-          <div class="info-value">${formatDate(summary.submission_date)}</div>
-        </div>
-      ` : ''}
-    </div>
-  </div>
-  ` : ''}
+    doc.setFont('helvetica', 'bold');
+    doc.text('Trainer(s) of Record:', margin, yPos);
+    doc.setFont('helvetica', 'normal');
+    doc.text(training.trainer_of_record || 'N/A', margin + 50, yPos);
+    yPos += 10;
 
-  <div class="disclaimer-box" style="margin-top: 25px;">
-    <strong>DISCLAIMER</strong>
-    This training report documents the systems and procedures covered during the training session. 
-    It is the responsibility of the facility to implement and maintain proper operational procedures, conduct regular inspections, 
-    and ensure all staff are appropriately trained and certified. This report does not constitute a guarantee of safety or compliance.
-  </div>
+    if (training.trainee_names) {
+      checkPageBreak(20);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Trainee Names:', margin, yPos);
+      yPos += 6;
+      doc.setFont('helvetica', 'normal');
+      const traineeLines = training.trainee_names.split('\n');
+      traineeLines.forEach((line: string) => {
+        checkPageBreak(5);
+        doc.text(line, margin, yPos);
+        yPos += 5;
+      });
+      yPos += 5;
+    }
 
-  <div class="footer">
-    <p><strong>Rope Works Inc.</strong></p>
-    <p>ACCT Accredited Vendor</p>
-    <p>Report Generated: ${new Date().toLocaleString('en-US', { dateStyle: 'long', timeStyle: 'short' })}</p>
-    ${profile?.acct_number ? `<p>ACCT #: ${profile.acct_number}</p>` : ''}
-  </div>
-</body>
-</html>
-`;
+    // Standards Text
+    checkPageBreak(30);
+    doc.setFillColor(219, 234, 254);
+    doc.roundedRect(margin - 5, yPos - 5, contentWidth + 10, 25, 3, 3, 'F');
+    doc.setFontSize(9);
+    doc.setTextColor(30, 64, 175);
+    const standardsText = 'Rope Works Inc. completed a site visit for training and operations on the above date(s). LISTED BELOW are the operating systems on your site we trained or reviewed in accordance with Rope Works Inc. operational procedures and the Association for Challenge Course Technology (ACCT) operational and training standards. Standards applied include ANSI/ACCT 03-2016 and ANSI/ACCT 03-2019.';
+    const standardsLines = doc.splitTextToSize(standardsText, contentWidth);
+    standardsLines.forEach((line: string, index: number) => {
+      doc.text(line, margin, yPos + (index * 4.5));
+    });
+    yPos += (standardsLines.length * 4.5) + 10;
+    doc.setTextColor(0, 0, 0);
 
-    // Use a PDF generation service (placeholder - you would use an actual service)
-    // For now, we'll save HTML and provide a link
-    const fileName = `training-report-${trainingId}-${Date.now()}.html`;
+    // Delivery Approach
+    if (deliveryApproaches && deliveryApproaches.length > 0) {
+      checkPageBreak(20);
+      doc.setFontSize(14);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(30, 64, 175);
+      doc.text('Delivery Approach', margin, yPos);
+      yPos += 8;
+      doc.setDrawColor(203, 213, 225);
+      doc.line(margin, yPos, pageWidth - margin, yPos);
+      yPos += 6;
+      
+      doc.setFontSize(10);
+      doc.setTextColor(0, 0, 0);
+      doc.setFont('helvetica', 'normal');
+      deliveryApproaches.forEach((a: any) => {
+        checkPageBreak(6);
+        doc.text('☑ ' + a.approach, margin, yPos);
+        yPos += 6;
+      });
+      yPos += 5;
+    }
+
+    // Operating Systems
+    if (operatingSystems && operatingSystems.length > 0) {
+      checkPageBreak(20);
+      doc.setFontSize(14);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(30, 64, 175);
+      doc.text('Operating Systems', margin, yPos);
+      yPos += 8;
+      doc.setDrawColor(203, 213, 225);
+      doc.line(margin, yPos, pageWidth - margin, yPos);
+      yPos += 6;
+      
+      doc.setFontSize(10);
+      doc.setTextColor(0, 0, 0);
+      doc.setFont('helvetica', 'normal');
+      operatingSystems.forEach((s: any) => {
+        checkPageBreak(6);
+        const text = s.other_description ? `${s.system_name} - ${s.other_description}` : s.system_name;
+        doc.text('☑ ' + text, margin, yPos);
+        yPos += 6;
+      });
+      yPos += 5;
+    }
+
+    // Verifiable Items
+    if (verifiableItems && verifiableItems.length > 0) {
+      checkPageBreak(35);
+      doc.setFontSize(14);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(30, 64, 175);
+      doc.text('Verifiable Items During Training', margin, yPos);
+      yPos += 8;
+      doc.setDrawColor(203, 213, 225);
+      doc.line(margin, yPos, pageWidth - margin, yPos);
+      yPos += 8;
+      
+      doc.setFontSize(9);
+      doc.setTextColor(100, 116, 139);
+      doc.setFont('helvetica', 'italic');
+      doc.text('CHECK ONLY THOSE THAT WERE VERIFIABLE AND IN PLACE DURING TRAINING.', margin, yPos);
+      yPos += 8;
+      
+      doc.setFontSize(10);
+      doc.setTextColor(0, 0, 0);
+      doc.setFont('helvetica', 'normal');
+      verifiableItems.forEach((v: any) => {
+        checkPageBreak(6);
+        doc.text('☑ ' + v.item, margin, yPos);
+        yPos += 6;
+      });
+      yPos += 5;
+    }
+
+    // Systems in Place
+    if (systemsInPlace && systemsInPlace.length > 0) {
+      checkPageBreak(25);
+      doc.setFontSize(14);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(30, 64, 175);
+      doc.text('Systems in Place', margin, yPos);
+      yPos += 8;
+      doc.setDrawColor(203, 213, 225);
+      doc.line(margin, yPos, pageWidth - margin, yPos);
+      yPos += 6;
+      
+      doc.setFontSize(10);
+      doc.setTextColor(0, 0, 0);
+      doc.setFont('helvetica', 'normal');
+      systemsInPlace.forEach((s: any) => {
+        checkPageBreak(6);
+        doc.text('☑ ' + s.system_item, margin, yPos);
+        yPos += 6;
+      });
+      yPos += 5;
+    }
+
+    // Immediate Attention
+    if (immediateAttention && immediateAttention.length > 0) {
+      checkPageBreak(25);
+      doc.setFontSize(14);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(211, 47, 47);
+      doc.text('⚠ Immediate Attention', margin, yPos);
+      yPos += 8;
+      doc.setDrawColor(203, 213, 225);
+      doc.line(margin, yPos, pageWidth - margin, yPos);
+      yPos += 6;
+      
+      doc.setFontSize(10);
+      doc.setTextColor(211, 47, 47);
+      doc.setFont('helvetica', 'normal');
+      immediateAttention.forEach((i: any) => {
+        checkPageBreak(6);
+        doc.text('☑ ' + i.item, margin, yPos);
+        yPos += 6;
+      });
+      yPos += 5;
+      doc.setTextColor(0, 0, 0);
+    }
+
+    // Training Summary
+    if (summary) {
+      checkPageBreak(20);
+      doc.setFontSize(14);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(30, 64, 175);
+      doc.text('Training Summary', margin, yPos);
+      yPos += 8;
+      doc.setDrawColor(203, 213, 225);
+      doc.line(margin, yPos, pageWidth - margin, yPos);
+      yPos += 8;
+
+      if (summary.observations) {
+        checkPageBreak(15);
+        doc.setFontSize(12);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(0, 0, 0);
+        doc.text('Training Observations', margin, yPos);
+        yPos += 8;
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'normal');
+        const obsLines = doc.splitTextToSize(summary.observations, contentWidth);
+        obsLines.forEach((line: string) => {
+          checkPageBreak(5);
+          doc.text(line, margin, yPos);
+          yPos += 5;
+        });
+        yPos += 5;
+      }
+
+      if (summary.recommendations) {
+        checkPageBreak(15);
+        doc.setFontSize(12);
+        doc.setFont('helvetica', 'bold');
+        doc.text('Training Recommendations', margin, yPos);
+        yPos += 8;
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'normal');
+        const recLines = doc.splitTextToSize(summary.recommendations, contentWidth);
+        recLines.forEach((line: string) => {
+          checkPageBreak(5);
+          doc.text(line, margin, yPos);
+          yPos += 5;
+        });
+        yPos += 5;
+      }
+    }
+
+    // Report Verification
+    if (summary?.person_submitting || summary?.submission_date) {
+      checkPageBreak(25);
+      doc.setFontSize(14);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(30, 64, 175);
+      doc.text('Report Verification', margin, yPos);
+      yPos += 8;
+      doc.setDrawColor(203, 213, 225);
+      doc.line(margin, yPos, pageWidth - margin, yPos);
+      yPos += 8;
+
+      doc.setFontSize(10);
+      doc.setTextColor(0, 0, 0);
+      if (summary.person_submitting) {
+        doc.setFont('helvetica', 'bold');
+        doc.text('Person Submitting:', margin, yPos);
+        doc.setFont('helvetica', 'normal');
+        doc.text(summary.person_submitting, margin + 45, yPos);
+        yPos += 6;
+      }
+      if (summary.submission_date) {
+        doc.setFont('helvetica', 'bold');
+        doc.text('Submission Date:', margin, yPos);
+        doc.setFont('helvetica', 'normal');
+        doc.text(formatDate(summary.submission_date), margin + 45, yPos);
+        yPos += 10;
+      }
+    }
+
+    // Disclaimer
+    checkPageBreak(30);
+    doc.setFillColor(254, 243, 199);
+    doc.roundedRect(margin - 5, yPos - 5, contentWidth + 10, 25, 3, 3, 'F');
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(146, 64, 14);
+    doc.text('DISCLAIMER', margin, yPos);
+    yPos += 6;
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(0, 0, 0);
+    const disclaimerText = 'This training report documents the systems and procedures covered during the training session. It is the responsibility of the facility to implement and maintain proper operational procedures, conduct regular inspections, and ensure all staff are appropriately trained and certified.';
+    const disclaimerLines = doc.splitTextToSize(disclaimerText, contentWidth);
+    disclaimerLines.forEach((line: string, index: number) => {
+      doc.text(line, margin, yPos + (index * 4));
+    });
+    yPos += (disclaimerLines.length * 4) + 10;
+
+    // Footer
+    doc.setFontSize(9);
+    doc.setTextColor(100, 116, 139);
+    doc.text('Rope Works Inc. - ACCT Accredited Vendor', pageWidth / 2, pageHeight - 15, { align: 'center' });
+    doc.text(`Report Generated: ${new Date().toLocaleString('en-US', { dateStyle: 'long', timeStyle: 'short' })}`, pageWidth / 2, pageHeight - 10, { align: 'center' });
+    if (profile?.acct_number) {
+      doc.text(`ACCT #: ${profile.acct_number}`, pageWidth / 2, pageHeight - 5, { align: 'center' });
+    }
+
+    // Generate PDF buffer
+    const pdfBytes = doc.output('arraybuffer');
+    const fileName = `training-report-${trainingId}-${Date.now()}.pdf`;
     const filePath = `training-reports/${fileName}`;
 
     // Upload to Supabase Storage
     const { error: uploadError } = await supabaseAdmin.storage
       .from('inspection-reports')
-      .upload(filePath, new Blob([htmlContent], { type: 'text/html' }), {
-        contentType: 'text/html',
+      .upload(filePath, pdfBytes, {
+        contentType: 'application/pdf',
         upsert: true
       });
 
@@ -447,10 +460,10 @@ serve(async (req) => {
       training_id: trainingId,
       pdf_url: urlData?.signedUrl || '',
       generated_by: user.id,
-      file_size_bytes: new Blob([htmlContent]).size,
+      file_size_bytes: pdfBytes.byteLength,
       metadata: {
         generator: 'generate-training-pdf',
-        format: 'html',
+        format: 'pdf',
         sections_included: {
           delivery_approaches: deliveryApproaches?.length || 0,
           operating_systems: operatingSystems?.length || 0,
