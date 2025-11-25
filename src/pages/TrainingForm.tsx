@@ -5,7 +5,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Save, FileDown, ChevronLeft, WifiOff, Wifi } from "lucide-react";
+import { Loader2, Save, FileDown, FileText, ChevronLeft, WifiOff, Wifi } from "lucide-react";
 import TrainingHeader from "@/components/training/TrainingHeader";
 import DeliveryApproachSection from "@/components/training/DeliveryApproachSection";
 import OperatingSystemsSection from "@/components/training/OperatingSystemsSection";
@@ -24,6 +24,7 @@ export default function TrainingForm() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
+  const [isGeneratingHTML, setIsGeneratingHTML] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [training, setTraining] = useState<any>(null);
   const [deliveryApproaches, setDeliveryApproaches] = useState<any[]>([]);
@@ -261,36 +262,37 @@ export default function TrainingForm() {
 
   const handleGeneratePDF = async () => {
     if (!id) return;
-
+    
     setIsGeneratingPDF(true);
+    
     try {
+      // First save any pending changes
       await saveTraining();
-
+      
+      // Generate the PDF
       const { data, error } = await supabase.functions.invoke('generate-training-pdf', {
         body: { trainingId: id }
       });
-
-      if (error) throw error;
-
-      if (data?.signedUrl) {
-        // Fetch and download
-        const response = await fetch(data.signedUrl);
-        const blob = await response.blob();
-        const url = window.URL.createObjectURL(blob);
+      
+      if (error) {
+        throw error;
+      }
+      
+      // Download the PDF
+      if (data?.pdfUrl) {
         const link = document.createElement('a');
-        link.href = url;
+        link.href = data.pdfUrl;
         link.download = `training-report-${training?.organization || 'report'}-${new Date().toISOString().split('T')[0]}.pdf`;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
-        window.URL.revokeObjectURL(url);
         
         toast({
           title: "Success",
-          description: "Training report downloaded successfully",
+          description: "PDF report generated successfully",
         });
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error generating PDF:', error);
       toast({
         title: "Error",
@@ -299,6 +301,46 @@ export default function TrainingForm() {
       });
     } finally {
       setIsGeneratingPDF(false);
+    }
+  };
+
+  const handleGenerateHTML = async () => {
+    if (!id) return;
+    
+    setIsGeneratingHTML(true);
+    
+    try {
+      await saveTraining();
+      
+      const { data, error } = await supabase.functions.invoke('generate-training-html', {
+        body: { trainingId: id }
+      });
+      
+      if (error) throw error;
+      
+      const blob = new Blob([data.html], { type: 'text/html' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `training-report-${training?.organization || 'report'}-${new Date().toISOString().split('T')[0]}.html`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      
+      toast({
+        title: "Success",
+        description: "HTML report downloaded successfully",
+      });
+    } catch (error: any) {
+      console.error('Error generating HTML:', error);
+      toast({
+        title: "Error",
+        description: "Failed to generate HTML report",
+        variant: "destructive",
+      });
+    } finally {
+      setIsGeneratingHTML(false);
     }
   };
 
@@ -388,6 +430,24 @@ export default function TrainingForm() {
                   <>
                     <FileDown className="mr-2 h-4 w-4" />
                     Generate PDF
+                  </>
+                )}
+              </Button>
+              
+              <Button
+                onClick={handleGenerateHTML}
+                disabled={isGeneratingHTML || !isOnline}
+                variant="outline"
+              >
+                {isGeneratingHTML ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Generating...
+                  </>
+                ) : (
+                  <>
+                    <FileText className="mr-2 h-4 w-4" />
+                    Generate HTML
                   </>
                 )}
               </Button>

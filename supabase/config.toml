@@ -12,5 +12,8 @@ verify_jwt = true
 [functions.generate-training-pdf]
 verify_jwt = true
 
+[functions.generate-training-html]
+verify_jwt = true
+
 [functions.send-contact-email]
 verify_jwt = false
