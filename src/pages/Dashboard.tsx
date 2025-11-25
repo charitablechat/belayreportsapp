@@ -195,7 +195,7 @@ export default function Dashboard() {
           .from("inspections")
           .select(`
             *,
-            inspector:profiles!inspector_id(first_name, last_name)
+            inspector:profiles!inspections_inspector_id_profiles_fkey(first_name, last_name)
           `)
           .order("last_opened_at", { ascending: false, nullsFirst: false })
           .order("created_at", { ascending: false });
