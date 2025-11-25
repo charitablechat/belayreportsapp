@@ -2,7 +2,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { X, Plus } from "lucide-react";
 
 interface OperatingSystemsSectionProps {
   systems: any[];
@@ -30,16 +31,15 @@ const OPERATING_SYSTEMS = [
 ];
 
 export default function OperatingSystemsSection({ systems, onUpdate }: OperatingSystemsSectionProps) {
-  const [otherDescription, setOtherDescription] = useState(
-    systems.find(s => s.system_name === 'Other')?.other_description || ''
-  );
+  const otherEntries = systems.filter(s => s.system_name === 'Other');
+  const predefinedSystems = systems.filter(s => s.system_name !== 'Other');
 
   const handleToggle = (systemName: string, checked: boolean) => {
     if (checked) {
       onUpdate([...systems, {
         id: crypto.randomUUID(),
         system_name: systemName,
-        other_description: systemName === 'Other' ? otherDescription : null,
+        other_description: null,
         created_at: new Date().toISOString()
       }]);
     } else {
@@ -47,16 +47,24 @@ export default function OperatingSystemsSection({ systems, onUpdate }: Operating
     }
   };
 
-  const handleOtherDescriptionChange = (value: string) => {
-    setOtherDescription(value);
-    const otherSystem = systems.find(s => s.system_name === 'Other');
-    if (otherSystem) {
-      onUpdate(systems.map(s => 
-        s.system_name === 'Other' 
-          ? { ...s, other_description: value }
-          : s
-      ));
-    }
+  const handleAddOther = () => {
+    const newEntry = {
+      id: crypto.randomUUID(),
+      system_name: 'Other',
+      other_description: '',
+      created_at: new Date().toISOString()
+    };
+    onUpdate([...systems, newEntry]);
+  };
+
+  const handleUpdateOther = (id: string, value: string) => {
+    onUpdate(systems.map(s => 
+      s.id === id ? { ...s, other_description: value } : s
+    ));
+  };
+
+  const handleRemoveOther = (id: string) => {
+    onUpdate(systems.filter(s => s.id !== id));
   };
 
   return (
@@ -69,7 +77,7 @@ export default function OperatingSystemsSection({ systems, onUpdate }: Operating
           <div key={system} className="flex items-center space-x-2">
             <Checkbox
               id={`system-${system}`}
-              checked={systems.some(s => s.system_name === system)}
+              checked={predefinedSystems.some(s => s.system_name === system)}
               onCheckedChange={(checked) => handleToggle(system, checked as boolean)}
             />
             <Label
@@ -81,29 +89,41 @@ export default function OperatingSystemsSection({ systems, onUpdate }: Operating
           </div>
         ))}
         
-        <div className="space-y-2">
-          <div className="flex items-center space-x-2">
-            <Checkbox
-              id="system-Other"
-              checked={systems.some(s => s.system_name === 'Other')}
-              onCheckedChange={(checked) => handleToggle('Other', checked as boolean)}
-            />
-            <Label
-              htmlFor="system-Other"
-              className="text-sm font-normal cursor-pointer"
-            >
-              Other
-            </Label>
+        {otherEntries.length > 0 && (
+          <div className="space-y-2 pt-2">
+            <Label className="text-sm font-medium">Custom Operating Systems:</Label>
+            {otherEntries.map((entry) => (
+              <div key={entry.id} className="flex items-center gap-2">
+                <Input
+                  placeholder="Describe custom operating system..."
+                  value={entry.other_description || ''}
+                  onChange={(e) => handleUpdateOther(entry.id, e.target.value)}
+                  className="flex-1"
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => handleRemoveOther(entry.id)}
+                  className="shrink-0"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            ))}
           </div>
-          {systems.some(s => s.system_name === 'Other') && (
-            <Input
-              placeholder="Please specify other operating system"
-              value={otherDescription}
-              onChange={(e) => handleOtherDescriptionChange(e.target.value)}
-              className="ml-6"
-            />
-          )}
-        </div>
+        )}
+        
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={handleAddOther}
+          className="w-full"
+        >
+          <Plus className="h-4 w-4 mr-2" />
+          Add Custom Operating System
+        </Button>
       </CardContent>
     </Card>
   );
