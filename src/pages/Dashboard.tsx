@@ -22,7 +22,6 @@ import { useSyncProgress } from "@/hooks/useSyncProgress";
 import { NetworkStatusIndicator } from "@/components/pwa/NetworkStatusIndicator";
 import { SyncStatusIndicator } from "@/components/pwa/SyncStatusIndicator";
 import { SyncControlPanel } from "@/components/pwa/SyncControlPanel";
-import { OfflineCapabilitiesBanner } from "@/components/pwa/OfflineCapabilitiesBanner";
 import { ManualUpdateButton } from "@/components/pwa/ManualUpdateButton";
 import { OfflineSimulator } from "@/components/dev/OfflineSimulator";
 import { PushNotificationManager } from "@/components/pwa/PushNotificationManager";
@@ -493,9 +492,6 @@ export default function Dashboard() {
             </div>
           </div>
         )}
-
-        {/* Enhanced Offline Capabilities Banner */}
-        <OfflineCapabilitiesBanner />
 
         {/* Foyer Section */}
         <section className="mb-12">
