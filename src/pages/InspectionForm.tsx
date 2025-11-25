@@ -49,6 +49,7 @@ export default function InspectionForm() {
   const [saving, setSaving] = useState(false);
   const [autoSaving, setAutoSaving] = useState(false);
   const [generatingPdf, setGeneratingPdf] = useState(false);
+  const [generatingHtml, setGeneratingHtml] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [photoRefreshKey, setPhotoRefreshKey] = useState(0);
@@ -1268,6 +1269,56 @@ export default function InspectionForm() {
     }
   };
 
+  const handleGenerateHTML = async () => {
+    if (!id) {
+      toast.error('Cannot generate HTML: No inspection ID');
+      return;
+    }
+    
+    if (inspection?.status !== 'completed') {
+      toast.error('Inspection must be completed before generating HTML', {
+        description: `Current status: ${inspection?.status || 'unknown'}`
+      });
+      return;
+    }
+
+    setGeneratingHtml(true);
+
+    try {
+      const { data, error } = await supabase.functions.invoke(
+        'generate-inspection-html',
+        {
+          body: { inspectionId: id }
+        }
+      );
+
+      if (error) {
+        throw new Error(error.message || 'Failed to generate HTML');
+      }
+
+      if (!data?.html) {
+        throw new Error('No HTML content received');
+      }
+
+      // Create a new window with the HTML content
+      const newWindow = window.open('', '_blank');
+      if (newWindow) {
+        newWindow.document.write(data.html);
+        newWindow.document.close();
+        toast.success('HTML report generated successfully');
+      } else {
+        toast.error('Please allow pop-ups to view the HTML report');
+      }
+    } catch (error: any) {
+      console.error('HTML generation error:', error);
+      toast.error('Failed to generate HTML report', {
+        description: error.message || 'An unexpected error occurred'
+      });
+    } finally {
+      setGeneratingHtml(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
@@ -1384,35 +1435,66 @@ export default function InspectionForm() {
                 </Tooltip>
               </TooltipProvider>
               {inspection?.status === 'completed' && (
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <span>
-                        <Button 
-                          variant="outline" 
-                          size="sm" 
-                          onClick={handleGeneratePDF} 
-                          disabled={generatingPdf || !isOnline}
-                        >
-                          {generatingPdf ? (
-                            <>
-                              <Loader2 className="w-4 h-4 animate-spin" />
-                              <span className="hidden md:inline ml-2">Generating...</span>
-                            </>
-                          ) : (
-                            <>
-                              <FileText className="w-4 h-4" />
-                              <span className="hidden md:inline ml-2">Generate PDF</span>
-                            </>
-                          )}
-                        </Button>
-                      </span>
-                    </TooltipTrigger>
-                    {!isOnline && (
-                      <TooltipContent>Must be online to generate PDF</TooltipContent>
-                    )}
-                  </Tooltip>
-                </TooltipProvider>
+                <>
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span>
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            onClick={handleGeneratePDF} 
+                            disabled={generatingPdf || !isOnline}
+                          >
+                            {generatingPdf ? (
+                              <>
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                                <span className="hidden md:inline ml-2">Generating...</span>
+                              </>
+                            ) : (
+                              <>
+                                <FileText className="w-4 h-4" />
+                                <span className="hidden md:inline ml-2">Generate PDF</span>
+                              </>
+                            )}
+                          </Button>
+                        </span>
+                      </TooltipTrigger>
+                      {!isOnline && (
+                        <TooltipContent>Must be online to generate PDF</TooltipContent>
+                      )}
+                    </Tooltip>
+                  </TooltipProvider>
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span>
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            onClick={handleGenerateHTML} 
+                            disabled={generatingHtml || !isOnline}
+                          >
+                            {generatingHtml ? (
+                              <>
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                                <span className="hidden md:inline ml-2">Generating...</span>
+                              </>
+                            ) : (
+                              <>
+                                <FileText className="w-4 h-4" />
+                                <span className="hidden md:inline ml-2">Generate HTML</span>
+                              </>
+                            )}
+                          </Button>
+                        </span>
+                      </TooltipTrigger>
+                      {!isOnline && (
+                        <TooltipContent>Must be online to generate HTML</TooltipContent>
+                      )}
+                    </Tooltip>
+                  </TooltipProvider>
+                </>
               )}
             </div>
           </div>
