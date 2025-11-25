@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { jsPDF } from "https://esm.sh/jspdf@2.5.2";
+import "https://esm.sh/jspdf-autotable@3.8.2";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -90,7 +91,7 @@ serve(async (req) => {
       orientation: 'portrait',
       unit: 'mm',
       format: 'a4'
-    });
+    }) as any;
 
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
@@ -98,36 +99,21 @@ serve(async (req) => {
     const contentWidth = pageWidth - (2 * margin);
     let yPos = margin;
 
-    // Helper to add new page if needed
-    const checkPageBreak = (neededSpace: number) => {
-      if (yPos + neededSpace > pageHeight - margin) {
-        doc.addPage();
-        yPos = margin;
-        return true;
+    // Add footer to all pages
+    const addFooter = () => {
+      const currentPage = doc.internal.getCurrentPageInfo().pageNumber;
+      const totalPages = doc.internal.getNumberOfPages();
+      
+      doc.setFontSize(9);
+      doc.setTextColor(100, 116, 139);
+      doc.text('Rope Works Inc. - ACCT Accredited Vendor', pageWidth / 2, pageHeight - 15, { align: 'center' });
+      doc.text(`Page ${currentPage} of ${totalPages}`, pageWidth / 2, pageHeight - 10, { align: 'center' });
+      if (profile?.acct_number) {
+        doc.text(`ACCT #: ${profile.acct_number}`, pageWidth / 2, pageHeight - 5, { align: 'center' });
       }
-      return false;
     };
 
-    // Helper to wrap text
-    const addWrappedText = (text: string, fontSize: number, isBold = false) => {
-      doc.setFontSize(fontSize);
-      doc.setFont('helvetica', isBold ? 'bold' : 'normal');
-      const lines = doc.splitTextToSize(text, contentWidth);
-      const lineHeight = fontSize * 0.4;
-      
-      checkPageBreak(lines.length * lineHeight);
-      
-      lines.forEach((line: string) => {
-        if (yPos > pageHeight - margin) {
-          doc.addPage();
-          yPos = margin;
-        }
-        doc.text(line, margin, yPos);
-        yPos += lineHeight;
-      });
-    };
-
-    // Header
+    // Header - only on first page
     doc.setFillColor(30, 64, 175);
     doc.rect(0, 0, pageWidth, 35, 'F');
     doc.setTextColor(255, 255, 255);
@@ -141,7 +127,7 @@ serve(async (req) => {
     yPos = 45;
     doc.setTextColor(0, 0, 0);
 
-    // Training Information
+    // Training Information Section
     doc.setFontSize(14);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(30, 64, 175);
@@ -152,64 +138,67 @@ serve(async (req) => {
     doc.line(margin, yPos, pageWidth - margin, yPos);
     yPos += 8;
 
-    doc.setFontSize(10);
-    doc.setTextColor(0, 0, 0);
-    doc.setFont('helvetica', 'bold');
-    doc.text('Training Site:', margin, yPos);
-    doc.setFont('helvetica', 'normal');
-    doc.text(training.organization || 'N/A', margin + 40, yPos);
-    yPos += 6;
+    // Create info table
+    const infoData: any[] = [
+      ['Training Site', training.organization || 'N/A'],
+      ['Start Date', formatDate(training.start_date)],
+      ['End Date', formatDate(training.end_date)],
+      ['Trainer(s) of Record', training.trainer_of_record || 'N/A']
+    ];
 
-    doc.setFont('helvetica', 'bold');
-    doc.text('Start Date:', margin, yPos);
-    doc.setFont('helvetica', 'normal');
-    doc.text(formatDate(training.start_date), margin + 40, yPos);
-    yPos += 6;
+    doc.autoTable({
+      startY: yPos,
+      head: [],
+      body: infoData,
+      theme: 'plain',
+      styles: {
+        fontSize: 10,
+        cellPadding: 2,
+        lineColor: [240, 240, 240],
+        lineWidth: 0.1
+      },
+      columnStyles: {
+        0: { fontStyle: 'bold', cellWidth: 50 },
+        1: { fontStyle: 'normal' }
+      },
+      margin: { left: margin, right: margin }
+    });
 
-    doc.setFont('helvetica', 'bold');
-    doc.text('End Date:', margin, yPos);
-    doc.setFont('helvetica', 'normal');
-    doc.text(formatDate(training.end_date), margin + 40, yPos);
-    yPos += 6;
+    yPos = doc.lastAutoTable.finalY + 10;
 
-    doc.setFont('helvetica', 'bold');
-    doc.text('Trainer(s) of Record:', margin, yPos);
-    doc.setFont('helvetica', 'normal');
-    doc.text(training.trainer_of_record || 'N/A', margin + 50, yPos);
-    yPos += 10;
-
+    // Trainee Names
     if (training.trainee_names) {
-      checkPageBreak(20);
+      doc.setFontSize(10);
       doc.setFont('helvetica', 'bold');
       doc.text('Trainee Names:', margin, yPos);
       yPos += 6;
+      
       doc.setFont('helvetica', 'normal');
-      const traineeLines = training.trainee_names.split('\n');
+      const traineeLines = doc.splitTextToSize(training.trainee_names, contentWidth);
       traineeLines.forEach((line: string) => {
-        checkPageBreak(5);
         doc.text(line, margin, yPos);
         yPos += 5;
       });
-      yPos += 5;
+      yPos += 8;
     }
 
-    // Standards Text
-    checkPageBreak(30);
+    // Standards Box
     doc.setFillColor(219, 234, 254);
-    doc.roundedRect(margin - 5, yPos - 5, contentWidth + 10, 25, 3, 3, 'F');
+    const standardsText = 'Rope Works Inc. completed a site visit for training and operations on the above date(s). LISTED BELOW are the operating systems on your site we trained or reviewed in accordance with Rope Works Inc. operational procedures and the Association for Challenge Course Technology (ACCT) operational and training standards. Standards applied include ANSI/ACCT 03-2016 and ANSI/ACCT 03-2019.';
+    const standardsLines = doc.splitTextToSize(standardsText, contentWidth - 10);
+    const boxHeight = (standardsLines.length * 4.5) + 10;
+    
+    doc.roundedRect(margin - 5, yPos - 5, contentWidth + 10, boxHeight, 3, 3, 'F');
     doc.setFontSize(9);
     doc.setTextColor(30, 64, 175);
-    const standardsText = 'Rope Works Inc. completed a site visit for training and operations on the above date(s). LISTED BELOW are the operating systems on your site we trained or reviewed in accordance with Rope Works Inc. operational procedures and the Association for Challenge Course Technology (ACCT) operational and training standards. Standards applied include ANSI/ACCT 03-2016 and ANSI/ACCT 03-2019.';
-    const standardsLines = doc.splitTextToSize(standardsText, contentWidth);
     standardsLines.forEach((line: string, index: number) => {
       doc.text(line, margin, yPos + (index * 4.5));
     });
-    yPos += (standardsLines.length * 4.5) + 10;
+    yPos += boxHeight + 5;
     doc.setTextColor(0, 0, 0);
 
-    // Delivery Approach
+    // Delivery Approach Section
     if (deliveryApproaches && deliveryApproaches.length > 0) {
-      checkPageBreak(20);
       doc.setFontSize(14);
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(30, 64, 175);
@@ -217,22 +206,31 @@ serve(async (req) => {
       yPos += 8;
       doc.setDrawColor(203, 213, 225);
       doc.line(margin, yPos, pageWidth - margin, yPos);
-      yPos += 6;
-      
-      doc.setFontSize(10);
-      doc.setTextColor(0, 0, 0);
-      doc.setFont('helvetica', 'normal');
-      deliveryApproaches.forEach((a: any) => {
-        checkPageBreak(6);
-        doc.text('☑ ' + a.approach, margin, yPos);
-        yPos += 6;
-      });
       yPos += 5;
+      
+      const approachData = deliveryApproaches.map((a: any) => ['☑ ' + a.approach]);
+      
+      doc.autoTable({
+        startY: yPos,
+        head: [],
+        body: approachData,
+        theme: 'striped',
+        styles: {
+          fontSize: 10,
+          cellPadding: 3,
+          textColor: [0, 0, 0]
+        },
+        alternateRowStyles: {
+          fillColor: [248, 250, 252]
+        },
+        margin: { left: margin, right: margin }
+      });
+
+      yPos = doc.lastAutoTable.finalY + 10;
     }
 
-    // Operating Systems
+    // Operating Systems Section
     if (operatingSystems && operatingSystems.length > 0) {
-      checkPageBreak(20);
       doc.setFontSize(14);
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(30, 64, 175);
@@ -240,23 +238,39 @@ serve(async (req) => {
       yPos += 8;
       doc.setDrawColor(203, 213, 225);
       doc.line(margin, yPos, pageWidth - margin, yPos);
-      yPos += 6;
-      
-      doc.setFontSize(10);
-      doc.setTextColor(0, 0, 0);
-      doc.setFont('helvetica', 'normal');
-      operatingSystems.forEach((s: any) => {
-        checkPageBreak(6);
-        const text = s.other_description ? `${s.system_name} - ${s.other_description}` : s.system_name;
-        doc.text('☑ ' + text, margin, yPos);
-        yPos += 6;
-      });
       yPos += 5;
+      
+      const systemsData = operatingSystems.map((s: any) => {
+        const text = s.other_description ? `${s.system_name}` : s.system_name;
+        const desc = s.other_description || '';
+        return ['☑ ' + text, desc];
+      });
+      
+      doc.autoTable({
+        startY: yPos,
+        head: [],
+        body: systemsData,
+        theme: 'striped',
+        styles: {
+          fontSize: 10,
+          cellPadding: 3,
+          textColor: [0, 0, 0]
+        },
+        columnStyles: {
+          0: { cellWidth: 80 },
+          1: { cellWidth: 'auto' }
+        },
+        alternateRowStyles: {
+          fillColor: [248, 250, 252]
+        },
+        margin: { left: margin, right: margin }
+      });
+
+      yPos = doc.lastAutoTable.finalY + 10;
     }
 
-    // Verifiable Items
+    // Verifiable Items Section
     if (verifiableItems && verifiableItems.length > 0) {
-      checkPageBreak(35);
       doc.setFontSize(14);
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(30, 64, 175);
@@ -270,22 +284,31 @@ serve(async (req) => {
       doc.setTextColor(100, 116, 139);
       doc.setFont('helvetica', 'italic');
       doc.text('CHECK ONLY THOSE THAT WERE VERIFIABLE AND IN PLACE DURING TRAINING.', margin, yPos);
-      yPos += 8;
-      
-      doc.setFontSize(10);
-      doc.setTextColor(0, 0, 0);
-      doc.setFont('helvetica', 'normal');
-      verifiableItems.forEach((v: any) => {
-        checkPageBreak(6);
-        doc.text('☑ ' + v.item, margin, yPos);
-        yPos += 6;
-      });
       yPos += 5;
+      
+      const itemsData = verifiableItems.map((v: any) => ['☑ ' + v.item]);
+      
+      doc.autoTable({
+        startY: yPos,
+        head: [],
+        body: itemsData,
+        theme: 'striped',
+        styles: {
+          fontSize: 10,
+          cellPadding: 3,
+          textColor: [0, 0, 0]
+        },
+        alternateRowStyles: {
+          fillColor: [248, 250, 252]
+        },
+        margin: { left: margin, right: margin }
+      });
+
+      yPos = doc.lastAutoTable.finalY + 10;
     }
 
-    // Systems in Place
+    // Systems in Place Section
     if (systemsInPlace && systemsInPlace.length > 0) {
-      checkPageBreak(25);
       doc.setFontSize(14);
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(30, 64, 175);
@@ -293,46 +316,64 @@ serve(async (req) => {
       yPos += 8;
       doc.setDrawColor(203, 213, 225);
       doc.line(margin, yPos, pageWidth - margin, yPos);
-      yPos += 6;
-      
-      doc.setFontSize(10);
-      doc.setTextColor(0, 0, 0);
-      doc.setFont('helvetica', 'normal');
-      systemsInPlace.forEach((s: any) => {
-        checkPageBreak(6);
-        doc.text('☑ ' + s.system_item, margin, yPos);
-        yPos += 6;
-      });
       yPos += 5;
+      
+      const systemsData = systemsInPlace.map((s: any) => ['☑ ' + s.system_item]);
+      
+      doc.autoTable({
+        startY: yPos,
+        head: [],
+        body: systemsData,
+        theme: 'striped',
+        styles: {
+          fontSize: 10,
+          cellPadding: 3,
+          textColor: [0, 0, 0]
+        },
+        alternateRowStyles: {
+          fillColor: [248, 250, 252]
+        },
+        margin: { left: margin, right: margin }
+      });
+
+      yPos = doc.lastAutoTable.finalY + 10;
     }
 
-    // Immediate Attention
+    // Immediate Attention Section
     if (immediateAttention && immediateAttention.length > 0) {
-      checkPageBreak(25);
       doc.setFontSize(14);
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(211, 47, 47);
       doc.text('⚠ Immediate Attention', margin, yPos);
       yPos += 8;
-      doc.setDrawColor(203, 213, 225);
+      doc.setDrawColor(211, 47, 47);
       doc.line(margin, yPos, pageWidth - margin, yPos);
-      yPos += 6;
-      
-      doc.setFontSize(10);
-      doc.setTextColor(211, 47, 47);
-      doc.setFont('helvetica', 'normal');
-      immediateAttention.forEach((i: any) => {
-        checkPageBreak(6);
-        doc.text('☑ ' + i.item, margin, yPos);
-        yPos += 6;
-      });
       yPos += 5;
+      
+      const attentionData = immediateAttention.map((i: any) => ['⚠ ' + i.item]);
+      
+      doc.autoTable({
+        startY: yPos,
+        head: [],
+        body: attentionData,
+        theme: 'striped',
+        styles: {
+          fontSize: 10,
+          cellPadding: 3,
+          textColor: [211, 47, 47]
+        },
+        alternateRowStyles: {
+          fillColor: [254, 242, 242]
+        },
+        margin: { left: margin, right: margin }
+      });
+
+      yPos = doc.lastAutoTable.finalY + 10;
       doc.setTextColor(0, 0, 0);
     }
 
-    // Training Summary
+    // Training Summary Section
     if (summary) {
-      checkPageBreak(20);
       doc.setFontSize(14);
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(30, 64, 175);
@@ -343,44 +384,47 @@ serve(async (req) => {
       yPos += 8;
 
       if (summary.observations) {
-        checkPageBreak(15);
         doc.setFontSize(12);
         doc.setFont('helvetica', 'bold');
         doc.setTextColor(0, 0, 0);
         doc.text('Training Observations', margin, yPos);
-        yPos += 8;
+        yPos += 6;
         doc.setFontSize(10);
         doc.setFont('helvetica', 'normal');
         const obsLines = doc.splitTextToSize(summary.observations, contentWidth);
         obsLines.forEach((line: string) => {
-          checkPageBreak(5);
+          if (yPos > pageHeight - 40) {
+            doc.addPage();
+            yPos = margin;
+          }
           doc.text(line, margin, yPos);
           yPos += 5;
         });
-        yPos += 5;
+        yPos += 8;
       }
 
       if (summary.recommendations) {
-        checkPageBreak(15);
         doc.setFontSize(12);
         doc.setFont('helvetica', 'bold');
         doc.text('Training Recommendations', margin, yPos);
-        yPos += 8;
+        yPos += 6;
         doc.setFontSize(10);
         doc.setFont('helvetica', 'normal');
         const recLines = doc.splitTextToSize(summary.recommendations, contentWidth);
         recLines.forEach((line: string) => {
-          checkPageBreak(5);
+          if (yPos > pageHeight - 40) {
+            doc.addPage();
+            yPos = margin;
+          }
           doc.text(line, margin, yPos);
           yPos += 5;
         });
-        yPos += 5;
+        yPos += 8;
       }
     }
 
-    // Report Verification
+    // Report Verification Section
     if (summary?.person_submitting || summary?.submission_date) {
-      checkPageBreak(25);
       doc.setFontSize(14);
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(30, 64, 175);
@@ -390,28 +434,45 @@ serve(async (req) => {
       doc.line(margin, yPos, pageWidth - margin, yPos);
       yPos += 8;
 
-      doc.setFontSize(10);
-      doc.setTextColor(0, 0, 0);
+      const verificationData: any[] = [];
       if (summary.person_submitting) {
-        doc.setFont('helvetica', 'bold');
-        doc.text('Person Submitting:', margin, yPos);
-        doc.setFont('helvetica', 'normal');
-        doc.text(summary.person_submitting, margin + 45, yPos);
-        yPos += 6;
+        verificationData.push(['Person Submitting', summary.person_submitting]);
       }
       if (summary.submission_date) {
-        doc.setFont('helvetica', 'bold');
-        doc.text('Submission Date:', margin, yPos);
-        doc.setFont('helvetica', 'normal');
-        doc.text(formatDate(summary.submission_date), margin + 45, yPos);
-        yPos += 10;
+        verificationData.push(['Submission Date', formatDate(summary.submission_date)]);
       }
+
+      doc.autoTable({
+        startY: yPos,
+        head: [],
+        body: verificationData,
+        theme: 'plain',
+        styles: {
+          fontSize: 10,
+          cellPadding: 2
+        },
+        columnStyles: {
+          0: { fontStyle: 'bold', cellWidth: 50 },
+          1: { fontStyle: 'normal' }
+        },
+        margin: { left: margin, right: margin }
+      });
+
+      yPos = doc.lastAutoTable.finalY + 10;
     }
 
-    // Disclaimer
-    checkPageBreak(30);
+    // Disclaimer Box
+    if (yPos > pageHeight - 60) {
+      doc.addPage();
+      yPos = margin;
+    }
+    
     doc.setFillColor(254, 243, 199);
-    doc.roundedRect(margin - 5, yPos - 5, contentWidth + 10, 25, 3, 3, 'F');
+    const disclaimerText = 'This training report documents the systems and procedures covered during the training session. It is the responsibility of the facility to implement and maintain proper operational procedures, conduct regular inspections, and ensure all staff are appropriately trained and certified.';
+    const disclaimerLines = doc.splitTextToSize(disclaimerText, contentWidth - 10);
+    const disclaimerHeight = (disclaimerLines.length * 4) + 16;
+    
+    doc.roundedRect(margin - 5, yPos - 5, contentWidth + 10, disclaimerHeight, 3, 3, 'F');
     doc.setFontSize(9);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(146, 64, 14);
@@ -419,20 +480,15 @@ serve(async (req) => {
     yPos += 6;
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(0, 0, 0);
-    const disclaimerText = 'This training report documents the systems and procedures covered during the training session. It is the responsibility of the facility to implement and maintain proper operational procedures, conduct regular inspections, and ensure all staff are appropriately trained and certified.';
-    const disclaimerLines = doc.splitTextToSize(disclaimerText, contentWidth);
     disclaimerLines.forEach((line: string, index: number) => {
       doc.text(line, margin, yPos + (index * 4));
     });
-    yPos += (disclaimerLines.length * 4) + 10;
 
-    // Footer
-    doc.setFontSize(9);
-    doc.setTextColor(100, 116, 139);
-    doc.text('Rope Works Inc. - ACCT Accredited Vendor', pageWidth / 2, pageHeight - 15, { align: 'center' });
-    doc.text(`Report Generated: ${new Date().toLocaleString('en-US', { dateStyle: 'long', timeStyle: 'short' })}`, pageWidth / 2, pageHeight - 10, { align: 'center' });
-    if (profile?.acct_number) {
-      doc.text(`ACCT #: ${profile.acct_number}`, pageWidth / 2, pageHeight - 5, { align: 'center' });
+    // Add footers to all pages
+    const totalPages = doc.internal.getNumberOfPages();
+    for (let i = 1; i <= totalPages; i++) {
+      doc.setPage(i);
+      addFooter();
     }
 
     // Generate PDF buffer
