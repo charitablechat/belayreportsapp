@@ -20,6 +20,7 @@ export default function Profile() {
     first_name: "",
     last_name: "",
     avatar_url: "",
+    acct_number: "",
   });
   const [email, setEmail] = useState("");
 
@@ -55,6 +56,7 @@ export default function Profile() {
           first_name: (profileData as any).first_name || "",
           last_name: (profileData as any).last_name || "",
           avatar_url: (profileData as any).avatar_url || "",
+          acct_number: (profileData as any).acct_number || "",
         });
       }
     } catch (error: any) {
@@ -148,6 +150,7 @@ export default function Profile() {
           first_name: profile.first_name,
           last_name: profile.last_name,
           avatar_url: profile.avatar_url,
+          acct_number: profile.acct_number,
         });
 
       if (profileError) throw profileError;
@@ -282,6 +285,24 @@ export default function Profile() {
                   placeholder="Enter your last name"
                   maxLength={50}
                 />
+              </div>
+
+              {/* ACCT# */}
+              <div className="space-y-2">
+                <Label htmlFor="acct_number">ACCT# (Certification Number)</Label>
+                <Input
+                  id="acct_number"
+                  type="text"
+                  value={profile.acct_number}
+                  onChange={(e) =>
+                    setProfile({ ...profile, acct_number: e.target.value })
+                  }
+                  placeholder="Enter your ACCT certification number"
+                  maxLength={50}
+                />
+                <p className="text-xs text-muted-foreground">
+                  This will auto-populate in new inspections
+                </p>
               </div>
 
               {/* Save Button */}
