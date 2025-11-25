@@ -590,6 +590,13 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "inspections_inspector_id_profiles_fkey"
+            columns: ["inspector_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "inspections_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
@@ -1169,6 +1176,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "trainings_inspector_id_profiles_fkey"
+            columns: ["inspector_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "trainings_organization_id_fkey"
             columns: ["organization_id"]
