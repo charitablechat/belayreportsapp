@@ -59,6 +59,7 @@ export default function InspectionHeader({ inspection, userProfile, onUpdate, on
               {renderField("Facility Name", "organization", inspection?.organization)}
               {renderField("Location", "location", inspection?.location)}
               {renderField("Onsite Contact", "onsite_contact", inspection?.onsite_contact)}
+              {renderField("Previous Inspector", "previous_inspector", inspection?.previous_inspector)}
             </div>
             <div className="space-y-4">
               {renderField("Inspection Date", "inspection_date", inspection?.inspection_date, "date")}
@@ -71,7 +72,6 @@ export default function InspectionHeader({ inspection, userProfile, onUpdate, on
                 />
               </div>
               {renderField("ACCT#", "acct_number", inspection?.acct_number)}
-              {renderField("Previous Inspector", "previous_inspector", inspection?.previous_inspector)}
               {renderField("Prev. Inspection Date", "previous_inspection_date", inspection?.previous_inspection_date, "date")}
             </div>
           </div>
