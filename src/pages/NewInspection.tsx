@@ -164,7 +164,7 @@ export default function NewInspection() {
             {!isOnline && (
               <Alert className="mb-6 border-warning bg-warning/10">
                 <CloudOff className="h-4 w-4 text-warning" />
-                <AlertDescription className="text-warning-foreground">
+                <AlertDescription className="text-gray-900 dark:text-gray-100">
                   📴 Working offline - inspection will sync when online
                   {getCachedUser()?.email && (
                     <div className="text-xs mt-1 opacity-80">
