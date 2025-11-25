@@ -393,7 +393,7 @@ export default function TrainingForm() {
             <TabsTrigger value="info">Info</TabsTrigger>
             <TabsTrigger value="delivery">Training Format</TabsTrigger>
             <TabsTrigger value="systems">Training OS</TabsTrigger>
-            <TabsTrigger value="attention">Attention</TabsTrigger>
+            <TabsTrigger value="attention">Required Actions</TabsTrigger>
             <TabsTrigger value="verifiable">Verifiable</TabsTrigger>
             <TabsTrigger value="summary">Summary</TabsTrigger>
             <TabsTrigger value="photos">Photos</TabsTrigger>
