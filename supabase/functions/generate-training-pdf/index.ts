@@ -90,39 +90,173 @@ serve(async (req) => {
 <html>
 <head>
   <meta charset="utf-8">
+  <title>Training Report - ${training.organization}</title>
   <style>
-    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 40px; }
-    .header { text-align: center; margin-bottom: 30px; border-bottom: 3px solid #1e40af; padding-bottom: 20px; }
-    .logo { max-width: 200px; margin-bottom: 10px; }
-    h1 { color: #1e40af; font-size: 28px; margin: 10px 0; }
-    h2 { color: #1e40af; font-size: 20px; margin-top: 25px; border-bottom: 2px solid #cbd5e1; padding-bottom: 5px; }
-    h3 { color: #334155; font-size: 16px; margin-top: 15px; }
-    .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin: 20px 0; }
-    .info-item { padding: 10px; background: #f8fafc; border-left: 3px solid #1e40af; }
-    .info-label { font-weight: bold; color: #475569; font-size: 12px; text-transform: uppercase; }
-    .info-value { color: #1e293b; font-size: 14px; margin-top: 5px; }
-    .section { margin: 25px 0; padding: 15px; border: 1px solid #e2e8f0; border-radius: 8px; }
-    .checkbox-list { margin: 10px 0; }
-    .checkbox-item { padding: 8px 0; border-bottom: 1px solid #f1f5f9; }
-    .checkbox-item:last-child { border-bottom: none; }
-    .disclaimer { background: #fef3c7; border-left: 4px solid #f59e0b; padding: 15px; margin: 30px 0; font-size: 13px; }
-    .footer { margin-top: 40px; padding-top: 20px; border-top: 2px solid #e2e8f0; text-align: center; color: #64748b; font-size: 12px; }
-    .standards-text { background: #e0f2fe; padding: 15px; border-radius: 6px; margin: 15px 0; font-size: 14px; line-height: 1.7; }
-    ul { margin: 10px 0; padding-left: 25px; }
-    li { margin: 5px 0; }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+      line-height: 1.5; 
+      color: #1e293b; 
+      padding: 30px 40px;
+      max-width: 1000px;
+      margin: 0 auto;
+    }
+    .header { 
+      text-align: center; 
+      margin-bottom: 25px; 
+      border-bottom: 4px solid #1e40af; 
+      padding-bottom: 15px; 
+    }
+    h1 { 
+      color: #1e40af; 
+      font-size: 32px; 
+      font-weight: 700;
+      margin-bottom: 5px;
+      letter-spacing: 1px;
+    }
+    .report-title { 
+      color: #475569; 
+      font-size: 20px; 
+      font-weight: 600;
+      margin-top: 8px;
+    }
+    h2 { 
+      color: #1e40af; 
+      font-size: 18px; 
+      font-weight: 600;
+      margin-top: 20px; 
+      margin-bottom: 12px;
+      padding-bottom: 6px;
+      border-bottom: 2px solid #cbd5e1; 
+    }
+    h3 { 
+      color: #334155; 
+      font-size: 15px; 
+      font-weight: 600;
+      margin-top: 15px;
+      margin-bottom: 8px;
+    }
+    .standards-text { 
+      background: #dbeafe; 
+      padding: 15px 18px; 
+      border-radius: 6px; 
+      margin: 18px 0; 
+      font-size: 13px; 
+      line-height: 1.6;
+      border-left: 4px solid #1e40af;
+    }
+    .section { 
+      margin: 18px 0; 
+      padding: 0;
+    }
+    .info-grid { 
+      display: grid; 
+      grid-template-columns: repeat(2, 1fr); 
+      gap: 12px; 
+      margin: 12px 0; 
+    }
+    .info-item { 
+      padding: 10px 12px; 
+      background: #f8fafc; 
+      border-left: 3px solid #1e40af;
+      border-radius: 4px;
+    }
+    .info-label { 
+      font-weight: 600; 
+      color: #64748b; 
+      font-size: 11px; 
+      text-transform: uppercase; 
+      letter-spacing: 0.5px;
+      margin-bottom: 4px;
+    }
+    .info-value { 
+      color: #1e293b; 
+      font-size: 14px;
+      line-height: 1.4;
+    }
+    .info-item-full {
+      grid-column: 1 / -1;
+      padding: 10px 12px; 
+      background: #f8fafc; 
+      border-left: 3px solid #1e40af;
+      border-radius: 4px;
+    }
+    .checkbox-list { 
+      margin: 10px 0; 
+    }
+    .checkbox-item { 
+      padding: 8px 0 8px 5px; 
+      border-bottom: 1px solid #e2e8f0;
+      font-size: 13px;
+      line-height: 1.4;
+    }
+    .checkbox-item:last-child { 
+      border-bottom: none; 
+    }
+    .helper-text {
+      color: #64748b;
+      font-size: 12px;
+      font-style: italic;
+      margin-bottom: 10px;
+      padding: 8px 12px;
+      background: #f1f5f9;
+      border-radius: 4px;
+      line-height: 1.5;
+    }
+    .disclaimer-box { 
+      background: #fef3c7; 
+      border-left: 4px solid #f59e0b; 
+      padding: 15px 18px; 
+      margin: 15px 0; 
+      font-size: 12px;
+      border-radius: 4px;
+      line-height: 1.6;
+    }
+    .disclaimer-box strong {
+      display: block;
+      margin-bottom: 8px;
+      color: #92400e;
+      font-size: 13px;
+    }
+    .verification-text {
+      background: #ecfdf5;
+      border-left: 4px solid #10b981;
+      padding: 12px 15px;
+      margin: 12px 0;
+      font-size: 12px;
+      border-radius: 4px;
+      line-height: 1.5;
+      color: #064e3b;
+    }
+    .content-text {
+      font-size: 13px;
+      line-height: 1.6;
+      color: #334155;
+      margin: 10px 0;
+    }
+    .footer { 
+      margin-top: 30px; 
+      padding-top: 15px; 
+      border-top: 2px solid #cbd5e1; 
+      text-align: center; 
+      color: #64748b; 
+      font-size: 11px;
+      line-height: 1.8;
+    }
+    .footer strong {
+      font-size: 13px;
+      color: #1e40af;
+    }
+    @media print {
+      body { padding: 20px; }
+      .section { page-break-inside: avoid; }
+    }
   </style>
 </head>
 <body>
   <div class="header">
     <h1>ROPE WORKS INC.</h1>
-    <h2>Training Report</h2>
-  </div>
-
-  <div class="standards-text">
-    Rope Works Inc. completed a site visit for training and operations on the above date(s). 
-    LISTED BELOW are the operating systems on your site we trained or reviewed in accordance with 
-    Rope Works Inc. operational procedures and the Association for Challenge Course Technology (ACCT) 
-    operational and training standards. Standards applied include ANSI/ACCT 03-2016 and ANSI/ACCT 03-2019.
+    <div class="report-title">Training Report</div>
   </div>
 
   <div class="section">
@@ -144,13 +278,20 @@ serve(async (req) => {
         <div class="info-label">Trainer(s) of Record</div>
         <div class="info-value">${training.trainer_of_record || 'N/A'}</div>
       </div>
-    </div>
-    ${training.trainee_names ? `
-      <div class="info-item" style="margin-top: 15px;">
+      ${training.trainee_names ? `
+      <div class="info-item-full">
         <div class="info-label">Trainee Names</div>
         <div class="info-value">${training.trainee_names.replace(/\n/g, '<br>')}</div>
       </div>
-    ` : ''}
+      ` : ''}
+    </div>
+  </div>
+
+  <div class="standards-text">
+    Rope Works Inc. completed a site visit for training and operations on the above date(s). 
+    LISTED BELOW are the operating systems on your site we trained or reviewed in accordance with 
+    Rope Works Inc. operational procedures and the Association for Challenge Course Technology (ACCT) 
+    operational and training standards. Standards applied include ANSI/ACCT 03-2016 and ANSI/ACCT 03-2019.
   </div>
 
   ${deliveryApproaches && deliveryApproaches.length > 0 ? `
@@ -170,9 +311,41 @@ serve(async (req) => {
     <div class="checkbox-list">
       ${operatingSystems.map(s => `
         <div class="checkbox-item">
-          ☑ ${s.system_name}
-          ${s.other_description ? ` - ${s.other_description}` : ''}
+          ☑ ${s.system_name}${s.other_description ? ` - ${s.other_description}` : ''}
         </div>
+      `).join('')}
+    </div>
+  </div>
+  ` : ''}
+
+  ${verifiableItems && verifiableItems.length > 0 ? `
+  <div class="section">
+    <h2>Verifiable Items During Training</h2>
+    <div class="disclaimer-box">
+      <strong>IMPORTANT DOCUMENTATION REQUIREMENTS</strong>
+      It is the responsibility of the client to read, understand, and follow all manufacturer guidelines, notices and recalls for the equipment used for your site's operations. This includes proper documentation and inventory tracking of each item used for course operations. This should be done according to a written checklist that is monitored by the course manager or other qualified person at your site. Records should be available at your annual inspection that include and indicate the date of purchase, date of first use and the equipment shall be identifiable by the serial number/tag or other unique identifier that matches your written documentation and the manufacturer retirement criteria.
+    </div>
+    <div class="helper-text">
+      <strong>CHECK ONLY THOSE THAT WERE VERIFIABLE AND IN PLACE DURING TRAINING.</strong>
+    </div>
+    <div class="checkbox-list">
+      ${verifiableItems.map(v => `
+        <div class="checkbox-item">☑ ${v.item}</div>
+      `).join('')}
+    </div>
+  </div>
+  ` : ''}
+
+  ${systemsInPlace && systemsInPlace.length > 0 ? `
+  <div class="section">
+    <h2>Systems in Place</h2>
+    <div class="helper-text">
+      <strong>Check ONLY if the following are in place:</strong><br>
+      The following were either addressed in discussion with training participants or a staff supervisor. We recommend following up to address any unchecked areas.
+    </div>
+    <div class="checkbox-list">
+      ${systemsInPlace.map(s => `
+        <div class="checkbox-item">☑ ${s.system_item}</div>
       `).join('')}
     </div>
   </div>
@@ -189,40 +362,33 @@ serve(async (req) => {
   </div>
   ` : ''}
 
-  ${verifiableItems && verifiableItems.length > 0 ? `
-  <div class="section">
-    <h2>Verifiable Items During Training</h2>
-    <div class="checkbox-list">
-      ${verifiableItems.map(v => `
-        <div class="checkbox-item">☑ ${v.item}</div>
-      `).join('')}
-    </div>
-  </div>
-  ` : ''}
-
-  ${systemsInPlace && systemsInPlace.length > 0 ? `
-  <div class="section">
-    <h2>Systems in Place</h2>
-    <div class="checkbox-list">
-      ${systemsInPlace.map(s => `
-        <div class="checkbox-item">☑ ${s.system_item}</div>
-      `).join('')}
-    </div>
-  </div>
-  ` : ''}
-
   ${summary ? `
   <div class="section">
     <h2>Training Summary</h2>
     ${summary.observations ? `
       <h3>Training Observations</h3>
-      <div>${summary.observations}</div>
+      <div class="helper-text">
+        This area lists/describes any observations at the time of training pertaining to staff, equipment function, or operations:
+      </div>
+      <div class="content-text">${summary.observations}</div>
     ` : ''}
     ${summary.recommendations ? `
       <h3>Training Recommendations</h3>
-      <div>${summary.recommendations}</div>
+      <div class="helper-text">
+        This area lists recommendations from the trainer after visiting your site regarding staff, equipment function, or operations:
+      </div>
+      <div class="content-text">${summary.recommendations}</div>
     ` : ''}
-    <div class="info-grid" style="margin-top: 20px;">
+  </div>
+  ` : ''}
+
+  ${summary?.person_submitting || summary?.submission_date ? `
+  <div class="section">
+    <h2>Report Verification</h2>
+    <div class="verification-text">
+      The trainer listed on this report verifies the report is complete and ready for client submission on the following date.
+    </div>
+    <div class="info-grid">
       ${summary.person_submitting ? `
         <div class="info-item">
           <div class="info-label">Person Submitting Form</div>
@@ -239,8 +405,9 @@ serve(async (req) => {
   </div>
   ` : ''}
 
-  <div class="disclaimer">
-    <strong>DISCLAIMER:</strong> This training report documents the systems and procedures covered during the training session. 
+  <div class="disclaimer-box" style="margin-top: 25px;">
+    <strong>DISCLAIMER</strong>
+    This training report documents the systems and procedures covered during the training session. 
     It is the responsibility of the facility to implement and maintain proper operational procedures, conduct regular inspections, 
     and ensure all staff are appropriately trained and certified. This report does not constitute a guarantee of safety or compliance.
   </div>
@@ -248,7 +415,7 @@ serve(async (req) => {
   <div class="footer">
     <p><strong>Rope Works Inc.</strong></p>
     <p>ACCT Accredited Vendor</p>
-    <p>Generated: ${new Date().toLocaleString()}</p>
+    <p>Report Generated: ${new Date().toLocaleString('en-US', { dateStyle: 'long', timeStyle: 'short' })}</p>
     ${profile?.acct_number ? `<p>ACCT #: ${profile.acct_number}</p>` : ''}
   </div>
 </body>
