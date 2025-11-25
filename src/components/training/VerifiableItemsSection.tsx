@@ -5,6 +5,8 @@ import { Label } from "@/components/ui/label";
 interface VerifiableItemsSectionProps {
   items: any[];
   onUpdate: (items: any[]) => void;
+  systemsInPlace: any[];
+  onUpdateSystemsInPlace: (items: any[]) => void;
 }
 
 const VERIFIABLE_ITEMS = [
@@ -14,7 +16,16 @@ const VERIFIABLE_ITEMS = [
   'Unable to check any of the above at the time of this report'
 ];
 
-export default function VerifiableItemsSection({ items, onUpdate }: VerifiableItemsSectionProps) {
+const SYSTEMS_IN_PLACE = [
+  'A system for conducting and documenting a periodic internal monitoring of the course, surrounding environment, and equipment',
+  'A system in place for incident documentation',
+  'A system in place to inform participants of the inherent and other risks associated with participation',
+  'A system in place for assessing and confirming activity corridors are clear of obstructions',
+  'A system in place to engage a qualified person to review the site\'s risk management and program quality every five years. (CHPT 2 ANSI/ACCT B.2.7)',
+  'Unable to check any of the above at this time'
+];
+
+export default function VerifiableItemsSection({ items, onUpdate, systemsInPlace, onUpdateSystemsInPlace }: VerifiableItemsSectionProps) {
   const handleToggle = (item: string, checked: boolean) => {
     if (checked) {
       onUpdate([...items, {
@@ -24,6 +35,18 @@ export default function VerifiableItemsSection({ items, onUpdate }: VerifiableIt
       }]);
     } else {
       onUpdate(items.filter(i => i.item !== item));
+    }
+  };
+
+  const handleSystemToggle = (systemItem: string, checked: boolean) => {
+    if (checked) {
+      onUpdateSystemsInPlace([...systemsInPlace, {
+        id: crypto.randomUUID(),
+        system_item: systemItem,
+        created_at: new Date().toISOString()
+      }]);
+    } else {
+      onUpdateSystemsInPlace(systemsInPlace.filter(i => i.system_item !== systemItem));
     }
   };
 
@@ -60,6 +83,33 @@ export default function VerifiableItemsSection({ items, onUpdate }: VerifiableIt
             />
             <Label
               htmlFor={`verifiable-${item}`}
+              className="text-sm font-normal cursor-pointer leading-tight"
+            >
+              {item}
+            </Label>
+          </div>
+        ))}
+
+        <div className="text-sm text-muted-foreground space-y-2 mt-6 mb-4 p-4 bg-muted/50 rounded-lg border">
+          <p className="font-semibold text-foreground">
+            Check ONLY if the following are in place:
+          </p>
+          <p className="leading-relaxed">
+            The following were either addressed in discussion with training participants or a
+            staff supervisor. We recommend following up to address any unchecked areas.
+          </p>
+        </div>
+
+        {SYSTEMS_IN_PLACE.map((item) => (
+          <div key={item} className="flex items-start space-x-2">
+            <Checkbox
+              id={`system-place-${item}`}
+              checked={systemsInPlace.some(i => i.system_item === item)}
+              onCheckedChange={(checked) => handleSystemToggle(item, checked as boolean)}
+              className="mt-0.5"
+            />
+            <Label
+              htmlFor={`system-place-${item}`}
               className="text-sm font-normal cursor-pointer leading-tight"
             >
               {item}
