@@ -33,6 +33,38 @@ export default function TrainingForm() {
   const [summary, setSummary] = useState<any>(null);
   const autoSaveTimer = useRef<NodeJS.Timeout | null>(null);
 
+  // Auto-populate person submitting with current user's name
+  useEffect(() => {
+    const fetchUserProfile = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('first_name, last_name')
+          .eq('id', user.id)
+          .single();
+
+        if (profile && summary && !summary.person_submitting) {
+          const fullName = [profile.first_name, profile.last_name]
+            .filter(Boolean)
+            .join(' ');
+          
+          if (fullName) {
+            setSummary({ ...summary, person_submitting: fullName });
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching user profile:', error);
+      }
+    };
+
+    if (summary && !isLoading) {
+      fetchUserProfile();
+    }
+  }, [summary?.id, isLoading]);
+
   // Load training data
   useEffect(() => {
     const loadTraining = async () => {
