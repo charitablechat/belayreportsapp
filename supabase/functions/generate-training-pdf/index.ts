@@ -249,7 +249,7 @@ serve(async (req) => {
       doc.line(margin, yPos, pageWidth - margin, yPos);
       yPos += 5;
       
-      const approachData = deliveryApproaches.map((a: any) => ['☑ ' + stripHtml(a.approach)]);
+      const approachData = deliveryApproaches.map((a: any) => ['[X] ' + stripHtml(a.approach)]);
       
       doc.autoTable({
         startY: yPos,
@@ -284,7 +284,7 @@ serve(async (req) => {
       const systemsData = operatingSystems.map((s: any) => {
         const text = s.other_description ? stripHtml(s.system_name) : stripHtml(s.system_name);
         const desc = stripHtml(s.other_description) || '';
-        return ['☑ ' + text, desc];
+        return ['[X] ' + text, desc];
       });
       
       doc.autoTable({
@@ -327,7 +327,7 @@ serve(async (req) => {
       doc.text('CHECK ONLY THOSE THAT WERE VERIFIABLE AND IN PLACE DURING TRAINING.', margin, yPos);
       yPos += 5;
       
-      const itemsData = verifiableItems.map((v: any) => ['☑ ' + stripHtml(v.item)]);
+      const itemsData = verifiableItems.map((v: any) => ['[X] ' + stripHtml(v.item)]);
       
       doc.autoTable({
         startY: yPos,
@@ -359,7 +359,7 @@ serve(async (req) => {
       doc.line(margin, yPos, pageWidth - margin, yPos);
       yPos += 5;
       
-      const systemsData = systemsInPlace.map((s: any) => ['☑ ' + stripHtml(s.system_item)]);
+      const systemsData = systemsInPlace.map((s: any) => ['[X] ' + stripHtml(s.system_item)]);
       
       doc.autoTable({
         startY: yPos,
@@ -385,13 +385,13 @@ serve(async (req) => {
       doc.setFontSize(14);
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(211, 47, 47);
-      doc.text('⚠ Immediate Attention', margin, yPos);
+      doc.text('[!] Immediate Attention', margin, yPos);
       yPos += 8;
       doc.setDrawColor(211, 47, 47);
       doc.line(margin, yPos, pageWidth - margin, yPos);
       yPos += 5;
       
-      const attentionData = immediateAttention.map((i: any) => ['⚠ ' + stripHtml(i.item)]);
+      const attentionData = immediateAttention.map((i: any) => ['[!] ' + stripHtml(i.item)]);
       
       doc.autoTable({
         startY: yPos,
