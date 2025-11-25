@@ -383,7 +383,7 @@ export default function Dashboard() {
               <NetworkStatusIndicator />
               <SyncStatusIndicator />
               {isSuperAdmin && (
-                <Badge variant="default" className="bg-primary text-primary-foreground hidden sm:flex items-center gap-1">
+                <Badge variant="default" className="bg-warning text-warning-foreground border-warning/50 shadow-lg shadow-warning/20 hidden sm:flex items-center gap-1">
                   <Shield className="w-3 h-3" />
                   Super Admin
                 </Badge>
@@ -405,7 +405,7 @@ export default function Dashboard() {
                     <div className="flex items-center justify-between">
                       <p className="text-sm font-medium">Account</p>
                       {isSuperAdmin && (
-                        <Badge variant="default" className="bg-primary text-primary-foreground text-xs flex items-center gap-1">
+                        <Badge variant="default" className="bg-warning text-warning-foreground border-warning/50 shadow-md shadow-warning/20 text-xs flex items-center gap-1">
                           <Shield className="w-3 h-3" />
                           Admin
                         </Badge>
