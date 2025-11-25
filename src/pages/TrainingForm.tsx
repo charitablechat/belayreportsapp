@@ -11,7 +11,6 @@ import DeliveryApproachSection from "@/components/training/DeliveryApproachSecti
 import OperatingSystemsSection from "@/components/training/OperatingSystemsSection";
 import ImmediateAttentionSection from "@/components/training/ImmediateAttentionSection";
 import VerifiableItemsSection from "@/components/training/VerifiableItemsSection";
-import SystemsInPlaceSection from "@/components/training/SystemsInPlaceSection";
 import TrainingSummarySection from "@/components/training/TrainingSummarySection";
 import PhotoGallery from "@/components/PhotoGallery";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
@@ -342,13 +341,12 @@ export default function TrainingForm() {
       {/* Main Content */}
       <div className="container mx-auto px-4 py-8">
         <Tabs defaultValue="info" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4 lg:grid-cols-8">
+          <TabsList className="grid w-full grid-cols-4 lg:grid-cols-7">
             <TabsTrigger value="info">Info</TabsTrigger>
             <TabsTrigger value="delivery">Delivery</TabsTrigger>
             <TabsTrigger value="systems">Systems</TabsTrigger>
             <TabsTrigger value="attention">Attention</TabsTrigger>
             <TabsTrigger value="verifiable">Verifiable</TabsTrigger>
-            <TabsTrigger value="place">In Place</TabsTrigger>
             <TabsTrigger value="summary">Summary</TabsTrigger>
             <TabsTrigger value="photos">Photos</TabsTrigger>
           </TabsList>
@@ -381,14 +379,9 @@ export default function TrainingForm() {
           <TabsContent value="verifiable" className="space-y-6">
             <VerifiableItemsSection 
               items={verifiableItems} 
-              onUpdate={setVerifiableItems} 
-            />
-          </TabsContent>
-
-          <TabsContent value="place" className="space-y-6">
-            <SystemsInPlaceSection 
-              items={systemsInPlace} 
-              onUpdate={setSystemsInPlace} 
+              onUpdate={setVerifiableItems}
+              systemsInPlace={systemsInPlace}
+              onUpdateSystemsInPlace={setSystemsInPlace}
             />
           </TabsContent>
 
