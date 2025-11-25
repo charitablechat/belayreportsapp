@@ -670,8 +670,8 @@ export default function SuperAdminDashboard() {
                   <TableCell>{format(new Date(inspection.inspection_date), "PP")}</TableCell>
                   <TableCell>{format(new Date(inspection.created_at), "PP")}</TableCell>
                   <TableCell>
-                    {inspection.inspector?.first_name && inspection.inspector?.last_name
-                      ? `${inspection.inspector.first_name} ${inspection.inspector.last_name}`
+                    {(inspection as any).inspector?.first_name && (inspection as any).inspector?.last_name
+                      ? `${(inspection as any).inspector.first_name} ${(inspection as any).inspector.last_name}`
                       : 'Unknown'}
                   </TableCell>
                 </TableRow>
