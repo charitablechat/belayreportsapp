@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { jsPDF } from "https://esm.sh/jspdf@2.5.2";
 import "https://esm.sh/jspdf-autotable@3.8.2";
+import { fetchTrainingData, formatTrainingContent } from "../_shared/training-formatter.ts";
 
 
 const corsHeaders = {
@@ -38,17 +39,11 @@ serve(async (req) => {
       throw new Error('Training ID is required');
     }
 
-    // Fetch training data
-    const { data: training, error: trainingError } = await supabaseAdmin
-      .from('trainings')
-      .select('*')
-      .eq('id', trainingId)
-      .single();
-
-    if (trainingError) throw trainingError;
-
+    // Fetch training data using shared formatter
+    const trainingData = await fetchTrainingData(trainingId, supabaseAdmin);
+    
     // Authorization check
-    if (training.inspector_id !== user.id) {
+    if (trainingData.training.inspector_id !== user.id) {
       const { data: roles } = await supabaseAdmin
         .from('user_roles')
         .select('role')
@@ -60,49 +55,8 @@ serve(async (req) => {
       }
     }
 
-    // Fetch all related data
-    const [
-      { data: deliveryApproaches },
-      { data: operatingSystems },
-      { data: immediateAttention },
-      { data: verifiableItems },
-      { data: systemsInPlace },
-      { data: summary },
-      { data: photos },
-      { data: profile }
-    ] = await Promise.all([
-      supabaseAdmin.from('training_delivery_approaches').select('*').eq('training_id', trainingId),
-      supabaseAdmin.from('training_operating_systems').select('*').eq('training_id', trainingId),
-      supabaseAdmin.from('training_immediate_attention').select('*').eq('training_id', trainingId),
-      supabaseAdmin.from('training_verifiable_items').select('*').eq('training_id', trainingId),
-      supabaseAdmin.from('training_systems_in_place').select('*').eq('training_id', trainingId),
-      supabaseAdmin.from('training_summary').select('*').eq('training_id', trainingId).single(),
-      supabaseAdmin.from('training_photos').select('*').eq('training_id', trainingId),
-      supabaseAdmin.from('profiles').select('first_name, last_name, acct_number').eq('id', training.inspector_id).single()
-    ]);
-
-    // Format dates
-    const formatDate = (dateStr: string) => {
-      const date = new Date(dateStr);
-      return date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
-    };
-
-    // Strip HTML tags and decode entities
-    const stripHtml = (html: string | null) => {
-      if (!html) return '';
-      let text = html.replace(/<[^>]*>/g, '');
-      text = text.replace(/&amp;/g, '&');
-      text = text.replace(/&lt;/g, '<');
-      text = text.replace(/&gt;/g, '>');
-      text = text.replace(/&quot;/g, '"');
-      text = text.replace(/&#39;/g, "'");
-      text = text.replace(/&nbsp;/g, ' ');
-      text = text.replace(/&apos;/g, "'");
-      text = text.replace(/&copy;/g, '©');
-      text = text.replace(/&reg;/g, '®');
-      text = text.replace(/&trade;/g, '™');
-      return text.trim();
-    };
+    // Format content using shared formatter
+    const content = formatTrainingContent(trainingData);
 
     // Fetch and add Unicode-compatible font
     let customFontLoaded = false;
@@ -160,8 +114,8 @@ serve(async (req) => {
       doc.setTextColor(100, 116, 139);
       doc.text('Rope Works Inc. - ACCT Accredited Vendor', pageWidth / 2, pageHeight - 15, { align: 'center' });
       doc.text(`Page ${currentPage} of ${totalPages}`, pageWidth / 2, pageHeight - 10, { align: 'center' });
-      if (profile?.acct_number) {
-        doc.text(`ACCT #: ${profile.acct_number}`, pageWidth / 2, pageHeight - 5, { align: 'center' });
+      if (trainingData.profile?.acct_number) {
+        doc.text(`ACCT #: ${trainingData.profile.acct_number}`, pageWidth / 2, pageHeight - 5, { align: 'center' });
       }
     };
 
@@ -216,10 +170,10 @@ serve(async (req) => {
 
     // Create info table
     const infoData: any[] = [
-      ['Training Site', stripHtml(training.organization) || 'N/A'],
-      ['Start Date', formatDate(training.start_date)],
-      ['End Date', formatDate(training.end_date)],
-      ['Trainer(s) of Record', stripHtml(training.trainer_of_record) || 'N/A']
+      ['Training Site', content.facilityInfo.organization],
+      ['Start Date', content.facilityInfo.startDate],
+      ['End Date', content.facilityInfo.endDate],
+      ['Trainer(s) of Record', content.facilityInfo.trainerOfRecord]
     ];
 
     doc.autoTable({
@@ -243,14 +197,14 @@ serve(async (req) => {
     yPos = doc.lastAutoTable.finalY + 10;
 
     // Trainee Names
-    if (training.trainee_names) {
+    if (content.facilityInfo.traineeNames !== 'N/A') {
       doc.setFontSize(10);
       doc.setFont('helvetica', 'bold');
       doc.text('Trainee Names:', margin, yPos);
       yPos += 6;
       
       doc.setFont('helvetica', 'normal');
-      const traineeLines = doc.splitTextToSize(stripHtml(training.trainee_names), contentWidth);
+      const traineeLines = doc.splitTextToSize(content.facilityInfo.traineeNames, contentWidth);
       traineeLines.forEach((line: string) => {
         doc.text(line, margin, yPos);
         yPos += 5;
@@ -260,8 +214,7 @@ serve(async (req) => {
 
     // Standards Box
     doc.setFillColor(219, 234, 254);
-    const standardsText = 'Rope Works Inc. completed a site visit for training and operations on the above date(s). LISTED BELOW are the operating systems on your site we trained or reviewed in accordance with Rope Works Inc. operational procedures and the Association for Challenge Course Technology (ACCT) operational and training standards. Standards applied include ANSI/ACCT 03-2016 and ANSI/ACCT 03-2019.';
-    const standardsLines = doc.splitTextToSize(standardsText, contentWidth - 10);
+    const standardsLines = doc.splitTextToSize(content.standardsText, contentWidth - 10);
     const boxHeight = (standardsLines.length * 4.5) + 10;
     
     doc.roundedRect(margin - 5, yPos - 5, contentWidth + 10, boxHeight, 3, 3, 'F');
@@ -274,7 +227,7 @@ serve(async (req) => {
     doc.setTextColor(0, 0, 0);
 
     // Delivery Approach Section
-    if (deliveryApproaches && deliveryApproaches.length > 0) {
+    if (content.deliveryApproaches.length > 0) {
       doc.setFontSize(14);
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(30, 64, 175);
@@ -284,7 +237,7 @@ serve(async (req) => {
       doc.line(margin, yPos, pageWidth - margin, yPos);
       yPos += 5;
       
-      const approachData = deliveryApproaches.map((a: any) => ['☑ ' + stripHtml(a.approach)]);
+      const approachData = content.deliveryApproaches.map((approach: string) => ['☑ ' + approach]);
       
       doc.autoTable({
         startY: yPos,
@@ -307,7 +260,7 @@ serve(async (req) => {
     }
 
     // Operating Systems Section
-    if (operatingSystems && operatingSystems.length > 0) {
+    if (content.operatingSystems.length > 0) {
       doc.setFontSize(14);
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(30, 64, 175);
@@ -317,10 +270,8 @@ serve(async (req) => {
       doc.line(margin, yPos, pageWidth - margin, yPos);
       yPos += 5;
       
-      const systemsData = operatingSystems.map((s: any) => {
-        const text = s.other_description ? stripHtml(s.system_name) : stripHtml(s.system_name);
-        const desc = stripHtml(s.other_description) || '';
-        return ['☑ ' + text, desc];
+      const systemsData = content.operatingSystems.map((sys: any) => {
+        return ['☑ ' + sys.name, sys.description || ''];
       });
       
       doc.autoTable({
@@ -348,7 +299,7 @@ serve(async (req) => {
     }
 
     // Verifiable Items Section
-    if (verifiableItems && verifiableItems.length > 0) {
+    if (content.verifiableItems.length > 0) {
       doc.setFontSize(14);
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(30, 64, 175);
@@ -364,7 +315,7 @@ serve(async (req) => {
       doc.text('CHECK ONLY THOSE THAT WERE VERIFIABLE AND IN PLACE DURING TRAINING.', margin, yPos);
       yPos += 5;
       
-      const itemsData = verifiableItems.map((v: any) => ['☑ ' + stripHtml(v.item)]);
+      const itemsData = content.verifiableItems.map((item: string) => ['☑ ' + item]);
       
       doc.autoTable({
         startY: yPos,
@@ -387,7 +338,7 @@ serve(async (req) => {
     }
 
     // Systems in Place Section
-    if (systemsInPlace && systemsInPlace.length > 0) {
+    if (content.systemsInPlace.length > 0) {
       doc.setFontSize(14);
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(30, 64, 175);
@@ -397,7 +348,7 @@ serve(async (req) => {
       doc.line(margin, yPos, pageWidth - margin, yPos);
       yPos += 5;
       
-      const systemsData = systemsInPlace.map((s: any) => ['☑ ' + stripHtml(s.system_item)]);
+      const systemsData = content.systemsInPlace.map((item: string) => ['☑ ' + item]);
       
       doc.autoTable({
         startY: yPos,
@@ -420,7 +371,7 @@ serve(async (req) => {
     }
 
     // Immediate Attention Section
-    if (immediateAttention && immediateAttention.length > 0) {
+    if (content.immediateAttention.length > 0) {
       doc.setFontSize(14);
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(211, 47, 47);
@@ -430,7 +381,7 @@ serve(async (req) => {
       doc.line(margin, yPos, pageWidth - margin, yPos);
       yPos += 5;
       
-      const attentionData = immediateAttention.map((i: any) => ['⚠ ' + stripHtml(i.item)]);
+      const attentionData = content.immediateAttention.map((item: string) => ['⚠ ' + item]);
       
       doc.autoTable({
         startY: yPos,
@@ -454,7 +405,7 @@ serve(async (req) => {
     }
 
     // Training Summary Section
-    if (summary) {
+    if (content.summary.observations || content.summary.recommendations) {
       doc.setFontSize(14);
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(30, 64, 175);
@@ -464,7 +415,7 @@ serve(async (req) => {
       doc.line(margin, yPos, pageWidth - margin, yPos);
       yPos += 8;
 
-      if (summary.observations) {
+      if (content.summary.observations) {
         doc.setFontSize(12);
         doc.setFont('helvetica', 'bold');
         doc.setTextColor(0, 0, 0);
@@ -472,7 +423,7 @@ serve(async (req) => {
         yPos += 6;
         doc.setFontSize(10);
         doc.setFont('helvetica', 'normal');
-        const obsLines = doc.splitTextToSize(stripHtml(summary.observations), contentWidth);
+        const obsLines = doc.splitTextToSize(content.summary.observations, contentWidth);
         obsLines.forEach((line: string) => {
           if (yPos > pageHeight - 40) {
             doc.addPage();
@@ -484,14 +435,14 @@ serve(async (req) => {
         yPos += 8;
       }
 
-      if (summary.recommendations) {
+      if (content.summary.recommendations) {
         doc.setFontSize(12);
         doc.setFont('helvetica', 'bold');
         doc.text('Training Recommendations', margin, yPos);
         yPos += 6;
         doc.setFontSize(10);
         doc.setFont('helvetica', 'normal');
-        const recLines = doc.splitTextToSize(stripHtml(summary.recommendations), contentWidth);
+        const recLines = doc.splitTextToSize(content.summary.recommendations, contentWidth);
         recLines.forEach((line: string) => {
           if (yPos > pageHeight - 40) {
             doc.addPage();
@@ -505,7 +456,7 @@ serve(async (req) => {
     }
 
     // Report Verification Section
-    if (summary?.person_submitting || summary?.submission_date) {
+    if (content.summary.personSubmitting || content.summary.submissionDate) {
       doc.setFontSize(14);
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(30, 64, 175);
@@ -516,11 +467,11 @@ serve(async (req) => {
       yPos += 8;
 
       const verificationData: any[] = [];
-      if (summary.person_submitting) {
-        verificationData.push(['Person Submitting', stripHtml(summary.person_submitting)]);
+      if (content.summary.personSubmitting) {
+        verificationData.push(['Person Submitting', content.summary.personSubmitting]);
       }
-      if (summary.submission_date) {
-        verificationData.push(['Submission Date', formatDate(summary.submission_date)]);
+      if (content.summary.submissionDate) {
+        verificationData.push(['Submission Date', content.summary.submissionDate]);
       }
 
       doc.autoTable({
@@ -549,8 +500,7 @@ serve(async (req) => {
     }
     
     doc.setFillColor(254, 243, 199);
-    const disclaimerText = 'This training report documents the systems and procedures covered during the training session. It is the responsibility of the facility to implement and maintain proper operational procedures, conduct regular inspections, and ensure all staff are appropriately trained and certified.';
-    const disclaimerLines = doc.splitTextToSize(disclaimerText, contentWidth - 10);
+    const disclaimerLines = doc.splitTextToSize(content.disclaimer, contentWidth - 10);
     const disclaimerHeight = (disclaimerLines.length * 4) + 16;
     
     doc.roundedRect(margin - 5, yPos - 5, contentWidth + 10, disclaimerHeight, 3, 3, 'F');
@@ -602,13 +552,13 @@ serve(async (req) => {
         generator: 'generate-training-pdf',
         format: 'pdf',
         sections_included: {
-          delivery_approaches: deliveryApproaches?.length || 0,
-          operating_systems: operatingSystems?.length || 0,
-          immediate_attention: immediateAttention?.length || 0,
-          verifiable_items: verifiableItems?.length || 0,
-          systems_in_place: systemsInPlace?.length || 0,
-          has_summary: !!summary,
-          photo_count: photos?.length || 0
+          delivery_approaches: content.deliveryApproaches.length,
+          operating_systems: content.operatingSystems.length,
+          immediate_attention: content.immediateAttention.length,
+          verifiable_items: content.verifiableItems.length,
+          systems_in_place: content.systemsInPlace.length,
+          has_summary: !!(content.summary.observations || content.summary.recommendations),
+          photo_count: 0
         }
       }
     });
