@@ -755,6 +755,7 @@ export type Database = {
       }
       profiles: {
         Row: {
+          acct_number: string | null
           avatar_url: string | null
           created_at: string | null
           first_name: string | null
@@ -763,6 +764,7 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          acct_number?: string | null
           avatar_url?: string | null
           created_at?: string | null
           first_name?: string | null
@@ -771,6 +773,7 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          acct_number?: string | null
           avatar_url?: string | null
           created_at?: string | null
           first_name?: string | null

@@ -201,6 +201,13 @@ export default function InspectionForm() {
     return () => subscription.unsubscribe();
   }, [id]);
 
+  // Auto-populate ACCT# from user profile
+  useEffect(() => {
+    if (inspection && userProfile && !inspection.acct_number && userProfile.acct_number) {
+      handleHeaderUpdate('acct_number', userProfile.acct_number);
+    }
+  }, [userProfile, inspection?.id]);
+
   // Track changes to inspection data and trigger debounced auto-save
   useEffect(() => {
     if (!loading) {
