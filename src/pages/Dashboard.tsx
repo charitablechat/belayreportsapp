@@ -189,7 +189,10 @@ export default function Dashboard() {
       if (navigator.onLine) {
         const { data, error } = await supabase
           .from("inspections")
-          .select("*")
+          .select(`
+            *,
+            inspector:profiles!inspector_id(first_name, last_name)
+          `)
           .order("last_opened_at", { ascending: false, nullsFirst: false })
           .order("created_at", { ascending: false });
 
@@ -682,6 +685,12 @@ export default function Dashboard() {
                       <p>
                         <span className="font-medium">Created:</span>{" "}
                         {new Date(inspection.created_at).toLocaleDateString()}
+                      </p>
+                      <p>
+                        <span className="font-medium">Inspector:</span>{" "}
+                        {inspection.inspector?.first_name && inspection.inspector?.last_name
+                          ? `${inspection.inspector.first_name} ${inspection.inspector.last_name}`
+                          : 'Unknown'}
                       </p>
                     </div>
                   </CardContent>
