@@ -23,10 +23,13 @@ export default function TrainingSummarySection({ summary, onUpdate }: TrainingSu
       <CardContent className="space-y-6">
         <div className="space-y-2">
           <Label>Training Observations</Label>
+          <p className="text-sm text-muted-foreground">
+            This area lists/describes any observations at the time of training pertaining to staff, equipment function, or operations:
+          </p>
           <RichTextEditor
             content={summary?.observations || ''}
             onChange={(value) => onUpdate('observations', value)}
-            placeholder="Enter training observations..."
+            placeholder="Enter your observations here..."
           />
         </div>
 
