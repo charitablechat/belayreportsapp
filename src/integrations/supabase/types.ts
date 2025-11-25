@@ -529,6 +529,7 @@ export type Database = {
       }
       inspections: {
         Row: {
+          acct_number: string | null
           course_history: string | null
           created_at: string | null
           id: string
@@ -548,6 +549,7 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          acct_number?: string | null
           course_history?: string | null
           created_at?: string | null
           id?: string
@@ -567,6 +569,7 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          acct_number?: string | null
           course_history?: string | null
           created_at?: string | null
           id?: string
