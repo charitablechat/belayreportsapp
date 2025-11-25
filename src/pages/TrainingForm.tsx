@@ -279,7 +279,7 @@ export default function TrainingForm() {
         const url = window.URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = url;
-        link.download = `training-report-${training?.organization || 'report'}-${new Date().toISOString().split('T')[0]}.html`;
+        link.download = `training-report-${training?.organization || 'report'}-${new Date().toISOString().split('T')[0]}.pdf`;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
