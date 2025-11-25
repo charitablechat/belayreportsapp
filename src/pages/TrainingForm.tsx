@@ -5,7 +5,11 @@ import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Save, FileDown, FileText, ChevronLeft, WifiOff, Wifi } from "lucide-react";
+import { Loader2, Save, FileDown, FileText, ChevronLeft, WifiOff, Wifi, Mail } from "lucide-react";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import TrainingHeader from "@/components/training/TrainingHeader";
 import DeliveryApproachSection from "@/components/training/DeliveryApproachSection";
 import OperatingSystemsSection from "@/components/training/OperatingSystemsSection";
@@ -26,6 +30,13 @@ export default function TrainingForm() {
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
   const [isGeneratingHTML, setIsGeneratingHTML] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
+  const [showEmailDialog, setShowEmailDialog] = useState(false);
+  const [isSendingEmail, setIsSendingEmail] = useState(false);
+  const [emailForm, setEmailForm] = useState({
+    recipientEmail: '',
+    recipientName: '',
+    message: ''
+  });
   const [training, setTraining] = useState<any>(null);
   const [deliveryApproaches, setDeliveryApproaches] = useState<any[]>([]);
   const [operatingSystems, setOperatingSystems] = useState<any[]>([]);
@@ -288,9 +299,12 @@ export default function TrainingForm() {
         document.body.removeChild(link);
         
         toast({
-          title: "Success",
-          description: "PDF report generated successfully",
+          title: "PDF Generated!",
+          description: "Would you like to email this report?",
         });
+        
+        // Show email dialog after a short delay
+        setTimeout(() => setShowEmailDialog(true), 500);
       }
     } catch (error: any) {
       console.error('Error generating PDF:', error);
@@ -301,6 +315,63 @@ export default function TrainingForm() {
       });
     } finally {
       setIsGeneratingPDF(false);
+    }
+  };
+
+  const handleSendEmail = async () => {
+    if (!id) return;
+    
+    // Validate email
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailForm.recipientEmail) {
+      toast({
+        title: "Error",
+        description: "Please enter a recipient email address",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    if (!emailRegex.test(emailForm.recipientEmail)) {
+      toast({
+        title: "Error",
+        description: "Please enter a valid email address",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    setIsSendingEmail(true);
+    
+    try {
+      const { data, error } = await supabase.functions.invoke('send-training-pdf-email', {
+        body: {
+          trainingId: id,
+          recipientEmail: emailForm.recipientEmail,
+          recipientName: emailForm.recipientName || undefined,
+          message: emailForm.message || undefined,
+        }
+      });
+      
+      if (error) throw error;
+      
+      toast({
+        title: "Success",
+        description: `Training report sent to ${emailForm.recipientEmail}`,
+      });
+      
+      // Reset form and close dialog
+      setEmailForm({ recipientEmail: '', recipientName: '', message: '' });
+      setShowEmailDialog(false);
+    } catch (error: any) {
+      console.error('Error sending email:', error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to send email",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSendingEmail(false);
     }
   };
 
@@ -518,6 +589,86 @@ export default function TrainingForm() {
           </TabsContent>
         </Tabs>
       </div>
+
+      {/* Email Dialog */}
+      <Dialog open={showEmailDialog} onOpenChange={setShowEmailDialog}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Email Training Report</DialogTitle>
+            <DialogDescription>
+              Send the PDF training report to an email address. The recipient will receive a download link valid for 7 days.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="recipientEmail">
+                Recipient Email <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                id="recipientEmail"
+                type="email"
+                placeholder="recipient@example.com"
+                value={emailForm.recipientEmail}
+                onChange={(e) => setEmailForm({ ...emailForm, recipientEmail: e.target.value })}
+                required
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="recipientName">Recipient Name (Optional)</Label>
+              <Input
+                id="recipientName"
+                type="text"
+                placeholder="John Doe"
+                value={emailForm.recipientName}
+                onChange={(e) => setEmailForm({ ...emailForm, recipientName: e.target.value })}
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="message">Message (Optional)</Label>
+              <Textarea
+                id="message"
+                placeholder="Add a personal message..."
+                value={emailForm.message}
+                onChange={(e) => setEmailForm({ ...emailForm, message: e.target.value })}
+                rows={4}
+                maxLength={500}
+              />
+              <p className="text-xs text-muted-foreground">
+                {emailForm.message.length}/500 characters
+              </p>
+            </div>
+          </div>
+          
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowEmailDialog(false)}
+              disabled={isSendingEmail}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSendEmail}
+              disabled={isSendingEmail || !emailForm.recipientEmail}
+            >
+              {isSendingEmail ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Sending...
+                </>
+              ) : (
+                <>
+                  <Mail className="mr-2 h-4 w-4" />
+                  Send Email
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
