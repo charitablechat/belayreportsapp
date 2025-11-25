@@ -11,6 +11,8 @@ import { UserAvatar } from "@/components/ui/user-avatar";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { ReportCard } from "@/components/dashboard/ReportCard";
 import ropeWorksLogo from "@/assets/rope-works-logo.png";
 import acctLogo from "@/assets/acct-accredited-vendor.png";
 import dashboardBackgroundVideo from "@/assets/dashboard-background.mp4";
@@ -68,10 +70,13 @@ import {
 export default function Dashboard() {
   const navigate = useNavigate();
   const [inspections, setInspections] = useState<any[]>([]);
+  const [trainings, setTrainings] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [signingOut, setSigningOut] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [inspectionToDelete, setInspectionToDelete] = useState<any>(null);
+  const [reportToDelete, setReportToDelete] = useState<any>(null);
+  const [activeReportTab, setActiveReportTab] = useState("inspections");
   const [notificationsDialogOpen, setNotificationsDialogOpen] = useState(false);
   const [conflictsDialogOpen, setConflictsDialogOpen] = useState(false);
   const [contactSheetOpen, setContactSheetOpen] = useState(false);
@@ -90,6 +95,7 @@ export default function Dashboard() {
       triggerHaptic('medium'); // Haptic feedback when refresh triggers
       await triggerSync();
       await loadInspections();
+      await loadTrainingReports();
     },
     isRefreshing: isSyncing,
   });
@@ -126,6 +132,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     loadInspections();
+    loadTrainingReports();
     
     // Fetch current user - works offline with cache!
     const fetchUser = async () => {
@@ -162,6 +169,7 @@ export default function Dashboard() {
     const handleOnline = () => {
       setIsOnline(true);
       loadInspections(); // Reload when coming back online
+      loadTrainingReports();
     };
     const handleOffline = () => setIsOnline(false);
 
@@ -218,6 +226,33 @@ export default function Dashboard() {
     }
   };
 
+  const loadTrainingReports = async () => {
+    try {
+      if (navigator.onLine) {
+        const { data, error } = await supabase
+          .from("trainings")
+          .select(`
+            *,
+            trainer:profiles!trainings_inspector_id_profiles_fkey(first_name, last_name)
+          `)
+          .order("created_at", { ascending: false });
+
+        if (error) throw error;
+        
+        if (data) {
+          setTrainings(data);
+          
+          if (import.meta.env.DEV) {
+            console.log('[Dashboard] Loaded training reports:', data.length);
+          }
+        }
+      }
+    } catch (error: any) {
+      console.error("Error loading training reports:", error);
+      toast.error("Failed to load training reports");
+    }
+  };
+
   const handleSignOut = async () => {
     setSigningOut(true);
     try {
@@ -238,48 +273,79 @@ export default function Dashboard() {
   };
 
   const handleDeleteConfirm = async () => {
-    if (!inspectionToDelete) return;
+    const itemToDelete = inspectionToDelete || reportToDelete;
+    if (!itemToDelete) return;
 
     triggerHaptic('warning'); // Warning haptic for destructive action
 
+    const isInspection = !!inspectionToDelete;
+
     try {
-      // Delete from offline storage
-      await deleteOfflineInspection(inspectionToDelete.id);
+      if (isInspection) {
+        // Delete from offline storage
+        await deleteOfflineInspection(inspectionToDelete.id);
 
-      if (navigator.onLine) {
-        // Delete from Supabase
-        const { error } = await supabase
-          .from("inspections")
-          .delete()
-          .eq("id", inspectionToDelete.id);
+        if (navigator.onLine) {
+          // Delete from Supabase
+          const { error } = await supabase
+            .from("inspections")
+            .delete()
+            .eq("id", inspectionToDelete.id);
 
-        if (error) throw error;
-        
-        triggerHaptic('success'); // Success haptic after deletion
-        toast.success("Inspection deleted successfully");
-        
-        if (import.meta.env.DEV) {
-          console.log('[Dashboard] Inspection deleted:', inspectionToDelete.id);
+          if (error) throw error;
+          
+          triggerHaptic('success');
+          toast.success("Inspection deleted successfully");
+          
+          if (import.meta.env.DEV) {
+            console.log('[Dashboard] Inspection deleted:', inspectionToDelete.id);
+          }
+        } else {
+          // Queue for later deletion
+          await queueOperation('delete', inspectionToDelete.id, inspectionToDelete);
+          triggerHaptic('success');
+          toast.success("Inspection deleted offline - will sync when online");
+          
+          if (import.meta.env.DEV) {
+            console.log('[Dashboard] Inspection deletion queued:', inspectionToDelete.id);
+          }
         }
+
+        // Update UI
+        setInspections(inspections.filter(i => i.id !== inspectionToDelete.id));
       } else {
-        // Queue for later deletion
-        await queueOperation('delete', inspectionToDelete.id, inspectionToDelete);
-        triggerHaptic('success'); // Success haptic for offline deletion
-        toast.success("Inspection deleted offline - will sync when online");
-        
-        if (import.meta.env.DEV) {
-          console.log('[Dashboard] Inspection deletion queued:', inspectionToDelete.id);
+        // Delete training report
+        if (navigator.onLine) {
+          const { error } = await supabase
+            .from("trainings")
+            .delete()
+            .eq("id", reportToDelete.id);
+
+          if (error) throw error;
+          
+          triggerHaptic('success');
+          toast.success("Training report deleted successfully");
+          
+          if (import.meta.env.DEV) {
+            console.log('[Dashboard] Training deleted:', reportToDelete.id);
+          }
+        } else {
+          triggerHaptic('error');
+          toast.error("Must be online to delete training reports");
+          return;
         }
+
+        // Update UI
+        setTrainings(trainings.filter(t => t.id !== reportToDelete.id));
       }
 
-      // Update UI
-      setInspections(inspections.filter(i => i.id !== inspectionToDelete.id));
       setDeleteDialogOpen(false);
       setInspectionToDelete(null);
+      setReportToDelete(null);
     } catch (error: any) {
-      console.error("Error deleting inspection:", error);
-      triggerHaptic('error'); // Error haptic on failure
-      toast.error("Failed to delete inspection");
+      console.error("Error deleting report:", error);
+      triggerHaptic('error');
+      toast.error(`Failed to delete ${isInspection ? 'inspection' : 'training report'}`);
     }
   };
 
@@ -606,153 +672,181 @@ export default function Dashboard() {
 
         {/* Recent Reports Section */}
         <section>
-          <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div>
-              <h3 className="text-2xl font-bold">Recent Reports</h3>
-              <p className="text-muted-foreground mt-1">
-                View and manage your inspection reports
-              </p>
-            </div>
-            {isSuperAdmin && (
-              <Select value={inspectorFilter} onValueChange={setInspectorFilter}>
-                <SelectTrigger className="w-full sm:w-[220px] bg-card border-border z-50">
-                  <SelectValue placeholder="Filter by inspector" />
-                </SelectTrigger>
-                <SelectContent className="bg-card border-border z-50">
-                  <SelectItem value="all">All Inspectors</SelectItem>
-                  <SelectItem value="a-z">Name: A to Z</SelectItem>
-                  <SelectItem value="z-a">Name: Z to A</SelectItem>
-                </SelectContent>
-              </Select>
-            )}
-          </div>
-
-          {loading ? (
-            <div className="text-center py-12">
-              <p className="text-muted-foreground">Loading inspections...</p>
-            </div>
-          ) : inspections.length === 0 ? (
-            <Card>
-              <CardContent className="py-12 text-center">
-                <FileText className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-                <p className="text-muted-foreground">No inspections yet</p>
-                <GradientButton 
-                  onClick={() => {
-                    triggerHaptic('light');
-                    navigate("/inspection/new");
-                  }} 
-                  className="mt-4"
-                >
-                  Create your first inspection
-                </GradientButton>
-              </CardContent>
-            </Card>
-          ) : (
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {inspections
-                .sort((a, b) => {
-                  const getInspectorName = (inspection: any) => {
-                    const inspector = (inspection as any).inspector;
-                    if (inspector?.first_name && inspector?.last_name) {
-                      return `${inspector.first_name} ${inspector.last_name}`;
-                    }
-                    return 'Unknown';
-                  };
-
-                  if (inspectorFilter === 'a-z') {
-                    return getInspectorName(a).localeCompare(getInspectorName(b));
-                  } else if (inspectorFilter === 'z-a') {
-                    return getInspectorName(b).localeCompare(getInspectorName(a));
-                  }
-                  return 0;
-                })
-                .map((inspection) => {
-                const isCurrentlySyncing = isSyncing && progress.currentItem === inspection.id;
+          <div className="mb-6">
+            <h3 className="text-2xl font-bold mb-4">Recent Reports</h3>
+            
+            <Tabs value={activeReportTab} onValueChange={setActiveReportTab}>
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+                <TabsList className="w-full sm:w-auto">
+                  <TabsTrigger value="inspections" className="flex items-center gap-2">
+                    <FileText className="w-4 h-4" />
+                    Inspections ({inspections.length})
+                  </TabsTrigger>
+                  <TabsTrigger value="training" className="flex items-center gap-2">
+                    <GraduationCap className="w-4 h-4" />
+                    Training ({trainings.length})
+                  </TabsTrigger>
+                  <TabsTrigger value="daily" disabled className="flex items-center gap-2 opacity-50">
+                    <FileText className="w-4 h-4" />
+                    Daily
+                    <Badge variant="secondary" className="ml-1">Soon</Badge>
+                  </TabsTrigger>
+                </TabsList>
                 
-                return (
-                  <Card
-                    key={inspection.id}
-                    className={`cursor-pointer hover:shadow-lg transition-shadow group relative overflow-hidden ${
-                      isCurrentlySyncing ? 'shimmer-loading' : ''
-                    }`}
-                    onClick={() => {
-                      triggerHaptic('light'); // Haptic feedback when opening inspection
-                      navigate(`/inspection/${inspection.id}`);
-                    }}
-                  >
-                  {/* Watermark for completed inspections */}
-                  {inspection.status === 'completed' && (
-                    <div className="absolute inset-0 z-10 pointer-events-none flex items-center justify-center p-4">
-                      <div className="text-2xl md:text-3xl font-bold text-green-500/20 rotate-[-45deg] whitespace-nowrap select-none scale-75">
-                        COMPLETED
-                      </div>
-                    </div>
-                  )}
-                  
-                  <CardHeader className="relative z-20">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex-1 min-w-0">
-                        <CardTitle className="text-lg truncate">{inspection.organization}</CardTitle>
-                        <CardDescription className="truncate">{inspection.location}</CardDescription>
-                      </div>
-                      <div className="flex items-center gap-2 flex-shrink-0">
-                        {getStatusBadge(inspection)}
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                            <Button 
-                              variant="ghost" 
-                              size="icon"
-                              className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
-                            >
-                              <MoreVertical className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem 
-                              className="text-red-600 focus:text-red-600"
-                              onClick={(e) => handleDeleteClick(e, inspection)}
-                            >
-                              <Trash2 className="w-4 h-4 mr-2" />
-                              Delete
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </div>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="relative z-20">
-                    <div className="text-sm text-muted-foreground space-y-1">
-                      <p>
-                        <span className="font-medium">Date:</span>{" "}
-                        {new Date(inspection.inspection_date).toLocaleDateString()}
-                      </p>
-                      <p>
-                        <span className="font-medium">Created:</span>{" "}
-                        {new Date(inspection.created_at).toLocaleDateString()}
-                      </p>
-                      <p>
-                        <span className="font-medium">Inspector:</span>{" "}
-                        {(inspection as any).inspector?.first_name && (inspection as any).inspector?.last_name
-                          ? `${(inspection as any).inspector.first_name} ${(inspection as any).inspector.last_name}`
-                          : 'Unknown'}
-                      </p>
-                    </div>
+                {isSuperAdmin && (
+                  <Select value={inspectorFilter} onValueChange={setInspectorFilter}>
+                    <SelectTrigger className="w-full sm:w-[220px] bg-card border-border">
+                      <SelectValue placeholder="Filter by inspector" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-card border-border">
+                      <SelectItem value="all">All Inspectors</SelectItem>
+                      <SelectItem value="a-z">Name: A to Z</SelectItem>
+                      <SelectItem value="z-a">Name: Z to A</SelectItem>
+                    </SelectContent>
+                  </Select>
+                )}
+              </div>
+
+              <TabsContent value="inspections">
+                {loading ? (
+                  <div className="text-center py-12">
+                    <p className="text-muted-foreground">Loading inspections...</p>
+                  </div>
+                ) : inspections.length === 0 ? (
+                  <Card>
+                    <CardContent className="py-12 text-center">
+                      <FileText className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+                      <p className="text-muted-foreground">No inspections yet</p>
+                      <GradientButton 
+                        onClick={() => {
+                          triggerHaptic('light');
+                          navigate("/inspection/new");
+                        }} 
+                        className="mt-4"
+                      >
+                        Create your first inspection
+                      </GradientButton>
+                    </CardContent>
+                  </Card>
+                ) : (
+                  <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                    {inspections
+                      .sort((a, b) => {
+                        const getInspectorName = (inspection: any) => {
+                          const inspector = (inspection as any).inspector;
+                          if (inspector?.first_name && inspector?.last_name) {
+                            return `${inspector.first_name} ${inspector.last_name}`;
+                          }
+                          return 'Unknown';
+                        };
+
+                        if (inspectorFilter === 'a-z') {
+                          return getInspectorName(a).localeCompare(getInspectorName(b));
+                        } else if (inspectorFilter === 'z-a') {
+                          return getInspectorName(b).localeCompare(getInspectorName(a));
+                        }
+                        return 0;
+                      })
+                      .map((inspection) => (
+                        <ReportCard
+                          key={inspection.id}
+                          report={inspection}
+                          type="inspection"
+                          onDelete={(report) => {
+                            setInspectionToDelete(report);
+                            setDeleteDialogOpen(true);
+                          }}
+                          onClick={(report) => navigate(`/inspection/${report.id}`)}
+                          getStatusBadge={getStatusBadge}
+                        />
+                      ))}
+                  </div>
+                )}
+              </TabsContent>
+
+              <TabsContent value="training">
+                {loading ? (
+                  <div className="text-center py-12">
+                    <p className="text-muted-foreground">Loading training reports...</p>
+                  </div>
+                ) : trainings.length === 0 ? (
+                  <Card>
+                    <CardContent className="py-12 text-center">
+                      <GraduationCap className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+                      <p className="text-muted-foreground">No training reports yet</p>
+                      <GradientButton 
+                        onClick={() => {
+                          triggerHaptic('light');
+                          navigate("/training/new");
+                        }} 
+                        className="mt-4"
+                      >
+                        Create your first training report
+                      </GradientButton>
+                    </CardContent>
+                  </Card>
+                ) : (
+                  <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                    {trainings
+                      .sort((a, b) => {
+                        const getTrainerName = (training: any) => {
+                          const trainer = training.trainer;
+                          if (trainer?.first_name && trainer?.last_name) {
+                            return `${trainer.first_name} ${trainer.last_name}`;
+                          }
+                          return 'Unknown';
+                        };
+
+                        if (inspectorFilter === 'a-z') {
+                          return getTrainerName(a).localeCompare(getTrainerName(b));
+                        } else if (inspectorFilter === 'z-a') {
+                          return getTrainerName(b).localeCompare(getTrainerName(a));
+                        }
+                        return 0;
+                      })
+                      .map((training) => (
+                        <ReportCard
+                          key={training.id}
+                          report={training}
+                          type="training"
+                          onDelete={(report) => {
+                            setReportToDelete(report);
+                            setDeleteDialogOpen(true);
+                          }}
+                          onClick={(report) => navigate(`/training/${report.id}`)}
+                        />
+                      ))}
+                  </div>
+                )}
+              </TabsContent>
+
+              <TabsContent value="daily">
+                <Card>
+                  <CardContent className="py-12 text-center">
+                    <Lock className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+                    <p className="text-lg font-semibold mb-2">Coming Soon</p>
+                    <p className="text-muted-foreground">
+                      Daily Course Assessment reports will be available in a future update
+                    </p>
                   </CardContent>
                 </Card>
-              );
-              })}
-            </div>
-          )}
+              </TabsContent>
+            </Tabs>
+          </div>
         </section>
       </main>
 
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Inspection Report</AlertDialogTitle>
+            <AlertDialogTitle>
+              {inspectionToDelete ? 'Delete Inspection Report' : 'Delete Training Report'}
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete the inspection report for{" "}
-              <strong>{inspectionToDelete?.organization}</strong>? This action cannot be undone.
+              Are you sure you want to delete this report for{" "}
+              <strong>
+                {inspectionToDelete?.organization || reportToDelete?.organization}
+              </strong>? This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
