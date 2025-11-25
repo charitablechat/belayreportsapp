@@ -86,6 +86,23 @@ serve(async (req) => {
       return date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
     };
 
+    // Strip HTML tags and decode entities
+    const stripHtml = (html: string | null) => {
+      if (!html) return '';
+      let text = html.replace(/<[^>]*>/g, '');
+      text = text.replace(/&amp;/g, '&');
+      text = text.replace(/&lt;/g, '<');
+      text = text.replace(/&gt;/g, '>');
+      text = text.replace(/&quot;/g, '"');
+      text = text.replace(/&#39;/g, "'");
+      text = text.replace(/&nbsp;/g, ' ');
+      text = text.replace(/&apos;/g, "'");
+      text = text.replace(/&copy;/g, '©');
+      text = text.replace(/&reg;/g, '®');
+      text = text.replace(/&trade;/g, '™');
+      return text.trim();
+    };
+
     // Create PDF
     const doc = new jsPDF({
       orientation: 'portrait',
@@ -164,10 +181,10 @@ serve(async (req) => {
 
     // Create info table
     const infoData: any[] = [
-      ['Training Site', training.organization || 'N/A'],
+      ['Training Site', stripHtml(training.organization) || 'N/A'],
       ['Start Date', formatDate(training.start_date)],
       ['End Date', formatDate(training.end_date)],
-      ['Trainer(s) of Record', training.trainer_of_record || 'N/A']
+      ['Trainer(s) of Record', stripHtml(training.trainer_of_record) || 'N/A']
     ];
 
     doc.autoTable({
@@ -198,7 +215,7 @@ serve(async (req) => {
       yPos += 6;
       
       doc.setFont('helvetica', 'normal');
-      const traineeLines = doc.splitTextToSize(training.trainee_names, contentWidth);
+      const traineeLines = doc.splitTextToSize(stripHtml(training.trainee_names), contentWidth);
       traineeLines.forEach((line: string) => {
         doc.text(line, margin, yPos);
         yPos += 5;
@@ -232,7 +249,7 @@ serve(async (req) => {
       doc.line(margin, yPos, pageWidth - margin, yPos);
       yPos += 5;
       
-      const approachData = deliveryApproaches.map((a: any) => ['☑ ' + a.approach]);
+      const approachData = deliveryApproaches.map((a: any) => ['☑ ' + stripHtml(a.approach)]);
       
       doc.autoTable({
         startY: yPos,
@@ -265,8 +282,8 @@ serve(async (req) => {
       yPos += 5;
       
       const systemsData = operatingSystems.map((s: any) => {
-        const text = s.other_description ? `${s.system_name}` : s.system_name;
-        const desc = s.other_description || '';
+        const text = s.other_description ? stripHtml(s.system_name) : stripHtml(s.system_name);
+        const desc = stripHtml(s.other_description) || '';
         return ['☑ ' + text, desc];
       });
       
@@ -310,7 +327,7 @@ serve(async (req) => {
       doc.text('CHECK ONLY THOSE THAT WERE VERIFIABLE AND IN PLACE DURING TRAINING.', margin, yPos);
       yPos += 5;
       
-      const itemsData = verifiableItems.map((v: any) => ['☑ ' + v.item]);
+      const itemsData = verifiableItems.map((v: any) => ['☑ ' + stripHtml(v.item)]);
       
       doc.autoTable({
         startY: yPos,
@@ -342,7 +359,7 @@ serve(async (req) => {
       doc.line(margin, yPos, pageWidth - margin, yPos);
       yPos += 5;
       
-      const systemsData = systemsInPlace.map((s: any) => ['☑ ' + s.system_item]);
+      const systemsData = systemsInPlace.map((s: any) => ['☑ ' + stripHtml(s.system_item)]);
       
       doc.autoTable({
         startY: yPos,
@@ -374,7 +391,7 @@ serve(async (req) => {
       doc.line(margin, yPos, pageWidth - margin, yPos);
       yPos += 5;
       
-      const attentionData = immediateAttention.map((i: any) => ['⚠ ' + i.item]);
+      const attentionData = immediateAttention.map((i: any) => ['⚠ ' + stripHtml(i.item)]);
       
       doc.autoTable({
         startY: yPos,
@@ -415,7 +432,7 @@ serve(async (req) => {
         yPos += 6;
         doc.setFontSize(10);
         doc.setFont('helvetica', 'normal');
-        const obsLines = doc.splitTextToSize(summary.observations, contentWidth);
+        const obsLines = doc.splitTextToSize(stripHtml(summary.observations), contentWidth);
         obsLines.forEach((line: string) => {
           if (yPos > pageHeight - 40) {
             doc.addPage();
@@ -434,7 +451,7 @@ serve(async (req) => {
         yPos += 6;
         doc.setFontSize(10);
         doc.setFont('helvetica', 'normal');
-        const recLines = doc.splitTextToSize(summary.recommendations, contentWidth);
+        const recLines = doc.splitTextToSize(stripHtml(summary.recommendations), contentWidth);
         recLines.forEach((line: string) => {
           if (yPos > pageHeight - 40) {
             doc.addPage();
@@ -460,7 +477,7 @@ serve(async (req) => {
 
       const verificationData: any[] = [];
       if (summary.person_submitting) {
-        verificationData.push(['Person Submitting', summary.person_submitting]);
+        verificationData.push(['Person Submitting', stripHtml(summary.person_submitting)]);
       }
       if (summary.submission_date) {
         verificationData.push(['Submission Date', formatDate(summary.submission_date)]);
