@@ -17,7 +17,6 @@ import dashboardBackgroundVideo from "@/assets/dashboard-background.mp4";
 import { triggerHaptic } from "@/lib/haptics";
 
 import { usePWAInstall } from "@/hooks/usePWAInstall";
-import { useSessionTimeout } from "@/hooks/useSessionTimeout";
 import { useSyncProgress } from "@/hooks/useSyncProgress";
 import { NetworkStatusIndicator } from "@/components/pwa/NetworkStatusIndicator";
 import { SyncStatusIndicator } from "@/components/pwa/SyncStatusIndicator";
@@ -95,9 +94,6 @@ export default function Dashboard() {
     isRefreshing: isSyncing,
   });
   
-  // Monitor session timeout
-  useSessionTimeout();
-
   // Check if user is super admin
   const { data: isSuperAdmin } = useQuery({
     queryKey: ["is-super-admin"],
