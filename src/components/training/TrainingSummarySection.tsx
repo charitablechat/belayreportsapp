@@ -35,10 +35,13 @@ export default function TrainingSummarySection({ summary, onUpdate }: TrainingSu
 
         <div className="space-y-2">
           <Label>Training Recommendations</Label>
+          <p className="text-sm text-muted-foreground">
+            This area lists recommendations from the trainer after visiting your site regarding staff, equipment function, or operations:
+          </p>
           <RichTextEditor
             content={summary?.recommendations || ''}
             onChange={(value) => onUpdate('recommendations', value)}
-            placeholder="Enter training recommendations..."
+            placeholder="Enter your recommendations here..."
           />
         </div>
 
