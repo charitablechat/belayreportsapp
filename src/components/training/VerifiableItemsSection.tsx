@@ -33,6 +33,23 @@ export default function VerifiableItemsSection({ items, onUpdate }: VerifiableIt
         <CardTitle>Verifiable Items During Training</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
+        <div className="text-sm text-muted-foreground space-y-2 mb-6 p-4 bg-muted/50 rounded-lg border">
+          <p className="leading-relaxed">
+            It is the responsibility of the client to read, understand, and follow all
+            manufacturer guidelines, notices and recalls for the equipment used for your
+            site's operations. This includes proper documentation and inventory tracking of
+            each item used for course operations. This should be done according to a written
+            checklist that is monitored by the course manager or other qualified person at
+            your site. Records should be available at your annual inspection that include and
+            indicate the date of purchase, date of first use and the equipment shall be
+            identifiable by the serial number/tag or other unique identifier that matches your
+            written documentation and the manufacturer retirement criteria.
+          </p>
+          <p className="font-semibold text-foreground">
+            CHECK ONLY THOSE THAT WERE VERIFIABLE AND IN PLACE DURING TRAINING.
+          </p>
+        </div>
+
         {VERIFIABLE_ITEMS.map((item) => (
           <div key={item} className="flex items-start space-x-2">
             <Checkbox
