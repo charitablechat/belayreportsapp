@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { GradientButton } from "@/components/ui/gradient-button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, LogOut, FileText, GraduationCap, ArrowRight, Lock, Download, Settings, Trash2, MoreVertical, Bell, AlertCircle, Cloud, User, Loader2, Check, RefreshCw, MessageCircle } from "lucide-react";
+import { Plus, LogOut, FileText, GraduationCap, ArrowRight, Lock, Download, Settings, Trash2, MoreVertical, Bell, AlertCircle, Cloud, User, Loader2, Check, RefreshCw, MessageCircle, Shield } from "lucide-react";
 import { UserAvatar } from "@/components/ui/user-avatar";
 import { toast } from "sonner";
 import { format } from "date-fns";
@@ -382,6 +382,12 @@ export default function Dashboard() {
             <div className="flex items-center gap-2">
               <NetworkStatusIndicator />
               <SyncStatusIndicator />
+              {isSuperAdmin && (
+                <Badge variant="default" className="bg-primary text-primary-foreground hidden sm:flex items-center gap-1">
+                  <Shield className="w-3 h-3" />
+                  Super Admin
+                </Badge>
+              )}
             </div>
             
             <DropdownMenu>
@@ -396,7 +402,15 @@ export default function Dashboard() {
               <DropdownMenuContent align="end" className="w-56">
                 <DropdownMenuLabel>
                   <div className="flex flex-col space-y-1">
-                    <p className="text-sm font-medium">Account</p>
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm font-medium">Account</p>
+                      {isSuperAdmin && (
+                        <Badge variant="default" className="bg-primary text-primary-foreground text-xs flex items-center gap-1">
+                          <Shield className="w-3 h-3" />
+                          Admin
+                        </Badge>
+                      )}
+                    </div>
                     <p className="text-xs text-muted-foreground truncate">
                       {currentUser?.email || 'user@example.com'}
                     </p>
