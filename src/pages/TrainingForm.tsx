@@ -264,7 +264,6 @@ export default function TrainingForm() {
 
     setIsGeneratingPDF(true);
     try {
-      // Save before generating PDF
       await saveTraining();
 
       const { data, error } = await supabase.functions.invoke('generate-training-pdf', {
@@ -274,10 +273,21 @@ export default function TrainingForm() {
       if (error) throw error;
 
       if (data?.signedUrl) {
-        window.open(data.signedUrl, '_blank');
+        // Fetch and download
+        const response = await fetch(data.signedUrl);
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `training-report-${training?.organization || 'report'}-${new Date().toISOString().split('T')[0]}.html`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
+        
         toast({
           title: "Success",
-          description: "Training report PDF generated successfully",
+          description: "Training report downloaded successfully",
         });
       }
     } catch (error) {
