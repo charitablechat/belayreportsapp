@@ -26,50 +26,33 @@ export const useNetworkStatus = () => {
   const verifyingRef = useRef(false);
   const retryCountRef = useRef(0);
   const lastVerifyTimeRef = useRef<number>(0);
+  const consecutiveFailuresRef = useRef(0);
+  const MAX_CONSECUTIVE_FAILURES = 3; // Only mark offline after 3 consecutive failures
 
   useEffect(() => {
     // Clear stale data
     localStorage.removeItem(STORAGE_KEY);
     
-    // Enhanced connectivity verification with Supabase ping
+    // Enhanced connectivity verification with retry logic and grace period
     const verifyConnectivity = async (): Promise<boolean> => {
       if (verifyingRef.current) return networkStatus.isOnline;
       
-      // Rate limit: only verify once every 5 seconds
+      // Rate limit: only verify once every 3 seconds
       const now = Date.now();
-      if (now - lastVerifyTimeRef.current < 5000) {
+      if (now - lastVerifyTimeRef.current < 3000) {
         return networkStatus.isOnline;
       }
       lastVerifyTimeRef.current = now;
       
       verifyingRef.current = true;
       
-      try {
-        // Try Supabase health check first (more reliable for actual functionality)
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 5000);
-        
-        const { error } = await supabase.auth.getSession();
-        clearTimeout(timeoutId);
-        
-        // No error means we can reach Supabase
-        if (!error || error.message !== 'Failed to fetch') {
-          if (import.meta.env.DEV) {
-            console.log('[Network] Verified online via Supabase');
-          }
-          verifyingRef.current = false;
-          return true;
-        }
-      } catch (error: any) {
-        if (import.meta.env.DEV) {
-          console.log('[Network] Supabase verification failed:', error.message);
-        }
-      }
+      let verificationPassed = false;
       
-      // Fallback to favicon check
+      // Try multiple verification methods with shorter timeouts
       try {
+        // Method 1: Quick favicon check (fastest, most reliable for connectivity)
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 3000);
+        const timeoutId = setTimeout(() => controller.abort(), 2000);
         
         const response = await fetch('/favicon.ico', {
           method: 'HEAD',
@@ -81,19 +64,60 @@ export const useNetworkStatus = () => {
         
         if (response.ok || response.status === 304) {
           if (import.meta.env.DEV) {
-            console.log('[Network] Verified online via favicon');
+            console.log('[Network] ✓ Verified online via favicon');
           }
-          verifyingRef.current = false;
-          return true;
+          verificationPassed = true;
         }
-      } catch (error) {
+      } catch (error: any) {
         if (import.meta.env.DEV) {
-          console.log('[Network] Favicon verification failed:', error);
+          console.log('[Network] ✗ Favicon check failed:', error.message);
+        }
+      }
+      
+      // Method 2: Only try Supabase if favicon failed (more lenient on Supabase errors)
+      if (!verificationPassed) {
+        try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 3000);
+          
+          const { error } = await supabase.auth.getSession();
+          clearTimeout(timeoutId);
+          
+          // Be lenient: only fail if it's a clear network error
+          const isNetworkError = error && (
+            error.message.includes('Failed to fetch') ||
+            error.message.includes('NetworkError') ||
+            error.message.includes('ERR_')
+          );
+          
+          if (!isNetworkError) {
+            if (import.meta.env.DEV) {
+              console.log('[Network] ✓ Verified online via Supabase (no network error)');
+            }
+            verificationPassed = true;
+          }
+        } catch (error: any) {
+          if (import.meta.env.DEV) {
+            console.log('[Network] ✗ Supabase check failed:', error.message);
+          }
         }
       }
       
       verifyingRef.current = false;
-      return false;
+      
+      // Implement grace period: require multiple consecutive failures before marking offline
+      if (verificationPassed) {
+        consecutiveFailuresRef.current = 0;
+        return true;
+      } else {
+        consecutiveFailuresRef.current++;
+        if (import.meta.env.DEV) {
+          console.log(`[Network] Verification failed (${consecutiveFailuresRef.current}/${MAX_CONSECUTIVE_FAILURES})`);
+        }
+        
+        // Still report online until we hit the threshold
+        return consecutiveFailuresRef.current < MAX_CONSECUTIVE_FAILURES;
+      }
     };
 
     const updateNetworkStatus = async (skipVerification = false) => {
@@ -146,6 +170,8 @@ export const useNetworkStatus = () => {
       if (import.meta.env.DEV) {
         console.log('[Network Status] Browser reports online');
       }
+      // Reset consecutive failures when browser reports online
+      consecutiveFailuresRef.current = 0;
       // Verify actual connectivity when browser reports online
       debouncedUpdate(false);
     };
@@ -154,6 +180,8 @@ export const useNetworkStatus = () => {
       if (import.meta.env.DEV) {
         console.log('[Network Status] Browser reports offline - trusting immediately');
       }
+      // Reset consecutive failures counter
+      consecutiveFailuresRef.current = MAX_CONSECUTIVE_FAILURES;
       // Trust offline status immediately (skip verification)
       setNetworkStatus(prev => ({ ...prev, isOnline: false }));
       localStorage.setItem(STORAGE_KEY, JSON.stringify(false));
