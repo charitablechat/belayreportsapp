@@ -113,9 +113,33 @@ serve(async (req) => {
       }
     };
 
+    // Fetch logo and convert to base64
+    let logoBase64 = '';
+    try {
+      const logoResponse = await fetch('https://ssgzcgvygnsrqalisshx.supabase.co/storage/v1/object/public/pdf-templates/rope-works-logo.png');
+      if (logoResponse.ok) {
+        const logoBlob = await logoResponse.arrayBuffer();
+        const logoArray = new Uint8Array(logoBlob);
+        const binary = logoArray.reduce((acc, byte) => acc + String.fromCharCode(byte), '');
+        logoBase64 = btoa(binary);
+      }
+    } catch (error) {
+      console.error('Failed to load logo:', error);
+    }
+
     // Header - only on first page
     doc.setFillColor(30, 64, 175);
     doc.rect(0, 0, pageWidth, 35, 'F');
+    
+    // Add logo if available
+    if (logoBase64) {
+      try {
+        doc.addImage(`data:image/png;base64,${logoBase64}`, 'PNG', margin, 8, 20, 20);
+      } catch (error) {
+        console.error('Failed to add logo to PDF:', error);
+      }
+    }
+    
     doc.setTextColor(255, 255, 255);
     doc.setFontSize(24);
     doc.setFont('helvetica', 'bold');
