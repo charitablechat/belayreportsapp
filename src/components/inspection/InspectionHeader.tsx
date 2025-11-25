@@ -5,11 +5,15 @@ import { Textarea } from "@/components/ui/textarea";
 
 interface InspectionHeaderProps {
   inspection: any;
+  userProfile: any;
   onUpdate: (field: string, value: string) => void;
   onImmediateSave?: () => void;
 }
 
-export default function InspectionHeader({ inspection, onUpdate, onImmediateSave }: InspectionHeaderProps) {
+export default function InspectionHeader({ inspection, userProfile, onUpdate, onImmediateSave }: InspectionHeaderProps) {
+  const inspectorName = userProfile?.first_name && userProfile?.last_name
+    ? `${userProfile.first_name} ${userProfile.last_name}`
+    : 'Current User';
   const renderField = (label: string, field: string, value: string, type: string = "text", isTextarea: boolean = false) => {
     return (
       <div>
@@ -58,6 +62,15 @@ export default function InspectionHeader({ inspection, onUpdate, onImmediateSave
             </div>
             <div className="space-y-4">
               {renderField("Inspection Date", "inspection_date", inspection?.inspection_date, "date")}
+              <div>
+                <Label className="text-sm text-muted-foreground">Inspector</Label>
+                <Input
+                  value={inspectorName}
+                  disabled
+                  className="bg-muted/50 cursor-not-allowed"
+                />
+              </div>
+              {renderField("ACCT#", "acct_number", inspection?.acct_number)}
               {renderField("Previous Inspector", "previous_inspector", inspection?.previous_inspector)}
               {renderField("Prev. Inspection Date", "previous_inspection_date", inspection?.previous_inspection_date, "date")}
             </div>

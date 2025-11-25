@@ -1422,7 +1422,12 @@ export default function InspectionForm() {
           </Alert>
         )}
 
-        <InspectionHeader inspection={inspection} onUpdate={handleHeaderUpdate} onImmediateSave={triggerImmediateSave} />
+        <InspectionHeader 
+          inspection={inspection}
+          userProfile={userProfile}
+          onUpdate={handleHeaderUpdate} 
+          onImmediateSave={triggerImmediateSave} 
+        />
 
         <Tabs defaultValue="details" className="space-y-6 mt-6">
           <TabsList className="grid grid-cols-2 lg:grid-cols-4 w-full gap-2 h-auto p-2">
