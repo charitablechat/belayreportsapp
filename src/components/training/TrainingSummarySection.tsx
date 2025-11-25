@@ -1,0 +1,80 @@
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Button } from "@/components/ui/button";
+import { CalendarIcon } from "lucide-react";
+import { format } from "date-fns";
+import { cn } from "@/lib/utils";
+import { RichTextEditor } from "@/components/ui/rich-text-editor";
+
+interface TrainingSummarySectionProps {
+  summary: any;
+  onUpdate: (field: string, value: any) => void;
+}
+
+export default function TrainingSummarySection({ summary, onUpdate }: TrainingSummarySectionProps) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Training Summary</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        <div className="space-y-2">
+          <Label>Training Observations</Label>
+          <RichTextEditor
+            content={summary?.observations || ''}
+            onChange={(value) => onUpdate('observations', value)}
+            placeholder="Enter training observations..."
+          />
+        </div>
+
+        <div className="space-y-2">
+          <Label>Training Recommendations</Label>
+          <RichTextEditor
+            content={summary?.recommendations || ''}
+            onChange={(value) => onUpdate('recommendations', value)}
+            placeholder="Enter training recommendations..."
+          />
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="person_submitting">PERSON SUBMITTING FORM</Label>
+          <Input
+            id="person_submitting"
+            value={summary?.person_submitting || ''}
+            onChange={(e) => onUpdate('person_submitting', e.target.value)}
+            placeholder="Enter name"
+          />
+        </div>
+
+        <div className="space-y-2">
+          <Label>Submission Date</Label>
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button
+                variant="outline"
+                className={cn(
+                  "w-full justify-start text-left font-normal",
+                  !summary?.submission_date && "text-muted-foreground"
+                )}
+              >
+                <CalendarIcon className="mr-2 h-4 w-4" />
+                {summary?.submission_date ? format(new Date(summary.submission_date), "PPP") : "Pick a date"}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0">
+              <Calendar
+                mode="single"
+                selected={summary?.submission_date ? new Date(summary.submission_date) : undefined}
+                onSelect={(date) => onUpdate('submission_date', date ? format(date, 'yyyy-MM-dd') : '')}
+                initialFocus
+              />
+            </PopoverContent>
+          </Popover>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
