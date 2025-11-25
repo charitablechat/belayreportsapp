@@ -688,8 +688,8 @@ export default function Dashboard() {
                       </p>
                       <p>
                         <span className="font-medium">Inspector:</span>{" "}
-                        {inspection.inspector?.first_name && inspection.inspector?.last_name
-                          ? `${inspection.inspector.first_name} ${inspection.inspector.last_name}`
+                        {(inspection as any).inspector?.first_name && (inspection as any).inspector?.last_name
+                          ? `${(inspection as any).inspector.first_name} ${(inspection as any).inspector.last_name}`
                           : 'Unknown'}
                       </p>
                     </div>
