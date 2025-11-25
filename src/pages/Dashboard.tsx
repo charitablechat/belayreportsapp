@@ -33,6 +33,7 @@ import { usePWA } from "@/hooks/usePWA";
 import { usePullToRefresh } from "@/hooks/usePullToRefresh";
 import { getOfflineInspections, deleteOfflineInspection, queueOperation } from "@/lib/offline-storage";
 import { ContactDeveloperSheet } from "@/components/ContactDeveloperSheet";
+import { getUserWithCache } from "@/lib/cached-auth";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -123,13 +124,13 @@ export default function Dashboard() {
   useEffect(() => {
     loadInspections();
     
-    // Fetch current user
+    // Fetch current user - works offline with cache!
     const fetchUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getUserWithCache();
       setCurrentUser(user);
       
-      // Fetch user profile
-      if (user) {
+      // Fetch user profile if online
+      if (user && navigator.onLine) {
         const { data: profile } = await (supabase as any)
           .from("profiles")
           .select("*")

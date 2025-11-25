@@ -14,6 +14,7 @@ import { saveInspectionOffline, queueOperation } from "@/lib/offline-storage";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { OrganizationAutocomplete } from "@/components/OrganizationAutocomplete";
 import { getCurrentLocationWithAddress } from "@/lib/geolocation";
+import { getUserWithCache, getCachedUser } from "@/lib/cached-auth";
 
 export default function NewInspection() {
   const navigate = useNavigate();
@@ -68,8 +69,12 @@ export default function NewInspection() {
     setLoading(true);
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("Not authenticated");
+      // Get user from cache or online - works offline!
+      const user = await getUserWithCache();
+      if (!user) {
+        toast.error("Not authenticated. Please sign in again.");
+        throw new Error("Not authenticated");
+      }
 
       // Generate temporary ID for offline mode
       const tempId = `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -161,6 +166,11 @@ export default function NewInspection() {
                 <CloudOff className="h-4 w-4 text-warning" />
                 <AlertDescription className="text-warning-foreground">
                   📴 Working offline - inspection will sync when online
+                  {getCachedUser()?.email && (
+                    <div className="text-xs mt-1 opacity-80">
+                      Using cached credentials for {getCachedUser()?.email}
+                    </div>
+                  )}
                 </AlertDescription>
               </Alert>
             )}

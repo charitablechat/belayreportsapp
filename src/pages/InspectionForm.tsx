@@ -38,6 +38,7 @@ import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { SyncStatusIndicator } from "@/components/pwa/SyncStatusIndicator";
 import { usePWA } from "@/hooks/usePWA";
 import { convertCircleBulletsToHtml } from "@/lib/bullet-converter";
+import { getUserWithCache } from "@/lib/cached-auth";
 
 export default function InspectionForm() {
   const { id } = useParams();
@@ -171,13 +172,13 @@ export default function InspectionForm() {
   useEffect(() => {
     loadInspection();
     
-    // Fetch current user
+    // Fetch current user - works offline with cache!
     const fetchUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getUserWithCache();
       setCurrentUser(user);
       
-      // Fetch user profile
-      if (user) {
+      // Fetch user profile if online
+      if (user && navigator.onLine) {
         const { data: profile } = await (supabase as any)
           .from("profiles")
           .select("*")
