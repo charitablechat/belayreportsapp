@@ -47,6 +47,9 @@ export default function TrainingSummarySection({ summary, onUpdate }: TrainingSu
 
         <div className="space-y-2">
           <Label htmlFor="person_submitting">PERSON SUBMITTING FORM</Label>
+          <p className="text-sm text-muted-foreground">
+            The trainer listed on this report verifies the report is complete and ready for client submission on the following date.
+          </p>
           <Input
             id="person_submitting"
             value={summary?.person_submitting || ''}
