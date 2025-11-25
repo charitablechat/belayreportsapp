@@ -64,15 +64,14 @@ export const SyncControlPanel = () => {
         <Button
           onClick={handleSync}
           disabled={isSyncing || !isOnline}
-          className="relative gradient-button"
-          size="lg"
+          className="relative gradient-button h-10 w-10 p-0 md:h-11 md:w-auto md:px-8"
         >
-          <RefreshCw className={`h-4 w-4 mr-2 hidden md:inline ${isSyncing ? 'animate-spin' : ''}`} />
-          Sync Now
+          <RefreshCw className={`h-4 w-4 md:mr-2 ${isSyncing ? 'animate-spin' : ''}`} />
+          <span className="hidden md:inline">Sync Now</span>
           {totalUnsynced > 0 && (
             <Badge 
               variant="secondary" 
-              className="ml-2 bg-white/20 text-white hover:bg-white/30"
+              className="absolute -top-1 -right-1 h-5 w-5 p-0 flex items-center justify-center text-xs md:static md:h-auto md:w-auto md:p-0.5 md:px-2.5 md:ml-2 bg-white/20 text-white hover:bg-white/30"
             >
               {totalUnsynced}
             </Badge>
