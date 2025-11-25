@@ -854,6 +854,330 @@ export type Database = {
           },
         ]
       }
+      training_delivery_approaches: {
+        Row: {
+          approach: string
+          created_at: string | null
+          id: string
+          training_id: string
+        }
+        Insert: {
+          approach: string
+          created_at?: string | null
+          id?: string
+          training_id: string
+        }
+        Update: {
+          approach?: string
+          created_at?: string | null
+          id?: string
+          training_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "training_delivery_approaches_training_id_fkey"
+            columns: ["training_id"]
+            isOneToOne: false
+            referencedRelation: "trainings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      training_immediate_attention: {
+        Row: {
+          created_at: string | null
+          id: string
+          item: string
+          training_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          item: string
+          training_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          item?: string
+          training_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "training_immediate_attention_training_id_fkey"
+            columns: ["training_id"]
+            isOneToOne: false
+            referencedRelation: "trainings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      training_operating_systems: {
+        Row: {
+          created_at: string | null
+          id: string
+          other_description: string | null
+          system_name: string
+          training_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          other_description?: string | null
+          system_name: string
+          training_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          other_description?: string | null
+          system_name?: string
+          training_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "training_operating_systems_training_id_fkey"
+            columns: ["training_id"]
+            isOneToOne: false
+            referencedRelation: "trainings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      training_photos: {
+        Row: {
+          caption: string | null
+          created_at: string | null
+          id: string
+          photo_section: string | null
+          photo_url: string
+          training_id: string
+        }
+        Insert: {
+          caption?: string | null
+          created_at?: string | null
+          id?: string
+          photo_section?: string | null
+          photo_url: string
+          training_id: string
+        }
+        Update: {
+          caption?: string | null
+          created_at?: string | null
+          id?: string
+          photo_section?: string | null
+          photo_url?: string
+          training_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "training_photos_training_id_fkey"
+            columns: ["training_id"]
+            isOneToOne: false
+            referencedRelation: "trainings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      training_reports: {
+        Row: {
+          file_size_bytes: number | null
+          generated_at: string | null
+          generated_by: string | null
+          id: string
+          metadata: Json | null
+          pdf_url: string
+          training_id: string
+          version: number | null
+        }
+        Insert: {
+          file_size_bytes?: number | null
+          generated_at?: string | null
+          generated_by?: string | null
+          id?: string
+          metadata?: Json | null
+          pdf_url: string
+          training_id: string
+          version?: number | null
+        }
+        Update: {
+          file_size_bytes?: number | null
+          generated_at?: string | null
+          generated_by?: string | null
+          id?: string
+          metadata?: Json | null
+          pdf_url?: string
+          training_id?: string
+          version?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "training_reports_training_id_fkey"
+            columns: ["training_id"]
+            isOneToOne: false
+            referencedRelation: "trainings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      training_summary: {
+        Row: {
+          created_at: string | null
+          id: string
+          observations: string | null
+          person_submitting: string | null
+          recommendations: string | null
+          submission_date: string | null
+          training_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          observations?: string | null
+          person_submitting?: string | null
+          recommendations?: string | null
+          submission_date?: string | null
+          training_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          observations?: string | null
+          person_submitting?: string | null
+          recommendations?: string | null
+          submission_date?: string | null
+          training_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "training_summary_training_id_fkey"
+            columns: ["training_id"]
+            isOneToOne: false
+            referencedRelation: "trainings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      training_systems_in_place: {
+        Row: {
+          created_at: string | null
+          id: string
+          system_item: string
+          training_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          system_item: string
+          training_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          system_item?: string
+          training_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "training_systems_in_place_training_id_fkey"
+            columns: ["training_id"]
+            isOneToOne: false
+            referencedRelation: "trainings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      training_verifiable_items: {
+        Row: {
+          created_at: string | null
+          id: string
+          item: string
+          training_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          item: string
+          training_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          item?: string
+          training_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "training_verifiable_items_training_id_fkey"
+            columns: ["training_id"]
+            isOneToOne: false
+            referencedRelation: "trainings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      trainings: {
+        Row: {
+          created_at: string
+          end_date: string
+          id: string
+          inspector_id: string
+          last_opened_at: string | null
+          latitude: number | null
+          longitude: number | null
+          organization: string
+          organization_id: string | null
+          start_date: string
+          status: string
+          synced_at: string | null
+          trainee_names: string | null
+          trainer_of_record: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          end_date?: string
+          id?: string
+          inspector_id: string
+          last_opened_at?: string | null
+          latitude?: number | null
+          longitude?: number | null
+          organization: string
+          organization_id?: string | null
+          start_date?: string
+          status?: string
+          synced_at?: string | null
+          trainee_names?: string | null
+          trainer_of_record?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          end_date?: string
+          id?: string
+          inspector_id?: string
+          last_opened_at?: string | null
+          latitude?: number | null
+          longitude?: number | null
+          organization?: string
+          organization_id?: string | null
+          start_date?: string
+          status?: string
+          synced_at?: string | null
+          trainee_names?: string | null
+          trainer_of_record?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "trainings_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_roles: {
         Row: {
           created_at: string | null

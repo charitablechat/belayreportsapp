@@ -546,31 +546,29 @@ export default function Dashboard() {
                   </CardContent>
                 </Card>
 
-                {/* TRAINING CARD - MOCKUP (DISABLED) */}
-                <Card className="relative overflow-hidden border-2 opacity-60 cursor-not-allowed">
-                  <Badge 
-                    variant="secondary" 
-                    className="absolute top-4 right-4 z-20 bg-yellow-100 text-yellow-800 border-yellow-300"
-                  >
-                    Coming Soon
-                  </Badge>
-                  <div className="absolute inset-0 bg-gradient-to-br from-green-50 to-transparent opacity-30" />
+                {/* TRAINING CARD - FUNCTIONAL */}
+                <Card 
+                  className="relative overflow-hidden hover:shadow-2xl transition-all duration-300 border-2 hover:border-green-500 cursor-pointer group"
+                  onClick={() => {
+                    triggerHaptic('light');
+                    navigate("/training/new");
+                  }}
+                >
+                  <div className="absolute inset-0 bg-gradient-to-br from-green-50 to-transparent opacity-50" />
                   <CardHeader className="relative z-10 text-center pb-4">
-                    <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-green-100 flex items-center justify-center">
+                    <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-green-100 flex items-center justify-center group-hover:scale-110 transition-transform">
                       <GraduationCap className="w-8 h-8 text-green-600" />
                     </div>
-                    <CardTitle className="text-2xl mb-2 text-muted-foreground">
-                      Training Report
-                    </CardTitle>
+                    <CardTitle className="text-2xl mb-2">Training Report</CardTitle>
                     <CardDescription className="text-base">
                       Document training sessions and participant assessments
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="relative z-10 text-center pb-6">
-                    <Button size="lg" className="w-full" disabled>
-                      <Lock className="w-4 h-4 mr-2" />
-                      Coming Soon
-                    </Button>
+                    <GradientButton className="w-full group-hover:scale-105 transition-transform">
+                      Start Training Report
+                      <ArrowRight className="w-4 h-4 ml-2" />
+                    </GradientButton>
                   </CardContent>
                 </Card>
 
