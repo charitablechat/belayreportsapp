@@ -58,6 +58,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -72,6 +79,7 @@ export default function Dashboard() {
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [userProfile, setUserProfile] = useState<any>(null);
+  const [inspectorFilter, setInspectorFilter] = useState<string>("all");
   const { isInstallable, isInstalled, promptInstall } = usePWAInstall();
   const { hasConflicts, conflictCount } = useConflicts();
   const { photosByInspection, triggerSync, isSyncing } = usePWA();
@@ -593,11 +601,23 @@ export default function Dashboard() {
 
         {/* Recent Reports Section */}
         <section>
-          <div className="mb-6">
-            <h3 className="text-2xl font-bold">Recent Reports</h3>
-            <p className="text-muted-foreground mt-1">
-              View and manage your inspection reports
-            </p>
+          <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+              <h3 className="text-2xl font-bold">Recent Reports</h3>
+              <p className="text-muted-foreground mt-1">
+                View and manage your inspection reports
+              </p>
+            </div>
+            <Select value={inspectorFilter} onValueChange={setInspectorFilter}>
+              <SelectTrigger className="w-full sm:w-[220px] bg-card border-border z-50">
+                <SelectValue placeholder="Filter by inspector" />
+              </SelectTrigger>
+              <SelectContent className="bg-card border-border z-50">
+                <SelectItem value="all">All Inspectors</SelectItem>
+                <SelectItem value="a-z">Name: A to Z</SelectItem>
+                <SelectItem value="z-a">Name: Z to A</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           {loading ? (
@@ -622,7 +642,24 @@ export default function Dashboard() {
             </Card>
           ) : (
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {inspections.map((inspection) => {
+              {inspections
+                .sort((a, b) => {
+                  const getInspectorName = (inspection: any) => {
+                    const inspector = (inspection as any).inspector;
+                    if (inspector?.first_name && inspector?.last_name) {
+                      return `${inspector.first_name} ${inspector.last_name}`;
+                    }
+                    return 'Unknown';
+                  };
+
+                  if (inspectorFilter === 'a-z') {
+                    return getInspectorName(a).localeCompare(getInspectorName(b));
+                  } else if (inspectorFilter === 'z-a') {
+                    return getInspectorName(b).localeCompare(getInspectorName(a));
+                  }
+                  return 0;
+                })
+                .map((inspection) => {
                 const isCurrentlySyncing = isSyncing && progress.currentItem === inspection.id;
                 
                 return (
