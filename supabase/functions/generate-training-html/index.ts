@@ -7,45 +7,8 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Load and encode logos as base64 data URLs
-async function loadLogoAsBase64(bucketName: string, filePath: string): Promise<string> {
-  try {
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const response = await fetch(`${supabaseUrl}/storage/v1/object/public/${bucketName}/${filePath}`);
-    
-    if (!response.ok) {
-      console.error(`Failed to fetch logo ${filePath}: ${response.statusText}`);
-      return '';
-    }
-    
-    const arrayBuffer = await response.arrayBuffer();
-    const bytes = new Uint8Array(arrayBuffer);
-    let binary = '';
-    for (let i = 0; i < bytes.length; i++) {
-      binary += String.fromCharCode(bytes[i]);
-    }
-    const base64 = btoa(binary);
-    
-    // Determine MIME type from file extension
-    const mimeType = filePath.endsWith('.png') ? 'image/png' : 
-                     filePath.endsWith('.jpg') || filePath.endsWith('.jpeg') ? 'image/jpeg' : 'image/png';
-    
-    return `data:${mimeType};base64,${base64}`;
-  } catch (error) {
-    console.error(`Error loading logo ${filePath}:`, error);
-    return '';
-  }
-}
-
-// Cache logos on first load
-let ROPE_WORKS_LOGO_BASE64: string | null = null;
-
-async function getLogos() {
-  if (!ROPE_WORKS_LOGO_BASE64) {
-    ROPE_WORKS_LOGO_BASE64 = await loadLogoAsBase64('pdf-templates', 'rope-works-logo.png');
-  }
-  return { ropeWorksLogo: ROPE_WORKS_LOGO_BASE64 };
-}
+// Hardcoded base64-encoded logo (embedded directly to avoid storage bucket dependencies)
+const ROPE_WORKS_LOGO_BASE64 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -53,9 +16,6 @@ serve(async (req) => {
   }
 
   try {
-    // Load logos as base64 (cached after first load)
-    const { ropeWorksLogo } = await getLogos();
-
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
@@ -231,7 +191,7 @@ serve(async (req) => {
 <body>
   <div class="container">
     <div class="header">
-      <img src="${ropeWorksLogo}" alt="Rope Works Logo" class="logo">
+      <img src="${ROPE_WORKS_LOGO_BASE64}" alt="Rope Works Logo" class="logo">
       <h1>Training Report</h1>
       <div class="subtitle">Professional Training Documentation</div>
     </div>
