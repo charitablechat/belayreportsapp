@@ -6,12 +6,59 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Load and encode logos as base64 data URLs
+async function loadLogoAsBase64(bucketName: string, filePath: string): Promise<string> {
+  try {
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const response = await fetch(`${supabaseUrl}/storage/v1/object/public/${bucketName}/${filePath}`);
+    
+    if (!response.ok) {
+      console.error(`Failed to fetch logo ${filePath}: ${response.statusText}`);
+      return '';
+    }
+    
+    const arrayBuffer = await response.arrayBuffer();
+    const bytes = new Uint8Array(arrayBuffer);
+    let binary = '';
+    for (let i = 0; i < bytes.length; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    const base64 = btoa(binary);
+    
+    // Determine MIME type from file extension
+    const mimeType = filePath.endsWith('.png') ? 'image/png' : 
+                     filePath.endsWith('.jpg') || filePath.endsWith('.jpeg') ? 'image/jpeg' : 'image/png';
+    
+    return `data:${mimeType};base64,${base64}`;
+  } catch (error) {
+    console.error(`Error loading logo ${filePath}:`, error);
+    return '';
+  }
+}
+
+// Cache logos on first load
+let ROPE_WORKS_LOGO_BASE64: string | null = null;
+let ACCT_LOGO_BASE64: string | null = null;
+
+async function getLogos() {
+  if (!ROPE_WORKS_LOGO_BASE64) {
+    ROPE_WORKS_LOGO_BASE64 = await loadLogoAsBase64('pdf-templates', 'rope-works-logo.png');
+  }
+  if (!ACCT_LOGO_BASE64) {
+    ACCT_LOGO_BASE64 = await loadLogoAsBase64('pdf-templates', 'acct-accredited-vendor.png');
+  }
+  return { ropeWorksLogo: ROPE_WORKS_LOGO_BASE64, acctLogo: ACCT_LOGO_BASE64 };
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
+    // Load logos as base64 (cached after first load)
+    const { ropeWorksLogo, acctLogo } = await getLogos();
+
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) {
       throw new Error('Missing authorization header');
@@ -333,14 +380,14 @@ serve(async (req) => {
 </head>
 <body>
   <div class="page">
-    <div class="header">
-      <div class="header-left">
-        <img src="https://ssgzcgvygnsrqalisshx.supabase.co/storage/v1/object/public/inspection-photos/rope-works-logo.png" alt="Rope Works Logo">
+      <div class="header">
+        <div class="header-left">
+          <img src="${ropeWorksLogo}" alt="Rope Works Logo">
+        </div>
+        <div class="header-right">
+          <img src="${acctLogo}" alt="ACCT Accredited Vendor">
+        </div>
       </div>
-      <div class="header-right">
-        <img src="https://ssgzcgvygnsrqalisshx.supabase.co/storage/v1/object/public/inspection-photos/acct-logo.jpg" alt="ACCT Accredited Vendor">
-      </div>
-    </div>
     
     <div class="report-title">Professional Inspection for Aerial Adventure Programs</div>
 
