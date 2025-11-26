@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { GradientButton } from "@/components/ui/gradient-button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, LogOut, FileText, GraduationCap, ArrowRight, Lock, Download, Settings, Trash2, MoreVertical, Bell, AlertCircle, Cloud, User, Loader2, Check, RefreshCw, MessageCircle, Shield } from "lucide-react";
+import { Plus, LogOut, FileText, GraduationCap, ArrowRight, Download, Settings, Trash2, MoreVertical, Bell, AlertCircle, Cloud, User, Loader2, Check, RefreshCw, MessageCircle, Shield } from "lucide-react";
 import { UserAvatar } from "@/components/ui/user-avatar";
 import { toast } from "sonner";
 import { format } from "date-fns";
@@ -71,6 +71,7 @@ export default function Dashboard() {
   const navigate = useNavigate();
   const [inspections, setInspections] = useState<any[]>([]);
   const [trainings, setTrainings] = useState<any[]>([]);
+  const [dailyAssessments, setDailyAssessments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [signingOut, setSigningOut] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -133,6 +134,7 @@ export default function Dashboard() {
   useEffect(() => {
     loadInspections();
     loadTrainingReports();
+    loadDailyAssessments();
     
     // Fetch current user - works offline with cache!
     const fetchUser = async () => {
@@ -250,6 +252,33 @@ export default function Dashboard() {
     } catch (error: any) {
       console.error("Error loading training reports:", error);
       toast.error("Failed to load training reports");
+    }
+  };
+
+  const loadDailyAssessments = async () => {
+    try {
+      if (navigator.onLine) {
+        const { data, error } = await supabase
+          .from("daily_assessments")
+          .select(`
+            *,
+            inspector:profiles!daily_assessments_inspector_id_fkey(first_name, last_name)
+          `)
+          .order("assessment_date", { ascending: false });
+
+        if (error) throw error;
+        
+        if (data) {
+          setDailyAssessments(data);
+          
+          if (import.meta.env.DEV) {
+            console.log('[Dashboard] Loaded daily assessments:', data.length);
+          }
+        }
+      }
+    } catch (error: any) {
+      console.error("Error loading daily assessments:", error);
+      toast.error("Failed to load daily assessments");
     }
   };
 
@@ -638,31 +667,29 @@ export default function Dashboard() {
                   </CardContent>
                 </Card>
 
-                {/* DAILY COURSE ASSESSMENT CARD - MOCKUP (DISABLED) */}
-                <Card className="relative overflow-hidden border-2 opacity-60 cursor-not-allowed">
-                  <Badge 
-                    variant="secondary" 
-                    className="absolute top-4 right-4 z-20 bg-yellow-100 text-yellow-800 border-yellow-300"
-                  >
-                    Coming Soon
-                  </Badge>
-                  <div className="absolute inset-0 bg-gradient-to-br from-purple-50 to-transparent opacity-30" />
+                {/* DAILY COURSE ASSESSMENT CARD - FUNCTIONAL */}
+                <Card 
+                  className="relative overflow-hidden hover:shadow-2xl transition-all duration-300 border-2 hover:border-purple-500 cursor-pointer group"
+                  onClick={() => {
+                    triggerHaptic('light');
+                    navigate("/daily-assessment/new");
+                  }}
+                >
+                  <div className="absolute inset-0 bg-gradient-to-br from-purple-50 to-transparent opacity-50" />
                   <CardHeader className="relative z-10 text-center pb-4">
-                    <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-purple-100 flex items-center justify-center">
+                    <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-purple-100 flex items-center justify-center group-hover:scale-110 transition-transform">
                       <FileText className="w-8 h-8 text-purple-600" />
                     </div>
-                    <CardTitle className="text-2xl mb-2 text-muted-foreground">
-                      Daily Course Assessment
-                    </CardTitle>
+                    <CardTitle className="text-2xl mb-2">Daily Course Assessment</CardTitle>
                     <CardDescription className="text-base">
-                      Record daily operational checks and course conditions
+                      Complete daily pre-use safety checks and documentation
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="relative z-10 text-center pb-6">
-                    <Button size="lg" className="w-full" disabled>
-                      <Lock className="w-4 h-4 mr-2" />
-                      Coming Soon
-                    </Button>
+                    <GradientButton className="w-full group-hover:scale-105 transition-transform">
+                      Start Daily Assessment
+                      <ArrowRight className="w-4 h-4 ml-2" />
+                    </GradientButton>
                   </CardContent>
                 </Card>
               </div>
@@ -686,10 +713,9 @@ export default function Dashboard() {
                     <GraduationCap className="w-4 h-4" />
                     Training ({trainings.length})
                   </TabsTrigger>
-                  <TabsTrigger value="daily" disabled className="flex items-center gap-2 opacity-50">
+                  <TabsTrigger value="daily" className="flex items-center gap-2">
                     <FileText className="w-4 h-4" />
-                    Daily
-                    <Badge variant="secondary" className="ml-1">Soon</Badge>
+                    Daily ({dailyAssessments.length})
                   </TabsTrigger>
                 </TabsList>
                 
@@ -821,15 +847,42 @@ export default function Dashboard() {
               </TabsContent>
 
               <TabsContent value="daily">
-                <Card>
-                  <CardContent className="py-12 text-center">
-                    <Lock className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-                    <p className="text-lg font-semibold mb-2">Coming Soon</p>
-                    <p className="text-muted-foreground">
-                      Daily Course Assessment reports will be available in a future update
-                    </p>
-                  </CardContent>
-                </Card>
+                {loading ? (
+                  <div className="text-center py-12">
+                    <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4" />
+                    <p className="text-muted-foreground">Loading daily assessments...</p>
+                  </div>
+                ) : dailyAssessments.length === 0 ? (
+                  <Card>
+                    <CardContent className="py-12 text-center">
+                      <FileText className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+                      <p className="text-lg font-semibold mb-2">No Daily Assessments</p>
+                      <p className="text-muted-foreground mb-4">
+                        Get started by creating your first daily course assessment
+                      </p>
+                      <Button onClick={() => navigate("/daily-assessment/new")}>
+                        <Plus className="w-4 h-4 mr-2" />
+                        Create Daily Assessment
+                      </Button>
+                    </CardContent>
+                  </Card>
+                ) : (
+                  <div className="grid gap-4">
+                    {dailyAssessments.map((assessment) => (
+                      <ReportCard
+                        key={assessment.id}
+                        report={assessment}
+                        type="daily"
+                        onClick={() => navigate(`/daily-assessment/${assessment.id}`)}
+                        onDelete={(e) => {
+                          e.stopPropagation();
+                          setReportToDelete(assessment);
+                          setDeleteDialogOpen(true);
+                        }}
+                      />
+                    ))}
+                  </div>
+                )}
               </TabsContent>
             </Tabs>
           </div>

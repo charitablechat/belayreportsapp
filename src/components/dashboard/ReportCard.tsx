@@ -13,7 +13,7 @@ import { triggerHaptic } from "@/lib/haptics";
 
 interface ReportCardProps {
   report: any;
-  type: 'inspection' | 'training';
+  type: 'inspection' | 'training' | 'daily';
   onDelete: (report: any) => void;
   onClick: (report: any) => void;
   getStatusBadge?: (report: any) => React.ReactNode;
@@ -21,43 +21,34 @@ interface ReportCardProps {
 
 export function ReportCard({ report, type, onDelete, onClick, getStatusBadge }: ReportCardProps) {
   const isInspection = type === 'inspection';
+  const isDaily = type === 'daily';
   
   const getReportDate = () => {
-    if (isInspection) {
-      return report.inspection_date;
-    }
+    if (isInspection) return report.inspection_date;
+    if (isDaily) return report.assessment_date;
     return report.training?.start_date || report.start_date;
   };
 
   const getReportOrganization = () => {
-    if (isInspection) {
-      return report.organization;
-    }
+    if (isInspection) return report.organization;
+    if (isDaily) return report.site;
     return report.training?.organization || report.organization;
   };
 
   const getReportLocation = () => {
-    if (isInspection) {
-      return report.location;
-    }
-    return null; // Training doesn't have location
+    if (isInspection) return report.location;
+    return null;
   };
 
   const getInspectorName = () => {
-    if (isInspection) {
-      const firstName = report.inspector?.first_name || '';
-      const lastName = report.inspector?.last_name || '';
-      return `${firstName} ${lastName}`.trim() || 'Unknown';
-    }
-    const firstName = report.training?.trainer?.first_name || report.trainer?.first_name || '';
-    const lastName = report.training?.trainer?.last_name || report.trainer?.last_name || '';
+    const firstName = report.inspector?.first_name || report.training?.trainer?.first_name || report.trainer?.first_name || '';
+    const lastName = report.inspector?.last_name || report.training?.trainer?.last_name || report.trainer?.last_name || '';
     return `${firstName} ${lastName}`.trim() || 'Unknown';
   };
 
   const getReportStatus = () => {
-    if (isInspection) {
-      return report.status;
-    }
+    if (isInspection) return report.status;
+    if (isDaily) return report.status;
     return report.training?.status || report.status;
   };
 

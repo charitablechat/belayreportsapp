@@ -10,6 +10,8 @@ import NewInspection from "./pages/NewInspection";
 import InspectionForm from "./pages/InspectionForm";
 import TrainingForm from "./pages/TrainingForm";
 import NewTraining from "./pages/NewTraining";
+import NewDailyAssessment from "./pages/NewDailyAssessment";
+import DailyAssessmentForm from "./pages/DailyAssessmentForm";
 import Install from "./pages/Install";
 import Capabilities from "./pages/Capabilities";
 import AuroraLanding from "./pages/AuroraLanding";
@@ -106,7 +108,8 @@ const App = () => (
             <Route path="/inspection/new" element={<NewInspection />} />
             <Route path="/inspection/:id" element={<InspectionForm />} />
             <Route path="/training/new" element={<NewTraining />} />
-            <Route path="/training/:id" element={<TrainingForm />} />
+            <Route path="/daily-assessment/new" element={<NewDailyAssessment />} />
+            <Route path="/daily-assessment/:id" element={<DailyAssessmentForm />} />
             <Route path="/install" element={<Install />} />
             <Route path="/capabilities" element={<Capabilities />} />
             <Route path="/profile" element={<Profile />} />
