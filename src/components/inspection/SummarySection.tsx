@@ -40,7 +40,7 @@ export default function SummarySection({ summary, onUpdate, onImmediateSave, onR
             Repairs, Alterations performed during inspection:
           </Label>
           <RichTextEditor
-            content={convertCircleBulletsToHtml(summary.repairs_performed || "")}
+            content={summary.repairs_performed || ""}
             onChange={(value) => updateField("repairs_performed", value)}
             onBlur={onImmediateSave}
             placeholder="Enter details of repairs and alterations performed..."
@@ -55,7 +55,7 @@ export default function SummarySection({ summary, onUpdate, onImmediateSave, onR
             *Critical Action = Required Changes Prior to use of Activity, Element, or Equipment
           </p>
           <RichTextEditor
-            content={convertCircleBulletsToHtml(summary.critical_actions || "")}
+            content={summary.critical_actions || ""}
             onChange={(value) => updateField("critical_actions", value)}
             onBlur={onImmediateSave}
             placeholder="Enter critical actions required..."
@@ -70,7 +70,7 @@ export default function SummarySection({ summary, onUpdate, onImmediateSave, onR
             (includes but not limited to age of course, recommended updates, suggestions, industry future)
           </p>
           <RichTextEditor
-            content={convertCircleBulletsToHtml(summary.future_considerations || "")}
+            content={summary.future_considerations || ""}
             onChange={(value) => updateField("future_considerations", value)}
             onBlur={onImmediateSave}
             placeholder="Enter future considerations..."
