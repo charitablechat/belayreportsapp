@@ -2,22 +2,37 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { RichTextEditor } from "@/components/ui/rich-text-editor";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { RefreshCw } from "lucide-react";
 import { convertCircleBulletsToHtml } from "@/lib/bullet-converter";
+
 interface SummarySectionProps {
   summary: any;
   onUpdate: (summary: any) => void;
   onImmediateSave?: () => void;
+  onRegenerate?: () => void;
 }
 
-export default function SummarySection({ summary, onUpdate, onImmediateSave }: SummarySectionProps) {
+export default function SummarySection({ summary, onUpdate, onImmediateSave, onRegenerate }: SummarySectionProps) {
   const updateField = (field: string, value: any) => {
     onUpdate({ ...summary, [field]: value });
   };
 
   return (
     <Card>
-      <CardHeader>
+      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
         <CardTitle>Report Summary</CardTitle>
+        {onRegenerate && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onRegenerate}
+            className="gap-2"
+          >
+            <RefreshCw className="h-4 w-4" />
+            Regenerate from Inspection
+          </Button>
+        )}
       </CardHeader>
       <CardContent className="space-y-6">
         <div className="space-y-2">
