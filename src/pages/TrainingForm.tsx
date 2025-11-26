@@ -16,7 +16,6 @@ import OperatingSystemsSection from "@/components/training/OperatingSystemsSecti
 import ImmediateAttentionSection from "@/components/training/ImmediateAttentionSection";
 import VerifiableItemsSection from "@/components/training/VerifiableItemsSection";
 import TrainingSummarySection from "@/components/training/TrainingSummarySection";
-import PhotoGallery from "@/components/PhotoGallery";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { format } from "date-fns";
 
@@ -530,14 +529,13 @@ export default function TrainingForm() {
       {/* Main Content */}
       <div className="container mx-auto px-4 py-8">
         <Tabs defaultValue="info" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4 lg:grid-cols-7">
+          <TabsList className="grid w-full grid-cols-4 lg:grid-cols-6">
             <TabsTrigger value="info">Info</TabsTrigger>
             <TabsTrigger value="delivery">Training Format</TabsTrigger>
             <TabsTrigger value="systems">Trained OS</TabsTrigger>
             <TabsTrigger value="attention">Required Actions</TabsTrigger>
             <TabsTrigger value="verifiable">Verified During Training</TabsTrigger>
             <TabsTrigger value="summary">Summary</TabsTrigger>
-            <TabsTrigger value="photos">Photos</TabsTrigger>
           </TabsList>
 
           <TabsContent value="info" className="space-y-6">
@@ -578,13 +576,6 @@ export default function TrainingForm() {
             <TrainingSummarySection 
               summary={summary} 
               onUpdate={updateSummaryField} 
-            />
-          </TabsContent>
-
-          <TabsContent value="photos" className="space-y-6">
-            <PhotoGallery
-              inspectionId={id || ''}
-              section="training"
             />
           </TabsContent>
         </Tabs>
