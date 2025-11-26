@@ -56,6 +56,269 @@ export type Database = {
         }
         Relationships: []
       }
+      daily_assessment_beginning_of_day: {
+        Row: {
+          assessment_id: string
+          comments: string | null
+          created_at: string | null
+          id: string
+          is_complete: boolean
+          item_key: string
+        }
+        Insert: {
+          assessment_id: string
+          comments?: string | null
+          created_at?: string | null
+          id?: string
+          is_complete?: boolean
+          item_key: string
+        }
+        Update: {
+          assessment_id?: string
+          comments?: string | null
+          created_at?: string | null
+          id?: string
+          is_complete?: boolean
+          item_key?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "daily_assessment_beginning_of_day_assessment_id_fkey"
+            columns: ["assessment_id"]
+            isOneToOne: false
+            referencedRelation: "daily_assessments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      daily_assessment_end_of_day: {
+        Row: {
+          assessment_id: string
+          comments: string | null
+          created_at: string | null
+          id: string
+          is_complete: boolean
+          item_key: string
+        }
+        Insert: {
+          assessment_id: string
+          comments?: string | null
+          created_at?: string | null
+          id?: string
+          is_complete?: boolean
+          item_key: string
+        }
+        Update: {
+          assessment_id?: string
+          comments?: string | null
+          created_at?: string | null
+          id?: string
+          is_complete?: boolean
+          item_key?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "daily_assessment_end_of_day_assessment_id_fkey"
+            columns: ["assessment_id"]
+            isOneToOne: false
+            referencedRelation: "daily_assessments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      daily_assessment_environment_checks: {
+        Row: {
+          assessment_id: string
+          comments: string | null
+          created_at: string | null
+          id: string
+          is_checked: boolean
+          item_key: string
+        }
+        Insert: {
+          assessment_id: string
+          comments?: string | null
+          created_at?: string | null
+          id?: string
+          is_checked?: boolean
+          item_key: string
+        }
+        Update: {
+          assessment_id?: string
+          comments?: string | null
+          created_at?: string | null
+          id?: string
+          is_checked?: boolean
+          item_key?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "daily_assessment_environment_checks_assessment_id_fkey"
+            columns: ["assessment_id"]
+            isOneToOne: false
+            referencedRelation: "daily_assessments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      daily_assessment_equipment_checks: {
+        Row: {
+          assessment_id: string
+          comments: string | null
+          created_at: string | null
+          id: string
+          is_checked: boolean
+          item_key: string
+        }
+        Insert: {
+          assessment_id: string
+          comments?: string | null
+          created_at?: string | null
+          id?: string
+          is_checked?: boolean
+          item_key: string
+        }
+        Update: {
+          assessment_id?: string
+          comments?: string | null
+          created_at?: string | null
+          id?: string
+          is_checked?: boolean
+          item_key?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "daily_assessment_equipment_checks_assessment_id_fkey"
+            columns: ["assessment_id"]
+            isOneToOne: false
+            referencedRelation: "daily_assessments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      daily_assessment_operating_systems: {
+        Row: {
+          assessment_id: string
+          created_at: string | null
+          id: string
+          system_name: string
+        }
+        Insert: {
+          assessment_id: string
+          created_at?: string | null
+          id?: string
+          system_name: string
+        }
+        Update: {
+          assessment_id?: string
+          created_at?: string | null
+          id?: string
+          system_name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "daily_assessment_operating_systems_assessment_id_fkey"
+            columns: ["assessment_id"]
+            isOneToOne: false
+            referencedRelation: "daily_assessments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      daily_assessment_structure_checks: {
+        Row: {
+          assessment_id: string
+          comments: string | null
+          created_at: string | null
+          id: string
+          is_checked: boolean
+          item_key: string
+        }
+        Insert: {
+          assessment_id: string
+          comments?: string | null
+          created_at?: string | null
+          id?: string
+          is_checked?: boolean
+          item_key: string
+        }
+        Update: {
+          assessment_id?: string
+          comments?: string | null
+          created_at?: string | null
+          id?: string
+          is_checked?: boolean
+          item_key?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "daily_assessment_structure_checks_assessment_id_fkey"
+            columns: ["assessment_id"]
+            isOneToOne: false
+            referencedRelation: "daily_assessments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      daily_assessments: {
+        Row: {
+          assessment_date: string
+          created_at: string
+          id: string
+          inspector_id: string
+          last_opened_at: string | null
+          latitude: number | null
+          longitude: number | null
+          organization: string
+          organization_id: string | null
+          site: string
+          status: string
+          synced_at: string | null
+          trainer_of_record: string | null
+          updated_at: string
+        }
+        Insert: {
+          assessment_date?: string
+          created_at?: string
+          id?: string
+          inspector_id: string
+          last_opened_at?: string | null
+          latitude?: number | null
+          longitude?: number | null
+          organization?: string
+          organization_id?: string | null
+          site?: string
+          status?: string
+          synced_at?: string | null
+          trainer_of_record?: string | null
+          updated_at?: string
+        }
+        Update: {
+          assessment_date?: string
+          created_at?: string
+          id?: string
+          inspector_id?: string
+          last_opened_at?: string | null
+          latitude?: number | null
+          longitude?: number | null
+          organization?: string
+          organization_id?: string | null
+          site?: string
+          status?: string
+          synced_at?: string | null
+          trainer_of_record?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "daily_assessments_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       form_field_options: {
         Row: {
           created_at: string | null
