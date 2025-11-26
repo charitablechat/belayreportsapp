@@ -72,12 +72,19 @@ export function ReportCard({ report, type, onDelete, onClick, getStatusBadge }: 
 
   return (
     <Card 
-      className="cursor-pointer hover:shadow-lg transition-all hover:border-primary/50 group"
+      className="relative overflow-hidden cursor-pointer hover:shadow-lg transition-all hover:border-primary/50 group"
       onClick={() => {
         triggerHaptic('light');
         onClick(report);
       }}
     >
+      {getReportStatus() === 'completed' && (
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
+          <span className="text-green-500/20 text-4xl md:text-5xl font-bold tracking-wider rotate-[-25deg] select-none whitespace-nowrap">
+            COMPLETED
+          </span>
+        </div>
+      )}
       <CardContent className="p-4 md:p-6">
         <div className="flex items-start justify-between gap-2 mb-4">
           <div className="flex items-center gap-2">
