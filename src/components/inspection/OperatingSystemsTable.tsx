@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button";
-import { RichTextEditor } from "@/components/ui/rich-text-editor";
+import { VoiceRichTextEditor } from "@/components/ui/voice-rich-text-editor";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import ResultSelect from "@/components/ResultSelect";
@@ -82,7 +82,7 @@ export default function OperatingSystemsTable({ systems, onUpdate, onImmediateSa
                     />
                   </td>
                   <td className="border p-2">
-                    <RichTextEditor
+                    <VoiceRichTextEditor
                       content={system.comments || ""}
                       onChange={(value) => updateSystem(index, "comments", value)}
                       placeholder="Enter comments..."
@@ -129,7 +129,7 @@ export default function OperatingSystemsTable({ systems, onUpdate, onImmediateSa
                 
                 <div>
                   <Label className="text-xs text-muted-foreground">Comments or Required Changes</Label>
-                  <RichTextEditor
+                  <VoiceRichTextEditor
                     content={system.comments || ""}
                     onChange={(value) => updateSystem(index, "comments", value)}
                     placeholder="Enter comments..."

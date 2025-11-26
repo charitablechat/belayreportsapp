@@ -1,7 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+import { VoiceTextarea } from "@/components/ui/voice-textarea";
 
 const END_OF_DAY_ITEMS = [
   { key: 'equipment_stored', label: 'All equipment has been properly stored' },
@@ -65,7 +65,7 @@ export default function EndOfDaySection({ items, onUpdate }: EndOfDaySectionProp
                   {item.label}
                 </Label>
               </div>
-              <Textarea
+              <VoiceTextarea
                 placeholder="Comments (optional)"
                 value={existingItem?.comments || ''}
                 onChange={(e) => handleCommentChange(item.key, e.target.value)}

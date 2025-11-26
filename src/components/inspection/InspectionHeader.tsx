@@ -1,7 +1,7 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
+import { VoiceInput } from "@/components/ui/voice-input";
+import { VoiceTextarea } from "@/components/ui/voice-textarea";
 
 interface InspectionHeaderProps {
   inspection: any;
@@ -19,7 +19,7 @@ export default function InspectionHeader({ inspection, userProfile, onUpdate, on
       <div>
         <Label className="text-sm text-muted-foreground">{label}</Label>
         {isTextarea ? (
-          <Textarea
+          <VoiceTextarea
             value={value || ""}
             onChange={(e) => onUpdate(field, e.target.value)}
             onBlur={onImmediateSave}
@@ -27,7 +27,7 @@ export default function InspectionHeader({ inspection, userProfile, onUpdate, on
             placeholder={`Enter ${label.toLowerCase()}...`}
           />
         ) : (
-          <Input
+          <VoiceInput
             type={type}
             value={value || ""}
             onChange={(e) => onUpdate(field, e.target.value)}
@@ -58,7 +58,7 @@ export default function InspectionHeader({ inspection, userProfile, onUpdate, on
             <div className="space-y-4">
               <div>
                 <Label className="text-sm text-muted-foreground">Inspector</Label>
-                <Input
+                <VoiceInput
                   value={inspectorName}
                   disabled
                   className="bg-muted/50 cursor-not-allowed"

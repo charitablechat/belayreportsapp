@@ -1,6 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
-import { RichTextEditor } from "@/components/ui/rich-text-editor";
+import { VoiceRichTextEditor } from "@/components/ui/voice-rich-text-editor";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { RefreshCw } from "lucide-react";
@@ -39,7 +39,7 @@ export default function SummarySection({ summary, onUpdate, onImmediateSave, onR
           <Label className="text-base font-semibold">
             Repairs, Alterations performed during inspection:
           </Label>
-          <RichTextEditor
+          <VoiceRichTextEditor
             content={summary.repairs_performed || ""}
             onChange={(value) => updateField("repairs_performed", value)}
             onBlur={onImmediateSave}
@@ -54,7 +54,7 @@ export default function SummarySection({ summary, onUpdate, onImmediateSave, onR
           <p className="text-xs text-muted-foreground italic">
             *Critical Action = Required Changes Prior to use of Activity, Element, or Equipment
           </p>
-          <RichTextEditor
+          <VoiceRichTextEditor
             content={summary.critical_actions || ""}
             onChange={(value) => updateField("critical_actions", value)}
             onBlur={onImmediateSave}
@@ -69,7 +69,7 @@ export default function SummarySection({ summary, onUpdate, onImmediateSave, onR
           <p className="text-xs text-muted-foreground">
             (includes but not limited to age of course, recommended updates, suggestions, industry future)
           </p>
-          <RichTextEditor
+          <VoiceRichTextEditor
             content={summary.future_considerations || ""}
             onChange={(value) => updateField("future_considerations", value)}
             onBlur={onImmediateSave}
