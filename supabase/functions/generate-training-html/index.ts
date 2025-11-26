@@ -7,8 +7,10 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Hardcoded base64-encoded logo (embedded directly to avoid storage bucket dependencies)
+// Hardcoded base64-encoded logos (embedded directly to avoid storage bucket dependencies)
+// Small placeholder images - replace with actual logo base64 strings if needed
 const ROPE_WORKS_LOGO_BASE64 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
+const ACCT_LOGO_BASE64 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -58,14 +60,25 @@ serve(async (req) => {
       box-shadow: 0 2px 10px rgba(0,0,0,0.1);
     }
     .header {
-      text-align: center;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
       border-bottom: 3px solid #1e40af;
       padding-bottom: 20px;
       margin-bottom: 30px;
     }
+    .header-left {
+      flex: 1;
+    }
+    .header-right {
+      text-align: right;
+    }
     .logo {
-      max-width: 200px;
-      margin-bottom: 15px;
+      max-width: 150px;
+      margin-bottom: 10px;
+    }
+    .badge {
+      max-width: 120px;
     }
     h1 {
       color: #1e40af;
@@ -179,6 +192,14 @@ serve(async (req) => {
       }
     }
     @media (max-width: 768px) {
+      .header {
+        flex-direction: column;
+        text-align: center;
+      }
+      .header-right {
+        text-align: center;
+        margin-top: 15px;
+      }
       .info-grid {
         grid-template-columns: 1fr;
       }
@@ -191,9 +212,14 @@ serve(async (req) => {
 <body>
   <div class="container">
     <div class="header">
-      <img src="${ROPE_WORKS_LOGO_BASE64}" alt="Rope Works Logo" class="logo">
-      <h1>Training Report</h1>
-      <div class="subtitle">Professional Training Documentation</div>
+      <div class="header-left">
+        <img src="${ROPE_WORKS_LOGO_BASE64}" alt="Rope Works Logo" class="logo">
+        <h1>Training Report</h1>
+        <div class="subtitle">Professional Training Documentation</div>
+      </div>
+      <div class="header-right">
+        <img src="${ACCT_LOGO_BASE64}" alt="ACCT Accredited Vendor" class="badge">
+      </div>
     </div>
 
     <div class="section">
