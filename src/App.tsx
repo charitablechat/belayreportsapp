@@ -16,6 +16,8 @@ import AuroraLanding from "./pages/AuroraLanding";
 import SuperAdminDashboard from "./pages/SuperAdminDashboard";
 import Profile from "./pages/Profile";
 import NotFound from "./pages/NotFound";
+import Base64Converter from "./pages/Base64Converter";
+import UploadLogos from "./pages/UploadLogos";
 import { InstallBanner } from "@/components/pwa/InstallBanner";
 import { UpdateNotification } from "@/components/pwa/UpdateNotification";
 import { InstallSuccessNotification } from "@/components/pwa/InstallSuccessNotification";
@@ -109,6 +111,8 @@ const App = () => (
             <Route path="/capabilities" element={<Capabilities />} />
             <Route path="/profile" element={<Profile />} />
             <Route path="/admin" element={<SuperAdminDashboard />} />
+            <Route path="/base64-converter" element={<Base64Converter />} />
+            <Route path="/upload-logos" element={<UploadLogos />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>

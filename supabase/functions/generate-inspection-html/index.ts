@@ -6,10 +6,25 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// Hardcoded base64-encoded logos (embedded directly to avoid storage bucket dependencies)
-// Small placeholder images - replace with actual logo base64 strings if needed
-const ROPE_WORKS_LOGO_BASE64 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
-const ACCT_LOGO_BASE64 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
+async function loadLogoAsBase64(supabase: any, bucketName: string, filePath: string): Promise<string> {
+  try {
+    const { data, error } = await supabase.storage
+      .from(bucketName)
+      .download(filePath);
+
+    if (error) {
+      console.error(`Error loading ${filePath}:`, error);
+      return "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
+    }
+
+    const arrayBuffer = await data.arrayBuffer();
+    const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+    return `data:image/png;base64,${base64}`;
+  } catch (error) {
+    console.error(`Exception loading ${filePath}:`, error);
+    return "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
+  }
+}
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -28,6 +43,10 @@ serve(async (req) => {
     }
 
     console.log(`Generating HTML for inspection: ${inspectionId}`);
+
+    // Load logos from storage
+    const ropeWorksLogo = await loadLogoAsBase64(supabase, 'pdf-templates', 'rope-works-logo.png');
+    const acctLogo = await loadLogoAsBase64(supabase, 'pdf-templates', 'acct-accredited-vendor.png');
 
     // Fetch all inspection data
     const { data: inspection, error: inspectionError } = await supabase
@@ -249,12 +268,12 @@ serve(async (req) => {
   <div class="container">
     <div class="header">
       <div class="header-left">
-        <img src="${ROPE_WORKS_LOGO_BASE64}" alt="Rope Works Logo" class="logo">
+        <img src="${ropeWorksLogo}" alt="Rope Works Logo" class="logo">
         <h1>Inspection Report</h1>
         <div class="subtitle">Professional Aerial Adventure Park Inspection</div>
       </div>
       <div class="header-right">
-        <img src="${ACCT_LOGO_BASE64}" alt="ACCT Accredited Vendor" class="badge">
+        <img src="${acctLogo}" alt="ACCT Accredited Vendor" class="badge">
       </div>
     </div>
 

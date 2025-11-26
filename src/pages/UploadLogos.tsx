@@ -1,0 +1,77 @@
+import { useState } from 'react';
+import { supabase } from '@/integrations/supabase/client';
+import { Button } from '@/components/ui/button';
+import { toast } from 'sonner';
+import ropeWorksLogo from '@/assets/rope-works-logo-final.png';
+import acctLogo from '@/assets/acct-logo-final.png';
+
+const UploadLogos = () => {
+  const [uploading, setUploading] = useState(false);
+
+  const uploadLogos = async () => {
+    setUploading(true);
+    try {
+      // Fetch the logo files
+      const ropeWorksResponse = await fetch(ropeWorksLogo);
+      const ropeWorksBlob = await ropeWorksResponse.blob();
+      
+      const acctResponse = await fetch(acctLogo);
+      const acctBlob = await acctResponse.blob();
+
+      // Upload Rope Works logo
+      const { error: ropeWorksError } = await supabase.storage
+        .from('pdf-templates')
+        .upload('rope-works-logo.png', ropeWorksBlob, {
+          contentType: 'image/png',
+          upsert: true
+        });
+
+      if (ropeWorksError) throw ropeWorksError;
+
+      // Upload ACCT logo
+      const { error: acctError } = await supabase.storage
+        .from('pdf-templates')
+        .upload('acct-accredited-vendor.png', acctBlob, {
+          contentType: 'image/png',
+          upsert: true
+        });
+
+      if (acctError) throw acctError;
+
+      toast.success('Logos uploaded successfully!');
+    } catch (error) {
+      console.error('Error uploading logos:', error);
+      toast.error('Failed to upload logos');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <div className="container mx-auto p-8">
+      <h1 className="text-3xl font-bold mb-6">Upload Logos to Storage</h1>
+      
+      <div className="space-y-4">
+        <div>
+          <img src={ropeWorksLogo} alt="Rope Works Logo" className="max-w-md border mb-2" />
+          <p className="text-sm text-slate-600">Rope Works Logo</p>
+        </div>
+
+        <div>
+          <img src={acctLogo} alt="ACCT Logo" className="max-w-md border mb-2" />
+          <p className="text-sm text-slate-600">ACCT Accredited Vendor Logo</p>
+        </div>
+
+        <Button 
+          onClick={uploadLogos} 
+          disabled={uploading}
+          className="mt-4"
+        >
+          {uploading ? 'Uploading...' : 'Upload to pdf-templates Bucket'}
+        </Button>
+      </div>
+    </div>
+  );
+};
+
+export default UploadLogos;
