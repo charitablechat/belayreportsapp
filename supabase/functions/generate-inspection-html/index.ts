@@ -127,6 +127,14 @@ serve(async (req) => {
       : "Unknown";
     const acctNumber = inspection.profiles?.acct_number || inspection.acct_number || "N/A";
 
+    // Calculate page count
+    let pageCount = 2; // Cover + Key
+    if (systems.length > 0) pageCount++;
+    if (ziplines.length > 0) pageCount++;
+    if (equipment.length > 0) pageCount++;
+    if (standards.length > 0) pageCount++;
+    if (summary) pageCount++;
+
     // Generate HTML
     const html = `<!DOCTYPE html>
 <html lang="en">
@@ -135,393 +143,706 @@ serve(async (req) => {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Inspection Report - ${inspection.organization}</title>
   <style>
+    @page {
+      size: letter;
+      margin: 0.5in;
+    }
+
     * {
       margin: 0;
       padding: 0;
       box-sizing: border-box;
     }
+
     body {
-      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-      line-height: 1.6;
-      color: #333;
-      background: #f5f5f5;
-      padding: 20px;
+      font-family: Georgia, 'Times New Roman', serif;
+      font-size: 11pt;
+      line-height: 1.5;
+      color: #000;
+      background: #fff;
     }
-    .container {
-      max-width: 1000px;
-      margin: 0 auto;
-      background: white;
-      padding: 40px;
-      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+
+    .page {
+      position: relative;
+      min-height: 100vh;
+      padding: 0.5in;
+      page-break-after: always;
     }
-    .header {
+
+    .page:last-child {
+      page-break-after: avoid;
+    }
+
+    .page-header {
       display: flex;
       justify-content: space-between;
-      align-items: center;
+      align-items: flex-start;
+      padding-bottom: 15px;
       border-bottom: 3px solid #1e40af;
-      padding-bottom: 20px;
-      margin-bottom: 30px;
+      margin-bottom: 20px;
     }
+
     .header-left {
-      flex: 1;
+      display: flex;
+      align-items: center;
+      gap: 15px;
     }
-    .header-right {
-      text-align: right;
+
+    .header-left img {
+      height: 60px;
+      width: auto;
     }
-    .logo {
-      max-width: 150px;
-      margin-bottom: 10px;
-    }
-    .badge {
-      max-width: 120px;
-    }
-    h1 {
+
+    .header-title {
+      font-size: 11pt;
+      font-weight: bold;
       color: #1e40af;
-      font-size: 32px;
-      margin-bottom: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
     }
-    .subtitle {
-      color: #64748b;
-      font-size: 14px;
+
+    .header-right img {
+      height: 70px;
+      width: auto;
     }
+
+    .page-footer {
+      position: absolute;
+      bottom: 0.3in;
+      left: 0.5in;
+      right: 0.5in;
+      font-size: 9pt;
+      color: #666;
+      border-top: 1px solid #ddd;
+      padding-top: 8px;
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .page-number {
+      font-weight: bold;
+    }
+
+    h1 {
+      font-size: 24pt;
+      color: #1e40af;
+      margin-bottom: 15px;
+      font-weight: bold;
+    }
+
+    h2 {
+      font-size: 16pt;
+      color: #1e40af;
+      margin: 20px 0 10px 0;
+      font-weight: bold;
+    }
+
+    h3 {
+      font-size: 13pt;
+      color: #000;
+      margin: 15px 0 8px 0;
+      font-weight: bold;
+    }
+
     .info-grid {
       display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 15px;
-      margin-bottom: 30px;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin: 20px 0;
+      border: 1px solid #ddd;
     }
-    .info-item {
-      padding: 12px;
-      background: #f8fafc;
-      border-left: 3px solid #1e40af;
+
+    .info-cell {
+      padding: 10px;
+      border-right: 1px solid #ddd;
+      border-bottom: 1px solid #ddd;
     }
+
+    .info-cell:nth-child(2n) {
+      border-right: none;
+    }
+
     .info-label {
-      font-weight: 600;
-      color: #475569;
-      font-size: 13px;
-      margin-bottom: 4px;
+      font-weight: bold;
+      font-size: 10pt;
+      margin-bottom: 3px;
+      color: #333;
     }
+
     .info-value {
-      color: #1e293b;
+      font-size: 11pt;
+      color: #000;
     }
-    .section {
-      margin-bottom: 30px;
+
+    .text-block {
+      margin: 15px 0;
+      padding: 15px;
+      background: #f9f9f9;
+      border-left: 4px solid #1e40af;
+      font-size: 10pt;
+      line-height: 1.6;
     }
-    .section-title {
-      background: #1e40af;
-      color: white;
-      padding: 12px 20px;
-      font-size: 18px;
-      font-weight: 600;
-      margin-bottom: 15px;
-      border-radius: 4px;
+
+    .bullet-list {
+      margin: 10px 0 10px 25px;
+      font-size: 10pt;
     }
+
+    .bullet-list li {
+      margin-bottom: 8px;
+      line-height: 1.5;
+    }
+
     table {
       width: 100%;
       border-collapse: collapse;
-      margin-bottom: 20px;
+      margin: 15px 0;
+      font-size: 10pt;
     }
-    th, td {
-      padding: 10px;
+
+    table th {
+      background: #1e40af;
+      color: white;
+      padding: 8px;
       text-align: left;
-      border-bottom: 1px solid #e2e8f0;
+      font-weight: bold;
+      border: 1px solid #1e40af;
     }
-    th {
-      background: #f1f5f9;
-      font-weight: 600;
-      color: #1e293b;
-      font-size: 14px;
+
+    table td {
+      padding: 8px;
+      border: 1px solid #ddd;
+      vertical-align: top;
     }
-    td {
-      font-size: 14px;
+
+    table tr:nth-child(even) {
+      background: #f9f9f9;
     }
+
     .result-pass {
       color: #16a34a;
-      font-weight: 600;
+      font-weight: bold;
     }
+
     .result-attention {
       color: #ea580c;
-      font-weight: 600;
+      font-weight: bold;
     }
+
     .result-fail {
       color: #dc2626;
-      font-weight: 600;
+      font-weight: bold;
     }
-    .text-content {
+
+    .key-section {
+      margin: 20px 0;
       padding: 15px;
-      background: #f8fafc;
-      border-radius: 4px;
-      white-space: pre-wrap;
-      line-height: 1.8;
+      background: #f8f9fa;
+      border: 1px solid #ddd;
     }
-    .footer {
-      margin-top: 40px;
-      padding-top: 20px;
-      border-top: 2px solid #e2e8f0;
-      text-align: center;
-      color: #64748b;
-      font-size: 12px;
+
+    .key-section h3 {
+      margin-top: 0;
     }
+
+    .disclaimer {
+      font-size: 8pt;
+      color: #666;
+      line-height: 1.4;
+    }
+
+    .critical-box {
+      background: #fee;
+      border: 2px solid #dc2626;
+      padding: 15px;
+      margin: 15px 0;
+    }
+
+    .critical-box h3 {
+      color: #dc2626;
+      margin-top: 0;
+    }
+
     @media print {
-      body {
-        background: white;
-        padding: 0;
+      .page {
+        page-break-after: always;
       }
-      .container {
-        box-shadow: none;
-        padding: 20px;
+      
+      .page:last-child {
+        page-break-after: avoid;
       }
-    }
-    @media (max-width: 768px) {
-      .header {
-        flex-direction: column;
-        text-align: center;
-      }
-      .header-right {
-        text-align: center;
-        margin-top: 15px;
-      }
-      .info-grid {
-        grid-template-columns: 1fr;
-      }
-      .container {
-        padding: 20px;
-      }
-      table {
-        font-size: 12px;
-      }
-      th, td {
-        padding: 8px 4px;
+
+      @page {
+        margin: 0.5in;
       }
     }
   </style>
 </head>
 <body>
-  <div class="container">
-    <div class="header">
+
+  <!-- PAGE 1: COVER PAGE -->
+  <div class="page">
+    <div class="page-header">
       <div class="header-left">
-        <img src="${ropeWorksLogo}" alt="Rope Works Logo" class="logo">
-        <h1>Inspection Report</h1>
-        <div class="subtitle">Professional Aerial Adventure Park Inspection</div>
-      </div>
-      <div class="header-right">
-        <img src="${acctLogo}" alt="ACCT Accredited Vendor" class="badge">
+        <img src="${acctLogo}" alt="ACCT Accredited Vendor">
+        <img src="${ropeWorksLogo}" alt="Rope Works">
       </div>
     </div>
+    <div class="header-title" style="text-align: center; margin-bottom: 20px;">ROPES/CHALLENGE COURSE</div>
+
+    <h1 style="text-align: center;">Professional Inspection for Aerial Adventure Programs</h1>
 
     <div class="info-grid">
-      <div class="info-item">
-        <div class="info-label">Organization</div>
+      <div class="info-cell">
+        <div class="info-label">Organization:</div>
         <div class="info-value">${inspection.organization}</div>
       </div>
-      <div class="info-item">
-        <div class="info-label">Location</div>
+      <div class="info-cell">
+        <div class="info-label">Location:</div>
         <div class="info-value">${inspection.location}</div>
       </div>
-      <div class="info-item">
-        <div class="info-label">Inspection Date</div>
-        <div class="info-value">${formatDate(inspection.inspection_date)}</div>
+      <div class="info-cell">
+        <div class="info-label">Onsite Contact:</div>
+        <div class="info-value">${inspection.onsite_contact || 'N/A'}</div>
       </div>
-      <div class="info-item">
-        <div class="info-label">Inspector</div>
+      <div class="info-cell"></div>
+      <div class="info-cell">
+        <div class="info-label">Inspected by:</div>
         <div class="info-value">${inspectorName}</div>
       </div>
-      <div class="info-item">
-        <div class="info-label">ACCT Number</div>
+      <div class="info-cell">
+        <div class="info-label">Inspector ACCT #:</div>
         <div class="info-value">${acctNumber}</div>
       </div>
-      <div class="info-item">
-        <div class="info-label">Onsite Contact</div>
-        <div class="info-value">${inspection.onsite_contact || "N/A"}</div>
+      <div class="info-cell">
+        <div class="info-label">Date of Inspection:</div>
+        <div class="info-value">${formatDate(inspection.inspection_date)}</div>
       </div>
-      ${inspection.previous_inspection_date ? `
-      <div class="info-item">
-        <div class="info-label">Previous Inspection</div>
-        <div class="info-value">${formatDate(inspection.previous_inspection_date)}</div>
-      </div>
-      ` : ''}
+      <div class="info-cell"></div>
       ${inspection.previous_inspector ? `
-      <div class="info-item">
-        <div class="info-label">Previous Inspector</div>
+      <div class="info-cell">
+        <div class="info-label">Previously Inspected by:</div>
         <div class="info-value">${inspection.previous_inspector}</div>
       </div>
+      <div class="info-cell">
+        <div class="info-label">Inspector:</div>
+        <div class="info-value">Previous Inspector</div>
+      </div>
+      <div class="info-cell">
+        <div class="info-label">Prev. Inspection Date:</div>
+        <div class="info-value">${formatDate(inspection.previous_inspection_date)}</div>
+      </div>
+      <div class="info-cell"></div>
       ` : ''}
     </div>
 
     ${inspection.course_history ? `
-    <div class="section">
-      <div class="section-title">Course History</div>
-      <div class="text-content">${inspection.course_history}</div>
+    <h2>Known Course History</h2>
+    <div class="text-block">${inspection.course_history}</div>
+    ` : `
+    <h2>Known Course History</h2>
+    <div class="text-block">
+      This report covers the condition of the aerial adventure site for the date of inspection reflected on this form. 
+      The inspection provided is strictly an evaluation of the structural condition of the course elements and equipment. 
+      The inspection does not include training on how to operate the equipment, nor how to operate the course. 
+      The inspection only verifies the existence of written local operating procedures (LOP), an emergency action plan (EAP), 
+      and training documentation. The inspection does not perform a review or evaluate the LOP, EAP and training documentation. 
+      Potential problems can occur afterwards due to vandalism, improper use, weather, etc. Rope Works Inc. is not responsible 
+      for modifications or repairs made to the challenge course by anyone other than a Rope Works Inc. employee. We recommend 
+      you conduct your own periodic internal monitoring at a minimum on a quarterly basis. At a minimum an annual professional 
+      inspection is required by a qualified professional to be in compliance with the Association for Challenge Course Technology 
+      ANSI/ACCT current published standards.
     </div>
-    ` : ''}
+    `}
 
-    ${standards.length > 0 ? `
-    <div class="section">
-      <div class="section-title">Standards & Documentation</div>
-      <table>
-        <thead>
-          <tr>
-            <th>Standard</th>
-            <th>Documentation</th>
-            <th>Comments</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${standards.map(std => `
-            <tr>
-              <td>${std.standard_name}</td>
-              <td>${std.has_documentation ? '<span class="result-pass">✓ Yes</span>' : '<span class="result-attention">✗ No</span>'}</td>
-              <td>${std.comments || ''}</td>
-            </tr>
-          `).join('')}
-        </tbody>
-      </table>
-    </div>
-    ` : ''}
+    <h2>Reminders and Requirements</h2>
+    <ul class="bullet-list">
+      <li>Employers are required to issue staff appropriate fall protection for the duties to be performed.</li>
+      <li>A Periodic Internal Monitoring of the aerial activities on your site shall be conducted by qualified personnel.</li>
+      <li>Proper identification, tracking, and documentation of ALL equipment used for operations shall be kept and available at your annual professional inspection.</li>
+      <li>Proper staff training should be provided for the operation of all aerial activities and equipment on your site.</li>
+      <li>Operational Reviews shall be conducted once every five years.</li>
+    </ul>
 
-    ${systems.length > 0 ? `
-    <div class="section">
-      <div class="section-title">Operating Systems</div>
-      <table>
-        <thead>
-          <tr>
-            <th>System Name</th>
-            <th>Name/ID</th>
-            <th>Result</th>
-            <th>Comments</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${systems.map(sys => {
-            let resultClass = 'result-pass';
-            if (sys.result === 'Needs Attention') resultClass = 'result-attention';
-            if (sys.result === 'Fail') resultClass = 'result-fail';
-            
-            return `
-              <tr>
-                <td>${sys.system_name}</td>
-                <td>${sys.name || 'N/A'}</td>
-                <td class="${resultClass}">${sys.result}</td>
-                <td>${sys.comments || ''}</td>
-              </tr>
-            `;
-          }).join('')}
-        </tbody>
-      </table>
-    </div>
-    ` : ''}
-
-    ${ziplines.length > 0 ? `
-    <div class="section">
-      <div class="section-title">Ziplines</div>
-      <table>
-        <thead>
-          <tr>
-            <th>Zipline</th>
-            <th>Cable Type</th>
-            <th>Length (ft)</th>
-            <th>Braking</th>
-            <th>EAD</th>
-            <th>Result</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${ziplines.map(zip => {
-            let resultClass = 'result-pass';
-            if (zip.result === 'Needs Attention') resultClass = 'result-attention';
-            if (zip.result === 'Fail') resultClass = 'result-fail';
-            
-            return `
-              <tr>
-                <td>${zip.zipline_name}</td>
-                <td>${zip.cable_type || 'N/A'}</td>
-                <td>${zip.cable_length || 'N/A'}</td>
-                <td>${zip.braking_system || 'N/A'}</td>
-                <td>${zip.ead_system || 'N/A'}</td>
-                <td class="${resultClass}">${zip.result}</td>
-              </tr>
-            `;
-          }).join('')}
-        </tbody>
-      </table>
-    </div>
-    ` : ''}
-
-    ${equipment.length > 0 ? `
-    <div class="section">
-      <div class="section-title">Equipment</div>
-      <table>
-        <thead>
-          <tr>
-            <th>Category</th>
-            <th>Type</th>
-            <th>Quantity</th>
-            <th>Year</th>
-            <th>Result</th>
-            <th>Comments</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${equipment.map(eq => {
-            let resultClass = 'result-pass';
-            if (eq.result === 'Needs Attention') resultClass = 'result-attention';
-            if (eq.result === 'Fail') resultClass = 'result-fail';
-            
-            return `
-              <tr>
-                <td>${eq.equipment_category}</td>
-                <td>${eq.equipment_type}</td>
-                <td>${eq.quantity || 'N/A'}</td>
-                <td>${eq.production_year || 'N/A'}</td>
-                <td class="${resultClass}">${eq.result}</td>
-                <td>${eq.comments || ''}</td>
-              </tr>
-            `;
-          }).join('')}
-        </tbody>
-      </table>
-    </div>
-    ` : ''}
-
-    ${summary ? `
-    <div class="section">
-      <div class="section-title">Summary</div>
-      
-      ${summary.repairs_performed ? `
-      <div style="margin-bottom: 20px;">
-        <div class="info-label" style="margin-bottom: 8px;">Repairs Performed</div>
-        <div class="text-content">${deduplicateHtmlContent(summary.repairs_performed)}</div>
+    <div class="page-footer">
+      <div class="disclaimer">
+        The information contained in this report has been documented by a Qualified Professional. This report is effective for one year from the date of inspection.<br>
+        Issued by: Rope Works Inc., PO Box 1074, Dripping Springs, TX 78620
       </div>
-      ` : ''}
-      
-      ${summary.critical_actions ? `
-      <div style="margin-bottom: 20px;">
-        <div class="info-label" style="margin-bottom: 8px; color: #dc2626;">Critical Actions Required</div>
-        <div class="text-content">${deduplicateHtmlContent(summary.critical_actions)}</div>
-      </div>
-      ` : ''}
-      
-      ${summary.future_considerations ? `
-      <div style="margin-bottom: 20px;">
-        <div class="info-label" style="margin-bottom: 8px;">Future Considerations</div>
-        <div class="text-content">${summary.future_considerations}</div>
-      </div>
-      ` : ''}
-      
-      ${summary.next_inspection_date ? `
-      <div class="info-item" style="display: inline-block; margin-top: 10px;">
-        <div class="info-label">Next Inspection Date</div>
-        <div class="info-value">${formatDate(summary.next_inspection_date)}</div>
-      </div>
-      ` : ''}
-    </div>
-    ` : ''}
-
-    <div class="footer">
-      <p>Generated on ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
-      <p style="margin-top: 5px;">Rope Works Professional Inspection Report</p>
+      <div class="page-number">Page 1 of ${pageCount}</div>
     </div>
   </div>
+
+  <!-- PAGE 2: INSPECTION KEY -->
+  <div class="page">
+    <div class="page-header">
+      <div class="header-left">
+        <img src="${acctLogo}" alt="ACCT">
+        <div class="header-title">ROPES/CHALLENGE COURSE</div>
+      </div>
+      <div class="header-right">
+        <img src="${ropeWorksLogo}" alt="Rope Works">
+      </div>
+    </div>
+
+    <p style="margin-bottom: 15px; font-size: 10pt;">All inspections include the following when applicable:</p>
+
+    <div class="key-section">
+      <h3>Lifeline HDW</h3>
+      <p>Represents all hardware associated with the Life Safety System including but not limited to: wire rope, bolts, wire rope terminations, & redundant terminations.</p>
+    </div>
+
+    <div class="key-section">
+      <h3>Activity HDW</h3>
+      <p>Represents all hardware associated with the element execution. This includes but is not limited to: foot cables, platforms, hand ropes/cables, boards, etc.</p>
+    </div>
+
+    <div class="key-section">
+      <h3>Environment</h3>
+      <p>This represents the surrounding area of the activity/element. This includes but is not limited to: ground cover, trees, rocks, & terrain.</p>
+    </div>
+
+    <div class="key-section">
+      <h3>Equipment</h3>
+      <p>This represents the equipment utilized in the operation of the course activities. This includes but is not limited to: rope, carabiners, helmets, belay devices, pulleys, trolleys, lanyards, etc.</p>
+    </div>
+
+    <h2 style="margin-top: 25px;">Pass/Pass with Provisions/Fail</h2>
+    <p style="margin-bottom: 15px; font-size: 10pt;">
+      This represents the overall rating for the system based on the condition of the items inspected on the day of the inspection. 
+      Rope Works Inc. inspects all challenge course and canopy/zip line tours to the standards set forth by the ACCT. 
+      Any deviation from the ACCT standards in regards to the inspection criteria will be addressed in the Comment section.
+    </p>
+
+    <h2>Inspection Key</h2>
+    <ul class="bullet-list">
+      <li><strong>Pass</strong> - The equipment or operating system meets all manufacturer specifications, industry standards, and operational safety requirements at the time of inspection. No corrective actions are necessary. The item is approved for continued use until the next scheduled inspection.</li>
+      <li><strong>Pass with Provisions</strong> - The equipment or operating system is generally in acceptable condition but requires minor corrective action, repair, or follow-up maintenance that does not pose an immediate safety concern. The item may remain in service under specified conditions or with specific limitations until the required actions are completed. A timeline for resolution should be established.</li>
+      <li><strong>Fail</strong> - The equipment or operating system does not meet minimum safety standards and poses a risk to participants or staff. Immediate corrective action is required. The item must be removed from service until all necessary repairs, replacements, or modifications are completed and verified by a qualified professional.</li>
+      <li><strong>N/A (Not Applicable)</strong> - The inspection criterion does not apply to this particular system, element, or piece of equipment at this time.</li>
+    </ul>
+
+    <div class="page-footer">
+      <div class="disclaimer">
+        The information contained in this report has been documented by a Qualified Professional.
+      </div>
+      <div class="page-number">Page 2 of ${pageCount}</div>
+    </div>
+  </div>
+
+  <!-- PAGE 3: OPERATING SYSTEMS -->
+  ${systems.length > 0 ? `
+  <div class="page">
+    <div class="page-header">
+      <div class="header-left">
+        <img src="${acctLogo}" alt="ACCT">
+        <div class="header-title">ROPES/CHALLENGE COURSE</div>
+      </div>
+      <div class="header-right">
+        <img src="${ropeWorksLogo}" alt="Rope Works">
+      </div>
+    </div>
+
+    <h2>Operating Systems</h2>
+    <table>
+      <thead>
+        <tr>
+          <th style="width: 25%;">System Name</th>
+          <th style="width: 20%;">Name/ID</th>
+          <th style="width: 15%;">Lifeline HDW</th>
+          <th style="width: 15%;">Activity HDW</th>
+          <th style="width: 25%;">Comments</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${systems.map(sys => {
+          let resultClass = 'result-pass';
+          if (sys.result === 'Needs Attention') resultClass = 'result-attention';
+          if (sys.result === 'Fail') resultClass = 'result-fail';
+          
+          return `
+            <tr>
+              <td>${sys.system_name}</td>
+              <td>${sys.name || 'N/A'}</td>
+              <td class="${resultClass}">${sys.result}</td>
+              <td class="${resultClass}">${sys.result}</td>
+              <td style="font-size: 9pt;">${sys.comments || ''}</td>
+            </tr>
+          `;
+        }).join('')}
+      </tbody>
+    </table>
+
+    <div class="page-footer">
+      <div class="disclaimer">
+        The information contained in this report has been documented by a Qualified Professional.
+      </div>
+      <div class="page-number">Page 3 of ${pageCount}</div>
+    </div>
+  </div>
+  ` : ''}
+
+  <!-- PAGE: ZIPLINES -->
+  ${ziplines.length > 0 ? `
+  <div class="page">
+    <div class="page-header">
+      <div class="header-left">
+        <img src="${acctLogo}" alt="ACCT">
+        <div class="header-title">ROPES/CHALLENGE COURSE</div>
+      </div>
+      <div class="header-right">
+        <img src="${ropeWorksLogo}" alt="Rope Works">
+      </div>
+    </div>
+
+    <h2>Ziplines</h2>
+    
+    <div style="margin-bottom: 15px; font-size: 9pt;">
+      <strong>Cable Type:</strong> GAC = Galvanized Aircraft Cable, SS = Stainless Steel<br>
+      <strong>Braking System:</strong> ZS = Zipstop, FB = Friction Brake, SB = Spring Brake, G = Gravity<br>
+      <strong>EAD System:</strong> Energy Absorption Device
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Zipline Name</th>
+          <th>Cable Type</th>
+          <th>Length (ft)</th>
+          <th>Cable Result</th>
+          <th>Braking System</th>
+          <th>Braking Result</th>
+          <th>EAD System</th>
+          <th>EAD Result</th>
+          <th>Comments</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${ziplines.map(zip => {
+          const getCableResultClass = () => {
+            if (zip.cable_result === 'Pass') return 'result-pass';
+            if (zip.cable_result === 'Needs Attention') return 'result-attention';
+            if (zip.cable_result === 'Fail') return 'result-fail';
+            return '';
+          };
+
+          const getBrakingResultClass = () => {
+            if (zip.braking_result === 'Pass') return 'result-pass';
+            if (zip.braking_result === 'Needs Attention') return 'result-attention';
+            if (zip.braking_result === 'Fail') return 'result-fail';
+            return '';
+          };
+
+          const getEadResultClass = () => {
+            if (zip.ead_result === 'Pass') return 'result-pass';
+            if (zip.ead_result === 'Needs Attention') return 'result-attention';
+            if (zip.ead_result === 'Fail') return 'result-fail';
+            return '';
+          };
+          
+          return `
+            <tr>
+              <td>${zip.zipline_name}</td>
+              <td>${zip.cable_type || 'N/A'}</td>
+              <td>${zip.cable_length || 'N/A'}</td>
+              <td class="${getCableResultClass()}">${zip.cable_result || 'N/A'}</td>
+              <td>${zip.braking_system || 'N/A'}</td>
+              <td class="${getBrakingResultClass()}">${zip.braking_result || 'N/A'}</td>
+              <td>${zip.ead_system || 'N/A'}</td>
+              <td class="${getEadResultClass()}">${zip.ead_result || 'N/A'}</td>
+              <td style="font-size: 9pt;">${zip.comments || ''}</td>
+            </tr>
+          `;
+        }).join('')}
+      </tbody>
+    </table>
+
+    <div class="page-footer">
+      <div class="disclaimer">
+        The information contained in this report has been documented by a Qualified Professional.
+      </div>
+      <div class="page-number">Page ${systems.length > 0 ? '4' : '3'} of ${pageCount}</div>
+    </div>
+  </div>
+  ` : ''}
+
+  <!-- PAGE: EQUIPMENT -->
+  ${equipment.length > 0 ? `
+  <div class="page">
+    <div class="page-header">
+      <div class="header-left">
+        <img src="${acctLogo}" alt="ACCT">
+        <div class="header-title">ROPES/CHALLENGE COURSE</div>
+      </div>
+      <div class="header-right">
+        <img src="${ropeWorksLogo}" alt="Rope Works">
+      </div>
+    </div>
+
+    <h2>Equipment</h2>
+    
+    ${['Rope', 'Carabiners', 'Helmets', 'Belay Devices', 'Pulleys', 'Harnesses', 'Other'].map(category => {
+      const categoryEquipment = equipment.filter(eq => eq.equipment_category === category);
+      if (categoryEquipment.length === 0) return '';
+      
+      return `
+        <h3>${category}</h3>
+        <table>
+          <thead>
+            <tr>
+              <th style="width: 30%;">Type</th>
+              <th style="width: 10%;">Qty</th>
+              <th style="width: 10%;">Year</th>
+              <th style="width: 15%;">Result</th>
+              <th style="width: 35%;">Comments</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${categoryEquipment.map(eq => {
+              let resultClass = 'result-pass';
+              if (eq.result === 'Needs Attention') resultClass = 'result-attention';
+              if (eq.result === 'Fail') resultClass = 'result-fail';
+              
+              return `
+                <tr>
+                  <td>${eq.equipment_type}</td>
+                  <td>${eq.quantity || 'N/A'}</td>
+                  <td>${eq.production_year || 'N/A'}</td>
+                  <td class="${resultClass}">${eq.result}</td>
+                  <td style="font-size: 9pt;">${eq.comments || ''}</td>
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+        </table>
+      `;
+    }).join('')}
+
+    <div class="page-footer">
+      <div class="disclaimer">
+        The information contained in this report has been documented by a Qualified Professional.
+      </div>
+      <div class="page-number">Page ${systems.length > 0 ? (ziplines.length > 0 ? '5' : '4') : (ziplines.length > 0 ? '4' : '3')} of ${pageCount}</div>
+    </div>
+  </div>
+  ` : ''}
+
+  <!-- PAGE: ACCT STANDARDS -->
+  ${standards.length > 0 ? `
+  <div class="page">
+    <div class="page-header">
+      <div class="header-left">
+        <img src="${acctLogo}" alt="ACCT">
+        <div class="header-title">ROPES/CHALLENGE COURSE</div>
+      </div>
+      <div class="header-right">
+        <img src="${ropeWorksLogo}" alt="Rope Works">
+      </div>
+    </div>
+
+    <h2>ACCT Operations Standards</h2>
+    <p style="margin-bottom: 15px; font-size: 10pt;">Documentation verification as required by ACCT Standards:</p>
+
+    <table>
+      <thead>
+        <tr>
+          <th style="width: 70%;">Standard / Document</th>
+          <th style="width: 10%;">Yes</th>
+          <th style="width: 10%;">No</th>
+          <th style="width: 10%;">N/A</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${standards.map(std => `
+          <tr>
+            <td>${std.standard_name}</td>
+            <td style="text-align: center;">${std.has_documentation ? '✓' : ''}</td>
+            <td style="text-align: center;">${!std.has_documentation ? '✓' : ''}</td>
+            <td style="text-align: center;"></td>
+          </tr>
+          ${std.comments ? `
+          <tr>
+            <td colspan="4" style="font-size: 9pt; font-style: italic; background: #f9f9f9;">
+              Comments: ${std.comments}
+            </td>
+          </tr>
+          ` : ''}
+        `).join('')}
+      </tbody>
+    </table>
+
+    <div class="page-footer">
+      <div class="disclaimer">
+        The information contained in this report has been documented by a Qualified Professional.
+      </div>
+      <div class="page-number">Page ${pageCount - 1} of ${pageCount}</div>
+    </div>
+  </div>
+  ` : ''}
+
+  <!-- PAGE: SUMMARY -->
+  ${summary ? `
+  <div class="page">
+    <div class="page-header">
+      <div class="header-left">
+        <img src="${acctLogo}" alt="ACCT">
+        <div class="header-title">ROPES/CHALLENGE COURSE</div>
+      </div>
+      <div class="header-right">
+        <img src="${ropeWorksLogo}" alt="Rope Works">
+      </div>
+    </div>
+
+    <h2>Inspection Summary</h2>
+
+    ${summary.repairs_performed ? `
+    <h3>Repairs Performed</h3>
+    <div class="text-block">${deduplicateHtmlContent(summary.repairs_performed)}</div>
+    ` : ''}
+
+    ${summary.critical_actions ? `
+    <div class="critical-box">
+      <h3>Critical Actions Required</h3>
+      <div>${deduplicateHtmlContent(summary.critical_actions)}</div>
+    </div>
+    ` : ''}
+
+    ${summary.future_considerations ? `
+    <h3>Future Considerations</h3>
+    <div class="text-block">${deduplicateHtmlContent(summary.future_considerations)}</div>
+    ` : ''}
+
+    ${summary.next_inspection_date ? `
+    <h3>Next Inspection Date</h3>
+    <div class="text-block"><strong>${formatDate(summary.next_inspection_date)}</strong></div>
+    ` : ''}
+
+    <h3 style="margin-top: 25px;">Retirement Guidelines</h3>
+    <div class="text-block">
+      <strong>Equipment Retirement Criteria:</strong><br><br>
+      Equipment should be retired from service when any of the following conditions are met:
+      <ul style="margin: 10px 0 10px 20px;">
+        <li>Manufacturer's recommended lifespan has been exceeded</li>
+        <li>Visible damage, wear, or deterioration that affects structural integrity</li>
+        <li>Equipment has been subjected to impact forces or shock loading</li>
+        <li>Missing or illegible manufacturer identification markings</li>
+        <li>Equipment fails inspection criteria as outlined in ACCT standards</li>
+        <li>Documentation of equipment history is incomplete or unavailable</li>
+      </ul>
+      <br>
+      All retired equipment must be clearly marked, removed from service, and destroyed or rendered unusable to prevent future use. 
+      Proper documentation of retirement must be maintained for record-keeping purposes.
+    </div>
+
+    <div class="page-footer">
+      <div class="disclaimer">
+        The information contained in this report has been documented by a Qualified Professional. This report is effective for one year from the date of inspection.
+      </div>
+      <div class="page-number">Page ${pageCount} of ${pageCount}</div>
+    </div>
+  </div>
+  ` : ''}
+
 </body>
 </html>`;
 
@@ -533,9 +854,10 @@ serve(async (req) => {
       }
     );
   } catch (error) {
-    console.error("Error generating inspection HTML:", error);
+    console.error("Error generating HTML:", error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
     return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
+      JSON.stringify({ error: errorMessage }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
         status: 500,
