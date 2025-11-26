@@ -36,18 +36,19 @@ export interface FormSection {
   fields?: FormField[];
 }
 
-export const useFormConfiguration = (languageCode: string = 'en') => {
+export const useFormConfiguration = (languageCode: string = 'en', formType: 'inspection' | 'daily_assessment' | 'training' = 'inspection') => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
   const { data: formConfig, isLoading, error } = useQuery({
-    queryKey: ['form-configuration', languageCode],
+    queryKey: ['form-configuration', languageCode, formType],
     queryFn: async () => {
-      // Fetch sections
+      // Fetch sections filtered by form type
       const { data: sections, error: sectionsError } = await supabase
         .from('form_sections')
         .select('*')
         .eq('is_active', true)
+        .eq('form_type', formType)
         .order('display_order');
 
       if (sectionsError) throw sectionsError;

@@ -54,8 +54,9 @@ import { DraggableOption } from "./DraggableOption";
 
 export const FormCMSManager = () => {
   const [selectedLanguage, setSelectedLanguage] = useState('en');
+  const [selectedFormType, setSelectedFormType] = useState<'inspection' | 'daily_assessment' | 'training'>('inspection');
   const [editingField, setEditingField] = useState<string | null>(null);
-  const { formConfig, isLoading } = useFormConfiguration(selectedLanguage);
+  const { formConfig, isLoading } = useFormConfiguration(selectedLanguage, selectedFormType);
   const { 
     updateField, 
     updateTranslation, 
@@ -231,20 +232,32 @@ export const FormCMSManager = () => {
         <div>
           <h2 className="text-3xl font-bold tracking-tight">Form CMS</h2>
           <p className="text-muted-foreground">
-            Manage inspection form fields, options, and translations
+            Manage form fields, options, and translations for all form types
           </p>
         </div>
-        <Select value={selectedLanguage} onValueChange={setSelectedLanguage}>
-          <SelectTrigger className="w-[180px]">
-            <Languages className="w-4 h-4 mr-2" />
-            <SelectValue placeholder="Language" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="en">English</SelectItem>
-            <SelectItem value="es">Español</SelectItem>
-            <SelectItem value="fr">Français</SelectItem>
-          </SelectContent>
-        </Select>
+        <div className="flex gap-2">
+          <Select value={selectedFormType} onValueChange={(value: any) => setSelectedFormType(value)}>
+            <SelectTrigger className="w-[200px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="inspection">Inspection Forms</SelectItem>
+              <SelectItem value="daily_assessment">Daily Assessments</SelectItem>
+              <SelectItem value="training">Training Reports</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={selectedLanguage} onValueChange={setSelectedLanguage}>
+            <SelectTrigger className="w-[180px]">
+              <Languages className="w-4 h-4 mr-2" />
+              <SelectValue placeholder="Language" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="en">English</SelectItem>
+              <SelectItem value="es">Español</SelectItem>
+              <SelectItem value="fr">Français</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       <Alert>
