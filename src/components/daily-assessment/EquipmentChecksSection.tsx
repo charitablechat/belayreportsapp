@@ -1,7 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+import { VoiceTextarea } from "@/components/ui/voice-textarea";
 
 const EQUIPMENT_ITEMS = [
   { key: 'harnesses', label: 'Harnesses' },
@@ -67,7 +67,7 @@ export default function EquipmentChecksSection({ checks, onUpdate }: EquipmentCh
                   {item.label}
                 </Label>
               </div>
-              <Textarea
+              <VoiceTextarea
                 placeholder="Comments (optional)"
                 value={existingCheck?.comments || ''}
                 onChange={(e) => handleCommentChange(item.key, e.target.value)}

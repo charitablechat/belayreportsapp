@@ -1,7 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+import { VoiceTextarea } from "@/components/ui/voice-textarea";
 
 const BEGINNING_OF_DAY_ITEMS = [
   { key: 'first_aid_kit', label: 'First aid kit is accessible and equipped' },
@@ -66,7 +66,7 @@ export default function BeginningOfDaySection({ items, onUpdate }: BeginningOfDa
                   {item.label}
                 </Label>
               </div>
-              <Textarea
+              <VoiceTextarea
                 placeholder="Comments (optional)"
                 value={existingItem?.comments || ''}
                 onChange={(e) => handleCommentChange(item.key, e.target.value)}

@@ -1,13 +1,13 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
+import { VoiceInput } from "@/components/ui/voice-input";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
 import { CalendarIcon } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
-import { RichTextEditor } from "@/components/ui/rich-text-editor";
+import { VoiceRichTextEditor } from "@/components/ui/voice-rich-text-editor";
 
 interface TrainingSummarySectionProps {
   summary: any;
@@ -26,7 +26,7 @@ export default function TrainingSummarySection({ summary, onUpdate }: TrainingSu
           <p className="text-sm text-muted-foreground">
             This area lists/describes any observations at the time of training pertaining to staff, equipment function, or operations:
           </p>
-          <RichTextEditor
+          <VoiceRichTextEditor
             content={summary?.observations || ''}
             onChange={(value) => onUpdate('observations', value)}
             placeholder="Enter your observations here..."
@@ -38,7 +38,7 @@ export default function TrainingSummarySection({ summary, onUpdate }: TrainingSu
           <p className="text-sm text-muted-foreground">
             This area lists recommendations from the trainer after visiting your site regarding staff, equipment function, or operations:
           </p>
-          <RichTextEditor
+          <VoiceRichTextEditor
             content={summary?.recommendations || ''}
             onChange={(value) => onUpdate('recommendations', value)}
             placeholder="Enter your recommendations here..."
@@ -50,7 +50,7 @@ export default function TrainingSummarySection({ summary, onUpdate }: TrainingSu
           <p className="text-sm text-muted-foreground">
             The trainer listed on this report verifies the report is complete and ready for client submission on the following date.
           </p>
-          <Input
+          <VoiceInput
             id="person_submitting"
             value={summary?.person_submitting || ''}
             onChange={(e) => onUpdate('person_submitting', e.target.value)}

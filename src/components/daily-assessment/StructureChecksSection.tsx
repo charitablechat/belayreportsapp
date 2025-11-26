@@ -1,7 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+import { VoiceTextarea } from "@/components/ui/voice-textarea";
 
 const STRUCTURE_ITEMS = [
   { key: 'poles_platforms', label: 'Poles/Platforms' },
@@ -66,7 +66,7 @@ export default function StructureChecksSection({ checks, onUpdate }: StructureCh
                   {item.label}
                 </Label>
               </div>
-              <Textarea
+              <VoiceTextarea
                 placeholder="Comments (optional)"
                 value={existingCheck?.comments || ''}
                 onChange={(e) => handleCommentChange(item.key, e.target.value)}
