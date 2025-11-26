@@ -94,7 +94,11 @@ serve(async (req) => {
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     
-    @page { margin: 1in 0.75in 0.75in 0.75in; size: letter; }
+    @page { 
+      margin: 1in 0.75in 0.75in 0.75in; 
+      size: letter;
+      counter-increment: page;
+    }
     
     body {
       font-family: Georgia, 'Times New Roman', Times, serif;
@@ -102,6 +106,7 @@ serve(async (req) => {
       line-height: 1.4;
       color: #000;
       background: #fff;
+      counter-reset: page;
     }
     
     .page {
@@ -142,9 +147,20 @@ serve(async (req) => {
       padding-top: 8px;
       font-size: 9pt;
       line-height: 1.3;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
     }
     
+    .footer-content { flex: 1; }
     .footer-text { margin-bottom: 3px; }
+    .footer-page { 
+      font-size: 9pt; 
+      align-self: flex-end;
+    }
+    .footer-page::after {
+      content: counter(page);
+    }
     
     @media print {
       .footer { position: fixed; bottom: 0.5in; }
@@ -365,17 +381,17 @@ serve(async (req) => {
     
     <div class="section">
       <div class="disclaimer">
-        This professional inspection only covers activities/elements that are accessible and identifiable at the time of inspection. This inspection does not cover any life support (LOP) or system which was not accessible and/or identifiable at the time of inspection. The inspector assumes no liability with respect to LOP or systems which were not accessible and/or identifiable. Inspection does not include verification of Emergency Action Plans (EAP), nor was the training, qualifications and/or certifications of staff verified. Though this report may call attention to particular safety concerns, the inspector assumes no responsibility for vandalism and/or sabotage. It is recommended that quarterly monitoring protocols be implemented, and operational reviews are recommended for any system that is determined at a later time to require one or any system known to be five years or older. This report is effective for one year from the date of inspection. Annual inspections of aerial adventure programs are an industry standard in accordance with both ANSI and ACCT Standards.
+        This report covers the condition of the aerial adventure site for the date of inspection reflected on this form. The inspection provided is strictly an evaluation of the structural condition of the course elements and equipment. The inspection does not include training on how to operate the equipment, nor how to operate the course. The inspection only verifies the existence of written local operating procedures (LOP), an emergency action plan (EAP), and training documentation. The inspection does not perform a review or evaluate the LOP, EAP and training documentation. Potential problems can occur afterwards due to vandalism, improper use, weather, etc. Rope Works Inc. is not responsible for modifications or repairs made to the challenge course by anyone other than a Rope Works Inc. employee. We recommend you conduct your own periodic internal monitoring at a minimum on a quarterly basis. At a minimum an annual professional inspection is required by a qualified professional to be in compliance with the Association for Challenge Course Technology ANSI/ACCT current published standards.
       </div>
       
       <div class="reminders">
         <div class="reminders-title">Reminders and Requirements:</div>
         <ul>
-          <li>Employers of those utilizing any form of fall protection, are required by federal and state law to provide adequate training and/or supervision in their use.</li>
-          <li>Periodic Internal Monitoring should include both scheduled and unscheduled spot checks of equipment &amp; systems. Informal Internal Monitoring should be completed at the beginning of each day/program. Formal Internal Monitoring should be performed on an established schedule (typically weekly, biweekly or monthly).</li>
-          <li>All life support hardware &amp; equipment should be tracked so as to allow for documentation of usage, inspection, maintenance and retirement. (ie Numbered and maintained on an inspection and maintenance log.)</li>
-          <li>Staff should have documented adequate training in all aspects of the operations they are responsible for, including but not limited to rescue systems and emergency action plans.</li>
-          <li>Programs are required to perform an Operational Review every five years or after any significant change to the operation or when recommended in any annual inspection. Operational reviews are more rigorous and thorough than an annual inspection. An operational review will address ALL aspects of the program operation.</li>
+          <li>Employers are required to issue staff appropriate fall protection for the duties to be performed.</li>
+          <li>A Periodic Internal Monitoring of the aerial activities on your site shall be conducted by qualified personnel.</li>
+          <li>Proper identification, tracking, and documentation of ALL equipment used for operations shall be kept and available at your annual professional inspection.</li>
+          <li>Proper staff training should be provided for the operation of all aerial activities and equipment on your site.</li>
+          <li>Operational Reviews shall be conducted once every five years.</li>
         </ul>
       </div>
     </div>
@@ -392,25 +408,25 @@ serve(async (req) => {
         </tr>
         <tr>
           <td>Lifeline HDW</td>
-          <td>Represents all hardware associated with the functioning of the life support system, Participants Direct Life Support (PDLS), including but not limited to: steel cable, hardware, anchors/attachment points, connections, terminations, and dynamic components.</td>
+          <td>Represents all hardware associated with the Life Safety System including but not limited to: wire rope, bolts, wire rope terminations, &amp; redundant terminations.</td>
         </tr>
         <tr>
           <td>Activity HDW</td>
-          <td>Represents all hardware associated with element execution, operational hardware, activity structure, and activity attachments, including but not limited to: wooden platforms, activity structure, ladder/stair construction, wooden handrails, and activity attachments.</td>
+          <td>Represents all hardware associated with the element execution. This includes but is not limited to: foot cables, platforms, hand ropes/cables, boards, etc.</td>
         </tr>
         <tr>
           <td>Environment</td>
-          <td>This represents the surrounding area that could affect the operation of the element including but not limited to: trees used for PDLS and Activity Hardware, trees used for anchor, trees in the activity field, and natural hazards.</td>
+          <td>This represents the surrounding area of the activity/element. This includes but is not limited to: ground cover, trees, rocks, &amp; terrain.</td>
         </tr>
         <tr>
           <td>Equipment</td>
-          <td>This represents the equipment utilized in the operation of the element. Equipment is typically issued to the participant or group, but can also be a tool used for participant or facilitator management, including but not limited to: harnesses, helmets, trolleys, pulleys, ropes, and carabiners.</td>
+          <td>This represents the equipment utilized in the operation of the course activities. This includes but is not limited to: rope, carabiners, helmets, belay devices, pulleys, trolleys, lanyards, etc.</td>
+        </tr>
+        <tr>
+          <td>Pass/Pass with Provisions/Fail</td>
+          <td>This represents the overall rating for the system based on the condition of the items inspected on the day of the inspection. Rope Works Inc. inspects all challenge course and canopy/zip line tours to the standards set forth by the ACCT. Any deviation from the ACCT standards in regards to the inspection criteria will be addressed in the Comment section.</td>
         </tr>
       </table>
-      
-      <div style="margin-top: 20px; margin-bottom: 15px; line-height: 1.6;">
-        <strong>Pass/Pass with Provisions/Fail:</strong> These are the overall ratings that can be assigned to an element, piece of equipment, or system. The overall rating is based upon the individual ratings assigned to the categories described above. In order for the overall rating to be a Pass, ALL categories must be rated as a Pass. If one or more categories are not rated as a Pass, the overall rating will be a Pass with Provisions or a Fail. ACCT Standards require that all Aerial Adventure programs be inspected on at least an annual basis by a qualified professional.
-      </div>
       
       <h3 style="margin-top: 20px; margin-bottom: 10px; font-size: 12pt;">Inspection Key:</h3>
       
@@ -421,19 +437,24 @@ serve(async (req) => {
         </tr>
         <tr>
           <td>Pass</td>
-          <td>Indicates the item inspected meets manufacturer specifications, industry standards, and all operational safety requirements at the time of this scheduled inspection.</td>
+          <td>The equipment or operating system meets all manufacturer specifications, industry standards, and operational safety requirements at the time of inspection. No corrective actions are necessary. The item is approved for continued use until the next scheduled inspection.</td>
         </tr>
         <tr>
           <td>Pass with Provisions</td>
-          <td>Indicates the item inspected is in acceptable condition however a minor corrective action, adjustment, or area in need of special monitoring has been identified.</td>
+          <td>The equipment or operating system is generally in acceptable condition but requires minor corrective action, repair, or follow-up maintenance that does not pose an immediate safety concern.
+            <ul style="margin-top: 8px; margin-left: 20px;">
+              <li>Written comments will specify the condition, recommended action, and timeline for compliance.</li>
+              <li>Items rated "Pass with Provisions" may be reclassified as "Fail" if unaddressed by the next inspection cycle.</li>
+            </ul>
+          </td>
         </tr>
         <tr>
           <td>Fail</td>
-          <td>Indicates the item inspected does not meet critical safety standards and should be immediately removed from service. The item should not be returned to service until repaired or replaced and verified by a qualified professional.</td>
+          <td>The equipment or operating system does not meet minimum safety or operational standards and presents a potential or immediate hazard. The item must be removed from service and repaired, replaced, or corrected before being used again. Documentation of corrective actions is required prior to reinspection and approval for use.</td>
         </tr>
         <tr>
           <td>N/A</td>
-          <td>Indicates the criterion is not applicable to the element or item or the element or item was not accessible at time of inspection. In these cases the rating of N/A does not indicate a Pass or Fail for that criteria.</td>
+          <td>Not applicable, Not inspected, or inaccessible/not available at the time of inspection.</td>
         </tr>
       </table>
     </div>
@@ -557,22 +578,22 @@ serve(async (req) => {
 
     ${summary ? `
     <div class="section no-break">
-      <h2 class="section-title">Inspection Summary</h2>
+      <h2 class="section-title">Report Summary</h2>
       ${summary.repairs_performed ? `
       <div style="margin-bottom: 15px;">
-        <h3 style="font-size: 11pt; font-weight: bold; margin-bottom: 8px;">Repairs Performed</h3>
+        <h3 style="font-size: 11pt; font-weight: bold; margin-bottom: 8px;">Repairs, Alterations performed during inspection:</h3>
         <div style="line-height: 1.5;">${stripHtml(summary.repairs_performed)}</div>
       </div>
       ` : ''}
       ${summary.critical_actions ? `
       <div style="margin-bottom: 15px;">
-        <h3 style="font-size: 11pt; font-weight: bold; margin-bottom: 8px;">Critical Actions Required</h3>
+        <h3 style="font-size: 11pt; font-weight: bold; margin-bottom: 8px;">*Critical Action = Required Changes Prior to use of Activity, Element, or Equipment</h3>
         <div style="line-height: 1.5;">${stripHtml(summary.critical_actions)}</div>
       </div>
       ` : ''}
       ${summary.future_considerations ? `
       <div style="margin-bottom: 15px;">
-        <h3 style="font-size: 11pt; font-weight: bold; margin-bottom: 8px;">Future Considerations</h3>
+        <h3 style="font-size: 11pt; font-weight: bold; margin-bottom: 8px;">Future Considerations (includes but not limited to age of course, recommended updates, suggestions, industry future)</h3>
         <div style="line-height: 1.5;">${stripHtml(summary.future_considerations)}</div>
       </div>
       ` : ''}
@@ -584,6 +605,32 @@ serve(async (req) => {
       ` : ''}
     </div>
     ` : ''}
+
+    <div class="section no-break">
+      <h3 style="font-weight: bold; margin-bottom: 10px; font-size: 11pt;">General Rope Works Inspection Retirement Guidelines: These are generalized and are not a substitute for the Pre use inspection.</h3>
+      <table>
+        <tr>
+          <td style="width: 30%; font-weight: bold;">Harness</td>
+          <td>Manufacture maximum use or condition warranted at time of inspection</td>
+        </tr>
+        <tr>
+          <td style="width: 30%; font-weight: bold;">Lanyards</td>
+          <td>Manufacture maximum use or condition warranted at time of inspection</td>
+        </tr>
+        <tr>
+          <td style="width: 30%; font-weight: bold;">Kernmantle Rope</td>
+          <td>5 years or 1000 loads when used with top rope systems<br/>5 years or 300 loads, whichever comes first when used on aerial leap activities</td>
+        </tr>
+        <tr>
+          <td style="width: 30%; font-weight: bold;">Helmets</td>
+          <td>Manufacture maximum use or condition warranted at time of inspection</td>
+        </tr>
+        <tr>
+          <td style="width: 30%; font-weight: bold;">Pulleys, Trolleys, Carabiners, Belay/descent devices, Cable grabs</td>
+          <td>Manufacture maximum use or condition warranted at time of inspection</td>
+        </tr>
+      </table>
+    </div>
 
     <div class="signature-section">
       <div class="signature-line"></div>
@@ -597,12 +644,15 @@ serve(async (req) => {
   </div>
   
   <div class="footer">
-    <div class="footer-text">
-      The information contained in this report has been documented by a Qualified Professional. This report is effective for one year from the date of inspection. Issued by:
+    <div class="footer-content">
+      <div class="footer-text">
+        The information contained in this report has been documented by a Qualified Professional. This report is effective for one year from the date of inspection. Issued by:
+      </div>
+      <div class="footer-text">
+        Rope Works Inc., PO Box 1074, Dripping Springs, TX 78620
+      </div>
     </div>
-    <div class="footer-text">
-      Rope Works Inc., PO Box 1074, Dripping Springs, TX 78620
-    </div>
+    <div class="footer-page">Page </div>
   </div>
 </body>
 </html>`;
