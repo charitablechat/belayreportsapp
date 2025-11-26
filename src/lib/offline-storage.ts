@@ -103,6 +103,52 @@ interface InspectionDB extends DBSchema {
     value: any;
     indexes: { 'by-assessment': string };
   };
+  trainings: {
+    key: string;
+    value: any;
+    indexes: { 'by-status': string; 'by-synced': string };
+  };
+  training_operations: {
+    key: number;
+    value: {
+      id?: number;
+      type: 'create' | 'update' | 'delete';
+      trainingId: string;
+      data: any;
+      timestamp: number;
+      retries: number;
+    };
+  };
+  training_delivery_approaches: {
+    key: string;
+    value: any;
+    indexes: { 'by-training': string };
+  };
+  training_operating_systems: {
+    key: string;
+    value: any;
+    indexes: { 'by-training': string };
+  };
+  training_immediate_attention: {
+    key: string;
+    value: any;
+    indexes: { 'by-training': string };
+  };
+  training_verifiable_items: {
+    key: string;
+    value: any;
+    indexes: { 'by-training': string };
+  };
+  training_systems_in_place: {
+    key: string;
+    value: any;
+    indexes: { 'by-training': string };
+  };
+  training_summary: {
+    key: string;
+    value: any;
+    indexes: { 'by-training': string };
+  };
 }
 
 let dbPromise: Promise<IDBPDatabase<InspectionDB>> | null = null;
@@ -154,7 +200,7 @@ export async function getDB() {
     // Ensure storage is available before opening DB
     await ensureStorage();
     
-    dbPromise = openDB<InspectionDB>('rope-works-inspections', 5, {
+    dbPromise = openDB<InspectionDB>('rope-works-inspections', 6, {
       upgrade(db, oldVersion, newVersion, transaction) {
         let inspectionStore;
         
@@ -244,11 +290,49 @@ export async function getDB() {
           const store = db.createObjectStore('daily_assessment_environment_checks', { keyPath: 'id' });
           store.createIndex('by-assessment', 'assessment_id');
         }
+        
+        // Training stores
+        if (!db.objectStoreNames.contains('trainings')) {
+          const trainingStore = db.createObjectStore('trainings', { keyPath: 'id' });
+          trainingStore.createIndex('by-status', 'status');
+          trainingStore.createIndex('by-synced', 'synced_at');
+        }
+        
+        if (!db.objectStoreNames.contains('training_operations')) {
+          db.createObjectStore('training_operations', { autoIncrement: true });
+        }
+        
+        if (!db.objectStoreNames.contains('training_delivery_approaches')) {
+          const store = db.createObjectStore('training_delivery_approaches', { keyPath: 'id' });
+          store.createIndex('by-training', 'training_id');
+        }
+        if (!db.objectStoreNames.contains('training_operating_systems')) {
+          const store = db.createObjectStore('training_operating_systems', { keyPath: 'id' });
+          store.createIndex('by-training', 'training_id');
+        }
+        if (!db.objectStoreNames.contains('training_immediate_attention')) {
+          const store = db.createObjectStore('training_immediate_attention', { keyPath: 'id' });
+          store.createIndex('by-training', 'training_id');
+        }
+        if (!db.objectStoreNames.contains('training_verifiable_items')) {
+          const store = db.createObjectStore('training_verifiable_items', { keyPath: 'id' });
+          store.createIndex('by-training', 'training_id');
+        }
+        if (!db.objectStoreNames.contains('training_systems_in_place')) {
+          const store = db.createObjectStore('training_systems_in_place', { keyPath: 'id' });
+          store.createIndex('by-training', 'training_id');
+        }
+        if (!db.objectStoreNames.contains('training_summary')) {
+          const store = db.createObjectStore('training_summary', { keyPath: 'id' });
+          store.createIndex('by-training', 'training_id');
+        }
       },
     });
   }
   return dbPromise;
 }
+
+// Inspection functions
 
 export async function saveInspectionOffline(inspection: any) {
   try {
@@ -261,7 +345,6 @@ export async function saveInspectionOffline(inspection: any) {
   } catch (error: any) {
     console.error('[Offline Storage] Failed to save inspection:', error);
     
-    // Check if it's a quota error
     if (error.name === 'QuotaExceededError') {
       throw new Error('Storage quota exceeded. Please sync and clear old data.');
     }
@@ -290,7 +373,6 @@ export async function getUnsyncedInspections(userId?: string) {
   const allInspections = await db.getAll('inspections');
   let unsynced = allInspections.filter(i => !i.synced_at || i.updated_at > i.synced_at);
   
-  // Filter by user if userId provided
   if (userId) {
     unsynced = unsynced.filter(i => i.inspector_id === userId);
   }
@@ -305,7 +387,6 @@ export async function getUnsyncedInspections(userId?: string) {
   return unsynced;
 }
 
-// Operation queue management
 export async function queueOperation(type: 'create' | 'update' | 'delete', inspectionId: string, data: any) {
   const db = await getDB();
   await db.add('operations', {
@@ -320,7 +401,6 @@ export async function queueOperation(type: 'create' | 'update' | 'delete', inspe
     console.log('[Offline Storage] Queued operation:', { type, inspectionId });
   }
   
-  // Register background sync for automatic syncing
   const { registerInspectionSync } = await import('./background-sync');
   await registerInspectionSync();
 }
@@ -354,7 +434,8 @@ export async function incrementOperationRetry(id: number) {
   }
 }
 
-// Photo storage functions
+// Photo functions
+
 export async function savePhotoOffline(photo: {
   id: string;
   inspectionId: string;
@@ -367,7 +448,6 @@ export async function savePhotoOffline(photo: {
   try {
     const db = await getDB();
     
-    // Check storage before saving large blobs
     const quota = await checkStorageQuota();
     if (quota.percentUsed > 90) {
       throw new Error('Storage almost full. Please sync photos to free up space.');
@@ -383,7 +463,6 @@ export async function savePhotoOffline(photo: {
       console.log('[Offline Storage] Saved photo:', photo.id);
     }
     
-    // Register background sync for photos if not already uploaded
     if (!photo.uploaded) {
       const { registerPhotoSync } = await import('./background-sync');
       await registerPhotoSync();
@@ -410,7 +489,6 @@ export async function getUnuploadedPhotos(userId?: string) {
   const allPhotos = await db.getAll('photos');
   let unuploaded = allPhotos.filter(p => !p.uploaded);
   
-  // Filter by user's inspections if userId provided
   if (userId) {
     const userInspections = await getUnsyncedInspections(userId);
     const userInspectionIds = new Set(userInspections.map(i => i.id));
@@ -443,7 +521,6 @@ export async function deleteOfflinePhoto(id: string) {
   }
 }
 
-// Related data storage functions
 type RelatedDataType = 'systems' | 'ziplines' | 'equipment' | 'standards' | 'summary';
 type RelatedStoreNames = 'inspection_systems' | 'inspection_ziplines' | 'inspection_equipment' | 'inspection_standards' | 'inspection_summary';
 
@@ -463,18 +540,15 @@ export async function saveRelatedDataOffline(
   const db = await getDB();
   const storeName = storeNameMap[type];
   
-  // Clear existing data for this inspection
   const existingData = await getRelatedDataOffline(type, inspectionId);
   for (const item of existingData) {
     await db.delete(storeName, item.id);
   }
   
-  // Save new data
   for (const item of data) {
     const dataWithInspectionId = {
       ...item,
       inspection_id: inspectionId,
-      // Generate ID if not present
       id: item.id || `${inspectionId}-${type}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
     };
     await db.put(storeName, dataWithInspectionId);
@@ -613,7 +687,6 @@ export async function incrementAssessmentOperationRetry(id: number) {
   }
 }
 
-// Daily assessment related data
 type AssessmentDataType = 'beginning_of_day' | 'end_of_day' | 'operating_systems' | 'equipment_checks' | 'structure_checks' | 'environment_checks';
 type AssessmentStoreNames = 'daily_assessment_beginning_of_day' | 'daily_assessment_end_of_day' | 'daily_assessment_operating_systems' | 'daily_assessment_equipment_checks' | 'daily_assessment_structure_checks' | 'daily_assessment_environment_checks';
 
@@ -677,5 +750,173 @@ export async function clearAssessmentDataOffline(
   
   if (import.meta.env.DEV) {
     console.log(`[Offline Storage] Cleared ${type} for assessment:`, assessmentId);
+  }
+}
+
+// Training functions
+export async function saveTrainingOffline(training: any) {
+  try {
+    const db = await getDB();
+    await db.put('trainings', training);
+    
+    if (import.meta.env.DEV) {
+      console.log('[Offline Storage] Saved training:', training.id);
+    }
+  } catch (error: any) {
+    console.error('[Offline Storage] Failed to save training:', error);
+    
+    if (error.name === 'QuotaExceededError') {
+      throw new Error('Storage quota exceeded. Please sync and clear old data.');
+    }
+    
+    throw error;
+  }
+}
+
+export async function getOfflineTrainings() {
+  const db = await getDB();
+  return await db.getAll('trainings');
+}
+
+export async function getOfflineTraining(id: string) {
+  const db = await getDB();
+  return await db.get('trainings', id);
+}
+
+export async function deleteOfflineTraining(id: string) {
+  const db = await getDB();
+  await db.delete('trainings', id);
+}
+
+export async function getUnsyncedTrainings(userId?: string) {
+  const db = await getDB();
+  const allTrainings = await db.getAll('trainings');
+  let unsynced = allTrainings.filter(t => !t.synced_at || t.updated_at > t.synced_at);
+  
+  if (userId) {
+    unsynced = unsynced.filter(t => t.inspector_id === userId);
+  }
+  
+  if (import.meta.env.DEV) {
+    console.log('[Offline Storage] Unsynced trainings:', {
+      total: unsynced.length,
+      userId: userId ? userId.substring(0, 8) + '...' : 'all',
+    });
+  }
+  
+  return unsynced;
+}
+
+export async function queueTrainingOperation(type: 'create' | 'update' | 'delete', trainingId: string, data: any) {
+  const db = await getDB();
+  await db.add('training_operations', {
+    type,
+    trainingId,
+    data,
+    timestamp: Date.now(),
+    retries: 0,
+  });
+  
+  if (import.meta.env.DEV) {
+    console.log('[Offline Storage] Queued training operation:', { type, trainingId });
+  }
+  
+  const { registerInspectionSync } = await import('./background-sync');
+  await registerInspectionSync();
+}
+
+export async function getQueuedTrainingOperations() {
+  const db = await getDB();
+  const operations = await db.getAll('training_operations');
+  
+  if (import.meta.env.DEV) {
+    console.log('[Offline Storage] Queued training operations:', operations.length);
+  }
+  
+  return operations;
+}
+
+export async function removeQueuedTrainingOperation(id: number) {
+  const db = await getDB();
+  await db.delete('training_operations', id);
+  
+  if (import.meta.env.DEV) {
+    console.log('[Offline Storage] Removed queued training operation:', id);
+  }
+}
+
+export async function incrementTrainingOperationRetry(id: number) {
+  const db = await getDB();
+  const operation = await db.get('training_operations', id);
+  if (operation) {
+    operation.retries += 1;
+    await db.put('training_operations', operation);
+  }
+}
+
+type TrainingDataType = 'delivery_approaches' | 'operating_systems' | 'immediate_attention' | 'verifiable_items' | 'systems_in_place' | 'summary';
+type TrainingStoreNames = 'training_delivery_approaches' | 'training_operating_systems' | 'training_immediate_attention' | 'training_verifiable_items' | 'training_systems_in_place' | 'training_summary';
+
+const trainingStoreNameMap: Record<TrainingDataType, TrainingStoreNames> = {
+  delivery_approaches: 'training_delivery_approaches',
+  operating_systems: 'training_operating_systems',
+  immediate_attention: 'training_immediate_attention',
+  verifiable_items: 'training_verifiable_items',
+  systems_in_place: 'training_systems_in_place',
+  summary: 'training_summary',
+};
+
+export async function saveTrainingDataOffline(
+  type: TrainingDataType,
+  trainingId: string,
+  data: any[] | any
+) {
+  const db = await getDB();
+  const storeName = trainingStoreNameMap[type];
+  
+  const existingData = await getTrainingDataOffline(type, trainingId);
+  for (const item of existingData) {
+    await db.delete(storeName, item.id);
+  }
+  
+  const items = Array.isArray(data) ? data : [data];
+  for (const item of items) {
+    const dataWithTrainingId = {
+      ...item,
+      training_id: trainingId,
+      id: item.id || `${trainingId}-${type}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+    };
+    await db.put(storeName, dataWithTrainingId);
+  }
+  
+  if (import.meta.env.DEV) {
+    console.log(`[Offline Storage] Saved training ${type}:`, items.length, 'items');
+  }
+}
+
+export async function getTrainingDataOffline(
+  type: TrainingDataType,
+  trainingId: string
+): Promise<any[]> {
+  const db = await getDB();
+  const storeName = trainingStoreNameMap[type];
+  const index = db.transaction(storeName).store.index('by-training');
+  return await index.getAll(trainingId);
+}
+
+export async function clearTrainingDataOffline(
+  type: TrainingDataType,
+  trainingId: string
+) {
+  const db = await getDB();
+  const storeName = trainingStoreNameMap[type];
+  const existingData = await getTrainingDataOffline(type, trainingId);
+  
+  for (const item of existingData) {
+    await db.delete(storeName, item.id);
+  }
+  
+  if (import.meta.env.DEV) {
+    console.log(`[Offline Storage] Cleared ${type} for training:`, trainingId);
   }
 }

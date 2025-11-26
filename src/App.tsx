@@ -51,9 +51,10 @@ const AppContent = () => {
       syncAllInspectionsAtomic();
       syncPhotos();
       
-      // Import and call syncDailyAssessments
-      import('@/lib/sync-manager').then(({ syncDailyAssessments }) => {
+      // Import and call sync functions
+      import('@/lib/sync-manager').then(({ syncDailyAssessments, syncTrainings }) => {
         syncDailyAssessments();
+        syncTrainings();
       });
     }
 
@@ -71,8 +72,9 @@ const AppContent = () => {
         syncAllInspectionsAtomic();
         syncPhotos();
         
-        import('@/lib/sync-manager').then(({ syncDailyAssessments }) => {
+        import('@/lib/sync-manager').then(({ syncDailyAssessments, syncTrainings }) => {
           syncDailyAssessments();
+          syncTrainings();
         });
       }
     }, isMobileDevice ? 60 * 1000 : 5 * 60 * 1000);
@@ -83,8 +85,9 @@ const AppContent = () => {
         syncAllInspectionsAtomic();
         syncPhotos();
         
-        import('@/lib/sync-manager').then(({ syncDailyAssessments }) => {
+        import('@/lib/sync-manager').then(({ syncDailyAssessments, syncTrainings }) => {
           syncDailyAssessments();
+          syncTrainings();
         });
       }
     };

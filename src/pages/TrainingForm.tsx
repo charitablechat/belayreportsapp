@@ -18,6 +18,13 @@ import VerifiableItemsSection from "@/components/training/VerifiableItemsSection
 import TrainingSummarySection from "@/components/training/TrainingSummarySection";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { format } from "date-fns";
+import { 
+  getOfflineTraining, 
+  saveTrainingOffline, 
+  getTrainingDataOffline,
+  saveTrainingDataOffline,
+  queueTrainingOperation 
+} from "@/lib/offline-storage";
 
 export default function TrainingForm() {
   const { id } = useParams();
@@ -98,40 +105,81 @@ export default function TrainingForm() {
       if (!id) return;
 
       try {
-        const { data: trainingData, error: trainingError } = await supabase
-          .from('trainings')
-          .select('*')
-          .eq('id', id)
-          .single();
-
-        if (trainingError) throw trainingError;
-
-        setTraining(trainingData);
-
-        // Load all related data
+        // Try loading from offline storage first
+        const offlineTraining = await getOfflineTraining(id);
         const [
-          { data: approachData },
-          { data: systemData },
-          { data: attentionData },
-          { data: verifiableData },
-          { data: systemsPlaceData },
-          { data: summaryData }
+          delivery_approaches,
+          operating_systems,
+          immediate_attention,
+          verifiable_items,
+          systems_in_place,
+          summary
         ] = await Promise.all([
-          supabase.from('training_delivery_approaches').select('*').eq('training_id', id),
-          supabase.from('training_operating_systems').select('*').eq('training_id', id),
-          supabase.from('training_immediate_attention').select('*').eq('training_id', id),
-          supabase.from('training_verifiable_items').select('*').eq('training_id', id),
-          supabase.from('training_systems_in_place').select('*').eq('training_id', id),
-          supabase.from('training_summary').select('*').eq('training_id', id).single()
+          getTrainingDataOffline('delivery_approaches', id),
+          getTrainingDataOffline('operating_systems', id),
+          getTrainingDataOffline('immediate_attention', id),
+          getTrainingDataOffline('verifiable_items', id),
+          getTrainingDataOffline('systems_in_place', id),
+          getTrainingDataOffline('summary', id).then(d => d[0])
         ]);
 
-        setDeliveryApproaches(approachData || []);
-        setOperatingSystems(systemData || []);
-        setImmediateAttention(attentionData || []);
-        setVerifiableItems(verifiableData || []);
-        setSystemsInPlace(systemsPlaceData || []);
-        setSummary(summaryData || { training_id: id });
+        if (offlineTraining) {
+          setTraining(offlineTraining);
+          setDeliveryApproaches(delivery_approaches || []);
+          setOperatingSystems(operating_systems || []);
+          setImmediateAttention(immediate_attention || []);
+          setVerifiableItems(verifiable_items || []);
+          setSystemsInPlace(systems_in_place || []);
+          setSummary(summary || { training_id: id });
+        }
 
+        // If online, fetch from Supabase and update offline storage
+        if (isOnline) {
+          const { data: trainingData, error: trainingError } = await supabase
+            .from('trainings')
+            .select('*')
+            .eq('id', id)
+            .single();
+
+          if (!trainingError && trainingData) {
+            setTraining(trainingData);
+            await saveTrainingOffline(trainingData);
+
+            // Load all related data
+            const [
+              { data: approachData },
+              { data: systemData },
+              { data: attentionData },
+              { data: verifiableData },
+              { data: systemsPlaceData },
+              { data: summaryData }
+            ] = await Promise.all([
+              supabase.from('training_delivery_approaches').select('*').eq('training_id', id),
+              supabase.from('training_operating_systems').select('*').eq('training_id', id),
+              supabase.from('training_immediate_attention').select('*').eq('training_id', id),
+              supabase.from('training_verifiable_items').select('*').eq('training_id', id),
+              supabase.from('training_systems_in_place').select('*').eq('training_id', id),
+              supabase.from('training_summary').select('*').eq('training_id', id).single()
+            ]);
+
+            setDeliveryApproaches(approachData || []);
+            setOperatingSystems(systemData || []);
+            setImmediateAttention(attentionData || []);
+            setVerifiableItems(verifiableData || []);
+            setSystemsInPlace(systemsPlaceData || []);
+            setSummary(summaryData || { training_id: id });
+
+            // Save related data offline
+            await Promise.all([
+              saveTrainingDataOffline('delivery_approaches', id, approachData || []),
+              saveTrainingDataOffline('operating_systems', id, systemData || []),
+              saveTrainingDataOffline('immediate_attention', id, attentionData || []),
+              saveTrainingDataOffline('verifiable_items', id, verifiableData || []),
+              saveTrainingDataOffline('systems_in_place', id, systemsPlaceData || []),
+              summaryData && saveTrainingDataOffline('summary', id, summaryData)
+            ]);
+          }
+        }
       } catch (error) {
         console.error('Error loading training:', error);
         toast({
@@ -145,7 +193,7 @@ export default function TrainingForm() {
     };
 
     loadTraining();
-  }, [id, toast]);
+  }, [id, toast, isOnline]);
 
   // Auto-save functionality
   const saveTraining = useCallback(async () => {
@@ -153,89 +201,118 @@ export default function TrainingForm() {
 
     setIsSaving(true);
     try {
-      // Update main training record
-      const { error: trainingError } = await supabase
-        .from('trainings')
-        .update({
-          ...training,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', id);
+      const updatedTraining = {
+        ...training,
+        updated_at: new Date().toISOString(),
+      };
 
-      if (trainingError) throw trainingError;
-
-      // Delete and re-insert all related records for simplicity
+      // Save offline first
+      await saveTrainingOffline(updatedTraining);
       await Promise.all([
-        supabase.from('training_delivery_approaches').delete().eq('training_id', id),
-        supabase.from('training_operating_systems').delete().eq('training_id', id),
-        supabase.from('training_immediate_attention').delete().eq('training_id', id),
-        supabase.from('training_verifiable_items').delete().eq('training_id', id),
-        supabase.from('training_systems_in_place').delete().eq('training_id', id),
+        saveTrainingDataOffline('delivery_approaches', id, deliveryApproaches),
+        saveTrainingDataOffline('operating_systems', id, operatingSystems),
+        saveTrainingDataOffline('immediate_attention', id, immediateAttention),
+        saveTrainingDataOffline('verifiable_items', id, verifiableItems),
+        saveTrainingDataOffline('systems_in_place', id, systemsInPlace),
+        summary && saveTrainingDataOffline('summary', id, summary)
       ]);
 
-      // Insert new records
-      const insertPromises = [];
-      
-      if (deliveryApproaches.length > 0) {
-        insertPromises.push(
-          supabase.from('training_delivery_approaches').insert(
-            deliveryApproaches.map(a => ({ ...a, training_id: id }))
-          )
-        );
-      }
+      // If online, try to sync to Supabase
+      if (isOnline) {
+        try {
+          // Update main training record
+          const { error: trainingError } = await supabase
+            .from('trainings')
+            .update(updatedTraining)
+            .eq('id', id);
 
-      if (operatingSystems.length > 0) {
-        insertPromises.push(
-          supabase.from('training_operating_systems').insert(
-            operatingSystems.map(s => ({ ...s, training_id: id }))
-          )
-        );
-      }
+          if (trainingError) throw trainingError;
 
-      if (immediateAttention.length > 0) {
-        insertPromises.push(
-          supabase.from('training_immediate_attention').insert(
-            immediateAttention.map(i => ({ ...i, training_id: id }))
-          )
-        );
-      }
+          // Delete and re-insert all related records for simplicity
+          await Promise.all([
+            supabase.from('training_delivery_approaches').delete().eq('training_id', id),
+            supabase.from('training_operating_systems').delete().eq('training_id', id),
+            supabase.from('training_immediate_attention').delete().eq('training_id', id),
+            supabase.from('training_verifiable_items').delete().eq('training_id', id),
+            supabase.from('training_systems_in_place').delete().eq('training_id', id),
+          ]);
 
-      if (verifiableItems.length > 0) {
-        insertPromises.push(
-          supabase.from('training_verifiable_items').insert(
-            verifiableItems.map(v => ({ ...v, training_id: id }))
-          )
-        );
-      }
+          // Insert new records
+          const insertPromises = [];
+          
+          if (deliveryApproaches.length > 0) {
+            insertPromises.push(
+              supabase.from('training_delivery_approaches').insert(
+                deliveryApproaches.map(a => ({ ...a, training_id: id }))
+              )
+            );
+          }
 
-      if (systemsInPlace.length > 0) {
-        insertPromises.push(
-          supabase.from('training_systems_in_place').insert(
-            systemsInPlace.map(s => ({ ...s, training_id: id }))
-          )
-        );
-      }
+          if (operatingSystems.length > 0) {
+            insertPromises.push(
+              supabase.from('training_operating_systems').insert(
+                operatingSystems.map(s => ({ ...s, training_id: id }))
+              )
+            );
+          }
 
-      await Promise.all(insertPromises);
+          if (immediateAttention.length > 0) {
+            insertPromises.push(
+              supabase.from('training_immediate_attention').insert(
+                immediateAttention.map(i => ({ ...i, training_id: id }))
+              )
+            );
+          }
 
-      // Update or insert summary
-      if (summary) {
-        const { data: existingSummary } = await supabase
-          .from('training_summary')
-          .select('id')
-          .eq('training_id', id)
-          .single();
+          if (verifiableItems.length > 0) {
+            insertPromises.push(
+              supabase.from('training_verifiable_items').insert(
+                verifiableItems.map(v => ({ ...v, training_id: id }))
+              )
+            );
+          }
 
-        if (existingSummary) {
-          await supabase
-            .from('training_summary')
-            .update(summary)
-            .eq('training_id', id);
-        } else {
-          await supabase
-            .from('training_summary')
-            .insert({ ...summary, training_id: id });
+          if (systemsInPlace.length > 0) {
+            insertPromises.push(
+              supabase.from('training_systems_in_place').insert(
+                systemsInPlace.map(s => ({ ...s, training_id: id }))
+              )
+            );
+          }
+
+          await Promise.all(insertPromises);
+
+          // Update or insert summary
+          if (summary) {
+            const { data: existingSummary } = await supabase
+              .from('training_summary')
+              .select('id')
+              .eq('training_id', id)
+              .single();
+
+            if (existingSummary) {
+              await supabase
+                .from('training_summary')
+                .update(summary)
+                .eq('training_id', id);
+            } else {
+              await supabase
+                .from('training_summary')
+                .insert({ ...summary, training_id: id });
+            }
+          }
+
+          await saveTrainingOffline({
+            ...updatedTraining,
+            synced_at: new Date().toISOString()
+          });
+        } catch (error) {
+          console.log('[Offline] Failed to sync, queuing operation');
+          await queueTrainingOperation('update', id, updatedTraining);
         }
+      } else {
+        // Queue for later sync
+        await queueTrainingOperation('update', id, updatedTraining);
       }
 
       setLastSaved(new Date());
@@ -249,7 +326,7 @@ export default function TrainingForm() {
     } finally {
       setIsSaving(false);
     }
-  }, [training, id, deliveryApproaches, operatingSystems, immediateAttention, verifiableItems, systemsInPlace, summary, toast]);
+  }, [training, id, deliveryApproaches, operatingSystems, immediateAttention, verifiableItems, systemsInPlace, summary, toast, isOnline]);
 
   // Setup auto-save
   useEffect(() => {

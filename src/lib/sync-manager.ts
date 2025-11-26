@@ -380,6 +380,114 @@ export async function syncDailyAssessments() {
   }
 }
 
+// Training sync
+export async function syncTrainings() {
+  if (!navigator.onLine) {
+    if (import.meta.env.DEV) {
+      console.log('[Training Sync] Offline - skipping sync');
+    }
+    return;
+  }
+
+  if (import.meta.env.DEV) {
+    console.log('[Training Sync] Starting sync...');
+  }
+
+  try {
+    const { getQueuedTrainingOperations, removeQueuedTrainingOperation, incrementTrainingOperationRetry, getUnsyncedTrainings, saveTrainingOffline } = await import('./offline-storage');
+    
+    const queuedOps = await getQueuedTrainingOperations();
+    
+    if (import.meta.env.DEV) {
+      console.log('[Training Sync] Processing queued operations:', queuedOps.length);
+    }
+
+    for (const op of queuedOps) {
+      try {
+        if (op.retries >= MAX_RETRIES) {
+          if (import.meta.env.DEV) {
+            console.warn('[Training Sync] Max retries reached for operation:', op);
+          }
+          continue;
+        }
+
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+          console.error('[Training Sync] User not authenticated, skipping operation');
+          continue;
+        }
+
+        const dataToSync = {
+          ...op.data,
+          inspector_id: user.id,
+        };
+
+        if (op.type === 'create' || op.type === 'update') {
+          await supabase.from("trainings").upsert(dataToSync);
+        } else if (op.type === 'delete') {
+          await supabase.from("trainings").delete().eq('id', op.trainingId);
+        }
+
+        await removeQueuedTrainingOperation(op.id!);
+        
+        if (import.meta.env.DEV) {
+          console.log('[Training Sync] Processed operation:', op.type, op.trainingId);
+        }
+      } catch (error) {
+        console.error('[Training Sync] Operation failed:', error);
+        await incrementTrainingOperationRetry(op.id!);
+        
+        await new Promise(resolve => 
+          setTimeout(resolve, RETRY_DELAY * Math.pow(2, op.retries))
+        );
+      }
+    }
+
+    const unsynced = await getUnsyncedTrainings();
+    
+    if (import.meta.env.DEV) {
+      console.log('[Training Sync] Syncing unsynced trainings:', unsynced.length);
+    }
+    
+    for (const training of unsynced) {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+          console.error('[Training Sync] User not authenticated, skipping sync');
+          continue;
+        }
+
+        const trainingToSync = {
+          ...training,
+          inspector_id: user.id,
+        };
+
+        const { error: upsertError } = await supabase
+          .from("trainings")
+          .upsert(trainingToSync);
+
+        if (upsertError) throw upsertError;
+
+        training.synced_at = new Date().toISOString();
+        await saveTrainingOffline(training);
+        
+        if (import.meta.env.DEV) {
+          console.log('[Training Sync] Synced training:', training.id);
+        }
+      } catch (error) {
+        console.error('[Training Sync] Failed to sync training:', error);
+      }
+    }
+
+    if (import.meta.env.DEV) {
+      console.log('[Training Sync] Sync completed');
+    }
+  } catch (error) {
+    console.error('[Training Sync] Sync failed:', error);
+    throw error;
+  }
+}
+
 // Auto-sync when coming online
 if (typeof window !== "undefined") {
   window.addEventListener("online", () => {
@@ -390,6 +498,7 @@ if (typeof window !== "undefined") {
       syncInspections();
       syncPhotos();
       syncDailyAssessments();
+      syncTrainings();
     }, 1000);
   });
 }
