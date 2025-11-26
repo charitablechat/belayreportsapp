@@ -23,7 +23,9 @@ export default function NewDailyAssessment() {
           return;
         }
 
+        const assessmentId = crypto.randomUUID();
         const newAssessment = {
+          id: assessmentId,
           inspector_id: user.id,
           site: '',
           assessment_date: new Date().toISOString().split('T')[0],
@@ -31,17 +33,45 @@ export default function NewDailyAssessment() {
           organization: '',
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
+          synced_at: null as string | null,
         };
 
-        const { data, error } = await supabase
-          .from('daily_assessments')
-          .insert([newAssessment])
-          .select()
-          .single();
+        // Save offline first
+        const { saveDailyAssessmentOffline, queueAssessmentOperation } = await import('@/lib/offline-storage');
+        await saveDailyAssessmentOffline(newAssessment);
 
-        if (error) throw error;
+        if (navigator.onLine) {
+          try {
+            const { error } = await supabase
+              .from('daily_assessments')
+              .insert([newAssessment]);
 
-        navigate(`/daily-assessment/${data.id}`);
+            if (error) throw error;
+
+            // Update synced_at
+            newAssessment.synced_at = new Date().toISOString();
+            await saveDailyAssessmentOffline(newAssessment);
+          } catch (error) {
+            console.error('Error syncing to database:', error);
+            // Queue for later sync
+            await queueAssessmentOperation('create', assessmentId, newAssessment);
+            
+            toast({
+              title: "Working Offline",
+              description: "Assessment created offline. Will sync when online.",
+            });
+          }
+        } else {
+          // Queue for later sync
+          await queueAssessmentOperation('create', assessmentId, newAssessment);
+          
+          toast({
+            title: "Working Offline",
+            description: "Assessment created offline. Will sync when online.",
+          });
+        }
+
+        navigate(`/daily-assessment/${assessmentId}`);
       } catch (error) {
         console.error('Error creating daily assessment:', error);
         toast({

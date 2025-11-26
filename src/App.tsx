@@ -50,6 +50,11 @@ const AppContent = () => {
     if (navigator.onLine) {
       syncAllInspectionsAtomic();
       syncPhotos();
+      
+      // Import and call syncDailyAssessments
+      import('@/lib/sync-manager').then(({ syncDailyAssessments }) => {
+        syncDailyAssessments();
+      });
     }
 
     // iOS uses its own sync hook, so skip these for iOS
@@ -65,6 +70,10 @@ const AppContent = () => {
       if (navigator.onLine) {
         syncAllInspectionsAtomic();
         syncPhotos();
+        
+        import('@/lib/sync-manager').then(({ syncDailyAssessments }) => {
+          syncDailyAssessments();
+        });
       }
     }, isMobileDevice ? 60 * 1000 : 5 * 60 * 1000);
 
@@ -73,6 +82,10 @@ const AppContent = () => {
       if (!document.hidden && navigator.onLine) {
         syncAllInspectionsAtomic();
         syncPhotos();
+        
+        import('@/lib/sync-manager').then(({ syncDailyAssessments }) => {
+          syncDailyAssessments();
+        });
       }
     };
 
