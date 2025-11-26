@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Building2, Users, FileText, Bell, AlertTriangle, Radio, UserPlus, Pencil, Trash2, ClipboardList, ArrowLeft, Merge, Clock, TrendingUp, Calendar, UserCheck } from "lucide-react";
+import { Building2, Users, FileText, Bell, AlertTriangle, Radio, UserPlus, Pencil, Trash2, ClipboardList, ArrowLeft, Merge, Clock, TrendingUp, Calendar, UserCheck, Wrench, Loader2 } from "lucide-react";
 import { format } from "date-fns";
 import { useNavigate } from "react-router-dom";
 import { useState } from "react";
@@ -33,6 +33,7 @@ export default function SuperAdminDashboard() {
   const [isUsersListOpen, setIsUsersListOpen] = useState(false);
   const [isOrgsListOpen, setIsOrgsListOpen] = useState(false);
   const [isInspectionsListOpen, setIsInspectionsListOpen] = useState(false);
+  const [isCleaningUp, setIsCleaningUp] = useState(false);
 
   // Managed users query
   const { data: managedUsers, refetch: refetchUsers } = useQuery({
@@ -387,6 +388,33 @@ export default function SuperAdminDashboard() {
     setDeleteDialogOpen(true);
   };
 
+  // Cleanup function for duplicate summaries
+  const handleCleanupDuplicates = async () => {
+    setIsCleaningUp(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('cleanup-duplicate-summaries');
+
+      if (error) throw error;
+      if (!data.success) throw new Error(data.error);
+
+      toast.success(
+        `Cleanup complete: ${data.updatedCount} summaries deduplicated`,
+        {
+          description: data.errorCount > 0 
+            ? `${data.errorCount} errors occurred. Check logs for details.`
+            : `Processed ${data.totalRecords} total records.`
+        }
+      );
+      
+      console.log('Cleanup result:', data);
+    } catch (error: any) {
+      console.error('Error during cleanup:', error);
+      toast.error(error.message || 'Failed to cleanup duplicates');
+    } finally {
+      setIsCleaningUp(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -491,6 +519,7 @@ export default function SuperAdminDashboard() {
           <TabsTrigger value="notifications" className="justify-start">Notifications</TabsTrigger>
           <TabsTrigger value="conflicts" className="justify-start">Conflicts</TabsTrigger>
           <TabsTrigger value="subscriptions" className="justify-start">Subscriptions</TabsTrigger>
+          <TabsTrigger value="maintenance" className="justify-start">Maintenance</TabsTrigger>
         </TabsList>
 
         <TabsContent value="organizations" className="space-y-4">
@@ -763,6 +792,48 @@ export default function SuperAdminDashboard() {
               ))}
             </TableBody>
           </Table>
+        </TabsContent>
+
+        <TabsContent value="maintenance" className="space-y-4">
+          <div className="rounded-md border p-6 space-y-6">
+            <div className="flex items-start gap-4">
+              <div className="flex-shrink-0 mt-1">
+                <Wrench className="h-6 w-6 text-primary" />
+              </div>
+              <div className="flex-1 space-y-2">
+                <h3 className="text-lg font-semibold">Cleanup Duplicate Summary Data</h3>
+                <p className="text-sm text-muted-foreground">
+                  This tool deduplicates corrupted summary data in the inspection_summary table.
+                  It removes duplicate list items from the "repairs_performed" and "critical_actions" fields
+                  that were caused by the auto-generation bug.
+                </p>
+                <div className="pt-4">
+                  <Button
+                    onClick={handleCleanupDuplicates}
+                    disabled={isCleaningUp}
+                    className="gap-2"
+                  >
+                    {isCleaningUp ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Cleaning up...
+                      </>
+                    ) : (
+                      <>
+                        <Wrench className="h-4 w-4" />
+                        Run Cleanup
+                      </>
+                    )}
+                  </Button>
+                </div>
+                <div className="pt-2">
+                  <p className="text-xs text-muted-foreground">
+                    ⚠️ This operation will update all affected inspection summaries. Make sure to review the results in the console.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
         </TabsContent>
       </Tabs>
 
