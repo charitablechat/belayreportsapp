@@ -26,6 +26,38 @@ async function loadLogoAsBase64(supabase: any, bucketName: string, filePath: str
   }
 }
 
+function deduplicateHtmlContent(html: string | null): string {
+  if (!html) return '';
+  
+  const listItemRegex = /<li>(.*?)<\/li>/gi;
+  const uniqueItems = new Map<string, string>();
+  let match;
+  
+  while ((match = listItemRegex.exec(html)) !== null) {
+    const content = match[1].trim();
+    const contentLower = content.toLowerCase();
+    if (content && !uniqueItems.has(contentLower)) {
+      uniqueItems.set(contentLower, content);
+    }
+  }
+  
+  if (uniqueItems.size > 0) {
+    const items = Array.from(uniqueItems.values()).map(item => `<li>${item}</li>`).join('\n');
+    return `<ul>\n${items}\n</ul>`;
+  }
+  
+  const lines = html.split('\n').map(l => l.trim()).filter(Boolean);
+  const uniqueLines = new Map<string, string>();
+  lines.forEach(line => {
+    const lineLower = line.toLowerCase();
+    if (!uniqueLines.has(lineLower)) {
+      uniqueLines.set(lineLower, line);
+    }
+  });
+  
+  return Array.from(uniqueLines.values()).join('\n');
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -458,14 +490,14 @@ serve(async (req) => {
       ${summary.repairs_performed ? `
       <div style="margin-bottom: 20px;">
         <div class="info-label" style="margin-bottom: 8px;">Repairs Performed</div>
-        <div class="text-content">${summary.repairs_performed}</div>
+        <div class="text-content">${deduplicateHtmlContent(summary.repairs_performed)}</div>
       </div>
       ` : ''}
       
       ${summary.critical_actions ? `
       <div style="margin-bottom: 20px;">
         <div class="info-label" style="margin-bottom: 8px; color: #dc2626;">Critical Actions Required</div>
-        <div class="text-content">${summary.critical_actions}</div>
+        <div class="text-content">${deduplicateHtmlContent(summary.critical_actions)}</div>
       </div>
       ` : ''}
       
