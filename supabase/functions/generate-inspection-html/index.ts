@@ -84,6 +84,42 @@ serve(async (req) => {
 
     const inspectorName = `${inspectorProfile?.first_name || ''} ${inspectorProfile?.last_name || ''}`.trim() || 'Inspector';
 
+    // Helper function to deduplicate HTML list items
+    const deduplicateHtmlList = (html: string | null): string => {
+      if (!html || !html.includes('<li>')) return html || '';
+      
+      // Extract all <li> items
+      const liRegex = /<li>(.*?)<\/li>/gi;
+      const matches = html.matchAll(liRegex);
+      const items: string[] = [];
+      const seenLower = new Set<string>();
+      
+      for (const match of matches) {
+        const content = match[1].trim();
+        const lowerContent = content.toLowerCase();
+        
+        // Only add if we haven't seen this exact item (case-insensitive)
+        if (!seenLower.has(lowerContent)) {
+          items.push(content);
+          seenLower.add(lowerContent);
+        }
+      }
+      
+      if (items.length === 0) return html;
+      
+      // Rebuild as clean HTML list
+      return '<ul>\n' + items.map(item => `  <li>${item}</li>`).join('\n') + '\n</ul>';
+    };
+
+    // Deduplicate summary fields
+    const cleanedSummary = {
+      ...summary,
+      repairs_performed: deduplicateHtmlList(summary?.repairs_performed),
+      critical_actions: deduplicateHtmlList(summary?.critical_actions),
+      future_considerations: summary?.future_considerations || '',
+      next_inspection_date: summary?.next_inspection_date || null,
+    };
+
     // Generate HTML
     const html = `<!DOCTYPE html>
 <html lang="en">
@@ -97,7 +133,6 @@ serve(async (req) => {
     @page { 
       margin: 1in 0.75in 0.75in 0.75in; 
       size: letter;
-      counter-increment: page;
     }
     
     body {
@@ -106,7 +141,6 @@ serve(async (req) => {
       line-height: 1.4;
       color: #000;
       background: #fff;
-      counter-reset: page;
     }
     
     .page {
@@ -147,19 +181,6 @@ serve(async (req) => {
       padding-top: 8px;
       font-size: 9pt;
       line-height: 1.3;
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-end;
-    }
-    
-    .footer-content { flex: 1; }
-    .footer-text { margin-bottom: 3px; }
-    .footer-page { 
-      font-size: 9pt; 
-      align-self: flex-end;
-    }
-    .footer-page::after {
-      content: counter(page);
     }
     
     @media print {
@@ -314,10 +335,10 @@ serve(async (req) => {
   <div class="page">
     <div class="header">
       <div class="header-left">
-        <img src="https://ssgzcgvygnsrqalisshx.supabase.co/storage/v1/object/public/pdf-templates/rope-works-logo.png" alt="Rope Works Logo">
+        <img src="https://ssgzcgvygnsrqalisshx.supabase.co/storage/v1/object/public/inspection-photos/rope-works-logo.png" alt="Rope Works Logo">
       </div>
       <div class="header-right">
-        <img src="https://ssgzcgvygnsrqalisshx.supabase.co/storage/v1/object/public/pdf-templates/acct-logo.jpg" alt="ACCT Accredited Vendor">
+        <img src="https://ssgzcgvygnsrqalisshx.supabase.co/storage/v1/object/public/inspection-photos/acct-logo.jpg" alt="ACCT Accredited Vendor">
       </div>
     </div>
     
@@ -576,31 +597,31 @@ serve(async (req) => {
     </div>
     ` : ''}
 
-    ${summary ? `
+    ${cleanedSummary ? `
     <div class="section no-break">
       <h2 class="section-title">Report Summary</h2>
-      ${summary.repairs_performed ? `
+      ${cleanedSummary.repairs_performed ? `
       <div style="margin-bottom: 15px;">
         <h3 style="font-size: 11pt; font-weight: bold; margin-bottom: 8px;">Repairs, Alterations performed during inspection:</h3>
-        <div style="line-height: 1.5;">${stripHtml(summary.repairs_performed)}</div>
+        <div style="line-height: 1.5;">${cleanedSummary.repairs_performed}</div>
       </div>
       ` : ''}
-      ${summary.critical_actions ? `
+      ${cleanedSummary.critical_actions ? `
       <div style="margin-bottom: 15px;">
         <h3 style="font-size: 11pt; font-weight: bold; margin-bottom: 8px;">*Critical Action = Required Changes Prior to use of Activity, Element, or Equipment</h3>
-        <div style="line-height: 1.5;">${stripHtml(summary.critical_actions)}</div>
+        <div style="line-height: 1.5;">${cleanedSummary.critical_actions}</div>
       </div>
       ` : ''}
-      ${summary.future_considerations ? `
+      ${cleanedSummary.future_considerations ? `
       <div style="margin-bottom: 15px;">
         <h3 style="font-size: 11pt; font-weight: bold; margin-bottom: 8px;">Future Considerations (includes but not limited to age of course, recommended updates, suggestions, industry future)</h3>
-        <div style="line-height: 1.5;">${stripHtml(summary.future_considerations)}</div>
+        <div style="line-height: 1.5;">${stripHtml(cleanedSummary.future_considerations)}</div>
       </div>
       ` : ''}
-      ${summary.next_inspection_date ? `
+      ${cleanedSummary.next_inspection_date ? `
       <div style="margin-bottom: 15px;">
         <h3 style="font-size: 11pt; font-weight: bold; margin-bottom: 8px;">Next Inspection Date</h3>
-        <div>${formatDate(summary.next_inspection_date)}</div>
+        <div>${formatDate(cleanedSummary.next_inspection_date)}</div>
       </div>
       ` : ''}
     </div>
@@ -644,15 +665,7 @@ serve(async (req) => {
   </div>
   
   <div class="footer">
-    <div class="footer-content">
-      <div class="footer-text">
-        The information contained in this report has been documented by a Qualified Professional. This report is effective for one year from the date of inspection. Issued by:
-      </div>
-      <div class="footer-text">
-        Rope Works Inc., PO Box 1074, Dripping Springs, TX 78620
-      </div>
-    </div>
-    <div class="footer-page">Page </div>
+    The information contained in this report has been documented by a Qualified Professional. This report is effective for one year from the date of inspection. Issued by: Rope Works Inc., PO Box 1074, Dripping Springs, TX 78620
   </div>
 </body>
 </html>`;
