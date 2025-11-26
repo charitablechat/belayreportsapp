@@ -9,7 +9,7 @@ const corsHeaders = {
 // Hardcoded base64-encoded logos (embedded directly to avoid storage bucket dependencies)
 // Rope Works Logo - converted from uploaded file
 const ROPE_WORKS_LOGO_BASE64 =
-  "const ACCT_LOGO_BASE64 = "data:image/png;base64,iVBORw0KGgo...[a very long string]...rkJggg=="";
+  "const ACCT_LOGO_BASE64 = "data:image/png;base64,iVBORw0KGgo...[a very long string]...rkJggg==";
 
 // ACCT Accredited Vendor Logo - converted from uploaded file
 const ACCT_LOGO_BASE64 =
