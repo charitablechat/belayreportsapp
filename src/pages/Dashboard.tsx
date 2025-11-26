@@ -97,6 +97,11 @@ export default function Dashboard() {
       await triggerSync();
       await loadInspections();
       await loadTrainingReports();
+      await loadDailyAssessments();
+      
+      // Also sync daily assessments
+      const { syncDailyAssessments } = await import('@/lib/sync-manager');
+      await syncDailyAssessments();
     },
     isRefreshing: isSyncing,
   });
@@ -172,6 +177,7 @@ export default function Dashboard() {
       setIsOnline(true);
       loadInspections(); // Reload when coming back online
       loadTrainingReports();
+      loadDailyAssessments();
     };
     const handleOffline = () => setIsOnline(false);
 
@@ -257,6 +263,19 @@ export default function Dashboard() {
 
   const loadDailyAssessments = async () => {
     try {
+      // Load from offline storage first
+      const offlineAssessments = await import('@/lib/offline-storage').then(m => m.getOfflineDailyAssessments());
+      
+      if (offlineAssessments.length > 0) {
+        setDailyAssessments(offlineAssessments);
+        setLoading(false);
+        
+        if (import.meta.env.DEV) {
+          console.log('[Dashboard] Loaded daily assessments from offline storage:', offlineAssessments.length);
+        }
+      }
+
+      // If online, fetch from Supabase
       if (navigator.onLine) {
         const { data, error } = await supabase
           .from("daily_assessments")
@@ -271,8 +290,14 @@ export default function Dashboard() {
         if (data) {
           setDailyAssessments(data);
           
+          // Save to offline storage
+          const { saveDailyAssessmentOffline } = await import('@/lib/offline-storage');
+          for (const assessment of data) {
+            await saveDailyAssessmentOffline(assessment);
+          }
+          
           if (import.meta.env.DEV) {
-            console.log('[Dashboard] Loaded daily assessments:', data.length);
+            console.log('[Dashboard] Loaded daily assessments from Supabase:', data.length);
           }
         }
       }

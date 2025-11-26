@@ -7,7 +7,12 @@ import {
   incrementOperationRetry,
   getUnuploadedPhotos,
   markPhotoAsUploaded,
-  deleteOfflinePhoto
+  deleteOfflinePhoto,
+  getUnsyncedDailyAssessments,
+  saveDailyAssessmentOffline,
+  getQueuedAssessmentOperations,
+  removeQueuedAssessmentOperation,
+  incrementAssessmentOperationRetry
 } from "./offline-storage";
 import { toast } from "sonner";
 
@@ -266,6 +271,115 @@ export async function syncPhotos() {
   }
 }
 
+// Daily Assessment sync
+export async function syncDailyAssessments() {
+  if (!navigator.onLine) {
+    if (import.meta.env.DEV) {
+      console.log('[Daily Assessment Sync] Offline - skipping sync');
+    }
+    return;
+  }
+
+  if (import.meta.env.DEV) {
+    console.log('[Daily Assessment Sync] Starting sync...');
+  }
+
+  try {
+    // Process queued operations first
+    const queuedOps = await getQueuedAssessmentOperations();
+    
+    if (import.meta.env.DEV) {
+      console.log('[Daily Assessment Sync] Processing queued operations:', queuedOps.length);
+    }
+
+    for (const op of queuedOps) {
+      try {
+        if (op.retries >= MAX_RETRIES) {
+          if (import.meta.env.DEV) {
+            console.warn('[Daily Assessment Sync] Max retries reached for operation:', op);
+          }
+          continue;
+        }
+
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+          console.error('[Daily Assessment Sync] User not authenticated, skipping operation');
+          continue;
+        }
+
+        const dataToSync = {
+          ...op.data,
+          inspector_id: user.id,
+        };
+
+        if (op.type === 'create' || op.type === 'update') {
+          await supabase.from("daily_assessments").upsert(dataToSync);
+        } else if (op.type === 'delete') {
+          await supabase.from("daily_assessments").delete().eq('id', op.assessmentId);
+        }
+
+        await removeQueuedAssessmentOperation(op.id!);
+        
+        if (import.meta.env.DEV) {
+          console.log('[Daily Assessment Sync] Processed operation:', op.type, op.assessmentId);
+        }
+      } catch (error) {
+        console.error('[Daily Assessment Sync] Operation failed:', error);
+        await incrementAssessmentOperationRetry(op.id!);
+        
+        await new Promise(resolve => 
+          setTimeout(resolve, RETRY_DELAY * Math.pow(2, op.retries))
+        );
+      }
+    }
+
+    // Sync unsynced assessments
+    const unsynced = await getUnsyncedDailyAssessments();
+    
+    if (import.meta.env.DEV) {
+      console.log('[Daily Assessment Sync] Syncing unsynced assessments:', unsynced.length);
+    }
+    
+    for (const assessment of unsynced) {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+          console.error('[Daily Assessment Sync] User not authenticated, skipping sync');
+          continue;
+        }
+
+        const assessmentToSync = {
+          ...assessment,
+          inspector_id: user.id,
+        };
+
+        const { error: upsertError } = await supabase
+          .from("daily_assessments")
+          .upsert(assessmentToSync);
+
+        if (upsertError) throw upsertError;
+
+        // Update synced_at timestamp
+        assessment.synced_at = new Date().toISOString();
+        await saveDailyAssessmentOffline(assessment);
+        
+        if (import.meta.env.DEV) {
+          console.log('[Daily Assessment Sync] Synced assessment:', assessment.id);
+        }
+      } catch (error) {
+        console.error('[Daily Assessment Sync] Failed to sync assessment:', error);
+      }
+    }
+
+    if (import.meta.env.DEV) {
+      console.log('[Daily Assessment Sync] Sync completed');
+    }
+  } catch (error) {
+    console.error('[Daily Assessment Sync] Sync failed:', error);
+    throw error;
+  }
+}
+
 // Auto-sync when coming online
 if (typeof window !== "undefined") {
   window.addEventListener("online", () => {
@@ -275,6 +389,7 @@ if (typeof window !== "undefined") {
     setTimeout(() => {
       syncInspections();
       syncPhotos();
+      syncDailyAssessments();
     }, 1000);
   });
 }

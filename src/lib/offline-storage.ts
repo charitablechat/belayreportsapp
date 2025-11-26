@@ -7,12 +7,28 @@ interface InspectionDB extends DBSchema {
     value: any;
     indexes: { 'by-status': string; 'by-synced': string };
   };
+  daily_assessments: {
+    key: string;
+    value: any;
+    indexes: { 'by-status': string; 'by-synced': string };
+  };
   operations: {
     key: number;
     value: {
       id?: number;
       type: 'create' | 'update' | 'delete';
       inspectionId: string;
+      data: any;
+      timestamp: number;
+      retries: number;
+    };
+  };
+  assessment_operations: {
+    key: number;
+    value: {
+      id?: number;
+      type: 'create' | 'update' | 'delete';
+      assessmentId: string;
       data: any;
       timestamp: number;
       retries: number;
@@ -56,6 +72,36 @@ interface InspectionDB extends DBSchema {
     key: string;
     value: any;
     indexes: { 'by-inspection': string };
+  };
+  daily_assessment_beginning_of_day: {
+    key: string;
+    value: any;
+    indexes: { 'by-assessment': string };
+  };
+  daily_assessment_end_of_day: {
+    key: string;
+    value: any;
+    indexes: { 'by-assessment': string };
+  };
+  daily_assessment_operating_systems: {
+    key: string;
+    value: any;
+    indexes: { 'by-assessment': string };
+  };
+  daily_assessment_equipment_checks: {
+    key: string;
+    value: any;
+    indexes: { 'by-assessment': string };
+  };
+  daily_assessment_structure_checks: {
+    key: string;
+    value: any;
+    indexes: { 'by-assessment': string };
+  };
+  daily_assessment_environment_checks: {
+    key: string;
+    value: any;
+    indexes: { 'by-assessment': string };
   };
 }
 
@@ -108,7 +154,7 @@ export async function getDB() {
     // Ensure storage is available before opening DB
     await ensureStorage();
     
-    dbPromise = openDB<InspectionDB>('rope-works-inspections', 4, {
+    dbPromise = openDB<InspectionDB>('rope-works-inspections', 5, {
       upgrade(db, oldVersion, newVersion, transaction) {
         let inspectionStore;
         
@@ -159,6 +205,44 @@ export async function getDB() {
         if (!db.objectStoreNames.contains('inspection_summary')) {
           const store = db.createObjectStore('inspection_summary', { keyPath: 'id' });
           store.createIndex('by-inspection', 'inspection_id');
+        }
+        
+        // Daily assessments store
+        if (!db.objectStoreNames.contains('daily_assessments')) {
+          const assessmentStore = db.createObjectStore('daily_assessments', { keyPath: 'id' });
+          assessmentStore.createIndex('by-status', 'status');
+          assessmentStore.createIndex('by-synced', 'synced_at');
+        }
+        
+        // Assessment operations store
+        if (!db.objectStoreNames.contains('assessment_operations')) {
+          db.createObjectStore('assessment_operations', { autoIncrement: true });
+        }
+        
+        // Daily assessment related data stores
+        if (!db.objectStoreNames.contains('daily_assessment_beginning_of_day')) {
+          const store = db.createObjectStore('daily_assessment_beginning_of_day', { keyPath: 'id' });
+          store.createIndex('by-assessment', 'assessment_id');
+        }
+        if (!db.objectStoreNames.contains('daily_assessment_end_of_day')) {
+          const store = db.createObjectStore('daily_assessment_end_of_day', { keyPath: 'id' });
+          store.createIndex('by-assessment', 'assessment_id');
+        }
+        if (!db.objectStoreNames.contains('daily_assessment_operating_systems')) {
+          const store = db.createObjectStore('daily_assessment_operating_systems', { keyPath: 'id' });
+          store.createIndex('by-assessment', 'assessment_id');
+        }
+        if (!db.objectStoreNames.contains('daily_assessment_equipment_checks')) {
+          const store = db.createObjectStore('daily_assessment_equipment_checks', { keyPath: 'id' });
+          store.createIndex('by-assessment', 'assessment_id');
+        }
+        if (!db.objectStoreNames.contains('daily_assessment_structure_checks')) {
+          const store = db.createObjectStore('daily_assessment_structure_checks', { keyPath: 'id' });
+          store.createIndex('by-assessment', 'assessment_id');
+        }
+        if (!db.objectStoreNames.contains('daily_assessment_environment_checks')) {
+          const store = db.createObjectStore('daily_assessment_environment_checks', { keyPath: 'id' });
+          store.createIndex('by-assessment', 'assessment_id');
         }
       },
     });
@@ -425,5 +509,173 @@ export async function clearRelatedDataOffline(
   
   if (import.meta.env.DEV) {
     console.log(`[Offline Storage] Cleared ${type} for inspection:`, inspectionId);
+  }
+}
+
+// Daily Assessment functions
+export async function saveDailyAssessmentOffline(assessment: any) {
+  try {
+    const db = await getDB();
+    await db.put('daily_assessments', assessment);
+    
+    if (import.meta.env.DEV) {
+      console.log('[Offline Storage] Saved daily assessment:', assessment.id);
+    }
+  } catch (error: any) {
+    console.error('[Offline Storage] Failed to save daily assessment:', error);
+    
+    if (error.name === 'QuotaExceededError') {
+      throw new Error('Storage quota exceeded. Please sync and clear old data.');
+    }
+    
+    throw error;
+  }
+}
+
+export async function getOfflineDailyAssessments() {
+  const db = await getDB();
+  return await db.getAll('daily_assessments');
+}
+
+export async function getOfflineDailyAssessment(id: string) {
+  const db = await getDB();
+  return await db.get('daily_assessments', id);
+}
+
+export async function deleteOfflineDailyAssessment(id: string) {
+  const db = await getDB();
+  await db.delete('daily_assessments', id);
+}
+
+export async function getUnsyncedDailyAssessments(userId?: string) {
+  const db = await getDB();
+  const allAssessments = await db.getAll('daily_assessments');
+  let unsynced = allAssessments.filter(a => !a.synced_at || a.updated_at > a.synced_at);
+  
+  if (userId) {
+    unsynced = unsynced.filter(a => a.inspector_id === userId);
+  }
+  
+  if (import.meta.env.DEV) {
+    console.log('[Offline Storage] Unsynced daily assessments:', {
+      total: unsynced.length,
+      userId: userId ? userId.substring(0, 8) + '...' : 'all',
+    });
+  }
+  
+  return unsynced;
+}
+
+export async function queueAssessmentOperation(type: 'create' | 'update' | 'delete', assessmentId: string, data: any) {
+  const db = await getDB();
+  await db.add('assessment_operations', {
+    type,
+    assessmentId,
+    data,
+    timestamp: Date.now(),
+    retries: 0,
+  });
+  
+  if (import.meta.env.DEV) {
+    console.log('[Offline Storage] Queued assessment operation:', { type, assessmentId });
+  }
+  
+  const { registerInspectionSync } = await import('./background-sync');
+  await registerInspectionSync();
+}
+
+export async function getQueuedAssessmentOperations() {
+  const db = await getDB();
+  const operations = await db.getAll('assessment_operations');
+  
+  if (import.meta.env.DEV) {
+    console.log('[Offline Storage] Queued assessment operations:', operations.length);
+  }
+  
+  return operations;
+}
+
+export async function removeQueuedAssessmentOperation(id: number) {
+  const db = await getDB();
+  await db.delete('assessment_operations', id);
+  
+  if (import.meta.env.DEV) {
+    console.log('[Offline Storage] Removed queued assessment operation:', id);
+  }
+}
+
+export async function incrementAssessmentOperationRetry(id: number) {
+  const db = await getDB();
+  const operation = await db.get('assessment_operations', id);
+  if (operation) {
+    operation.retries += 1;
+    await db.put('assessment_operations', operation);
+  }
+}
+
+// Daily assessment related data
+type AssessmentDataType = 'beginning_of_day' | 'end_of_day' | 'operating_systems' | 'equipment_checks' | 'structure_checks' | 'environment_checks';
+type AssessmentStoreNames = 'daily_assessment_beginning_of_day' | 'daily_assessment_end_of_day' | 'daily_assessment_operating_systems' | 'daily_assessment_equipment_checks' | 'daily_assessment_structure_checks' | 'daily_assessment_environment_checks';
+
+const assessmentStoreNameMap: Record<AssessmentDataType, AssessmentStoreNames> = {
+  beginning_of_day: 'daily_assessment_beginning_of_day',
+  end_of_day: 'daily_assessment_end_of_day',
+  operating_systems: 'daily_assessment_operating_systems',
+  equipment_checks: 'daily_assessment_equipment_checks',
+  structure_checks: 'daily_assessment_structure_checks',
+  environment_checks: 'daily_assessment_environment_checks',
+};
+
+export async function saveAssessmentDataOffline(
+  type: AssessmentDataType,
+  assessmentId: string,
+  data: any[]
+) {
+  const db = await getDB();
+  const storeName = assessmentStoreNameMap[type];
+  
+  const existingData = await getAssessmentDataOffline(type, assessmentId);
+  for (const item of existingData) {
+    await db.delete(storeName, item.id);
+  }
+  
+  for (const item of data) {
+    const dataWithAssessmentId = {
+      ...item,
+      assessment_id: assessmentId,
+      id: item.id || `${assessmentId}-${type}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+    };
+    await db.put(storeName, dataWithAssessmentId);
+  }
+  
+  if (import.meta.env.DEV) {
+    console.log(`[Offline Storage] Saved assessment ${type}:`, data.length, 'items');
+  }
+}
+
+export async function getAssessmentDataOffline(
+  type: AssessmentDataType,
+  assessmentId: string
+): Promise<any[]> {
+  const db = await getDB();
+  const storeName = assessmentStoreNameMap[type];
+  const index = db.transaction(storeName).store.index('by-assessment');
+  return await index.getAll(assessmentId);
+}
+
+export async function clearAssessmentDataOffline(
+  type: AssessmentDataType,
+  assessmentId: string
+) {
+  const db = await getDB();
+  const storeName = assessmentStoreNameMap[type];
+  const existingData = await getAssessmentDataOffline(type, assessmentId);
+  
+  for (const item of existingData) {
+    await db.delete(storeName, item.id);
+  }
+  
+  if (import.meta.env.DEV) {
+    console.log(`[Offline Storage] Cleared ${type} for assessment:`, assessmentId);
   }
 }

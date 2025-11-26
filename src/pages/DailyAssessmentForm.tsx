@@ -34,31 +34,76 @@ export default function DailyAssessmentForm() {
 
   const loadAssessment = async () => {
     try {
-      const { data: assessmentData, error: assessmentError } = await supabase
-        .from('daily_assessments')
-        .select('*')
-        .eq('id', id)
-        .single();
+      // Try loading from offline storage first
+      const { getOfflineDailyAssessment, getAssessmentDataOffline } = await import('@/lib/offline-storage');
+      const offlineAssessment = await getOfflineDailyAssessment(id!);
+      
+      if (offlineAssessment) {
+        setAssessment(offlineAssessment);
+        
+        // Load related data from offline storage
+        const [bodData, eodData, osData, eqData, stData, envData] = await Promise.all([
+          getAssessmentDataOffline('beginning_of_day', id!),
+          getAssessmentDataOffline('end_of_day', id!),
+          getAssessmentDataOffline('operating_systems', id!),
+          getAssessmentDataOffline('equipment_checks', id!),
+          getAssessmentDataOffline('structure_checks', id!),
+          getAssessmentDataOffline('environment_checks', id!),
+        ]);
 
-      if (assessmentError) throw assessmentError;
-      setAssessment(assessmentData);
+        setBeginningOfDay(bodData);
+        setEndOfDay(eodData);
+        setOperatingSystems(osData);
+        setEquipmentChecks(eqData);
+        setStructureChecks(stData);
+        setEnvironmentChecks(envData);
+        setLoading(false);
+        
+        if (import.meta.env.DEV) {
+          console.log('[DailyAssessmentForm] Loaded from offline storage');
+        }
+      }
 
-      // Load all related data
-      const [bodData, eodData, osData, eqData, stData, envData] = await Promise.all([
-        supabase.from('daily_assessment_beginning_of_day').select('*').eq('assessment_id', id),
-        supabase.from('daily_assessment_end_of_day').select('*').eq('assessment_id', id),
-        supabase.from('daily_assessment_operating_systems').select('*').eq('assessment_id', id),
-        supabase.from('daily_assessment_equipment_checks').select('*').eq('assessment_id', id),
-        supabase.from('daily_assessment_structure_checks').select('*').eq('assessment_id', id),
-        supabase.from('daily_assessment_environment_checks').select('*').eq('assessment_id', id),
-      ]);
+      // If online, fetch from Supabase
+      if (navigator.onLine) {
+        const { data: assessmentData, error: assessmentError } = await supabase
+          .from('daily_assessments')
+          .select('*')
+          .eq('id', id)
+          .single();
 
-      setBeginningOfDay(bodData.data || []);
-      setEndOfDay(eodData.data || []);
-      setOperatingSystems(osData.data || []);
-      setEquipmentChecks(eqData.data || []);
-      setStructureChecks(stData.data || []);
-      setEnvironmentChecks(envData.data || []);
+        if (assessmentError) throw assessmentError;
+        setAssessment(assessmentData);
+
+        // Load all related data
+        const [bodData, eodData, osData, eqData, stData, envData] = await Promise.all([
+          supabase.from('daily_assessment_beginning_of_day').select('*').eq('assessment_id', id),
+          supabase.from('daily_assessment_end_of_day').select('*').eq('assessment_id', id),
+          supabase.from('daily_assessment_operating_systems').select('*').eq('assessment_id', id),
+          supabase.from('daily_assessment_equipment_checks').select('*').eq('assessment_id', id),
+          supabase.from('daily_assessment_structure_checks').select('*').eq('assessment_id', id),
+          supabase.from('daily_assessment_environment_checks').select('*').eq('assessment_id', id),
+        ]);
+
+        setBeginningOfDay(bodData.data || []);
+        setEndOfDay(eodData.data || []);
+        setOperatingSystems(osData.data || []);
+        setEquipmentChecks(eqData.data || []);
+        setStructureChecks(stData.data || []);
+        setEnvironmentChecks(envData.data || []);
+        
+        // Save to offline storage
+        const { saveDailyAssessmentOffline, saveAssessmentDataOffline } = await import('@/lib/offline-storage');
+        await saveDailyAssessmentOffline(assessmentData);
+        await Promise.all([
+          saveAssessmentDataOffline('beginning_of_day', id!, bodData.data || []),
+          saveAssessmentDataOffline('end_of_day', id!, eodData.data || []),
+          saveAssessmentDataOffline('operating_systems', id!, osData.data || []),
+          saveAssessmentDataOffline('equipment_checks', id!, eqData.data || []),
+          saveAssessmentDataOffline('structure_checks', id!, stData.data || []),
+          saveAssessmentDataOffline('environment_checks', id!, envData.data || []),
+        ]);
+      }
     } catch (error) {
       console.error('Error loading assessment:', error);
       toast({
@@ -72,91 +117,146 @@ export default function DailyAssessmentForm() {
   };
 
   const handleUpdateAssessment = async (field: string, value: any) => {
-    const updatedAssessment = { ...assessment, [field]: value };
+    const updatedAssessment = { ...assessment, [field]: value, updated_at: new Date().toISOString() };
     setAssessment(updatedAssessment);
     
     try {
-      const { error } = await supabase
-        .from('daily_assessments')
-        .update({ [field]: value, updated_at: new Date().toISOString() })
-        .eq('id', id);
+      // Save offline first
+      const { saveDailyAssessmentOffline, queueAssessmentOperation } = await import('@/lib/offline-storage');
+      await saveDailyAssessmentOffline(updatedAssessment);
 
-      if (error) throw error;
+      if (navigator.onLine) {
+        const { error } = await supabase
+          .from('daily_assessments')
+          .update({ [field]: value, updated_at: updatedAssessment.updated_at })
+          .eq('id', id);
+
+        if (error) throw error;
+
+        // Update synced_at
+        updatedAssessment.synced_at = new Date().toISOString();
+        await saveDailyAssessmentOffline(updatedAssessment);
+      } else {
+        // Queue for sync
+        await queueAssessmentOperation('update', id!, updatedAssessment);
+      }
     } catch (error) {
       console.error('Error updating assessment:', error);
+      const { queueAssessmentOperation } = await import('@/lib/offline-storage');
+      await queueAssessmentOperation('update', id!, updatedAssessment);
     }
   };
 
   const handleSave = async () => {
     setSaving(true);
     try {
-      // Delete existing related records
+      // Save all data offline first
+      const { saveDailyAssessmentOffline, saveAssessmentDataOffline, queueAssessmentOperation } = await import('@/lib/offline-storage');
+      
+      // Save related data offline
       await Promise.all([
-        supabase.from('daily_assessment_beginning_of_day').delete().eq('assessment_id', id),
-        supabase.from('daily_assessment_end_of_day').delete().eq('assessment_id', id),
-        supabase.from('daily_assessment_operating_systems').delete().eq('assessment_id', id),
-        supabase.from('daily_assessment_equipment_checks').delete().eq('assessment_id', id),
-        supabase.from('daily_assessment_structure_checks').delete().eq('assessment_id', id),
-        supabase.from('daily_assessment_environment_checks').delete().eq('assessment_id', id),
+        saveAssessmentDataOffline('beginning_of_day', id!, beginningOfDay),
+        saveAssessmentDataOffline('end_of_day', id!, endOfDay),
+        saveAssessmentDataOffline('operating_systems', id!, operatingSystems),
+        saveAssessmentDataOffline('equipment_checks', id!, equipmentChecks),
+        saveAssessmentDataOffline('structure_checks', id!, structureChecks),
+        saveAssessmentDataOffline('environment_checks', id!, environmentChecks),
       ]);
 
-      // Insert new records
-      const inserts = [];
-      if (beginningOfDay.length > 0) {
-        inserts.push(
-          supabase.from('daily_assessment_beginning_of_day').insert(
-            beginningOfDay.map(item => ({ ...item, assessment_id: id }))
-          )
-        );
-      }
-      if (endOfDay.length > 0) {
-        inserts.push(
-          supabase.from('daily_assessment_end_of_day').insert(
-            endOfDay.map(item => ({ ...item, assessment_id: id }))
-          )
-        );
-      }
-      if (operatingSystems.length > 0) {
-        inserts.push(
-          supabase.from('daily_assessment_operating_systems').insert(
-            operatingSystems.map(item => ({ ...item, assessment_id: id }))
-          )
-        );
-      }
-      if (equipmentChecks.length > 0) {
-        inserts.push(
-          supabase.from('daily_assessment_equipment_checks').insert(
-            equipmentChecks.map(item => ({ ...item, assessment_id: id }))
-          )
-        );
-      }
-      if (structureChecks.length > 0) {
-        inserts.push(
-          supabase.from('daily_assessment_structure_checks').insert(
-            structureChecks.map(item => ({ ...item, assessment_id: id }))
-          )
-        );
-      }
-      if (environmentChecks.length > 0) {
-        inserts.push(
-          supabase.from('daily_assessment_environment_checks').insert(
-            environmentChecks.map(item => ({ ...item, assessment_id: id }))
-          )
-        );
-      }
+      // Update assessment status
+      const completedAssessment = { ...assessment, status: 'completed', updated_at: new Date().toISOString() };
+      await saveDailyAssessmentOffline(completedAssessment);
 
-      await Promise.all(inserts);
+      if (navigator.onLine) {
+        try {
+          // Delete existing related records
+          await Promise.all([
+            supabase.from('daily_assessment_beginning_of_day').delete().eq('assessment_id', id),
+            supabase.from('daily_assessment_end_of_day').delete().eq('assessment_id', id),
+            supabase.from('daily_assessment_operating_systems').delete().eq('assessment_id', id),
+            supabase.from('daily_assessment_equipment_checks').delete().eq('assessment_id', id),
+            supabase.from('daily_assessment_structure_checks').delete().eq('assessment_id', id),
+            supabase.from('daily_assessment_environment_checks').delete().eq('assessment_id', id),
+          ]);
 
-      // Update status to completed
-      await supabase
-        .from('daily_assessments')
-        .update({ status: 'completed', updated_at: new Date().toISOString() })
-        .eq('id', id);
+          // Insert new records
+          const inserts = [];
+          if (beginningOfDay.length > 0) {
+            inserts.push(
+              supabase.from('daily_assessment_beginning_of_day').insert(
+                beginningOfDay.map(item => ({ ...item, assessment_id: id }))
+              )
+            );
+          }
+          if (endOfDay.length > 0) {
+            inserts.push(
+              supabase.from('daily_assessment_end_of_day').insert(
+                endOfDay.map(item => ({ ...item, assessment_id: id }))
+              )
+            );
+          }
+          if (operatingSystems.length > 0) {
+            inserts.push(
+              supabase.from('daily_assessment_operating_systems').insert(
+                operatingSystems.map(item => ({ ...item, assessment_id: id }))
+              )
+            );
+          }
+          if (equipmentChecks.length > 0) {
+            inserts.push(
+              supabase.from('daily_assessment_equipment_checks').insert(
+                equipmentChecks.map(item => ({ ...item, assessment_id: id }))
+              )
+            );
+          }
+          if (structureChecks.length > 0) {
+            inserts.push(
+              supabase.from('daily_assessment_structure_checks').insert(
+                structureChecks.map(item => ({ ...item, assessment_id: id }))
+              )
+            );
+          }
+          if (environmentChecks.length > 0) {
+            inserts.push(
+              supabase.from('daily_assessment_environment_checks').insert(
+                environmentChecks.map(item => ({ ...item, assessment_id: id }))
+              )
+            );
+          }
 
-      toast({
-        title: "Success",
-        description: "Assessment saved successfully",
-      });
+          await Promise.all(inserts);
+
+          // Update status to completed
+          await supabase
+            .from('daily_assessments')
+            .update({ status: 'completed', updated_at: completedAssessment.updated_at })
+            .eq('id', id);
+
+          // Update synced_at
+          completedAssessment.synced_at = new Date().toISOString();
+          await saveDailyAssessmentOffline(completedAssessment);
+
+          toast({
+            title: "Success",
+            description: "Assessment saved successfully",
+          });
+        } catch (error) {
+          console.error('Error syncing to database:', error);
+          // Queue for sync
+          await queueAssessmentOperation('update', id!, completedAssessment);
+          toast({
+            title: "Saved Offline",
+            description: "Assessment saved offline. Will sync when online.",
+          });
+        }
+      } else {
+        // Queue for sync
+        await queueAssessmentOperation('update', id!, completedAssessment);
+        toast({
+          title: "Saved Offline",
+          description: "Assessment saved offline. Will sync when online.",
+        });
+      }
 
       navigate('/dashboard');
     } catch (error) {
