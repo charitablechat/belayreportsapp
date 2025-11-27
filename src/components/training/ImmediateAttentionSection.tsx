@@ -1,6 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
+import { triggerHaptic } from "@/lib/haptics";
 
 interface ImmediateAttentionSectionProps {
   items: any[];
@@ -17,6 +18,7 @@ const IMMEDIATE_ATTENTION_ITEMS = [
 
 export default function ImmediateAttentionSection({ items, onUpdate }: ImmediateAttentionSectionProps) {
   const handleToggle = (item: string, checked: boolean) => {
+    triggerHaptic('light');
     if (checked) {
       onUpdate([...items, {
         id: crypto.randomUUID(),

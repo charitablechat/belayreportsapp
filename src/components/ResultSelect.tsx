@@ -1,5 +1,6 @@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { triggerHaptic } from "@/lib/haptics";
 
 interface ResultSelectProps {
   value: string;
@@ -36,7 +37,10 @@ export default function ResultSelect({ value, onChange, includeNA = false }: Res
   };
 
   return (
-    <Select value={value} onValueChange={onChange}>
+    <Select value={value} onValueChange={(val) => {
+      triggerHaptic('light');
+      onChange(val);
+    }}>
       <SelectTrigger className={cn("w-full", getResultColor(value))}>
         <SelectValue placeholder="Select result">{getDisplayValue(value)}</SelectValue>
       </SelectTrigger>

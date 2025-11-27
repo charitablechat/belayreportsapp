@@ -1,6 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
+import { triggerHaptic } from "@/lib/haptics";
 
 interface SystemsInPlaceSectionProps {
   items: any[];
@@ -18,6 +19,7 @@ const SYSTEMS_IN_PLACE = [
 
 export default function SystemsInPlaceSection({ items, onUpdate }: SystemsInPlaceSectionProps) {
   const handleToggle = (item: string, checked: boolean) => {
+    triggerHaptic('light');
     if (checked) {
       onUpdate([...items, {
         id: crypto.randomUUID(),

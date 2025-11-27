@@ -3,6 +3,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { VoiceTextarea } from "@/components/ui/voice-textarea";
 import { FormSection } from "@/hooks/useFormConfiguration";
+import { triggerHaptic } from "@/lib/haptics";
 
 interface BeginningOfDaySectionProps {
   section: FormSection;
@@ -12,6 +13,7 @@ interface BeginningOfDaySectionProps {
 
 export default function BeginningOfDaySection({ section, items, onUpdate }: BeginningOfDaySectionProps) {
   const handleToggle = (itemKey: string) => {
+    triggerHaptic('light');
     const existingItem = items.find(i => i.item_key === itemKey);
     
     if (existingItem) {

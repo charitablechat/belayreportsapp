@@ -3,6 +3,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { VoiceTextarea } from "@/components/ui/voice-textarea";
 import { FormSection } from "@/hooks/useFormConfiguration";
+import { triggerHaptic } from "@/lib/haptics";
 
 interface StructureChecksSectionProps {
   section: FormSection;
@@ -12,6 +13,7 @@ interface StructureChecksSectionProps {
 
 export default function StructureChecksSection({ section, checks, onUpdate }: StructureChecksSectionProps) {
   const handleToggle = (itemKey: string) => {
+    triggerHaptic('light');
     const existingCheck = checks.find(c => c.item_key === itemKey);
     
     if (existingCheck) {

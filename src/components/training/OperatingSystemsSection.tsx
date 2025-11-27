@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { X, Plus } from "lucide-react";
+import { triggerHaptic } from "@/lib/haptics";
 
 interface OperatingSystemsSectionProps {
   systems: any[];
@@ -35,6 +36,7 @@ export default function OperatingSystemsSection({ systems, onUpdate }: Operating
   const predefinedSystems = systems.filter(s => s.system_name !== 'Other');
 
   const handleToggle = (systemName: string, checked: boolean) => {
+    triggerHaptic('light');
     if (checked) {
       onUpdate([...systems, {
         id: crypto.randomUUID(),
@@ -48,6 +50,7 @@ export default function OperatingSystemsSection({ systems, onUpdate }: Operating
   };
 
   const handleAddOther = () => {
+    triggerHaptic('light');
     const newEntry = {
       id: crypto.randomUUID(),
       system_name: 'Other',
@@ -64,6 +67,7 @@ export default function OperatingSystemsSection({ systems, onUpdate }: Operating
   };
 
   const handleRemoveOther = (id: string) => {
+    triggerHaptic('light');
     onUpdate(systems.filter(s => s.id !== id));
   };
 

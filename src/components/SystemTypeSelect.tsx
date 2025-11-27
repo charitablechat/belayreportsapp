@@ -4,7 +4,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Pencil, Plus, Trash2 } from "lucide-react";
-import { toast } from "sonner";
+import { triggerHaptic } from "@/lib/haptics";
 
 interface SystemTypeSelectProps {
   value: string;
@@ -107,7 +107,10 @@ export default function SystemTypeSelect({ value, onChange }: SystemTypeSelectPr
 
   return (
     <>
-      <Select value={value} onValueChange={onChange}>
+      <Select value={value} onValueChange={(val) => {
+        triggerHaptic('light');
+        onChange(val);
+      }}>
         <SelectTrigger className="w-full bg-card">
           <SelectValue placeholder="Select system type" />
         </SelectTrigger>

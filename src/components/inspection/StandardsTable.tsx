@@ -2,6 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { triggerHaptic } from "@/lib/haptics";
 
 interface StandardsTableProps {
   standards: any[];
@@ -19,6 +20,7 @@ const STANDARDS_LIST = [
 
 export default function StandardsTable({ standards, onUpdate }: StandardsTableProps) {
   const updateStandard = (index: number, has_documentation: boolean) => {
+    triggerHaptic('light');
     const updated = [...standards];
     const inspectionId = window.location.pathname.split('/').pop();
     updated[index] = { 
