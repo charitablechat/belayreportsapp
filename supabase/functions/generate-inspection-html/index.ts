@@ -6,25 +6,9 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-async function loadLogoAsBase64(supabase: any, bucketName: string, filePath: string): Promise<string> {
-  try {
-    const { data, error } = await supabase.storage
-      .from(bucketName)
-      .download(filePath);
-
-    if (error) {
-      console.error(`Error loading ${filePath}:`, error);
-      return "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
-    }
-
-    const arrayBuffer = await data.arrayBuffer();
-    const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
-    return `data:image/png;base64,${base64}`;
-  } catch (error) {
-    console.error(`Exception loading ${filePath}:`, error);
-    return "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
-  }
-}
+// Embedded logos as base64 to avoid storage dependency
+const ROPE_WORKS_LOGO = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="; // Placeholder - will be replaced with actual logo
+const ACCT_LOGO = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="; // Placeholder - will be replaced with actual logo
 
 function deduplicateHtmlContent(html: string | null): string {
   if (!html) return '';
@@ -76,9 +60,9 @@ serve(async (req) => {
 
     console.log(`Generating HTML for inspection: ${inspectionId}`);
 
-    // Load logos from storage
-    const ropeWorksLogo = await loadLogoAsBase64(supabase, 'pdf-templates', 'rope-works-logo.png');
-    const acctLogo = await loadLogoAsBase64(supabase, 'pdf-templates', 'acct-accredited-vendor.png');
+    // Use embedded logos
+    const ropeWorksLogo = ROPE_WORKS_LOGO;
+    const acctLogo = ACCT_LOGO;
 
     // Fetch all inspection data
     const { data: inspection, error: inspectionError } = await supabase

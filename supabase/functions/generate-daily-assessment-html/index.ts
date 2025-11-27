@@ -6,22 +6,9 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-async function loadLogoAsBase64(supabase: any, bucket: string, path: string): Promise<string> {
-  try {
-    const { data, error } = await supabase.storage.from(bucket).download(path);
-    if (error) throw error;
-    
-    const arrayBuffer = await data.arrayBuffer();
-    const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
-    const ext = path.split('.').pop()?.toLowerCase();
-    const mimeType = ext === 'png' ? 'image/png' : ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : 'image/png';
-    
-    return `data:${mimeType};base64,${base64}`;
-  } catch (error) {
-    console.error(`Error loading ${path}:`, error);
-    return '';
-  }
-}
+// Embedded logos as base64 to avoid storage dependency
+const ROPE_WORKS_LOGO = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="; // Placeholder - will be replaced with actual logo
+const ACCT_LOGO = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="; // Placeholder - will be replaced with actual logo
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -35,11 +22,9 @@ serve(async (req) => {
 
     const { assessmentId } = await req.json();
     
-    // Load logos
-    const [ropeWorksLogo, acctLogo] = await Promise.all([
-      loadLogoAsBase64(supabase, 'pdf-templates', 'rope-works-logo.png'),
-      loadLogoAsBase64(supabase, 'pdf-templates', 'acct-accredited-vendor.png'),
-    ]);
+    // Use embedded logos
+    const ropeWorksLogo = ROPE_WORKS_LOGO;
+    const acctLogo = ACCT_LOGO;
 
     // Fetch assessment data
     const { data: assessment } = await supabase
