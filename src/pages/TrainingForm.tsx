@@ -1,7 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
@@ -31,7 +30,6 @@ import { openHtmlReport } from "@/lib/html-report-viewer";
 export default function TrainingForm() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { toast } = useToast();
   const { isOnline } = useNetworkStatus();
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -192,7 +190,7 @@ export default function TrainingForm() {
     };
 
     loadTraining();
-  }, [id, toast, isOnline]);
+  }, [id, isOnline]);
 
   // Auto-save functionality
   const saveTraining = useCallback(async () => {
@@ -320,7 +318,7 @@ export default function TrainingForm() {
     } finally {
       setIsSaving(false);
     }
-  }, [training, id, deliveryApproaches, operatingSystems, immediateAttention, verifiableItems, systemsInPlace, summary, toast, isOnline]);
+  }, [training, id, deliveryApproaches, operatingSystems, immediateAttention, verifiableItems, systemsInPlace, summary, isOnline]);
 
   // Setup auto-save
   useEffect(() => {

@@ -16,7 +16,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { toast } from "sonner";
 import ropeWorksLogo from "@/assets/rope-works-logo.png";
 import InspectionHeader from "@/components/inspection/InspectionHeader";
 import OperatingSystemsTable from "@/components/inspection/OperatingSystemsTable";
@@ -556,7 +555,6 @@ export default function InspectionForm() {
       }
     } catch (error: any) {
       console.error("Error loading inspection:", error);
-      toast.error("Failed to load inspection");
     } finally {
       setLoading(false);
     }
@@ -612,12 +610,9 @@ export default function InspectionForm() {
         const errorMsg = `Validation warning: ${firstError}`;
         setSaveError(errorMsg);
         
-        // Only show toast for manual saves, not auto-saves
-        if (!silent) {
-          toast.warning("Validation warnings found", {
-            description: firstError + (description ? `. ${description}` : ''),
-            duration: 6000,
-          });
+        // Only log for manual saves, not auto-saves
+        if (!silent && import.meta.env.DEV) {
+          console.log('[InspectionForm] Validation warnings (saving anyway):', validation.errors.map(formatValidationError));
         }
         
         console.warn('[InspectionForm] Validation warnings (saving anyway):', validation.errors);
@@ -901,7 +896,9 @@ export default function InspectionForm() {
       await performSave(false); // Show warnings on manual save
       setLastSaved(new Date());
       setHasUnsavedChanges(false);
-      toast.success(isOnline ? "Progress saved" : "Saved offline - will sync when online");
+      if (import.meta.env.DEV) {
+        console.log('[InspectionForm] Progress saved:', isOnline ? 'online' : 'offline');
+      }
       // Trigger sync after successful save
       if (isOnline) {
         await triggerSync();
@@ -910,7 +907,6 @@ export default function InspectionForm() {
       console.error("Save error:", error);
       const errorMsg = error.message || "Failed to save progress";
       setSaveError(errorMsg);
-      toast.error(errorMsg);
     } finally {
       setSaving(false);
     }
@@ -939,22 +935,11 @@ export default function InspectionForm() {
       // Show first error with field context
       const firstError = formatValidationError(validation.errors[0]);
       const totalErrors = validation.errors.length;
-      const additionalCount = totalErrors - 1;
       
-      toast.error("Cannot complete inspection", {
-        description: firstError + (additionalCount > 0 ? `. ${additionalCount} more field${additionalCount > 1 ? 's' : ''} required` : ''),
-        duration: 8000,
-        action: totalErrors > 1 ? {
-          label: `View all ${totalErrors} errors`,
-          onClick: () => {
-            console.table(validation.errors.map(formatValidationError));
-            toast.info("Check console for full error list");
-          }
-        } : undefined
-      });
-      
-      console.error('[InspectionForm] Completion validation errors:', 
-        validation.errors.map(formatValidationError));
+      if (import.meta.env.DEV) {
+        console.error('[InspectionForm] Cannot complete - validation errors:', 
+          validation.errors.map(formatValidationError));
+      }
       return;
     }
     
@@ -971,10 +956,9 @@ export default function InspectionForm() {
         // Update local state to reflect completion
         setInspection({ ...inspection, status: "completed" });
         
-        toast.success("Inspection completed!", {
-          description: "You can now generate the PDF report or return to the dashboard.",
-          duration: 5000
-        });
+        if (import.meta.env.DEV) {
+          console.log('[InspectionForm] Inspection completed online');
+        }
       } else {
         // Save completion offline
         const updatedInspection = { ...inspection, status: "completed" };
@@ -984,14 +968,13 @@ export default function InspectionForm() {
         // Update local state to reflect completion
         setInspection(updatedInspection);
         
-        toast.success("Inspection completed offline - will sync when online", {
-          description: "You can now generate the PDF report or return to the dashboard.",
-          duration: 5000
-        });
+        if (import.meta.env.DEV) {
+          console.log('[InspectionForm] Inspection completed offline');
+        }
       }
       // Stay on the inspection page - don't navigate away
     } catch (error: any) {
-      toast.error("Failed to complete inspection");
+      console.error('[InspectionForm] Failed to complete inspection:', error);
     }
   };
 
@@ -1008,7 +991,6 @@ export default function InspectionForm() {
     // Validation checks
     if (!id) {
       console.error('[PDF Generation] FAILED: No inspection ID provided');
-      toast.error('Cannot generate PDF: No inspection ID');
       return;
     }
     
@@ -1016,9 +998,6 @@ export default function InspectionForm() {
       console.error('[PDF Generation] FAILED: Inspection not completed', {
         currentStatus: inspection?.status,
         requiredStatus: 'completed'
-      });
-      toast.error('Inspection must be completed before generating PDF', {
-        description: `Current status: ${inspection?.status || 'unknown'}`
       });
       return;
     }
@@ -1177,12 +1156,7 @@ export default function InspectionForm() {
         console.log('[PDF Generation] Blob URL cleaned up');
       }, 1000);
       
-      toast.success('PDF downloaded successfully!', {
-        description: 'Your inspection report has been saved.',
-        duration: 5000,
-      });
-      
-      console.log('[PDF Generation] ✅ SUCCESS - PDF preview ready');
+      console.log('[PDF Generation] ✅ SUCCESS - PDF downloaded');
 
     } catch (error: any) {
       console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
@@ -1193,83 +1167,11 @@ export default function InspectionForm() {
       console.error('[PDF Generation] Stack trace:', error.stack);
       console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
       
-      // Parse error message to determine type
-      const errorMessage = error.message || '';
-      
-      // User-friendly error toasts with actionable next steps
-      if (errorMessage.startsWith('NETWORK_ERROR')) {
-        toast.error('Network Connection Issue', {
-          description: 'Unable to reach the PDF generation service. Check your internet connection and try again.',
-          duration: 7000,
-          action: {
-            label: 'Retry',
-            onClick: () => handleGeneratePDF()
-          }
-        });
-      } else if (errorMessage.startsWith('AUTH_ERROR')) {
-        toast.error('Authentication Required', {
-          description: 'Your session may have expired. Please log out and log in again.',
-          duration: 7000,
-          action: {
-            label: 'Log Out',
-            onClick: async () => {
-              console.log('[PDF Generation] User triggered logout after auth error');
-              await supabase.auth.signOut();
-              navigate('/');
-            }
-          }
-        });
-      } else if (errorMessage.startsWith('SERVER_ERROR')) {
-        toast.error('Server Error', {
-          description: 'The PDF generation service is experiencing issues. Please try again in a few moments.',
-          duration: 7000,
-          action: {
-            label: 'Retry',
-            onClick: () => handleGeneratePDF()
-          }
-        });
-      } else if (errorMessage.startsWith('NOT_FOUND')) {
-        toast.error('Inspection Not Found', {
-          description: 'The inspection data could not be found. Try refreshing the page.',
-          duration: 7000,
-          action: {
-            label: 'Refresh',
-            onClick: () => window.location.reload()
-          }
-        });
-      } else if (errorMessage.startsWith('DECODE_ERROR')) {
-        toast.error('PDF Decode Error', {
-          description: 'Failed to process the PDF file. The data may be corrupted. Please try regenerating.',
-          duration: 7000
-        });
-      } else if (errorMessage.startsWith('STORAGE_ERROR') || errorMessage.startsWith('FETCH_ERROR')) {
-        toast.error('Download Failed', {
-          description: 'Failed to download the PDF file. Please check your connection and try again.',
-          duration: 7000,
-          action: {
-            label: 'Retry',
-            onClick: () => handleGeneratePDF()
-          }
-        });
-      } else if (errorMessage.startsWith('EMPTY_FILE')) {
-        toast.error('Empty PDF File', {
-          description: 'The generated PDF is empty. Please try regenerating the report.',
-          duration: 7000
-        });
-      } else if (errorMessage.startsWith('FORMAT_ERROR')) {
-        toast.error('Invalid Response Format', {
-          description: 'Received unexpected response from PDF service. Please contact support if this persists.',
-          duration: 7000
-        });
-      } else {
-        // Generic fallback error
-        toast.error('PDF Generation Failed', {
-          description: errorMessage || 'An unexpected error occurred. Please try again.',
-          duration: 7000,
-          action: {
-            label: 'Retry',
-            onClick: () => handleGeneratePDF()
-          }
+      // Log detailed error information for debugging
+      if (import.meta.env.DEV) {
+        console.error('[PDF Generation] Detailed error:', {
+          message: error.message,
+          type: error.constructor.name
         });
       }
     } finally {
@@ -1281,14 +1183,12 @@ export default function InspectionForm() {
 
   const handleGenerateHTML = async () => {
     if (!id) {
-      toast.error('Cannot generate HTML: No inspection ID');
+      console.error('[HTML Generation] No inspection ID provided');
       return;
     }
     
     if (inspection?.status !== 'completed') {
-      toast.error('Inspection must be completed before generating HTML', {
-        description: `Current status: ${inspection?.status || 'unknown'}`
-      });
+      console.error('[HTML Generation] Inspection not completed:', inspection?.status);
       return;
     }
 
@@ -1321,14 +1221,11 @@ export default function InspectionForm() {
       if (!opened) {
         setReportHtml(html);
         setHtmlViewerOpen(true);
-      } else {
-        toast.success('HTML report generated successfully');
+      } else if (import.meta.env.DEV) {
+        console.log('[HTML Generation] Report opened successfully');
       }
     } catch (error: any) {
       console.error('HTML generation error:', error);
-      toast.error('Failed to generate HTML report', {
-        description: error.message || 'An unexpected error occurred'
-      });
     } finally {
       setGeneratingHtml(false);
     }

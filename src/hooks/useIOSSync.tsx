@@ -2,7 +2,6 @@ import { useEffect, useCallback } from 'react';
 import { syncAllInspectionsAtomic } from '@/lib/atomic-sync-manager';
 import { syncPhotos } from '@/lib/sync-manager';
 import { isIOS } from '@/lib/mobile-detection';
-import { toast } from 'sonner';
 
 /**
  * Custom hook for iOS-specific sync behavior
@@ -29,9 +28,6 @@ export const useIOSSync = () => {
       }
     } catch (error) {
       console.error('[iOS Sync] Failed:', error);
-      if (!silent) {
-        toast.error('Sync failed. Will retry automatically.');
-      }
     }
   }, []);
 
@@ -88,7 +84,6 @@ export const useIOSSync = () => {
         console.log('[iOS Sync] Device came online, syncing...');
       }
       performSync(false); // Not silent - show user feedback
-      toast.success('Back online - syncing data...');
     };
 
     document.addEventListener('visibilitychange', handleVisibilityChange);

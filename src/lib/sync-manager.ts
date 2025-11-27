@@ -14,7 +14,6 @@ import {
   removeQueuedAssessmentOperation,
   incrementAssessmentOperationRetry
 } from "./offline-storage";
-import { toast } from "sonner";
 
 const MAX_RETRIES = 3;
 const RETRY_DELAY = 1000; // Start with 1 second
@@ -179,16 +178,11 @@ export async function syncInspections() {
       }
     }
 
-    if (unsynced.length > 0) {
-      toast.success(`Synced ${unsynced.length} inspection(s)`);
-      
-      if (import.meta.env.DEV) {
-        console.log('[Sync Manager] Sync completed successfully');
-      }
+    if (import.meta.env.DEV) {
+      console.log('[Sync Manager] Sync completed successfully:', unsynced.length, 'inspections');
     }
   } catch (error) {
     console.error('[Sync Manager] Sync error:', error);
-    toast.error("Failed to sync inspections");
   }
 }
 
@@ -258,16 +252,11 @@ export async function syncPhotos() {
       }
     }
 
-    if (successCount > 0) {
-      toast.success(`Uploaded ${successCount} photo(s)`);
-      
-      if (import.meta.env.DEV) {
-        console.log('[Sync Manager] Photo sync completed:', successCount);
-      }
+    if (import.meta.env.DEV) {
+      console.log('[Sync Manager] Photo sync completed:', successCount, 'photos');
     }
   } catch (error) {
     console.error('[Sync Manager] Photo sync error:', error);
-    toast.error("Failed to sync photos");
   }
 }
 

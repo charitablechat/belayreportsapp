@@ -1,15 +1,10 @@
 import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { useToast } from "@/hooks/use-toast";
-import { saveTrainingOffline, queueTrainingOperation } from "@/lib/offline-storage";
-import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { Loader2 } from "lucide-react";
 
 export default function NewTraining() {
   const navigate = useNavigate();
-  const { toast } = useToast();
-  const { isOnline } = useNetworkStatus();
 
   useEffect(() => {
     const createNewTraining = async () => {
@@ -47,7 +42,7 @@ export default function NewTraining() {
     };
 
     createNewTraining();
-  }, [navigate, toast]);
+  }, [navigate]);
 
   return (
     <div className="flex items-center justify-center min-h-screen">

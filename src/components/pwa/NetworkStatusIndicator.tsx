@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
 import { Cloud, CloudOff, Wifi, WifiOff } from 'lucide-react';
-import { toast } from 'sonner';
 import { usePWA } from '@/hooks/usePWA';
 import { Badge } from '@/components/ui/badge';
 
@@ -26,7 +25,7 @@ export const NetworkStatusIndicator = () => {
       return;
     }
 
-    // Only show toast when there's an actual transition between online/offline
+    // Only log when there's an actual transition between online/offline
     if (previousOnlineStatus.current !== isOnline) {
       if (isOnline) {
         // Clear any pending offline notification
@@ -34,21 +33,16 @@ export const NetworkStatusIndicator = () => {
           clearTimeout(offlineTimerRef.current);
           offlineTimerRef.current = undefined;
         }
-        toast.dismiss('offline-notification');
-        toast.success('Connection restored', {
-          description: 'You are back online',
-          icon: <Cloud className="w-4 h-4" />,
-        });
+        if (import.meta.env.DEV) {
+          console.log('[Network Status] Connection restored');
+        }
         previousOnlineStatus.current = isOnline;
       } else {
-        // Add grace period before showing offline warning
+        // Add grace period before logging offline status
         offlineTimerRef.current = setTimeout(() => {
-          toast.error('You are offline', {
-            description: 'Data will sync when connection is restored',
-            icon: <CloudOff className="w-4 h-4" />,
-            duration: Infinity,
-            id: 'offline-notification',
-          });
+          if (import.meta.env.DEV) {
+            console.log('[Network Status] Offline - data will sync when connection is restored');
+          }
         }, 2000);
         previousOnlineStatus.current = isOnline;
       }
