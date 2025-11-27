@@ -1,6 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { useToast } from "@/hooks/use-toast";
 
 export interface FormField {
   id: string;
@@ -37,7 +36,6 @@ export interface FormSection {
 }
 
 export const useFormConfiguration = (languageCode: string = 'en', formType: 'inspection' | 'daily_assessment' | 'training' = 'inspection') => {
-  const { toast } = useToast();
   const queryClient = useQueryClient();
 
   const { data: formConfig, isLoading, error } = useQuery({
@@ -140,7 +138,6 @@ export const useFormConfiguration = (languageCode: string = 'en', formType: 'ins
 };
 
 export const useFormManagement = () => {
-  const { toast } = useToast();
   const queryClient = useQueryClient();
 
   const updateField = useMutation({

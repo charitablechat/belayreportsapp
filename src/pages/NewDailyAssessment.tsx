@@ -1,12 +1,10 @@
 import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
 
 export default function NewDailyAssessment() {
   const navigate = useNavigate();
-  const { toast } = useToast();
 
   useEffect(() => {
     const createNewAssessment = async () => {
@@ -64,7 +62,7 @@ export default function NewDailyAssessment() {
     };
 
     createNewAssessment();
-  }, [navigate, toast]);
+  }, [navigate]);
 
   return (
     <div className="flex items-center justify-center min-h-screen">

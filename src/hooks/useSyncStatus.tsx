@@ -3,7 +3,6 @@ import { getUnsyncedInspections } from '@/lib/offline-storage';
 import { syncAllInspectionsAtomic } from '@/lib/atomic-sync-manager';
 import { useNetworkStatus } from './useNetworkStatus';
 import { supabase } from '@/integrations/supabase/client';
-import { toast } from 'sonner';
 
 export interface SyncStatus {
   unsyncedCount: number;
@@ -50,12 +49,12 @@ export const useSyncStatus = () => {
 
   const triggerSync = useCallback(async () => {
     if (!isOnline) {
-      toast.error("Cannot sync while offline");
+      console.log('[Sync Status] Cannot sync while offline');
       return;
     }
     
     if (syncStatus.isSyncing) {
-      toast.info("Sync already in progress");
+      console.log('[Sync Status] Sync already in progress');
       return;
     }
 
@@ -84,8 +83,6 @@ export const useSyncStatus = () => {
         isSyncing: false,
         syncError: error.message || 'Sync failed',
       }));
-      
-      toast.error("Sync failed: " + error.message);
 
       if (import.meta.env.DEV) {
         console.error('[Sync Status] Sync failed:', error);

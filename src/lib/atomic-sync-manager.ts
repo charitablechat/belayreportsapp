@@ -12,7 +12,6 @@ import {
   executeTransaction,
   TransactionStep 
 } from "./transaction-manager";
-import { toast } from "sonner";
 import { syncProgressEmitter } from "@/hooks/useSyncProgress";
 import { getMobileCapabilities } from "./mobile-detection";
 
@@ -71,7 +70,6 @@ export async function syncInspectionAtomic(inspectionId: string) {
     
     if (!validation.success) {
       console.error('[Atomic Sync] Validation failed:', validation.errors);
-      toast.error(`Validation failed: ${validation.errors[0].message}`);
       throw new Error(`Validation failed: ${JSON.stringify(validation.errors)}`);
     }
     
@@ -309,14 +307,14 @@ export async function syncAllInspectionsAtomic() {
     errors,
   });
   
-  // Show results
-  if (successCount > 0) {
-    toast.success(`Synced ${successCount} inspection(s) successfully`);
-  }
-  
-  if (failCount > 0) {
-    toast.error(`Failed to sync ${failCount} inspection(s)`);
-    if (import.meta.env.DEV) {
+  // Log results
+  if (import.meta.env.DEV) {
+    console.log('[Atomic Sync] Results:', {
+      total: unsynced.length,
+      success: successCount,
+      failed: failCount,
+    });
+    if (failCount > 0) {
       console.error('[Atomic Sync] Errors:', errors);
     }
   }
