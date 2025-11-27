@@ -2,6 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { FormSection } from "@/hooks/useFormConfiguration";
+import { triggerHaptic } from "@/lib/haptics";
 
 interface OperatingSystemsSectionProps {
   section: FormSection;
@@ -11,6 +12,7 @@ interface OperatingSystemsSectionProps {
 
 export default function OperatingSystemsSection({ section, systems, onUpdate }: OperatingSystemsSectionProps) {
   const handleToggle = (systemName: string) => {
+    triggerHaptic('light');
     const exists = systems.some(s => s.system_name === systemName);
     
     if (exists) {

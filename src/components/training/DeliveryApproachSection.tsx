@@ -1,6 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
+import { triggerHaptic } from "@/lib/haptics";
 
 interface DeliveryApproachSectionProps {
   approaches: any[];
@@ -15,6 +16,7 @@ const DELIVERY_APPROACHES = [
 
 export default function DeliveryApproachSection({ approaches, onUpdate }: DeliveryApproachSectionProps) {
   const handleToggle = (approach: string, checked: boolean) => {
+    triggerHaptic('light');
     if (checked) {
       onUpdate([...approaches, {
         id: crypto.randomUUID(),

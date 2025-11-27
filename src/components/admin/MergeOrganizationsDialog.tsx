@@ -15,6 +15,7 @@ import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { AlertCircle, CheckCircle2, Merge } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { triggerHaptic } from "@/lib/haptics";
 
 interface DuplicateGroup {
   group_key: string;
@@ -188,7 +189,10 @@ export function MergeOrganizationsDialog({
 
                 <div className="space-y-2">
                   <Label>Select Primary Organization</Label>
-                  <RadioGroup value={targetOrgId} onValueChange={setTargetOrgId}>
+                  <RadioGroup value={targetOrgId} onValueChange={(val) => {
+                    triggerHaptic('light');
+                    setTargetOrgId(val);
+                  }}>
                     {selectedGroup.org_ids.map((orgId, idx) => (
                       <div key={orgId} className="flex items-center space-x-2 border rounded p-3">
                         <RadioGroupItem value={orgId} id={orgId} />
