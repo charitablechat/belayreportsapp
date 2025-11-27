@@ -13,7 +13,6 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { toast } from "sonner";
 import { AlertCircle, CheckCircle2, Merge } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
@@ -77,9 +76,6 @@ export function MergeOrganizationsDialog({
       return data as unknown as MergeResult;
     },
     onSuccess: (result) => {
-      toast.success("Organizations merged successfully", {
-        description: `Updated ${result.inspections_updated} inspections and ${result.members_updated} members`,
-      });
       queryClient.invalidateQueries({ queryKey: ["duplicate-organizations"] });
       queryClient.invalidateQueries({ queryKey: ["organizations"] });
       setSelectedGroup(null);
@@ -87,9 +83,7 @@ export function MergeOrganizationsDialog({
       setNewName("");
     },
     onError: (error: Error) => {
-      toast.error("Failed to merge organizations", {
-        description: error.message,
-      });
+      console.error("Failed to merge organizations:", error);
     },
   });
 

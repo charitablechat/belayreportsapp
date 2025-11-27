@@ -7,7 +7,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { toast } from "sonner";
 import { Eye, EyeOff, WifiOff, ArrowRight } from "lucide-react";
 import { usePWA } from "@/hooks/usePWA";
 import ropeWorksLogo from "@/assets/rope-works-logo.png";
@@ -32,12 +31,10 @@ export default function Auth() {
     e.preventDefault();
     
     if (!email || !password) {
-      toast.error("Please enter both email and password");
       return;
     }
 
     if (password.length < 6) {
-      toast.error("Password must be at least 6 characters");
       return;
     }
 
@@ -54,7 +51,6 @@ export default function Auth() {
         });
 
         if (error) throw error;
-        toast.success("Account created! You can now log in.");
         setIsSignUp(false);
       } else {
         const { error } = await supabase.auth.signInWithPassword({
@@ -63,10 +59,9 @@ export default function Auth() {
         });
 
         if (error) throw error;
-        toast.success("Logged in successfully!");
       }
     } catch (error: any) {
-      toast.error(error.message || "Authentication failed");
+      console.error("Authentication error:", error);
     } finally {
       setLoading(false);
     }
@@ -76,7 +71,6 @@ export default function Auth() {
     e.preventDefault();
     
     if (!email) {
-      toast.error("Please enter your email");
       return;
     }
 
@@ -88,10 +82,9 @@ export default function Auth() {
       });
 
       if (error) throw error;
-      toast.success("Password reset email sent! Check your inbox.");
       setIsForgotPassword(false);
     } catch (error: any) {
-      toast.error(error.message || "Failed to send reset email");
+      console.error("Password reset error:", error);
     } finally {
       setLoading(false);
     }

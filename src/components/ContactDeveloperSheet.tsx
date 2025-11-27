@@ -6,7 +6,6 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { usePWA } from "@/hooks/usePWA";
 
@@ -36,13 +35,11 @@ export function ContactDeveloperSheet({ open, onOpenChange }: ContactDeveloperSh
 
     // Validate file type
     if (!file.type.startsWith("image/")) {
-      toast.error("Please select an image file");
       return;
     }
 
     // Validate file size (5MB max)
     if (file.size > 5 * 1024 * 1024) {
-      toast.error("Image size must be less than 5MB");
       return;
     }
 
@@ -63,17 +60,14 @@ export function ContactDeveloperSheet({ open, onOpenChange }: ContactDeveloperSh
     e.preventDefault();
 
     if (!form.subject || !form.message) {
-      toast.error("Please fill in all fields");
       return;
     }
 
     if (form.message.length > 1000) {
-      toast.error("Message is too long (max 1000 characters)");
       return;
     }
 
     if (!isOnline) {
-      toast.error("Please connect to the internet to send a message");
       return;
     }
 
@@ -114,25 +108,11 @@ export function ContactDeveloperSheet({ open, onOpenChange }: ContactDeveloperSh
 
       if (error) throw error;
 
-      toast.success("Message sent successfully!");
       setForm({ subject: "", message: "" });
       clearImage();
       onOpenChange(false);
     } catch (error: any) {
       console.error("Error sending message:", error);
-      
-      // Provide user-friendly error messages based on error type
-      let errorMessage = "Failed to send message. Please try again.";
-      
-      if (error.message?.includes("403") || error.message?.includes("validation_error")) {
-        errorMessage = "Email service is temporarily unavailable. Please try again later.";
-      } else if (error.message?.includes("network") || error.message?.includes("fetch")) {
-        errorMessage = "Network error. Please check your connection and try again.";
-      } else if (error.message?.includes("storage")) {
-        errorMessage = "Failed to upload image. Please try a smaller image.";
-      }
-      
-      toast.error(errorMessage);
     } finally {
       setLoading(false);
     }

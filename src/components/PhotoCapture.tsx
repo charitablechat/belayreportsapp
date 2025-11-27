@@ -2,7 +2,6 @@ import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Camera, Upload, CloudOff } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { toast } from "sonner";
 import { savePhotoOffline } from "@/lib/offline-storage";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 
@@ -67,14 +66,9 @@ export default function PhotoCapture({ inspectionId, section, onPhotoAdded }: Ph
         }
       }
 
-      toast.success(isOnline 
-        ? "Photo(s) uploaded successfully" 
-        : "Photo(s) saved offline - will upload when online"
-      );
       onPhotoAdded();
     } catch (error: any) {
       console.error("Photo capture error:", error);
-      toast.error(error.message || "Failed to save photo");
     } finally {
       setUploading(false);
       if (fileInputRef.current) {

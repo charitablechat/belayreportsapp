@@ -9,7 +9,6 @@ import {
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
 import { usePWA } from '@/hooks/usePWA';
-import { toast } from 'sonner';
 import { isMobile } from '@/lib/mobile-detection';
 import { triggerHaptic } from '@/lib/haptics';
 
@@ -36,17 +35,11 @@ export const ManualUpdateButton = () => {
         
         // Wait a bit to see if an update was found
         setTimeout(() => {
-          if (!needsUpdate) {
-            toast.success('App is up to date', {
-              description: 'You\'re running the latest version',
-            });
-          }
           setChecking(false);
         }, 1000);
       }
     } catch (error) {
       console.error('[Manual Update] Error checking for updates:', error);
-      toast.error('Failed to check for updates');
       setChecking(false);
     }
   };
@@ -55,8 +48,6 @@ export const ManualUpdateButton = () => {
     triggerHaptic('warning'); // Warning haptic for cache clearing
     
     try {
-      toast.loading('Clearing cache and refreshing...', { id: 'force-refresh' });
-      
       // Unregister all service workers
       if ('serviceWorker' in navigator) {
         const registrations = await navigator.serviceWorker.getRegistrations();
@@ -75,19 +66,12 @@ export const ManualUpdateButton = () => {
         // For now, we'll skip this to preserve user data
       }
       
-      toast.dismiss('force-refresh');
-      toast.success('Cache cleared! Reloading...', {
-        description: 'The app will reload with a fresh version',
-      });
-      
       // Reload the page after a brief delay
       setTimeout(() => {
         window.location.reload();
       }, 500);
     } catch (error) {
       console.error('[Force Refresh] Error:', error);
-      toast.dismiss('force-refresh');
-      toast.error('Failed to clear cache');
     }
   };
 

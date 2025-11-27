@@ -8,7 +8,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ArrowLeft, MapPin, CloudOff, Info, X, Loader2 } from "lucide-react";
-import { toast } from "sonner";
 import ropeWorksLogo from "@/assets/rope-works-logo.png";
 import { saveInspectionOffline, queueOperation } from "@/lib/offline-storage";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
@@ -42,13 +41,12 @@ export default function NewInspection() {
         latitude: position.latitude,
         longitude: position.longitude,
       }));
-      toast.success(`Location captured: ${position.address}`);
       
       if (import.meta.env.DEV) {
         console.log('[NewInspection] Location captured:', position);
       }
     } catch (error: any) {
-      toast.error("Failed to get location: " + error.message);
+      console.error("Failed to get location:", error);
     } finally {
       setLocationLoading(false);
     }
@@ -61,7 +59,6 @@ export default function NewInspection() {
       latitude: null,
       longitude: null,
     }));
-    toast.success("Location cleared");
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -72,7 +69,6 @@ export default function NewInspection() {
       // Get user from cache or online - works offline!
       const user = await getUserWithCache();
       if (!user) {
-        toast.error("Not authenticated. Please sign in again.");
         throw new Error("Not authenticated");
       }
 
@@ -117,7 +113,6 @@ export default function NewInspection() {
           synced_at: new Date().toISOString(),
         });
 
-        toast.success("Inspection created successfully");
         navigate(`/inspection/${data.id}`);
         
         if (import.meta.env.DEV) {
@@ -128,7 +123,6 @@ export default function NewInspection() {
         await saveInspectionOffline(newInspection);
         await queueOperation('create', tempId, newInspection);
 
-        toast.success("Inspection created offline - will sync when online");
         navigate(`/inspection/${tempId}`);
         
         if (import.meta.env.DEV) {
@@ -137,7 +131,6 @@ export default function NewInspection() {
       }
     } catch (error: any) {
       console.error("Error creating inspection:", error);
-      toast.error(error.message || "Failed to create inspection");
     } finally {
       setLoading(false);
     }
