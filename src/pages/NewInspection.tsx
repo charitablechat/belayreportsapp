@@ -14,6 +14,7 @@ import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { OrganizationAutocomplete } from "@/components/OrganizationAutocomplete";
 import { getCurrentLocationWithAddress } from "@/lib/geolocation";
 import { getUserWithCache, getCachedUser } from "@/lib/cached-auth";
+import { triggerHaptic } from "@/lib/haptics";
 
 export default function NewInspection() {
   const navigate = useNavigate();
@@ -32,6 +33,7 @@ export default function NewInspection() {
   });
 
   const handleLocationCapture = async () => {
+    triggerHaptic('light');
     setLocationLoading(true);
     try {
       const position = await getCurrentLocationWithAddress();
@@ -42,17 +44,21 @@ export default function NewInspection() {
         longitude: position.longitude,
       }));
       
+      triggerHaptic('success');
+      
       if (import.meta.env.DEV) {
         console.log('[NewInspection] Location captured:', position);
       }
     } catch (error: any) {
       console.error("Failed to get location:", error);
+      triggerHaptic('error');
     } finally {
       setLocationLoading(false);
     }
   };
 
   const handleClearLocation = () => {
+    triggerHaptic('light');
     setFormData(prev => ({
       ...prev,
       location: "",
@@ -63,6 +69,7 @@ export default function NewInspection() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    triggerHaptic('medium');
     setLoading(true);
 
     try {
@@ -129,8 +136,11 @@ export default function NewInspection() {
           console.log('[NewInspection] Created offline with temp ID:', tempId);
         }
       }
+      
+      triggerHaptic('success');
     } catch (error: any) {
       console.error("Error creating inspection:", error);
+      triggerHaptic('error');
     } finally {
       setLoading(false);
     }
