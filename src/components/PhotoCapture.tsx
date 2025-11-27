@@ -4,6 +4,7 @@ import { Camera, Upload, CloudOff } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { savePhotoOffline } from "@/lib/offline-storage";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
+import { triggerHaptic } from "@/lib/haptics";
 
 interface PhotoCaptureProps {
   inspectionId: string;
@@ -20,6 +21,7 @@ export default function PhotoCapture({ inspectionId, section, onPhotoAdded }: Ph
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
+    triggerHaptic('light');
     setUploading(true);
 
     try {
@@ -66,9 +68,11 @@ export default function PhotoCapture({ inspectionId, section, onPhotoAdded }: Ph
         }
       }
 
+      triggerHaptic('success');
       onPhotoAdded();
     } catch (error: any) {
       console.error("Photo capture error:", error);
+      triggerHaptic('error');
     } finally {
       setUploading(false);
       if (fileInputRef.current) {

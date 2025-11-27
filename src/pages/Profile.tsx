@@ -7,8 +7,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ArrowLeft, Camera, Loader2, User } from "lucide-react";
-import { toast } from "sonner";
 import ropeWorksLogo from "@/assets/rope-works-logo.png";
+import { triggerHaptic } from "@/lib/haptics";
 
 export default function Profile() {
   const navigate = useNavigate();
@@ -70,6 +70,8 @@ export default function Profile() {
     const file = e.target.files?.[0];
     if (!file || !user) return;
 
+    triggerHaptic('light');
+
     // Validate file size (5MB limit)
     if (file.size > 5 * 1024 * 1024) {
       return;
@@ -121,9 +123,11 @@ export default function Profile() {
 
       if (updateError) throw updateError;
 
+      triggerHaptic('success');
       setProfile({ ...profile, avatar_url: publicUrl });
     } catch (error: any) {
       console.error("Error uploading avatar:", error);
+      triggerHaptic('error');
     } finally {
       setUploading(false);
     }
@@ -134,6 +138,7 @@ export default function Profile() {
     
     if (!user) return;
 
+    triggerHaptic('medium');
     setSaving(true);
 
     try {
@@ -149,8 +154,10 @@ export default function Profile() {
         });
 
       if (profileError) throw profileError;
+      triggerHaptic('success');
     } catch (error: any) {
       console.error("Error updating profile:", error);
+      triggerHaptic('error');
     } finally {
       setSaving(false);
     }

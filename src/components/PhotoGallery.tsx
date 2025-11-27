@@ -6,7 +6,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { X, Cloud, CloudOff, Loader2 } from "lucide-react";
-import { toast } from "sonner";
+import { triggerHaptic } from "@/lib/haptics";
 
 interface PhotoGalleryProps {
   inspectionId: string;
@@ -109,6 +109,7 @@ export default function PhotoGallery({ inspectionId, section }: PhotoGalleryProp
   };
 
   const handleDelete = async (photo: Photo) => {
+    triggerHaptic('warning');
     try {
       if (isOnline && photo.uploaded) {
         // Delete from Supabase

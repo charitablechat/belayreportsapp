@@ -12,6 +12,7 @@ import { usePWA } from "@/hooks/usePWA";
 import ropeWorksLogo from "@/assets/rope-works-logo.png";
 import authBackgroundVideo from "@/assets/auth-background.mp4";
 import { hasCachedSession as checkCachedSession } from "@/lib/cached-auth";
+import { triggerHaptic } from "@/lib/haptics";
 
 export default function Auth() {
   const navigate = useNavigate();
@@ -38,6 +39,7 @@ export default function Auth() {
       return;
     }
 
+    triggerHaptic('medium');
     setLoading(true);
 
     try {
@@ -74,6 +76,7 @@ export default function Auth() {
       return;
     }
 
+    triggerHaptic('medium');
     setLoading(true);
 
     try {
@@ -169,7 +172,10 @@ export default function Auth() {
                   />
                   <button
                     type="button"
-                    onClick={() => setShowPassword(!showPassword)}
+                    onClick={() => {
+                      triggerHaptic('light');
+                      setShowPassword(!showPassword);
+                    }}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
                     aria-label={showPassword ? "Hide password" : "Show password"}
                   >
@@ -220,7 +226,10 @@ export default function Auth() {
                 type="button"
                 variant="ghost"
                 className="w-full"
-                onClick={() => setIsSignUp(!isSignUp)}
+                onClick={() => {
+                  triggerHaptic('light');
+                  setIsSignUp(!isSignUp);
+                }}
               >
                 {isSignUp ? "Already have an account? Sign in" : "Need an account? Sign up"}
               </Button>
