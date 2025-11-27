@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useFormConfiguration } from "@/hooks/useFormConfiguration";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Save, FileText, Loader2 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -17,6 +18,7 @@ export default function DailyAssessmentForm() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { formConfig, isLoading: isLoadingConfig } = useFormConfiguration('en', 'daily_assessment');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -301,13 +303,20 @@ export default function DailyAssessmentForm() {
     }
   };
 
-  if (loading) {
+  if (loading || isLoadingConfig) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <Loader2 className="h-8 w-8 animate-spin" />
       </div>
     );
   }
+
+  const beginningSection = formConfig?.find(s => s.section_key === 'beginning_of_day');
+  const endSection = formConfig?.find(s => s.section_key === 'end_of_day');
+  const systemsSection = formConfig?.find(s => s.section_key === 'operating_systems_daily');
+  const equipmentSection = formConfig?.find(s => s.section_key === 'equipment_checks');
+  const structureSection = formConfig?.find(s => s.section_key === 'structure_checks');
+  const environmentSection = formConfig?.find(s => s.section_key === 'environment_checks');
 
   return (
     <div className="container mx-auto px-4 py-8 max-w-5xl">
@@ -342,27 +351,63 @@ export default function DailyAssessmentForm() {
           </TabsList>
 
           <TabsContent value="beginning" className="space-y-4 mt-4">
-            <BeginningOfDaySection items={beginningOfDay} onUpdate={setBeginningOfDay} />
+            {beginningSection && (
+              <BeginningOfDaySection 
+                section={beginningSection}
+                items={beginningOfDay} 
+                onUpdate={setBeginningOfDay} 
+              />
+            )}
           </TabsContent>
 
           <TabsContent value="end" className="space-y-4 mt-4">
-            <EndOfDaySection items={endOfDay} onUpdate={setEndOfDay} />
+            {endSection && (
+              <EndOfDaySection 
+                section={endSection}
+                items={endOfDay} 
+                onUpdate={setEndOfDay} 
+              />
+            )}
           </TabsContent>
 
           <TabsContent value="systems" className="space-y-4 mt-4">
-            <OperatingSystemsSection systems={operatingSystems} onUpdate={setOperatingSystems} />
+            {systemsSection && (
+              <OperatingSystemsSection 
+                section={systemsSection}
+                systems={operatingSystems} 
+                onUpdate={setOperatingSystems} 
+              />
+            )}
           </TabsContent>
 
           <TabsContent value="equipment" className="space-y-4 mt-4">
-            <EquipmentChecksSection checks={equipmentChecks} onUpdate={setEquipmentChecks} />
+            {equipmentSection && (
+              <EquipmentChecksSection 
+                section={equipmentSection}
+                checks={equipmentChecks} 
+                onUpdate={setEquipmentChecks} 
+              />
+            )}
           </TabsContent>
 
           <TabsContent value="structure" className="space-y-4 mt-4">
-            <StructureChecksSection checks={structureChecks} onUpdate={setStructureChecks} />
+            {structureSection && (
+              <StructureChecksSection 
+                section={structureSection}
+                checks={structureChecks} 
+                onUpdate={setStructureChecks} 
+              />
+            )}
           </TabsContent>
 
           <TabsContent value="environment" className="space-y-4 mt-4">
-            <EnvironmentChecksSection checks={environmentChecks} onUpdate={setEnvironmentChecks} />
+            {environmentSection && (
+              <EnvironmentChecksSection 
+                section={environmentSection}
+                checks={environmentChecks} 
+                onUpdate={setEnvironmentChecks} 
+              />
+            )}
           </TabsContent>
         </Tabs>
       </div>

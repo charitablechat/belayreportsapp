@@ -2,21 +2,15 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { VoiceTextarea } from "@/components/ui/voice-textarea";
-
-const ENVIRONMENT_ITEMS = [
-  { key: 'weather_conditions', label: 'Weather conditions' },
-  { key: 'ground_conditions', label: 'Ground conditions' },
-  { key: 'vegetation', label: 'Vegetation/Growth' },
-  { key: 'wildlife', label: 'Wildlife concerns' },
-  { key: 'participant_area', label: 'Participant area clear' },
-];
+import { FormSection } from "@/hooks/useFormConfiguration";
 
 interface EnvironmentChecksSectionProps {
+  section: FormSection;
   checks: any[];
   onUpdate: (checks: any[]) => void;
 }
 
-export default function EnvironmentChecksSection({ checks, onUpdate }: EnvironmentChecksSectionProps) {
+export default function EnvironmentChecksSection({ section, checks, onUpdate }: EnvironmentChecksSectionProps) {
   const handleToggle = (itemKey: string) => {
     const existingCheck = checks.find(c => c.item_key === itemKey);
     
@@ -45,30 +39,32 @@ export default function EnvironmentChecksSection({ checks, onUpdate }: Environme
     }
   };
 
+  const fields = section.fields || [];
+
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Pre-Use Environment Inspection</CardTitle>
+        <CardTitle>{section.label || 'Pre-Use Environment Inspection'}</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        {ENVIRONMENT_ITEMS.map((item) => {
-          const existingCheck = checks.find(c => c.item_key === item.key);
+        {fields.map((field) => {
+          const existingCheck = checks.find(c => c.item_key === field.field_key);
           return (
-            <div key={item.key} className="space-y-2 border-b pb-4 last:border-b-0">
+            <div key={field.field_key} className="space-y-2 border-b pb-4 last:border-b-0">
               <div className="flex items-center space-x-2">
                 <Checkbox
-                  id={item.key}
+                  id={field.field_key}
                   checked={existingCheck?.is_checked || false}
-                  onCheckedChange={() => handleToggle(item.key)}
+                  onCheckedChange={() => handleToggle(field.field_key)}
                 />
-                <Label htmlFor={item.key} className="text-sm font-normal cursor-pointer">
-                  {item.label}
+                <Label htmlFor={field.field_key} className="text-sm font-normal cursor-pointer">
+                  {field.label}
                 </Label>
               </div>
               <VoiceTextarea
-                placeholder="Comments (optional)"
+                placeholder={field.placeholder || "Comments (optional)"}
                 value={existingCheck?.comments || ''}
-                onChange={(e) => handleCommentChange(item.key, e.target.value)}
+                onChange={(e) => handleCommentChange(field.field_key, e.target.value)}
                 className="text-sm"
                 rows={2}
               />

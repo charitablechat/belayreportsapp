@@ -1,23 +1,15 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
-
-const OPERATING_SYSTEMS = [
-  'Spotted Spotting',
-  'Top Rope Belay',
-  'Dynamic Belay',
-  'Static Belay',
-  'Zip line',
-  'Swing',
-  'Other',
-];
+import { FormSection } from "@/hooks/useFormConfiguration";
 
 interface OperatingSystemsSectionProps {
+  section: FormSection;
   systems: any[];
   onUpdate: (systems: any[]) => void;
 }
 
-export default function OperatingSystemsSection({ systems, onUpdate }: OperatingSystemsSectionProps) {
+export default function OperatingSystemsSection({ section, systems, onUpdate }: OperatingSystemsSectionProps) {
   const handleToggle = (systemName: string) => {
     const exists = systems.some(s => s.system_name === systemName);
     
@@ -28,22 +20,24 @@ export default function OperatingSystemsSection({ systems, onUpdate }: Operating
     }
   };
 
+  const fields = section.fields || [];
+
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Operating Systems in Use Today</CardTitle>
+        <CardTitle>{section.label || 'Operating Systems in Use Today'}</CardTitle>
       </CardHeader>
       <CardContent>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {OPERATING_SYSTEMS.map((system) => (
-            <div key={system} className="flex items-center space-x-2">
+          {fields.map((field) => (
+            <div key={field.field_key} className="flex items-center space-x-2">
               <Checkbox
-                id={system}
-                checked={systems.some(s => s.system_name === system)}
-                onCheckedChange={() => handleToggle(system)}
+                id={field.field_key}
+                checked={systems.some(s => s.system_name === field.field_key)}
+                onCheckedChange={() => handleToggle(field.field_key)}
               />
-              <Label htmlFor={system} className="text-sm font-normal cursor-pointer">
-                {system}
+              <Label htmlFor={field.field_key} className="text-sm font-normal cursor-pointer">
+                {field.label}
               </Label>
             </div>
           ))}

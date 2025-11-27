@@ -2,22 +2,15 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { VoiceTextarea } from "@/components/ui/voice-textarea";
-
-const BEGINNING_OF_DAY_ITEMS = [
-  { key: 'first_aid_kit', label: 'First aid kit is accessible and equipped' },
-  { key: 'communication_protocol', label: 'Communication protocol is understood by all staff' },
-  { key: 'weather_plan', label: 'Weather plan has been reviewed for the day' },
-  { key: 'emergency_procedures', label: 'Emergency action procedures have been reviewed' },
-  { key: 'rescue_equipment', label: 'Rescue equipment is accessible and operational' },
-  { key: 'staff_briefing', label: 'Staff briefing completed including any concerns or changes' },
-];
+import { FormSection } from "@/hooks/useFormConfiguration";
 
 interface BeginningOfDaySectionProps {
+  section: FormSection;
   items: any[];
   onUpdate: (items: any[]) => void;
 }
 
-export default function BeginningOfDaySection({ items, onUpdate }: BeginningOfDaySectionProps) {
+export default function BeginningOfDaySection({ section, items, onUpdate }: BeginningOfDaySectionProps) {
   const handleToggle = (itemKey: string) => {
     const existingItem = items.find(i => i.item_key === itemKey);
     
@@ -46,30 +39,32 @@ export default function BeginningOfDaySection({ items, onUpdate }: BeginningOfDa
     }
   };
 
+  const fields = section.fields || [];
+
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Beginning of Day Checklist</CardTitle>
+        <CardTitle>{section.label || 'Beginning of Day Checklist'}</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        {BEGINNING_OF_DAY_ITEMS.map((item) => {
-          const existingItem = items.find(i => i.item_key === item.key);
+        {fields.map((field) => {
+          const existingItem = items.find(i => i.item_key === field.field_key);
           return (
-            <div key={item.key} className="space-y-2 border-b pb-4 last:border-b-0">
+            <div key={field.field_key} className="space-y-2 border-b pb-4 last:border-b-0">
               <div className="flex items-center space-x-2">
                 <Checkbox
-                  id={item.key}
+                  id={field.field_key}
                   checked={existingItem?.is_complete || false}
-                  onCheckedChange={() => handleToggle(item.key)}
+                  onCheckedChange={() => handleToggle(field.field_key)}
                 />
-                <Label htmlFor={item.key} className="text-sm font-normal cursor-pointer">
-                  {item.label}
+                <Label htmlFor={field.field_key} className="text-sm font-normal cursor-pointer">
+                  {field.label}
                 </Label>
               </div>
               <VoiceTextarea
-                placeholder="Comments (optional)"
+                placeholder={field.placeholder || "Comments (optional)"}
                 value={existingItem?.comments || ''}
-                onChange={(e) => handleCommentChange(item.key, e.target.value)}
+                onChange={(e) => handleCommentChange(field.field_key, e.target.value)}
                 className="text-sm"
                 rows={2}
               />
