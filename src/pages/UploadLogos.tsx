@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
-import { toast } from 'sonner';
 import ropeWorksLogo from '@/assets/rope-works-logo-final.png';
 import acctLogo from '@/assets/acct-logo-final.png';
 
@@ -38,10 +37,8 @@ const UploadLogos = () => {
 
       if (acctError) throw acctError;
 
-      toast.success('Logos uploaded successfully!');
     } catch (error) {
       console.error('Error uploading logos:', error);
-      toast.error('Failed to upload logos');
     } finally {
       setUploading(false);
     }

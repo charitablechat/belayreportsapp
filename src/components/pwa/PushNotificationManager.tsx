@@ -6,7 +6,6 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { supabase } from '@/integrations/supabase/client';
-import { toast } from 'sonner';
 
 export const PushNotificationManager = () => {
   const { isSupported, isSubscribed, isLoading, permission, subscribe, unsubscribe } = usePushNotifications();
@@ -66,10 +65,8 @@ export const PushNotificationManager = () => {
 
       if (error) throw error;
 
-      toast.success('Notification preferences updated');
     } catch (error) {
       console.error('Error updating notification preferences:', error);
-      toast.error('Failed to update preferences');
       // Revert the change
       loadPreferences();
     }
