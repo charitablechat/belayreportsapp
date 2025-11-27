@@ -1348,6 +1348,7 @@ export default function InspectionForm() {
               </TooltipProvider>
               {inspection?.status === 'completed' && (
                 <>
+                  {/* PDF Button - Hidden but code preserved for future use
                   <TooltipProvider>
                     <Tooltip>
                       <TooltipTrigger asChild>
@@ -1377,6 +1378,7 @@ export default function InspectionForm() {
                       )}
                     </Tooltip>
                   </TooltipProvider>
+                  */}
                   <TooltipProvider>
                     <Tooltip>
                       <TooltipTrigger asChild>
@@ -1395,14 +1397,14 @@ export default function InspectionForm() {
                             ) : (
                               <>
                                 <FileText className="w-4 h-4" />
-                                <span className="hidden md:inline ml-2">Generate HTML</span>
+                                <span className="hidden md:inline ml-2">Generate Report</span>
                               </>
                             )}
                           </Button>
                         </span>
                       </TooltipTrigger>
                       {!isOnline && (
-                        <TooltipContent>Must be online to generate HTML</TooltipContent>
+                        <TooltipContent>Must be online to generate report</TooltipContent>
                       )}
                     </Tooltip>
                   </TooltipProvider>
