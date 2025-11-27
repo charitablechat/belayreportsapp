@@ -39,6 +39,8 @@ import { SyncStatusIndicator } from "@/components/pwa/SyncStatusIndicator";
 import { usePWA } from "@/hooks/usePWA";
 import { convertCircleBulletsToHtml } from "@/lib/bullet-converter";
 import { getUserWithCache } from "@/lib/cached-auth";
+import { HtmlReportViewer } from "@/components/HtmlReportViewer";
+import { openHtmlReport } from "@/lib/html-report-viewer";
 
 export default function InspectionForm() {
   const { id } = useParams();
@@ -57,6 +59,8 @@ export default function InspectionForm() {
   const [saveDebounceTimer, setSaveDebounceTimer] = useState<NodeJS.Timeout | null>(null);
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [userProfile, setUserProfile] = useState<any>(null);
+  const [htmlViewerOpen, setHtmlViewerOpen] = useState(false);
+  const [reportHtml, setReportHtml] = useState<string>('');
   const [inspection, setInspection] = useState<any>(null);
   const [systems, setSystems] = useState<any[]>([]);
   const [ziplines, setZiplines] = useState<any[]>([]);
@@ -1306,14 +1310,19 @@ export default function InspectionForm() {
         throw new Error('No HTML content received');
       }
 
-      // Create a new window with the HTML content
-      const newWindow = window.open('', '_blank');
-      if (newWindow) {
-        newWindow.document.write(data.html);
-        newWindow.document.close();
-        toast.success('HTML report generated successfully');
+      const html = data.html;
+      const filename = `inspection-report-${inspection?.organization || 'report'}-${new Date().toISOString().split('T')[0]}.html`;
+      const title = `Inspection Report - ${inspection?.organization || 'Report'}`;
+
+      // Try to open in new window (desktop)
+      const opened = openHtmlReport({ html, filename, title });
+
+      // If failed (mobile/PWA/popup blocked), use in-app viewer
+      if (!opened) {
+        setReportHtml(html);
+        setHtmlViewerOpen(true);
       } else {
-        toast.error('Please allow pop-ups to view the HTML report');
+        toast.success('HTML report generated successfully');
       }
     } catch (error: any) {
       console.error('HTML generation error:', error);
@@ -1671,6 +1680,14 @@ export default function InspectionForm() {
           </TabsContent>
         </Tabs>
       </main>
+
+      <HtmlReportViewer
+        html={reportHtml}
+        title={`Inspection Report - ${inspection?.organization || 'Report'}`}
+        filename={`inspection-report-${inspection?.organization || 'report'}-${new Date().toISOString().split('T')[0]}.html`}
+        isOpen={htmlViewerOpen}
+        onClose={() => setHtmlViewerOpen(false)}
+      />
     </div>
   );
 }
