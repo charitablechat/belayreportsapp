@@ -154,17 +154,9 @@ export const useFormManagement = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['form-configuration'] });
-      toast({
-        title: "Field updated",
-        description: "Form field has been updated successfully"
-      });
     },
     onError: (error) => {
-      toast({
-        title: "Error updating field",
-        description: error.message,
-        variant: "destructive"
-      });
+      console.error('Error updating field:', error);
     }
   });
 
@@ -198,17 +190,9 @@ export const useFormManagement = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['form-configuration'] });
-      toast({
-        title: "Translation updated",
-        description: "Translation has been updated successfully"
-      });
     },
     onError: (error) => {
-      toast({
-        title: "Error updating translation",
-        description: error.message,
-        variant: "destructive"
-      });
+      console.error('Error updating translation:', error);
     }
   });
 
@@ -242,17 +226,9 @@ export const useFormManagement = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['form-configuration'] });
-      toast({
-        title: "Option added",
-        description: "New option has been added successfully"
-      });
     },
     onError: (error) => {
-      toast({
-        title: "Error adding option",
-        description: error.message,
-        variant: "destructive"
-      });
+      console.error('Error adding option:', error);
     }
   });
 
@@ -267,17 +243,9 @@ export const useFormManagement = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['form-configuration'] });
-      toast({
-        title: "Option deleted",
-        description: "Option has been deleted successfully"
-      });
     },
     onError: (error) => {
-      toast({
-        title: "Error deleting option",
-        description: error.message,
-        variant: "destructive"
-      });
+      console.error('Error deleting option:', error);
     }
   });
 
@@ -296,17 +264,9 @@ export const useFormManagement = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['form-configuration'] });
-      toast({
-        title: "Sections reordered",
-        description: "Section order has been updated successfully"
-      });
     },
     onError: (error) => {
-      toast({
-        title: "Error reordering sections",
-        description: error.message,
-        variant: "destructive"
-      });
+      console.error('Error reordering sections:', error);
     }
   });
 
@@ -325,17 +285,9 @@ export const useFormManagement = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['form-configuration'] });
-      toast({
-        title: "Fields reordered",
-        description: "Field order has been updated successfully"
-      });
     },
     onError: (error) => {
-      toast({
-        title: "Error reordering fields",
-        description: error.message,
-        variant: "destructive"
-      });
+      console.error('Error reordering fields:', error);
     }
   });
 
@@ -354,17 +306,9 @@ export const useFormManagement = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['form-configuration'] });
-      toast({
-        title: "Options reordered",
-        description: "Option order has been updated successfully"
-      });
     },
     onError: (error) => {
-      toast({
-        title: "Error reordering options",
-        description: error.message,
-        variant: "destructive"
-      });
+      console.error('Error reordering options:', error);
     }
   });
 

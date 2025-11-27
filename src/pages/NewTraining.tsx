@@ -17,11 +17,6 @@ export default function NewTraining() {
         const { data: { user } } = await supabase.auth.getUser();
         
         if (!user) {
-          toast({
-            title: "Authentication required",
-            description: "Please sign in to create a training report",
-            variant: "destructive",
-          });
           navigate("/");
           return;
         }
@@ -47,11 +42,6 @@ export default function NewTraining() {
         navigate(`/training/${data.id}`);
       } catch (error) {
         console.error('Error creating training:', error);
-        toast({
-          title: "Error",
-          description: "Failed to create new training report",
-          variant: "destructive",
-        });
         navigate("/dashboard");
       }
     };

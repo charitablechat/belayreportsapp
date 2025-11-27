@@ -103,7 +103,6 @@ export default function PhotoGallery({ inspectionId, section }: PhotoGalleryProp
       }
     } catch (error) {
       console.error('[PhotoGallery] Failed to load photos:', error);
-      toast.error("Failed to load photos");
     } finally {
       setLoading(false);
     }
@@ -123,10 +122,8 @@ export default function PhotoGallery({ inspectionId, section }: PhotoGalleryProp
 
       // Always refresh to show updated list
       await loadPhotos();
-      toast.success("Photo deleted");
     } catch (error) {
       console.error('[PhotoGallery] Failed to delete photo:', error);
-      toast.error("Failed to delete photo");
     }
   };
 
