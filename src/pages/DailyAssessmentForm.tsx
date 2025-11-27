@@ -13,6 +13,8 @@ import OperatingSystemsSection from "@/components/daily-assessment/OperatingSyst
 import EquipmentChecksSection from "@/components/daily-assessment/EquipmentChecksSection";
 import StructureChecksSection from "@/components/daily-assessment/StructureChecksSection";
 import EnvironmentChecksSection from "@/components/daily-assessment/EnvironmentChecksSection";
+import { HtmlReportViewer } from "@/components/HtmlReportViewer";
+import { openHtmlReport } from "@/lib/html-report-viewer";
 
 export default function DailyAssessmentForm() {
   const { id } = useParams();
@@ -29,6 +31,8 @@ export default function DailyAssessmentForm() {
   const [equipmentChecks, setEquipmentChecks] = useState<any[]>([]);
   const [structureChecks, setStructureChecks] = useState<any[]>([]);
   const [environmentChecks, setEnvironmentChecks] = useState<any[]>([]);
+  const [viewerOpen, setViewerOpen] = useState(false);
+  const [reportHtml, setReportHtml] = useState<string>('');
 
   useEffect(() => {
     loadAssessment();
@@ -259,10 +263,18 @@ export default function DailyAssessmentForm() {
 
       if (error) throw error;
 
-      // Open HTML in new tab
-      const htmlBlob = new Blob([data.html], { type: 'text/html' });
-      const htmlUrl = URL.createObjectURL(htmlBlob);
-      window.open(htmlUrl, '_blank');
+      const html = data.html;
+      const filename = `daily-assessment-${assessment?.site || 'report'}-${new Date().toISOString().split('T')[0]}.html`;
+      const title = `Daily Assessment - ${assessment?.site || 'Report'}`;
+
+      // Try to open in new window (desktop)
+      const opened = openHtmlReport({ html, filename, title });
+
+      // If failed (mobile/PWA/popup blocked), use in-app viewer
+      if (!opened) {
+        setReportHtml(html);
+        setViewerOpen(true);
+      }
     } catch (error) {
       console.error('Error generating report:', error);
     } finally {
@@ -378,6 +390,14 @@ export default function DailyAssessmentForm() {
           </TabsContent>
         </Tabs>
       </div>
+
+      <HtmlReportViewer
+        html={reportHtml}
+        title={`Daily Assessment - ${assessment?.site || 'Report'}`}
+        filename={`daily-assessment-${assessment?.site || 'report'}-${new Date().toISOString().split('T')[0]}.html`}
+        isOpen={viewerOpen}
+        onClose={() => setViewerOpen(false)}
+      />
     </div>
   );
 }

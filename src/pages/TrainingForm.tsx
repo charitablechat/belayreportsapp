@@ -25,6 +25,8 @@ import {
   saveTrainingDataOffline,
   queueTrainingOperation 
 } from "@/lib/offline-storage";
+import { HtmlReportViewer } from "@/components/HtmlReportViewer";
+import { openHtmlReport } from "@/lib/html-report-viewer";
 
 export default function TrainingForm() {
   const { id } = useParams();
@@ -51,6 +53,8 @@ export default function TrainingForm() {
   const [systemsInPlace, setSystemsInPlace] = useState<any[]>([]);
   const [summary, setSummary] = useState<any>(null);
   const autoSaveTimer = useRef<NodeJS.Timeout | null>(null);
+  const [htmlViewerOpen, setHtmlViewerOpen] = useState(false);
+  const [reportHtml, setReportHtml] = useState<string>('');
 
   // Auto-populate person submitting and submission date
   useEffect(() => {
@@ -425,15 +429,18 @@ export default function TrainingForm() {
       
       if (error) throw error;
       
-      const blob = new Blob([data.html], { type: 'text/html' });
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `training-report-${training?.organization || 'report'}-${new Date().toISOString().split('T')[0]}.html`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
+      const html = data.html;
+      const filename = `training-report-${training?.organization || 'report'}-${new Date().toISOString().split('T')[0]}.html`;
+      const title = `Training Report - ${training?.organization || 'Report'}`;
+
+      // Try to open in new window (desktop)
+      const opened = openHtmlReport({ html, filename, title });
+
+      // If failed (mobile/PWA/popup blocked), use in-app viewer
+      if (!opened) {
+        setReportHtml(html);
+        setHtmlViewerOpen(true);
+      }
     } catch (error: any) {
       console.error('Error generating HTML:', error);
     } finally {
@@ -687,6 +694,14 @@ export default function TrainingForm() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <HtmlReportViewer
+        html={reportHtml}
+        title={`Training Report - ${training?.organization || 'Report'}`}
+        filename={`training-report-${training?.organization || 'report'}-${new Date().toISOString().split('T')[0]}.html`}
+        isOpen={htmlViewerOpen}
+        onClose={() => setHtmlViewerOpen(false)}
+      />
     </div>
   );
 }
