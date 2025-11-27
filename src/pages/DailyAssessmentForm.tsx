@@ -108,11 +108,6 @@ export default function DailyAssessmentForm() {
       }
     } catch (error) {
       console.error('Error loading assessment:', error);
-      toast({
-        title: "Error",
-        description: "Failed to load assessment",
-        variant: "destructive",
-      });
     } finally {
       setLoading(false);
     }
@@ -237,37 +232,19 @@ export default function DailyAssessmentForm() {
           // Update synced_at
           completedAssessment.synced_at = new Date().toISOString();
           await saveDailyAssessmentOffline(completedAssessment);
-
-          toast({
-            title: "Success",
-            description: "Assessment saved successfully",
-          });
         } catch (error) {
           console.error('Error syncing to database:', error);
           // Queue for sync
           await queueAssessmentOperation('update', id!, completedAssessment);
-          toast({
-            title: "Saved Offline",
-            description: "Assessment saved offline. Will sync when online.",
-          });
         }
       } else {
         // Queue for sync
         await queueAssessmentOperation('update', id!, completedAssessment);
-        toast({
-          title: "Saved Offline",
-          description: "Assessment saved offline. Will sync when online.",
-        });
       }
 
       navigate('/dashboard');
     } catch (error) {
       console.error('Error saving assessment:', error);
-      toast({
-        title: "Error",
-        description: "Failed to save assessment",
-        variant: "destructive",
-      });
     } finally {
       setSaving(false);
     }
@@ -286,18 +263,8 @@ export default function DailyAssessmentForm() {
       const htmlBlob = new Blob([data.html], { type: 'text/html' });
       const htmlUrl = URL.createObjectURL(htmlBlob);
       window.open(htmlUrl, '_blank');
-
-      toast({
-        title: "Success",
-        description: "Report generated successfully",
-      });
     } catch (error) {
       console.error('Error generating report:', error);
-      toast({
-        title: "Error",
-        description: "Failed to generate report",
-        variant: "destructive",
-      });
     } finally {
       setGenerating(false);
     }

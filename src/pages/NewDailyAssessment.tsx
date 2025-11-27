@@ -14,11 +14,6 @@ export default function NewDailyAssessment() {
         const { data: { user } } = await supabase.auth.getUser();
         
         if (!user) {
-          toast({
-            title: "Authentication required",
-            description: "Please sign in to create a daily assessment",
-            variant: "destructive",
-          });
           navigate("/");
           return;
         }
@@ -55,30 +50,15 @@ export default function NewDailyAssessment() {
             console.error('Error syncing to database:', error);
             // Queue for later sync
             await queueAssessmentOperation('create', assessmentId, newAssessment);
-            
-            toast({
-              title: "Working Offline",
-              description: "Assessment created offline. Will sync when online.",
-            });
           }
         } else {
           // Queue for later sync
           await queueAssessmentOperation('create', assessmentId, newAssessment);
-          
-          toast({
-            title: "Working Offline",
-            description: "Assessment created offline. Will sync when online.",
-          });
         }
 
         navigate(`/daily-assessment/${assessmentId}`);
       } catch (error) {
         console.error('Error creating daily assessment:', error);
-        toast({
-          title: "Error",
-          description: "Failed to create new daily assessment",
-          variant: "destructive",
-        });
         navigate("/dashboard");
       }
     };

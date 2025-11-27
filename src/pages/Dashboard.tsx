@@ -228,7 +228,6 @@ export default function Dashboard() {
       }
     } catch (error: any) {
       console.error("Error loading inspections:", error);
-      toast.error("Failed to load inspections");
     } finally {
       setLoading(false);
     }
@@ -257,7 +256,6 @@ export default function Dashboard() {
       }
     } catch (error: any) {
       console.error("Error loading training reports:", error);
-      toast.error("Failed to load training reports");
     }
   };
 
@@ -303,7 +301,6 @@ export default function Dashboard() {
       }
     } catch (error: any) {
       console.error("Error loading daily assessments:", error);
-      toast.error("Failed to load daily assessments");
     }
   };
 
@@ -311,10 +308,8 @@ export default function Dashboard() {
     setSigningOut(true);
     try {
       await supabase.auth.signOut();
-      toast.success("Signed out successfully");
     } catch (error) {
       console.error("Error signing out:", error);
-      toast.error("Failed to sign out");
       setSigningOut(false);
     }
   };
@@ -349,7 +344,6 @@ export default function Dashboard() {
           if (error) throw error;
           
           triggerHaptic('success');
-          toast.success("Inspection deleted successfully");
           
           if (import.meta.env.DEV) {
             console.log('[Dashboard] Inspection deleted:', inspectionToDelete.id);
@@ -358,7 +352,6 @@ export default function Dashboard() {
           // Queue for later deletion
           await queueOperation('delete', inspectionToDelete.id, inspectionToDelete);
           triggerHaptic('success');
-          toast.success("Inspection deleted offline - will sync when online");
           
           if (import.meta.env.DEV) {
             console.log('[Dashboard] Inspection deletion queued:', inspectionToDelete.id);
@@ -378,14 +371,12 @@ export default function Dashboard() {
           if (error) throw error;
           
           triggerHaptic('success');
-          toast.success("Training report deleted successfully");
           
           if (import.meta.env.DEV) {
             console.log('[Dashboard] Training deleted:', reportToDelete.id);
           }
         } else {
           triggerHaptic('error');
-          toast.error("Must be online to delete training reports");
           return;
         }
 
@@ -399,7 +390,6 @@ export default function Dashboard() {
     } catch (error: any) {
       console.error("Error deleting report:", error);
       triggerHaptic('error');
-      toast.error(`Failed to delete ${isInspection ? 'inspection' : 'training report'}`);
     }
   };
 

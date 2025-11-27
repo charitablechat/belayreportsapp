@@ -61,7 +61,6 @@ export default function Profile() {
       }
     } catch (error: any) {
       console.error("Error loading profile:", error);
-      toast.error("Failed to load profile");
     } finally {
       setLoading(false);
     }
@@ -73,14 +72,12 @@ export default function Profile() {
 
     // Validate file size (5MB limit)
     if (file.size > 5 * 1024 * 1024) {
-      toast.error("Image must be less than 5MB");
       return;
     }
 
     // Validate file type
     const validTypes = ["image/jpeg", "image/png", "image/webp", "image/gif"];
     if (!validTypes.includes(file.type)) {
-      toast.error("Please upload a valid image (JPEG, PNG, WebP, or GIF)");
       return;
     }
 
@@ -125,10 +122,8 @@ export default function Profile() {
       if (updateError) throw updateError;
 
       setProfile({ ...profile, avatar_url: publicUrl });
-      toast.success("Avatar updated successfully");
     } catch (error: any) {
       console.error("Error uploading avatar:", error);
-      toast.error("Failed to upload avatar");
     } finally {
       setUploading(false);
     }
@@ -154,11 +149,8 @@ export default function Profile() {
         });
 
       if (profileError) throw profileError;
-
-      toast.success("Profile updated successfully");
     } catch (error: any) {
       console.error("Error updating profile:", error);
-      toast.error("Failed to update profile");
     } finally {
       setSaving(false);
     }

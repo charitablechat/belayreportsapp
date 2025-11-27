@@ -319,12 +319,10 @@ export default function SuperAdminDashboard() {
       if (error) throw error;
       if (!data.success) throw new Error(data.error);
 
-      toast.success('User created successfully');
       refetchUsers();
       queryClient.invalidateQueries({ queryKey: ["admin-users"] });
     } catch (error: any) {
       console.error('Error creating user:', error);
-      toast.error(error.message || 'Failed to create user');
       throw error;
     }
   };
@@ -342,12 +340,10 @@ export default function SuperAdminDashboard() {
       if (error) throw error;
       if (!data.success) throw new Error(data.error);
 
-      toast.success('User updated successfully');
       refetchUsers();
       queryClient.invalidateQueries({ queryKey: ["admin-users"] });
     } catch (error: any) {
       console.error('Error updating user:', error);
-      toast.error(error.message || 'Failed to update user');
       throw error;
     }
   };
@@ -366,14 +362,12 @@ export default function SuperAdminDashboard() {
       if (error) throw error;
       if (!data.success) throw new Error(data.error);
 
-      toast.success('User deleted successfully');
       setDeleteDialogOpen(false);
       setUserToDelete(null);
       refetchUsers();
       queryClient.invalidateQueries({ queryKey: ["admin-users"] });
     } catch (error: any) {
       console.error('Error deleting user:', error);
-      toast.error(error.message || 'Failed to delete user');
     }
   };
 
@@ -397,20 +391,10 @@ export default function SuperAdminDashboard() {
       if (error) throw error;
       if (!data.success) throw new Error(data.error);
 
-      toast.success(
-        `Cleanup complete: ${data.updatedCount} summaries deduplicated`,
-        {
-          description: data.errorCount > 0 
-            ? `${data.errorCount} errors occurred. Check logs for details.`
-            : `Processed ${data.totalRecords} total records.`
-        }
-      );
-      
       console.log('Cleanup result:', data);
     } catch (error: any) {
       console.error('Error during cleanup:', error);
-      toast.error(error.message || 'Failed to cleanup duplicates');
-    } finally {
+    } finally{
       setIsCleaningUp(false);
     }
   };

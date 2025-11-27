@@ -63,7 +63,6 @@ export default function SystemTypeSelect({ value, onChange }: SystemTypeSelectPr
     const trimmed = inputValue.trim();
     
     if (!trimmed) {
-      toast.error("Option name cannot be empty");
       return;
     }
 
@@ -74,7 +73,6 @@ export default function SystemTypeSelect({ value, onChange }: SystemTypeSelectPr
     );
 
     if (isDuplicate) {
-      toast.error("This option already exists");
       return;
     }
 
@@ -86,12 +84,10 @@ export default function SystemTypeSelect({ value, onChange }: SystemTypeSelectPr
       if (value === editingOption) {
         onChange(trimmed);
       }
-      toast.success("Option updated");
     } else {
       // Add new
       saveCustomOptions([...customOptions, trimmed]);
       onChange(trimmed);
-      toast.success("Option added");
     }
 
     setDialogOpen(false);
@@ -103,7 +99,6 @@ export default function SystemTypeSelect({ value, onChange }: SystemTypeSelectPr
     if (editingOption) {
       const updated = customOptions.filter(opt => opt !== editingOption);
       saveCustomOptions(updated);
-      toast.success("Option deleted");
       setDialogOpen(false);
       setInputValue("");
       setEditingOption(null);

@@ -182,11 +182,6 @@ export default function TrainingForm() {
         }
       } catch (error) {
         console.error('Error loading training:', error);
-        toast({
-          title: "Error",
-          description: "Failed to load training report",
-          variant: "destructive",
-        });
       } finally {
         setIsLoading(false);
       }
@@ -318,11 +313,6 @@ export default function TrainingForm() {
       setLastSaved(new Date());
     } catch (error) {
       console.error('Error saving training:', error);
-      toast({
-        title: "Error",
-        description: "Failed to save training report",
-        variant: "destructive",
-      });
     } finally {
       setIsSaving(false);
     }
@@ -374,21 +364,11 @@ export default function TrainingForm() {
         link.click();
         document.body.removeChild(link);
         
-        toast({
-          title: "PDF Generated!",
-          description: "Would you like to email this report?",
-        });
-        
         // Show email dialog after a short delay
         setTimeout(() => setShowEmailDialog(true), 500);
       }
     } catch (error: any) {
       console.error('Error generating PDF:', error);
-      toast({
-        title: "Error",
-        description: "Failed to generate PDF report",
-        variant: "destructive",
-      });
     } finally {
       setIsGeneratingPDF(false);
     }
@@ -400,20 +380,10 @@ export default function TrainingForm() {
     // Validate email
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailForm.recipientEmail) {
-      toast({
-        title: "Error",
-        description: "Please enter a recipient email address",
-        variant: "destructive",
-      });
       return;
     }
     
     if (!emailRegex.test(emailForm.recipientEmail)) {
-      toast({
-        title: "Error",
-        description: "Please enter a valid email address",
-        variant: "destructive",
-      });
       return;
     }
     
@@ -431,21 +401,11 @@ export default function TrainingForm() {
       
       if (error) throw error;
       
-      toast({
-        title: "Success",
-        description: `Training report sent to ${emailForm.recipientEmail}`,
-      });
-      
       // Reset form and close dialog
       setEmailForm({ recipientEmail: '', recipientName: '', message: '' });
       setShowEmailDialog(false);
     } catch (error: any) {
       console.error('Error sending email:', error);
-      toast({
-        title: "Error",
-        description: error.message || "Failed to send email",
-        variant: "destructive",
-      });
     } finally {
       setIsSendingEmail(false);
     }
@@ -474,18 +434,8 @@ export default function TrainingForm() {
       link.click();
       document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
-      
-      toast({
-        title: "Success",
-        description: "HTML report downloaded successfully",
-      });
     } catch (error: any) {
       console.error('Error generating HTML:', error);
-      toast({
-        title: "Error",
-        description: "Failed to generate HTML report",
-        variant: "destructive",
-      });
     } finally {
       setIsGeneratingHTML(false);
     }

@@ -32,11 +32,6 @@ export const useRequireSuperAdmin = () => {
         setIsSuperAdmin(isSuperAdmin);
 
         if (!isSuperAdmin) {
-          toast({
-            title: "Access Denied",
-            description: "You don't have permission to access this page.",
-            variant: "destructive",
-          });
           navigate("/");
         }
       } catch (error) {

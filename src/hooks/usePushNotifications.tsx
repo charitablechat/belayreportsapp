@@ -81,12 +81,10 @@ export const usePushNotifications = (): PushNotificationState => {
 
   const subscribe = async () => {
     if (!isSupported) {
-      toast.error('Push notifications are not supported in your browser');
       return;
     }
 
     if (!vapidPublicKey) {
-      toast.error('Push notification configuration not available');
       return;
     }
 
@@ -98,7 +96,6 @@ export const usePushNotifications = (): PushNotificationState => {
       setPermission(permissionResult);
 
       if (permissionResult !== 'granted') {
-        toast.error('Permission to send notifications was denied');
         setIsLoading(false);
         return;
       }
@@ -138,15 +135,13 @@ export const usePushNotifications = (): PushNotificationState => {
       if (error) throw error;
 
       setIsSubscribed(true);
-      toast.success('Push notifications enabled successfully');
 
       if (import.meta.env.DEV) {
         console.log('[Push Notifications] Subscription saved to database');
       }
     } catch (error) {
       console.error('Error subscribing to push notifications:', error);
-      toast.error('Failed to enable push notifications');
-    } finally {
+    } finally{
       setIsLoading(false);
     }
   };
@@ -175,7 +170,6 @@ export const usePushNotifications = (): PushNotificationState => {
         }
 
         setIsSubscribed(false);
-        toast.success('Push notifications disabled');
 
         if (import.meta.env.DEV) {
           console.log('[Push Notifications] Unsubscribed successfully');
@@ -183,7 +177,6 @@ export const usePushNotifications = (): PushNotificationState => {
       }
     } catch (error) {
       console.error('Error unsubscribing from push notifications:', error);
-      toast.error('Failed to disable push notifications');
     } finally {
       setIsLoading(false);
     }
