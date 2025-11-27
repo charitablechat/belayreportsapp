@@ -519,6 +519,7 @@ export default function TrainingForm() {
                   </>
                 )}
               </Button>
+              {/* PDF Button - Hidden but code preserved for future use
               <Button
                 onClick={handleGeneratePDF}
                 disabled={isGeneratingPDF || !isOnline}
@@ -535,6 +536,7 @@ export default function TrainingForm() {
                   </>
                 )}
               </Button>
+              */}
               
               <Button
                 onClick={handleGenerateHTML}
@@ -549,7 +551,7 @@ export default function TrainingForm() {
                 ) : (
                   <>
                     <FileText className="mr-2 h-4 w-4" />
-                    Generate HTML
+                    Generate Report
                   </>
                 )}
               </Button>
