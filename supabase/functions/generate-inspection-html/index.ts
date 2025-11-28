@@ -994,6 +994,63 @@ serve(async (req) => {
         .info-grid {
           page-break-inside: avoid !important;
         }
+        
+        /* Phase 7: Typography Refinements */
+        /* Optimize font rendering for print */
+        body {
+          font-size: 10pt !important;
+          line-height: 1.4 !important;
+          font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif !important;
+          -webkit-font-smoothing: antialiased !important;
+          -moz-osx-font-smoothing: grayscale !important;
+        }
+        
+        /* Heading hierarchy for print */
+        h1 {
+          font-size: 20pt !important;
+          line-height: 1.2 !important;
+          margin-bottom: 12px !important;
+          font-weight: 700 !important;
+        }
+        
+        h2 {
+          font-size: 14pt !important;
+          line-height: 1.3 !important;
+          margin-top: 10px !important;
+          margin-bottom: 8px !important;
+          font-weight: 600 !important;
+        }
+        
+        h3 {
+          font-size: 11pt !important;
+          line-height: 1.3 !important;
+          margin-top: 8px !important;
+          margin-bottom: 6px !important;
+          font-weight: 600 !important;
+        }
+        
+        /* Paragraph and text spacing */
+        p {
+          margin-bottom: 6px !important;
+          line-height: 1.4 !important;
+        }
+        
+        /* List optimization */
+        ul, ol {
+          margin: 6px 0 !important;
+          padding-left: 20px !important;
+        }
+        
+        li {
+          margin-bottom: 4px !important;
+          line-height: 1.4 !important;
+        }
+        
+        /* Strong emphasis visibility */
+        strong, b {
+          font-weight: 700 !important;
+          color: #000 !important;
+        }
       }
 
       /* Text optimization with overflow handling */
