@@ -696,7 +696,7 @@ serve(async (req) => {
     .combined-section {
       margin-bottom: 25px;
       min-height: 100px; /* Prevent collapsed combined sections */
-      page-break-inside: avoid;
+      page-break-inside: auto; /* Allow breaks within large sections */
     }
 
     .combined-section:last-child {
@@ -706,7 +706,8 @@ serve(async (req) => {
     .section-divider {
       border-top: 2px solid #e5e7eb;
       margin: 20px 0;
-      page-break-after: avoid; /* Keep divider with following content */
+      page-break-after: auto;
+      page-break-before: auto;
       min-height: 2px;
     }
 
@@ -715,6 +716,28 @@ serve(async (req) => {
     .section-divider + h3,
     .section-divider + .combined-section {
       page-break-before: avoid;
+    }
+
+    /* Table wrapper for page break control */
+    .table-wrapper {
+      page-break-inside: auto;
+      margin: 10px 0;
+    }
+
+    /* Keep entire table on one page (for smaller tables) */
+    .table-wrapper.keep-together {
+      page-break-inside: avoid;
+    }
+
+    /* Allow table to break but keep minimum rows together */
+    .table-wrapper.allow-break {
+      page-break-inside: auto;
+    }
+
+    /* Prevent break before a table section header */
+    .table-section-header {
+      page-break-after: avoid;
+      page-break-inside: avoid;
     }
 
     @media print {
@@ -768,25 +791,46 @@ serve(async (req) => {
         widows: 2;
       }
 
-      /* Table break handling with overflow protection */
+      /* Enhanced table break handling */
       table {
-        page-break-inside: avoid;
+        page-break-inside: auto; /* Allow tables to break when necessary */
+        break-inside: auto;
         width: 100%;
         max-width: 100%;
         overflow-x: auto;
       }
 
+      /* Always repeat table headers on new pages */
       thead {
         display: table-header-group;
       }
 
       tbody {
         display: table-row-group;
+        page-break-inside: auto;
       }
 
+      /* Keep individual rows intact - never break mid-row */
       tr {
         page-break-inside: avoid;
+        break-inside: avoid;
         page-break-after: auto;
+      }
+
+      /* Keep header rows with at least first 2 data rows */
+      thead + tbody tr:nth-child(-n+2) {
+        page-break-before: avoid;
+        break-before: avoid;
+      }
+
+      /* Prevent orphaned last rows */
+      tbody tr:last-child {
+        page-break-before: avoid;
+      }
+
+      /* Group every 5 rows together to prevent awkward single-row breaks */
+      tr:nth-child(5n+1) {
+        page-break-before: auto;
       }
 
       td, th {
@@ -811,15 +855,22 @@ serve(async (req) => {
         max-width: none; /* Remove limit to allow full content display */
       }
 
-      /* Ensure headers stay with following content */
+      /* Keep section headers with their tables */
       h2, h3 {
         page-break-after: avoid;
+        break-after: avoid;
         orphans: 3;
         widows: 3;
       }
 
-      h2 + *, h3 + * {
+      h2 + .table-wrapper,
+      h3 + .table-wrapper,
+      h2 + table,
+      h3 + table,
+      h2 + *,
+      h3 + * {
         page-break-before: avoid;
+        break-before: avoid;
       }
 
       /* Optimize images for print */
@@ -1504,6 +1555,7 @@ serve(async (req) => {
         <p style="margin-bottom: 12px; font-size: 10pt; line-height: 1.6;">
           Each operating system has been inspected for structural integrity, hardware condition, and environmental factors.
         </p>
+        <div class="table-wrapper allow-break">
         <table class="systems-table">
           <thead>
             <tr>
@@ -1524,10 +1576,12 @@ serve(async (req) => {
                 <td style="font-size: 9pt;">${sys.comments || '—'}</td>
               </tr>
             `;
-          }).join('')}
+            }).join('')}
           </tbody>
         </table>
+        </div>
       </div>
+    </div>
 
       <div class="section-divider"></div>
 
@@ -1542,6 +1596,7 @@ serve(async (req) => {
           <strong>EAD System:</strong> Energy Absorption Device
         </div>
 
+        <div class="table-wrapper allow-break">
         <table class="ziplines-table">
           <thead>
             <tr>
@@ -1609,6 +1664,7 @@ serve(async (req) => {
       <p style="margin-bottom: 15px; font-size: 10pt; line-height: 1.6;">
         Each operating system has been inspected for structural integrity, hardware condition, and environmental factors.
       </p>
+      <div class="table-wrapper allow-break">
       <table class="systems-table">
         <thead>
           <tr>
@@ -1629,9 +1685,10 @@ serve(async (req) => {
                 <td style="font-size: 9pt;">${sys.comments || '—'}</td>
               </tr>
             `;
-          }).join('')}
+        }).join('')}
         </tbody>
       </table>
+      </div>
     </div>
 
     <div class="page-footer">
@@ -1668,6 +1725,7 @@ serve(async (req) => {
         <strong>EAD System:</strong> Energy Absorption Device
       </div>
 
+      <div class="table-wrapper allow-break">
       <table class="ziplines-table">
         <thead>
           <tr>
@@ -1703,6 +1761,7 @@ serve(async (req) => {
           }).join('')}
         </tbody>
       </table>
+      </div>
     </div>
 
     <div class="page-footer">
@@ -1753,7 +1812,8 @@ serve(async (req) => {
                                category.toUpperCase();
           
           return `
-            <h3 style="margin-top: 15px; color: #000; font-size: 11pt;">EQUIPMENT - <em>${categoryTitle}</em></h3>
+            <h3 class="table-section-header" style="margin-top: 15px; color: #000; font-size: 11pt;">EQUIPMENT - <em>${categoryTitle}</em></h3>
+            <div class="table-wrapper keep-together">
             <table class="equipment-table">
               <thead>
                 <tr>
@@ -1779,6 +1839,7 @@ serve(async (req) => {
                 }).join('')}
               </tbody>
             </table>
+            </div>
           `;
         }).join('')}
       </div>
@@ -1793,6 +1854,7 @@ serve(async (req) => {
           The presence of documentation does not constitute review or approval of content.
         </p>
 
+        <div class="table-wrapper keep-together">
         <table class="standards-table">
           <thead>
             <tr>
@@ -1813,6 +1875,7 @@ serve(async (req) => {
             `).join('')}
           </tbody>
         </table>
+        </div>
       </div>
     </div>
 
@@ -1860,7 +1923,8 @@ serve(async (req) => {
                              category.toUpperCase();
         
         return `
-          <h3 style="margin-top: 20px; color: #000; font-size: 11pt;">EQUIPMENT - <em>${categoryTitle}</em></h3>
+          <h3 class="table-section-header" style="margin-top: 20px; color: #000; font-size: 11pt;">EQUIPMENT - <em>${categoryTitle}</em></h3>
+          <div class="table-wrapper keep-together">
           <table class="equipment-table">
             <thead>
               <tr>
@@ -1886,6 +1950,7 @@ serve(async (req) => {
               }).join('')}
             </tbody>
           </table>
+          </div>
         `;
       }).join('')}
     </div>
@@ -1921,6 +1986,7 @@ serve(async (req) => {
         The presence of documentation does not constitute review or approval of content.
       </p>
 
+      <div class="table-wrapper keep-together">
       <table class="standards-table">
         <thead>
           <tr>
@@ -1941,6 +2007,7 @@ serve(async (req) => {
           `).join('')}
         </tbody>
       </table>
+      </div>
     </div>
 
     <div class="page-footer">
