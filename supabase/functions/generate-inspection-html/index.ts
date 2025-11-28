@@ -340,7 +340,8 @@ serve(async (req) => {
       min-height: auto;
       padding: 0.5in;
       padding-bottom: 0.75in;
-      page-break-after: always;
+      page-break-after: auto;
+      page-break-inside: auto;
     }
     
     .page-content {
@@ -412,8 +413,7 @@ serve(async (req) => {
     }
 
     .page-footer {
-      position: relative;
-      margin-top: auto;
+      margin-top: 20px;
       font-size: 9pt;
       color: #666;
       border-top: 1px solid #000;
@@ -454,6 +454,12 @@ serve(async (req) => {
       padding: 6px 10px;
       font-weight: bold;
       line-height: 1.4;
+      page-break-after: avoid;
+    }
+    
+    /* Major sections that should start on new page if needed */
+    h2.new-page-section {
+      page-break-before: always;
     }
 
     h3 {
@@ -778,8 +784,8 @@ serve(async (req) => {
       .page {
         display: flex;
         flex-direction: column;
-        page-break-after: always;
-        page-break-inside: avoid;
+        page-break-after: auto;
+        page-break-inside: auto;
         min-height: auto;
         margin: 0;
         padding: 0;
@@ -788,7 +794,7 @@ serve(async (req) => {
       
       .page-content {
         flex: 1 0 auto;
-        min-height: 3in; /* Ensure minimum content area for print */
+        min-height: auto;
       }
       
       .page:last-child {
@@ -952,19 +958,20 @@ serve(async (req) => {
       /* Footer positioning for print with validation */
       .page-footer {
         position: relative;
-        margin-top: auto;
+        margin-top: 20px;
         page-break-inside: avoid;
         padding-top: 8px;
         min-height: 30px; /* Ensure footer space */
       }
 
-      /* Phase 1: Print Layout Fix - Replace Flexbox with Block */
+      /* Phase 1: Print Layout Fix - Dynamic Content Flow */
       @media print {
         /* Phase 3: Page Margin Harmonization */
         .page {
           display: block !important;
           position: relative;
-          min-height: 100vh;
+          min-height: auto;
+          height: auto;
           padding: 0 !important;
           margin: 0 !important;
           box-sizing: border-box;
@@ -972,14 +979,13 @@ serve(async (req) => {
         
         .page-content {
           display: block;
-          min-height: calc(100vh - 2in);
+          min-height: auto;
+          height: auto;
         }
         
         .page-footer {
-          position: absolute;
-          bottom: 0;
-          left: 0;
-          right: 0;
+          position: relative;
+          margin-top: 20px;
         }
         
         /* Phase 2: Print Color Enforcement */
