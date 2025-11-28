@@ -1438,7 +1438,7 @@ serve(async (req) => {
         <img src="${ropeWorksLogo}" alt="Rope Works">
       </div>
       <div class="header-center">
-        <div class="header-title">ROPES/CHALLENGE COURSE</div>
+        <div class="header-title">Professional Inspection for Aerial Adventure Programs</div>
       </div>
       <div class="header-right">
         <img src="${acctLogo}" alt="ACCT Accredited Vendor">
@@ -1533,7 +1533,7 @@ serve(async (req) => {
         <img src="${ropeWorksLogo}" alt="Rope Works">
       </div>
       <div class="header-center">
-        <div class="header-title">ROPES/CHALLENGE COURSE</div>
+        <div class="header-title">Professional Inspection for Aerial Adventure Programs</div>
       </div>
       <div class="header-right">
         <img src="${acctLogo}" alt="ACCT Accredited Vendor">
@@ -1609,7 +1609,7 @@ serve(async (req) => {
         <img src="${ropeWorksLogo}" alt="Rope Works">
       </div>
       <div class="header-center">
-        <div class="header-title">ROPES/CHALLENGE COURSE</div>
+        <div class="header-title">Professional Inspection for Aerial Adventure Programs</div>
       </div>
       <div class="header-right">
         <img src="${acctLogo}" alt="ACCT Accredited Vendor">
@@ -1720,7 +1720,7 @@ serve(async (req) => {
         <img src="${ropeWorksLogo}" alt="Rope Works">
       </div>
       <div class="header-center">
-        <div class="header-title">ROPES/CHALLENGE COURSE</div>
+        <div class="header-title">Professional Inspection for Aerial Adventure Programs</div>
       </div>
       <div class="header-right">
         <img src="${acctLogo}" alt="ACCT Accredited Vendor">
@@ -1776,7 +1776,7 @@ serve(async (req) => {
         <img src="${ropeWorksLogo}" alt="Rope Works">
       </div>
       <div class="header-center">
-        <div class="header-title">ROPES/CHALLENGE COURSE</div>
+        <div class="header-title">Professional Inspection for Aerial Adventure Programs</div>
       </div>
       <div class="header-right">
         <img src="${acctLogo}" alt="ACCT Accredited Vendor">
@@ -1851,7 +1851,7 @@ serve(async (req) => {
         <img src="${ropeWorksLogo}" alt="Rope Works">
       </div>
       <div class="header-center">
-        <div class="header-title">ROPES/CHALLENGE COURSE</div>
+        <div class="header-title">Professional Inspection for Aerial Adventure Programs</div>
       </div>
       <div class="header-right">
         <img src="${acctLogo}" alt="ACCT Accredited Vendor">
@@ -1964,7 +1964,7 @@ serve(async (req) => {
         <img src="${ropeWorksLogo}" alt="Rope Works">
       </div>
       <div class="header-center">
-        <div class="header-title">ROPES/CHALLENGE COURSE</div>
+        <div class="header-title">Professional Inspection for Aerial Adventure Programs</div>
       </div>
       <div class="header-right">
         <img src="${acctLogo}" alt="ACCT Accredited Vendor">
@@ -2040,7 +2040,7 @@ serve(async (req) => {
         <img src="${ropeWorksLogo}" alt="Rope Works">
       </div>
       <div class="header-center">
-        <div class="header-title">ROPES/CHALLENGE COURSE</div>
+        <div class="header-title">Professional Inspection for Aerial Adventure Programs</div>
       </div>
       <div class="header-right">
         <img src="${acctLogo}" alt="ACCT Accredited Vendor">
@@ -2096,7 +2096,7 @@ serve(async (req) => {
         <img src="${ropeWorksLogo}" alt="Rope Works">
       </div>
       <div class="header-center">
-        <div class="header-title">ROPES/CHALLENGE COURSE</div>
+        <div class="header-title">Professional Inspection for Aerial Adventure Programs</div>
       </div>
       <div class="header-right">
         <img src="${acctLogo}" alt="ACCT Accredited Vendor">
