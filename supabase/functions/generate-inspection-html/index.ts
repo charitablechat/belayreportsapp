@@ -379,7 +379,7 @@ serve(async (req) => {
     }
 
     .header-left img {
-      height: 70px;
+      height: 55px;
       width: auto;
       object-fit: contain;
     }
@@ -409,7 +409,7 @@ serve(async (req) => {
     }
 
     .header-right img {
-      height: 60px;
+      height: 50px;
       width: auto;
       object-fit: contain;
     }
@@ -1281,7 +1281,7 @@ serve(async (req) => {
       
       .header-left img,
       .header-right img {
-        height: 60px !important;
+        height: 50px !important;
         width: auto !important;
         max-width: 150px !important;
       }
