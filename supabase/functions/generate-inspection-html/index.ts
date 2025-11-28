@@ -245,6 +245,8 @@ serve(async (req) => {
         cellStyle = 'background-color: #fee2e2; color: #991b1b;'; // Red highlight for fail
       } else if (isProvisions) {
         cellStyle = 'background-color: #fef3c7; color: #92400e;'; // Yellow highlight for provisions
+      } else if (isPass) {
+        cellStyle = 'background-color: #dcfce7; color: #166534;'; // Green highlight for pass
       }
       
       return {
