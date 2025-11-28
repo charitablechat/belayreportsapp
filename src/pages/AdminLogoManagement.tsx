@@ -11,6 +11,7 @@ import { useRequireSuperAdmin } from '@/hooks/useRequireSuperAdmin';
 import { optimizeImage, formatFileSize, formatDimensions, LOGO_PRESETS, type OptimizedResult } from '@/lib/image-optimizer';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
+import { AutoLogoInitializer } from '@/components/admin/AutoLogoInitializer';
 
 export default function AdminLogoManagement() {
   const navigate = useNavigate();
@@ -165,6 +166,8 @@ export default function AdminLogoManagement() {
           Upload and manage logos that appear in generated PDF reports
         </p>
       </div>
+
+      <AutoLogoInitializer />
 
       <div className="grid md:grid-cols-2 gap-6 mb-6">
         {/* Current Logos */}
