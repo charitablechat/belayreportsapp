@@ -219,7 +219,7 @@ serve(async (req) => {
     body {
       font-family: Georgia, 'Times New Roman', serif;
       font-size: 11pt;
-      line-height: 1.5;
+      line-height: 1.6;
       color: #000;
       background: #fff;
     }
@@ -238,8 +238,8 @@ serve(async (req) => {
     .page-header {
       display: flex;
       justify-content: space-between;
-      align-items: flex-start;
-      padding-bottom: 15px;
+      align-items: center;
+      padding-bottom: 12px;
       border-bottom: 3px solid #1e40af;
       margin-bottom: 20px;
     }
@@ -247,11 +247,11 @@ serve(async (req) => {
     .header-left {
       display: flex;
       align-items: center;
-      gap: 15px;
+      gap: 10px;
     }
 
     .header-left img {
-      height: 60px;
+      height: 70px;
       width: auto;
     }
 
@@ -260,11 +260,11 @@ serve(async (req) => {
       font-weight: bold;
       color: #1e40af;
       text-transform: uppercase;
-      letter-spacing: 0.5px;
+      letter-spacing: 1px;
     }
 
     .header-right img {
-      height: 70px;
+      height: 60px;
       width: auto;
     }
 
@@ -276,46 +276,51 @@ serve(async (req) => {
       font-size: 9pt;
       color: #666;
       border-top: 1px solid #ddd;
-      padding-top: 8px;
+      padding-top: 10px;
       display: flex;
       justify-content: space-between;
+      align-items: flex-end;
     }
 
     .page-number {
       font-weight: bold;
+      white-space: nowrap;
     }
 
     h1 {
       font-size: 24pt;
       color: #1e40af;
-      margin-bottom: 15px;
+      margin-bottom: 20px;
       font-weight: bold;
+      line-height: 1.3;
     }
 
     h2 {
       font-size: 16pt;
       color: #1e40af;
-      margin: 20px 0 10px 0;
+      margin: 20px 0 12px 0;
       font-weight: bold;
+      line-height: 1.4;
     }
 
     h3 {
       font-size: 13pt;
       color: #000;
-      margin: 15px 0 8px 0;
+      margin: 15px 0 10px 0;
       font-weight: bold;
+      line-height: 1.3;
     }
 
     .info-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 10px;
+      gap: 0;
       margin: 20px 0;
       border: 1px solid #ddd;
     }
 
     .info-cell {
-      padding: 10px;
+      padding: 10px 12px;
       border-right: 1px solid #ddd;
       border-bottom: 1px solid #ddd;
     }
@@ -326,33 +331,35 @@ serve(async (req) => {
 
     .info-label {
       font-weight: bold;
-      font-size: 10pt;
-      margin-bottom: 3px;
+      font-size: 9.5pt;
+      margin-bottom: 4px;
       color: #333;
     }
 
     .info-value {
       font-size: 11pt;
       color: #000;
+      line-height: 1.4;
     }
 
     .text-block {
       margin: 15px 0;
-      padding: 15px;
+      padding: 15px 18px;
       background: #f9f9f9;
       border-left: 4px solid #1e40af;
       font-size: 10pt;
-      line-height: 1.6;
+      line-height: 1.7;
     }
 
     .bullet-list {
-      margin: 10px 0 10px 25px;
+      margin: 10px 0 10px 30px;
       font-size: 10pt;
     }
 
     .bullet-list li {
-      margin-bottom: 8px;
-      line-height: 1.5;
+      margin-bottom: 10px;
+      line-height: 1.6;
+      padding-left: 5px;
     }
 
     table {
@@ -364,17 +371,19 @@ serve(async (req) => {
 
     table th {
       background: #1e40af;
-      color: white;
-      padding: 8px;
+      color: #fff;
+      padding: 10px;
       text-align: left;
       font-weight: bold;
       border: 1px solid #1e40af;
+      font-size: 10pt;
     }
 
     table td {
-      padding: 8px;
+      padding: 10px;
       border: 1px solid #ddd;
       vertical-align: top;
+      line-height: 1.5;
     }
 
     table tr:nth-child(even) {
@@ -397,45 +406,71 @@ serve(async (req) => {
     }
 
     .key-section {
-      margin: 20px 0;
-      padding: 15px;
+      margin: 15px 0;
+      padding: 15px 18px;
       background: #f8f9fa;
       border: 1px solid #ddd;
+      border-radius: 2px;
     }
 
     .key-section h3 {
       margin-top: 0;
+      margin-bottom: 8px;
+    }
+
+    .key-section p {
+      line-height: 1.6;
+      font-size: 10pt;
     }
 
     .disclaimer {
       font-size: 8pt;
       color: #666;
-      line-height: 1.4;
+      line-height: 1.5;
+      font-style: italic;
+      max-width: 75%;
     }
 
     .critical-box {
       background: #fee;
       border: 2px solid #dc2626;
-      padding: 15px;
+      padding: 18px;
       margin: 15px 0;
+      border-radius: 2px;
     }
 
     .critical-box h3 {
       color: #dc2626;
       margin-top: 0;
+      margin-bottom: 10px;
     }
 
     @media print {
+      body {
+        print-color-adjust: exact;
+        -webkit-print-color-adjust: exact;
+      }
+
       .page {
         page-break-after: always;
+        page-break-inside: avoid;
       }
       
       .page:last-child {
         page-break-after: avoid;
       }
 
+      table {
+        page-break-inside: avoid;
+      }
+
+      h2, h3 {
+        page-break-after: avoid;
+      }
+
       @page {
         margin: 0.5in;
+        size: letter;
       }
     }
   </style>
