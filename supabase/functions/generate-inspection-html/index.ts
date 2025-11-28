@@ -848,6 +848,27 @@ serve(async (req) => {
         min-height: 30px; /* Ensure footer space */
       }
 
+      /* Phase 1: Print Layout Fix - Replace Flexbox with Block */
+      @media print {
+        .page {
+          display: block !important;
+          position: relative;
+          min-height: 100vh;
+        }
+        
+        .page-content {
+          display: block;
+          min-height: calc(100vh - 2in);
+        }
+        
+        .page-footer {
+          position: absolute;
+          bottom: 0;
+          left: 0;
+          right: 0;
+        }
+      }
+
       /* Text optimization with overflow handling */
       body, p, li, td {
         orphans: 3;
