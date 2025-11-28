@@ -892,6 +892,32 @@ serve(async (req) => {
           print-color-adjust: exact !important;
           -webkit-print-color-adjust: exact !important;
         }
+        
+        /* Phase 4: Print Resets - Remove Visual Artifacts */
+        /* Hide link URLs that browsers add by default */
+        a[href]::after {
+          content: none !important;
+        }
+        
+        /* Remove shadows and transforms that can cause rendering issues */
+        * {
+          box-shadow: none !important;
+          text-shadow: none !important;
+          transform: none !important;
+        }
+        
+        /* Normalize zoom and ensure consistent rendering */
+        body {
+          zoom: 1 !important;
+          -webkit-transform: scale(1) !important;
+          transform: scale(1) !important;
+        }
+        
+        /* Remove any animations or transitions */
+        *, *::before, *::after {
+          animation: none !important;
+          transition: none !important;
+        }
       }
 
       /* Text optimization with overflow handling */
