@@ -579,7 +579,7 @@ serve(async (req) => {
     .equipment-table th:nth-child(4),
     .equipment-table td:nth-child(4) { width: 20%; } /* Result - wider for checkboxes */
     .equipment-table th:nth-child(5),
-    .equipment-table td:nth-child(5) { width: 23%; } /* Comments */
+    .equipment-table td:nth-child(5) { width: auto; min-width: 150px; } /* Comments - dynamic */
 
     /* Optimized column widths for Standards table */
     .standards-table th:nth-child(1),
@@ -589,7 +589,7 @@ serve(async (req) => {
     .standards-table th:nth-child(3),
     .standards-table td:nth-child(3) { width: 15%; } /* No */
     .standards-table th:nth-child(4),
-    .standards-table td:nth-child(4) { width: 20%; } /* Comments */
+    .standards-table td:nth-child(4) { width: auto; min-width: 150px; } /* Comments - dynamic */
 
     /* Optimized column widths for Ziplines table (9 columns) */
     .ziplines-table th:nth-child(1),
@@ -609,7 +609,7 @@ serve(async (req) => {
     .ziplines-table th:nth-child(8),
     .ziplines-table td:nth-child(8) { width: 10%; } /* EAD Result */
     .ziplines-table th:nth-child(9),
-    .ziplines-table td:nth-child(9) { width: 20%; } /* Comments */
+    .ziplines-table td:nth-child(9) { width: auto; min-width: 150px; } /* Comments - dynamic */
 
     /* Optimized column widths for Operating Systems table */
     .systems-table th:nth-child(1),
@@ -619,7 +619,7 @@ serve(async (req) => {
     .systems-table th:nth-child(3),
     .systems-table td:nth-child(3) { width: 12%; } /* Result */
     .systems-table th:nth-child(4),
-    .systems-table td:nth-child(4) { width: 48%; } /* Comments */
+    .systems-table td:nth-child(4) { width: auto; min-width: 200px; } /* Comments - dynamic */
 
     /* Optimized column widths for Standards table */
     .standards-table th:nth-child(1),
@@ -627,7 +627,7 @@ serve(async (req) => {
     .standards-table th:nth-child(2),
     .standards-table td:nth-child(2) { width: 15%; } /* Documentation */
     .standards-table th:nth-child(3),
-    .standards-table td:nth-child(3) { width: 50%; } /* Comments */
+    .standards-table td:nth-child(3) { width: auto; min-width: 200px; } /* Comments - dynamic */
 
     /* Prevent column content wrapping where appropriate */
     .equipment-table td:nth-child(2),
@@ -638,9 +638,19 @@ serve(async (req) => {
     .ziplines-table td:nth-child(6),
     .ziplines-table td:nth-child(8),
     .systems-table td:nth-child(3),
-    .standards-table td:nth-child(2),
-    .standards-table td:nth-child(3) {
+    .standards-table td:nth-child(2) {
       white-space: nowrap;
+    }
+
+    /* Allow comments columns to wrap and expand */
+    .equipment-table td:nth-child(5),
+    .systems-table td:nth-child(4),
+    .ziplines-table td:nth-child(9),
+    .standards-table td:nth-child(3),
+    .standards-table td:nth-child(4) {
+      white-space: normal;
+      word-wrap: break-word;
+      overflow-wrap: break-word;
     }
 
     .key-section {
@@ -796,8 +806,9 @@ serve(async (req) => {
       .equipment-table td:nth-child(5),
       .systems-table td:nth-child(4),
       .ziplines-table td:nth-child(9),
-      .standards-table td:nth-child(3) {
-        max-width: 300px; /* Limit comments column */
+      .standards-table td:nth-child(3),
+      .standards-table td:nth-child(4) {
+        max-width: none; /* Remove limit to allow full content display */
       }
 
       /* Ensure headers stay with following content */
