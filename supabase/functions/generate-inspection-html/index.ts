@@ -465,6 +465,70 @@ serve(async (req) => {
       font-weight: bold;
     }
 
+    /* Optimized column widths for Equipment table */
+    .equipment-table th:nth-child(1),
+    .equipment-table td:nth-child(1) { width: 40%; } /* Type */
+    .equipment-table th:nth-child(2),
+    .equipment-table td:nth-child(2) { width: 10%; } /* Quantity */
+    .equipment-table th:nth-child(3),
+    .equipment-table td:nth-child(3) { width: 10%; } /* Year */
+    .equipment-table th:nth-child(4),
+    .equipment-table td:nth-child(4) { width: 12%; } /* Result */
+    .equipment-table th:nth-child(5),
+    .equipment-table td:nth-child(5) { width: 28%; } /* Comments */
+
+    /* Optimized column widths for Ziplines table (9 columns) */
+    .ziplines-table th:nth-child(1),
+    .ziplines-table td:nth-child(1) { width: 13%; } /* Name */
+    .ziplines-table th:nth-child(2),
+    .ziplines-table td:nth-child(2) { width: 9%; } /* Cable Type */
+    .ziplines-table th:nth-child(3),
+    .ziplines-table td:nth-child(3) { width: 8%; } /* Length */
+    .ziplines-table th:nth-child(4),
+    .ziplines-table td:nth-child(4) { width: 10%; } /* Cable Result */
+    .ziplines-table th:nth-child(5),
+    .ziplines-table td:nth-child(5) { width: 11%; } /* Braking System */
+    .ziplines-table th:nth-child(6),
+    .ziplines-table td:nth-child(6) { width: 10%; } /* Braking Result */
+    .ziplines-table th:nth-child(7),
+    .ziplines-table td:nth-child(7) { width: 9%; } /* EAD System */
+    .ziplines-table th:nth-child(8),
+    .ziplines-table td:nth-child(8) { width: 10%; } /* EAD Result */
+    .ziplines-table th:nth-child(9),
+    .ziplines-table td:nth-child(9) { width: 20%; } /* Comments */
+
+    /* Optimized column widths for Operating Systems table */
+    .systems-table th:nth-child(1),
+    .systems-table td:nth-child(1) { width: 20%; } /* System Type */
+    .systems-table th:nth-child(2),
+    .systems-table td:nth-child(2) { width: 20%; } /* Name */
+    .systems-table th:nth-child(3),
+    .systems-table td:nth-child(3) { width: 12%; } /* Result */
+    .systems-table th:nth-child(4),
+    .systems-table td:nth-child(4) { width: 48%; } /* Comments */
+
+    /* Optimized column widths for Standards table */
+    .standards-table th:nth-child(1),
+    .standards-table td:nth-child(1) { width: 35%; } /* Standard */
+    .standards-table th:nth-child(2),
+    .standards-table td:nth-child(2) { width: 15%; } /* Documentation */
+    .standards-table th:nth-child(3),
+    .standards-table td:nth-child(3) { width: 50%; } /* Comments */
+
+    /* Prevent column content wrapping where appropriate */
+    .equipment-table td:nth-child(2),
+    .equipment-table td:nth-child(3),
+    .equipment-table td:nth-child(4),
+    .ziplines-table td:nth-child(3),
+    .ziplines-table td:nth-child(4),
+    .ziplines-table td:nth-child(6),
+    .ziplines-table td:nth-child(8),
+    .systems-table td:nth-child(3),
+    .standards-table td:nth-child(2),
+    .standards-table td:nth-child(3) {
+      white-space: nowrap;
+    }
+
     .key-section {
       margin: 10px 0;
       padding: 10px 14px;
@@ -972,14 +1036,14 @@ serve(async (req) => {
         <p style="margin-bottom: 12px; font-size: 10pt; line-height: 1.6;">
           Each operating system has been inspected for structural integrity, hardware condition, and environmental factors.
         </p>
-        <table>
+        <table class="systems-table">
           <thead>
             <tr>
-              <th style="width: 25%;">System Name</th>
-              <th style="width: 15%;">Name/ID</th>
-              <th style="width: 15%;">Lifeline HDW</th>
-              <th style="width: 15%;">Activity HDW</th>
-              <th style="width: 30%;">Comments</th>
+              <th>System Name</th>
+              <th>Name/ID</th>
+              <th>Lifeline HDW</th>
+              <th>Activity HDW</th>
+              <th>Comments</th>
             </tr>
           </thead>
           <tbody>
@@ -1015,18 +1079,18 @@ serve(async (req) => {
           <strong>EAD System:</strong> Energy Absorption Device
         </div>
 
-        <table>
+        <table class="ziplines-table">
           <thead>
             <tr>
-              <th style="width: 15%;">Zipline Name</th>
-              <th style="width: 8%;">Cable Type</th>
-              <th style="width: 8%;">Length (ft)</th>
-              <th style="width: 10%;">Cable Result</th>
-              <th style="width: 10%;">Braking System</th>
-              <th style="width: 10%;">Braking Result</th>
-              <th style="width: 8%;">EAD System</th>
-              <th style="width: 10%;">EAD Result</th>
-              <th style="width: 21%;">Comments</th>
+              <th>Zipline Name</th>
+              <th>Cable Type</th>
+              <th>Length (ft)</th>
+              <th>Cable Result</th>
+              <th>Braking System</th>
+              <th>Braking Result</th>
+              <th>EAD System</th>
+              <th>EAD Result</th>
+              <th>Comments</th>
             </tr>
           </thead>
           <tbody>
@@ -1100,14 +1164,14 @@ serve(async (req) => {
       <p style="margin-bottom: 15px; font-size: 10pt; line-height: 1.6;">
         Each operating system has been inspected for structural integrity, hardware condition, and environmental factors.
       </p>
-      <table>
+      <table class="systems-table">
         <thead>
           <tr>
-            <th style="width: 25%;">System Name</th>
-            <th style="width: 15%;">Name/ID</th>
-            <th style="width: 15%;">Lifeline HDW</th>
-            <th style="width: 15%;">Activity HDW</th>
-            <th style="width: 30%;">Comments</th>
+            <th>System Name</th>
+            <th>Name/ID</th>
+            <th>Lifeline HDW</th>
+            <th>Activity HDW</th>
+            <th>Comments</th>
           </tr>
         </thead>
         <tbody>
@@ -1164,18 +1228,18 @@ serve(async (req) => {
         <strong>EAD System:</strong> Energy Absorption Device
       </div>
 
-      <table>
+      <table class="ziplines-table">
         <thead>
           <tr>
-            <th style="width: 15%;">Zipline Name</th>
-            <th style="width: 8%;">Cable Type</th>
-            <th style="width: 8%;">Length (ft)</th>
-            <th style="width: 10%;">Cable Result</th>
-            <th style="width: 10%;">Braking System</th>
-            <th style="width: 10%;">Braking Result</th>
-            <th style="width: 8%;">EAD System</th>
-            <th style="width: 10%;">EAD Result</th>
-            <th style="width: 21%;">Comments</th>
+            <th>Zipline Name</th>
+            <th>Cable Type</th>
+            <th>Length (ft)</th>
+            <th>Cable Result</th>
+            <th>Braking System</th>
+            <th>Braking Result</th>
+            <th>EAD System</th>
+            <th>EAD Result</th>
+            <th>Comments</th>
           </tr>
         </thead>
         <tbody>
@@ -1269,14 +1333,14 @@ serve(async (req) => {
           
           return `
             <h3 style="margin-top: 15px; color: #1e40af; font-size: 12pt;">EQUIPMENT - ${categoryTitle}</h3>
-            <table>
+            <table class="equipment-table">
               <thead>
                 <tr>
-                  <th style="width: 35%;">Type</th>
-                  <th style="width: 10%;">Quantity</th>
-                  <th style="width: 12%;">Year</th>
-                  <th style="width: 15%;">Result</th>
-                  <th style="width: 28%;">Comments</th>
+                  <th>Type</th>
+                  <th>Quantity</th>
+                  <th>Year</th>
+                  <th>Result</th>
+                  <th>Comments</th>
                 </tr>
               </thead>
               <tbody>
@@ -1311,13 +1375,13 @@ serve(async (req) => {
           The presence of documentation does not constitute review or approval of content.
         </p>
 
-        <table>
+        <table class="standards-table">
           <thead>
             <tr>
-              <th style="width: 65%;">Standard / Document</th>
-              <th style="width: 10%; text-align: center;">Yes</th>
-              <th style="width: 10%; text-align: center;">No</th>
-              <th style="width: 15%; text-align: center;">Comments</th>
+              <th>Standard / Document</th>
+              <th style="text-align: center;">Yes</th>
+              <th style="text-align: center;">No</th>
+              <th style="text-align: center;">Comments</th>
             </tr>
           </thead>
           <tbody>
@@ -1387,14 +1451,14 @@ serve(async (req) => {
         
         return `
           <h3 style="margin-top: 20px; color: #1e40af; font-size: 12pt;">EQUIPMENT - ${categoryTitle}</h3>
-          <table>
+          <table class="equipment-table">
             <thead>
               <tr>
-                <th style="width: 35%;">Type</th>
-                <th style="width: 10%;">Quantity</th>
-                <th style="width: 12%;">Year</th>
-                <th style="width: 15%;">Result</th>
-                <th style="width: 28%;">Comments</th>
+                <th>Type</th>
+                <th>Quantity</th>
+                <th>Year</th>
+                <th>Result</th>
+                <th>Comments</th>
               </tr>
             </thead>
             <tbody>
@@ -1450,13 +1514,13 @@ serve(async (req) => {
         The presence of documentation does not constitute review or approval of content.
       </p>
 
-      <table>
+      <table class="standards-table">
         <thead>
           <tr>
-            <th style="width: 65%;">Standard / Document</th>
-            <th style="width: 10%; text-align: center;">Yes</th>
-            <th style="width: 10%; text-align: center;">No</th>
-            <th style="width: 15%; text-align: center;">Comments</th>
+            <th>Standard / Document</th>
+            <th style="text-align: center;">Yes</th>
+            <th style="text-align: center;">No</th>
+            <th style="text-align: center;">Comments</th>
           </tr>
         </thead>
         <tbody>
