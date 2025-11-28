@@ -1051,6 +1051,79 @@ serve(async (req) => {
           font-weight: 700 !important;
           color: #000 !important;
         }
+        
+        /* Phase 8: Final Polish - Result Badges and Spacing */
+        /* Result badge styling with proper colors */
+        .result-pass {
+          background-color: #22c55e !important;
+          color: #ffffff !important;
+          padding: 4px 10px !important;
+          border-radius: 4px !important;
+          font-weight: 600 !important;
+          display: inline-block !important;
+        }
+        
+        .result-attention {
+          background-color: #f59e0b !important;
+          color: #ffffff !important;
+          padding: 4px 10px !important;
+          border-radius: 4px !important;
+          font-weight: 600 !important;
+          display: inline-block !important;
+        }
+        
+        .result-fail {
+          background-color: #ef4444 !important;
+          color: #ffffff !important;
+          padding: 4px 10px !important;
+          border-radius: 4px !important;
+          font-weight: 600 !important;
+          display: inline-block !important;
+        }
+        
+        /* Section spacing optimization */
+        .key-section {
+          margin-bottom: 10px !important;
+          padding: 10px !important;
+        }
+        
+        .critical-box {
+          margin: 10px 0 !important;
+          padding: 10px !important;
+          border: 2px solid #ef4444 !important;
+        }
+        
+        /* Info grid spacing */
+        .info-grid {
+          margin-bottom: 8px !important;
+        }
+        
+        .info-cell {
+          padding: 6px !important;
+          margin-bottom: 4px !important;
+        }
+        
+        /* Footer positioning and styling */
+        .page-footer {
+          font-size: 8pt !important;
+          color: #666 !important;
+          padding: 8px 0 !important;
+          border-top: 1px solid #ccc !important;
+          margin-top: 10px !important;
+        }
+        
+        /* Ensure proper spacing around tables */
+        table {
+          margin: 8px 0 !important;
+        }
+        
+        /* Section headers */
+        .section-header {
+          background-color: #f3f4f6 !important;
+          padding: 8px !important;
+          margin: 10px 0 6px 0 !important;
+          border-left: 4px solid #3b82f6 !important;
+        }
       }
 
       /* Text optimization with overflow handling */
