@@ -11,6 +11,7 @@ let ROPE_WORKS_LOGO = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAY
 let ACCT_LOGO = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
 
 async function getLogoBase64(supabaseUrl: string): Promise<{ropeWorks: string, acct: string}> {
+  // Try fetching from storage bucket first (admin uploaded logos)
   try {
     const ropeWorksUrl = `${supabaseUrl}/storage/v1/object/public/pdf-templates/rope-works-logo-embedded.png`;
     const acctUrl = `${supabaseUrl}/storage/v1/object/public/pdf-templates/acct-logo-embedded.png`;
@@ -22,7 +23,26 @@ async function getLogoBase64(supabaseUrl: string): Promise<{ropeWorks: string, a
       const acctBase64 = btoa(String.fromCharCode(...new Uint8Array(acctBuffer)));
       return { ropeWorks: `data:image/png;base64,${ropeWorksBase64}`, acct: `data:image/png;base64,${acctBase64}` };
     }
-  } catch (error) { console.warn('Failed to fetch logos from storage, using placeholders:', error); }
+  } catch (error) { console.log('Storage logos not found, trying public folder...'); }
+  
+  // Fallback: Try fetching from public folder (deployed assets)
+  try {
+    const baseUrl = 'https://ssgzcgvygnsrqalisshx.supabase.co';
+    const ropeWorksPublicUrl = `${baseUrl}/storage/v1/object/public/pdf-templates/rope-works-logo.png`;
+    const acctPublicUrl = `${baseUrl}/storage/v1/object/public/pdf-templates/acct-accredited-vendor.png`;
+    const [ropeWorksResponse, acctResponse] = await Promise.all([fetch(ropeWorksPublicUrl), fetch(acctPublicUrl)]);
+    if (ropeWorksResponse.ok && acctResponse.ok) {
+      const [ropeWorksBlob, acctBlob] = await Promise.all([ropeWorksResponse.blob(), acctResponse.blob()]);
+      const [ropeWorksBuffer, acctBuffer] = await Promise.all([ropeWorksBlob.arrayBuffer(), acctBlob.arrayBuffer()]);
+      const ropeWorksBase64 = btoa(String.fromCharCode(...new Uint8Array(ropeWorksBuffer)));
+      const acctBase64 = btoa(String.fromCharCode(...new Uint8Array(acctBuffer)));
+      console.log('Successfully loaded logos from public folder');
+      return { ropeWorks: `data:image/png;base64,${ropeWorksBase64}`, acct: `data:image/png;base64,${acctBase64}` };
+    }
+  } catch (error) { console.warn('Failed to fetch logos from public folder:', error); }
+  
+  // Final fallback: use placeholders (will be invisible instead of purple)
+  console.warn('Using placeholder logos - logos may not display correctly');
   return { ropeWorks: ROPE_WORKS_LOGO, acct: ACCT_LOGO };
 }
 
