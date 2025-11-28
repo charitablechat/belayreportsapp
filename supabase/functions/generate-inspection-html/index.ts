@@ -918,6 +918,39 @@ serve(async (req) => {
           animation: none !important;
           transition: none !important;
         }
+        
+        /* Phase 5: Image Handling Optimization */
+        /* Constrain image sizes while preserving quality */
+        img {
+          max-width: 100% !important;
+          max-height: 400px !important;
+          height: auto !important;
+          page-break-inside: avoid !important;
+          object-fit: contain !important;
+        }
+        
+        /* Ensure crisp image rendering */
+        img {
+          image-rendering: -webkit-optimize-contrast !important;
+          image-rendering: crisp-edges !important;
+          -ms-interpolation-mode: nearest-neighbor !important;
+        }
+        
+        /* Logo-specific constraints */
+        .logo-container img,
+        .header-logo img {
+          max-height: 80px !important;
+          width: auto !important;
+        }
+        
+        /* Photo gallery images */
+        .photo-grid img,
+        .photo-item img {
+          max-width: 100% !important;
+          max-height: 300px !important;
+          display: block !important;
+          margin: 0 auto !important;
+        }
       }
 
       /* Text optimization with overflow handling */
