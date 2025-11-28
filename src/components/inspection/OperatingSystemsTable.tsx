@@ -51,7 +51,7 @@ export default function OperatingSystemsTable({ systems, onUpdate, onImmediateSa
             <thead>
               <tr className="bg-blue-50 dark:bg-blue-950/20">
                 <th className="border p-3 text-left font-semibold text-sm">Operating System</th>
-                <th className="border p-3 text-left font-semibold text-sm">Name</th>
+                <th className="border p-3 text-left font-semibold text-sm">Element Name</th>
                 <th className="border p-3 text-left font-semibold text-sm w-48">Result</th>
                 <th className="border p-3 text-left font-semibold text-sm">Comments or Required Changes</th>
               </tr>
@@ -109,7 +109,7 @@ export default function OperatingSystemsTable({ systems, onUpdate, onImmediateSa
                 </div>
                 
                 <div>
-                  <Label className="text-xs text-muted-foreground">Name</Label>
+                  <Label className="text-xs text-muted-foreground">Element Name</Label>
                   <HistoryAutocomplete
                     value={system.name || ""}
                     onChange={(value) => updateSystem(index, "name", value)}

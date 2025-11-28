@@ -1497,7 +1497,7 @@ serve(async (req) => {
           <thead>
             <tr>
               <th>System Name</th>
-              <th>Name/ID</th>
+              <th>Element Name</th>
               <th>Lifeline HDW</th>
               <th>Activity HDW</th>
               <th>Comments</th>
@@ -1604,7 +1604,7 @@ serve(async (req) => {
         <thead>
           <tr>
             <th>System Name</th>
-            <th>Name/ID</th>
+            <th>Element Name</th>
             <th>Lifeline HDW</th>
             <th>Activity HDW</th>
             <th>Comments</th>
