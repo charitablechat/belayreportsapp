@@ -392,12 +392,14 @@ serve(async (req) => {
     }
 
     .header-title {
-      font-size: 11pt;
+      font-size: 9pt;
       font-weight: bold;
       color: #1e40af;
       text-transform: uppercase;
-      letter-spacing: 1.5px;
-      white-space: nowrap;
+      letter-spacing: 1px;
+      white-space: normal;
+      line-height: 1.3;
+      max-width: 280px;
     }
 
     .header-right {
@@ -1301,9 +1303,11 @@ serve(async (req) => {
       }
       
       .header-title {
-        font-size: 10pt !important;
-        letter-spacing: 1px !important;
-        white-space: nowrap !important;
+        font-size: 8pt !important;
+        letter-spacing: 0.5px !important;
+        white-space: normal !important;
+        line-height: 1.3 !important;
+        max-width: 260px !important;
       }
 
       h1 {
