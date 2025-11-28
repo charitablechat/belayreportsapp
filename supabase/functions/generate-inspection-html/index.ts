@@ -297,11 +297,20 @@ serve(async (req) => {
       display: flex;
       justify-content: space-between;
       align-items: flex-end;
+      gap: 20px;
+    }
+
+    .disclaimer {
+      flex: 1;
+      line-height: 1.4;
+      font-size: 8.5pt;
     }
 
     .page-number {
       font-weight: bold;
       white-space: nowrap;
+      font-size: 9pt;
+      color: #333;
     }
 
     h1 {
@@ -579,8 +588,8 @@ serve(async (req) => {
 
     <div class="page-footer">
       <div class="disclaimer">
-        The information contained in this report has been documented by a Qualified Professional. This report is effective for one year from the date of inspection.<br>
-        Issued by: Rope Works Inc., PO Box 1074, Dripping Springs, TX 78620
+        This report has been prepared by a Qualified Professional in accordance with ACCT standards. This report is effective for one year from the date of inspection.<br>
+        <strong>Rope Works Inc.</strong> | PO Box 1074, Dripping Springs, TX 78620 | www.ropeworksinc.com
       </div>
       <div class="page-number">Page 1 of ${pageCount}</div>
     </div>
@@ -652,7 +661,7 @@ serve(async (req) => {
 
     <div class="page-footer">
       <div class="disclaimer">
-        The information contained in this report has been documented by a Qualified Professional.
+        This report has been prepared by a Qualified Professional in accordance with ACCT standards and industry best practices.
       </div>
       <div class="page-number">Page 2 of ${pageCount}</div>
     </div>
@@ -708,7 +717,7 @@ serve(async (req) => {
 
     <div class="page-footer">
       <div class="disclaimer">
-        The information contained in this report has been documented by a Qualified Professional.
+        This report has been prepared by a Qualified Professional in accordance with ACCT standards and industry best practices.
       </div>
       <div class="page-number">Page 3 of ${pageCount}</div>
     </div>
@@ -795,7 +804,7 @@ serve(async (req) => {
 
     <div class="page-footer">
       <div class="disclaimer">
-        The information contained in this report has been documented by a Qualified Professional.
+        This report has been prepared by a Qualified Professional in accordance with ACCT standards and industry best practices.
       </div>
       <div class="page-number">Page ${systems.length > 0 ? '4' : '3'} of ${pageCount}</div>
     </div>
@@ -871,7 +880,7 @@ serve(async (req) => {
 
     <div class="page-footer">
       <div class="disclaimer">
-        The information contained in this report has been documented by a Qualified Professional.
+        This report has been prepared by a Qualified Professional in accordance with ACCT standards and industry best practices.
       </div>
       <div class="page-number">Page ${systems.length > 0 ? (ziplines.length > 0 ? '5' : '4') : (ziplines.length > 0 ? '4' : '3')} of ${pageCount}</div>
     </div>
@@ -929,7 +938,7 @@ serve(async (req) => {
 
     <div class="page-footer">
       <div class="disclaimer">
-        The information contained in this report has been documented by a Qualified Professional.
+        This report has been prepared by a Qualified Professional in accordance with ACCT standards and industry best practices.
       </div>
       <div class="page-number">Page ${pageCount - 1} of ${pageCount}</div>
     </div>
@@ -1019,8 +1028,8 @@ serve(async (req) => {
 
     <div class="page-footer">
       <div class="disclaimer">
-        The information contained in this report has been documented by a Qualified Professional. This report is effective for one year from the date of inspection.<br>
-        For questions regarding this report, contact Rope Works Inc. at PO Box 1074, Dripping Springs, TX 78620
+        This report has been prepared by a Qualified Professional in accordance with ACCT standards. This report is effective for one year from the date of inspection.<br>
+        <strong>For questions or clarifications, contact:</strong> Rope Works Inc. | PO Box 1074, Dripping Springs, TX 78620 | www.ropeworksinc.com
       </div>
       <div class="page-number">Page ${pageCount} of ${pageCount}</div>
     </div>
