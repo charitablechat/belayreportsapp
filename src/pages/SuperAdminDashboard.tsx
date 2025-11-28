@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Building2, Users, FileText, Bell, AlertTriangle, Radio, UserPlus, Pencil, Trash2, ClipboardList, ArrowLeft, Merge, Clock, TrendingUp, Calendar, UserCheck, Wrench, Loader2 } from "lucide-react";
+import { Building2, Users, FileText, Bell, AlertTriangle, Radio, UserPlus, Pencil, Trash2, ClipboardList, ArrowLeft, Merge, Clock, TrendingUp, Calendar, UserCheck, Wrench, Loader2, Image } from "lucide-react";
 import { format } from "date-fns";
 import { useNavigate } from "react-router-dom";
 import { useState } from "react";
@@ -779,6 +779,28 @@ export default function SuperAdminDashboard() {
 
         <TabsContent value="maintenance" className="space-y-4">
           <div className="rounded-md border p-6 space-y-6">
+            <div className="flex items-start gap-4">
+              <div className="flex-shrink-0 mt-1">
+                <Image className="h-6 w-6 text-primary" />
+              </div>
+              <div className="flex-1 space-y-2">
+                <h3 className="text-lg font-semibold">Report Logo Management</h3>
+                <p className="text-sm text-muted-foreground">
+                  Upload and manage the Rope Works and ACCT logos that appear in all generated PDF reports.
+                  Changes will be reflected in all future reports without requiring code changes.
+                </p>
+                <div className="pt-4">
+                  <Button
+                    onClick={() => navigate('/admin/logos')}
+                    className="gap-2"
+                  >
+                    <Image className="h-4 w-4" />
+                    Manage Logos
+                  </Button>
+                </div>
+              </div>
+            </div>
+            
             <div className="flex items-start gap-4">
               <div className="flex-shrink-0 mt-1">
                 <Wrench className="h-6 w-6 text-primary" />
