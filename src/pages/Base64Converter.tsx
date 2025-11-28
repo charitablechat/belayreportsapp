@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react';
+import { Button } from '@/components/ui/button';
+import { toast } from 'sonner';
 import ropeWorksLogo from '@/assets/rope-works-logo-final.png';
 import acctLogo from '@/assets/acct-logo-final.png';
 
@@ -37,6 +39,14 @@ const Base64Converter = () => {
     convertToBase64();
   }, []);
 
+  const copyToClipboard = (text: string, logoName: string) => {
+    navigator.clipboard.writeText(text).then(() => {
+      toast.success(`${logoName} base64 copied to clipboard!`);
+    }).catch(() => {
+      toast.error('Failed to copy to clipboard');
+    });
+  };
+
   return (
     <div className="container mx-auto p-8">
       <h1 className="text-3xl font-bold mb-6">Logo Base64 Converter</h1>
@@ -48,8 +58,15 @@ const Base64Converter = () => {
           <div>
             <h2 className="text-xl font-semibold mb-2">Rope Works Logo</h2>
             <img src={ropeWorksBase64} alt="Rope Works" className="mb-4 max-w-md border" />
-            <div className="bg-slate-100 p-4 rounded">
-              <p className="text-sm font-mono break-all">{ropeWorksBase64}</p>
+            <div className="bg-slate-100 p-4 rounded relative">
+              <p className="text-sm font-mono break-all pr-24">{ropeWorksBase64}</p>
+              <Button
+                onClick={() => copyToClipboard(ropeWorksBase64, 'Rope Works Logo')}
+                className="absolute top-2 right-2"
+                size="sm"
+              >
+                Copy
+              </Button>
             </div>
             <p className="mt-2 text-sm text-slate-600">Length: {ropeWorksBase64.length} characters</p>
           </div>
@@ -57,8 +74,15 @@ const Base64Converter = () => {
           <div>
             <h2 className="text-xl font-semibold mb-2">ACCT Logo</h2>
             <img src={acctBase64} alt="ACCT" className="mb-4 max-w-md border" />
-            <div className="bg-slate-100 p-4 rounded">
-              <p className="text-sm font-mono break-all">{acctBase64}</p>
+            <div className="bg-slate-100 p-4 rounded relative">
+              <p className="text-sm font-mono break-all pr-24">{acctBase64}</p>
+              <Button
+                onClick={() => copyToClipboard(acctBase64, 'ACCT Logo')}
+                className="absolute top-2 right-2"
+                size="sm"
+              >
+                Copy
+              </Button>
             </div>
             <p className="mt-2 text-sm text-slate-600">Length: {acctBase64.length} characters</p>
           </div>
