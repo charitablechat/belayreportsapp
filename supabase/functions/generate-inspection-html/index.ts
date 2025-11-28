@@ -219,12 +219,23 @@ serve(async (req) => {
       });
     };
 
-    // Helper function to format result as checkbox
-    const formatResultCheckbox = (result: string): string => {
+    // Helper function to format result as checkbox with conditional highlighting
+    const formatResultCheckbox = (result: string): { html: string; cellStyle: string } => {
       const pass = result === 'Pass' ? '☑' : '☐';
       const provisions = (result === 'Pass with Provisions' || result === 'Needs Attention') ? '☑' : '☐';
       const fail = result === 'Fail' ? '☑' : '☐';
-      return `<span class="result-checkbox">${pass} Pass  ${provisions} Pass w/ Provisions  ${fail} Fail</span>`;
+      
+      let cellStyle = '';
+      if (result === 'Fail') {
+        cellStyle = 'background-color: #ff6b6b;'; // Red highlight for Fail
+      } else if (result === 'Pass with Provisions' || result === 'Needs Attention') {
+        cellStyle = 'background-color: #ffff00;'; // Yellow highlight for Pass w/Provisions
+      }
+      
+      return {
+        html: `<span class="result-checkbox">${pass} Pass  ${provisions} Pass w/ Provisions  ${fail} Fail</span>`,
+        cellStyle
+      };
     };
 
     const inspectorName = inspection.profiles
@@ -420,8 +431,8 @@ serve(async (req) => {
 
     h2 {
       font-size: 16pt;
-      color: #000;
-      background: #ffff00;
+      color: #fff;
+      background: #1B6DB5;
       margin: 12px 0 8px 0;
       padding: 6px 10px;
       font-weight: bold;
@@ -1493,12 +1504,13 @@ serve(async (req) => {
           </thead>
           <tbody>
           ${systems.map(sys => {
+            const resultData = formatResultCheckbox(sys.result);
             return `
               <tr>
                 <td><strong>${sys.system_name}</strong></td>
                 <td>${sys.name || 'N/A'}</td>
-                <td>${formatResultCheckbox(sys.result)}</td>
-                <td>${formatResultCheckbox(sys.result)}</td>
+                <td style="${resultData.cellStyle}">${resultData.html}</td>
+                <td style="${resultData.cellStyle}">${resultData.html}</td>
                 <td style="font-size: 9pt;">${sys.comments || '—'}</td>
               </tr>
             `;
@@ -1536,16 +1548,19 @@ serve(async (req) => {
           </thead>
           <tbody>
             ${ziplines.map(zip => {
+              const cableResultData = formatResultCheckbox(zip.cable_result || 'Pass');
+              const brakingResultData = formatResultCheckbox(zip.braking_result || 'Pass');
+              const eadResultData = formatResultCheckbox(zip.ead_result || 'Pass');
               return `
                 <tr>
                   <td><strong>${zip.zipline_name}</strong></td>
                   <td style="text-align: center;">${zip.cable_type || 'N/A'}</td>
                   <td style="text-align: center;">${zip.cable_length || 'N/A'}</td>
-                  <td>${formatResultCheckbox(zip.cable_result || 'Pass')}</td>
+                  <td style="${cableResultData.cellStyle}">${cableResultData.html}</td>
                   <td style="text-align: center;">${zip.braking_system || 'N/A'}</td>
-                  <td>${formatResultCheckbox(zip.braking_result || 'Pass')}</td>
+                  <td style="${brakingResultData.cellStyle}">${brakingResultData.html}</td>
                   <td style="text-align: center;">${zip.ead_system || 'N/A'}</td>
-                  <td>${formatResultCheckbox(zip.ead_result || 'Pass')}</td>
+                  <td style="${eadResultData.cellStyle}">${eadResultData.html}</td>
                   <td style="font-size: 9pt;">${zip.comments || '—'}</td>
                 </tr>
               `;
@@ -1596,12 +1611,13 @@ serve(async (req) => {
         </thead>
         <tbody>
           ${systems.map(sys => {
+            const resultData = formatResultCheckbox(sys.result);
             return `
               <tr>
                 <td><strong>${sys.system_name}</strong></td>
                 <td>${sys.name || 'N/A'}</td>
-                <td>${formatResultCheckbox(sys.result)}</td>
-                <td>${formatResultCheckbox(sys.result)}</td>
+                <td style="${resultData.cellStyle}">${resultData.html}</td>
+                <td style="${resultData.cellStyle}">${resultData.html}</td>
                 <td style="font-size: 9pt;">${sys.comments || '—'}</td>
               </tr>
             `;
@@ -1660,16 +1676,19 @@ serve(async (req) => {
         </thead>
         <tbody>
           ${ziplines.map(zip => {
+            const cableResultData = formatResultCheckbox(zip.cable_result || 'Pass');
+            const brakingResultData = formatResultCheckbox(zip.braking_result || 'Pass');
+            const eadResultData = formatResultCheckbox(zip.ead_result || 'Pass');
             return `
               <tr>
                 <td><strong>${zip.zipline_name}</strong></td>
                 <td style="text-align: center;">${zip.cable_type || 'N/A'}</td>
                 <td style="text-align: center;">${zip.cable_length || 'N/A'}</td>
-                <td>${formatResultCheckbox(zip.cable_result || 'Pass')}</td>
+                <td style="${cableResultData.cellStyle}">${cableResultData.html}</td>
                 <td style="text-align: center;">${zip.braking_system || 'N/A'}</td>
-                <td>${formatResultCheckbox(zip.braking_result || 'Pass')}</td>
+                <td style="${brakingResultData.cellStyle}">${brakingResultData.html}</td>
                 <td style="text-align: center;">${zip.ead_system || 'N/A'}</td>
-                <td>${formatResultCheckbox(zip.ead_result || 'Pass')}</td>
+                <td style="${eadResultData.cellStyle}">${eadResultData.html}</td>
                 <td style="font-size: 9pt;">${zip.comments || '—'}</td>
               </tr>
             `;
@@ -1739,12 +1758,13 @@ serve(async (req) => {
               </thead>
               <tbody>
                 ${categoryEquipment.map(eq => {
+                  const resultData = formatResultCheckbox(eq.result);
                   return `
                     <tr>
                       <td>${eq.equipment_type}</td>
                       <td style="text-align: center;">${eq.quantity || 'N/A'}</td>
                       <td style="text-align: center;">${eq.production_year || 'N/A'}</td>
-                      <td>${formatResultCheckbox(eq.result)}</td>
+                      <td style="${resultData.cellStyle}">${resultData.html}</td>
                       <td style="font-size: 9pt;">${eq.comments || '—'}</td>
                     </tr>
                   `;
@@ -1845,12 +1865,13 @@ serve(async (req) => {
             </thead>
             <tbody>
               ${categoryEquipment.map(eq => {
+                const resultData = formatResultCheckbox(eq.result);
                 return `
                   <tr>
                     <td>${eq.equipment_type}</td>
                     <td style="text-align: center;">${eq.quantity || 'N/A'}</td>
                     <td style="text-align: center;">${eq.production_year || 'N/A'}</td>
-                    <td>${formatResultCheckbox(eq.result)}</td>
+                    <td style="${resultData.cellStyle}">${resultData.html}</td>
                     <td style="font-size: 9pt;">${eq.comments || '—'}</td>
                   </tr>
                 `;
