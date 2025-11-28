@@ -6,8 +6,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
-import { Upload, Image as ImageIcon, Loader2 } from 'lucide-react';
+import { Upload, Image as ImageIcon, Loader2, CheckCircle2, Info } from 'lucide-react';
 import { useRequireSuperAdmin } from '@/hooks/useRequireSuperAdmin';
+import { optimizeImage, formatFileSize, formatDimensions, LOGO_PRESETS, type OptimizedResult } from '@/lib/image-optimizer';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
 
 export default function AdminLogoManagement() {
   const navigate = useNavigate();
@@ -17,6 +20,9 @@ export default function AdminLogoManagement() {
   const [acctFile, setAcctFile] = useState<File | null>(null);
   const [ropeWorksPreview, setRopeWorksPreview] = useState<string>('');
   const [acctPreview, setAcctPreview] = useState<string>('');
+  const [ropeWorksOptimized, setRopeWorksOptimized] = useState<OptimizedResult | null>(null);
+  const [acctOptimized, setAcctOptimized] = useState<OptimizedResult | null>(null);
+  const [optimizing, setOptimizing] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [currentLogos, setCurrentLogos] = useState<{ ropeWorks: string; acct: string }>({ ropeWorks: '', acct: '' });
 
@@ -43,7 +49,7 @@ export default function AdminLogoManagement() {
     }
   };
 
-  const handleFileChange = (file: File | null, type: 'ropeWorks' | 'acct') => {
+  const handleFileChange = async (file: File | null, type: 'ropeWorks' | 'acct') => {
     if (!file) return;
 
     // Validate file type
@@ -52,31 +58,53 @@ export default function AdminLogoManagement() {
       return;
     }
 
-    // Validate file size (max 2MB)
-    if (file.size > 2 * 1024 * 1024) {
-      toast.error('File size must be less than 2MB');
+    // Validate file size (max 5MB for original, will be optimized)
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('File size must be less than 5MB');
       return;
     }
 
-    // Create preview
-    const reader = new FileReader();
-    reader.onloadend = () => {
+    setOptimizing(true);
+
+    try {
+      // Get the appropriate preset for this logo type
+      const preset = type === 'ropeWorks' ? LOGO_PRESETS.ropeWorks : LOGO_PRESETS.acct;
+
+      // Optimize the image
+      const result = await optimizeImage(file, {
+        maxWidth: preset.maxWidth,
+        maxHeight: preset.maxHeight,
+        quality: 0.92,
+        format: 'image/png'
+      });
+
+      // Create preview from optimized blob
+      const previewUrl = URL.createObjectURL(result.blob);
+
       if (type === 'ropeWorks') {
         setRopeWorksFile(file);
-        setRopeWorksPreview(reader.result as string);
+        setRopeWorksPreview(previewUrl);
+        setRopeWorksOptimized(result);
       } else {
         setAcctFile(file);
-        setAcctPreview(reader.result as string);
+        setAcctPreview(previewUrl);
+        setAcctOptimized(result);
       }
-    };
-    reader.readAsDataURL(file);
+
+      toast.success(`Image optimized: ${result.compressionRatio}% smaller`);
+    } catch (error) {
+      console.error('Optimization error:', error);
+      toast.error('Failed to optimize image: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    } finally {
+      setOptimizing(false);
+    }
   };
 
-  const uploadLogo = async (file: File, fileName: string) => {
+  const uploadLogo = async (blob: Blob, fileName: string) => {
     const { error } = await supabase.storage
       .from('pdf-templates')
-      .upload(fileName, file, {
-        contentType: file.type,
+      .upload(fileName, blob, {
+        contentType: 'image/png',
         upsert: true // Overwrite existing file
       });
 
@@ -84,7 +112,7 @@ export default function AdminLogoManagement() {
   };
 
   const handleUpload = async () => {
-    if (!ropeWorksFile && !acctFile) {
+    if (!ropeWorksOptimized && !acctOptimized) {
       toast.error('Please select at least one logo to upload');
       return;
     }
@@ -93,12 +121,12 @@ export default function AdminLogoManagement() {
     try {
       const uploadPromises = [];
 
-      if (ropeWorksFile) {
-        uploadPromises.push(uploadLogo(ropeWorksFile, 'rope-works-logo-embedded.png'));
+      if (ropeWorksOptimized) {
+        uploadPromises.push(uploadLogo(ropeWorksOptimized.blob, 'rope-works-logo-embedded.png'));
       }
 
-      if (acctFile) {
-        uploadPromises.push(uploadLogo(acctFile, 'acct-logo-embedded.png'));
+      if (acctOptimized) {
+        uploadPromises.push(uploadLogo(acctOptimized.blob, 'acct-logo-embedded.png'));
       }
 
       await Promise.all(uploadPromises);
@@ -110,6 +138,8 @@ export default function AdminLogoManagement() {
       setAcctFile(null);
       setRopeWorksPreview('');
       setAcctPreview('');
+      setRopeWorksOptimized(null);
+      setAcctOptimized(null);
       loadCurrentLogos();
     } catch (error) {
       console.error('Upload error:', error);
@@ -179,12 +209,21 @@ export default function AdminLogoManagement() {
         </Card>
       </div>
 
+      {/* Optimal Dimensions Info */}
+      <Alert className="mb-6">
+        <Info className="h-4 w-4" />
+        <AlertDescription>
+          <strong>Optimal Dimensions:</strong> Rope Works Logo: 300×140px | ACCT Badge: 240×120px. 
+          Images will be automatically optimized and resized to these dimensions for best quality in PDF reports.
+        </AlertDescription>
+      </Alert>
+
       {/* Upload New Logos */}
       <Card>
         <CardHeader>
           <CardTitle>Upload New Logos</CardTitle>
           <CardDescription>
-            Select new logo files to update. Accepted formats: PNG, JPG, WEBP (max 2MB)
+            Select new logo files to update. Images will be automatically optimized and resized. Accepted formats: PNG, JPG, WEBP (max 5MB)
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -197,16 +236,43 @@ export default function AdminLogoManagement() {
                 type="file"
                 accept="image/*"
                 onChange={(e) => handleFileChange(e.target.files?.[0] || null, 'ropeWorks')}
-                disabled={uploading}
+                disabled={uploading || optimizing}
               />
-              {ropeWorksPreview && (
-                <div className="p-4 bg-muted rounded-lg">
-                  <p className="text-sm text-muted-foreground mb-2">Preview:</p>
-                  <img 
-                    src={ropeWorksPreview} 
-                    alt="Preview" 
-                    className="max-h-[150px] object-contain mx-auto"
-                  />
+              {ropeWorksPreview && ropeWorksOptimized && (
+                <div className="space-y-3">
+                  <div className="p-4 bg-muted rounded-lg">
+                    <p className="text-sm text-muted-foreground mb-2">Optimized Preview:</p>
+                    <img 
+                      src={ropeWorksPreview} 
+                      alt="Preview" 
+                      className="max-h-[150px] object-contain mx-auto"
+                    />
+                  </div>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="h-4 w-4 text-green-600" />
+                      <span className="font-medium">Auto-Optimized</span>
+                    </div>
+                    <div className="flex justify-between text-muted-foreground">
+                      <span>Size:</span>
+                      <span>
+                        {formatFileSize(ropeWorksOptimized.originalSize)} → {formatFileSize(ropeWorksOptimized.optimizedSize)}
+                        <Badge variant="secondary" className="ml-2">{ropeWorksOptimized.compressionRatio}% smaller</Badge>
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-muted-foreground">
+                      <span>Dimensions:</span>
+                      <span>
+                        {formatDimensions(ropeWorksOptimized.originalDimensions)} → {formatDimensions(ropeWorksOptimized.optimizedDimensions)}
+                      </span>
+                    </div>
+                    {ropeWorksOptimized.formatChanged && (
+                      <div className="flex justify-between text-muted-foreground">
+                        <span>Format:</span>
+                        <span>Converted to PNG</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
@@ -219,25 +285,59 @@ export default function AdminLogoManagement() {
                 type="file"
                 accept="image/*"
                 onChange={(e) => handleFileChange(e.target.files?.[0] || null, 'acct')}
-                disabled={uploading}
+                disabled={uploading || optimizing}
               />
-              {acctPreview && (
-                <div className="p-4 bg-muted rounded-lg">
-                  <p className="text-sm text-muted-foreground mb-2">Preview:</p>
-                  <img 
-                    src={acctPreview} 
-                    alt="Preview" 
-                    className="max-h-[150px] object-contain mx-auto"
-                  />
+              {acctPreview && acctOptimized && (
+                <div className="space-y-3">
+                  <div className="p-4 bg-muted rounded-lg">
+                    <p className="text-sm text-muted-foreground mb-2">Optimized Preview:</p>
+                    <img 
+                      src={acctPreview} 
+                      alt="Preview" 
+                      className="max-h-[150px] object-contain mx-auto"
+                    />
+                  </div>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="h-4 w-4 text-green-600" />
+                      <span className="font-medium">Auto-Optimized</span>
+                    </div>
+                    <div className="flex justify-between text-muted-foreground">
+                      <span>Size:</span>
+                      <span>
+                        {formatFileSize(acctOptimized.originalSize)} → {formatFileSize(acctOptimized.optimizedSize)}
+                        <Badge variant="secondary" className="ml-2">{acctOptimized.compressionRatio}% smaller</Badge>
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-muted-foreground">
+                      <span>Dimensions:</span>
+                      <span>
+                        {formatDimensions(acctOptimized.originalDimensions)} → {formatDimensions(acctOptimized.optimizedDimensions)}
+                      </span>
+                    </div>
+                    {acctOptimized.formatChanged && (
+                      <div className="flex justify-between text-muted-foreground">
+                        <span>Format:</span>
+                        <span>Converted to PNG</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
           </div>
 
+          {optimizing && (
+            <div className="flex items-center justify-center gap-2 text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <span>Optimizing image...</span>
+            </div>
+          )}
+
           <div className="flex gap-4">
             <Button 
               onClick={handleUpload} 
-              disabled={uploading || (!ropeWorksFile && !acctFile)}
+              disabled={uploading || optimizing || (!ropeWorksOptimized && !acctOptimized)}
               className="w-full md:w-auto"
             >
               {uploading ? (
@@ -255,7 +355,7 @@ export default function AdminLogoManagement() {
             <Button 
               variant="outline" 
               onClick={() => navigate('/admin')}
-              disabled={uploading}
+              disabled={uploading || optimizing}
             >
               Back to Admin
             </Button>
