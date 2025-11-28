@@ -674,29 +674,32 @@ serve(async (req) => {
     </div>
 
     <h2>Operating Systems</h2>
+    <p style="margin-bottom: 15px; font-size: 10pt; line-height: 1.6;">
+      Each operating system has been inspected for structural integrity, hardware condition, and environmental factors.
+    </p>
     <table>
       <thead>
         <tr>
           <th style="width: 25%;">System Name</th>
-          <th style="width: 20%;">Name/ID</th>
+          <th style="width: 15%;">Name/ID</th>
           <th style="width: 15%;">Lifeline HDW</th>
           <th style="width: 15%;">Activity HDW</th>
-          <th style="width: 25%;">Comments</th>
+          <th style="width: 30%;">Comments</th>
         </tr>
       </thead>
       <tbody>
         ${systems.map(sys => {
           let resultClass = 'result-pass';
-          if (sys.result === 'Needs Attention') resultClass = 'result-attention';
+          if (sys.result === 'Needs Attention' || sys.result === 'Pass with Provisions') resultClass = 'result-attention';
           if (sys.result === 'Fail') resultClass = 'result-fail';
           
           return `
             <tr>
-              <td>${sys.system_name}</td>
+              <td><strong>${sys.system_name}</strong></td>
               <td>${sys.name || 'N/A'}</td>
               <td class="${resultClass}">${sys.result}</td>
               <td class="${resultClass}">${sys.result}</td>
-              <td style="font-size: 9pt;">${sys.comments || ''}</td>
+              <td style="font-size: 9pt;">${sys.comments || '—'}</td>
             </tr>
           `;
         }).join('')}
@@ -729,7 +732,8 @@ serve(async (req) => {
 
     <h2>Ziplines</h2>
     
-    <div style="margin-bottom: 15px; font-size: 9pt;">
+    <div style="margin-bottom: 15px; font-size: 9.5pt; padding: 10px; background: #f8f9fa; border-left: 3px solid #1e40af;">
+      <strong>Key Abbreviations:</strong><br>
       <strong>Cable Type:</strong> GAC = Galvanized Aircraft Cable, SS = Stainless Steel<br>
       <strong>Braking System:</strong> ZS = Zipstop, FB = Friction Brake, SB = Spring Brake, G = Gravity<br>
       <strong>EAD System:</strong> Energy Absorption Device
@@ -738,43 +742,43 @@ serve(async (req) => {
     <table>
       <thead>
         <tr>
-          <th>Zipline Name</th>
-          <th>Cable Type</th>
-          <th>Length (ft)</th>
-          <th>Cable Result</th>
-          <th>Braking System</th>
-          <th>Braking Result</th>
-          <th>EAD System</th>
-          <th>EAD Result</th>
-          <th>Comments</th>
+          <th style="width: 15%;">Zipline Name</th>
+          <th style="width: 8%;">Cable Type</th>
+          <th style="width: 8%;">Length (ft)</th>
+          <th style="width: 10%;">Cable Result</th>
+          <th style="width: 10%;">Braking System</th>
+          <th style="width: 10%;">Braking Result</th>
+          <th style="width: 8%;">EAD System</th>
+          <th style="width: 10%;">EAD Result</th>
+          <th style="width: 21%;">Comments</th>
         </tr>
       </thead>
       <tbody>
         ${ziplines.map(zip => {
           const getCableResultClass = () => {
             if (zip.cable_result === 'Pass') return 'result-pass';
-            if (zip.cable_result === 'Needs Attention') return 'result-attention';
+            if (zip.cable_result === 'Needs Attention' || zip.cable_result === 'Pass with Provisions') return 'result-attention';
             if (zip.cable_result === 'Fail') return 'result-fail';
             return '';
           };
 
           const getBrakingResultClass = () => {
             if (zip.braking_result === 'Pass') return 'result-pass';
-            if (zip.braking_result === 'Needs Attention') return 'result-attention';
+            if (zip.braking_result === 'Needs Attention' || zip.braking_result === 'Pass with Provisions') return 'result-attention';
             if (zip.braking_result === 'Fail') return 'result-fail';
             return '';
           };
 
           const getEadResultClass = () => {
             if (zip.ead_result === 'Pass') return 'result-pass';
-            if (zip.ead_result === 'Needs Attention') return 'result-attention';
+            if (zip.ead_result === 'Needs Attention' || zip.ead_result === 'Pass with Provisions') return 'result-attention';
             if (zip.ead_result === 'Fail') return 'result-fail';
             return '';
           };
           
           return `
             <tr>
-              <td>${zip.zipline_name}</td>
+              <td><strong>${zip.zipline_name}</strong></td>
               <td>${zip.cable_type || 'N/A'}</td>
               <td>${zip.cable_length || 'N/A'}</td>
               <td class="${getCableResultClass()}">${zip.cable_result || 'N/A'}</td>
@@ -782,7 +786,7 @@ serve(async (req) => {
               <td class="${getBrakingResultClass()}">${zip.braking_result || 'N/A'}</td>
               <td>${zip.ead_system || 'N/A'}</td>
               <td class="${getEadResultClass()}">${zip.ead_result || 'N/A'}</td>
-              <td style="font-size: 9pt;">${zip.comments || ''}</td>
+              <td style="font-size: 9pt;">${zip.comments || '—'}</td>
             </tr>
           `;
         }).join('')}
@@ -813,37 +817,50 @@ serve(async (req) => {
       </div>
     </div>
 
-    <h2>Equipment</h2>
+    <h2>Equipment Inspection</h2>
+    <p style="margin-bottom: 15px; font-size: 10pt; line-height: 1.6;">
+      All equipment has been inspected in accordance with manufacturer specifications and ACCT standards.
+    </p>
     
-    ${['Rope', 'Carabiners', 'Helmets', 'Belay Devices', 'Pulleys', 'Harnesses', 'Other'].map(category => {
-      const categoryEquipment = equipment.filter(eq => eq.equipment_category === category);
+    ${['Harnesses', 'Helmets', 'Lanyards', 'Carabiners', 'Rope', 'Belay Devices', 'Pulleys', 'Other'].map(category => {
+      const categoryEquipment = equipment.filter(eq => 
+        eq.equipment_category === category || 
+        (category === 'Carabiners' && eq.equipment_category === 'Carabiners')
+      );
       if (categoryEquipment.length === 0) return '';
       
+      const categoryTitle = category === 'Carabiners' ? 'CONNECTORS (CARABINERS & QUICKLINKS)' : 
+                           category === 'Rope' ? 'KERNMANTLE ROPE' :
+                           category === 'Belay Devices' ? 'BELAY/DESCENT DEVICES' :
+                           category === 'Pulleys' ? 'TROLLEYS AND PULLEYS' :
+                           category === 'Other' ? 'OTHER EQUIPMENT' :
+                           category.toUpperCase();
+      
       return `
-        <h3>${category}</h3>
+        <h3 style="margin-top: 20px; color: #1e40af; font-size: 12pt;">EQUIPMENT - ${categoryTitle}</h3>
         <table>
           <thead>
             <tr>
-              <th style="width: 30%;">Type</th>
-              <th style="width: 10%;">Qty</th>
-              <th style="width: 10%;">Year</th>
+              <th style="width: 35%;">Type</th>
+              <th style="width: 10%;">Quantity</th>
+              <th style="width: 12%;">Year</th>
               <th style="width: 15%;">Result</th>
-              <th style="width: 35%;">Comments</th>
+              <th style="width: 28%;">Comments</th>
             </tr>
           </thead>
           <tbody>
             ${categoryEquipment.map(eq => {
               let resultClass = 'result-pass';
-              if (eq.result === 'Needs Attention') resultClass = 'result-attention';
+              if (eq.result === 'Needs Attention' || eq.result === 'Pass with Provisions') resultClass = 'result-attention';
               if (eq.result === 'Fail') resultClass = 'result-fail';
               
               return `
                 <tr>
                   <td>${eq.equipment_type}</td>
-                  <td>${eq.quantity || 'N/A'}</td>
-                  <td>${eq.production_year || 'N/A'}</td>
+                  <td style="text-align: center;">${eq.quantity || 'N/A'}</td>
+                  <td style="text-align: center;">${eq.production_year || 'N/A'}</td>
                   <td class="${resultClass}">${eq.result}</td>
-                  <td style="font-size: 9pt;">${eq.comments || ''}</td>
+                  <td style="font-size: 9pt;">${eq.comments || '—'}</td>
                 </tr>
               `;
             }).join('')}
@@ -877,29 +894,32 @@ serve(async (req) => {
     </div>
 
     <h2>ACCT Operations Standards</h2>
-    <p style="margin-bottom: 15px; font-size: 10pt;">Documentation verification as required by ACCT Standards:</p>
+    <p style="margin-bottom: 15px; font-size: 10pt; line-height: 1.6;">
+      Documentation verification as required by ACCT (Association for Challenge Course Technology) Standards. 
+      The presence of documentation does not constitute review or approval of content.
+    </p>
 
     <table>
       <thead>
         <tr>
-          <th style="width: 70%;">Standard / Document</th>
-          <th style="width: 10%;">Yes</th>
-          <th style="width: 10%;">No</th>
-          <th style="width: 10%;">N/A</th>
+          <th style="width: 65%;">Standard / Document</th>
+          <th style="width: 10%; text-align: center;">Yes</th>
+          <th style="width: 10%; text-align: center;">No</th>
+          <th style="width: 15%; text-align: center;">Comments</th>
         </tr>
       </thead>
       <tbody>
         ${standards.map(std => `
           <tr>
-            <td>${std.standard_name}</td>
-            <td style="text-align: center;">${std.has_documentation ? '✓' : ''}</td>
-            <td style="text-align: center;">${!std.has_documentation ? '✓' : ''}</td>
-            <td style="text-align: center;"></td>
+            <td><strong>${std.standard_name}</strong></td>
+            <td style="text-align: center; font-size: 16pt; color: #16a34a;">${std.has_documentation ? '✓' : ''}</td>
+            <td style="text-align: center; font-size: 16pt; color: #dc2626;">${!std.has_documentation ? '✓' : ''}</td>
+            <td style="font-size: 9pt; text-align: center;">${std.comments ? '✓' : '—'}</td>
           </tr>
           ${std.comments ? `
           <tr>
-            <td colspan="4" style="font-size: 9pt; font-style: italic; background: #f9f9f9;">
-              Comments: ${std.comments}
+            <td colspan="4" style="font-size: 9pt; font-style: italic; background: #f9f9f9; padding-left: 20px;">
+              <strong>Comment:</strong> ${std.comments}
             </td>
           </tr>
           ` : ''}
