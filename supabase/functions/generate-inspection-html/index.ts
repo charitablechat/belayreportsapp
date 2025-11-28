@@ -94,24 +94,59 @@ function deduplicateHtmlContent(html: string | null): string {
   const uniqueItems = new Map<string, string>();
   let match;
   
+  // Extract and deduplicate list items
   while ((match = listItemRegex.exec(html)) !== null) {
     const content = match[1].trim();
     const contentLower = content.toLowerCase();
-    if (content && !uniqueItems.has(contentLower)) {
+    
+    // Normalize content for better matching (remove extra spaces, punctuation differences)
+    const normalizedContent = contentLower
+      .replace(/[.,;:!?]+$/, '') // Remove trailing punctuation
+      .replace(/\s+/g, ' ') // Normalize whitespace
+      .trim();
+    
+    // Skip empty items
+    if (!content || !normalizedContent) continue;
+    
+    // Check for semantic duplicates (items that say the same thing)
+    let isDuplicate = false;
+    for (const [existingKey] of uniqueItems) {
+      const normalizedExisting = existingKey
+        .replace(/[.,;:!?]+$/, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+      
+      // Check if this item is essentially the same as an existing one
+      if (normalizedContent === normalizedExisting || 
+          normalizedContent.includes(normalizedExisting) ||
+          normalizedExisting.includes(normalizedContent)) {
+        isDuplicate = true;
+        break;
+      }
+    }
+    
+    if (!isDuplicate) {
       uniqueItems.set(contentLower, content);
     }
   }
   
+  // If we found list items, return optimized list
   if (uniqueItems.size > 0) {
     const items = Array.from(uniqueItems.values()).map(item => `<li>${item}</li>`).join('\n');
-    return `<ul>\n${items}\n</ul>`;
+    return `<ul class="bullet-list">\n${items}\n</ul>`;
   }
   
+  // Handle non-list content: deduplicate lines
   const lines = html.split('\n').map(l => l.trim()).filter(Boolean);
   const uniqueLines = new Map<string, string>();
+  
   lines.forEach(line => {
-    const lineLower = line.toLowerCase();
-    if (!uniqueLines.has(lineLower)) {
+    const lineLower = line.toLowerCase()
+      .replace(/[.,;:!?]+$/, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    
+    if (lineLower && !uniqueLines.has(lineLower)) {
       uniqueLines.set(lineLower, line);
     }
   });
@@ -412,14 +447,19 @@ serve(async (req) => {
     }
 
     .bullet-list {
-      margin: 8px 0 8px 25px;
+      margin: 8px 0 8px 20px;
       font-size: 10pt;
+      padding-left: 5px;
     }
 
     .bullet-list li {
-      margin-bottom: 8px;
-      line-height: 1.6;
-      padding-left: 5px;
+      margin-bottom: 5px;
+      line-height: 1.5;
+      padding-left: 3px;
+    }
+
+    .bullet-list li:last-child {
+      margin-bottom: 0;
     }
 
     table {
@@ -803,13 +843,32 @@ serve(async (req) => {
       }
 
       .bullet-list {
-        margin: 5px 0 5px 18px;
+        margin: 4px 0 4px 16px;
         font-size: 9.5pt;
       }
 
       .bullet-list li {
-        margin-bottom: 4px;
-        line-height: 1.3;
+        margin-bottom: 3px;
+        line-height: 1.35;
+      }
+
+      .bullet-list li:last-child {
+        margin-bottom: 0;
+      }
+
+      /* General list optimization */
+      ul, ol {
+        margin: 5px 0 5px 16px;
+        padding-left: 4px;
+      }
+
+      ul li, ol li {
+        margin-bottom: 3px;
+        line-height: 1.35;
+      }
+
+      ul li:last-child, ol li:last-child {
+        margin-bottom: 0;
       }
 
       .page-footer {
@@ -1617,13 +1676,13 @@ serve(async (req) => {
         </p>
         
         <div style="padding: 10px 15px; background: #fafafa; border-left: 3px solid #666;">
-          <ul style="margin: 8px 0; padding-left: 20px; font-size: 10pt; line-height: 1.8;">
-            <li style="margin-bottom: 6px;">Manufacturer's recommended lifespan has been exceeded</li>
-            <li style="margin-bottom: 6px;">Visible damage, wear, or deterioration affecting structural integrity</li>
-            <li style="margin-bottom: 6px;">Equipment subjected to impact forces or shock loading beyond design parameters</li>
-            <li style="margin-bottom: 6px;">Missing or illegible manufacturer identification markings</li>
-            <li style="margin-bottom: 6px;">Equipment fails inspection criteria outlined in current ACCT standards</li>
-            <li style="margin-bottom: 6px;">Incomplete or unavailable documentation of equipment history</li>
+          <ul class="bullet-list" style="margin: 6px 0; padding-left: 18px; font-size: 10pt; line-height: 1.6;">
+            <li style="margin-bottom: 4px;">Manufacturer's recommended lifespan has been exceeded</li>
+            <li style="margin-bottom: 4px;">Visible damage, wear, or deterioration affecting structural integrity</li>
+            <li style="margin-bottom: 4px;">Equipment subjected to impact forces or shock loading beyond design parameters</li>
+            <li style="margin-bottom: 4px;">Missing or illegible manufacturer identification markings</li>
+            <li style="margin-bottom: 4px;">Equipment fails inspection criteria outlined in current ACCT standards</li>
+            <li style="margin-bottom: 4px;">Incomplete or unavailable documentation of equipment history</li>
             <li style="margin-bottom: 0;">Equipment is involved in any incident resulting in injury or near-miss</li>
           </ul>
         </div>
