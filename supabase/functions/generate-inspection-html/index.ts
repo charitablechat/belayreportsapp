@@ -515,18 +515,18 @@ serve(async (req) => {
     }
 
     table th {
-      background: #1e40af;
-      color: #fff;
+      background: #e5e7eb;
+      color: #000;
       padding: 6px 8px;
       text-align: left;
       font-weight: bold;
-      border: 1px solid #1e40af;
+      border: 1px solid #000;
       font-size: 10pt;
     }
 
     table td {
       padding: 6px 8px;
-      border: 1px solid #ddd;
+      border: 1px solid #000;
       vertical-align: top;
       line-height: 1.4;
       max-width: 400px; /* Prevent excessive cell expansion */
@@ -535,7 +535,7 @@ serve(async (req) => {
     }
 
     table tr:nth-child(even) {
-      background: #f9f9f9;
+      background: transparent;
     }
 
     /* Prevent table overflow */
@@ -559,15 +559,25 @@ serve(async (req) => {
 
     /* Optimized column widths for Equipment table */
     .equipment-table th:nth-child(1),
-    .equipment-table td:nth-child(1) { width: 40%; } /* Type */
+    .equipment-table td:nth-child(1) { width: 35%; } /* Type */
     .equipment-table th:nth-child(2),
-    .equipment-table td:nth-child(2) { width: 10%; } /* Quantity */
+    .equipment-table td:nth-child(2) { width: 12%; } /* Quantity */
     .equipment-table th:nth-child(3),
     .equipment-table td:nth-child(3) { width: 10%; } /* Year */
     .equipment-table th:nth-child(4),
-    .equipment-table td:nth-child(4) { width: 12%; } /* Result */
+    .equipment-table td:nth-child(4) { width: 20%; } /* Result - wider for checkboxes */
     .equipment-table th:nth-child(5),
-    .equipment-table td:nth-child(5) { width: 28%; } /* Comments */
+    .equipment-table td:nth-child(5) { width: 23%; } /* Comments */
+
+    /* Optimized column widths for Standards table */
+    .standards-table th:nth-child(1),
+    .standards-table td:nth-child(1) { width: 50%; } /* Standard Name */
+    .standards-table th:nth-child(2),
+    .standards-table td:nth-child(2) { width: 15%; } /* Yes */
+    .standards-table th:nth-child(3),
+    .standards-table td:nth-child(3) { width: 15%; } /* No */
+    .standards-table th:nth-child(4),
+    .standards-table td:nth-child(4) { width: 20%; } /* Comments */
 
     /* Optimized column widths for Ziplines table (9 columns) */
     .ziplines-table th:nth-child(1),
@@ -1758,8 +1768,8 @@ serve(async (req) => {
           <thead>
             <tr>
               <th>Standard / Document</th>
-              <th style="text-align: center;">Yes</th>
-              <th style="text-align: center;">No</th>
+              <th style="text-align: center;">YES</th>
+              <th style="text-align: center;">NO</th>
               <th style="text-align: center;">Comments</th>
             </tr>
           </thead>
@@ -1767,17 +1777,10 @@ serve(async (req) => {
             ${standards.map(std => `
               <tr>
                 <td><strong>${std.standard_name}</strong></td>
-                <td style="text-align: center; font-size: 16pt; color: #16a34a;">${std.has_documentation ? '✓' : ''}</td>
-                <td style="text-align: center; font-size: 16pt; color: #dc2626;">${!std.has_documentation ? '✓' : ''}</td>
-                <td style="font-size: 9pt; text-align: center;">${std.comments ? '✓' : '—'}</td>
+                <td style="text-align: center; font-size: 12pt;">${std.has_documentation ? '☑' : '☐'}</td>
+                <td style="text-align: center; font-size: 12pt;">${!std.has_documentation ? '☑' : '☐'}</td>
+                <td style="font-size: 9pt;">${std.comments || '—'}</td>
               </tr>
-              ${std.comments ? `
-              <tr>
-                <td colspan="4" style="font-size: 9pt; font-style: italic; background: #f9f9f9; padding-left: 20px;">
-                  <strong>Comment:</strong> ${std.comments}
-                </td>
-              </tr>
-              ` : ''}
             `).join('')}
           </tbody>
         </table>
@@ -1892,8 +1895,8 @@ serve(async (req) => {
         <thead>
           <tr>
             <th>Standard / Document</th>
-            <th style="text-align: center;">Yes</th>
-            <th style="text-align: center;">No</th>
+            <th style="text-align: center;">YES</th>
+            <th style="text-align: center;">NO</th>
             <th style="text-align: center;">Comments</th>
           </tr>
         </thead>
@@ -1901,17 +1904,10 @@ serve(async (req) => {
           ${standards.map(std => `
             <tr>
               <td><strong>${std.standard_name}</strong></td>
-              <td style="text-align: center; font-size: 16pt; color: #16a34a;">${std.has_documentation ? '✓' : ''}</td>
-              <td style="text-align: center; font-size: 16pt; color: #dc2626;">${!std.has_documentation ? '✓' : ''}</td>
-              <td style="font-size: 9pt; text-align: center;">${std.comments ? '✓' : '—'}</td>
+              <td style="text-align: center; font-size: 12pt;">${std.has_documentation ? '☑' : '☐'}</td>
+              <td style="text-align: center; font-size: 12pt;">${!std.has_documentation ? '☑' : '☐'}</td>
+              <td style="font-size: 9pt;">${std.comments || '—'}</td>
             </tr>
-            ${std.comments ? `
-            <tr>
-              <td colspan="4" style="font-size: 9pt; font-style: italic; background: #f9f9f9; padding-left: 20px;">
-                <strong>Comment:</strong> ${std.comments}
-              </td>
-            </tr>
-            ` : ''}
           `).join('')}
         </tbody>
       </table>
