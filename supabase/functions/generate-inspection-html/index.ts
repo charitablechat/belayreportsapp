@@ -600,42 +600,55 @@ serve(async (req) => {
       </div>
     </div>
 
-    <p style="margin-bottom: 15px; font-size: 10pt;">All inspections include the following when applicable:</p>
+    <h2 style="margin-top: 5px;">Inspection Categories</h2>
+    <p style="margin-bottom: 15px; font-size: 10pt; line-height: 1.6;">All inspections include the following categories when applicable:</p>
 
     <div class="key-section">
-      <h3>Lifeline HDW</h3>
-      <p>Represents all hardware associated with the Life Safety System including but not limited to: wire rope, bolts, wire rope terminations, & redundant terminations.</p>
+      <h3>Lifeline HDW (Hardware)</h3>
+      <p>Represents all hardware associated with the Life Safety System including but not limited to: wire rope, bolts, wire rope terminations, and redundant terminations.</p>
     </div>
 
     <div class="key-section">
-      <h3>Activity HDW</h3>
-      <p>Represents all hardware associated with the element execution. This includes but is not limited to: foot cables, platforms, hand ropes/cables, boards, etc.</p>
+      <h3>Activity HDW (Hardware)</h3>
+      <p>Represents all hardware associated with the element execution. This includes but is not limited to: foot cables, platforms, hand ropes/cables, boards, and structural components.</p>
     </div>
 
     <div class="key-section">
       <h3>Environment</h3>
-      <p>This represents the surrounding area of the activity/element. This includes but is not limited to: ground cover, trees, rocks, & terrain.</p>
+      <p>This represents the surrounding area of the activity/element. This includes but is not limited to: ground cover, fall zones, trees, rocks, terrain, and clearances.</p>
     </div>
 
     <div class="key-section">
       <h3>Equipment</h3>
-      <p>This represents the equipment utilized in the operation of the course activities. This includes but is not limited to: rope, carabiners, helmets, belay devices, pulleys, trolleys, lanyards, etc.</p>
+      <p>This represents the equipment utilized in the operation of the course activities. This includes but is not limited to: rope, carabiners, helmets, belay devices, pulleys, trolleys, lanyards, harnesses, and rescue equipment.</p>
     </div>
 
-    <h2 style="margin-top: 25px;">Pass/Pass with Provisions/Fail</h2>
-    <p style="margin-bottom: 15px; font-size: 10pt;">
-      This represents the overall rating for the system based on the condition of the items inspected on the day of the inspection. 
-      Rope Works Inc. inspects all challenge course and canopy/zip line tours to the standards set forth by the ACCT. 
-      Any deviation from the ACCT standards in regards to the inspection criteria will be addressed in the Comment section.
+    <h2 style="margin-top: 30px;">Inspection Results Key</h2>
+    <p style="margin-bottom: 15px; font-size: 10pt; line-height: 1.6;">
+      This represents the overall rating for each system based on the condition of the items inspected on the day of the inspection. 
+      Rope Works Inc. inspects all challenge course and canopy/zip line tours to the standards set forth by the Association for Challenge Course Technology (ACCT). 
+      Any deviation from the ACCT standards in regards to the inspection criteria will be addressed in the comments section.
     </p>
 
-    <h2>Inspection Key</h2>
-    <ul class="bullet-list">
-      <li><strong>Pass</strong> - The equipment or operating system meets all manufacturer specifications, industry standards, and operational safety requirements at the time of inspection. No corrective actions are necessary. The item is approved for continued use until the next scheduled inspection.</li>
-      <li><strong>Pass with Provisions</strong> - The equipment or operating system is generally in acceptable condition but requires minor corrective action, repair, or follow-up maintenance that does not pose an immediate safety concern. The item may remain in service under specified conditions or with specific limitations until the required actions are completed. A timeline for resolution should be established.</li>
-      <li><strong>Fail</strong> - The equipment or operating system does not meet minimum safety standards and poses a risk to participants or staff. Immediate corrective action is required. The item must be removed from service until all necessary repairs, replacements, or modifications are completed and verified by a qualified professional.</li>
-      <li><strong>N/A (Not Applicable)</strong> - The inspection criterion does not apply to this particular system, element, or piece of equipment at this time.</li>
-    </ul>
+    <div class="key-section" style="background: #f0f9ff; border-left: 4px solid #16a34a;">
+      <h3 style="color: #16a34a;">Pass</h3>
+      <p>The equipment or operating system meets all manufacturer specifications, industry standards, and operational safety requirements at the time of inspection. No corrective actions are necessary. The item is approved for continued use until the next scheduled inspection.</p>
+    </div>
+
+    <div class="key-section" style="background: #fff7ed; border-left: 4px solid #ea580c;">
+      <h3 style="color: #ea580c;">Pass with Provisions</h3>
+      <p>The equipment or operating system is generally in acceptable condition but requires minor corrective action, repair, or follow-up maintenance that does not pose an immediate safety concern. The item may remain in service under specified conditions or with specific limitations until the required actions are completed. A timeline for resolution should be established.</p>
+    </div>
+
+    <div class="key-section" style="background: #fef2f2; border-left: 4px solid #dc2626;">
+      <h3 style="color: #dc2626;">Fail</h3>
+      <p>The equipment or operating system does not meet minimum safety standards and poses a risk to participants or staff. <strong>Immediate corrective action is required.</strong> The item must be removed from service until all necessary repairs, replacements, or modifications are completed and verified by a qualified professional.</p>
+    </div>
+
+    <div class="key-section">
+      <h3>N/A (Not Applicable)</h3>
+      <p>The inspection criterion does not apply to this particular system, element, or piece of equipment at this time.</p>
+    </div>
 
     <div class="page-footer">
       <div class="disclaimer">
