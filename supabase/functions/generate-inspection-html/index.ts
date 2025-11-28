@@ -1019,6 +1019,10 @@ serve(async (req) => {
         * {
           box-shadow: none !important;
           text-shadow: none !important;
+        }
+        
+        /* Reset transforms except for header centering */
+        *:not(.header-center) {
           transform: none !important;
         }
         
@@ -1257,8 +1261,49 @@ serve(async (req) => {
 
       /* Optimized spacing and typography for print density */
       .page-header {
-        margin-bottom: 10px;
-        padding-bottom: 6px;
+        display: flex !important;
+        flex-direction: row !important;
+        justify-content: space-between !important;
+        align-items: center !important;
+        gap: 15px !important;
+        padding-bottom: 8px !important;
+        margin-bottom: 12px !important;
+        border-bottom: 3px solid #1e40af !important;
+      }
+      
+      .header-left,
+      .header-right {
+        flex: 0 0 auto !important;
+        position: relative !important;
+      }
+      
+      .header-left img,
+      .header-right img {
+        height: 60px !important;
+        width: auto !important;
+        max-width: 150px !important;
+      }
+      
+      .header-center {
+        position: static !important;
+        flex: 1 1 auto !important;
+        text-align: center !important;
+        transform: none !important;
+        order: 2 !important;
+      }
+      
+      .header-left {
+        order: 1 !important;
+      }
+      
+      .header-right {
+        order: 3 !important;
+      }
+      
+      .header-title {
+        font-size: 10pt !important;
+        letter-spacing: 1px !important;
+        white-space: nowrap !important;
       }
 
       h1 {
