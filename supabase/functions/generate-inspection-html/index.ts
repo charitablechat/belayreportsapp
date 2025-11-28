@@ -419,8 +419,10 @@ serve(async (req) => {
 
     h2 {
       font-size: 16pt;
-      color: #1e40af;
+      color: #000;
+      background: #ffff00;
       margin: 12px 0 8px 0;
+      padding: 6px 10px;
       font-weight: bold;
       line-height: 1.4;
     }
@@ -1339,7 +1341,7 @@ serve(async (req) => {
         ` : ''}
       </div>
 
-      <h2>Known Course History</h2>
+      <h2>KNOWN COURSE HISTORY</h2>
       ${inspection.course_history ? `
       <div class="text-block">${inspection.course_history}</div>
       ` : `
@@ -1352,7 +1354,7 @@ serve(async (req) => {
       </div>
       `}
 
-      <h2>Reminders and Requirements</h2>
+      <h2>REMINDERS AND REQUIREMENTS</h2>
       <ul class="bullet-list">
         <li><strong>Fall Protection:</strong> Employers are required to issue staff appropriate fall protection for the duties to be performed.</li>
         <li><strong>Periodic Internal Monitoring:</strong> A Periodic Internal Monitoring of the aerial activities on your site shall be conducted by qualified personnel.</li>
@@ -1386,7 +1388,7 @@ serve(async (req) => {
     </div>
 
     <div class="page-content">
-      <h2 style="margin-top: 5px;">Inspection Categories</h2>
+      <h2 style="margin-top: 5px;">INSPECTION CATEGORIES</h2>
       <p style="margin-bottom: 15px; font-size: 10pt; line-height: 1.6;">All inspections include the following categories when applicable:</p>
 
       <div class="key-section">
@@ -1409,7 +1411,7 @@ serve(async (req) => {
         <p>This represents the equipment utilized in the operation of the course activities. This includes but is not limited to: rope, carabiners, helmets, belay devices, pulleys, trolleys, lanyards, harnesses, and rescue equipment.</p>
       </div>
 
-      <h2 style="margin-top: 30px;">Inspection Results Key</h2>
+      <h2 style="margin-top: 30px;">INSPECTION RESULTS KEY</h2>
       <p style="margin-bottom: 15px; font-size: 10pt; line-height: 1.6;">
         This represents the overall rating for each system based on the condition of the items inspected on the day of the inspection. 
         Rope Works Inc. inspects all challenge course and canopy/zip line tours to the standards set forth by the Association for Challenge Course Technology (ACCT). 
@@ -1464,7 +1466,7 @@ serve(async (req) => {
     <div class="page-content">
       <!-- Operating Systems Section -->
       <div class="combined-section">
-        <h2>Operating Systems</h2>
+        <h2>SYSTEMS - ZIPLINES</h2>
         <p style="margin-bottom: 12px; font-size: 10pt; line-height: 1.6;">
           Each operating system has been inspected for structural integrity, hardware condition, and environmental factors.
         </p>
@@ -1498,7 +1500,7 @@ serve(async (req) => {
 
       <!-- Ziplines Section -->
       <div class="combined-section">
-        <h2>Ziplines</h2>
+        <h2>ZIPLINES</h2>
         
         <div style="margin-bottom: 12px; font-size: 9.5pt; padding: 10px; background: #f8f9fa; border-left: 3px solid #1e40af;">
           <strong>Key Abbreviations:</strong><br>
@@ -1567,7 +1569,7 @@ serve(async (req) => {
     </div>
 
     <div class="page-content">
-      <h2>Operating Systems</h2>
+      <h2>SYSTEMS - OPERATING SYSTEMS</h2>
       <p style="margin-bottom: 15px; font-size: 10pt; line-height: 1.6;">
         Each operating system has been inspected for structural integrity, hardware condition, and environmental factors.
       </p>
@@ -1622,7 +1624,7 @@ serve(async (req) => {
     </div>
 
     <div class="page-content">
-      <h2>Ziplines</h2>
+      <h2>ZIPLINES</h2>
       
       <div style="margin-bottom: 15px; font-size: 9.5pt; padding: 10px; background: #f8f9fa; border-left: 3px solid #1e40af;">
         <strong>Key Abbreviations:</strong><br>
@@ -1694,7 +1696,7 @@ serve(async (req) => {
     <div class="page-content">
       <!-- Equipment Section -->
       <div class="combined-section">
-        <h2>Equipment Inspection</h2>
+        <h2>EQUIPMENT INSPECTION</h2>
         <p style="margin-bottom: 12px; font-size: 10pt; line-height: 1.6;">
           All equipment has been inspected in accordance with manufacturer specifications and ACCT standards.
         </p>
@@ -1713,7 +1715,7 @@ serve(async (req) => {
                                category.toUpperCase();
           
           return `
-            <h3 style="margin-top: 15px; color: #1e40af; font-size: 12pt;">EQUIPMENT - ${categoryTitle}</h3>
+            <h3 style="margin-top: 15px; color: #000; font-size: 11pt;">EQUIPMENT - <em>${categoryTitle}</em></h3>
             <table class="equipment-table">
               <thead>
                 <tr>
@@ -1746,7 +1748,7 @@ serve(async (req) => {
 
       <!-- Standards Section -->
       <div class="combined-section">
-        <h2>ACCT Operations Standards</h2>
+        <h2>ACCT OPERATIONS STANDARDS</h2>
         <p style="margin-bottom: 12px; font-size: 10pt; line-height: 1.6;">
           Documentation verification as required by ACCT (Association for Challenge Course Technology) Standards. 
           The presence of documentation does not constitute review or approval of content.
@@ -1807,7 +1809,7 @@ serve(async (req) => {
     </div>
 
     <div class="page-content">
-      <h2>Equipment Inspection</h2>
+      <h2>EQUIPMENT INSPECTION</h2>
       <p style="margin-bottom: 15px; font-size: 10pt; line-height: 1.6;">
         All equipment has been inspected in accordance with manufacturer specifications and ACCT standards.
       </p>
@@ -1826,7 +1828,7 @@ serve(async (req) => {
                              category.toUpperCase();
         
         return `
-          <h3 style="margin-top: 20px; color: #1e40af; font-size: 12pt;">EQUIPMENT - ${categoryTitle}</h3>
+          <h3 style="margin-top: 20px; color: #000; font-size: 11pt;">EQUIPMENT - <em>${categoryTitle}</em></h3>
           <table class="equipment-table">
             <thead>
               <tr>
@@ -1880,7 +1882,7 @@ serve(async (req) => {
     </div>
 
     <div class="page-content">
-      <h2>ACCT Operations Standards</h2>
+      <h2>ACCT OPERATIONS STANDARDS</h2>
       <p style="margin-bottom: 15px; font-size: 10pt; line-height: 1.6;">
         Documentation verification as required by ACCT (Association for Challenge Course Technology) Standards. 
         The presence of documentation does not constitute review or approval of content.
@@ -1941,7 +1943,7 @@ serve(async (req) => {
     </div>
 
     <div class="page-content">
-      <h2 style="margin-top: 10px; margin-bottom: 20px;">Inspection Summary</h2>
+      <h2 style="margin-top: 10px; margin-bottom: 20px;">INSPECTION SUMMARY</h2>
 
       ${summary.repairs_performed ? `
       <div style="margin-bottom: 25px;">
