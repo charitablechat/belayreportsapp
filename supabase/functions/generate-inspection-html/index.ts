@@ -219,6 +219,14 @@ serve(async (req) => {
       });
     };
 
+    // Helper function to format result as checkbox
+    const formatResultCheckbox = (result: string): string => {
+      const pass = result === 'Pass' ? '☑' : '☐';
+      const provisions = (result === 'Pass with Provisions' || result === 'Needs Attention') ? '☑' : '☐';
+      const fail = result === 'Fail' ? '☑' : '☐';
+      return `<span class="result-checkbox">${pass} Pass  ${provisions} Pass w/ Provisions  ${fail} Fail</span>`;
+    };
+
     const inspectorName = inspection.profiles
       ? `${inspection.profiles.first_name || ""} ${inspection.profiles.last_name || ""}`.trim() || "Unknown"
       : "Unknown";
@@ -540,19 +548,11 @@ serve(async (req) => {
       color: #999;
     }
 
-    .result-pass {
-      color: #16a34a;
-      font-weight: bold;
-    }
-
-    .result-attention {
-      color: #ea580c;
-      font-weight: bold;
-    }
-
-    .result-fail {
-      color: #dc2626;
-      font-weight: bold;
+    .result-checkbox {
+      font-size: 9pt;
+      white-space: nowrap;
+      color: #000;
+      font-weight: normal;
     }
 
     /* Optimized column widths for Equipment table */
@@ -1479,21 +1479,17 @@ serve(async (req) => {
             </tr>
           </thead>
           <tbody>
-            ${systems.map(sys => {
-              let resultClass = 'result-pass';
-              if (sys.result === 'Needs Attention' || sys.result === 'Pass with Provisions') resultClass = 'result-attention';
-              if (sys.result === 'Fail') resultClass = 'result-fail';
-              
-              return `
-                <tr>
-                  <td><strong>${sys.system_name}</strong></td>
-                  <td>${sys.name || 'N/A'}</td>
-                  <td class="${resultClass}">${sys.result}</td>
-                  <td class="${resultClass}">${sys.result}</td>
-                  <td style="font-size: 9pt;">${sys.comments || '—'}</td>
-                </tr>
-              `;
-            }).join('')}
+          ${systems.map(sys => {
+            return `
+              <tr>
+                <td><strong>${sys.system_name}</strong></td>
+                <td>${sys.name || 'N/A'}</td>
+                <td>${formatResultCheckbox(sys.result)}</td>
+                <td>${formatResultCheckbox(sys.result)}</td>
+                <td style="font-size: 9pt;">${sys.comments || '—'}</td>
+              </tr>
+            `;
+          }).join('')}
           </tbody>
         </table>
       </div>
@@ -1527,37 +1523,16 @@ serve(async (req) => {
           </thead>
           <tbody>
             ${ziplines.map(zip => {
-              const getCableResultClass = () => {
-                if (zip.cable_result === 'Pass') return 'result-pass';
-                if (zip.cable_result === 'Needs Attention' || zip.cable_result === 'Pass with Provisions') return 'result-attention';
-                if (zip.cable_result === 'Fail') return 'result-fail';
-                return '';
-              };
-
-              const getBrakingResultClass = () => {
-                if (zip.braking_result === 'Pass') return 'result-pass';
-                if (zip.braking_result === 'Needs Attention' || zip.braking_result === 'Pass with Provisions') return 'result-attention';
-                if (zip.braking_result === 'Fail') return 'result-fail';
-                return '';
-              };
-
-              const getEadResultClass = () => {
-                if (zip.ead_result === 'Pass') return 'result-pass';
-                if (zip.ead_result === 'Needs Attention' || zip.ead_result === 'Pass with Provisions') return 'result-attention';
-                if (zip.ead_result === 'Fail') return 'result-fail';
-                return '';
-              };
-              
               return `
                 <tr>
                   <td><strong>${zip.zipline_name}</strong></td>
-                  <td>${zip.cable_type || 'N/A'}</td>
-                  <td>${zip.cable_length || 'N/A'}</td>
-                  <td class="${getCableResultClass()}">${zip.cable_result || 'N/A'}</td>
-                  <td>${zip.braking_system || 'N/A'}</td>
-                  <td class="${getBrakingResultClass()}">${zip.braking_result || 'N/A'}</td>
-                  <td>${zip.ead_system || 'N/A'}</td>
-                  <td class="${getEadResultClass()}">${zip.ead_result || 'N/A'}</td>
+                  <td style="text-align: center;">${zip.cable_type || 'N/A'}</td>
+                  <td style="text-align: center;">${zip.cable_length || 'N/A'}</td>
+                  <td>${formatResultCheckbox(zip.cable_result || 'Pass')}</td>
+                  <td style="text-align: center;">${zip.braking_system || 'N/A'}</td>
+                  <td>${formatResultCheckbox(zip.braking_result || 'Pass')}</td>
+                  <td style="text-align: center;">${zip.ead_system || 'N/A'}</td>
+                  <td>${formatResultCheckbox(zip.ead_result || 'Pass')}</td>
                   <td style="font-size: 9pt;">${zip.comments || '—'}</td>
                 </tr>
               `;
@@ -1608,16 +1583,12 @@ serve(async (req) => {
         </thead>
         <tbody>
           ${systems.map(sys => {
-            let resultClass = 'result-pass';
-            if (sys.result === 'Needs Attention' || sys.result === 'Pass with Provisions') resultClass = 'result-attention';
-            if (sys.result === 'Fail') resultClass = 'result-fail';
-            
             return `
               <tr>
                 <td><strong>${sys.system_name}</strong></td>
                 <td>${sys.name || 'N/A'}</td>
-                <td class="${resultClass}">${sys.result}</td>
-                <td class="${resultClass}">${sys.result}</td>
+                <td>${formatResultCheckbox(sys.result)}</td>
+                <td>${formatResultCheckbox(sys.result)}</td>
                 <td style="font-size: 9pt;">${sys.comments || '—'}</td>
               </tr>
             `;
@@ -1676,37 +1647,16 @@ serve(async (req) => {
         </thead>
         <tbody>
           ${ziplines.map(zip => {
-            const getCableResultClass = () => {
-              if (zip.cable_result === 'Pass') return 'result-pass';
-              if (zip.cable_result === 'Needs Attention' || zip.cable_result === 'Pass with Provisions') return 'result-attention';
-              if (zip.cable_result === 'Fail') return 'result-fail';
-              return '';
-            };
-
-            const getBrakingResultClass = () => {
-              if (zip.braking_result === 'Pass') return 'result-pass';
-              if (zip.braking_result === 'Needs Attention' || zip.braking_result === 'Pass with Provisions') return 'result-attention';
-              if (zip.braking_result === 'Fail') return 'result-fail';
-              return '';
-            };
-
-            const getEadResultClass = () => {
-              if (zip.ead_result === 'Pass') return 'result-pass';
-              if (zip.ead_result === 'Needs Attention' || zip.ead_result === 'Pass with Provisions') return 'result-attention';
-              if (zip.ead_result === 'Fail') return 'result-fail';
-              return '';
-            };
-            
             return `
               <tr>
                 <td><strong>${zip.zipline_name}</strong></td>
-                <td>${zip.cable_type || 'N/A'}</td>
-                <td>${zip.cable_length || 'N/A'}</td>
-                <td class="${getCableResultClass()}">${zip.cable_result || 'N/A'}</td>
-                <td>${zip.braking_system || 'N/A'}</td>
-                <td class="${getBrakingResultClass()}">${zip.braking_result || 'N/A'}</td>
-                <td>${zip.ead_system || 'N/A'}</td>
-                <td class="${getEadResultClass()}">${zip.ead_result || 'N/A'}</td>
+                <td style="text-align: center;">${zip.cable_type || 'N/A'}</td>
+                <td style="text-align: center;">${zip.cable_length || 'N/A'}</td>
+                <td>${formatResultCheckbox(zip.cable_result || 'Pass')}</td>
+                <td style="text-align: center;">${zip.braking_system || 'N/A'}</td>
+                <td>${formatResultCheckbox(zip.braking_result || 'Pass')}</td>
+                <td style="text-align: center;">${zip.ead_system || 'N/A'}</td>
+                <td>${formatResultCheckbox(zip.ead_result || 'Pass')}</td>
                 <td style="font-size: 9pt;">${zip.comments || '—'}</td>
               </tr>
             `;
@@ -1776,16 +1726,12 @@ serve(async (req) => {
               </thead>
               <tbody>
                 ${categoryEquipment.map(eq => {
-                  let resultClass = 'result-pass';
-                  if (eq.result === 'Needs Attention' || eq.result === 'Pass with Provisions') resultClass = 'result-attention';
-                  if (eq.result === 'Fail') resultClass = 'result-fail';
-                  
                   return `
                     <tr>
                       <td>${eq.equipment_type}</td>
                       <td style="text-align: center;">${eq.quantity || 'N/A'}</td>
                       <td style="text-align: center;">${eq.production_year || 'N/A'}</td>
-                      <td class="${resultClass}">${eq.result}</td>
+                      <td>${formatResultCheckbox(eq.result)}</td>
                       <td style="font-size: 9pt;">${eq.comments || '—'}</td>
                     </tr>
                   `;
@@ -1893,16 +1839,12 @@ serve(async (req) => {
             </thead>
             <tbody>
               ${categoryEquipment.map(eq => {
-                let resultClass = 'result-pass';
-                if (eq.result === 'Needs Attention' || eq.result === 'Pass with Provisions') resultClass = 'result-attention';
-                if (eq.result === 'Fail') resultClass = 'result-fail';
-                
                 return `
                   <tr>
                     <td>${eq.equipment_type}</td>
                     <td style="text-align: center;">${eq.quantity || 'N/A'}</td>
                     <td style="text-align: center;">${eq.production_year || 'N/A'}</td>
-                    <td class="${resultClass}">${eq.result}</td>
+                    <td>${formatResultCheckbox(eq.result)}</td>
                     <td style="font-size: 9pt;">${eq.comments || '—'}</td>
                   </tr>
                 `;
