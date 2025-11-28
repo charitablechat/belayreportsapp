@@ -77,7 +77,7 @@ export default function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: Z
                 <th className="border p-2 text-left font-semibold text-xs">EAD Sys</th>
                 <th className="border p-2 text-left font-semibold text-xs">EAD Result</th>
                 <th className="border p-2 text-left font-semibold text-xs">Overall</th>
-                <th className="border p-2 text-left font-semibold text-xs">Comments</th>
+                <th className="border p-2 text-left font-semibold text-xs">Comments and/or Required Changes</th>
               </tr>
             </thead>
             <tbody>
@@ -351,7 +351,7 @@ export default function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: Z
                 </div>
                 
                 <div>
-                  <Label className="text-xs text-muted-foreground">Comments</Label>
+                  <Label className="text-xs text-muted-foreground">Comments and/or Required Changes</Label>
                   <RichTextEditor
                     content={zipline.comments || ""}
                     onChange={(value) => updateZipline(index, "comments", value)}
