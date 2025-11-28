@@ -225,10 +225,16 @@ serve(async (req) => {
     }
 
     .page {
-      position: relative;
-      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      min-height: auto;
       padding: 0.5in;
+      padding-bottom: 0.75in;
       page-break-after: always;
+    }
+    
+    .page-content {
+      flex: 1 0 auto;
     }
 
     .page:last-child {
@@ -286,10 +292,8 @@ serve(async (req) => {
     }
 
     .page-footer {
-      position: absolute;
-      bottom: 0.3in;
-      left: 0.5in;
-      right: 0.5in;
+      position: relative;
+      margin-top: auto;
       font-size: 9pt;
       color: #666;
       border-top: 1px solid #ddd;
@@ -488,12 +492,18 @@ serve(async (req) => {
 
       /* Page break controls */
       .page {
+        display: flex;
+        flex-direction: column;
         page-break-after: always;
         page-break-inside: avoid;
-        min-height: 10in;
+        min-height: auto;
         margin: 0;
         padding: 0.5in;
-        position: relative;
+        padding-bottom: 0.6in;
+      }
+      
+      .page-content {
+        flex: 1 0 auto;
       }
       
       .page:last-child {
@@ -602,11 +612,10 @@ serve(async (req) => {
 
       /* Footer positioning for print */
       .page-footer {
-        position: absolute;
-        bottom: 0.3in;
-        left: 0.5in;
-        right: 0.5in;
+        position: relative;
+        margin-top: auto;
         page-break-inside: avoid;
+        padding-top: 8px;
       }
 
       /* Text optimization */
@@ -657,74 +666,76 @@ serve(async (req) => {
       </div>
     </div>
 
-    <h1 style="text-align: center; margin-top: 10px;">Professional Inspection for Aerial Adventure Programs</h1>
+    <div class="page-content">
+      <h1 style="text-align: center; margin-top: 10px;">Professional Inspection for Aerial Adventure Programs</h1>
 
-    <div class="info-grid">
-      <div class="info-cell">
-        <div class="info-label">Organization:</div>
-        <div class="info-value">${inspection.organization}</div>
+      <div class="info-grid">
+        <div class="info-cell">
+          <div class="info-label">Organization:</div>
+          <div class="info-value">${inspection.organization}</div>
+        </div>
+        <div class="info-cell">
+          <div class="info-label">Location:</div>
+          <div class="info-value">${inspection.location}</div>
+        </div>
+        <div class="info-cell">
+          <div class="info-label">Onsite Contact:</div>
+          <div class="info-value">${inspection.onsite_contact || 'N/A'}</div>
+        </div>
+        <div class="info-cell">
+          <div class="info-label">ACCT Course Number:</div>
+          <div class="info-value">${acctNumber}</div>
+        </div>
+        <div class="info-cell">
+          <div class="info-label">Inspected by:</div>
+          <div class="info-value">${inspectorName}</div>
+        </div>
+        <div class="info-cell">
+          <div class="info-label">Inspector ACCT #:</div>
+          <div class="info-value">${acctNumber}</div>
+        </div>
+        <div class="info-cell">
+          <div class="info-label">Date of Inspection:</div>
+          <div class="info-value">${formatDate(inspection.inspection_date)}</div>
+        </div>
+        <div class="info-cell">
+          <div class="info-label">Next Inspection Date:</div>
+          <div class="info-value">${summary?.next_inspection_date ? formatDate(summary.next_inspection_date) : 'TBD'}</div>
+        </div>
+        ${inspection.previous_inspector ? `
+        <div class="info-cell">
+          <div class="info-label">Previously Inspected by:</div>
+          <div class="info-value">${inspection.previous_inspector}</div>
+        </div>
+        <div class="info-cell">
+          <div class="info-label">Prev. Inspection Date:</div>
+          <div class="info-value">${formatDate(inspection.previous_inspection_date)}</div>
+        </div>
+        ` : ''}
       </div>
-      <div class="info-cell">
-        <div class="info-label">Location:</div>
-        <div class="info-value">${inspection.location}</div>
+
+      <h2>Known Course History</h2>
+      ${inspection.course_history ? `
+      <div class="text-block">${inspection.course_history}</div>
+      ` : `
+      <div class="text-block">
+        <p style="margin-bottom: 10px;">This report covers the condition of the aerial adventure site for the date of inspection reflected on this form.</p>
+        <p style="margin-bottom: 10px;">The inspection provided is strictly an evaluation of the structural condition of the course elements and equipment. The inspection does not include training on how to operate the equipment, nor how to operate the course.</p>
+        <p style="margin-bottom: 10px;">The inspection only verifies the existence of written local operating procedures (LOP), an emergency action plan (EAP), and training documentation. The inspection does not perform a review or evaluate the LOP, EAP and training documentation.</p>
+        <p style="margin-bottom: 10px;">Potential problems can occur afterwards due to vandalism, improper use, weather, etc. Rope Works Inc. is not responsible for modifications or repairs made to the challenge course by anyone other than a Rope Works Inc. employee.</p>
+        <p style="margin-bottom: 0;">We recommend you conduct your own periodic internal monitoring at a minimum on a quarterly basis. At a minimum an annual professional inspection is required by a qualified professional to be in compliance with the Association for Challenge Course Technology ANSI/ACCT current published standards.</p>
       </div>
-      <div class="info-cell">
-        <div class="info-label">Onsite Contact:</div>
-        <div class="info-value">${inspection.onsite_contact || 'N/A'}</div>
-      </div>
-      <div class="info-cell">
-        <div class="info-label">ACCT Course Number:</div>
-        <div class="info-value">${acctNumber}</div>
-      </div>
-      <div class="info-cell">
-        <div class="info-label">Inspected by:</div>
-        <div class="info-value">${inspectorName}</div>
-      </div>
-      <div class="info-cell">
-        <div class="info-label">Inspector ACCT #:</div>
-        <div class="info-value">${acctNumber}</div>
-      </div>
-      <div class="info-cell">
-        <div class="info-label">Date of Inspection:</div>
-        <div class="info-value">${formatDate(inspection.inspection_date)}</div>
-      </div>
-      <div class="info-cell">
-        <div class="info-label">Next Inspection Date:</div>
-        <div class="info-value">${summary?.next_inspection_date ? formatDate(summary.next_inspection_date) : 'TBD'}</div>
-      </div>
-      ${inspection.previous_inspector ? `
-      <div class="info-cell">
-        <div class="info-label">Previously Inspected by:</div>
-        <div class="info-value">${inspection.previous_inspector}</div>
-      </div>
-      <div class="info-cell">
-        <div class="info-label">Prev. Inspection Date:</div>
-        <div class="info-value">${formatDate(inspection.previous_inspection_date)}</div>
-      </div>
-      ` : ''}
+      `}
+
+      <h2>Reminders and Requirements</h2>
+      <ul class="bullet-list">
+        <li><strong>Fall Protection:</strong> Employers are required to issue staff appropriate fall protection for the duties to be performed.</li>
+        <li><strong>Periodic Internal Monitoring:</strong> A Periodic Internal Monitoring of the aerial activities on your site shall be conducted by qualified personnel.</li>
+        <li><strong>Equipment Documentation:</strong> Proper identification, tracking, and documentation of ALL equipment used for operations shall be kept and available at your annual professional inspection.</li>
+        <li><strong>Staff Training:</strong> Proper staff training should be provided for the operation of all aerial activities and equipment on your site.</li>
+        <li><strong>Operational Reviews:</strong> Operational Reviews shall be conducted once every five years by a qualified professional in accordance with ACCT Standards.</li>
+      </ul>
     </div>
-
-    <h2>Known Course History</h2>
-    ${inspection.course_history ? `
-    <div class="text-block">${inspection.course_history}</div>
-    ` : `
-    <div class="text-block">
-      <p style="margin-bottom: 10px;">This report covers the condition of the aerial adventure site for the date of inspection reflected on this form.</p>
-      <p style="margin-bottom: 10px;">The inspection provided is strictly an evaluation of the structural condition of the course elements and equipment. The inspection does not include training on how to operate the equipment, nor how to operate the course.</p>
-      <p style="margin-bottom: 10px;">The inspection only verifies the existence of written local operating procedures (LOP), an emergency action plan (EAP), and training documentation. The inspection does not perform a review or evaluate the LOP, EAP and training documentation.</p>
-      <p style="margin-bottom: 10px;">Potential problems can occur afterwards due to vandalism, improper use, weather, etc. Rope Works Inc. is not responsible for modifications or repairs made to the challenge course by anyone other than a Rope Works Inc. employee.</p>
-      <p style="margin-bottom: 0;">We recommend you conduct your own periodic internal monitoring at a minimum on a quarterly basis. At a minimum an annual professional inspection is required by a qualified professional to be in compliance with the Association for Challenge Course Technology ANSI/ACCT current published standards.</p>
-    </div>
-    `}
-
-    <h2>Reminders and Requirements</h2>
-    <ul class="bullet-list">
-      <li><strong>Fall Protection:</strong> Employers are required to issue staff appropriate fall protection for the duties to be performed.</li>
-      <li><strong>Periodic Internal Monitoring:</strong> A Periodic Internal Monitoring of the aerial activities on your site shall be conducted by qualified personnel.</li>
-      <li><strong>Equipment Documentation:</strong> Proper identification, tracking, and documentation of ALL equipment used for operations shall be kept and available at your annual professional inspection.</li>
-      <li><strong>Staff Training:</strong> Proper staff training should be provided for the operation of all aerial activities and equipment on your site.</li>
-      <li><strong>Operational Reviews:</strong> Operational Reviews shall be conducted once every five years by a qualified professional in accordance with ACCT Standards.</li>
-    </ul>
 
     <div class="page-footer">
       <div class="disclaimer">
@@ -749,54 +760,56 @@ serve(async (req) => {
       </div>
     </div>
 
-    <h2 style="margin-top: 5px;">Inspection Categories</h2>
-    <p style="margin-bottom: 15px; font-size: 10pt; line-height: 1.6;">All inspections include the following categories when applicable:</p>
+    <div class="page-content">
+      <h2 style="margin-top: 5px;">Inspection Categories</h2>
+      <p style="margin-bottom: 15px; font-size: 10pt; line-height: 1.6;">All inspections include the following categories when applicable:</p>
 
-    <div class="key-section">
-      <h3>Lifeline HDW (Hardware)</h3>
-      <p>Represents all hardware associated with the Life Safety System including but not limited to: wire rope, bolts, wire rope terminations, and redundant terminations.</p>
-    </div>
+      <div class="key-section">
+        <h3>Lifeline HDW (Hardware)</h3>
+        <p>Represents all hardware associated with the Life Safety System including but not limited to: wire rope, bolts, wire rope terminations, and redundant terminations.</p>
+      </div>
 
-    <div class="key-section">
-      <h3>Activity HDW (Hardware)</h3>
-      <p>Represents all hardware associated with the element execution. This includes but is not limited to: foot cables, platforms, hand ropes/cables, boards, and structural components.</p>
-    </div>
+      <div class="key-section">
+        <h3>Activity HDW (Hardware)</h3>
+        <p>Represents all hardware associated with the element execution. This includes but is not limited to: foot cables, platforms, hand ropes/cables, boards, and structural components.</p>
+      </div>
 
-    <div class="key-section">
-      <h3>Environment</h3>
-      <p>This represents the surrounding area of the activity/element. This includes but is not limited to: ground cover, fall zones, trees, rocks, terrain, and clearances.</p>
-    </div>
+      <div class="key-section">
+        <h3>Environment</h3>
+        <p>This represents the surrounding area of the activity/element. This includes but is not limited to: ground cover, fall zones, trees, rocks, terrain, and clearances.</p>
+      </div>
 
-    <div class="key-section">
-      <h3>Equipment</h3>
-      <p>This represents the equipment utilized in the operation of the course activities. This includes but is not limited to: rope, carabiners, helmets, belay devices, pulleys, trolleys, lanyards, harnesses, and rescue equipment.</p>
-    </div>
+      <div class="key-section">
+        <h3>Equipment</h3>
+        <p>This represents the equipment utilized in the operation of the course activities. This includes but is not limited to: rope, carabiners, helmets, belay devices, pulleys, trolleys, lanyards, harnesses, and rescue equipment.</p>
+      </div>
 
-    <h2 style="margin-top: 30px;">Inspection Results Key</h2>
-    <p style="margin-bottom: 15px; font-size: 10pt; line-height: 1.6;">
-      This represents the overall rating for each system based on the condition of the items inspected on the day of the inspection. 
-      Rope Works Inc. inspects all challenge course and canopy/zip line tours to the standards set forth by the Association for Challenge Course Technology (ACCT). 
-      Any deviation from the ACCT standards in regards to the inspection criteria will be addressed in the comments section.
-    </p>
+      <h2 style="margin-top: 30px;">Inspection Results Key</h2>
+      <p style="margin-bottom: 15px; font-size: 10pt; line-height: 1.6;">
+        This represents the overall rating for each system based on the condition of the items inspected on the day of the inspection. 
+        Rope Works Inc. inspects all challenge course and canopy/zip line tours to the standards set forth by the Association for Challenge Course Technology (ACCT). 
+        Any deviation from the ACCT standards in regards to the inspection criteria will be addressed in the comments section.
+      </p>
 
-    <div class="key-section" style="background: #f0f9ff; border-left: 4px solid #16a34a;">
-      <h3 style="color: #16a34a;">Pass</h3>
-      <p>The equipment or operating system meets all manufacturer specifications, industry standards, and operational safety requirements at the time of inspection. No corrective actions are necessary. The item is approved for continued use until the next scheduled inspection.</p>
-    </div>
+      <div class="key-section" style="background: #f0f9ff; border-left: 4px solid #16a34a;">
+        <h3 style="color: #16a34a;">Pass</h3>
+        <p>The equipment or operating system meets all manufacturer specifications, industry standards, and operational safety requirements at the time of inspection. No corrective actions are necessary. The item is approved for continued use until the next scheduled inspection.</p>
+      </div>
 
-    <div class="key-section" style="background: #fff7ed; border-left: 4px solid #ea580c;">
-      <h3 style="color: #ea580c;">Pass with Provisions</h3>
-      <p>The equipment or operating system is generally in acceptable condition but requires minor corrective action, repair, or follow-up maintenance that does not pose an immediate safety concern. The item may remain in service under specified conditions or with specific limitations until the required actions are completed. A timeline for resolution should be established.</p>
-    </div>
+      <div class="key-section" style="background: #fff7ed; border-left: 4px solid #ea580c;">
+        <h3 style="color: #ea580c;">Pass with Provisions</h3>
+        <p>The equipment or operating system is generally in acceptable condition but requires minor corrective action, repair, or follow-up maintenance that does not pose an immediate safety concern. The item may remain in service under specified conditions or with specific limitations until the required actions are completed. A timeline for resolution should be established.</p>
+      </div>
 
-    <div class="key-section" style="background: #fef2f2; border-left: 4px solid #dc2626;">
-      <h3 style="color: #dc2626;">Fail</h3>
-      <p>The equipment or operating system does not meet minimum safety standards and poses a risk to participants or staff. <strong>Immediate corrective action is required.</strong> The item must be removed from service until all necessary repairs, replacements, or modifications are completed and verified by a qualified professional.</p>
-    </div>
+      <div class="key-section" style="background: #fef2f2; border-left: 4px solid #dc2626;">
+        <h3 style="color: #dc2626;">Fail</h3>
+        <p>The equipment or operating system does not meet minimum safety standards and poses a risk to participants or staff. <strong>Immediate corrective action is required.</strong> The item must be removed from service until all necessary repairs, replacements, or modifications are completed and verified by a qualified professional.</p>
+      </div>
 
-    <div class="key-section">
-      <h3>N/A (Not Applicable)</h3>
-      <p>The inspection criterion does not apply to this particular system, element, or piece of equipment at this time.</p>
+      <div class="key-section">
+        <h3>N/A (Not Applicable)</h3>
+        <p>The inspection criterion does not apply to this particular system, element, or piece of equipment at this time.</p>
+      </div>
     </div>
 
     <div class="page-footer">
@@ -822,38 +835,40 @@ serve(async (req) => {
       </div>
     </div>
 
-    <h2>Operating Systems</h2>
-    <p style="margin-bottom: 15px; font-size: 10pt; line-height: 1.6;">
-      Each operating system has been inspected for structural integrity, hardware condition, and environmental factors.
-    </p>
-    <table>
-      <thead>
-        <tr>
-          <th style="width: 25%;">System Name</th>
-          <th style="width: 15%;">Name/ID</th>
-          <th style="width: 15%;">Lifeline HDW</th>
-          <th style="width: 15%;">Activity HDW</th>
-          <th style="width: 30%;">Comments</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${systems.map(sys => {
-          let resultClass = 'result-pass';
-          if (sys.result === 'Needs Attention' || sys.result === 'Pass with Provisions') resultClass = 'result-attention';
-          if (sys.result === 'Fail') resultClass = 'result-fail';
-          
-          return `
-            <tr>
-              <td><strong>${sys.system_name}</strong></td>
-              <td>${sys.name || 'N/A'}</td>
-              <td class="${resultClass}">${sys.result}</td>
-              <td class="${resultClass}">${sys.result}</td>
-              <td style="font-size: 9pt;">${sys.comments || '—'}</td>
-            </tr>
-          `;
-        }).join('')}
-      </tbody>
-    </table>
+    <div class="page-content">
+      <h2>Operating Systems</h2>
+      <p style="margin-bottom: 15px; font-size: 10pt; line-height: 1.6;">
+        Each operating system has been inspected for structural integrity, hardware condition, and environmental factors.
+      </p>
+      <table>
+        <thead>
+          <tr>
+            <th style="width: 25%;">System Name</th>
+            <th style="width: 15%;">Name/ID</th>
+            <th style="width: 15%;">Lifeline HDW</th>
+            <th style="width: 15%;">Activity HDW</th>
+            <th style="width: 30%;">Comments</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${systems.map(sys => {
+            let resultClass = 'result-pass';
+            if (sys.result === 'Needs Attention' || sys.result === 'Pass with Provisions') resultClass = 'result-attention';
+            if (sys.result === 'Fail') resultClass = 'result-fail';
+            
+            return `
+              <tr>
+                <td><strong>${sys.system_name}</strong></td>
+                <td>${sys.name || 'N/A'}</td>
+                <td class="${resultClass}">${sys.result}</td>
+                <td class="${resultClass}">${sys.result}</td>
+                <td style="font-size: 9pt;">${sys.comments || '—'}</td>
+              </tr>
+            `;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>
 
     <div class="page-footer">
       <div class="disclaimer">
@@ -879,68 +894,70 @@ serve(async (req) => {
       </div>
     </div>
 
-    <h2>Ziplines</h2>
-    
-    <div style="margin-bottom: 15px; font-size: 9.5pt; padding: 10px; background: #f8f9fa; border-left: 3px solid #1e40af;">
-      <strong>Key Abbreviations:</strong><br>
-      <strong>Cable Type:</strong> GAC = Galvanized Aircraft Cable, SS = Stainless Steel<br>
-      <strong>Braking System:</strong> ZS = Zipstop, FB = Friction Brake, SB = Spring Brake, G = Gravity<br>
-      <strong>EAD System:</strong> Energy Absorption Device
+    <div class="page-content">
+      <h2>Ziplines</h2>
+      
+      <div style="margin-bottom: 15px; font-size: 9.5pt; padding: 10px; background: #f8f9fa; border-left: 3px solid #1e40af;">
+        <strong>Key Abbreviations:</strong><br>
+        <strong>Cable Type:</strong> GAC = Galvanized Aircraft Cable, SS = Stainless Steel<br>
+        <strong>Braking System:</strong> ZS = Zipstop, FB = Friction Brake, SB = Spring Brake, G = Gravity<br>
+        <strong>EAD System:</strong> Energy Absorption Device
+      </div>
+
+      <table>
+        <thead>
+          <tr>
+            <th style="width: 15%;">Zipline Name</th>
+            <th style="width: 8%;">Cable Type</th>
+            <th style="width: 8%;">Length (ft)</th>
+            <th style="width: 10%;">Cable Result</th>
+            <th style="width: 10%;">Braking System</th>
+            <th style="width: 10%;">Braking Result</th>
+            <th style="width: 8%;">EAD System</th>
+            <th style="width: 10%;">EAD Result</th>
+            <th style="width: 21%;">Comments</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${ziplines.map(zip => {
+            const getCableResultClass = () => {
+              if (zip.cable_result === 'Pass') return 'result-pass';
+              if (zip.cable_result === 'Needs Attention' || zip.cable_result === 'Pass with Provisions') return 'result-attention';
+              if (zip.cable_result === 'Fail') return 'result-fail';
+              return '';
+            };
+
+            const getBrakingResultClass = () => {
+              if (zip.braking_result === 'Pass') return 'result-pass';
+              if (zip.braking_result === 'Needs Attention' || zip.braking_result === 'Pass with Provisions') return 'result-attention';
+              if (zip.braking_result === 'Fail') return 'result-fail';
+              return '';
+            };
+
+            const getEadResultClass = () => {
+              if (zip.ead_result === 'Pass') return 'result-pass';
+              if (zip.ead_result === 'Needs Attention' || zip.ead_result === 'Pass with Provisions') return 'result-attention';
+              if (zip.ead_result === 'Fail') return 'result-fail';
+              return '';
+            };
+            
+            return `
+              <tr>
+                <td><strong>${zip.zipline_name}</strong></td>
+                <td>${zip.cable_type || 'N/A'}</td>
+                <td>${zip.cable_length || 'N/A'}</td>
+                <td class="${getCableResultClass()}">${zip.cable_result || 'N/A'}</td>
+                <td>${zip.braking_system || 'N/A'}</td>
+                <td class="${getBrakingResultClass()}">${zip.braking_result || 'N/A'}</td>
+                <td>${zip.ead_system || 'N/A'}</td>
+                <td class="${getEadResultClass()}">${zip.ead_result || 'N/A'}</td>
+                <td style="font-size: 9pt;">${zip.comments || '—'}</td>
+              </tr>
+            `;
+          }).join('')}
+        </tbody>
+      </table>
     </div>
-
-    <table>
-      <thead>
-        <tr>
-          <th style="width: 15%;">Zipline Name</th>
-          <th style="width: 8%;">Cable Type</th>
-          <th style="width: 8%;">Length (ft)</th>
-          <th style="width: 10%;">Cable Result</th>
-          <th style="width: 10%;">Braking System</th>
-          <th style="width: 10%;">Braking Result</th>
-          <th style="width: 8%;">EAD System</th>
-          <th style="width: 10%;">EAD Result</th>
-          <th style="width: 21%;">Comments</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${ziplines.map(zip => {
-          const getCableResultClass = () => {
-            if (zip.cable_result === 'Pass') return 'result-pass';
-            if (zip.cable_result === 'Needs Attention' || zip.cable_result === 'Pass with Provisions') return 'result-attention';
-            if (zip.cable_result === 'Fail') return 'result-fail';
-            return '';
-          };
-
-          const getBrakingResultClass = () => {
-            if (zip.braking_result === 'Pass') return 'result-pass';
-            if (zip.braking_result === 'Needs Attention' || zip.braking_result === 'Pass with Provisions') return 'result-attention';
-            if (zip.braking_result === 'Fail') return 'result-fail';
-            return '';
-          };
-
-          const getEadResultClass = () => {
-            if (zip.ead_result === 'Pass') return 'result-pass';
-            if (zip.ead_result === 'Needs Attention' || zip.ead_result === 'Pass with Provisions') return 'result-attention';
-            if (zip.ead_result === 'Fail') return 'result-fail';
-            return '';
-          };
-          
-          return `
-            <tr>
-              <td><strong>${zip.zipline_name}</strong></td>
-              <td>${zip.cable_type || 'N/A'}</td>
-              <td>${zip.cable_length || 'N/A'}</td>
-              <td class="${getCableResultClass()}">${zip.cable_result || 'N/A'}</td>
-              <td>${zip.braking_system || 'N/A'}</td>
-              <td class="${getBrakingResultClass()}">${zip.braking_result || 'N/A'}</td>
-              <td>${zip.ead_system || 'N/A'}</td>
-              <td class="${getEadResultClass()}">${zip.ead_result || 'N/A'}</td>
-              <td style="font-size: 9pt;">${zip.comments || '—'}</td>
-            </tr>
-          `;
-        }).join('')}
-      </tbody>
-    </table>
 
     <div class="page-footer">
       <div class="disclaimer">
@@ -966,57 +983,59 @@ serve(async (req) => {
       </div>
     </div>
 
-    <h2>Equipment Inspection</h2>
-    <p style="margin-bottom: 15px; font-size: 10pt; line-height: 1.6;">
-      All equipment has been inspected in accordance with manufacturer specifications and ACCT standards.
-    </p>
-    
-    ${['Harnesses', 'Helmets', 'Lanyards', 'Carabiners', 'Rope', 'Belay Devices', 'Pulleys', 'Other'].map(category => {
-      const categoryEquipment = equipment.filter(eq => 
-        eq.equipment_category === category || 
-        (category === 'Carabiners' && eq.equipment_category === 'Carabiners')
-      );
-      if (categoryEquipment.length === 0) return '';
+    <div class="page-content">
+      <h2>Equipment Inspection</h2>
+      <p style="margin-bottom: 15px; font-size: 10pt; line-height: 1.6;">
+        All equipment has been inspected in accordance with manufacturer specifications and ACCT standards.
+      </p>
       
-      const categoryTitle = category === 'Carabiners' ? 'CONNECTORS (CARABINERS & QUICKLINKS)' : 
-                           category === 'Rope' ? 'KERNMANTLE ROPE' :
-                           category === 'Belay Devices' ? 'BELAY/DESCENT DEVICES' :
-                           category === 'Pulleys' ? 'TROLLEYS AND PULLEYS' :
-                           category === 'Other' ? 'OTHER EQUIPMENT' :
-                           category.toUpperCase();
-      
-      return `
-        <h3 style="margin-top: 20px; color: #1e40af; font-size: 12pt;">EQUIPMENT - ${categoryTitle}</h3>
-        <table>
-          <thead>
-            <tr>
-              <th style="width: 35%;">Type</th>
-              <th style="width: 10%;">Quantity</th>
-              <th style="width: 12%;">Year</th>
-              <th style="width: 15%;">Result</th>
-              <th style="width: 28%;">Comments</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${categoryEquipment.map(eq => {
-              let resultClass = 'result-pass';
-              if (eq.result === 'Needs Attention' || eq.result === 'Pass with Provisions') resultClass = 'result-attention';
-              if (eq.result === 'Fail') resultClass = 'result-fail';
-              
-              return `
-                <tr>
-                  <td>${eq.equipment_type}</td>
-                  <td style="text-align: center;">${eq.quantity || 'N/A'}</td>
-                  <td style="text-align: center;">${eq.production_year || 'N/A'}</td>
-                  <td class="${resultClass}">${eq.result}</td>
-                  <td style="font-size: 9pt;">${eq.comments || '—'}</td>
-                </tr>
-              `;
-            }).join('')}
-          </tbody>
-        </table>
-      `;
-    }).join('')}
+      ${['Harnesses', 'Helmets', 'Lanyards', 'Carabiners', 'Rope', 'Belay Devices', 'Pulleys', 'Other'].map(category => {
+        const categoryEquipment = equipment.filter(eq => 
+          eq.equipment_category === category || 
+          (category === 'Carabiners' && eq.equipment_category === 'Carabiners')
+        );
+        if (categoryEquipment.length === 0) return '';
+        
+        const categoryTitle = category === 'Carabiners' ? 'CONNECTORS (CARABINERS & QUICKLINKS)' : 
+                             category === 'Rope' ? 'KERNMANTLE ROPE' :
+                             category === 'Belay Devices' ? 'BELAY/DESCENT DEVICES' :
+                             category === 'Pulleys' ? 'TROLLEYS AND PULLEYS' :
+                             category === 'Other' ? 'OTHER EQUIPMENT' :
+                             category.toUpperCase();
+        
+        return `
+          <h3 style="margin-top: 20px; color: #1e40af; font-size: 12pt;">EQUIPMENT - ${categoryTitle}</h3>
+          <table>
+            <thead>
+              <tr>
+                <th style="width: 35%;">Type</th>
+                <th style="width: 10%;">Quantity</th>
+                <th style="width: 12%;">Year</th>
+                <th style="width: 15%;">Result</th>
+                <th style="width: 28%;">Comments</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${categoryEquipment.map(eq => {
+                let resultClass = 'result-pass';
+                if (eq.result === 'Needs Attention' || eq.result === 'Pass with Provisions') resultClass = 'result-attention';
+                if (eq.result === 'Fail') resultClass = 'result-fail';
+                
+                return `
+                  <tr>
+                    <td>${eq.equipment_type}</td>
+                    <td style="text-align: center;">${eq.quantity || 'N/A'}</td>
+                    <td style="text-align: center;">${eq.production_year || 'N/A'}</td>
+                    <td class="${resultClass}">${eq.result}</td>
+                    <td style="font-size: 9pt;">${eq.comments || '—'}</td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+        `;
+      }).join('')}
+    </div>
 
     <div class="page-footer">
       <div class="disclaimer">
@@ -1042,39 +1061,41 @@ serve(async (req) => {
       </div>
     </div>
 
-    <h2>ACCT Operations Standards</h2>
-    <p style="margin-bottom: 15px; font-size: 10pt; line-height: 1.6;">
-      Documentation verification as required by ACCT (Association for Challenge Course Technology) Standards. 
-      The presence of documentation does not constitute review or approval of content.
-    </p>
+    <div class="page-content">
+      <h2>ACCT Operations Standards</h2>
+      <p style="margin-bottom: 15px; font-size: 10pt; line-height: 1.6;">
+        Documentation verification as required by ACCT (Association for Challenge Course Technology) Standards. 
+        The presence of documentation does not constitute review or approval of content.
+      </p>
 
-    <table>
-      <thead>
-        <tr>
-          <th style="width: 65%;">Standard / Document</th>
-          <th style="width: 10%; text-align: center;">Yes</th>
-          <th style="width: 10%; text-align: center;">No</th>
-          <th style="width: 15%; text-align: center;">Comments</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${standards.map(std => `
+      <table>
+        <thead>
           <tr>
-            <td><strong>${std.standard_name}</strong></td>
-            <td style="text-align: center; font-size: 16pt; color: #16a34a;">${std.has_documentation ? '✓' : ''}</td>
-            <td style="text-align: center; font-size: 16pt; color: #dc2626;">${!std.has_documentation ? '✓' : ''}</td>
-            <td style="font-size: 9pt; text-align: center;">${std.comments ? '✓' : '—'}</td>
+            <th style="width: 65%;">Standard / Document</th>
+            <th style="width: 10%; text-align: center;">Yes</th>
+            <th style="width: 10%; text-align: center;">No</th>
+            <th style="width: 15%; text-align: center;">Comments</th>
           </tr>
-          ${std.comments ? `
-          <tr>
-            <td colspan="4" style="font-size: 9pt; font-style: italic; background: #f9f9f9; padding-left: 20px;">
-              <strong>Comment:</strong> ${std.comments}
-            </td>
-          </tr>
-          ` : ''}
-        `).join('')}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          ${standards.map(std => `
+            <tr>
+              <td><strong>${std.standard_name}</strong></td>
+              <td style="text-align: center; font-size: 16pt; color: #16a34a;">${std.has_documentation ? '✓' : ''}</td>
+              <td style="text-align: center; font-size: 16pt; color: #dc2626;">${!std.has_documentation ? '✓' : ''}</td>
+              <td style="font-size: 9pt; text-align: center;">${std.comments ? '✓' : '—'}</td>
+            </tr>
+            ${std.comments ? `
+            <tr>
+              <td colspan="4" style="font-size: 9pt; font-style: italic; background: #f9f9f9; padding-left: 20px;">
+                <strong>Comment:</strong> ${std.comments}
+              </td>
+            </tr>
+            ` : ''}
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
 
     <div class="page-footer">
       <div class="disclaimer">
@@ -1100,69 +1121,71 @@ serve(async (req) => {
       </div>
     </div>
 
-    <h2 style="margin-top: 10px; margin-bottom: 20px;">Inspection Summary</h2>
+    <div class="page-content">
+      <h2 style="margin-top: 10px; margin-bottom: 20px;">Inspection Summary</h2>
 
-    ${summary.repairs_performed ? `
-    <div style="margin-bottom: 25px;">
-      <h3 style="font-size: 12pt; font-weight: bold; margin-bottom: 10px; color: #1a1a1a; border-bottom: 2px solid #16a34a; padding-bottom: 5px;">Repairs Performed</h3>
-      <div class="text-block" style="padding: 10px 15px; background: #f9f9f9; border-left: 4px solid #16a34a;">
-        ${deduplicateHtmlContent(summary.repairs_performed)}
+      ${summary.repairs_performed ? `
+      <div style="margin-bottom: 25px;">
+        <h3 style="font-size: 12pt; font-weight: bold; margin-bottom: 10px; color: #1a1a1a; border-bottom: 2px solid #16a34a; padding-bottom: 5px;">Repairs Performed</h3>
+        <div class="text-block" style="padding: 10px 15px; background: #f9f9f9; border-left: 4px solid #16a34a;">
+          ${deduplicateHtmlContent(summary.repairs_performed)}
+        </div>
       </div>
-    </div>
-    ` : ''}
+      ` : ''}
 
-    ${summary.critical_actions ? `
-    <div class="critical-box" style="margin-bottom: 25px; padding: 15px; background: #fef2f2; border: 2px solid #dc2626; border-radius: 4px;">
-      <h3 style="font-size: 12pt; font-weight: bold; margin-bottom: 10px; color: #dc2626; text-transform: uppercase;">⚠ Critical Actions Required</h3>
-      <div style="font-size: 10pt; line-height: 1.6; color: #1a1a1a;">
-        ${deduplicateHtmlContent(summary.critical_actions)}
-      </div>
-      <p style="margin-top: 10px; font-size: 9pt; font-style: italic; color: #7f1d1d;">
-        <strong>IMPORTANT:</strong> Items listed above must be addressed immediately. Do not use affected equipment or systems until corrective actions are completed and verified by a qualified professional.
-      </p>
-    </div>
-    ` : ''}
-
-    ${summary.future_considerations ? `
-    <div style="margin-bottom: 25px;">
-      <h3 style="font-size: 12pt; font-weight: bold; margin-bottom: 10px; color: #1a1a1a; border-bottom: 2px solid #ea580c; padding-bottom: 5px;">Future Considerations</h3>
-      <div class="text-block" style="padding: 10px 15px; background: #fff7ed; border-left: 4px solid #ea580c;">
-        ${deduplicateHtmlContent(summary.future_considerations)}
-      </div>
-    </div>
-    ` : ''}
-
-    ${summary.next_inspection_date ? `
-    <div style="margin-bottom: 25px; padding: 12px 15px; background: #f0f9ff; border-left: 4px solid #0284c7;">
-      <h3 style="font-size: 11pt; font-weight: bold; margin-bottom: 5px; color: #0284c7;">Next Scheduled Inspection</h3>
-      <p style="font-size: 11pt; margin: 0; color: #1a1a1a;"><strong>${formatDate(summary.next_inspection_date)}</strong></p>
-      <p style="font-size: 9pt; margin-top: 5px; color: #666; font-style: italic;">Annual professional inspections are required to maintain ACCT compliance.</p>
-    </div>
-    ` : ''}
-
-    <div style="margin-top: 30px; padding-top: 20px; border-top: 2px solid #e5e5e5;">
-      <h3 style="font-size: 12pt; font-weight: bold; margin-bottom: 15px; color: #1a1a1a;">Equipment Retirement Guidelines</h3>
-      
-      <p style="font-size: 10pt; line-height: 1.6; margin-bottom: 12px; color: #1a1a1a;">
-        <strong>Equipment must be retired from service when any of the following conditions are met:</strong>
-      </p>
-      
-      <div style="padding: 10px 15px; background: #fafafa; border-left: 3px solid #666;">
-        <ul style="margin: 8px 0; padding-left: 20px; font-size: 10pt; line-height: 1.8;">
-          <li style="margin-bottom: 6px;">Manufacturer's recommended lifespan has been exceeded</li>
-          <li style="margin-bottom: 6px;">Visible damage, wear, or deterioration affecting structural integrity</li>
-          <li style="margin-bottom: 6px;">Equipment subjected to impact forces or shock loading beyond design parameters</li>
-          <li style="margin-bottom: 6px;">Missing or illegible manufacturer identification markings</li>
-          <li style="margin-bottom: 6px;">Equipment fails inspection criteria outlined in current ACCT standards</li>
-          <li style="margin-bottom: 6px;">Incomplete or unavailable documentation of equipment history</li>
-          <li style="margin-bottom: 0;">Equipment is involved in any incident resulting in injury or near-miss</li>
-        </ul>
-      </div>
-      
-      <div style="margin-top: 15px; padding: 12px; background: #fff7ed; border-left: 4px solid #ea580c;">
-        <p style="font-size: 10pt; line-height: 1.6; margin: 0; color: #1a1a1a;">
-          <strong>Retirement Procedure:</strong> All retired equipment must be clearly marked "RETIRED - DO NOT USE", immediately removed from service, and physically destroyed or rendered permanently unusable to prevent accidental future use. Complete documentation of the retirement, including date, reason, and method of disposal, must be maintained in accordance with ACCT record-keeping requirements.
+      ${summary.critical_actions ? `
+      <div class="critical-box" style="margin-bottom: 25px; padding: 15px; background: #fef2f2; border: 2px solid #dc2626; border-radius: 4px;">
+        <h3 style="font-size: 12pt; font-weight: bold; margin-bottom: 10px; color: #dc2626; text-transform: uppercase;">⚠ Critical Actions Required</h3>
+        <div style="font-size: 10pt; line-height: 1.6; color: #1a1a1a;">
+          ${deduplicateHtmlContent(summary.critical_actions)}
+        </div>
+        <p style="margin-top: 10px; font-size: 9pt; font-style: italic; color: #7f1d1d;">
+          <strong>IMPORTANT:</strong> Items listed above must be addressed immediately. Do not use affected equipment or systems until corrective actions are completed and verified by a qualified professional.
         </p>
+      </div>
+      ` : ''}
+
+      ${summary.future_considerations ? `
+      <div style="margin-bottom: 25px;">
+        <h3 style="font-size: 12pt; font-weight: bold; margin-bottom: 10px; color: #1a1a1a; border-bottom: 2px solid #ea580c; padding-bottom: 5px;">Future Considerations</h3>
+        <div class="text-block" style="padding: 10px 15px; background: #fff7ed; border-left: 4px solid #ea580c;">
+          ${deduplicateHtmlContent(summary.future_considerations)}
+        </div>
+      </div>
+      ` : ''}
+
+      ${summary.next_inspection_date ? `
+      <div style="margin-bottom: 25px; padding: 12px 15px; background: #f0f9ff; border-left: 4px solid #0284c7;">
+        <h3 style="font-size: 11pt; font-weight: bold; margin-bottom: 5px; color: #0284c7;">Next Scheduled Inspection</h3>
+        <p style="font-size: 11pt; margin: 0; color: #1a1a1a;"><strong>${formatDate(summary.next_inspection_date)}</strong></p>
+        <p style="font-size: 9pt; margin-top: 5px; color: #666; font-style: italic;">Annual professional inspections are required to maintain ACCT compliance.</p>
+      </div>
+      ` : ''}
+
+      <div style="margin-top: 30px; padding-top: 20px; border-top: 2px solid #e5e5e5;">
+        <h3 style="font-size: 12pt; font-weight: bold; margin-bottom: 15px; color: #1a1a1a;">Equipment Retirement Guidelines</h3>
+        
+        <p style="font-size: 10pt; line-height: 1.6; margin-bottom: 12px; color: #1a1a1a;">
+          <strong>Equipment must be retired from service when any of the following conditions are met:</strong>
+        </p>
+        
+        <div style="padding: 10px 15px; background: #fafafa; border-left: 3px solid #666;">
+          <ul style="margin: 8px 0; padding-left: 20px; font-size: 10pt; line-height: 1.8;">
+            <li style="margin-bottom: 6px;">Manufacturer's recommended lifespan has been exceeded</li>
+            <li style="margin-bottom: 6px;">Visible damage, wear, or deterioration affecting structural integrity</li>
+            <li style="margin-bottom: 6px;">Equipment subjected to impact forces or shock loading beyond design parameters</li>
+            <li style="margin-bottom: 6px;">Missing or illegible manufacturer identification markings</li>
+            <li style="margin-bottom: 6px;">Equipment fails inspection criteria outlined in current ACCT standards</li>
+            <li style="margin-bottom: 6px;">Incomplete or unavailable documentation of equipment history</li>
+            <li style="margin-bottom: 0;">Equipment is involved in any incident resulting in injury or near-miss</li>
+          </ul>
+        </div>
+        
+        <div style="margin-top: 15px; padding: 12px; background: #fff7ed; border-left: 4px solid #ea580c;">
+          <p style="font-size: 10pt; line-height: 1.6; margin: 0; color: #1a1a1a;">
+            <strong>Retirement Procedure:</strong> All retired equipment must be clearly marked "RETIRED - DO NOT USE", immediately removed from service, and physically destroyed or rendered permanently unusable to prevent accidental future use. Complete documentation of the retirement, including date, reason, and method of disposal, must be maintained in accordance with ACCT record-keeping requirements.
+          </p>
+        </div>
       </div>
     </div>
 
