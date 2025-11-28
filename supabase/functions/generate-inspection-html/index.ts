@@ -1274,13 +1274,13 @@ serve(async (req) => {
   <div class="page">
     <div class="page-header">
       <div class="header-left">
-        <img src="${acctLogo}" alt="ACCT Accredited Vendor">
+        <img src="${ropeWorksLogo}" alt="Rope Works">
       </div>
       <div class="header-center">
         <div class="header-title">ROPES/CHALLENGE COURSE</div>
       </div>
       <div class="header-right">
-        <img src="${ropeWorksLogo}" alt="Rope Works">
+        <img src="${acctLogo}" alt="ACCT Accredited Vendor">
       </div>
     </div>
 
@@ -1368,13 +1368,13 @@ serve(async (req) => {
   <div class="page">
     <div class="page-header">
       <div class="header-left">
-        <img src="${acctLogo}" alt="ACCT Accredited Vendor">
+        <img src="${ropeWorksLogo}" alt="Rope Works">
       </div>
       <div class="header-center">
         <div class="header-title">ROPES/CHALLENGE COURSE</div>
       </div>
       <div class="header-right">
-        <img src="${ropeWorksLogo}" alt="Rope Works">
+        <img src="${acctLogo}" alt="ACCT Accredited Vendor">
       </div>
     </div>
 
@@ -1444,13 +1444,13 @@ serve(async (req) => {
   <div class="page">
     <div class="page-header">
       <div class="header-left">
-        <img src="${acctLogo}" alt="ACCT Accredited Vendor">
+        <img src="${ropeWorksLogo}" alt="Rope Works">
       </div>
       <div class="header-center">
         <div class="header-title">ROPES/CHALLENGE COURSE</div>
       </div>
       <div class="header-right">
-        <img src="${ropeWorksLogo}" alt="Rope Works">
+        <img src="${acctLogo}" alt="ACCT Accredited Vendor">
       </div>
     </div>
 
@@ -1574,13 +1574,13 @@ serve(async (req) => {
   <div class="page">
     <div class="page-header">
       <div class="header-left">
-        <img src="${acctLogo}" alt="ACCT Accredited Vendor">
+        <img src="${ropeWorksLogo}" alt="Rope Works">
       </div>
       <div class="header-center">
         <div class="header-title">ROPES/CHALLENGE COURSE</div>
       </div>
       <div class="header-right">
-        <img src="${ropeWorksLogo}" alt="Rope Works">
+        <img src="${acctLogo}" alt="ACCT Accredited Vendor">
       </div>
     </div>
 
@@ -1633,13 +1633,13 @@ serve(async (req) => {
   <div class="page">
     <div class="page-header">
       <div class="header-left">
-        <img src="${acctLogo}" alt="ACCT Accredited Vendor">
+        <img src="${ropeWorksLogo}" alt="Rope Works">
       </div>
       <div class="header-center">
         <div class="header-title">ROPES/CHALLENGE COURSE</div>
       </div>
       <div class="header-right">
-        <img src="${ropeWorksLogo}" alt="Rope Works">
+        <img src="${acctLogo}" alt="ACCT Accredited Vendor">
       </div>
     </div>
 
@@ -1724,13 +1724,13 @@ serve(async (req) => {
   <div class="page">
     <div class="page-header">
       <div class="header-left">
-        <img src="${acctLogo}" alt="ACCT Accredited Vendor">
+        <img src="${ropeWorksLogo}" alt="Rope Works">
       </div>
       <div class="header-center">
         <div class="header-title">ROPES/CHALLENGE COURSE</div>
       </div>
       <div class="header-right">
-        <img src="${ropeWorksLogo}" alt="Rope Works">
+        <img src="${acctLogo}" alt="ACCT Accredited Vendor">
       </div>
     </div>
 
@@ -1843,13 +1843,13 @@ serve(async (req) => {
   <div class="page">
     <div class="page-header">
       <div class="header-left">
-        <img src="${acctLogo}" alt="ACCT Accredited Vendor">
+        <img src="${ropeWorksLogo}" alt="Rope Works">
       </div>
       <div class="header-center">
         <div class="header-title">ROPES/CHALLENGE COURSE</div>
       </div>
       <div class="header-right">
-        <img src="${ropeWorksLogo}" alt="Rope Works">
+        <img src="${acctLogo}" alt="ACCT Accredited Vendor">
       </div>
     </div>
 
@@ -1920,13 +1920,13 @@ serve(async (req) => {
   <div class="page">
     <div class="page-header">
       <div class="header-left">
-        <img src="${acctLogo}" alt="ACCT Accredited Vendor">
+        <img src="${ropeWorksLogo}" alt="Rope Works">
       </div>
       <div class="header-center">
         <div class="header-title">ROPES/CHALLENGE COURSE</div>
       </div>
       <div class="header-right">
-        <img src="${ropeWorksLogo}" alt="Rope Works">
+        <img src="${acctLogo}" alt="ACCT Accredited Vendor">
       </div>
     </div>
 
@@ -1981,13 +1981,13 @@ serve(async (req) => {
   <div class="page">
     <div class="page-header">
       <div class="header-left">
-        <img src="${acctLogo}" alt="ACCT Accredited Vendor">
+        <img src="${ropeWorksLogo}" alt="Rope Works">
       </div>
       <div class="header-center">
         <div class="header-title">ROPES/CHALLENGE COURSE</div>
       </div>
       <div class="header-right">
-        <img src="${ropeWorksLogo}" alt="Rope Works">
+        <img src="${acctLogo}" alt="ACCT Accredited Vendor">
       </div>
     </div>
 
