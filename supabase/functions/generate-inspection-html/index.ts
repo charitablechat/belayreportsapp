@@ -472,31 +472,171 @@ serve(async (req) => {
     }
 
     @media print {
+      /* Force accurate color reproduction */
       body {
         print-color-adjust: exact;
         -webkit-print-color-adjust: exact;
+        background: white;
+        color: black;
       }
 
+      /* Page setup and margins */
+      @page {
+        size: letter portrait;
+        margin: 0.5in;
+      }
+
+      /* Page break controls */
       .page {
         page-break-after: always;
         page-break-inside: avoid;
+        min-height: 10in;
+        margin: 0;
+        padding: 0.5in;
+        position: relative;
       }
       
       .page:last-child {
         page-break-after: avoid;
       }
 
-      table {
+      /* Prevent breaks within critical elements */
+      .page-header,
+      .info-grid,
+      .key-section,
+      .critical-box,
+      .text-block,
+      h1, h2, h3 {
         page-break-inside: avoid;
-      }
-
-      h2, h3 {
         page-break-after: avoid;
       }
 
-      @page {
-        margin: 0.5in;
-        size: letter;
+      /* Table break handling */
+      table {
+        page-break-inside: avoid;
+        width: 100%;
+      }
+
+      thead {
+        display: table-header-group;
+      }
+
+      tbody {
+        display: table-row-group;
+      }
+
+      tr {
+        page-break-inside: avoid;
+        page-break-after: auto;
+      }
+
+      /* Ensure headers stay with following content */
+      h2, h3 {
+        page-break-after: avoid;
+        orphans: 3;
+        widows: 3;
+      }
+
+      h2 + *, h3 + * {
+        page-break-before: avoid;
+      }
+
+      /* Optimize images for print */
+      img {
+        max-width: 100%;
+        page-break-inside: avoid;
+        display: block;
+      }
+
+      /* Background colors and borders for print */
+      .result-pass {
+        color: #16a34a !important;
+        font-weight: bold;
+      }
+
+      .result-attention {
+        color: #ea580c !important;
+        font-weight: bold;
+      }
+
+      .result-fail {
+        color: #dc2626 !important;
+        font-weight: bold;
+      }
+
+      /* Ensure colored backgrounds print properly */
+      .key-section {
+        background: #f8f9fa !important;
+        border: 1px solid #333 !important;
+        page-break-inside: avoid;
+      }
+
+      .critical-box {
+        background: #fef2f2 !important;
+        border: 2px solid #dc2626 !important;
+        page-break-inside: avoid;
+      }
+
+      .info-grid {
+        background: #f9fafb !important;
+      }
+
+      /* Table styling for print */
+      table {
+        border-collapse: collapse;
+      }
+
+      table th {
+        background: #1e40af !important;
+        color: white !important;
+        border: 1px solid #1e40af !important;
+      }
+
+      table td {
+        border: 1px solid #333 !important;
+      }
+
+      table tr:nth-child(even) {
+        background: #f9f9f9 !important;
+      }
+
+      /* Footer positioning for print */
+      .page-footer {
+        position: absolute;
+        bottom: 0.3in;
+        left: 0.5in;
+        right: 0.5in;
+        page-break-inside: avoid;
+      }
+
+      /* Text optimization */
+      body, p, li, td {
+        orphans: 3;
+        widows: 3;
+      }
+
+      /* Remove unnecessary spacing in print */
+      .page-header {
+        margin-bottom: 15px;
+      }
+
+      /* Ensure borders print properly */
+      .page-header {
+        border-bottom: 3px solid #1e40af !important;
+      }
+
+      .page-footer {
+        border-top: 1px solid #333 !important;
+      }
+
+      /* List styling for print */
+      ul, ol {
+        page-break-inside: avoid;
+        margin-left: 20px;
+      }
+
+      li {
+        page-break-inside: avoid;
       }
     }
   </style>
