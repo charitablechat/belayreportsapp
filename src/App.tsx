@@ -1,5 +1,4 @@
-import { Toaster } from "@/components/ui/toaster";
-import { Toaster as Sonner } from "@/components/ui/sonner";
+import { MobileAwareToaster, MobileAwareSonner } from "@/components/ui/mobile-aware-toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
@@ -109,8 +108,8 @@ const App = () => (
   <QueryClientProvider client={queryClient}>
     <PWAProvider>
       <TooltipProvider>
-        <Toaster />
-        <Sonner />
+        <MobileAwareToaster />
+        <MobileAwareSonner />
         <BrowserRouter>
           <AppContent />
           
