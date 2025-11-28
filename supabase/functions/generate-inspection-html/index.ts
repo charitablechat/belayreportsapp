@@ -1464,18 +1464,17 @@ serve(async (req) => {
           All equipment has been inspected in accordance with manufacturer specifications and ACCT standards.
         </p>
         
-        ${['Harnesses', 'Helmets', 'Lanyards', 'Carabiners', 'Rope', 'Belay Devices', 'Pulleys', 'Other'].map(category => {
+        ${['harnesses', 'helmets', 'lanyards', 'connectors', 'rope', 'belay', 'trolleys', 'other'].map(category => {
           const categoryEquipment = equipment.filter(eq => 
-            eq.equipment_category === category || 
-            (category === 'Carabiners' && eq.equipment_category === 'Carabiners')
+            eq.equipment_category === category
           );
           if (categoryEquipment.length === 0) return '';
           
-          const categoryTitle = category === 'Carabiners' ? 'CONNECTORS (CARABINERS & QUICKLINKS)' : 
-                               category === 'Rope' ? 'KERNMANTLE ROPE' :
-                               category === 'Belay Devices' ? 'BELAY/DESCENT DEVICES' :
-                               category === 'Pulleys' ? 'TROLLEYS AND PULLEYS' :
-                               category === 'Other' ? 'OTHER EQUIPMENT' :
+          const categoryTitle = category === 'connectors' ? 'CONNECTORS (CARABINERS & QUICKLINKS)' : 
+                               category === 'rope' ? 'KERNMANTLE ROPE' :
+                               category === 'belay' ? 'BELAY/DESCENT DEVICES' :
+                               category === 'trolleys' ? 'TROLLEYS AND PULLEYS' :
+                               category === 'other' ? 'OTHER EQUIPMENT' :
                                category.toUpperCase();
           
           return `
@@ -1582,18 +1581,17 @@ serve(async (req) => {
         All equipment has been inspected in accordance with manufacturer specifications and ACCT standards.
       </p>
       
-      ${['Harnesses', 'Helmets', 'Lanyards', 'Carabiners', 'Rope', 'Belay Devices', 'Pulleys', 'Other'].map(category => {
+      ${['harnesses', 'helmets', 'lanyards', 'connectors', 'rope', 'belay', 'trolleys', 'other'].map(category => {
         const categoryEquipment = equipment.filter(eq => 
-          eq.equipment_category === category || 
-          (category === 'Carabiners' && eq.equipment_category === 'Carabiners')
+          eq.equipment_category === category
         );
         if (categoryEquipment.length === 0) return '';
         
-        const categoryTitle = category === 'Carabiners' ? 'CONNECTORS (CARABINERS & QUICKLINKS)' : 
-                             category === 'Rope' ? 'KERNMANTLE ROPE' :
-                             category === 'Belay Devices' ? 'BELAY/DESCENT DEVICES' :
-                             category === 'Pulleys' ? 'TROLLEYS AND PULLEYS' :
-                             category === 'Other' ? 'OTHER EQUIPMENT' :
+        const categoryTitle = category === 'connectors' ? 'CONNECTORS (CARABINERS & QUICKLINKS)' : 
+                             category === 'rope' ? 'KERNMANTLE ROPE' :
+                             category === 'belay' ? 'BELAY/DESCENT DEVICES' :
+                             category === 'trolleys' ? 'TROLLEYS AND PULLEYS' :
+                             category === 'other' ? 'OTHER EQUIPMENT' :
                              category.toUpperCase();
         
         return `
