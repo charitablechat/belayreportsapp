@@ -40,16 +40,49 @@ export default function HistoryAutocomplete({
 
   // Load history from localStorage on mount
   useEffect(() => {
-    const saved = localStorage.getItem(storageKey);
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        setHistoryOptions(Array.isArray(parsed) ? parsed : []);
-      } catch (e) {
-        console.error("Failed to load history", e);
-        setHistoryOptions([]);
+    const loadHistory = () => {
+      const saved = localStorage.getItem(storageKey);
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          setHistoryOptions(Array.isArray(parsed) ? parsed : []);
+        } catch (e) {
+          console.error("Failed to load history", e);
+          setHistoryOptions([]);
+        }
       }
-    }
+    };
+    
+    loadHistory();
+  }, [storageKey]);
+
+  // Listen for storage changes (cross-tab sync)
+  useEffect(() => {
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === storageKey && e.newValue) {
+        try {
+          const parsed = JSON.parse(e.newValue);
+          setHistoryOptions(Array.isArray(parsed) ? parsed : []);
+        } catch (err) {
+          console.error("Failed to parse storage change", err);
+        }
+      }
+    };
+    
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, [storageKey]);
+
+  // Listen for custom history update events (same-tab sync)
+  useEffect(() => {
+    const handleHistoryUpdate = (e: CustomEvent) => {
+      if (e.detail?.storageKey === storageKey && e.detail?.options) {
+        setHistoryOptions(e.detail.options);
+      }
+    };
+    
+    window.addEventListener('history-update', handleHistoryUpdate as EventListener);
+    return () => window.removeEventListener('history-update', handleHistoryUpdate as EventListener);
   }, [storageKey]);
 
   // Save to history when value changes (if it's a new value)
@@ -69,6 +102,11 @@ export default function HistoryAutocomplete({
         );
         setHistoryOptions(updated);
         localStorage.setItem(storageKey, JSON.stringify(updated));
+        
+        // Dispatch custom event for same-tab sync
+        window.dispatchEvent(new CustomEvent('history-update', { 
+          detail: { storageKey, options: updated } 
+        }));
       }
     }
   }, [value, historyOptions, storageKey]);
@@ -102,10 +140,31 @@ export default function HistoryAutocomplete({
     const updated = historyOptions.filter(opt => opt !== optionToDelete);
     setHistoryOptions(updated);
     localStorage.setItem(storageKey, JSON.stringify(updated));
+    
+    // Dispatch custom event for same-tab sync
+    window.dispatchEvent(new CustomEvent('history-update', { 
+      detail: { storageKey, options: updated } 
+    }));
+  };
+
+  const handleOpenChange = (isOpen: boolean) => {
+    if (isOpen) {
+      // Refresh history from localStorage when opening
+      const saved = localStorage.getItem(storageKey);
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          setHistoryOptions(Array.isArray(parsed) ? parsed : []);
+        } catch (e) {
+          console.error("Failed to load history", e);
+        }
+      }
+    }
+    setOpen(isOpen);
   };
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={handleOpenChange}>
       <PopoverTrigger asChild>
         <Button
           variant="outline"
