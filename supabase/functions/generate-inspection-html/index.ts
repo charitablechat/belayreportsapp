@@ -690,7 +690,7 @@ serve(async (req) => {
       /* Page setup and margins */
       @page {
         size: letter portrait;
-        margin: 0.35in 0.45in 0.3in 0.45in;
+        margin: 0.5in;
       }
 
       /* Page break controls with validation */
@@ -701,8 +701,8 @@ serve(async (req) => {
         page-break-inside: avoid;
         min-height: auto;
         margin: 0;
-        padding: 0.5in;
-        padding-bottom: 0.6in;
+        padding: 0;
+        box-sizing: border-box;
       }
       
       .page-content {
@@ -850,10 +850,14 @@ serve(async (req) => {
 
       /* Phase 1: Print Layout Fix - Replace Flexbox with Block */
       @media print {
+        /* Phase 3: Page Margin Harmonization */
         .page {
           display: block !important;
           position: relative;
           min-height: 100vh;
+          padding: 0 !important;
+          margin: 0 !important;
+          box-sizing: border-box;
         }
         
         .page-content {
