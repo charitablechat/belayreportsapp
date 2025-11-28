@@ -1489,7 +1489,7 @@ serve(async (req) => {
     <div class="page-content">
       <!-- Operating Systems Section -->
       <div class="combined-section">
-        <h2>SYSTEMS - ZIPLINES</h2>
+        <h2>SYSTEMS</h2>
         <p style="margin-bottom: 12px; font-size: 10pt; line-height: 1.6;">
           Each operating system has been inspected for structural integrity, hardware condition, and environmental factors.
         </p>
