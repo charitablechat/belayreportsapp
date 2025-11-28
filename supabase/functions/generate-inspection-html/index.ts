@@ -418,26 +418,27 @@ serve(async (req) => {
       margin-top: 20px;
       font-size: 9pt;
       color: #666;
+      position: relative;
+    }
+
+    .page-number {
+      text-align: right;
+      font-weight: normal;
+      font-size: 9pt;
+      color: #333;
+      margin-bottom: 4px;
+    }
+
+    .footer-line {
       border-top: 1px solid #000;
-      padding-top: 8px;
-      padding-right: 80px;
+      margin-bottom: 8px;
     }
 
     .disclaimer {
       text-align: center;
-      line-height: 1.4;
+      line-height: 1.5;
       font-size: 8.5pt;
       margin: 0 auto;
-    }
-
-    .page-number {
-      position: absolute;
-      right: 0;
-      bottom: 8px;
-      font-weight: bold;
-      white-space: nowrap;
-      font-size: 9pt;
-      color: #333;
     }
 
     h1 {
@@ -1404,7 +1405,16 @@ serve(async (req) => {
 
       .page-footer {
         font-size: 8.5pt;
-        padding-top: 6px;
+      }
+
+      .page-number {
+        font-size: 8.5pt !important;
+        margin-bottom: 3px !important;
+      }
+
+      .footer-line {
+        border-top: 1px solid #000 !important;
+        margin-bottom: 6px !important;
       }
 
       .disclaimer {
@@ -1415,10 +1425,6 @@ serve(async (req) => {
       /* Ensure borders print properly */
       .page-header {
         border-bottom: 3px solid #1e40af !important;
-      }
-
-      .page-footer {
-        border-top: 1px solid #000 !important;
       }
 
       /* List styling for print */
@@ -1522,11 +1528,13 @@ serve(async (req) => {
     </div>
 
     <div class="page-footer">
+      <div class="page-number">1</div>
+      <div class="footer-line"></div>
       <div class="disclaimer">
-        This report has been prepared by a Qualified Professional in accordance with ACCT standards. This report is effective for one year from the date of inspection.<br>
-        <strong>Rope Works Inc.</strong> | PO Box 1074, Dripping Springs, TX 78620 | www.ropeworksinc.com
+        The information contained in this report has been documented by a Qualified Professional.<br>
+        This report is effective for one year from the date of inspection. Issued by:<br>
+        Rope Works Inc., PO Box 1074, Dripping Springs, TX 78620
       </div>
-      <div class="page-number">Page 1 of ${pageCount}</div>
     </div>
   </div>
 
@@ -1597,10 +1605,13 @@ serve(async (req) => {
     </div>
 
     <div class="page-footer">
+      <div class="page-number">2</div>
+      <div class="footer-line"></div>
       <div class="disclaimer">
-        This report has been prepared by a Qualified Professional in accordance with ACCT standards and industry best practices.
+        The information contained in this report has been documented by a Qualified Professional.<br>
+        This report is effective for one year from the date of inspection. Issued by:<br>
+        Rope Works Inc., PO Box 1074, Dripping Springs, TX 78620
       </div>
-      <div class="page-number">Page 2 of ${pageCount}</div>
     </div>
   </div>
 
@@ -1708,10 +1719,13 @@ serve(async (req) => {
     </div>
 
     <div class="page-footer">
+      <div class="page-number">3</div>
+      <div class="footer-line"></div>
       <div class="disclaimer">
-        This report has been prepared by a Qualified Professional in accordance with ACCT standards and industry best practices.
+        The information contained in this report has been documented by a Qualified Professional.<br>
+        This report is effective for one year from the date of inspection. Issued by:<br>
+        Rope Works Inc., PO Box 1074, Dripping Springs, TX 78620
       </div>
-      <div class="page-number">Page 3 of ${pageCount}</div>
     </div>
   </div>
   ` : `
@@ -1764,10 +1778,13 @@ serve(async (req) => {
     </div>
 
     <div class="page-footer">
+      <div class="page-number">3</div>
+      <div class="footer-line"></div>
       <div class="disclaimer">
-        This report has been prepared by a Qualified Professional in accordance with ACCT standards and industry best practices.
+        The information contained in this report has been documented by a Qualified Professional.<br>
+        This report is effective for one year from the date of inspection. Issued by:<br>
+        Rope Works Inc., PO Box 1074, Dripping Springs, TX 78620
       </div>
-      <div class="page-number">Page 3 of ${pageCount}</div>
     </div>
   </div>
   ` : ''}
@@ -1837,10 +1854,13 @@ serve(async (req) => {
     </div>
 
     <div class="page-footer">
+      <div class="page-number">${systems.length > 0 ? '4' : '3'}</div>
+      <div class="footer-line"></div>
       <div class="disclaimer">
-        This report has been prepared by a Qualified Professional in accordance with ACCT standards and industry best practices.
+        The information contained in this report has been documented by a Qualified Professional.<br>
+        This report is effective for one year from the date of inspection. Issued by:<br>
+        Rope Works Inc., PO Box 1074, Dripping Springs, TX 78620
       </div>
-      <div class="page-number">Page ${systems.length > 0 ? '4' : '3'} of ${pageCount}</div>
     </div>
   </div>
   ` : ''}
@@ -1952,10 +1972,13 @@ serve(async (req) => {
     </div>
 
     <div class="page-footer">
+      <div class="page-number">${pageCount - 1}</div>
+      <div class="footer-line"></div>
       <div class="disclaimer">
-        This report has been prepared by a Qualified Professional in accordance with ACCT standards and industry best practices.
+        The information contained in this report has been documented by a Qualified Professional.<br>
+        This report is effective for one year from the date of inspection. Issued by:<br>
+        Rope Works Inc., PO Box 1074, Dripping Springs, TX 78620
       </div>
-      <div class="page-number">Page ${pageCount - 1} of ${pageCount}</div>
     </div>
   </div>
   ` : `
@@ -2028,10 +2051,13 @@ serve(async (req) => {
     </div>
 
     <div class="page-footer">
+      <div class="page-number">${systems.length > 0 ? (ziplines.length > 0 ? '5' : '4') : (ziplines.length > 0 ? '4' : '3')}</div>
+      <div class="footer-line"></div>
       <div class="disclaimer">
-        This report has been prepared by a Qualified Professional in accordance with ACCT standards and industry best practices.
+        The information contained in this report has been documented by a Qualified Professional.<br>
+        This report is effective for one year from the date of inspection. Issued by:<br>
+        Rope Works Inc., PO Box 1074, Dripping Springs, TX 78620
       </div>
-      <div class="page-number">Page ${systems.length > 0 ? (ziplines.length > 0 ? '5' : '4') : (ziplines.length > 0 ? '4' : '3')} of ${pageCount}</div>
     </div>
   </div>
   ` : ''}
@@ -2083,10 +2109,13 @@ serve(async (req) => {
     </div>
 
     <div class="page-footer">
+      <div class="page-number">${pageCount - 1}</div>
+      <div class="footer-line"></div>
       <div class="disclaimer">
-        This report has been prepared by a Qualified Professional in accordance with ACCT standards and industry best practices.
+        The information contained in this report has been documented by a Qualified Professional.<br>
+        This report is effective for one year from the date of inspection. Issued by:<br>
+        Rope Works Inc., PO Box 1074, Dripping Springs, TX 78620
       </div>
-      <div class="page-number">Page ${pageCount - 1} of ${pageCount}</div>
     </div>
   </div>
   ` : ''}
@@ -2203,11 +2232,13 @@ serve(async (req) => {
     </div>
 
     <div class="page-footer">
+      <div class="page-number">${pageCount}</div>
+      <div class="footer-line"></div>
       <div class="disclaimer">
-        This report has been prepared by a Qualified Professional in accordance with ACCT standards. This report is effective for one year from the date of inspection.<br>
-        <strong>For questions or clarifications, contact:</strong> Rope Works Inc. | PO Box 1074, Dripping Springs, TX 78620 | www.ropeworksinc.com
+        The information contained in this report has been documented by a Qualified Professional.<br>
+        This report is effective for one year from the date of inspection. Issued by:<br>
+        Rope Works Inc., PO Box 1074, Dripping Springs, TX 78620
       </div>
-      <div class="page-number">Page ${pageCount} of ${pageCount}</div>
     </div>
   </div>
   ` : ''}
