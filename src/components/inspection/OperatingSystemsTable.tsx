@@ -53,7 +53,7 @@ export default function OperatingSystemsTable({ systems, onUpdate, onImmediateSa
                 <th className="border p-3 text-left font-semibold text-sm">Operating System</th>
                 <th className="border p-3 text-left font-semibold text-sm">Element Name</th>
                 <th className="border p-3 text-left font-semibold text-sm w-48">Result</th>
-                <th className="border p-3 text-left font-semibold text-sm">Comments or Required Changes</th>
+                <th className="border p-3 text-left font-semibold text-sm">Comments and/or Required Changes</th>
               </tr>
             </thead>
             <tbody>
@@ -128,7 +128,7 @@ export default function OperatingSystemsTable({ systems, onUpdate, onImmediateSa
                 </div>
                 
                 <div>
-                  <Label className="text-xs text-muted-foreground">Comments or Required Changes</Label>
+                  <Label className="text-xs text-muted-foreground">Comments and/or Required Changes</Label>
                   <VoiceRichTextEditor
                     content={system.comments || ""}
                     onChange={(value) => updateSystem(index, "comments", value)}

@@ -1500,7 +1500,7 @@ serve(async (req) => {
               <th>Element Name</th>
               <th>Lifeline HDW</th>
               <th>Activity HDW</th>
-              <th>Comments</th>
+              <th>Comments and/or Required Changes</th>
             </tr>
           </thead>
           <tbody>
@@ -1607,7 +1607,7 @@ serve(async (req) => {
             <th>Element Name</th>
             <th>Lifeline HDW</th>
             <th>Activity HDW</th>
-            <th>Comments</th>
+            <th>Comments and/or Required Changes</th>
           </tr>
         </thead>
         <tbody>
