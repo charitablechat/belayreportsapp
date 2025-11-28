@@ -221,15 +221,30 @@ serve(async (req) => {
 
     // Helper function to format result as checkbox with conditional highlighting
     const formatResultCheckbox = (result: string): { html: string; cellStyle: string } => {
-      const pass = result === 'Pass' ? '☑' : '☐';
-      const provisions = (result === 'Pass with Provisions' || result === 'Needs Attention') ? '☑' : '☐';
-      const fail = result === 'Fail' ? '☑' : '☐';
+      // Normalize the result to lowercase for comparison
+      const normalizedResult = (result || '').toLowerCase().trim();
       
+      // Check for pass variations
+      const isPass = normalizedResult === 'pass';
+      
+      // Check for pass with provisions variations (handle multiple formats)
+      const isProvisions = normalizedResult === 'pass w/provisions' || 
+                           normalizedResult === 'pass with provisions' ||
+                           normalizedResult === 'needs attention';
+      
+      // Check for fail
+      const isFail = normalizedResult === 'fail';
+      
+      const pass = isPass ? '☑' : '☐';
+      const provisions = isProvisions ? '☑' : '☐';
+      const fail = isFail ? '☑' : '☐';
+      
+      // Determine cell style for highlighting
       let cellStyle = '';
-      if (result === 'Fail') {
-        cellStyle = 'background-color: #ff6b6b;'; // Red highlight for Fail
-      } else if (result === 'Pass with Provisions' || result === 'Needs Attention') {
-        cellStyle = 'background-color: #ffff00;'; // Yellow highlight for Pass w/Provisions
+      if (isFail) {
+        cellStyle = 'background-color: #fee2e2; color: #991b1b;'; // Red highlight for fail
+      } else if (isProvisions) {
+        cellStyle = 'background-color: #fef3c7; color: #92400e;'; // Yellow highlight for provisions
       }
       
       return {
