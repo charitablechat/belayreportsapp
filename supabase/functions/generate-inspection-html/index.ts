@@ -1986,19 +1986,46 @@ serve(async (req) => {
           <strong>Equipment must be retired from service when any of the following conditions are met:</strong>
         </p>
         
-        <div style="padding: 10px 15px; background: #fafafa; border-left: 3px solid #666;">
-          <ul class="bullet-list" style="margin: 6px 0; padding-left: 18px; font-size: 10pt; line-height: 1.6;">
-            <li style="margin-bottom: 4px;">Manufacturer's recommended lifespan has been exceeded</li>
-            <li style="margin-bottom: 4px;">Visible damage, wear, or deterioration affecting structural integrity</li>
-            <li style="margin-bottom: 4px;">Equipment subjected to impact forces or shock loading beyond design parameters</li>
-            <li style="margin-bottom: 4px;">Missing or illegible manufacturer identification markings</li>
-            <li style="margin-bottom: 4px;">Equipment fails inspection criteria outlined in current ACCT standards</li>
-            <li style="margin-bottom: 4px;">Incomplete or unavailable documentation of equipment history</li>
-            <li style="margin-bottom: 0;">Equipment is involved in any incident resulting in injury or near-miss</li>
-          </ul>
-        </div>
+        <table style="width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 10pt;">
+          <thead>
+            <tr>
+              <th style="background: #e5e7eb; color: #000; padding: 8px; text-align: left; font-weight: bold; border: 1px solid #000; width: 50%;">Retirement Criteria</th>
+              <th style="background: #e5e7eb; color: #000; padding: 8px; text-align: left; font-weight: bold; border: 1px solid #000; width: 50%;">Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td style="padding: 8px; border: 1px solid #000; vertical-align: top;">Manufacturer's Lifespan</td>
+              <td style="padding: 8px; border: 1px solid #000; vertical-align: top;">Manufacturer's recommended lifespan has been exceeded</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px; border: 1px solid #000; vertical-align: top;">Visible Damage</td>
+              <td style="padding: 8px; border: 1px solid #000; vertical-align: top;">Visible damage, wear, or deterioration affecting structural integrity</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px; border: 1px solid #000; vertical-align: top;">Impact/Shock Loading</td>
+              <td style="padding: 8px; border: 1px solid #000; vertical-align: top;">Equipment subjected to impact forces or shock loading beyond design parameters</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px; border: 1px solid #000; vertical-align: top;">Missing Markings</td>
+              <td style="padding: 8px; border: 1px solid #000; vertical-align: top;">Missing or illegible manufacturer identification markings</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px; border: 1px solid #000; vertical-align: top;">Fails Inspection</td>
+              <td style="padding: 8px; border: 1px solid #000; vertical-align: top;">Equipment fails inspection criteria outlined in current ACCT standards</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px; border: 1px solid #000; vertical-align: top;">Incomplete Documentation</td>
+              <td style="padding: 8px; border: 1px solid #000; vertical-align: top;">Incomplete or unavailable documentation of equipment history</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px; border: 1px solid #000; vertical-align: top;">Incident Involvement</td>
+              <td style="padding: 8px; border: 1px solid #000; vertical-align: top;">Equipment is involved in any incident resulting in injury or near-miss</td>
+            </tr>
+          </tbody>
+        </table>
         
-        <div style="margin-top: 15px; padding: 12px; background: #fff7ed; border-left: 4px solid #ea580c;">
+        <div style="margin-top: 15px; padding: 12px; border: 1px solid #000;">
           <p style="font-size: 10pt; line-height: 1.6; margin: 0; color: #1a1a1a;">
             <strong>Retirement Procedure:</strong> All retired equipment must be clearly marked "RETIRED - DO NOT USE", immediately removed from service, and physically destroyed or rendered permanently unusable to prevent accidental future use. Complete documentation of the retirement, including date, reason, and method of disposal, must be maintained in accordance with ACCT record-keeping requirements.
           </p>
