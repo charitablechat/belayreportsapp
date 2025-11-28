@@ -476,8 +476,8 @@ serve(async (req) => {
     .text-block {
       margin: 10px 0;
       padding: 10px 14px;
-      background: #f9f9f9;
-      border-left: 4px solid #1e40af;
+      background: transparent;
+      border: 1px solid #000;
       font-size: 10pt;
       line-height: 1.7;
       min-height: 40px; /* Prevent collapsed text blocks */
