@@ -867,6 +867,27 @@ serve(async (req) => {
           left: 0;
           right: 0;
         }
+        
+        /* Phase 2: Print Color Enforcement */
+        *, *::before, *::after {
+          print-color-adjust: exact !important;
+          -webkit-print-color-adjust: exact !important;
+        }
+        
+        /* Specific element color enforcement */
+        table th, 
+        table tr:nth-child(even), 
+        .key-section, 
+        .critical-box, 
+        .text-block, 
+        .info-grid, 
+        .info-cell,
+        .result-pass,
+        .result-attention,
+        .result-fail {
+          print-color-adjust: exact !important;
+          -webkit-print-color-adjust: exact !important;
+        }
       }
 
       /* Text optimization with overflow handling */
