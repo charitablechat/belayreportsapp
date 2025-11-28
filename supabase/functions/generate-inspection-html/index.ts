@@ -951,6 +951,49 @@ serve(async (req) => {
           display: block !important;
           margin: 0 auto !important;
         }
+        
+        /* Phase 6: Table Print Optimization */
+        /* Prevent table breaks inside rows */
+        table {
+          page-break-inside: auto !important;
+          border-collapse: collapse !important;
+          width: 100% !important;
+        }
+        
+        tr {
+          page-break-inside: avoid !important;
+          page-break-after: auto !important;
+        }
+        
+        thead {
+          display: table-header-group !important;
+        }
+        
+        tfoot {
+          display: table-footer-group !important;
+        }
+        
+        /* Ensure proper column widths */
+        th, td {
+          page-break-inside: avoid !important;
+          padding: 6px 8px !important;
+          vertical-align: top !important;
+        }
+        
+        /* Specific table layouts */
+        .equipment-table th,
+        .systems-table th,
+        .ziplines-table th {
+          white-space: nowrap !important;
+          font-weight: bold !important;
+        }
+        
+        /* Prevent awkward breaks in key sections */
+        .key-section,
+        .critical-box,
+        .info-grid {
+          page-break-inside: avoid !important;
+        }
       }
 
       /* Text optimization with overflow handling */
