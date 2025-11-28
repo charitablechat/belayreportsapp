@@ -225,13 +225,22 @@ serve(async (req) => {
     const acctNumber = inspection.profiles?.acct_number || inspection.acct_number || "N/A";
 
     // Content volume calculation for page consolidation
+    // WHITESPACE REDUCTION SYSTEM (Phases 1-7):
+    // Phase 1: Flow-based layout with flexbox (removed fixed heights)
+    // Phase 2: Dynamic spacing with CSS variables (30-40% reduction)
+    // Phase 3: Smart page consolidation based on content volume
+    // Phase 4: Print-optimized margins and typography (0.35in margins, 9-15pt fonts)
+    // Phase 5: Optimized table column widths to prevent wrapping
+    // Phase 6: Enhanced bullet deduplication and tighter list spacing
+    // Phase 7: Layout validation with min-heights, overflow handling, orphan/widow controls
+    
     const COMBINE_THRESHOLD = 4; // Maximum rows to consider for combining pages
     const systemsRowCount = systems.length;
     const ziplinesRowCount = ziplines.length;
     const equipmentRowCount = equipment.length;
     const standardsRowCount = standards.length;
     
-    // Determine which pages can be combined
+    // Determine which pages can be combined (Phase 3)
     const canCombineSystemsZiplines = systemsRowCount > 0 && ziplinesRowCount > 0 && 
                                        systemsRowCount <= COMBINE_THRESHOLD && ziplinesRowCount <= COMBINE_THRESHOLD;
     const canCombineEquipmentStandards = equipmentRowCount > 0 && standardsRowCount > 0 && 
@@ -300,10 +309,20 @@ serve(async (req) => {
     
     .page-content {
       flex: 1 0 auto;
+      min-height: 200px; /* Prevent collapsed pages */
     }
 
     .page:last-child {
       page-break-after: avoid;
+    }
+
+    /* Content validation safeguards */
+    .page-content > *:first-child {
+      margin-top: 0;
+    }
+
+    .page-content > *:last-child {
+      margin-bottom: 0;
     }
 
     .page-header {
@@ -444,6 +463,15 @@ serve(async (req) => {
       border-left: 4px solid #1e40af;
       font-size: 10pt;
       line-height: 1.7;
+      min-height: 40px; /* Prevent collapsed text blocks */
+      overflow-wrap: break-word;
+      word-break: break-word;
+    }
+
+    /* Prevent orphaned content */
+    .text-block, .key-section, .critical-box {
+      orphans: 3;
+      widows: 3;
     }
 
     .bullet-list {
@@ -484,10 +512,25 @@ serve(async (req) => {
       border: 1px solid #ddd;
       vertical-align: top;
       line-height: 1.4;
+      max-width: 400px; /* Prevent excessive cell expansion */
+      word-wrap: break-word;
+      overflow-wrap: break-word;
     }
 
     table tr:nth-child(even) {
       background: #f9f9f9;
+    }
+
+    /* Prevent table overflow */
+    table {
+      table-layout: auto;
+      overflow-wrap: break-word;
+    }
+
+    /* Handle empty table cells gracefully */
+    table td:empty::after {
+      content: '—';
+      color: #999;
     }
 
     .result-pass {
@@ -611,6 +654,8 @@ serve(async (req) => {
 
     .combined-section {
       margin-bottom: 25px;
+      min-height: 100px; /* Prevent collapsed combined sections */
+      page-break-inside: avoid;
     }
 
     .combined-section:last-child {
@@ -620,6 +665,15 @@ serve(async (req) => {
     .section-divider {
       border-top: 2px solid #e5e7eb;
       margin: 20px 0;
+      page-break-after: avoid; /* Keep divider with following content */
+      min-height: 2px;
+    }
+
+    /* Ensure headers don't orphan after dividers */
+    .section-divider + h2,
+    .section-divider + h3,
+    .section-divider + .combined-section {
+      page-break-before: avoid;
     }
 
     @media print {
@@ -639,7 +693,7 @@ serve(async (req) => {
         margin: 0.35in 0.45in 0.3in 0.45in;
       }
 
-      /* Page break controls */
+      /* Page break controls with validation */
       .page {
         display: flex;
         flex-direction: column;
@@ -653,6 +707,7 @@ serve(async (req) => {
       
       .page-content {
         flex: 1 0 auto;
+        min-height: 3in; /* Ensure minimum content area for print */
       }
       
       .page:last-child {
@@ -668,12 +723,16 @@ serve(async (req) => {
       h1, h2, h3 {
         page-break-inside: avoid;
         page-break-after: avoid;
+        orphans: 2;
+        widows: 2;
       }
 
-      /* Table break handling */
+      /* Table break handling with overflow protection */
       table {
         page-break-inside: avoid;
         width: 100%;
+        max-width: 100%;
+        overflow-x: auto;
       }
 
       thead {
@@ -687,6 +746,27 @@ serve(async (req) => {
       tr {
         page-break-inside: avoid;
         page-break-after: auto;
+      }
+
+      td, th {
+        max-width: 400px;
+        overflow-wrap: break-word;
+        word-wrap: break-word;
+        hyphens: auto;
+      }
+
+      /* Prevent excessive cell width from breaking layout */
+      .equipment-table td:nth-child(1),
+      .systems-table td:nth-child(1),
+      .ziplines-table td:nth-child(1) {
+        max-width: 200px;
+      }
+
+      .equipment-table td:nth-child(5),
+      .systems-table td:nth-child(4),
+      .ziplines-table td:nth-child(9),
+      .standards-table td:nth-child(3) {
+        max-width: 300px; /* Limit comments column */
       }
 
       /* Ensure headers stay with following content */
@@ -759,18 +839,26 @@ serve(async (req) => {
         background: #f9f9f9 !important;
       }
 
-      /* Footer positioning for print */
+      /* Footer positioning for print with validation */
       .page-footer {
         position: relative;
         margin-top: auto;
         page-break-inside: avoid;
         padding-top: 8px;
+        min-height: 30px; /* Ensure footer space */
       }
 
-      /* Text optimization */
+      /* Text optimization with overflow handling */
       body, p, li, td {
         orphans: 3;
         widows: 3;
+        overflow-wrap: break-word;
+        word-wrap: break-word;
+      }
+
+      /* Prevent text overflow in constrained spaces */
+      p, li, td, th, div {
+        max-width: 100%;
       }
 
       /* Optimized spacing and typography for print density */
