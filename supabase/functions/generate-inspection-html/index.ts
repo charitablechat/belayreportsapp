@@ -951,50 +951,76 @@ serve(async (req) => {
       </div>
     </div>
 
-    <h2>Inspection Summary</h2>
+    <h2 style="margin-top: 10px; margin-bottom: 20px;">Inspection Summary</h2>
 
     ${summary.repairs_performed ? `
-    <h3>Repairs Performed</h3>
-    <div class="text-block">${deduplicateHtmlContent(summary.repairs_performed)}</div>
+    <div style="margin-bottom: 25px;">
+      <h3 style="font-size: 12pt; font-weight: bold; margin-bottom: 10px; color: #1a1a1a; border-bottom: 2px solid #16a34a; padding-bottom: 5px;">Repairs Performed</h3>
+      <div class="text-block" style="padding: 10px 15px; background: #f9f9f9; border-left: 4px solid #16a34a;">
+        ${deduplicateHtmlContent(summary.repairs_performed)}
+      </div>
+    </div>
     ` : ''}
 
     ${summary.critical_actions ? `
-    <div class="critical-box">
-      <h3>Critical Actions Required</h3>
-      <div>${deduplicateHtmlContent(summary.critical_actions)}</div>
+    <div class="critical-box" style="margin-bottom: 25px; padding: 15px; background: #fef2f2; border: 2px solid #dc2626; border-radius: 4px;">
+      <h3 style="font-size: 12pt; font-weight: bold; margin-bottom: 10px; color: #dc2626; text-transform: uppercase;">⚠ Critical Actions Required</h3>
+      <div style="font-size: 10pt; line-height: 1.6; color: #1a1a1a;">
+        ${deduplicateHtmlContent(summary.critical_actions)}
+      </div>
+      <p style="margin-top: 10px; font-size: 9pt; font-style: italic; color: #7f1d1d;">
+        <strong>IMPORTANT:</strong> Items listed above must be addressed immediately. Do not use affected equipment or systems until corrective actions are completed and verified by a qualified professional.
+      </p>
     </div>
     ` : ''}
 
     ${summary.future_considerations ? `
-    <h3>Future Considerations</h3>
-    <div class="text-block">${deduplicateHtmlContent(summary.future_considerations)}</div>
+    <div style="margin-bottom: 25px;">
+      <h3 style="font-size: 12pt; font-weight: bold; margin-bottom: 10px; color: #1a1a1a; border-bottom: 2px solid #ea580c; padding-bottom: 5px;">Future Considerations</h3>
+      <div class="text-block" style="padding: 10px 15px; background: #fff7ed; border-left: 4px solid #ea580c;">
+        ${deduplicateHtmlContent(summary.future_considerations)}
+      </div>
+    </div>
     ` : ''}
 
     ${summary.next_inspection_date ? `
-    <h3>Next Inspection Date</h3>
-    <div class="text-block"><strong>${formatDate(summary.next_inspection_date)}</strong></div>
+    <div style="margin-bottom: 25px; padding: 12px 15px; background: #f0f9ff; border-left: 4px solid #0284c7;">
+      <h3 style="font-size: 11pt; font-weight: bold; margin-bottom: 5px; color: #0284c7;">Next Scheduled Inspection</h3>
+      <p style="font-size: 11pt; margin: 0; color: #1a1a1a;"><strong>${formatDate(summary.next_inspection_date)}</strong></p>
+      <p style="font-size: 9pt; margin-top: 5px; color: #666; font-style: italic;">Annual professional inspections are required to maintain ACCT compliance.</p>
+    </div>
     ` : ''}
 
-    <h3 style="margin-top: 25px;">Retirement Guidelines</h3>
-    <div class="text-block">
-      <strong>Equipment Retirement Criteria:</strong><br><br>
-      Equipment should be retired from service when any of the following conditions are met:
-      <ul style="margin: 10px 0 10px 20px;">
-        <li>Manufacturer's recommended lifespan has been exceeded</li>
-        <li>Visible damage, wear, or deterioration that affects structural integrity</li>
-        <li>Equipment has been subjected to impact forces or shock loading</li>
-        <li>Missing or illegible manufacturer identification markings</li>
-        <li>Equipment fails inspection criteria as outlined in ACCT standards</li>
-        <li>Documentation of equipment history is incomplete or unavailable</li>
-      </ul>
-      <br>
-      All retired equipment must be clearly marked, removed from service, and destroyed or rendered unusable to prevent future use. 
-      Proper documentation of retirement must be maintained for record-keeping purposes.
+    <div style="margin-top: 30px; padding-top: 20px; border-top: 2px solid #e5e5e5;">
+      <h3 style="font-size: 12pt; font-weight: bold; margin-bottom: 15px; color: #1a1a1a;">Equipment Retirement Guidelines</h3>
+      
+      <p style="font-size: 10pt; line-height: 1.6; margin-bottom: 12px; color: #1a1a1a;">
+        <strong>Equipment must be retired from service when any of the following conditions are met:</strong>
+      </p>
+      
+      <div style="padding: 10px 15px; background: #fafafa; border-left: 3px solid #666;">
+        <ul style="margin: 8px 0; padding-left: 20px; font-size: 10pt; line-height: 1.8;">
+          <li style="margin-bottom: 6px;">Manufacturer's recommended lifespan has been exceeded</li>
+          <li style="margin-bottom: 6px;">Visible damage, wear, or deterioration affecting structural integrity</li>
+          <li style="margin-bottom: 6px;">Equipment subjected to impact forces or shock loading beyond design parameters</li>
+          <li style="margin-bottom: 6px;">Missing or illegible manufacturer identification markings</li>
+          <li style="margin-bottom: 6px;">Equipment fails inspection criteria outlined in current ACCT standards</li>
+          <li style="margin-bottom: 6px;">Incomplete or unavailable documentation of equipment history</li>
+          <li style="margin-bottom: 0;">Equipment is involved in any incident resulting in injury or near-miss</li>
+        </ul>
+      </div>
+      
+      <div style="margin-top: 15px; padding: 12px; background: #fff7ed; border-left: 4px solid #ea580c;">
+        <p style="font-size: 10pt; line-height: 1.6; margin: 0; color: #1a1a1a;">
+          <strong>Retirement Procedure:</strong> All retired equipment must be clearly marked "RETIRED - DO NOT USE", immediately removed from service, and physically destroyed or rendered permanently unusable to prevent accidental future use. Complete documentation of the retirement, including date, reason, and method of disposal, must be maintained in accordance with ACCT record-keeping requirements.
+        </p>
+      </div>
     </div>
 
     <div class="page-footer">
       <div class="disclaimer">
-        The information contained in this report has been documented by a Qualified Professional. This report is effective for one year from the date of inspection.
+        The information contained in this report has been documented by a Qualified Professional. This report is effective for one year from the date of inspection.<br>
+        For questions regarding this report, contact Rope Works Inc. at PO Box 1074, Dripping Springs, TX 78620
       </div>
       <div class="page-number">Page ${pageCount} of ${pageCount}</div>
     </div>
