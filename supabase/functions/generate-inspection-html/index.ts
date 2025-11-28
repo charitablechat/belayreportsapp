@@ -1544,7 +1544,7 @@ serve(async (req) => {
               <th>Braking Result</th>
               <th>EAD System</th>
               <th>EAD Result</th>
-              <th>Comments</th>
+              <th>Comments and/or Required Changes</th>
             </tr>
           </thead>
           <tbody>
@@ -1672,7 +1672,7 @@ serve(async (req) => {
             <th>Braking Result</th>
             <th>EAD System</th>
             <th>EAD Result</th>
-            <th>Comments</th>
+            <th>Comments and/or Required Changes</th>
           </tr>
         </thead>
         <tbody>
