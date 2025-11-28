@@ -508,7 +508,7 @@ serve(async (req) => {
       </div>
     </div>
 
-    <h1 style="text-align: center;">Professional Inspection for Aerial Adventure Programs</h1>
+    <h1 style="text-align: center; margin-top: 10px;">Professional Inspection for Aerial Adventure Programs</h1>
 
     <div class="info-grid">
       <div class="info-cell">
@@ -523,7 +523,10 @@ serve(async (req) => {
         <div class="info-label">Onsite Contact:</div>
         <div class="info-value">${inspection.onsite_contact || 'N/A'}</div>
       </div>
-      <div class="info-cell"></div>
+      <div class="info-cell">
+        <div class="info-label">ACCT Course Number:</div>
+        <div class="info-value">${acctNumber}</div>
+      </div>
       <div class="info-cell">
         <div class="info-label">Inspected by:</div>
         <div class="info-value">${inspectorName}</div>
@@ -536,50 +539,42 @@ serve(async (req) => {
         <div class="info-label">Date of Inspection:</div>
         <div class="info-value">${formatDate(inspection.inspection_date)}</div>
       </div>
-      <div class="info-cell"></div>
+      <div class="info-cell">
+        <div class="info-label">Next Inspection Date:</div>
+        <div class="info-value">${summary?.next_inspection_date ? formatDate(summary.next_inspection_date) : 'TBD'}</div>
+      </div>
       ${inspection.previous_inspector ? `
       <div class="info-cell">
         <div class="info-label">Previously Inspected by:</div>
         <div class="info-value">${inspection.previous_inspector}</div>
       </div>
       <div class="info-cell">
-        <div class="info-label">Inspector:</div>
-        <div class="info-value">Previous Inspector</div>
-      </div>
-      <div class="info-cell">
         <div class="info-label">Prev. Inspection Date:</div>
         <div class="info-value">${formatDate(inspection.previous_inspection_date)}</div>
       </div>
-      <div class="info-cell"></div>
       ` : ''}
     </div>
 
-    ${inspection.course_history ? `
     <h2>Known Course History</h2>
+    ${inspection.course_history ? `
     <div class="text-block">${inspection.course_history}</div>
     ` : `
-    <h2>Known Course History</h2>
     <div class="text-block">
-      This report covers the condition of the aerial adventure site for the date of inspection reflected on this form. 
-      The inspection provided is strictly an evaluation of the structural condition of the course elements and equipment. 
-      The inspection does not include training on how to operate the equipment, nor how to operate the course. 
-      The inspection only verifies the existence of written local operating procedures (LOP), an emergency action plan (EAP), 
-      and training documentation. The inspection does not perform a review or evaluate the LOP, EAP and training documentation. 
-      Potential problems can occur afterwards due to vandalism, improper use, weather, etc. Rope Works Inc. is not responsible 
-      for modifications or repairs made to the challenge course by anyone other than a Rope Works Inc. employee. We recommend 
-      you conduct your own periodic internal monitoring at a minimum on a quarterly basis. At a minimum an annual professional 
-      inspection is required by a qualified professional to be in compliance with the Association for Challenge Course Technology 
-      ANSI/ACCT current published standards.
+      <p style="margin-bottom: 10px;">This report covers the condition of the aerial adventure site for the date of inspection reflected on this form.</p>
+      <p style="margin-bottom: 10px;">The inspection provided is strictly an evaluation of the structural condition of the course elements and equipment. The inspection does not include training on how to operate the equipment, nor how to operate the course.</p>
+      <p style="margin-bottom: 10px;">The inspection only verifies the existence of written local operating procedures (LOP), an emergency action plan (EAP), and training documentation. The inspection does not perform a review or evaluate the LOP, EAP and training documentation.</p>
+      <p style="margin-bottom: 10px;">Potential problems can occur afterwards due to vandalism, improper use, weather, etc. Rope Works Inc. is not responsible for modifications or repairs made to the challenge course by anyone other than a Rope Works Inc. employee.</p>
+      <p style="margin-bottom: 0;">We recommend you conduct your own periodic internal monitoring at a minimum on a quarterly basis. At a minimum an annual professional inspection is required by a qualified professional to be in compliance with the Association for Challenge Course Technology ANSI/ACCT current published standards.</p>
     </div>
     `}
 
     <h2>Reminders and Requirements</h2>
     <ul class="bullet-list">
-      <li>Employers are required to issue staff appropriate fall protection for the duties to be performed.</li>
-      <li>A Periodic Internal Monitoring of the aerial activities on your site shall be conducted by qualified personnel.</li>
-      <li>Proper identification, tracking, and documentation of ALL equipment used for operations shall be kept and available at your annual professional inspection.</li>
-      <li>Proper staff training should be provided for the operation of all aerial activities and equipment on your site.</li>
-      <li>Operational Reviews shall be conducted once every five years.</li>
+      <li><strong>Fall Protection:</strong> Employers are required to issue staff appropriate fall protection for the duties to be performed.</li>
+      <li><strong>Periodic Internal Monitoring:</strong> A Periodic Internal Monitoring of the aerial activities on your site shall be conducted by qualified personnel.</li>
+      <li><strong>Equipment Documentation:</strong> Proper identification, tracking, and documentation of ALL equipment used for operations shall be kept and available at your annual professional inspection.</li>
+      <li><strong>Staff Training:</strong> Proper staff training should be provided for the operation of all aerial activities and equipment on your site.</li>
+      <li><strong>Operational Reviews:</strong> Operational Reviews shall be conducted once every five years by a qualified professional in accordance with ACCT Standards.</li>
     </ul>
 
     <div class="page-footer">
