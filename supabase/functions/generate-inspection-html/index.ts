@@ -1368,13 +1368,14 @@ serve(async (req) => {
       <div class="text-block">${inspection.course_history}</div>
       ` : `
       <div class="text-block">
-        <p style="margin-bottom: 10px;">This report covers the condition of the aerial adventure site for the date of inspection reflected on this form.</p>
-        <p style="margin-bottom: 10px;">The inspection provided is strictly an evaluation of the structural condition of the course elements and equipment. The inspection does not include training on how to operate the equipment, nor how to operate the course.</p>
-        <p style="margin-bottom: 10px;">The inspection only verifies the existence of written local operating procedures (LOP), an emergency action plan (EAP), and training documentation. The inspection does not perform a review or evaluate the LOP, EAP and training documentation.</p>
-        <p style="margin-bottom: 10px;">Potential problems can occur afterwards due to vandalism, improper use, weather, etc. Rope Works Inc. is not responsible for modifications or repairs made to the challenge course by anyone other than a Rope Works Inc. employee.</p>
-        <p style="margin-bottom: 0;">We recommend you conduct your own periodic internal monitoring at a minimum on a quarterly basis. At a minimum an annual professional inspection is required by a qualified professional to be in compliance with the Association for Challenge Course Technology ANSI/ACCT current published standards.</p>
+        <p>No course history provided.</p>
       </div>
       `}
+
+      <h2>SCOPE AND LIMITATIONS OF INSPECTION</h2>
+      <div class="text-block">
+        <p>This report covers the condition of the aerial adventure site for the date of inspection reflected on this form. The inspection provided is strictly an evaluation of the structural condition of the course elements and equipment. The inspection does not include training on how to operate the equipment, nor how to operate the course. The inspection only verifies the existence of written local operating procedures (LOP), an emergency action plan (EAP), and training documentation. The inspection does not perform a review or evaluate the LOP, EAP and training documentation. Potential problems can occur afterwards due to vandalism, improper use, weather, etc. Rope Works Inc. is not responsible for modifications or repairs made to the challenge course by anyone other than a Rope Works Inc. employee. We recommend you conduct your own periodic internal monitoring at a minimum on a quarterly basis. At a minimum an annual professional inspection is required by a qualified professional to be in compliance with the Association for Challenge Course Technology ANSI/ACCT current published standards.</p>
+      </div>
 
       <h2>REMINDERS AND REQUIREMENTS</h2>
       <ul class="bullet-list">
