@@ -189,12 +189,36 @@ serve(async (req) => {
       : "Unknown";
     const acctNumber = inspection.profiles?.acct_number || inspection.acct_number || "N/A";
 
-    // Calculate page count
+    // Content volume calculation for page consolidation
+    const COMBINE_THRESHOLD = 4; // Maximum rows to consider for combining pages
+    const systemsRowCount = systems.length;
+    const ziplinesRowCount = ziplines.length;
+    const equipmentRowCount = equipment.length;
+    const standardsRowCount = standards.length;
+    
+    // Determine which pages can be combined
+    const canCombineSystemsZiplines = systemsRowCount > 0 && ziplinesRowCount > 0 && 
+                                       systemsRowCount <= COMBINE_THRESHOLD && ziplinesRowCount <= COMBINE_THRESHOLD;
+    const canCombineEquipmentStandards = equipmentRowCount > 0 && standardsRowCount > 0 && 
+                                          equipmentRowCount <= 6 && standardsRowCount <= 6;
+
+    // Calculate page count with consolidation
     let pageCount = 2; // Cover + Key
-    if (systems.length > 0) pageCount++;
-    if (ziplines.length > 0) pageCount++;
-    if (equipment.length > 0) pageCount++;
-    if (standards.length > 0) pageCount++;
+    
+    if (canCombineSystemsZiplines) {
+      pageCount++; // Combined systems/ziplines page
+    } else {
+      if (systems.length > 0) pageCount++;
+      if (ziplines.length > 0) pageCount++;
+    }
+    
+    if (canCombineEquipmentStandards) {
+      pageCount++; // Combined equipment/standards page
+    } else {
+      if (equipment.length > 0) pageCount++;
+      if (standards.length > 0) pageCount++;
+    }
+    
     if (summary) pageCount++;
 
     // Generate HTML
@@ -479,6 +503,19 @@ serve(async (req) => {
       color: #dc2626;
       margin-top: 0;
       margin-bottom: 10px;
+    }
+
+    .combined-section {
+      margin-bottom: 25px;
+    }
+
+    .combined-section:last-child {
+      margin-bottom: 0;
+    }
+
+    .section-divider {
+      border-top: 2px solid #e5e7eb;
+      margin: 20px 0;
     }
 
     @media print {
@@ -874,6 +911,137 @@ serve(async (req) => {
     </div>
   </div>
 
+  <!-- PAGE 3: OPERATING SYSTEMS & ZIPLINES (COMBINED OR SEPARATE) -->
+  ${canCombineSystemsZiplines ? `
+  <!-- COMBINED SYSTEMS & ZIPLINES PAGE -->
+  <div class="page">
+    <div class="page-header">
+      <div class="header-left">
+        <img src="${acctLogo}" alt="ACCT Accredited Vendor">
+      </div>
+      <div class="header-center">
+        <div class="header-title">ROPES/CHALLENGE COURSE</div>
+      </div>
+      <div class="header-right">
+        <img src="${ropeWorksLogo}" alt="Rope Works">
+      </div>
+    </div>
+
+    <div class="page-content">
+      <!-- Operating Systems Section -->
+      <div class="combined-section">
+        <h2>Operating Systems</h2>
+        <p style="margin-bottom: 12px; font-size: 10pt; line-height: 1.6;">
+          Each operating system has been inspected for structural integrity, hardware condition, and environmental factors.
+        </p>
+        <table>
+          <thead>
+            <tr>
+              <th style="width: 25%;">System Name</th>
+              <th style="width: 15%;">Name/ID</th>
+              <th style="width: 15%;">Lifeline HDW</th>
+              <th style="width: 15%;">Activity HDW</th>
+              <th style="width: 30%;">Comments</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${systems.map(sys => {
+              let resultClass = 'result-pass';
+              if (sys.result === 'Needs Attention' || sys.result === 'Pass with Provisions') resultClass = 'result-attention';
+              if (sys.result === 'Fail') resultClass = 'result-fail';
+              
+              return `
+                <tr>
+                  <td><strong>${sys.system_name}</strong></td>
+                  <td>${sys.name || 'N/A'}</td>
+                  <td class="${resultClass}">${sys.result}</td>
+                  <td class="${resultClass}">${sys.result}</td>
+                  <td style="font-size: 9pt;">${sys.comments || '—'}</td>
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="section-divider"></div>
+
+      <!-- Ziplines Section -->
+      <div class="combined-section">
+        <h2>Ziplines</h2>
+        
+        <div style="margin-bottom: 12px; font-size: 9.5pt; padding: 10px; background: #f8f9fa; border-left: 3px solid #1e40af;">
+          <strong>Key Abbreviations:</strong><br>
+          <strong>Cable Type:</strong> GAC = Galvanized Aircraft Cable, SS = Stainless Steel<br>
+          <strong>Braking System:</strong> ZS = Zipstop, FB = Friction Brake, SB = Spring Brake, G = Gravity<br>
+          <strong>EAD System:</strong> Energy Absorption Device
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th style="width: 15%;">Zipline Name</th>
+              <th style="width: 8%;">Cable Type</th>
+              <th style="width: 8%;">Length (ft)</th>
+              <th style="width: 10%;">Cable Result</th>
+              <th style="width: 10%;">Braking System</th>
+              <th style="width: 10%;">Braking Result</th>
+              <th style="width: 8%;">EAD System</th>
+              <th style="width: 10%;">EAD Result</th>
+              <th style="width: 21%;">Comments</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${ziplines.map(zip => {
+              const getCableResultClass = () => {
+                if (zip.cable_result === 'Pass') return 'result-pass';
+                if (zip.cable_result === 'Needs Attention' || zip.cable_result === 'Pass with Provisions') return 'result-attention';
+                if (zip.cable_result === 'Fail') return 'result-fail';
+                return '';
+              };
+
+              const getBrakingResultClass = () => {
+                if (zip.braking_result === 'Pass') return 'result-pass';
+                if (zip.braking_result === 'Needs Attention' || zip.braking_result === 'Pass with Provisions') return 'result-attention';
+                if (zip.braking_result === 'Fail') return 'result-fail';
+                return '';
+              };
+
+              const getEadResultClass = () => {
+                if (zip.ead_result === 'Pass') return 'result-pass';
+                if (zip.ead_result === 'Needs Attention' || zip.ead_result === 'Pass with Provisions') return 'result-attention';
+                if (zip.ead_result === 'Fail') return 'result-fail';
+                return '';
+              };
+              
+              return `
+                <tr>
+                  <td><strong>${zip.zipline_name}</strong></td>
+                  <td>${zip.cable_type || 'N/A'}</td>
+                  <td>${zip.cable_length || 'N/A'}</td>
+                  <td class="${getCableResultClass()}">${zip.cable_result || 'N/A'}</td>
+                  <td>${zip.braking_system || 'N/A'}</td>
+                  <td class="${getBrakingResultClass()}">${zip.braking_result || 'N/A'}</td>
+                  <td>${zip.ead_system || 'N/A'}</td>
+                  <td class="${getEadResultClass()}">${zip.ead_result || 'N/A'}</td>
+                  <td style="font-size: 9pt;">${zip.comments || '—'}</td>
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="page-footer">
+      <div class="disclaimer">
+        This report has been prepared by a Qualified Professional in accordance with ACCT standards and industry best practices.
+      </div>
+      <div class="page-number">Page 3 of ${pageCount}</div>
+    </div>
+  </div>
+  ` : `
+  <!-- SEPARATE PAGES -->
   <!-- PAGE 3: OPERATING SYSTEMS -->
   ${systems.length > 0 ? `
   <div class="page">
@@ -1021,7 +1189,129 @@ serve(async (req) => {
     </div>
   </div>
   ` : ''}
+  `}
 
+  <!-- PAGE: EQUIPMENT & ACCT STANDARDS (COMBINED OR SEPARATE) -->
+  ${canCombineEquipmentStandards ? `
+  <!-- COMBINED EQUIPMENT & STANDARDS PAGE -->
+  <div class="page">
+    <div class="page-header">
+      <div class="header-left">
+        <img src="${acctLogo}" alt="ACCT Accredited Vendor">
+      </div>
+      <div class="header-center">
+        <div class="header-title">ROPES/CHALLENGE COURSE</div>
+      </div>
+      <div class="header-right">
+        <img src="${ropeWorksLogo}" alt="Rope Works">
+      </div>
+    </div>
+
+    <div class="page-content">
+      <!-- Equipment Section -->
+      <div class="combined-section">
+        <h2>Equipment Inspection</h2>
+        <p style="margin-bottom: 12px; font-size: 10pt; line-height: 1.6;">
+          All equipment has been inspected in accordance with manufacturer specifications and ACCT standards.
+        </p>
+        
+        ${['Harnesses', 'Helmets', 'Lanyards', 'Carabiners', 'Rope', 'Belay Devices', 'Pulleys', 'Other'].map(category => {
+          const categoryEquipment = equipment.filter(eq => 
+            eq.equipment_category === category || 
+            (category === 'Carabiners' && eq.equipment_category === 'Carabiners')
+          );
+          if (categoryEquipment.length === 0) return '';
+          
+          const categoryTitle = category === 'Carabiners' ? 'CONNECTORS (CARABINERS & QUICKLINKS)' : 
+                               category === 'Rope' ? 'KERNMANTLE ROPE' :
+                               category === 'Belay Devices' ? 'BELAY/DESCENT DEVICES' :
+                               category === 'Pulleys' ? 'TROLLEYS AND PULLEYS' :
+                               category === 'Other' ? 'OTHER EQUIPMENT' :
+                               category.toUpperCase();
+          
+          return `
+            <h3 style="margin-top: 15px; color: #1e40af; font-size: 12pt;">EQUIPMENT - ${categoryTitle}</h3>
+            <table>
+              <thead>
+                <tr>
+                  <th style="width: 35%;">Type</th>
+                  <th style="width: 10%;">Quantity</th>
+                  <th style="width: 12%;">Year</th>
+                  <th style="width: 15%;">Result</th>
+                  <th style="width: 28%;">Comments</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${categoryEquipment.map(eq => {
+                  let resultClass = 'result-pass';
+                  if (eq.result === 'Needs Attention' || eq.result === 'Pass with Provisions') resultClass = 'result-attention';
+                  if (eq.result === 'Fail') resultClass = 'result-fail';
+                  
+                  return `
+                    <tr>
+                      <td>${eq.equipment_type}</td>
+                      <td style="text-align: center;">${eq.quantity || 'N/A'}</td>
+                      <td style="text-align: center;">${eq.production_year || 'N/A'}</td>
+                      <td class="${resultClass}">${eq.result}</td>
+                      <td style="font-size: 9pt;">${eq.comments || '—'}</td>
+                    </tr>
+                  `;
+                }).join('')}
+              </tbody>
+            </table>
+          `;
+        }).join('')}
+      </div>
+
+      <div class="section-divider"></div>
+
+      <!-- Standards Section -->
+      <div class="combined-section">
+        <h2>ACCT Operations Standards</h2>
+        <p style="margin-bottom: 12px; font-size: 10pt; line-height: 1.6;">
+          Documentation verification as required by ACCT (Association for Challenge Course Technology) Standards. 
+          The presence of documentation does not constitute review or approval of content.
+        </p>
+
+        <table>
+          <thead>
+            <tr>
+              <th style="width: 65%;">Standard / Document</th>
+              <th style="width: 10%; text-align: center;">Yes</th>
+              <th style="width: 10%; text-align: center;">No</th>
+              <th style="width: 15%; text-align: center;">Comments</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${standards.map(std => `
+              <tr>
+                <td><strong>${std.standard_name}</strong></td>
+                <td style="text-align: center; font-size: 16pt; color: #16a34a;">${std.has_documentation ? '✓' : ''}</td>
+                <td style="text-align: center; font-size: 16pt; color: #dc2626;">${!std.has_documentation ? '✓' : ''}</td>
+                <td style="font-size: 9pt; text-align: center;">${std.comments ? '✓' : '—'}</td>
+              </tr>
+              ${std.comments ? `
+              <tr>
+                <td colspan="4" style="font-size: 9pt; font-style: italic; background: #f9f9f9; padding-left: 20px;">
+                  <strong>Comment:</strong> ${std.comments}
+                </td>
+              </tr>
+              ` : ''}
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="page-footer">
+      <div class="disclaimer">
+        This report has been prepared by a Qualified Professional in accordance with ACCT standards and industry best practices.
+      </div>
+      <div class="page-number">Page ${pageCount - 1} of ${pageCount}</div>
+    </div>
+  </div>
+  ` : `
+  <!-- SEPARATE PAGES -->
   <!-- PAGE: EQUIPMENT -->
   ${equipment.length > 0 ? `
   <div class="page">
@@ -1159,6 +1449,7 @@ serve(async (req) => {
     </div>
   </div>
   ` : ''}
+  `}
 
   <!-- PAGE: SUMMARY -->
   ${summary ? `
