@@ -1498,8 +1498,7 @@ serve(async (req) => {
             <tr>
               <th>System Name</th>
               <th>Element Name</th>
-              <th>Lifeline HDW</th>
-              <th>Activity HDW</th>
+              <th>Result</th>
               <th>Comments and/or Required Changes</th>
             </tr>
           </thead>
@@ -1510,7 +1509,6 @@ serve(async (req) => {
               <tr>
                 <td><strong>${sys.system_name}</strong></td>
                 <td>${sys.name || 'N/A'}</td>
-                <td style="${resultData.cellStyle}">${resultData.html}</td>
                 <td style="${resultData.cellStyle}">${resultData.html}</td>
                 <td style="font-size: 9pt;">${sys.comments || '—'}</td>
               </tr>
@@ -1605,8 +1603,7 @@ serve(async (req) => {
           <tr>
             <th>System Name</th>
             <th>Element Name</th>
-            <th>Lifeline HDW</th>
-            <th>Activity HDW</th>
+            <th>Result</th>
             <th>Comments and/or Required Changes</th>
           </tr>
         </thead>
@@ -1617,7 +1614,6 @@ serve(async (req) => {
               <tr>
                 <td><strong>${sys.system_name}</strong></td>
                 <td>${sys.name || 'N/A'}</td>
-                <td style="${resultData.cellStyle}">${resultData.html}</td>
                 <td style="${resultData.cellStyle}">${resultData.html}</td>
                 <td style="font-size: 9pt;">${sys.comments || '—'}</td>
               </tr>
