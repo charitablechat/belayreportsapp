@@ -23,3 +23,6 @@ verify_jwt = false
 
 [functions.send-training-pdf-email]
 verify_jwt = true
+
+[functions.get-logo-base64]
+verify_jwt = false

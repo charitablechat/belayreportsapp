@@ -6,9 +6,25 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Embedded logos as base64 to avoid storage dependency
-const ROPE_WORKS_LOGO = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="; // Placeholder - will be replaced with actual logo
-const ACCT_LOGO = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="; // Placeholder - will be replaced with actual logo
+// Embedded logos as base64 - will be fetched from storage
+let ROPE_WORKS_LOGO = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
+let ACCT_LOGO = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
+
+async function getLogoBase64(supabaseUrl: string): Promise<{ropeWorks: string, acct: string}> {
+  try {
+    const ropeWorksUrl = `${supabaseUrl}/storage/v1/object/public/pdf-templates/rope-works-logo-embedded.png`;
+    const acctUrl = `${supabaseUrl}/storage/v1/object/public/pdf-templates/acct-logo-embedded.png`;
+    const [ropeWorksResponse, acctResponse] = await Promise.all([fetch(ropeWorksUrl), fetch(acctUrl)]);
+    if (ropeWorksResponse.ok && acctResponse.ok) {
+      const [ropeWorksBlob, acctBlob] = await Promise.all([ropeWorksResponse.blob(), acctResponse.blob()]);
+      const [ropeWorksBuffer, acctBuffer] = await Promise.all([ropeWorksBlob.arrayBuffer(), acctBlob.arrayBuffer()]);
+      const ropeWorksBase64 = btoa(String.fromCharCode(...new Uint8Array(ropeWorksBuffer)));
+      const acctBase64 = btoa(String.fromCharCode(...new Uint8Array(acctBuffer)));
+      return { ropeWorks: `data:image/png;base64,${ropeWorksBase64}`, acct: `data:image/png;base64,${acctBase64}` };
+    }
+  } catch (error) { console.warn('Failed to fetch logos from storage, using placeholders:', error); }
+  return { ropeWorks: ROPE_WORKS_LOGO, acct: ACCT_LOGO };
+}
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -22,9 +38,10 @@ serve(async (req) => {
 
     const { assessmentId } = await req.json();
     
-    // Use embedded logos
-    const ropeWorksLogo = ROPE_WORKS_LOGO;
-    const acctLogo = ACCT_LOGO;
+    // Fetch logos from storage
+    const logos = await getLogoBase64(supabaseUrl);
+    const ropeWorksLogo = logos.ropeWorks;
+    const acctLogo = logos.acct;
 
     // Fetch assessment data
     const { data: assessment } = await supabase
