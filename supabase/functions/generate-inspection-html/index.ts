@@ -388,21 +388,22 @@ serve(async (req) => {
       margin-top: auto;
       font-size: 9pt;
       color: #666;
-      border-top: 1px solid #ddd;
+      border-top: 1px solid #000;
       padding-top: 8px;
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-end;
-      gap: 15px;
+      padding-right: 80px;
     }
 
     .disclaimer {
-      flex: 1;
+      text-align: center;
       line-height: 1.4;
       font-size: 8.5pt;
+      margin: 0 auto;
     }
 
     .page-number {
+      position: absolute;
+      right: 0;
+      bottom: 8px;
       font-weight: bold;
       white-space: nowrap;
       font-size: 9pt;
@@ -1126,8 +1127,8 @@ serve(async (req) => {
         .page-footer {
           font-size: 8pt !important;
           color: #666 !important;
-          padding: 8px 0 !important;
-          border-top: 1px solid #ccc !important;
+          padding: 8px 80px 8px 0 !important;
+          border-top: 1px solid #000 !important;
           margin-top: 10px !important;
         }
         
@@ -1272,7 +1273,7 @@ serve(async (req) => {
       }
 
       .page-footer {
-        border-top: 1px solid #333 !important;
+        border-top: 1px solid #000 !important;
       }
 
       /* List styling for print */
