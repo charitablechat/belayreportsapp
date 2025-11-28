@@ -20,6 +20,7 @@ import Profile from "./pages/Profile";
 import NotFound from "./pages/NotFound";
 import Base64Converter from "./pages/Base64Converter";
 import UploadLogos from "./pages/UploadLogos";
+import UploadLogosToStorage from "./pages/UploadLogosToStorage";
 import { InstallBanner } from "@/components/pwa/InstallBanner";
 import { UpdateNotification } from "@/components/pwa/UpdateNotification";
 import { InstallSuccessNotification } from "@/components/pwa/InstallSuccessNotification";
@@ -133,6 +134,7 @@ const App = () => (
             <Route path="/admin" element={<SuperAdminDashboard />} />
             <Route path="/base64-converter" element={<Base64Converter />} />
             <Route path="/upload-logos" element={<UploadLogos />} />
+            <Route path="/upload-logos-storage" element={<UploadLogosToStorage />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
