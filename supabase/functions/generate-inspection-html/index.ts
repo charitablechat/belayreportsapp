@@ -242,17 +242,26 @@ serve(async (req) => {
       padding-bottom: 12px;
       border-bottom: 3px solid #1e40af;
       margin-bottom: 20px;
+      position: relative;
     }
 
     .header-left {
+      flex: 0 0 auto;
       display: flex;
       align-items: center;
-      gap: 10px;
     }
 
     .header-left img {
       height: 70px;
       width: auto;
+      object-fit: contain;
+    }
+
+    .header-center {
+      position: absolute;
+      left: 50%;
+      transform: translateX(-50%);
+      text-align: center;
     }
 
     .header-title {
@@ -260,12 +269,20 @@ serve(async (req) => {
       font-weight: bold;
       color: #1e40af;
       text-transform: uppercase;
-      letter-spacing: 1px;
+      letter-spacing: 1.5px;
+      white-space: nowrap;
+    }
+
+    .header-right {
+      flex: 0 0 auto;
+      display: flex;
+      align-items: center;
     }
 
     .header-right img {
       height: 60px;
       width: auto;
+      object-fit: contain;
     }
 
     .page-footer {
@@ -482,10 +499,14 @@ serve(async (req) => {
     <div class="page-header">
       <div class="header-left">
         <img src="${acctLogo}" alt="ACCT Accredited Vendor">
+      </div>
+      <div class="header-center">
+        <div class="header-title">ROPES/CHALLENGE COURSE</div>
+      </div>
+      <div class="header-right">
         <img src="${ropeWorksLogo}" alt="Rope Works">
       </div>
     </div>
-    <div class="header-title" style="text-align: center; margin-bottom: 20px;">ROPES/CHALLENGE COURSE</div>
 
     <h1 style="text-align: center;">Professional Inspection for Aerial Adventure Programs</h1>
 
@@ -574,7 +595,9 @@ serve(async (req) => {
   <div class="page">
     <div class="page-header">
       <div class="header-left">
-        <img src="${acctLogo}" alt="ACCT">
+        <img src="${acctLogo}" alt="ACCT Accredited Vendor">
+      </div>
+      <div class="header-center">
         <div class="header-title">ROPES/CHALLENGE COURSE</div>
       </div>
       <div class="header-right">
@@ -632,7 +655,9 @@ serve(async (req) => {
   <div class="page">
     <div class="page-header">
       <div class="header-left">
-        <img src="${acctLogo}" alt="ACCT">
+        <img src="${acctLogo}" alt="ACCT Accredited Vendor">
+      </div>
+      <div class="header-center">
         <div class="header-title">ROPES/CHALLENGE COURSE</div>
       </div>
       <div class="header-right">
@@ -684,7 +709,9 @@ serve(async (req) => {
   <div class="page">
     <div class="page-header">
       <div class="header-left">
-        <img src="${acctLogo}" alt="ACCT">
+        <img src="${acctLogo}" alt="ACCT Accredited Vendor">
+      </div>
+      <div class="header-center">
         <div class="header-title">ROPES/CHALLENGE COURSE</div>
       </div>
       <div class="header-right">
@@ -768,7 +795,9 @@ serve(async (req) => {
   <div class="page">
     <div class="page-header">
       <div class="header-left">
-        <img src="${acctLogo}" alt="ACCT">
+        <img src="${acctLogo}" alt="ACCT Accredited Vendor">
+      </div>
+      <div class="header-center">
         <div class="header-title">ROPES/CHALLENGE COURSE</div>
       </div>
       <div class="header-right">
@@ -829,7 +858,9 @@ serve(async (req) => {
   <div class="page">
     <div class="page-header">
       <div class="header-left">
-        <img src="${acctLogo}" alt="ACCT">
+        <img src="${acctLogo}" alt="ACCT Accredited Vendor">
+      </div>
+      <div class="header-center">
         <div class="header-title">ROPES/CHALLENGE COURSE</div>
       </div>
       <div class="header-right">
@@ -882,7 +913,9 @@ serve(async (req) => {
   <div class="page">
     <div class="page-header">
       <div class="header-left">
-        <img src="${acctLogo}" alt="ACCT">
+        <img src="${acctLogo}" alt="ACCT Accredited Vendor">
+      </div>
+      <div class="header-center">
         <div class="header-title">ROPES/CHALLENGE COURSE</div>
       </div>
       <div class="header-right">
