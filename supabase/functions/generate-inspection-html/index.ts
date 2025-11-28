@@ -210,6 +210,12 @@ serve(async (req) => {
       margin: 0.5in;
     }
 
+    :root {
+      --spacing-tight: 8px;
+      --spacing-normal: 12px;
+      --spacing-relaxed: 16px;
+    }
+
     * {
       margin: 0;
       padding: 0;
@@ -245,9 +251,9 @@ serve(async (req) => {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      padding-bottom: 12px;
+      padding-bottom: 10px;
       border-bottom: 3px solid #1e40af;
-      margin-bottom: 20px;
+      margin-bottom: 15px;
       position: relative;
     }
 
@@ -297,11 +303,11 @@ serve(async (req) => {
       font-size: 9pt;
       color: #666;
       border-top: 1px solid #ddd;
-      padding-top: 10px;
+      padding-top: 8px;
       display: flex;
       justify-content: space-between;
       align-items: flex-end;
-      gap: 20px;
+      gap: 15px;
     }
 
     .disclaimer {
@@ -320,7 +326,7 @@ serve(async (req) => {
     h1 {
       font-size: 24pt;
       color: #1e40af;
-      margin-bottom: 20px;
+      margin-bottom: 15px;
       font-weight: bold;
       line-height: 1.3;
     }
@@ -328,7 +334,7 @@ serve(async (req) => {
     h2 {
       font-size: 16pt;
       color: #1e40af;
-      margin: 20px 0 12px 0;
+      margin: 12px 0 8px 0;
       font-weight: bold;
       line-height: 1.4;
     }
@@ -336,7 +342,7 @@ serve(async (req) => {
     h3 {
       font-size: 13pt;
       color: #000;
-      margin: 15px 0 10px 0;
+      margin: 10px 0 6px 0;
       font-weight: bold;
       line-height: 1.3;
     }
@@ -345,12 +351,12 @@ serve(async (req) => {
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: 0;
-      margin: 20px 0;
+      margin: 12px 0;
       border: 1px solid #ddd;
     }
 
     .info-cell {
-      padding: 10px 12px;
+      padding: 8px 10px;
       border-right: 1px solid #ddd;
       border-bottom: 1px solid #ddd;
     }
@@ -362,7 +368,7 @@ serve(async (req) => {
     .info-label {
       font-weight: bold;
       font-size: 9.5pt;
-      margin-bottom: 4px;
+      margin-bottom: 3px;
       color: #333;
     }
 
@@ -373,8 +379,8 @@ serve(async (req) => {
     }
 
     .text-block {
-      margin: 15px 0;
-      padding: 15px 18px;
+      margin: 10px 0;
+      padding: 10px 14px;
       background: #f9f9f9;
       border-left: 4px solid #1e40af;
       font-size: 10pt;
@@ -382,12 +388,12 @@ serve(async (req) => {
     }
 
     .bullet-list {
-      margin: 10px 0 10px 30px;
+      margin: 8px 0 8px 25px;
       font-size: 10pt;
     }
 
     .bullet-list li {
-      margin-bottom: 10px;
+      margin-bottom: 8px;
       line-height: 1.6;
       padding-left: 5px;
     }
@@ -395,14 +401,14 @@ serve(async (req) => {
     table {
       width: 100%;
       border-collapse: collapse;
-      margin: 15px 0;
-      font-size: 10pt;
+      margin: 10px 0;
+      font-size: 9.5pt;
     }
 
     table th {
       background: #1e40af;
       color: #fff;
-      padding: 10px;
+      padding: 6px 8px;
       text-align: left;
       font-weight: bold;
       border: 1px solid #1e40af;
@@ -410,10 +416,10 @@ serve(async (req) => {
     }
 
     table td {
-      padding: 10px;
+      padding: 6px 8px;
       border: 1px solid #ddd;
       vertical-align: top;
-      line-height: 1.5;
+      line-height: 1.4;
     }
 
     table tr:nth-child(even) {
@@ -436,8 +442,8 @@ serve(async (req) => {
     }
 
     .key-section {
-      margin: 15px 0;
-      padding: 15px 18px;
+      margin: 10px 0;
+      padding: 10px 14px;
       background: #f8f9fa;
       border: 1px solid #ddd;
       border-radius: 2px;
@@ -445,7 +451,7 @@ serve(async (req) => {
 
     .key-section h3 {
       margin-top: 0;
-      margin-bottom: 8px;
+      margin-bottom: 6px;
     }
 
     .key-section p {
@@ -464,8 +470,8 @@ serve(async (req) => {
     .critical-box {
       background: #fee;
       border: 2px solid #dc2626;
-      padding: 18px;
-      margin: 15px 0;
+      padding: 12px 14px;
+      margin: 10px 0;
       border-radius: 2px;
     }
 
@@ -626,7 +632,55 @@ serve(async (req) => {
 
       /* Remove unnecessary spacing in print */
       .page-header {
-        margin-bottom: 15px;
+        margin-bottom: 12px;
+        padding-bottom: 8px;
+      }
+
+      h2 {
+        margin: 10px 0 6px 0;
+      }
+
+      h3 {
+        margin: 8px 0 5px 0;
+      }
+
+      .info-grid {
+        margin: 10px 0;
+      }
+
+      .info-cell {
+        padding: 6px 8px;
+      }
+
+      .key-section, .text-block {
+        padding: 8px 12px;
+        margin: 8px 0;
+      }
+
+      .critical-box {
+        padding: 10px 12px;
+        margin: 8px 0;
+      }
+
+      table {
+        margin: 8px 0;
+      }
+
+      table th {
+        padding: 5px 7px;
+      }
+
+      table td {
+        padding: 5px 7px;
+        line-height: 1.3;
+      }
+
+      .bullet-list {
+        margin: 6px 0 6px 20px;
+      }
+
+      .bullet-list li {
+        margin-bottom: 6px;
       }
 
       /* Ensure borders print properly */
