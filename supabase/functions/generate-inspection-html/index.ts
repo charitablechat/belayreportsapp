@@ -231,7 +231,7 @@ serve(async (req) => {
   <style>
     @page {
       size: letter;
-      margin: 0.5in;
+      margin: 0.35in 0.45in;
     }
 
     :root {
@@ -525,12 +525,14 @@ serve(async (req) => {
         -webkit-print-color-adjust: exact;
         background: white;
         color: black;
+        font-size: 10pt;
+        line-height: 1.4;
       }
 
       /* Page setup and margins */
       @page {
         size: letter portrait;
-        margin: 0.5in;
+        margin: 0.35in 0.45in 0.3in 0.45in;
       }
 
       /* Page break controls */
@@ -667,57 +669,93 @@ serve(async (req) => {
         widows: 3;
       }
 
-      /* Remove unnecessary spacing in print */
+      /* Optimized spacing and typography for print density */
       .page-header {
+        margin-bottom: 10px;
+        padding-bottom: 6px;
+      }
+
+      h1 {
+        font-size: 20pt;
+        line-height: 1.2;
         margin-bottom: 12px;
-        padding-bottom: 8px;
       }
 
       h2 {
-        margin: 10px 0 6px 0;
+        margin: 8px 0 5px 0;
+        font-size: 15pt;
+        line-height: 1.25;
       }
 
       h3 {
-        margin: 8px 0 5px 0;
+        margin: 6px 0 4px 0;
+        font-size: 12pt;
+        line-height: 1.2;
       }
 
       .info-grid {
-        margin: 10px 0;
+        margin: 8px 0;
       }
 
       .info-cell {
-        padding: 6px 8px;
-      }
-
-      .key-section, .text-block {
-        padding: 8px 12px;
-        margin: 8px 0;
-      }
-
-      .critical-box {
-        padding: 10px 12px;
-        margin: 8px 0;
-      }
-
-      table {
-        margin: 8px 0;
-      }
-
-      table th {
         padding: 5px 7px;
       }
 
-      table td {
-        padding: 5px 7px;
+      .info-label {
+        font-size: 9pt;
+        margin-bottom: 2px;
+      }
+
+      .info-value {
+        font-size: 10pt;
         line-height: 1.3;
       }
 
+      .key-section, .text-block {
+        padding: 7px 10px;
+        margin: 7px 0;
+        font-size: 9.5pt;
+        line-height: 1.4;
+      }
+
+      .critical-box {
+        padding: 8px 10px;
+        margin: 7px 0;
+      }
+
+      table {
+        margin: 7px 0;
+        font-size: 9pt;
+      }
+
+      table th {
+        padding: 4px 6px;
+        font-size: 9.5pt;
+      }
+
+      table td {
+        padding: 4px 6px;
+        line-height: 1.25;
+      }
+
       .bullet-list {
-        margin: 6px 0 6px 20px;
+        margin: 5px 0 5px 18px;
+        font-size: 9.5pt;
       }
 
       .bullet-list li {
-        margin-bottom: 6px;
+        margin-bottom: 4px;
+        line-height: 1.3;
+      }
+
+      .page-footer {
+        font-size: 8.5pt;
+        padding-top: 6px;
+      }
+
+      .disclaimer {
+        font-size: 8pt;
+        line-height: 1.3;
       }
 
       /* Ensure borders print properly */
