@@ -5,7 +5,7 @@ import { Label } from "@/components/ui/label";
 import ResultSelect from "@/components/ResultSelect";
 import SystemTypeSelect from "@/components/SystemTypeSelect";
 import HistoryAutocomplete from "@/components/HistoryAutocomplete";
-import { Plus } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 
 interface OperatingSystemsTableProps {
   systems: any[];
@@ -33,6 +33,14 @@ export default function OperatingSystemsTable({ systems, onUpdate, onImmediateSa
     onUpdate(updated);
   };
 
+  const deleteSystem = (index: number) => {
+    const updated = systems.filter((_, i) => i !== index);
+    onUpdate(updated);
+    if (onImmediateSave) {
+      onImmediateSave();
+    }
+  };
+
   return (
     <Card>
       <CardHeader>
@@ -54,6 +62,7 @@ export default function OperatingSystemsTable({ systems, onUpdate, onImmediateSa
                 <th className="border p-3 text-left font-semibold text-sm">Element Name</th>
                 <th className="border p-3 text-left font-semibold text-sm w-48">Result</th>
                 <th className="border p-3 text-left font-semibold text-sm">Comments and/or Required Changes</th>
+                <th className="border p-3 text-center font-semibold text-sm w-16"></th>
               </tr>
             </thead>
             <tbody>
@@ -89,6 +98,16 @@ export default function OperatingSystemsTable({ systems, onUpdate, onImmediateSa
                       className="border-0 bg-transparent"
                     />
                   </td>
+                  <td className="border p-2 text-center">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => deleteSystem(index)}
+                      className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -98,8 +117,16 @@ export default function OperatingSystemsTable({ systems, onUpdate, onImmediateSa
         {/* Mobile card view */}
         <div className="md:hidden space-y-4">
           {systems.map((system, index) => (
-            <Card key={index} className="p-4">
-              <div className="space-y-3">
+            <Card key={index} className="p-4 relative">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => deleteSystem(index)}
+                className="absolute top-2 right-2 h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+              <div className="space-y-3 pr-8">
                 <div>
                   <Label className="text-xs text-muted-foreground">Operating System</Label>
                   <SystemTypeSelect
