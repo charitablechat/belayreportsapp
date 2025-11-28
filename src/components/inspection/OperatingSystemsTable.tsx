@@ -67,7 +67,7 @@ export default function OperatingSystemsTable({ systems, onUpdate, onImmediateSa
             </thead>
             <tbody>
               {systems.map((system, index) => (
-                <tr key={index} className="hover:bg-muted/50">
+                <tr key={system.id || index} className="hover:bg-muted/50">
                   <td className="border p-2">
                     <SystemTypeSelect
                       value={system.system_name}
@@ -117,7 +117,7 @@ export default function OperatingSystemsTable({ systems, onUpdate, onImmediateSa
         {/* Mobile card view */}
         <div className="md:hidden space-y-4">
           {systems.map((system, index) => (
-            <Card key={index} className="p-4 relative">
+            <Card key={system.id || index} className="p-4 relative">
               <Button
                 variant="ghost"
                 size="sm"
