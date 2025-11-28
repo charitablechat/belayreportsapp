@@ -428,15 +428,17 @@ serve(async (req) => {
     .info-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 0;
-      margin: 12px 0;
-      border: 1px solid #ddd;
+      gap: 18px 30px;
+      margin: 25px 0;
+      border: none;
     }
 
     .info-cell {
-      padding: 8px 10px;
-      border-right: 1px solid #ddd;
-      border-bottom: 1px solid #ddd;
+      padding: 0;
+      border: none;
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
     }
 
     .info-cell:nth-child(2n) {
@@ -444,16 +446,21 @@ serve(async (req) => {
     }
 
     .info-label {
-      font-weight: bold;
-      font-size: 9.5pt;
-      margin-bottom: 3px;
-      color: #333;
+      font-weight: 600;
+      font-size: 10pt;
+      color: #000;
+      white-space: nowrap;
+      flex-shrink: 0;
     }
 
     .info-value {
-      font-size: 11pt;
+      flex: 1;
+      font-size: 10pt;
       color: #000;
       line-height: 1.4;
+      border-bottom: 1px dotted #666;
+      min-height: 18px;
+      padding-bottom: 2px;
     }
 
     .text-block {
@@ -1289,45 +1296,45 @@ serve(async (req) => {
 
       <div class="info-grid">
         <div class="info-cell">
-          <div class="info-label">Organization:</div>
-          <div class="info-value">${inspection.organization}</div>
+          <span class="info-label">Organization:</span>
+          <span class="info-value">${inspection.organization}</span>
         </div>
         <div class="info-cell">
-          <div class="info-label">Location:</div>
-          <div class="info-value">${inspection.location}</div>
+          <span class="info-label">Location:</span>
+          <span class="info-value">${inspection.location}</span>
         </div>
         <div class="info-cell">
-          <div class="info-label">Onsite Contact:</div>
-          <div class="info-value">${inspection.onsite_contact || 'N/A'}</div>
+          <span class="info-label">Onsite Contact:</span>
+          <span class="info-value">${inspection.onsite_contact || 'N/A'}</span>
         </div>
         <div class="info-cell">
-          <div class="info-label">ACCT Course Number:</div>
-          <div class="info-value">${acctNumber}</div>
+          <span class="info-label">ACCT Course Number:</span>
+          <span class="info-value">${acctNumber}</span>
         </div>
         <div class="info-cell">
-          <div class="info-label">Inspected by:</div>
-          <div class="info-value">${inspectorName}</div>
+          <span class="info-label">Inspected by:</span>
+          <span class="info-value">${inspectorName}</span>
         </div>
         <div class="info-cell">
-          <div class="info-label">Inspector ACCT #:</div>
-          <div class="info-value">${acctNumber}</div>
+          <span class="info-label">Inspector ACCT #:</span>
+          <span class="info-value">${acctNumber}</span>
         </div>
         <div class="info-cell">
-          <div class="info-label">Date of Inspection:</div>
-          <div class="info-value">${formatDate(inspection.inspection_date)}</div>
+          <span class="info-label">Date of Inspection:</span>
+          <span class="info-value">${formatDate(inspection.inspection_date)}</span>
         </div>
         <div class="info-cell">
-          <div class="info-label">Next Inspection Date:</div>
-          <div class="info-value">${summary?.next_inspection_date ? formatDate(summary.next_inspection_date) : 'TBD'}</div>
+          <span class="info-label">Next Inspection Date:</span>
+          <span class="info-value">${summary?.next_inspection_date ? formatDate(summary.next_inspection_date) : 'TBD'}</span>
         </div>
         ${inspection.previous_inspector ? `
         <div class="info-cell">
-          <div class="info-label">Previously Inspected by:</div>
-          <div class="info-value">${inspection.previous_inspector}</div>
+          <span class="info-label">Previously Inspected by:</span>
+          <span class="info-value">${inspection.previous_inspector}</span>
         </div>
         <div class="info-cell">
-          <div class="info-label">Prev. Inspection Date:</div>
-          <div class="info-value">${formatDate(inspection.previous_inspection_date)}</div>
+          <span class="info-label">Prev. Inspection Date:</span>
+          <span class="info-value">${formatDate(inspection.previous_inspection_date)}</span>
         </div>
         ` : ''}
       </div>
