@@ -62,7 +62,7 @@ export default function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: Z
         </div>
 
         {/* Desktop table view */}
-        <div className="hidden lg:block overflow-x-auto">
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full border-collapse text-sm">
             <thead>
               <tr className="bg-blue-50 dark:bg-blue-950/20">
@@ -209,7 +209,7 @@ export default function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: Z
         </div>
         
         {/* Mobile/Tablet card view */}
-        <div className="lg:hidden space-y-4">
+        <div className="md:hidden space-y-4">
           {ziplines.map((zipline, index) => (
             <Card key={index} className="p-4">
               <div className="space-y-3">

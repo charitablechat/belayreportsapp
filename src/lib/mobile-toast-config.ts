@@ -12,18 +12,20 @@ export interface ToastConfig {
   maxToasts: number;
 }
 
+export type ToastType = 'success' | 'error' | 'info' | 'warning';
+
 /**
  * Get platform-specific toast configuration
  */
 export function getToastConfig(): ToastConfig {
   const isMobileDevice = isMobile();
   
-  // Completely disable toasts on mobile to prevent UI clutter
+  // On mobile: show only errors and warnings with shorter duration
   if (isMobileDevice) {
     return {
-      enabled: false,
-      position: 'bottom-center',
-      duration: 3000,
+      enabled: true,
+      position: 'top-center',
+      duration: 2000, // 2 seconds for mobile
       maxToasts: 1,
     };
   }
@@ -40,8 +42,16 @@ export function getToastConfig(): ToastConfig {
 /**
  * Check if toasts should be shown on current platform
  */
-export function shouldShowToast(): boolean {
-  return getToastConfig().enabled;
+export function shouldShowToast(type?: ToastType): boolean {
+  const config = getToastConfig();
+  if (!config.enabled) return false;
+  
+  // On mobile, only show errors and warnings
+  if (isMobile() && type) {
+    return type === 'error' || type === 'warning';
+  }
+  
+  return true;
 }
 
 /**
