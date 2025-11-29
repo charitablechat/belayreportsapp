@@ -41,6 +41,8 @@ import { getUserWithCache } from "@/lib/cached-auth";
 import { HtmlReportViewer } from "@/components/HtmlReportViewer";
 import { openHtmlReport } from "@/lib/html-report-viewer";
 import { useKeyboardAvoidance } from "@/hooks/useKeyboardAvoidance";
+import { useScrollBoundaryDetection } from "@/hooks/useScrollBoundaryDetection";
+import { isMobile } from "@/lib/mobile-detection";
 
 export default function InspectionForm() {
   const { id } = useParams();
@@ -50,6 +52,10 @@ export default function InspectionForm() {
   
   // Enable keyboard avoidance for mobile
   useKeyboardAvoidance();
+  
+  // Enable scroll boundary detection with haptic feedback (mobile only)
+  const isMobileDevice = isMobile();
+  useScrollBoundaryDetection(isMobileDevice);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [autoSaving, setAutoSaving] = useState(false);

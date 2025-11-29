@@ -2,11 +2,11 @@
  * Haptic feedback utilities for mobile devices
  */
 
-export type HapticFeedbackType = 'light' | 'medium' | 'heavy' | 'success' | 'warning' | 'error';
+export type HapticFeedbackType = 'light' | 'medium' | 'heavy' | 'success' | 'warning' | 'error' | 'selection' | 'impact';
 
 /**
  * Trigger haptic feedback on supported devices
- * @param type - The type of haptic feedback (light, medium, heavy, success, warning, error)
+ * @param type - The type of haptic feedback (light, medium, heavy, success, warning, error, selection, impact)
  */
 export const triggerHaptic = (type: HapticFeedbackType = 'light') => {
   // Check if vibration API is supported
@@ -22,6 +22,8 @@ export const triggerHaptic = (type: HapticFeedbackType = 'light') => {
     success: [10, 50, 10], // Short-long-short pattern
     warning: [50, 100], // Two pulses
     error: [100, 50, 100], // Strong-pause-strong pattern
+    selection: 5, // Very light tap for selections
+    impact: [30, 30], // Medium impact for scroll events
   };
 
   const pattern = patterns[type];
@@ -36,4 +38,18 @@ export const triggerHaptic = (type: HapticFeedbackType = 'light') => {
     // Silently fail if vibration fails
     console.debug('Haptic feedback not available:', error);
   }
+};
+
+/**
+ * Trigger haptic feedback for navigation events
+ */
+export const triggerNavigationHaptic = () => {
+  triggerHaptic('selection');
+};
+
+/**
+ * Trigger haptic feedback when reaching scroll boundaries
+ */
+export const triggerScrollBoundaryHaptic = () => {
+  triggerHaptic('impact');
 };

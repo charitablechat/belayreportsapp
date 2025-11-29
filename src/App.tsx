@@ -1,7 +1,7 @@
 import { MobileAwareToaster, MobileAwareSonner } from "@/components/ui/mobile-aware-toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, useNavigate } from "react-router-dom";
 import { useEffect } from "react";
 import Index from "./pages/Index";
 import Dashboard from "./pages/Dashboard";
@@ -31,7 +31,10 @@ import { syncAllInspectionsAtomic } from "@/lib/atomic-sync-manager";
 import { syncPhotos } from "@/lib/sync-manager";
 import { useBackgroundSync } from "@/hooks/useBackgroundSync";
 import { useIOSSync } from "@/hooks/useIOSSync";
+import { useScrollRestoration } from "@/hooks/useScrollRestoration";
 import { isMobile, logMobileCapabilities } from "@/lib/mobile-detection";
+import { triggerNavigationHaptic } from "@/lib/haptics";
+import { cleanupStaleCachedPhotos } from "@/lib/photo-cache";
 
 
 const queryClient = new QueryClient();
@@ -40,6 +43,26 @@ const AppContent = () => {
   const { isSupported } = useBackgroundSync();
   const { isIOSDevice } = useIOSSync(); // iOS-specific sync behavior
   const isMobileDevice = isMobile();
+  const navigate = useNavigate();
+  
+  // Enable scroll restoration
+  useScrollRestoration(true);
+  
+  // Trigger haptic feedback on navigation (mobile only)
+  useEffect(() => {
+    if (!isMobileDevice) return;
+    
+    const handleNavigation = () => {
+      triggerNavigationHaptic();
+    };
+    
+    // Listen for route changes
+    window.addEventListener('popstate', handleNavigation);
+    
+    return () => {
+      window.removeEventListener('popstate', handleNavigation);
+    };
+  }, [isMobileDevice]);
   
   useEffect(() => {
     // Log mobile capabilities on mount
@@ -51,6 +74,9 @@ const AppContent = () => {
     if (navigator.onLine) {
       syncAllInspectionsAtomic();
       syncPhotos();
+      
+      // Clean up stale cached photos
+      cleanupStaleCachedPhotos();
       
       // Import and call sync functions
       import('@/lib/sync-manager').then(({ syncDailyAssessments, syncTrainings }) => {
@@ -79,6 +105,11 @@ const AppContent = () => {
         });
       }
     }, isMobileDevice ? 60 * 1000 : 5 * 60 * 1000);
+    
+    // Clean up stale cached photos every hour
+    const cacheCleanupInterval = setInterval(() => {
+      cleanupStaleCachedPhotos();
+    }, 60 * 60 * 1000);
 
     // Sync when app becomes visible
     const handleVisibilityChange = () => {
@@ -97,6 +128,7 @@ const AppContent = () => {
 
     return () => {
       clearInterval(syncInterval);
+      clearInterval(cacheCleanupInterval);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [isIOSDevice, isMobileDevice]);
