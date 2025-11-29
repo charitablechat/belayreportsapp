@@ -38,8 +38,8 @@ export const useIOSSync = () => {
       console.log('[iOS Sync] Initialized iOS-specific sync behavior');
     }
 
-    // Sync immediately on mount
-    performSync(true);
+    // NOTE: Initial sync on mount is handled by App.tsx to avoid duplication
+    // This hook only manages iOS-specific periodic and event-based syncing
 
     // Poll every 60 seconds when app is visible (iOS doesn't support background sync)
     const pollInterval = setInterval(() => {

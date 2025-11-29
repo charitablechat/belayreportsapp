@@ -71,7 +71,12 @@ const AppContent = () => {
     }
     
     // Sync on mount and when coming back online
+    // This is the single source of initial sync for all platforms
     if (navigator.onLine) {
+      if (import.meta.env.DEV) {
+        console.log('[App] Performing initial sync on mount');
+      }
+      
       syncAllInspectionsAtomic();
       syncPhotos();
       
@@ -85,15 +90,16 @@ const AppContent = () => {
       });
     }
 
-    // iOS uses its own sync hook, so skip these for iOS
+    // iOS uses its own sync hook for periodic/event-based sync
+    // But initial mount sync is handled above to avoid duplication
     if (isIOSDevice) {
       if (import.meta.env.DEV) {
-        console.log('[App] iOS detected - using iOS-specific sync behavior');
+        console.log('[App] iOS detected - periodic sync managed by useIOSSync hook');
       }
       return;
     }
 
-    // Periodic sync - more aggressive on mobile (1 min vs 5 min)
+    // Non-iOS: Periodic sync - more aggressive on mobile (1 min vs 5 min)
     const syncInterval = setInterval(() => {
       if (navigator.onLine) {
         syncAllInspectionsAtomic();
@@ -111,7 +117,7 @@ const AppContent = () => {
       cleanupStaleCachedPhotos();
     }, 60 * 60 * 1000);
 
-    // Sync when app becomes visible
+    // Sync when app becomes visible (non-iOS only, iOS handles this in useIOSSync)
     const handleVisibilityChange = () => {
       if (!document.hidden && navigator.onLine) {
         syncAllInspectionsAtomic();

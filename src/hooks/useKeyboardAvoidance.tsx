@@ -1,5 +1,27 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { isMobile } from '@/lib/mobile-detection';
+
+/**
+ * Debounce utility for limiting function calls
+ */
+function debounce<T extends (...args: any[]) => void>(
+  func: T,
+  wait: number
+): (...args: Parameters<T>) => void {
+  let timeout: NodeJS.Timeout | null = null;
+  
+  return function executedFunction(...args: Parameters<T>) {
+    const later = () => {
+      timeout = null;
+      func(...args);
+    };
+    
+    if (timeout) {
+      clearTimeout(timeout);
+    }
+    timeout = setTimeout(later, wait);
+  };
+}
 
 /**
  * Hook to handle keyboard avoidance on mobile devices
@@ -7,6 +29,7 @@ import { isMobile } from '@/lib/mobile-detection';
  */
 export const useKeyboardAvoidance = () => {
   const isMobileDevice = isMobile();
+  const debouncedHandleRef = useRef<((...args: any[]) => void) | null>(null);
 
   useEffect(() => {
     if (!isMobileDevice) return;
@@ -32,7 +55,7 @@ export const useKeyboardAvoidance = () => {
       }
     };
 
-    // Handle visual viewport resize (keyboard appearance)
+    // Handle visual viewport resize (keyboard appearance) with debounce
     const handleViewportResize = () => {
       if (window.visualViewport) {
         const viewport = window.visualViewport;
@@ -60,18 +83,21 @@ export const useKeyboardAvoidance = () => {
       }
     };
 
+    // Create debounced version (150ms delay to smooth rapid fires)
+    debouncedHandleRef.current = debounce(handleViewportResize, 150);
+
     // Add event listeners
     document.addEventListener('focusin', handleFocus, { capture: true });
     
-    if (window.visualViewport) {
-      window.visualViewport.addEventListener('resize', handleViewportResize);
+    if (window.visualViewport && debouncedHandleRef.current) {
+      window.visualViewport.addEventListener('resize', debouncedHandleRef.current);
     }
 
     return () => {
       document.removeEventListener('focusin', handleFocus, { capture: true });
       
-      if (window.visualViewport) {
-        window.visualViewport.removeEventListener('resize', handleViewportResize);
+      if (window.visualViewport && debouncedHandleRef.current) {
+        window.visualViewport.removeEventListener('resize', debouncedHandleRef.current);
       }
     };
   }, [isMobileDevice]);
