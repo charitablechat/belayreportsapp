@@ -40,12 +40,16 @@ import { convertCircleBulletsToHtml } from "@/lib/bullet-converter";
 import { getUserWithCache } from "@/lib/cached-auth";
 import { HtmlReportViewer } from "@/components/HtmlReportViewer";
 import { openHtmlReport } from "@/lib/html-report-viewer";
+import { useKeyboardAvoidance } from "@/hooks/useKeyboardAvoidance";
 
 export default function InspectionForm() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { isOnline } = useNetworkStatus();
   const { triggerSync } = usePWA();
+  
+  // Enable keyboard avoidance for mobile
+  useKeyboardAvoidance();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [autoSaving, setAutoSaving] = useState(false);
@@ -1241,6 +1245,25 @@ export default function InspectionForm() {
 
   return (
     <div className="min-h-screen bg-background">
+      {/* Offline Mode Banner */}
+      {!isOnline && (
+        <div className="bg-orange-500/10 border-b border-orange-500/20">
+          <div className="container mx-auto px-4 py-3">
+            <div className="flex items-center gap-3">
+              <CloudOff className="w-5 h-5 text-orange-600 dark:text-orange-400 shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-orange-900 dark:text-orange-100">
+                  You're working offline
+                </p>
+                <p className="text-xs text-orange-700 dark:text-orange-300 mt-0.5">
+                  Changes will be saved locally and synced when you're back online
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      
       <header className="border-b bg-card sticky top-0 z-20">
         <div className="container mx-auto px-2 sm:px-4 py-2 sm:py-4">
           {/* Top row - Back button, Logo, User Avatar */}

@@ -137,9 +137,20 @@ export default function Dashboard() {
   });
 
   useEffect(() => {
-    loadInspections();
-    loadTrainingReports();
-    loadDailyAssessments();
+    const loadAllData = async () => {
+      setLoading(true);
+      
+      // Batch all data loading operations
+      await Promise.all([
+        loadInspections(),
+        loadTrainingReports(),
+        loadDailyAssessments()
+      ]);
+      
+      setLoading(false);
+    };
+    
+    loadAllData();
     
     // Fetch current user - works offline with cache!
     const fetchUser = async () => {
@@ -198,7 +209,6 @@ export default function Dashboard() {
       
       if (offlineInspections.length > 0) {
         setInspections(offlineInspections);
-        setLoading(false);
         
         if (import.meta.env.DEV) {
           console.log('[Dashboard] Loaded from offline storage:', offlineInspections.length);
@@ -228,8 +238,6 @@ export default function Dashboard() {
       }
     } catch (error: any) {
       console.error("Error loading inspections:", error);
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -266,7 +274,6 @@ export default function Dashboard() {
       
       if (offlineAssessments.length > 0) {
         setDailyAssessments(offlineAssessments);
-        setLoading(false);
         
         if (import.meta.env.DEV) {
           console.log('[Dashboard] Loaded daily assessments from offline storage:', offlineAssessments.length);
