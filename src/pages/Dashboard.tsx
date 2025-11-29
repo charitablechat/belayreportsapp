@@ -13,6 +13,7 @@ import { format } from "date-fns";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { ReportCard } from "@/components/dashboard/ReportCard";
+import { ReportCardSkeleton } from "@/components/dashboard/ReportCardSkeleton";
 import ropeWorksLogo from "@/assets/rope-works-logo.png";
 import acctLogo from "@/assets/acct-accredited-vendor.png";
 import dashboardBackgroundVideo from "@/assets/dashboard-background.mp4";
@@ -21,6 +22,7 @@ import { triggerHaptic } from "@/lib/haptics";
 import { usePWAInstall } from "@/hooks/usePWAInstall";
 import { useSyncProgress } from "@/hooks/useSyncProgress";
 import { NetworkStatusIndicator } from "@/components/pwa/NetworkStatusIndicator";
+import { NetworkQualityIndicator } from "@/components/pwa/NetworkQualityIndicator";
 import { SyncStatusIndicator } from "@/components/pwa/SyncStatusIndicator";
 import { SyncControlPanel } from "@/components/pwa/SyncControlPanel";
 import { ManualUpdateButton } from "@/components/pwa/ManualUpdateButton";
@@ -506,7 +508,7 @@ export default function Dashboard() {
             </div>
             
             <div className="flex items-center gap-2">
-              <NetworkStatusIndicator />
+              <NetworkQualityIndicator />
               <SyncStatusIndicator />
               {isSuperAdmin && (
                 <Badge variant="default" className="bg-warning text-warning-foreground border-warning/50 shadow-lg shadow-warning/20 animate-pulse hidden sm:flex items-center gap-1">
@@ -765,8 +767,10 @@ export default function Dashboard() {
 
               <TabsContent value="inspections">
                 {loading ? (
-                  <div className="text-center py-12">
-                    <p className="text-muted-foreground">Loading inspections...</p>
+                  <div className="grid gap-4">
+                    {Array.from({ length: 3 }).map((_, i) => (
+                      <ReportCardSkeleton key={i} />
+                    ))}
                   </div>
                 ) : inspections.length === 0 ? (
                   <Card>
@@ -822,8 +826,10 @@ export default function Dashboard() {
 
               <TabsContent value="training">
                 {loading ? (
-                  <div className="text-center py-12">
-                    <p className="text-muted-foreground">Loading training reports...</p>
+                  <div className="grid gap-4">
+                    {Array.from({ length: 3 }).map((_, i) => (
+                      <ReportCardSkeleton key={i} />
+                    ))}
                   </div>
                 ) : trainings.length === 0 ? (
                   <Card>
@@ -878,9 +884,10 @@ export default function Dashboard() {
 
               <TabsContent value="daily">
                 {loading ? (
-                  <div className="text-center py-12">
-                    <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4" />
-                    <p className="text-muted-foreground">Loading daily assessments...</p>
+                  <div className="grid gap-4">
+                    {Array.from({ length: 3 }).map((_, i) => (
+                      <ReportCardSkeleton key={i} />
+                    ))}
                   </div>
                 ) : dailyAssessments.length === 0 ? (
                   <Card>

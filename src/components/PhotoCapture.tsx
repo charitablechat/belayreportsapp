@@ -5,6 +5,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { savePhotoOffline } from "@/lib/offline-storage";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { triggerHaptic } from "@/lib/haptics";
+import { compressImage } from "@/lib/image-compression";
+import { toast } from "sonner";
 
 interface PhotoCaptureProps {
   inspectionId: string;
@@ -36,14 +38,35 @@ export default function PhotoCapture({ inspectionId, section, onPhotoAdded }: Ph
       if (!user) throw new Error("Not authenticated");
 
       for (const file of Array.from(files)) {
+        // Compress image before upload (30-50% size reduction typical)
+        let processedFile = file;
+        try {
+          if (file.type.startsWith('image/')) {
+            processedFile = await compressImage(file, {
+              maxWidth: 1920,
+              maxHeight: 1920,
+              quality: 0.85,
+              maxSizeMB: 3,
+            });
+            
+            if (import.meta.env.DEV) {
+              const savedKB = ((file.size - processedFile.size) / 1024).toFixed(1);
+              console.log(`[PhotoCapture] Compressed ${file.name}: saved ${savedKB}KB`);
+            }
+          }
+        } catch (compressionError) {
+          console.warn('[PhotoCapture] Compression failed, using original:', compressionError);
+          // Continue with original file if compression fails
+        }
+
         if (isOnline) {
           // Online: Upload directly to Supabase
-          const fileExt = file.name.split('.').pop();
+          const fileExt = processedFile.name.split('.').pop();
           const fileName = `${user.id}/${inspectionId}/${Date.now()}.${fileExt}`;
           
           const { error: uploadError } = await supabase.storage
             .from('inspection-photos')
-            .upload(fileName, file);
+            .upload(fileName, processedFile);
 
           if (uploadError) throw uploadError;
 
@@ -64,13 +87,13 @@ export default function PhotoCapture({ inspectionId, section, onPhotoAdded }: Ph
             id: photoId,
             inspectionId,
             section,
-            blob: file,
-            fileName: file.name,
+            blob: processedFile,
+            fileName: processedFile.name,
             uploaded: false,
           });
           
           if (import.meta.env.DEV) {
-            console.log('[PhotoCapture] Saved photo offline:', photoId);
+            console.log('[PhotoCapture] Saved compressed photo offline:', photoId);
           }
         }
       }
