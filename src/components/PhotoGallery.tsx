@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { getOfflinePhotos, savePhotoOffline } from "@/lib/offline-storage";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
@@ -24,9 +24,18 @@ export default function PhotoGallery({ inspectionId, section }: PhotoGalleryProp
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [loading, setLoading] = useState(true);
   const { isOnline } = useNetworkStatus();
+  const objectUrlsRef = useRef<string[]>([]);
 
   useEffect(() => {
     loadPhotos();
+    
+    // Cleanup: revoke all object URLs on unmount
+    return () => {
+      objectUrlsRef.current.forEach(url => {
+        URL.revokeObjectURL(url);
+      });
+      objectUrlsRef.current = [];
+    };
   }, [inspectionId, section, isOnline]);
 
   const loadPhotos = async () => {
@@ -37,12 +46,16 @@ export default function PhotoGallery({ inspectionId, section }: PhotoGalleryProp
       const offlinePhotos = await getOfflinePhotos(inspectionId);
       const offlinePhotosList: Photo[] = offlinePhotos
         .filter(p => p.section === section)
-        .map(p => ({
-          id: p.id,
-          photoUrl: URL.createObjectURL(p.blob),
-          blob: p.blob,
-          uploaded: p.uploaded,
-        }));
+        .map(p => {
+          const objectUrl = URL.createObjectURL(p.blob);
+          objectUrlsRef.current.push(objectUrl);
+          return {
+            id: p.id,
+            photoUrl: objectUrl,
+            blob: p.blob,
+            uploaded: p.uploaded,
+          };
+        });
 
       // If online, also load from Supabase
       if (isOnline) {
@@ -170,7 +183,7 @@ export default function PhotoGallery({ inspectionId, section }: PhotoGalleryProp
           <Button
             variant="destructive"
             size="icon"
-            className="absolute bottom-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity"
+            className="absolute bottom-2 right-2 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity"
             onClick={() => handleDelete(photo)}
           >
             <X className="w-4 h-4" />
