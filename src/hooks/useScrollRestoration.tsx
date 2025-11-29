@@ -89,6 +89,24 @@ export const useScrollRestoration = (enabled: boolean = true) => {
     return () => clearInterval(cleanupInterval);
   }, [enabled]);
 
+  // Clear all scroll positions when app closes (memory leak fix)
+  useEffect(() => {
+    if (!enabled) return;
+
+    const handleBeforeUnload = () => {
+      scrollPositions.clear();
+      if (import.meta.env.DEV) {
+        console.log('[Scroll Restoration] Cleared all scroll positions on app close');
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [enabled]);
+
   return {
     isRestoring: isRestoringRef.current,
   };

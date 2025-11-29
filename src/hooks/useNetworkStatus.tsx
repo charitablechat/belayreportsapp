@@ -33,8 +33,10 @@ export const useNetworkStatus = () => {
     // Clear stale data
     localStorage.removeItem(STORAGE_KEY);
     
-    // Enhanced connectivity verification with retry logic and grace period
-    const verifyConnectivity = async (): Promise<boolean> => {
+    // Enhanced connectivity verification with exponential backoff and retry logic
+    const verifyConnectivity = async (retryAttempt = 0): Promise<boolean> => {
+      const MAX_RETRY_ATTEMPTS = 3;
+      
       if (verifyingRef.current) return networkStatus.isOnline;
       
       // Rate limit: only verify once every 5 seconds
@@ -104,6 +106,18 @@ export const useNetworkStatus = () => {
         }
       }
       
+      // Retry logic with exponential backoff
+      if (!verificationPassed && retryAttempt < MAX_RETRY_ATTEMPTS) {
+        const retryDelay = Math.min(1000 * Math.pow(2, retryAttempt), 8000); // 1s, 2s, 4s, max 8s
+        if (import.meta.env.DEV) {
+          console.log(`[Network] Retry ${retryAttempt + 1}/${MAX_RETRY_ATTEMPTS} after ${retryDelay}ms`);
+        }
+        
+        await new Promise(resolve => setTimeout(resolve, retryDelay));
+        verifyingRef.current = false; // Allow retry
+        return verifyConnectivity(retryAttempt + 1);
+      }
+      
       verifyingRef.current = false;
       
       // Implement grace period: require multiple consecutive failures before marking offline
@@ -115,7 +129,7 @@ export const useNetworkStatus = () => {
         consecutiveFailuresRef.current++;
         retryCountRef.current++; // Increment for exponential backoff
         if (import.meta.env.DEV) {
-          console.log(`[Network] Verification failed (${consecutiveFailuresRef.current}/${MAX_CONSECUTIVE_FAILURES})`);
+          console.log(`[Network] Verification failed after ${MAX_RETRY_ATTEMPTS} retries (${consecutiveFailuresRef.current}/${MAX_CONSECUTIVE_FAILURES})`);
         }
         
         // Still report online until we hit the threshold

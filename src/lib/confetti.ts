@@ -1,12 +1,18 @@
 import confetti from 'canvas-confetti';
 
+// Detect mobile for performance optimization
+const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || 
+  window.innerWidth < 768;
+
 /**
  * Trigger a celebratory confetti animation for report completion
  * Creates multiple bursts from both sides of the screen over 3 seconds
+ * Optimized for mobile: 50% fewer particles on mobile devices
  */
 export const triggerCompletionConfetti = () => {
   const duration = 3000;
   const animationEnd = Date.now() + duration;
+  const mobileMultiplier = isMobile ? 0.5 : 1; // 50% reduction on mobile
   const defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 9999 };
 
   const randomInRange = (min: number, max: number) => Math.random() * (max - min) + min;
@@ -18,7 +24,7 @@ export const triggerCompletionConfetti = () => {
       return;
     }
 
-    const particleCount = 50 * (timeLeft / duration);
+    const particleCount = Math.floor(50 * (timeLeft / duration) * mobileMultiplier);
     
     // Burst from left side
     confetti({
@@ -39,10 +45,13 @@ export const triggerCompletionConfetti = () => {
 /**
  * Trigger a simpler single-burst success confetti
  * Used for minor accomplishments
+ * Optimized for mobile: 50% fewer particles on mobile devices
  */
 export const triggerSuccessConfetti = () => {
+  const mobileMultiplier = isMobile ? 0.5 : 1; // 50% reduction on mobile
+  
   confetti({
-    particleCount: 100,
+    particleCount: Math.floor(100 * mobileMultiplier),
     spread: 70,
     origin: { y: 0.6 },
     zIndex: 9999
