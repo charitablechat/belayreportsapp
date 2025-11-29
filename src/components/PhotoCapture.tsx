@@ -16,11 +16,18 @@ export default function PhotoCapture({ inspectionId, section, onPhotoAdded }: Ph
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const { isOnline } = useNetworkStatus();
+  const uploadMutexRef = useRef(false);
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    // Prevent concurrent uploads (mutex lock)
+    if (uploadMutexRef.current) {
+      console.log('[PhotoCapture] Upload already in progress, ignoring');
+      return;
+    }
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
+    uploadMutexRef.current = true;
     triggerHaptic('light');
     setUploading(true);
 
@@ -75,6 +82,7 @@ export default function PhotoCapture({ inspectionId, section, onPhotoAdded }: Ph
       triggerHaptic('error');
     } finally {
       setUploading(false);
+      uploadMutexRef.current = false;
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }

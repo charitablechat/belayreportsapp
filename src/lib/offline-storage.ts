@@ -197,6 +197,27 @@ async function ensureStorage(): Promise<void> {
   }
 }
 
+/**
+ * Wrapper for IndexedDB operations with error boundary
+ */
+async function withIndexedDBErrorBoundary<T>(
+  operation: () => Promise<T>,
+  fallbackValue: T,
+  operationName: string
+): Promise<T> {
+  try {
+    const isHealthy = await checkIndexedDBHealth();
+    if (!isHealthy) {
+      console.error(`[Offline Storage] IndexedDB unhealthy, returning fallback for ${operationName}`);
+      return fallbackValue;
+    }
+    return await operation();
+  } catch (error) {
+    console.error(`[Offline Storage] Error in ${operationName}:`, error);
+    return fallbackValue;
+  }
+}
+
 export async function getDB() {
   if (!dbPromise) {
     // Ensure storage is available before opening DB
@@ -337,32 +358,50 @@ export async function getDB() {
 // Inspection functions
 
 export async function saveInspectionOffline(inspection: any) {
-  try {
-    const db = await getDB();
-    await db.put('inspections', inspection);
-    
-    if (import.meta.env.DEV) {
-      console.log('[Offline Storage] Saved inspection:', inspection.id);
-    }
-  } catch (error: any) {
-    console.error('[Offline Storage] Failed to save inspection:', error);
-    
-    if (error.name === 'QuotaExceededError') {
-      throw new Error('Storage quota exceeded. Please sync and clear old data.');
-    }
-    
-    throw error;
-  }
+  return withIndexedDBErrorBoundary(
+    async () => {
+      try {
+        const db = await getDB();
+        await db.put('inspections', inspection);
+        
+        if (import.meta.env.DEV) {
+          console.log('[Offline Storage] Saved inspection:', inspection.id);
+        }
+      } catch (error: any) {
+        console.error('[Offline Storage] Failed to save inspection:', error);
+        
+        if (error.name === 'QuotaExceededError') {
+          throw new Error('Storage quota exceeded. Please sync and clear old data.');
+        }
+        
+        throw error;
+      }
+    },
+    undefined,
+    'saveInspectionOffline'
+  );
 }
 
 export async function getOfflineInspections() {
-  const db = await getDB();
-  return await db.getAll('inspections');
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      return await db.getAll('inspections');
+    },
+    [],
+    'getOfflineInspections'
+  );
 }
 
 export async function getOfflineInspection(id: string) {
-  const db = await getDB();
-  return await db.get('inspections', id);
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      return await db.get('inspections', id);
+    },
+    null,
+    'getOfflineInspection'
+  );
 }
 
 export async function deleteOfflineInspection(id: string) {
@@ -371,22 +410,28 @@ export async function deleteOfflineInspection(id: string) {
 }
 
 export async function getUnsyncedInspections(userId?: string) {
-  const db = await getDB();
-  const allInspections = await db.getAll('inspections');
-  let unsynced = allInspections.filter(i => !i.synced_at || i.updated_at > i.synced_at);
-  
-  if (userId) {
-    unsynced = unsynced.filter(i => i.inspector_id === userId);
-  }
-  
-  if (import.meta.env.DEV) {
-    console.log('[Offline Storage] Unsynced inspections:', {
-      total: unsynced.length,
-      userId: userId ? userId.substring(0, 8) + '...' : 'all',
-    });
-  }
-  
-  return unsynced;
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      const allInspections = await db.getAll('inspections');
+      let unsynced = allInspections.filter(i => !i.synced_at || i.updated_at > i.synced_at);
+      
+      if (userId) {
+        unsynced = unsynced.filter(i => i.inspector_id === userId);
+      }
+      
+      if (import.meta.env.DEV) {
+        console.log('[Offline Storage] Unsynced inspections:', {
+          total: unsynced.length,
+          userId: userId ? userId.substring(0, 8) + '...' : 'all',
+        });
+      }
+      
+      return unsynced;
+    },
+    [],
+    'getUnsyncedInspections'
+  );
 }
 
 export async function queueOperation(type: 'create' | 'update' | 'delete', inspectionId: string, data: any) {
@@ -447,43 +492,55 @@ export async function savePhotoOffline(photo: {
   uploaded?: boolean;
   photoUrl?: string;
 }) {
-  try {
-    const db = await getDB();
-    
-    const quota = await checkStorageQuota();
-    if (quota.percentUsed > 90) {
-      throw new Error('Storage almost full. Please sync photos to free up space.');
-    }
-    
-    await db.put('photos', {
-      ...photo,
-      timestamp: Date.now(),
-      uploaded: photo.uploaded || false,
-    });
-    
-    if (import.meta.env.DEV) {
-      console.log('[Offline Storage] Saved photo:', photo.id);
-    }
-    
-    if (!photo.uploaded) {
-      const { registerPhotoSync } = await import('./background-sync');
-      await registerPhotoSync();
-    }
-  } catch (error: any) {
-    console.error('[Offline Storage] Failed to save photo:', error);
-    
-    if (error.name === 'QuotaExceededError') {
-      throw new Error('Storage quota exceeded. Please sync photos to free up space.');
-    }
-    
-    throw error;
-  }
+  return withIndexedDBErrorBoundary(
+    async () => {
+      try {
+        const db = await getDB();
+        
+        const quota = await checkStorageQuota();
+        if (quota.percentUsed > 90) {
+          throw new Error('Storage almost full. Please sync photos to free up space.');
+        }
+        
+        await db.put('photos', {
+          ...photo,
+          timestamp: Date.now(),
+          uploaded: photo.uploaded || false,
+        });
+        
+        if (import.meta.env.DEV) {
+          console.log('[Offline Storage] Saved photo:', photo.id);
+        }
+        
+        if (!photo.uploaded) {
+          const { registerPhotoSync } = await import('./background-sync');
+          await registerPhotoSync();
+        }
+      } catch (error: any) {
+        console.error('[Offline Storage] Failed to save photo:', error);
+        
+        if (error.name === 'QuotaExceededError') {
+          throw new Error('Storage quota exceeded. Please sync photos to free up space.');
+        }
+        
+        throw error;
+      }
+    },
+    undefined,
+    'savePhotoOffline'
+  );
 }
 
 export async function getOfflinePhotos(inspectionId: string) {
-  const db = await getDB();
-  const index = db.transaction('photos').store.index('by-inspection');
-  return await index.getAll(inspectionId);
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      const index = db.transaction('photos').store.index('by-inspection');
+      return await index.getAll(inspectionId);
+    },
+    [],
+    'getOfflinePhotos'
+  );
 }
 
 export async function getUnuploadedPhotos(userId?: string) {

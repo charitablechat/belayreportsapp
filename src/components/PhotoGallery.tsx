@@ -43,6 +43,12 @@ export default function PhotoGallery({ inspectionId, section }: PhotoGalleryProp
     try {
       setLoading(true);
       
+      // Revoke old object URLs before creating new ones (prevent memory leak)
+      objectUrlsRef.current.forEach(url => {
+        URL.revokeObjectURL(url);
+      });
+      objectUrlsRef.current = [];
+      
       // Load from IndexedDB first (includes offline photos)
       const offlinePhotos = await getOfflinePhotos(inspectionId);
       const offlinePhotosList: Photo[] = offlinePhotos
