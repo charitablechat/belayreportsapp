@@ -27,6 +27,12 @@ export const useSpeechToText = ({
   const [transcript, setTranscript] = useState('');
   const [error, setError] = useState<string | null>(null);
   const recognitionRef = useRef<any>(null);
+  const onTranscriptRef = useRef(onTranscript);
+
+  // Update ref when callback changes (prevents memory leak)
+  useEffect(() => {
+    onTranscriptRef.current = onTranscript;
+  }, [onTranscript]);
 
   // Check if browser supports Speech Recognition
   const isSupported = typeof window !== 'undefined' && 
@@ -65,7 +71,7 @@ export const useSpeechToText = ({
 
       if (finalTranscript) {
         setTranscript(prev => prev + finalTranscript);
-        onTranscript?.(finalTranscript);
+        onTranscriptRef.current?.(finalTranscript);
         triggerHaptic('success');
       }
     };
@@ -86,7 +92,7 @@ export const useSpeechToText = ({
         recognition.stop();
       }
     };
-  }, [continuous, lang, onTranscript, isSupported]);
+  }, [continuous, lang, isSupported]);
 
   const startListening = () => {
     if (!isSupported) {

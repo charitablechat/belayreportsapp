@@ -14,6 +14,7 @@ import {
 } from "./transaction-manager";
 import { syncProgressEmitter } from "@/hooks/useSyncProgress";
 import { getMobileCapabilities } from "./mobile-detection";
+import { toast } from "sonner";
 
 /**
  * Sync inspection with all related data atomically
@@ -90,7 +91,7 @@ export async function syncInspectionAtomic(inspectionId: string) {
       const timeDiff = Math.abs(remoteUpdated - localUpdated);
       
       if (timeDiff > 5000 && remoteUpdated > localUpdated) {
-        // Conflict detected - log and skip
+        // Conflict detected - notify user immediately
         const { data: { user } } = await supabase.auth.getUser();
         await supabase.from('sync_conflicts').insert({
           inspection_id: inspectionId,
@@ -98,6 +99,12 @@ export async function syncInspectionAtomic(inspectionId: string) {
           local_updated_at: inspection.updated_at,
           remote_updated_at: remoteInspection.updated_at,
           resolved: false,
+        });
+        
+        // Show immediate toast notification
+        toast.error("Sync Conflict Detected", {
+          description: `Changes conflict for ${inspection.organization} - ${inspection.location}. Please resolve in settings.`,
+          duration: 10000,
         });
         
         throw new Error("Sync conflict detected - user must resolve");
