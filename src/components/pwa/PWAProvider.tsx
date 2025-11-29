@@ -102,8 +102,8 @@ interface PWAProviderProps {
   children: ReactNode;
 }
 
-export const PWAProvider = ({ children }: PWAProviderProps) => {
-  // Combine all PWA hooks
+const PWAProviderContent = ({ children }: PWAProviderProps) => {
+  // Combine all PWA hooks (wrapped in error boundary)
   const { isInstallable, isInstalled, isDismissed, promptInstall, dismissPrompt } = usePWAInstall();
   const { needRefresh: needsUpdate, offlineReady, updateServiceWorker } = usePWAUpdate();
   const { isOnline, effectiveType, downlink, rtt } = useNetworkStatus();
@@ -162,10 +162,18 @@ export const PWAProvider = ({ children }: PWAProviderProps) => {
   };
 
   return (
+    <PWAContext.Provider value={value}>
+      {children}
+    </PWAContext.Provider>
+  );
+};
+
+export const PWAProvider = ({ children }: PWAProviderProps) => {
+  return (
     <PWAErrorBoundary>
-      <PWAContext.Provider value={value}>
+      <PWAProviderContent>
         {children}
-      </PWAContext.Provider>
+      </PWAProviderContent>
     </PWAErrorBoundary>
   );
 };
