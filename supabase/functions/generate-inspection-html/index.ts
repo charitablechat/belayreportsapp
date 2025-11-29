@@ -314,6 +314,10 @@ serve(async (req) => {
       margin: 0.35in 0.45in;
     }
 
+    @viewport {
+      width: device-width;
+    }
+
     :root {
       --spacing-tight: 8px;
       --spacing-normal: 12px;
@@ -324,6 +328,12 @@ serve(async (req) => {
       margin: 0;
       padding: 0;
       box-sizing: border-box;
+    }
+
+    html, body {
+      overflow-x: hidden;
+      margin: 0;
+      padding: 0;
     }
 
     body {
@@ -1435,6 +1445,53 @@ serve(async (req) => {
 
       li {
         page-break-inside: avoid;
+      }
+    }
+
+    /* Mobile optimizations */
+    @media screen and (max-width: 768px) {
+      .page {
+        padding: 0.25in;
+        padding-bottom: 0.5in;
+      }
+      
+      .page-header {
+        flex-wrap: nowrap;
+        gap: 8px;
+      }
+      
+      .header-left img {
+        height: 40px;
+      }
+      
+      .header-right img {
+        height: 40px;
+      }
+
+      .header-title {
+        font-size: 7pt;
+        max-width: 200px;
+      }
+
+      h1 {
+        font-size: 18pt;
+      }
+
+      h2 {
+        font-size: 14pt;
+      }
+
+      .info-grid {
+        grid-template-columns: 1fr;
+        gap: 8px;
+      }
+
+      table {
+        font-size: 9pt;
+      }
+
+      th, td {
+        padding: 6px;
       }
     }
   </style>
