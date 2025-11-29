@@ -1,8 +1,13 @@
 import confetti from 'canvas-confetti';
 
-// Detect mobile for performance optimization
-const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || 
-  window.innerWidth < 768;
+/**
+ * Detect mobile for performance optimization (reactive function)
+ * Call at execution time to respect orientation changes and window resizing
+ */
+const checkIsMobile = (): boolean => {
+  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || 
+    window.innerWidth < 768;
+};
 
 /**
  * Trigger a celebratory confetti animation for report completion
@@ -12,6 +17,7 @@ const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/
 export const triggerCompletionConfetti = () => {
   const duration = 3000;
   const animationEnd = Date.now() + duration;
+  const isMobile = checkIsMobile(); // Check at execution time
   const mobileMultiplier = isMobile ? 0.5 : 1; // 50% reduction on mobile
   const defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 9999 };
 
@@ -48,6 +54,7 @@ export const triggerCompletionConfetti = () => {
  * Optimized for mobile: 50% fewer particles on mobile devices
  */
 export const triggerSuccessConfetti = () => {
+  const isMobile = checkIsMobile(); // Check at execution time
   const mobileMultiplier = isMobile ? 0.5 : 1; // 50% reduction on mobile
   
   confetti({

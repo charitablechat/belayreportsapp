@@ -20,7 +20,12 @@ class PWAErrorBoundary extends Component<
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error('[PWA Provider] Error caught by boundary:', error, errorInfo);
+    // Only log in development to avoid console noise in production
+    if (import.meta.env.DEV) {
+      console.error('[PWA Provider] Error caught by boundary:', error, errorInfo);
+    }
+    // In production, consider sending to error reporting service
+    // Example: sendToErrorService(error, errorInfo);
   }
 
   render() {

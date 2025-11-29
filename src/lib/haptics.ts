@@ -26,7 +26,8 @@ export const triggerHaptic = (type: HapticFeedbackType = 'light') => {
     impact: [30, 30], // Medium impact for scroll events
   };
 
-  const pattern = patterns[type];
+  // TypeScript ensures type is valid, but add defensive fallback for extra safety
+  const pattern = patterns[type] ?? patterns.light;
   
   try {
     if (Array.isArray(pattern)) {
