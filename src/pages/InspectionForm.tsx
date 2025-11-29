@@ -43,6 +43,8 @@ import { openHtmlReport } from "@/lib/html-report-viewer";
 import { useKeyboardAvoidance } from "@/hooks/useKeyboardAvoidance";
 import { useScrollBoundaryDetection } from "@/hooks/useScrollBoundaryDetection";
 import { isMobile } from "@/lib/mobile-detection";
+import { triggerCompletionConfetti } from "@/lib/confetti";
+import { triggerHaptic } from "@/lib/haptics";
 
 export default function InspectionForm() {
   const { id } = useParams();
@@ -955,6 +957,8 @@ export default function InspectionForm() {
     
     await saveProgress();
     try {
+      const wasAlreadyCompleted = inspection?.status === "completed";
+      
       if (isOnline) {
         const { error } = await supabase
           .from("inspections")
@@ -965,6 +969,12 @@ export default function InspectionForm() {
         
         // Update local state to reflect completion
         setInspection({ ...inspection, status: "completed" });
+        
+        // Trigger celebration on first completion
+        if (!wasAlreadyCompleted) {
+          triggerCompletionConfetti();
+          triggerHaptic('success');
+        }
         
         if (import.meta.env.DEV) {
           console.log('[InspectionForm] Inspection completed online');
@@ -977,6 +987,12 @@ export default function InspectionForm() {
         
         // Update local state to reflect completion
         setInspection(updatedInspection);
+        
+        // Trigger celebration on first completion
+        if (!wasAlreadyCompleted) {
+          triggerCompletionConfetti();
+          triggerHaptic('success');
+        }
         
         if (import.meta.env.DEV) {
           console.log('[InspectionForm] Inspection completed offline');
