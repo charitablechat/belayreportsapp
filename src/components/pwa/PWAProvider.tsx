@@ -1,9 +1,66 @@
-import { createContext, ReactNode } from 'react';
+import { createContext, ReactNode, Component, ErrorInfo } from 'react';
 import { usePWAInstall } from '@/hooks/usePWAInstall';
 import { usePWAUpdate } from '@/hooks/usePWAUpdate';
 import { useNetworkStatus } from '@/hooks/useNetworkStatus';
 import { useSyncStatus } from '@/hooks/useSyncStatus';
 import { useUnsyncedPhotos } from '@/hooks/useUnsyncedPhotos';
+
+// Error Boundary for PWA Provider
+class PWAErrorBoundary extends Component<
+  { children: ReactNode },
+  { hasError: boolean; error: Error | null }
+> {
+  constructor(props: { children: ReactNode }) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error('[PWA Provider] Error caught by boundary:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      // Provide degraded PWA context with safe defaults
+      const fallbackValue: PWAContextType = {
+        isInstallable: false,
+        isInstalled: false,
+        isDismissed: false,
+        promptInstall: async () => {},
+        dismissPrompt: () => {},
+        needsUpdate: false,
+        offlineReady: false,
+        updateAndReload: async () => {},
+        isOnline: navigator.onLine,
+        effectiveType: null,
+        downlink: null,
+        rtt: null,
+        unsyncedCount: 0,
+        unsyncedInspections: [],
+        isSyncing: false,
+        lastSyncTime: null,
+        syncError: this.state.error?.message || 'PWA initialization failed',
+        triggerSync: async () => {},
+        updateUnsyncedCount: async () => {},
+        unsyncedPhotoCount: 0,
+        photosByInspection: {},
+        updatePhotoCount: async () => {},
+      };
+
+      return (
+        <PWAContext.Provider value={fallbackValue}>
+          {this.props.children}
+        </PWAContext.Provider>
+      );
+    }
+
+    return this.props.children;
+  }
+}
 
 export interface PWAContextType {
   // Install state
@@ -105,8 +162,10 @@ export const PWAProvider = ({ children }: PWAProviderProps) => {
   };
 
   return (
-    <PWAContext.Provider value={value}>
-      {children}
-    </PWAContext.Provider>
+    <PWAErrorBoundary>
+      <PWAContext.Provider value={value}>
+        {children}
+      </PWAContext.Provider>
+    </PWAErrorBoundary>
   );
 };

@@ -40,10 +40,20 @@ export const usePWAInstall = (): UsePWAInstallReturn => {
     // Listen for install prompt
     const handleBeforeInstallPrompt = (e: Event) => {
       e.preventDefault();
+      
+      // Type check before casting to ensure it's a valid BeforeInstallPromptEvent
+      const promptEvent = e as any;
+      if (typeof promptEvent?.prompt !== 'function' || !promptEvent?.userChoice) {
+        if (import.meta.env.DEV) {
+          console.warn('[PWA Install] Invalid beforeinstallprompt event - missing required methods');
+        }
+        return;
+      }
+      
       if (import.meta.env.DEV) {
         console.log('[PWA Install] beforeinstallprompt event fired - app is installable');
       }
-      setDeferredPrompt(e as BeforeInstallPromptEvent);
+      setDeferredPrompt(promptEvent as BeforeInstallPromptEvent);
     };
 
     // Listen for app installed
