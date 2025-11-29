@@ -19,6 +19,7 @@ export const usePullToRefresh = ({
   const [shouldTriggerRefresh, setShouldTriggerRefresh] = useState(false);
   const startY = useRef(0);
   const currentY = useRef(0);
+  const lastRefreshTime = useRef(0);
   const isMobileDevice = isMobile();
 
   const handleTouchStart = useCallback((e: TouchEvent) => {
@@ -64,10 +65,21 @@ export const usePullToRefresh = ({
     setIsPulling(false);
 
     if (shouldTriggerRefresh && !isRefreshing) {
-      try {
-        await onRefresh();
-      } catch (error) {
-        console.error('[Pull to Refresh] Error:', error);
+      // Check cooldown period (2 seconds)
+      const now = Date.now();
+      const timeSinceLastRefresh = now - lastRefreshTime.current;
+      
+      if (timeSinceLastRefresh < 2000) {
+        if (import.meta.env.DEV) {
+          console.log('[Pull to Refresh] Cooldown active, ignoring refresh');
+        }
+      } else {
+        try {
+          lastRefreshTime.current = now;
+          await onRefresh();
+        } catch (error) {
+          console.error('[Pull to Refresh] Error:', error);
+        }
       }
     }
 

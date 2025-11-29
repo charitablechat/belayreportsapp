@@ -41,12 +41,12 @@ export const useIOSSync = () => {
     // Sync immediately on mount
     performSync(true);
 
-    // Poll every 30 seconds when app is visible (iOS doesn't support background sync)
+    // Poll every 60 seconds when app is visible (iOS doesn't support background sync)
     const pollInterval = setInterval(() => {
       if (!document.hidden && navigator.onLine) {
         performSync(true);
       }
-    }, 30000);
+    }, 60000);
 
     // Sync on visibility change
     const handleVisibilityChange = () => {

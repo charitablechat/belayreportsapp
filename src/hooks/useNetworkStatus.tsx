@@ -37,9 +37,10 @@ export const useNetworkStatus = () => {
     const verifyConnectivity = async (): Promise<boolean> => {
       if (verifyingRef.current) return networkStatus.isOnline;
       
-      // Rate limit: only verify once every 3 seconds
+      // Rate limit: only verify once every 5 seconds
       const now = Date.now();
-      if (now - lastVerifyTimeRef.current < 3000) {
+      const backoffTime = Math.min(5000 * Math.pow(1.5, retryCountRef.current), 30000); // Exponential backoff up to 30s
+      if (now - lastVerifyTimeRef.current < backoffTime) {
         return networkStatus.isOnline;
       }
       lastVerifyTimeRef.current = now;
@@ -108,9 +109,11 @@ export const useNetworkStatus = () => {
       // Implement grace period: require multiple consecutive failures before marking offline
       if (verificationPassed) {
         consecutiveFailuresRef.current = 0;
+        retryCountRef.current = 0; // Reset backoff on success
         return true;
       } else {
         consecutiveFailuresRef.current++;
+        retryCountRef.current++; // Increment for exponential backoff
         if (import.meta.env.DEV) {
           console.log(`[Network] Verification failed (${consecutiveFailuresRef.current}/${MAX_CONSECUTIVE_FAILURES})`);
         }
