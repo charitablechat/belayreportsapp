@@ -40,19 +40,33 @@ export function getToastConfig(): ToastConfig {
 }
 
 /**
- * Check if toasts should be shown on current platform
+ * Check if a specific toast should be shown on current platform
+ * Use this before calling toast() to filter on mobile
  */
 export function shouldShowToast(type?: ToastType): boolean {
   const config = getToastConfig();
   if (!config.enabled) return false;
   
-  // On mobile, only show errors and warnings (handle undefined type)
+  // On mobile, only show errors and warnings
   if (isMobile()) {
     if (!type) return false; // No type specified = likely info/success, hide on mobile
     return type === 'error' || type === 'warning';
   }
   
   return true;
+}
+
+/**
+ * Helper to show mobile-aware toasts
+ * Automatically filters based on platform and type
+ */
+export function showMobileToast(
+  toastFn: () => void,
+  type: ToastType = 'info'
+): void {
+  if (shouldShowToast(type)) {
+    toastFn();
+  }
 }
 
 /**

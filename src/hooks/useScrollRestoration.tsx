@@ -89,7 +89,7 @@ export const useScrollRestoration = (enabled: boolean = true) => {
     return () => clearInterval(cleanupInterval);
   }, [enabled]);
 
-  // Clear all scroll positions when app closes (memory leak fix)
+  // Clear all scroll positions when app closes or is backgrounded (mobile fix)
   useEffect(() => {
     if (!enabled) return;
 
@@ -100,10 +100,38 @@ export const useScrollRestoration = (enabled: boolean = true) => {
       }
     };
 
+    // iOS Safari fix: pagehide is more reliable than beforeunload
+    const handlePageHide = () => {
+      scrollPositions.clear();
+      if (import.meta.env.DEV) {
+        console.log('[Scroll Restoration] Cleared all scroll positions on page hide');
+      }
+    };
+
+    // Clear scroll positions when app is hidden for more than 5 minutes
+    let hiddenTime = 0;
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        hiddenTime = Date.now();
+      } else {
+        const timeDiff = Date.now() - hiddenTime;
+        if (timeDiff > 5 * 60 * 1000) { // 5 minutes
+          scrollPositions.clear();
+          if (import.meta.env.DEV) {
+            console.log('[Scroll Restoration] Cleared stale scroll positions after long background');
+          }
+        }
+      }
+    };
+
     window.addEventListener('beforeunload', handleBeforeUnload);
+    window.addEventListener('pagehide', handlePageHide);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
     
     return () => {
       window.removeEventListener('beforeunload', handleBeforeUnload);
+      window.removeEventListener('pagehide', handlePageHide);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [enabled]);
 
