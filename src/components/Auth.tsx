@@ -95,13 +95,18 @@ export default function Auth() {
 
   return (
     <div className="relative min-h-screen flex items-center justify-center p-2 md:p-4">
+      {/* Background - Video on desktop, gradient on mobile */}
       <div className="absolute inset-0 z-0">
+        {/* Static gradient fallback for mobile and reduced motion */}
+        <div className="absolute inset-0 bg-gradient-to-br from-primary/20 via-secondary/10 to-accent/20 md:hidden" />
+        
+        {/* Video background - desktop only, respects reduced motion */}
         <video 
           autoPlay 
           loop 
           muted 
           playsInline
-          className="w-full h-full object-cover"
+          className="hidden md:block w-full h-full object-cover motion-reduce:hidden"
           onLoadedMetadata={(e) => {
             const video = e.currentTarget;
             video.playbackRate = 0.7;
@@ -109,6 +114,9 @@ export default function Auth() {
         >
           <source src={authBackgroundVideo} type="video/mp4" />
         </video>
+        
+        {/* Gradient fallback when motion is reduced */}
+        <div className="absolute inset-0 bg-gradient-to-br from-primary/20 via-secondary/10 to-accent/20 hidden motion-reduce:block" />
       </div>
       <Card className="relative z-10 w-full max-w-md shadow-2xl backdrop-blur-sm bg-card/95 mx-2">
         <CardHeader className="space-y-4 text-center">
