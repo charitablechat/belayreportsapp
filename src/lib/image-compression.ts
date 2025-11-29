@@ -21,13 +21,23 @@ const DEFAULT_OPTIONS: CompressionOptions = {
  * Compress an image file to reduce its size
  * @param file - The image file to compress
  * @param options - Compression options
+ * @param attemptCount - Internal counter to prevent infinite recursion
  * @returns Compressed image as a File object
  */
 export const compressImage = async (
   file: File,
-  options: CompressionOptions = {}
+  options: CompressionOptions = {},
+  attemptCount: number = 0
 ): Promise<File> => {
   const opts = { ...DEFAULT_OPTIONS, ...options };
+  
+  // Max 3 attempts to prevent infinite recursion
+  const MAX_ATTEMPTS = 3;
+  
+  if (attemptCount >= MAX_ATTEMPTS) {
+    console.warn('[Image Compression] Max compression attempts reached, returning current file');
+    return file;
+  }
   
   // Skip compression for very small files (<100KB)
   if (file.size < 100 * 1024) {
@@ -75,7 +85,7 @@ export const compressImage = async (
         ctx.drawImage(img, 0, 0, width, height);
 
         canvas.toBlob(
-          (blob) => {
+          async (blob) => {
             if (!blob) {
               reject(new Error('Failed to compress image'));
               return;
@@ -83,13 +93,29 @@ export const compressImage = async (
 
             // Check if compressed size is within limits
             const sizeMB = blob.size / (1024 * 1024);
-            if (opts.maxSizeMB && sizeMB > opts.maxSizeMB) {
+            if (opts.maxSizeMB && sizeMB > opts.maxSizeMB && (opts.quality || 0.8) > 0.1) {
               // If still too large, try with lower quality
-              const lowerQuality = Math.max(0.5, (opts.quality || 0.8) * 0.7);
+              const lowerQuality = Math.max(0.1, (opts.quality || 0.8) - 0.1);
               if (import.meta.env.DEV) {
-                console.log(`[Image Compression] Size ${sizeMB.toFixed(2)}MB exceeds limit, retrying with quality ${lowerQuality}`);
+                console.log(`[Image Compression] Size ${sizeMB.toFixed(2)}MB exceeds limit, retrying with quality ${lowerQuality} (attempt ${attemptCount + 1}/${MAX_ATTEMPTS})`);
               }
-              compressImage(file, { ...opts, quality: lowerQuality }).then(resolve).catch(reject);
+              
+              // Create File from compressed blob and recursively compress
+              const intermediateFile = new File([blob], file.name, {
+                type: 'image/jpeg',
+                lastModified: Date.now(),
+              });
+              
+              try {
+                const furtherCompressed = await compressImage(
+                  intermediateFile,
+                  { ...opts, quality: lowerQuality },
+                  attemptCount + 1
+                );
+                resolve(furtherCompressed);
+              } catch (error) {
+                reject(error);
+              }
               return;
             }
 
@@ -108,6 +134,7 @@ export const compressImage = async (
                 compressed: `${sizeMB.toFixed(2)}MB`,
                 saved: `${compressionRatio}%`,
                 dimensions: `${width}x${height}`,
+                attempts: attemptCount + 1,
               });
             }
 

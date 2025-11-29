@@ -5,8 +5,9 @@
 
 import { openDB, IDBPDatabase } from 'idb';
 
-const DB_NAME = 'inspection-app';
-const DB_VERSION = 2;
+// Use the same database name as offline-storage.ts
+const DB_NAME = 'rope-works-inspections';
+const DB_VERSION = 6;
 
 interface BatchOperation<T> {
   type: 'put' | 'delete' | 'get';
@@ -34,16 +35,8 @@ export const executeBatch = async <T = any>(
   const results: BatchResult<T>[] = [];
 
   try {
-    const db = await openDB(DB_NAME, DB_VERSION, {
-      upgrade(db) {
-        if (!db.objectStoreNames.contains('inspections')) {
-          db.createObjectStore('inspections', { keyPath: 'id' });
-        }
-        if (!db.objectStoreNames.contains('photos')) {
-          db.createObjectStore('photos', { keyPath: 'id' });
-        }
-      },
-    });
+    // Open the database (schema already defined in offline-storage.ts)
+    const db = await openDB(DB_NAME, DB_VERSION);
 
     // Group operations by store name for optimal batching
     const operationsByStore = new Map<string, BatchOperation<T>[]>();

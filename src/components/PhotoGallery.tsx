@@ -102,6 +102,21 @@ export default function PhotoGallery({ inspectionId, section }: PhotoGalleryProp
             // Cache photo blob for offline viewing (if not cached or expired)
             try {
               const response = await fetch(publicUrl);
+              
+              if (!response.ok) {
+                console.error('[PhotoGallery] Failed to fetch photo:', {
+                  status: response.status,
+                  statusText: response.statusText,
+                  url: publicUrl
+                });
+                // Return photo with URL but without caching
+                return {
+                  id: photo.id,
+                  photoUrl: publicUrl,
+                  uploaded: true,
+                };
+              }
+              
               const blob = await response.blob();
               
               // Save/update cache with timestamp
@@ -114,6 +129,7 @@ export default function PhotoGallery({ inspectionId, section }: PhotoGalleryProp
               );
             } catch (cacheError) {
               console.error('[PhotoGallery] Failed to cache photo:', cacheError);
+              // Continue without caching - photo will still display from remote URL
             }
 
             return {

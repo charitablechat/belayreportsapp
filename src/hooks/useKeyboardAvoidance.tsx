@@ -3,14 +3,15 @@ import { isMobile } from '@/lib/mobile-detection';
 
 /**
  * Debounce utility for limiting function calls
+ * Returns both the debounced function and a cancel function
  */
 function debounce<T extends (...args: any[]) => void>(
   func: T,
   wait: number
-): (...args: Parameters<T>) => void {
+): { debouncedFn: (...args: Parameters<T>) => void; cancel: () => void } {
   let timeout: NodeJS.Timeout | null = null;
   
-  return function executedFunction(...args: Parameters<T>) {
+  const debouncedFn = function executedFunction(...args: Parameters<T>) {
     const later = () => {
       timeout = null;
       func(...args);
@@ -21,6 +22,15 @@ function debounce<T extends (...args: any[]) => void>(
     }
     timeout = setTimeout(later, wait);
   };
+  
+  const cancel = () => {
+    if (timeout) {
+      clearTimeout(timeout);
+      timeout = null;
+    }
+  };
+  
+  return { debouncedFn, cancel };
 }
 
 /**
@@ -29,7 +39,7 @@ function debounce<T extends (...args: any[]) => void>(
  */
 export const useKeyboardAvoidance = () => {
   const isMobileDevice = isMobile();
-  const debouncedHandleRef = useRef<((...args: any[]) => void) | null>(null);
+  const debouncedHandleRef = useRef<{ debouncedFn: (...args: any[]) => void; cancel: () => void } | null>(null);
 
   useEffect(() => {
     if (!isMobileDevice) return;
@@ -90,14 +100,16 @@ export const useKeyboardAvoidance = () => {
     document.addEventListener('focusin', handleFocus, { capture: true });
     
     if (window.visualViewport && debouncedHandleRef.current) {
-      window.visualViewport.addEventListener('resize', debouncedHandleRef.current);
+      window.visualViewport.addEventListener('resize', debouncedHandleRef.current.debouncedFn);
     }
 
     return () => {
       document.removeEventListener('focusin', handleFocus, { capture: true });
       
+      // Cancel pending debounced calls and remove listener
       if (window.visualViewport && debouncedHandleRef.current) {
-        window.visualViewport.removeEventListener('resize', debouncedHandleRef.current);
+        debouncedHandleRef.current.cancel();
+        window.visualViewport.removeEventListener('resize', debouncedHandleRef.current.debouncedFn);
       }
     };
   }, [isMobileDevice]);
