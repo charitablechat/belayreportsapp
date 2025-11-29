@@ -63,7 +63,8 @@ class PWAErrorBoundary extends Component<
       );
     }
 
-    return this.props.children;
+    // Normal case: render PWAProviderContent which provides the actual context
+    return <PWAProviderContent>{this.props.children}</PWAProviderContent>;
   }
 }
 
@@ -175,10 +176,6 @@ const PWAProviderContent = ({ children }: PWAProviderProps) => {
 
 export const PWAProvider = ({ children }: PWAProviderProps) => {
   return (
-    <PWAErrorBoundary>
-      <PWAProviderContent>
-        {children}
-      </PWAProviderContent>
-    </PWAErrorBoundary>
+    <PWAErrorBoundary children={children} />
   );
 };
