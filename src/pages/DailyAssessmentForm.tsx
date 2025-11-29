@@ -14,6 +14,8 @@ import StructureChecksSection from "@/components/daily-assessment/StructureCheck
 import EnvironmentChecksSection from "@/components/daily-assessment/EnvironmentChecksSection";
 import { HtmlReportViewer } from "@/components/HtmlReportViewer";
 import { openHtmlReport } from "@/lib/html-report-viewer";
+import { triggerCompletionConfetti } from "@/lib/confetti";
+import { triggerHaptic } from "@/lib/haptics";
 
 export default function DailyAssessmentForm() {
   const { id } = useParams();
@@ -163,8 +165,15 @@ export default function DailyAssessmentForm() {
       ]);
 
       // Update assessment status
+      const wasAlreadyCompleted = assessment?.status === 'completed';
       const completedAssessment = { ...assessment, status: 'completed', updated_at: new Date().toISOString() };
       await saveDailyAssessmentOffline(completedAssessment);
+
+      // Trigger celebration on first completion
+      if (!wasAlreadyCompleted) {
+        triggerCompletionConfetti();
+        triggerHaptic('success');
+      }
 
       if (navigator.onLine) {
         try {

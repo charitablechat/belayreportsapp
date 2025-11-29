@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Save, FileDown, FileText, ChevronLeft, WifiOff, Wifi, Mail } from "lucide-react";
+import { Loader2, Save, FileDown, FileText, ChevronLeft, WifiOff, Wifi, Mail, CheckCircle } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -26,6 +26,8 @@ import {
 } from "@/lib/offline-storage";
 import { HtmlReportViewer } from "@/components/HtmlReportViewer";
 import { openHtmlReport } from "@/lib/html-report-viewer";
+import { triggerCompletionConfetti } from "@/lib/confetti";
+import { triggerHaptic } from "@/lib/haptics";
 
 export default function TrainingForm() {
   const { id } = useParams();
@@ -446,6 +448,142 @@ export default function TrainingForm() {
     }
   };
 
+  const completeTraining = useCallback(async () => {
+    if (!training || !id) return;
+
+    setIsSaving(true);
+    try {
+      const wasAlreadyCompleted = training?.status === 'completed';
+      const completedTraining = {
+        ...training,
+        status: 'completed',
+        updated_at: new Date().toISOString(),
+      };
+
+      // Save offline first
+      await saveTrainingOffline(completedTraining);
+      await Promise.all([
+        saveTrainingDataOffline('delivery_approaches', id, deliveryApproaches),
+        saveTrainingDataOffline('operating_systems', id, operatingSystems),
+        saveTrainingDataOffline('immediate_attention', id, immediateAttention),
+        saveTrainingDataOffline('verifiable_items', id, verifiableItems),
+        saveTrainingDataOffline('systems_in_place', id, systemsInPlace),
+        summary && saveTrainingDataOffline('summary', id, summary)
+      ]);
+
+      // If online, try to sync to Supabase
+      if (isOnline) {
+        try {
+          // Update main training record
+          const { error: trainingError } = await supabase
+            .from('trainings')
+            .update({ status: 'completed', updated_at: completedTraining.updated_at })
+            .eq('id', id);
+
+          if (trainingError) throw trainingError;
+
+          // Delete and re-insert all related records
+          await Promise.all([
+            supabase.from('training_delivery_approaches').delete().eq('training_id', id),
+            supabase.from('training_operating_systems').delete().eq('training_id', id),
+            supabase.from('training_immediate_attention').delete().eq('training_id', id),
+            supabase.from('training_verifiable_items').delete().eq('training_id', id),
+            supabase.from('training_systems_in_place').delete().eq('training_id', id),
+          ]);
+
+          // Insert new records
+          const insertPromises = [];
+          
+          if (deliveryApproaches.length > 0) {
+            insertPromises.push(
+              supabase.from('training_delivery_approaches').insert(
+                deliveryApproaches.map(a => ({ ...a, training_id: id }))
+              )
+            );
+          }
+
+          if (operatingSystems.length > 0) {
+            insertPromises.push(
+              supabase.from('training_operating_systems').insert(
+                operatingSystems.map(s => ({ ...s, training_id: id }))
+              )
+            );
+          }
+
+          if (immediateAttention.length > 0) {
+            insertPromises.push(
+              supabase.from('training_immediate_attention').insert(
+                immediateAttention.map(i => ({ ...i, training_id: id }))
+              )
+            );
+          }
+
+          if (verifiableItems.length > 0) {
+            insertPromises.push(
+              supabase.from('training_verifiable_items').insert(
+                verifiableItems.map(v => ({ ...v, training_id: id }))
+              )
+            );
+          }
+
+          if (systemsInPlace.length > 0) {
+            insertPromises.push(
+              supabase.from('training_systems_in_place').insert(
+                systemsInPlace.map(s => ({ ...s, training_id: id }))
+              )
+            );
+          }
+
+          await Promise.all(insertPromises);
+
+          // Update or insert summary
+          if (summary) {
+            const { data: existingSummary } = await supabase
+              .from('training_summary')
+              .select('id')
+              .eq('training_id', id)
+              .single();
+
+            if (existingSummary) {
+              await supabase
+                .from('training_summary')
+                .update(summary)
+                .eq('training_id', id);
+            } else {
+              await supabase
+                .from('training_summary')
+                .insert({ ...summary, training_id: id });
+            }
+          }
+
+          await saveTrainingOffline({
+            ...completedTraining,
+            synced_at: new Date().toISOString()
+          });
+        } catch (error) {
+          console.log('[Offline] Failed to sync, queuing operation');
+          await queueTrainingOperation('update', id, completedTraining);
+        }
+      } else {
+        // Queue for later sync
+        await queueTrainingOperation('update', id, completedTraining);
+      }
+
+      setTraining(completedTraining);
+      setLastSaved(new Date());
+      
+      // Trigger celebration on first completion
+      if (!wasAlreadyCompleted) {
+        triggerCompletionConfetti();
+        triggerHaptic('success');
+      }
+    } catch (error) {
+      console.error('Error completing training:', error);
+    } finally {
+      setIsSaving(false);
+    }
+  }, [training, id, deliveryApproaches, operatingSystems, immediateAttention, verifiableItems, systemsInPlace, summary, isOnline]);
+
   const updateTrainingField = (field: string, value: any) => {
     setTraining({ ...training, [field]: value });
   };
@@ -516,6 +654,22 @@ export default function TrainingForm() {
                   <>
                     <Save className="mr-2 h-4 w-4" />
                     Save
+                  </>
+                )}
+              </Button>
+              <Button
+                onClick={completeTraining}
+                disabled={isSaving || !isOnline}
+              >
+                {isSaving ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Completing...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle className="mr-2 h-4 w-4" />
+                    Complete & Submit
                   </>
                 )}
               </Button>
