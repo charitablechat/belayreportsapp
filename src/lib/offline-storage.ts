@@ -156,8 +156,12 @@ interface InspectionDB extends DBSchema {
 let dbPromise: Promise<IDBPDatabase<InspectionDB>> | null = null;
 let storageWarningShown = false;
 
+// Health check cache with 30-second TTL
+let healthCheckCache: { isHealthy: boolean; timestamp: number } | null = null;
+const HEALTH_CHECK_TTL = 30000; // 30 seconds
+
 /**
- * Check if IndexedDB is available and healthy
+ * Check if IndexedDB is available and healthy (with 30s cache)
  */
 export async function checkIndexedDBHealth(): Promise<boolean> {
   if (!('indexedDB' in window)) {
@@ -165,13 +169,25 @@ export async function checkIndexedDBHealth(): Promise<boolean> {
     return false;
   }
 
+  // Return cached result if still valid
+  const now = Date.now();
+  if (healthCheckCache && (now - healthCheckCache.timestamp) < HEALTH_CHECK_TTL) {
+    return healthCheckCache.isHealthy;
+  }
+
   try {
     // Try to open a test database
     const testDb = await openDB('health-check', 1);
     testDb.close();
+    
+    // Cache the successful result
+    healthCheckCache = { isHealthy: true, timestamp: now };
     return true;
   } catch (error) {
     console.error('[Offline Storage] IndexedDB health check failed:', error);
+    
+    // Cache the failed result
+    healthCheckCache = { isHealthy: false, timestamp: now };
     return false;
   }
 }
