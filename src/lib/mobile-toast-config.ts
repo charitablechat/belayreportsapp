@@ -46,8 +46,9 @@ export function shouldShowToast(type?: ToastType): boolean {
   const config = getToastConfig();
   if (!config.enabled) return false;
   
-  // On mobile, only show errors and warnings
-  if (isMobile() && type) {
+  // On mobile, only show errors and warnings (handle undefined type)
+  if (isMobile()) {
+    if (!type) return false; // No type specified = likely info/success, hide on mobile
     return type === 'error' || type === 'warning';
   }
   

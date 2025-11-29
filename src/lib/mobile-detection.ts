@@ -1,5 +1,13 @@
 /**
  * Mobile platform detection and capability checks
+ * 
+ * IMPORTANT: For React components, prefer using useIsMobile() hook from use-mobile.tsx
+ * which combines both user agent and screen width detection for unified mobile detection.
+ * 
+ * This file provides low-level detection utilities for:
+ * - Non-React contexts (utility functions, service workers, etc.)
+ * - Platform-specific checks (iOS, Android)
+ * - Capability checks (PWA features, storage, etc.)
  */
 
 export interface MobileCapabilities {

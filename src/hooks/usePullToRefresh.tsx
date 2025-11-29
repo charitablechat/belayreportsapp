@@ -38,8 +38,8 @@ export const usePullToRefresh = ({
     currentY.current = e.touches[0].clientY;
     const distance = currentY.current - startY.current;
 
-    // Only track pull down, not up
-    if (distance > 0) {
+    // Only track pull down, not up, and only when at top of page
+    if (distance > 0 && window.scrollY === 0) {
       // Apply resistance for smoother feel
       const resistance = 0.5;
       const adjustedDistance = distance * resistance;
@@ -52,8 +52,8 @@ export const usePullToRefresh = ({
         setShouldTriggerRefresh(false);
       }
 
-      // Prevent default scrolling when pulling
-      if (distance > 10) {
+      // Prevent default scrolling when actively pulling (not just touching)
+      if (adjustedDistance > 10) {
         e.preventDefault();
       }
     }
