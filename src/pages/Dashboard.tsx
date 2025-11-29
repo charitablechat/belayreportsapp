@@ -464,13 +464,18 @@ export default function Dashboard() {
         </div>
       )}
       
+      {/* Background - Video on desktop, gradient on mobile */}
       <div className="absolute inset-0 z-0">
+        {/* Static gradient fallback for mobile and reduced motion */}
+        <div className="absolute inset-0 bg-gradient-to-br from-primary/20 via-secondary/10 to-accent/20 md:hidden" />
+        
+        {/* Video background - desktop only, respects reduced motion */}
         <video 
           autoPlay 
           loop 
           muted 
           playsInline
-          className="w-full h-full object-cover"
+          className="hidden md:block w-full h-full object-cover motion-reduce:hidden"
           onLoadedMetadata={(e) => {
             const video = e.currentTarget;
             video.playbackRate = 0.7;
@@ -478,6 +483,9 @@ export default function Dashboard() {
         >
           <source src={dashboardBackgroundVideo} type="video/mp4" />
         </video>
+        
+        {/* Gradient fallback when motion is reduced */}
+        <div className="absolute inset-0 bg-gradient-to-br from-primary/20 via-secondary/10 to-accent/20 hidden motion-reduce:block" />
       </div>
       <div className="relative z-10 min-h-screen bg-background/80 backdrop-blur-sm">
         <header className="border-b bg-card/95 backdrop-blur-sm">
