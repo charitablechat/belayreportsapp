@@ -3,7 +3,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 export function ReportCardSkeleton() {
   return (
-    <Card className="relative overflow-hidden">
+    <Card 
+      className="relative overflow-hidden" 
+      role="status" 
+      aria-busy="true" 
+      aria-label="Loading report card"
+    >
       <CardContent className="p-4 md:p-6">
         <div className="flex items-start justify-between gap-2 mb-4">
           <div className="flex items-center gap-2 flex-1">
