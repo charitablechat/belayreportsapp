@@ -54,9 +54,9 @@ export function HtmlReportViewer({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-full max-h-full h-screen w-screen p-0 gap-0">
+      <DialogContent className="fixed inset-0 max-w-none max-h-none h-[100dvh] w-screen p-0 gap-0 translate-x-0 translate-y-0 flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b bg-background">
+        <div className="flex items-center justify-between p-4 pt-[max(1rem,env(safe-area-inset-top))] border-b bg-background">
           <h2 className="text-lg font-semibold truncate flex-1">{title}</h2>
           <div className="flex items-center gap-2 ml-4">
             <Button
@@ -94,7 +94,7 @@ export function HtmlReportViewer({
         </div>
 
         {/* Report Content */}
-        <div className="flex-1 overflow-hidden">
+        <div className="flex-1 min-h-0 overflow-hidden">
           <iframe
             srcDoc={html}
             title={title}
