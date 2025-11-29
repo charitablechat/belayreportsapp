@@ -1,0 +1,101 @@
+import { getDB } from './offline-storage';
+
+// Cache duration: 24 hours
+const CACHE_DURATION = 24 * 60 * 60 * 1000;
+
+/**
+ * Check if a cached photo is still valid
+ */
+export async function isCachedPhotoValid(photoId: string): Promise<boolean> {
+  const db = await getDB();
+  const photo = await db.get('photos', photoId);
+  
+  if (!photo || !photo.cachedAt) {
+    return false;
+  }
+  
+  const age = Date.now() - photo.cachedAt;
+  return age < CACHE_DURATION;
+}
+
+/**
+ * Cache a photo from remote with timestamp
+ */
+export async function cachePhotoFromRemote(
+  photoId: string,
+  blob: Blob,
+  photoUrl: string,
+  inspectionId: string,
+  section: string
+): Promise<void> {
+  const db = await getDB();
+  
+  await db.put('photos', {
+    id: photoId,
+    inspectionId,
+    section,
+    blob,
+    fileName: photoUrl.split('/').pop() || 'photo.jpg',
+    timestamp: Date.now(),
+    uploaded: true,
+    photoUrl,
+    cachedAt: Date.now(),
+    lastValidated: Date.now(),
+  });
+  
+  if (import.meta.env.DEV) {
+    console.log('[Photo Cache] Cached photo from remote:', photoId);
+  }
+}
+
+/**
+ * Validate and refresh cached photo if needed
+ */
+export async function validateCachedPhoto(photoId: string): Promise<boolean> {
+  const isValid = await isCachedPhotoValid(photoId);
+  
+  if (isValid) {
+    // Update last validated timestamp
+    const db = await getDB();
+    const photo = await db.get('photos', photoId);
+    if (photo) {
+      photo.lastValidated = Date.now();
+      await db.put('photos', photo);
+    }
+    return true;
+  }
+  
+  // Cache is stale, should be refreshed
+  if (import.meta.env.DEV) {
+    console.log('[Photo Cache] Cache expired for photo:', photoId);
+  }
+  return false;
+}
+
+/**
+ * Clean up stale cached photos
+ */
+export async function cleanupStaleCachedPhotos(): Promise<number> {
+  const db = await getDB();
+  const allPhotos = await db.getAll('photos');
+  
+  let cleanedCount = 0;
+  const now = Date.now();
+  
+  for (const photo of allPhotos) {
+    if (photo.cachedAt && photo.uploaded) {
+      const age = now - photo.cachedAt;
+      if (age > CACHE_DURATION) {
+        // Only delete if it's a cached remote photo (not a local pending upload)
+        await db.delete('photos', photo.id);
+        cleanedCount++;
+      }
+    }
+  }
+  
+  if (import.meta.env.DEV && cleanedCount > 0) {
+    console.log('[Photo Cache] Cleaned up', cleanedCount, 'stale cached photos');
+  }
+  
+  return cleanedCount;
+}

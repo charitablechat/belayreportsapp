@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { getOfflinePhotos, savePhotoOffline } from "@/lib/offline-storage";
+import { cachePhotoFromRemote, validateCachedPhoto } from "@/lib/photo-cache";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -74,27 +75,37 @@ export default function PhotoGallery({ inspectionId, section }: PhotoGalleryProp
               .from('inspection-photos')
               .getPublicUrl(photo.photo_url);
 
-            // Cache photo blob for offline viewing
+            // Check if photo is already cached and still valid
+            const existingOfflinePhoto = offlinePhotos.find(
+              p => p.photoUrl === photo.photo_url
+            );
+            
+            if (existingOfflinePhoto) {
+              const isValid = await validateCachedPhoto(photo.id);
+              
+              if (isValid) {
+                // Use cached photo
+                return {
+                  id: photo.id,
+                  photoUrl: publicUrl,
+                  uploaded: true,
+                };
+              }
+            }
+
+            // Cache photo blob for offline viewing (if not cached or expired)
             try {
               const response = await fetch(publicUrl);
               const blob = await response.blob();
               
-              // Save to IndexedDB if not already there
-              const existingOfflinePhoto = offlinePhotos.find(
-                p => p.photoUrl === photo.photo_url
+              // Save/update cache with timestamp
+              await cachePhotoFromRemote(
+                photo.id,
+                blob,
+                photo.photo_url,
+                inspectionId,
+                section
               );
-              
-              if (!existingOfflinePhoto) {
-                await savePhotoOffline({
-                  id: photo.id,
-                  inspectionId,
-                  section,
-                  blob,
-                  fileName: photo.photo_url.split('/').pop() || 'photo.jpg',
-                  uploaded: true,
-                  photoUrl: photo.photo_url,
-                });
-              }
             } catch (cacheError) {
               console.error('[PhotoGallery] Failed to cache photo:', cacheError);
             }

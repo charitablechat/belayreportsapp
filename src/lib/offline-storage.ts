@@ -45,6 +45,8 @@ interface InspectionDB extends DBSchema {
       timestamp: number;
       uploaded: boolean;
       photoUrl?: string;
+      cachedAt?: number; // Timestamp when photo was cached from remote
+      lastValidated?: number; // Last time cache was validated
     };
     indexes: { 'by-inspection': string; 'by-uploaded': number };
   };
@@ -504,6 +506,7 @@ export async function markPhotoAsUploaded(id: string, photoUrl: string) {
   if (photo) {
     photo.uploaded = true;
     photo.photoUrl = photoUrl;
+    photo.lastValidated = Date.now();
     await db.put('photos', photo);
     
     if (import.meta.env.DEV) {
