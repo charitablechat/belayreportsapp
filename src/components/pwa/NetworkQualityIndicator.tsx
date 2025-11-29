@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { usePWA } from '@/hooks/usePWA';
 import { Badge } from '@/components/ui/badge';
 import { Wifi, WifiOff, Signal, SignalHigh, SignalLow, SignalMedium } from 'lucide-react';
@@ -84,8 +85,18 @@ const getQualityConfig = (quality: NetworkQuality) => {
 export const NetworkQualityIndicator = () => {
   const { isOnline, effectiveType, downlink, rtt } = usePWA();
   
-  const quality = getNetworkQuality(isOnline, effectiveType, downlink, rtt);
-  const config = getQualityConfig(quality);
+  // Memoize quality calculation to avoid recalculating on every render
+  const quality = useMemo(
+    () => getNetworkQuality(isOnline, effectiveType, downlink, rtt),
+    [isOnline, effectiveType, downlink, rtt]
+  );
+  
+  // Memoize config lookup since it depends on quality
+  const config = useMemo(
+    () => getQualityConfig(quality),
+    [quality]
+  );
+  
   const Icon = config.icon;
 
   return (

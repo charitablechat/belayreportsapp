@@ -55,7 +55,16 @@ export default function PhotoCapture({ inspectionId, section, onPhotoAdded }: Ph
             }
           }
         } catch (compressionError) {
-          console.warn('[PhotoCapture] Compression failed, using original:', compressionError);
+          const errorMessage = compressionError instanceof Error ? compressionError.message : 'Unknown error';
+          const fileSizeKB = (file.size / 1024).toFixed(1);
+          console.warn(
+            `[PhotoCapture] Compression failed for ${file.name} (${fileSizeKB}KB, ${file.type}):`,
+            errorMessage
+          );
+          
+          if (import.meta.env.DEV) {
+            toast.error(`Photo compression failed: ${errorMessage}. Using original file.`);
+          }
           // Continue with original file if compression fails
         }
 

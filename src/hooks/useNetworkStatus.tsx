@@ -10,7 +10,6 @@ export interface NetworkStatus {
 }
 
 const STORAGE_KEY = 'last-network-status';
-const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 
 export const useNetworkStatus = () => {
   // ALWAYS start optimistically online - let events drive offline detection

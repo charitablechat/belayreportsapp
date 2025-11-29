@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { isMobile } from '@/lib/mobile-detection';
 
+export type PullState = 'idle' | 'pulling' | 'ready' | 'refreshing';
+
 interface UsePullToRefreshProps {
   onRefresh: () => Promise<void>;
   isRefreshing?: boolean;
@@ -17,6 +19,8 @@ export const usePullToRefresh = ({
   const [isPulling, setIsPulling] = useState(false);
   const [pullDistance, setPullDistance] = useState(0);
   const [shouldTriggerRefresh, setShouldTriggerRefresh] = useState(false);
+  const [pullProgress, setPullProgress] = useState(0); // 0-100 percentage
+  const [pullState, setPullState] = useState<PullState>('idle');
   const startY = useRef(0);
   const currentY = useRef(0);
   const lastRefreshTime = useRef(0);
@@ -29,6 +33,7 @@ export const usePullToRefresh = ({
     if (window.scrollY === 0) {
       startY.current = e.touches[0].clientY;
       setIsPulling(true);
+      setPullState('pulling');
     }
   }, [disabled, isMobileDevice, isRefreshing]);
 
@@ -45,11 +50,17 @@ export const usePullToRefresh = ({
       const adjustedDistance = distance * resistance;
       setPullDistance(Math.min(adjustedDistance, threshold * 1.5));
 
+      // Calculate pull progress (0-100%)
+      const progress = Math.min((adjustedDistance / threshold) * 100, 100);
+      setPullProgress(progress);
+
       // Check if we've reached threshold
       if (adjustedDistance >= threshold) {
         setShouldTriggerRefresh(true);
+        setPullState('ready');
       } else {
         setShouldTriggerRefresh(false);
+        setPullState('pulling');
       }
 
       // Prevent default scrolling when actively pulling (not just touching)
@@ -65,6 +76,7 @@ export const usePullToRefresh = ({
     setIsPulling(false);
 
     if (shouldTriggerRefresh && !isRefreshing) {
+      setPullState('refreshing');
       // Check cooldown period (2 seconds)
       const now = Date.now();
       const timeSinceLastRefresh = now - lastRefreshTime.current;
@@ -86,6 +98,8 @@ export const usePullToRefresh = ({
     // Reset state
     setPullDistance(0);
     setShouldTriggerRefresh(false);
+    setPullProgress(0);
+    setPullState('idle');
     startY.current = 0;
     currentY.current = 0;
   }, [isPulling, disabled, isMobileDevice, shouldTriggerRefresh, isRefreshing, onRefresh]);
@@ -109,5 +123,7 @@ export const usePullToRefresh = ({
     pullDistance,
     shouldTriggerRefresh,
     isActive: isPulling && pullDistance > 0,
+    pullProgress, // 0-100 percentage for visual feedback
+    pullState, // 'idle' | 'pulling' | 'ready' | 'refreshing'
   };
 };
