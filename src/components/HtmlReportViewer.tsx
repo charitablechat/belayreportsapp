@@ -26,6 +26,22 @@ export function HtmlReportViewer({
 }: HtmlReportViewerProps) {
   const canShare = canShareHtml();
 
+  // Add mobile base styles to ensure viewport consistency
+  const mobileBaseStyles = `
+    <style>
+      html, body {
+        max-width: 100vw !important;
+        overflow-x: hidden !important;
+      }
+      * {
+        box-sizing: border-box !important;
+      }
+    </style>
+  `;
+
+  // Inject before </head> in the html prop
+  const enhancedHtml = html.replace('</head>', `${mobileBaseStyles}</head>`);
+
   // Handle escape key
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
@@ -96,10 +112,11 @@ export function HtmlReportViewer({
         {/* Report Content */}
         <div className="flex-1 min-h-0 overflow-hidden">
           <iframe
-            srcDoc={html}
+            srcDoc={enhancedHtml}
             title={title}
             className="w-full h-full border-0"
             sandbox="allow-same-origin"
+            style={{ touchAction: 'pan-x pan-y pinch-zoom' }}
           />
         </div>
       </DialogContent>

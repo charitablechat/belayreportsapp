@@ -249,8 +249,9 @@ serve(async (req) => {
         cellStyle = 'background-color: #dcfce7; color: #166534;'; // Green highlight for pass
       }
       
+      // Mobile-friendly format using line breaks
       return {
-        html: `<span class="result-checkbox">${pass} Pass  ${provisions} Pass w/ Provisions  ${fail} Fail</span>`,
+        html: `<span class="result-checkbox">${pass} P<br>${provisions} Prov<br>${fail} F</span>`,
         cellStyle
       };
     };
@@ -1450,49 +1451,96 @@ serve(async (req) => {
 
     /* Mobile optimizations */
     @media screen and (max-width: 768px) {
+      /* Prevent horizontal overflow */
+      html, body {
+        max-width: 100vw;
+        overflow-x: hidden;
+      }
+      
       .page {
-        padding: 0.25in;
-        padding-bottom: 0.5in;
+        padding: 12px;
+        padding-bottom: 40px;
       }
       
-      .page-header {
-        flex-wrap: nowrap;
-        gap: 8px;
-      }
-      
-      .header-left img {
-        height: 40px;
-      }
-      
-      .header-right img {
-        height: 40px;
-      }
-
-      .header-title {
-        font-size: 7pt;
-        max-width: 200px;
-      }
-
-      h1 {
-        font-size: 18pt;
-      }
-
-      h2 {
-        font-size: 14pt;
-      }
-
+      /* Stack info grid to single column */
       .info-grid {
         grid-template-columns: 1fr;
         gap: 8px;
       }
-
+      
+      /* Make tables responsive with horizontal scroll container */
+      .table-wrapper {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        max-width: 100%;
+      }
+      
+      /* Reduce table font sizes */
       table {
+        font-size: 8pt;
+        min-width: 600px; /* Force scroll for complex tables */
+      }
+      
+      th, td {
+        padding: 4px 6px;
+      }
+      
+      /* Reformat result checkboxes to stack vertically */
+      .result-checkbox {
+        white-space: normal;
+        font-size: 7pt;
+        display: block;
+        line-height: 1.4;
+      }
+      
+      /* Headers */
+      .header-left img, .header-right img {
+        height: 35px;
+      }
+      
+      .header-title {
+        font-size: 6pt;
+        max-width: 150px;
+      }
+      
+      h1 { font-size: 16pt; }
+      h2 { font-size: 12pt; padding: 4px 8px; }
+      h3 { font-size: 10pt; }
+      
+      /* Text blocks */
+      .text-block {
+        padding: 8px;
         font-size: 9pt;
       }
-
-      th, td {
-        padding: 6px;
+      
+      /* Bullet lists */
+      .bullet-list {
+        margin-left: 12px;
+        font-size: 9pt;
       }
+      
+      /* Disclaimer */
+      .disclaimer {
+        font-size: 7pt;
+        max-width: 100%;
+      }
+    }
+
+    /* Extra small screens */
+    @media screen and (max-width: 480px) {
+      .page { padding: 8px; }
+      
+      table { 
+        font-size: 7pt;
+        min-width: 500px;
+      }
+      
+      .result-checkbox {
+        font-size: 6pt;
+      }
+      
+      h1 { font-size: 14pt; }
+      h2 { font-size: 11pt; }
     }
   </style>
 </head>

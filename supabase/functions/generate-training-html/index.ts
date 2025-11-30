@@ -122,13 +122,14 @@ serve(async (req) => {
       line-height: 1.6;
       color: #333;
       background: #f5f5f5;
-      padding: 20px;
+      padding: 10px;
     }
     .container {
-      max-width: 1000px;
+      max-width: 100%;
+      width: 100%;
       margin: 0 auto;
       background: white;
-      padding: 40px;
+      padding: 20px;
       box-shadow: 0 2px 10px rgba(0,0,0,0.1);
     }
     .header {
@@ -264,20 +265,63 @@ serve(async (req) => {
       }
     }
     @media (max-width: 768px) {
+      html, body {
+        max-width: 100vw;
+        overflow-x: hidden;
+      }
+      
+      body { padding: 8px; }
+      
+      .container {
+        padding: 12px;
+      }
+      
       .header {
         flex-direction: column;
         text-align: center;
+        gap: 10px;
       }
-      .header-right {
+      
+      .header-left, .header-right {
         text-align: center;
-        margin-top: 15px;
       }
+      
+      .logo { max-width: 100px; }
+      .badge { max-width: 80px; }
+      
+      h1 { font-size: 20px; }
+      
       .info-grid {
         grid-template-columns: 1fr;
+        gap: 10px;
       }
-      .container {
-        padding: 20px;
+      
+      .section-title {
+        font-size: 14px;
+        padding: 8px 12px;
       }
+      
+      li {
+        padding: 6px 10px;
+        font-size: 13px;
+      }
+      
+      .text-content {
+        padding: 10px;
+        font-size: 13px;
+      }
+      
+      .disclaimer {
+        padding: 10px;
+        font-size: 11px;
+      }
+    }
+
+    @media (max-width: 480px) {
+      body { padding: 4px; }
+      .container { padding: 8px; }
+      h1 { font-size: 18px; }
+      .section-title { font-size: 12px; }
     }
   </style>
 </head>
