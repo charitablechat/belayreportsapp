@@ -291,6 +291,74 @@ serve(async (req) => {
         page-break-after: avoid;
       }
     }
+
+    @media screen and (max-width: 768px) {
+      html, body {
+        max-width: 100vw;
+        overflow-x: hidden;
+      }
+      
+      .page {
+        padding: 12px;
+        padding-bottom: 50px;
+      }
+      
+      .page-header {
+        flex-direction: column;
+        gap: 10px;
+        text-align: center;
+      }
+      
+      .logo {
+        height: 45px;
+      }
+      
+      .page-title {
+        margin: 10px 0;
+      }
+      
+      .page-title h1 {
+        font-size: 16pt;
+      }
+      
+      .page-title .subtitle {
+        font-size: 10pt;
+      }
+      
+      .info-grid {
+        grid-template-columns: 1fr;
+        gap: 10px;
+        padding: 10px;
+      }
+      
+      .systems-grid {
+        grid-template-columns: 1fr;
+      }
+      
+      .checklist-item {
+        padding: 8px;
+        gap: 8px;
+      }
+      
+      .section h2 {
+        font-size: 12pt;
+        padding-bottom: 6px;
+      }
+      
+      .page-footer {
+        position: relative;
+        bottom: auto;
+        left: auto;
+        right: auto;
+        padding: 10px 0;
+      }
+    }
+
+    @media screen and (max-width: 480px) {
+      .page { padding: 8px; }
+      .page-title h1 { font-size: 14pt; }
+      .checkbox { width: 18px; height: 18px; font-size: 12pt; }
+    }
   </style>
 </head>
 <body>
