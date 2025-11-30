@@ -76,10 +76,15 @@ export default function PhotoGallery({ inspectionId, section }: PhotoGalleryProp
 
         const supabasePhotos: Photo[] = await Promise.all(
           (data || []).map(async (photo) => {
-            // Get public URL
-            const { data: { publicUrl } } = supabase.storage
+            // Get signed URL with 1 hour expiration for security
+            const { data: signedUrlData, error: urlError } = await supabase.storage
               .from('inspection-photos')
-              .getPublicUrl(photo.photo_url);
+              .createSignedUrl(photo.photo_url, 3600); // 1 hour = 3600 seconds
+
+            if (urlError) {
+              console.error('[PhotoGallery] Error creating signed URL:', urlError);
+              return null;
+            }
 
             // Check if photo is already cached and still valid
             const existingOfflinePhoto = offlinePhotos.find(
@@ -93,7 +98,7 @@ export default function PhotoGallery({ inspectionId, section }: PhotoGalleryProp
                 // Use cached photo
                 return {
                   id: photo.id,
-                  photoUrl: publicUrl,
+                  photoUrl: signedUrlData.signedUrl,
                   uploaded: true,
                 };
               }
@@ -101,18 +106,18 @@ export default function PhotoGallery({ inspectionId, section }: PhotoGalleryProp
 
             // Cache photo blob for offline viewing (if not cached or expired)
             try {
-              const response = await fetch(publicUrl);
+              const response = await fetch(signedUrlData.signedUrl);
               
               if (!response.ok) {
                 console.error('[PhotoGallery] Failed to fetch photo:', {
                   status: response.status,
                   statusText: response.statusText,
-                  url: publicUrl
+                  url: signedUrlData.signedUrl
                 });
                 // Return photo with URL but without caching
                 return {
                   id: photo.id,
-                  photoUrl: publicUrl,
+                  photoUrl: signedUrlData.signedUrl,
                   uploaded: true,
                 };
               }
@@ -134,11 +139,11 @@ export default function PhotoGallery({ inspectionId, section }: PhotoGalleryProp
 
             return {
               id: photo.id,
-              photoUrl: publicUrl,
+              photoUrl: signedUrlData.signedUrl,
               uploaded: true,
             };
           })
-        );
+        ).then(photos => photos.filter(photo => photo !== null) as Photo[]);
 
         // Merge offline (pending upload) and online photos
         const pendingPhotos = offlinePhotosList.filter(p => !p.uploaded);
