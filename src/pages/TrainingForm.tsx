@@ -358,6 +358,12 @@ export default function TrainingForm() {
       if (error) {
         throw error;
       }
+
+      // Handle rate limiting
+      if (data?.error && data.error.includes('Rate limit exceeded')) {
+        const retryMinutes = Math.ceil((data.retryAfter || 3600) / 60);
+        return;
+      }
       
       // Download the PDF
       if (data?.pdfUrl) {
@@ -404,6 +410,12 @@ export default function TrainingForm() {
       });
       
       if (error) throw error;
+
+      // Handle rate limiting
+      if (data?.success === false && data?.error?.includes('Rate limit exceeded')) {
+        const retryMinutes = Math.ceil((data.retryAfter || 3600) / 60);
+        return;
+      }
       
       // Reset form and close dialog
       setEmailForm({ recipientEmail: '', recipientName: '', message: '' });
