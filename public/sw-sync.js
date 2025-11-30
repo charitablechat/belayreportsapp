@@ -295,7 +295,7 @@ async function syncPhotos() {
           continue;
         }
         
-        // Save metadata to database
+        // Save metadata to database with file path only (signed URLs generated on read)
         const metadataResponse = await fetch(`${supabaseUrl}/rest/v1/inspection_photos`, {
           method: 'POST',
           headers: {

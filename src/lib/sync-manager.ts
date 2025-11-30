@@ -223,12 +223,7 @@ export async function syncPhotos() {
 
         if (uploadError) throw uploadError;
 
-        // Get public URL
-        const { data: { publicUrl } } = supabase.storage
-          .from('inspection-photos')
-          .getPublicUrl(fileName);
-
-        // Save to database
+        // Save to database with file path (signed URLs generated on read)
         const { error: dbError } = await supabase
           .from('inspection_photos')
           .insert({
