@@ -1066,8 +1066,15 @@ export default function InspectionForm() {
           details: error
         });
         
+        // Handle rate limiting
+        if (error.message?.includes('Rate limit exceeded')) {
+          const minutes = Math.ceil((error.retryAfter || 3600) / 60);
+          console.error(`[PDF Generation] Rate limited. Retry after ${minutes} minutes`);
+          return;
+        }
+        
         // Specific error handling based on error type
-        if (error.message?.toLowerCase().includes('failed to fetch') || 
+        if (error.message?.toLowerCase().includes('failed to fetch') ||
             error.message?.toLowerCase().includes('network')) {
           throw new Error('NETWORK_ERROR: Unable to reach PDF generation service. Please check your internet connection and try again.');
         } else if (error.message?.toLowerCase().includes('unauthorized') || 

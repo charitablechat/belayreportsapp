@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { jsPDF } from "https://esm.sh/jspdf@2.5.2";
 import "https://esm.sh/jspdf-autotable@3.8.2";
+import { checkRateLimit, createRateLimitResponse } from "../_shared/rate-limiter.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -29,6 +30,19 @@ serve(async (req) => {
     if (authError || !user) {
       throw new Error('Unauthorized');
     }
+
+    // Rate limiting: 10 PDF generations per user per hour
+    const rateLimit = checkRateLimit(`pdf:inspection:${user.id}`, {
+      maxRequests: 10,
+      windowMs: 60 * 60 * 1000 // 1 hour
+    });
+
+    if (!rateLimit.allowed) {
+      console.warn(`[Rate Limit] User ${user.id} exceeded PDF generation limit`);
+      return createRateLimitResponse(rateLimit.resetAt, corsHeaders);
+    }
+
+    console.log(`[Rate Limit] User ${user.id} - ${rateLimit.remaining} requests remaining`);
 
     const { inspectionId } = await req.json();
 

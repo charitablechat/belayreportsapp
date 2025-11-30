@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+import { checkRateLimit, createRateLimitResponse } from "../_shared/rate-limiter.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -36,6 +37,19 @@ serve(async (req) => {
     if (authError || !user) {
       throw new Error("Unauthorized");
     }
+
+    // Rate limiting: 5 emails per user per hour
+    const rateLimit = checkRateLimit(`email:training:${user.id}`, {
+      maxRequests: 5,
+      windowMs: 60 * 60 * 1000 // 1 hour
+    });
+
+    if (!rateLimit.allowed) {
+      console.warn(`[Rate Limit] User ${user.id} exceeded email sending limit`);
+      return createRateLimitResponse(rateLimit.resetAt, corsHeaders);
+    }
+
+    console.log(`[Rate Limit] User ${user.id} - ${rateLimit.remaining} emails remaining`);
 
     const { trainingId, recipientEmail, recipientName, message }: EmailRequest = await req.json();
 
@@ -81,12 +95,12 @@ serve(async (req) => {
       throw new Error("No training report found. Please generate the PDF first.");
     }
 
-    // Create a signed URL for the PDF (valid for 7 days)
+    // Create a signed URL for the PDF (valid for 72 hours)
     const pdfPath = report.pdf_url.split("/").slice(-2).join("/");
     const { data: urlData, error: urlError } = await supabase
       .storage
       .from("inspection-reports")
-      .createSignedUrl(pdfPath, 604800); // 7 days in seconds
+      .createSignedUrl(pdfPath, 259200); // 72 hours in seconds
 
     if (urlError || !urlData) {
       throw new Error("Failed to create PDF download link");

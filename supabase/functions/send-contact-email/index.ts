@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
+import { checkRateLimit, getClientIP, createRateLimitResponse } from "../_shared/rate-limiter.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -30,6 +31,20 @@ const handler = async (req: Request): Promise<Response> => {
   }
 
   try {
+    // Rate limiting: 3 contact form submissions per IP per hour
+    const clientIP = getClientIP(req);
+    const rateLimit = checkRateLimit(`contact:${clientIP}`, {
+      maxRequests: 3,
+      windowMs: 60 * 60 * 1000 // 1 hour
+    });
+
+    if (!rateLimit.allowed) {
+      console.warn(`[Rate Limit] IP ${clientIP} exceeded contact form limit`);
+      return createRateLimitResponse(rateLimit.resetAt, corsHeaders);
+    }
+
+    console.log(`[Rate Limit] IP ${clientIP} - ${rateLimit.remaining} requests remaining`);
+
     const { name, email, subject, message, imageUrl }: ContactEmailRequest = await req.json();
 
     // Validate required fields
