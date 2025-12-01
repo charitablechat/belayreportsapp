@@ -28,11 +28,13 @@ import { HtmlReportViewer } from "@/components/HtmlReportViewer";
 import { openHtmlReport } from "@/lib/html-report-viewer";
 import { triggerCompletionConfetti } from "@/lib/confetti";
 import { triggerHaptic } from "@/lib/haptics";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 export default function TrainingForm() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { isOnline } = useNetworkStatus();
+  const isMobile = useIsMobile();
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
@@ -731,10 +733,10 @@ export default function TrainingForm() {
         <Tabs defaultValue="info" className="space-y-6">
           <TabsList className="grid w-full grid-cols-4 lg:grid-cols-6">
             <TabsTrigger value="info">Info</TabsTrigger>
-            <TabsTrigger value="delivery">Training Format</TabsTrigger>
-            <TabsTrigger value="systems">Trained OS</TabsTrigger>
-            <TabsTrigger value="attention">Required Actions</TabsTrigger>
-            <TabsTrigger value="verifiable">Verified During Training</TabsTrigger>
+            <TabsTrigger value="delivery">{isMobile ? "Format" : "Training Format"}</TabsTrigger>
+            <TabsTrigger value="systems">{isMobile ? "OS" : "Trained OS"}</TabsTrigger>
+            <TabsTrigger value="attention">{isMobile ? "Actions" : "Required Actions"}</TabsTrigger>
+            <TabsTrigger value="verifiable">{isMobile ? "Verified" : "Verified During Training"}</TabsTrigger>
             <TabsTrigger value="summary">Summary</TabsTrigger>
           </TabsList>
 
