@@ -1382,8 +1382,9 @@ export default function InspectionForm() {
             
             <div className="flex items-center gap-2">
               <Button variant="outline" size="sm" onClick={saveProgress} disabled={saving || autoSaving}>
-                <Save className="w-4 h-4" />
-                <span className="hidden md:inline ml-2">{saving ? "Saving..." : isOnline ? "Save Progress" : "Save Locally"}</span>
+                <Save className={isMobileView ? "w-4 h-4" : "w-4 h-4 mr-2"} />
+                {!isMobileView && (saving ? "Saving..." : isOnline ? "Save Progress" : "Save Locally")}
+                {isMobileView && saving && "..."}
               </Button>
               <TooltipProvider>
                 <Tooltip>
