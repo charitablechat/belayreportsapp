@@ -310,17 +310,17 @@ export default function DailyAssessmentForm() {
     <div className="container mx-auto px-4 py-8 max-w-5xl">
       <div className="flex items-center justify-between mb-6">
         <Button variant="ghost" onClick={() => navigate('/dashboard')}>
-          <ArrowLeft className="mr-2 h-4 w-4" />
-          Back to Dashboard
+          <ArrowLeft className={isMobileView ? "h-4 w-4" : "mr-2 h-4 w-4"} />
+          {!isMobileView && "Back to Dashboard"}
         </Button>
         <div className="flex gap-2">
           <Button onClick={handleGenerateReport} disabled={generating} variant="outline">
-            <FileText className="mr-2 h-4 w-4" />
-            {generating ? 'Generating...' : 'Generate Report'}
+            <FileText className={isMobileView ? "h-4 w-4" : "mr-2 h-4 w-4"} />
+            {generating ? (isMobileView ? '...' : 'Generating...') : (isMobileView ? 'Report' : 'Generate Report')}
           </Button>
           <Button onClick={handleSave} disabled={saving}>
-            <Save className="mr-2 h-4 w-4" />
-            {saving ? 'Saving...' : 'Save & Complete'}
+            <Save className={isMobileView ? "h-4 w-4" : "mr-2 h-4 w-4"} />
+            {saving ? (isMobileView ? '...' : 'Saving...') : (isMobileView ? 'Save' : 'Save & Complete')}
           </Button>
         </div>
       </div>
