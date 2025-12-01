@@ -30,6 +30,8 @@ import { triggerCompletionConfetti } from "@/lib/confetti";
 import { triggerHaptic } from "@/lib/haptics";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useSwipeNavigation } from "@/hooks/useSwipeNavigation";
+import { FloatingActionButton } from "@/components/ui/floating-action-button";
+import { Check } from "lucide-react";
 
 export default function TrainingForm() {
   const { id } = useParams();
@@ -894,6 +896,30 @@ export default function TrainingForm() {
         filename={`training-report-${training?.organization || 'report'}-${new Date().toISOString().split('T')[0]}.html`}
         isOpen={htmlViewerOpen}
         onClose={() => setHtmlViewerOpen(false)}
+      />
+
+      {/* Mobile FAB */}
+      <FloatingActionButton
+        primaryAction={{
+          icon: <Save className="h-6 w-6" />,
+          label: "Save",
+          onClick: saveTraining,
+          loading: isSaving,
+          disabled: isSaving,
+        }}
+        secondaryActions={
+          training.status !== "completed"
+            ? [
+                {
+                  icon: <Check className="h-5 w-5" />,
+                  label: "Complete",
+                  onClick: completeTraining,
+                  disabled: isSaving,
+                  variant: "success" as const,
+                },
+              ]
+            : []
+        }
       />
     </div>
   );
