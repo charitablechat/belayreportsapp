@@ -46,6 +46,7 @@ import { isMobile } from "@/lib/mobile-detection";
 import { triggerCompletionConfetti } from "@/lib/confetti";
 import { triggerHaptic } from "@/lib/haptics";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useSwipeNavigation } from "@/hooks/useSwipeNavigation";
 
 export default function InspectionForm() {
   const { id } = useParams();
@@ -97,6 +98,27 @@ export default function InspectionForm() {
 
   // Track if auto-population has run for this inspection
   const autoPopulatedRef = useRef<string | null>(null);
+  
+  // Tab navigation state
+  const [currentTab, setCurrentTab] = useState("details");
+  const tabOrder = ["details", "equipment", "standards", "summary"];
+  
+  // Swipe navigation for mobile
+  const swipeContainerRef = useSwipeNavigation({
+    enabled: isMobileView,
+    onSwipeLeft: () => {
+      const currentIndex = tabOrder.indexOf(currentTab);
+      if (currentIndex < tabOrder.length - 1) {
+        setCurrentTab(tabOrder[currentIndex + 1]);
+      }
+    },
+    onSwipeRight: () => {
+      const currentIndex = tabOrder.indexOf(currentTab);
+      if (currentIndex > 0) {
+        setCurrentTab(tabOrder[currentIndex - 1]);
+      }
+    },
+  });
 
   // Auto-generate summary content from inspection results
   const generateSummaryFromInspection = () => {
@@ -1487,13 +1509,15 @@ export default function InspectionForm() {
           onImmediateSave={triggerImmediateSave} 
         />
 
-        <Tabs defaultValue="details" className="space-y-6 mt-6">
-          <TabsList className="grid grid-cols-2 lg:grid-cols-4 w-full gap-2 h-auto p-2">
-            <TabsTrigger value="details" className="h-11">{isMobileView ? "Systems" : "Operating Systems and Zip Lines"}</TabsTrigger>
-            <TabsTrigger value="equipment" className="h-11">Equipment</TabsTrigger>
-            <TabsTrigger value="standards" className="h-11">{isMobileView ? "Criteria" : "Operations Criteria"}</TabsTrigger>
-            <TabsTrigger value="summary" className="h-11">Summary</TabsTrigger>
-          </TabsList>
+        <Tabs value={currentTab} onValueChange={setCurrentTab} className="space-y-6 mt-6">
+          <div ref={swipeContainerRef}>
+            <TabsList className="grid grid-cols-2 lg:grid-cols-4 w-full gap-2 h-auto p-2">
+              <TabsTrigger value="details" className="h-11">{isMobileView ? "Systems" : "Operating Systems and Zip Lines"}</TabsTrigger>
+              <TabsTrigger value="equipment" className="h-11">Equipment</TabsTrigger>
+              <TabsTrigger value="standards" className="h-11">{isMobileView ? "Criteria" : "Operations Criteria"}</TabsTrigger>
+              <TabsTrigger value="summary" className="h-11">Summary</TabsTrigger>
+            </TabsList>
+          </div>
 
           <TabsContent value="details" className="space-y-6">
             <OperatingSystemsTable systems={systems} onUpdate={setSystems} onImmediateSave={triggerImmediateSave} />
