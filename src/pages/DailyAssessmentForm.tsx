@@ -18,6 +18,7 @@ import { triggerCompletionConfetti } from "@/lib/confetti";
 import { triggerHaptic } from "@/lib/haptics";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useSwipeNavigation } from "@/hooks/useSwipeNavigation";
+import { FloatingActionButton } from "@/components/ui/floating-action-button";
 
 export default function DailyAssessmentForm() {
   const { id } = useParams();
@@ -430,6 +431,17 @@ export default function DailyAssessmentForm() {
         filename={`daily-assessment-${assessment?.site || 'report'}-${new Date().toISOString().split('T')[0]}.html`}
         isOpen={viewerOpen}
         onClose={() => setViewerOpen(false)}
+      />
+
+      {/* Mobile FAB */}
+      <FloatingActionButton
+        primaryAction={{
+          icon: <Save className="h-6 w-6" />,
+          label: "Save",
+          onClick: handleSave,
+          loading: saving,
+          disabled: saving,
+        }}
       />
     </div>
   );
