@@ -45,12 +45,14 @@ import { useScrollBoundaryDetection } from "@/hooks/useScrollBoundaryDetection";
 import { isMobile } from "@/lib/mobile-detection";
 import { triggerCompletionConfetti } from "@/lib/confetti";
 import { triggerHaptic } from "@/lib/haptics";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 export default function InspectionForm() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { isOnline } = useNetworkStatus();
   const { triggerSync } = usePWA();
+  const isMobileView = useIsMobile();
   
   // Enable keyboard avoidance for mobile
   useKeyboardAvoidance();
@@ -1486,9 +1488,9 @@ export default function InspectionForm() {
 
         <Tabs defaultValue="details" className="space-y-6 mt-6">
           <TabsList className="grid grid-cols-2 lg:grid-cols-4 w-full gap-2 h-auto p-2">
-            <TabsTrigger value="details" className="h-11">Operating Systems and Zip Lines</TabsTrigger>
+            <TabsTrigger value="details" className="h-11">{isMobileView ? "Systems" : "Operating Systems and Zip Lines"}</TabsTrigger>
             <TabsTrigger value="equipment" className="h-11">Equipment</TabsTrigger>
-            <TabsTrigger value="standards" className="h-11">Operations Criteria</TabsTrigger>
+            <TabsTrigger value="standards" className="h-11">{isMobileView ? "Criteria" : "Operations Criteria"}</TabsTrigger>
             <TabsTrigger value="summary" className="h-11">Summary</TabsTrigger>
           </TabsList>
 

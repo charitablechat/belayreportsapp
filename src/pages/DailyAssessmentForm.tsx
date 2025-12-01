@@ -16,11 +16,13 @@ import { HtmlReportViewer } from "@/components/HtmlReportViewer";
 import { openHtmlReport } from "@/lib/html-report-viewer";
 import { triggerCompletionConfetti } from "@/lib/confetti";
 import { triggerHaptic } from "@/lib/haptics";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 export default function DailyAssessmentForm() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { formConfig, isLoading: isLoadingConfig } = useFormConfiguration('en', 'daily_assessment');
+  const isMobileView = useIsMobile();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -329,7 +331,7 @@ export default function DailyAssessmentForm() {
         <Tabs defaultValue="beginning" className="w-full">
           <TabsList className="grid w-full grid-cols-3 lg:grid-cols-6">
             <TabsTrigger value="beginning">Beginning</TabsTrigger>
-            <TabsTrigger value="end">End of Day</TabsTrigger>
+            <TabsTrigger value="end">{isMobileView ? "End" : "End of Day"}</TabsTrigger>
             <TabsTrigger value="systems">Systems</TabsTrigger>
             <TabsTrigger value="equipment">Equipment</TabsTrigger>
             <TabsTrigger value="structure">Structure</TabsTrigger>
