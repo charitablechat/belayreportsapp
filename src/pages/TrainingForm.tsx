@@ -29,6 +29,7 @@ import { openHtmlReport } from "@/lib/html-report-viewer";
 import { triggerCompletionConfetti } from "@/lib/confetti";
 import { triggerHaptic } from "@/lib/haptics";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useSwipeNavigation } from "@/hooks/useSwipeNavigation";
 
 export default function TrainingForm() {
   const { id } = useParams();
@@ -57,6 +58,27 @@ export default function TrainingForm() {
   const autoSaveTimer = useRef<NodeJS.Timeout | null>(null);
   const [htmlViewerOpen, setHtmlViewerOpen] = useState(false);
   const [reportHtml, setReportHtml] = useState<string>('');
+  
+  // Tab navigation state
+  const [currentTab, setCurrentTab] = useState("info");
+  const tabOrder = ["info", "delivery", "systems", "attention", "verifiable", "summary"];
+  
+  // Swipe navigation for mobile
+  const swipeContainerRef = useSwipeNavigation({
+    enabled: isMobile,
+    onSwipeLeft: () => {
+      const currentIndex = tabOrder.indexOf(currentTab);
+      if (currentIndex < tabOrder.length - 1) {
+        setCurrentTab(tabOrder[currentIndex + 1]);
+      }
+    },
+    onSwipeRight: () => {
+      const currentIndex = tabOrder.indexOf(currentTab);
+      if (currentIndex > 0) {
+        setCurrentTab(tabOrder[currentIndex - 1]);
+      }
+    },
+  });
 
   // Auto-populate person submitting and submission date
   useEffect(() => {
@@ -731,15 +753,17 @@ export default function TrainingForm() {
 
       {/* Main Content */}
       <div className="container mx-auto px-4 py-8">
-        <Tabs defaultValue="info" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4 lg:grid-cols-6">
-            <TabsTrigger value="info">Info</TabsTrigger>
-            <TabsTrigger value="delivery">{isMobile ? "Format" : "Training Format"}</TabsTrigger>
-            <TabsTrigger value="systems">{isMobile ? "OS" : "Trained OS"}</TabsTrigger>
-            <TabsTrigger value="attention">{isMobile ? "Actions" : "Required Actions"}</TabsTrigger>
-            <TabsTrigger value="verifiable">{isMobile ? "Verified" : "Verified During Training"}</TabsTrigger>
-            <TabsTrigger value="summary">Summary</TabsTrigger>
-          </TabsList>
+        <Tabs value={currentTab} onValueChange={setCurrentTab} className="space-y-6">
+          <div ref={swipeContainerRef}>
+            <TabsList className="grid w-full grid-cols-4 lg:grid-cols-6">
+              <TabsTrigger value="info">Info</TabsTrigger>
+              <TabsTrigger value="delivery">{isMobile ? "Format" : "Training Format"}</TabsTrigger>
+              <TabsTrigger value="systems">{isMobile ? "OS" : "Trained OS"}</TabsTrigger>
+              <TabsTrigger value="attention">{isMobile ? "Actions" : "Required Actions"}</TabsTrigger>
+              <TabsTrigger value="verifiable">{isMobile ? "Verified" : "Verified During Training"}</TabsTrigger>
+              <TabsTrigger value="summary">Summary</TabsTrigger>
+            </TabsList>
+          </div>
 
           <TabsContent value="info" className="space-y-6">
             <TrainingHeader training={training} onUpdate={updateTrainingField} />

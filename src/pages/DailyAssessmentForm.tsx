@@ -17,6 +17,7 @@ import { openHtmlReport } from "@/lib/html-report-viewer";
 import { triggerCompletionConfetti } from "@/lib/confetti";
 import { triggerHaptic } from "@/lib/haptics";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useSwipeNavigation } from "@/hooks/useSwipeNavigation";
 
 export default function DailyAssessmentForm() {
   const { id } = useParams();
@@ -35,6 +36,27 @@ export default function DailyAssessmentForm() {
   const [environmentChecks, setEnvironmentChecks] = useState<any[]>([]);
   const [viewerOpen, setViewerOpen] = useState(false);
   const [reportHtml, setReportHtml] = useState<string>('');
+  
+  // Tab navigation state
+  const [currentTab, setCurrentTab] = useState("beginning");
+  const tabOrder = ["beginning", "end", "systems", "equipment", "structure", "environment"];
+  
+  // Swipe navigation for mobile
+  const swipeContainerRef = useSwipeNavigation({
+    enabled: isMobileView,
+    onSwipeLeft: () => {
+      const currentIndex = tabOrder.indexOf(currentTab);
+      if (currentIndex < tabOrder.length - 1) {
+        setCurrentTab(tabOrder[currentIndex + 1]);
+      }
+    },
+    onSwipeRight: () => {
+      const currentIndex = tabOrder.indexOf(currentTab);
+      if (currentIndex > 0) {
+        setCurrentTab(tabOrder[currentIndex - 1]);
+      }
+    },
+  });
 
   useEffect(() => {
     loadAssessment();
@@ -328,15 +350,17 @@ export default function DailyAssessmentForm() {
       <div className="space-y-6">
         <DailyAssessmentHeader assessment={assessment} onUpdate={handleUpdateAssessment} />
 
-        <Tabs defaultValue="beginning" className="w-full">
-          <TabsList className="grid w-full grid-cols-3 lg:grid-cols-6">
-            <TabsTrigger value="beginning">Beginning</TabsTrigger>
-            <TabsTrigger value="end">{isMobileView ? "End" : "End of Day"}</TabsTrigger>
-            <TabsTrigger value="systems">Systems</TabsTrigger>
-            <TabsTrigger value="equipment">Equipment</TabsTrigger>
-            <TabsTrigger value="structure">Structure</TabsTrigger>
-            <TabsTrigger value="environment">Environment</TabsTrigger>
-          </TabsList>
+        <Tabs value={currentTab} onValueChange={setCurrentTab} className="w-full">
+          <div ref={swipeContainerRef}>
+            <TabsList className="grid w-full grid-cols-3 lg:grid-cols-6">
+              <TabsTrigger value="beginning">Beginning</TabsTrigger>
+              <TabsTrigger value="end">{isMobileView ? "End" : "End of Day"}</TabsTrigger>
+              <TabsTrigger value="systems">Systems</TabsTrigger>
+              <TabsTrigger value="equipment">Equipment</TabsTrigger>
+              <TabsTrigger value="structure">Structure</TabsTrigger>
+              <TabsTrigger value="environment">Environment</TabsTrigger>
+            </TabsList>
+          </div>
 
           <TabsContent value="beginning" className="space-y-4 mt-4">
             {beginningSection && (
