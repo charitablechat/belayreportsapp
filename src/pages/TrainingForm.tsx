@@ -661,13 +661,14 @@ export default function TrainingForm() {
               >
                 {isSaving ? (
                   <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Saving...
+                    <Loader2 className={isMobile ? "h-4 w-4 animate-spin" : "mr-2 h-4 w-4 animate-spin"} />
+                    {!isMobile && "Saving..."}
+                    {isMobile && "..."}
                   </>
                 ) : (
                   <>
-                    <Save className="mr-2 h-4 w-4" />
-                    Save
+                    <Save className={isMobile ? "h-4 w-4" : "mr-2 h-4 w-4"} />
+                    {!isMobile && "Save"}
                   </>
                 )}
               </Button>
@@ -677,13 +678,13 @@ export default function TrainingForm() {
               >
                 {isSaving ? (
                   <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Completing...
+                    <Loader2 className={isMobile ? "h-4 w-4 animate-spin" : "mr-2 h-4 w-4 animate-spin"} />
+                    {isMobile ? "..." : "Completing..."}
                   </>
                 ) : (
                   <>
-                    <CheckCircle className="mr-2 h-4 w-4" />
-                    Complete & Submit
+                    <CheckCircle className={isMobile ? "h-4 w-4" : "mr-2 h-4 w-4"} />
+                    {isMobile ? "Complete" : "Complete & Submit"}
                   </>
                 )}
               </Button>
@@ -713,13 +714,13 @@ export default function TrainingForm() {
               >
                 {isGeneratingHTML ? (
                   <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Generating...
+                    <Loader2 className={isMobile ? "h-4 w-4 animate-spin" : "mr-2 h-4 w-4 animate-spin"} />
+                    {isMobile ? "..." : "Generating..."}
                   </>
                 ) : (
                   <>
-                    <FileText className="mr-2 h-4 w-4" />
-                    Generate Report
+                    <FileText className={isMobile ? "h-4 w-4" : "mr-2 h-4 w-4"} />
+                    {isMobile ? "Report" : "Generate Report"}
                   </>
                 )}
               </Button>
