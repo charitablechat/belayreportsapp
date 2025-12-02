@@ -1514,7 +1514,7 @@ export default function InspectionForm() {
         <Tabs value={currentTab} onValueChange={setCurrentTab} className="space-y-6 mt-6">
           <div ref={swipeContainerRef}>
             <TabsList className="grid grid-cols-2 lg:grid-cols-4 w-full gap-2 h-auto p-2">
-              <TabsTrigger value="details" className="h-11">{isMobileView ? "Systems" : "Operating Systems and Zip Lines"}</TabsTrigger>
+              <TabsTrigger value="details" className="h-11">{isMobileView ? "Systems" : "Systems - Ziplines"}</TabsTrigger>
               <TabsTrigger value="equipment" className="h-11">Equipment</TabsTrigger>
               <TabsTrigger value="standards" className="h-11">{isMobileView ? "Criteria" : "Operations Criteria"}</TabsTrigger>
               <TabsTrigger value="summary" className="h-11">Summary</TabsTrigger>
