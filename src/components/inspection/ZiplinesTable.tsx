@@ -58,7 +58,7 @@ export default function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: Z
         <div className="mb-4 space-y-1 text-xs text-muted-foreground">
           <p><strong>Cable Type KEY:</strong> GAC = Galvanized Aircraft Cable, SS = Super Swaged</p>
           <p><strong>Braking System KEY:</strong> ZS = Zip Stop, FB = Friction Break, SB = Spring Bank, G = Gravity</p>
-          <p><strong>EAD System KEY:</strong> ZS = Zip Stop, AP = Auto P</p>
+          <p><strong>Emergency Brake System KEY -</strong> ZS = Zip Stop, AP = Auto Prusik, SB = Spring Bank</p>
         </div>
 
         {/* Desktop table view */}
