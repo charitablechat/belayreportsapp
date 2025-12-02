@@ -226,6 +226,7 @@ Deno.serve(async (req) => {
           const profile = profiles?.find(p => p.id === authUser.id);
           const userRoles = roles?.filter(r => r.user_id === authUser.id) || [];
           const userMemberships = memberships?.filter(m => m.user_id === authUser.id) || [];
+          const isSuperAdmin = userRoles.some(r => r.role === 'super_admin');
 
           return {
             id: authUser.id,
@@ -239,11 +240,92 @@ Deno.serve(async (req) => {
               id: m.organization_id,
               name: (m.organizations as any)?.name || '',
             })),
+            isSuperAdmin,
           };
         });
 
         return new Response(
           JSON.stringify({ success: true, users }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      case 'grant_super_admin': {
+        const { userId } = payload as { userId: string };
+
+        // Prevent granting to self
+        if (userId === user.id) {
+          throw new Error('Cannot grant super admin to yourself');
+        }
+
+        // Check if user already has super_admin role
+        const { data: existingRole } = await supabaseAdmin
+          .from('user_roles')
+          .select('id')
+          .eq('user_id', userId)
+          .eq('role', 'super_admin')
+          .single();
+
+        if (existingRole) {
+          throw new Error('User is already a super admin');
+        }
+
+        // Grant super admin role
+        const { error: roleError } = await supabaseAdmin
+          .from('user_roles')
+          .insert({
+            user_id: userId,
+            role: 'super_admin',
+            organization_id: null,
+          });
+
+        if (roleError) {
+          console.error('Error granting super admin:', roleError);
+          throw roleError;
+        }
+
+        console.log(`Super admin granted to user: ${userId}`);
+
+        return new Response(
+          JSON.stringify({ success: true }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      case 'revoke_super_admin': {
+        const { userId } = payload as { userId: string };
+
+        // Prevent revoking from self
+        if (userId === user.id) {
+          throw new Error('Cannot revoke your own super admin status');
+        }
+
+        // Count remaining super admins
+        const { count } = await supabaseAdmin
+          .from('user_roles')
+          .select('*', { count: 'exact', head: true })
+          .eq('role', 'super_admin');
+
+        if (count && count <= 1) {
+          throw new Error('Cannot revoke the last super admin');
+        }
+
+        // Revoke super admin role
+        const { error: deleteError } = await supabaseAdmin
+          .from('user_roles')
+          .delete()
+          .eq('user_id', userId)
+          .eq('role', 'super_admin');
+
+        if (deleteError) {
+          console.error('Error revoking super admin:', deleteError);
+          throw deleteError;
+        }
+
+        console.log(`Super admin revoked from user: ${userId}`);
+
+        return new Response(
+          JSON.stringify({ success: true }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }

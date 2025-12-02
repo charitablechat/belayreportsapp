@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Building2, Users, FileText, Bell, AlertTriangle, Radio, UserPlus, Pencil, Trash2, ClipboardList, ArrowLeft, Merge, Clock, TrendingUp, Calendar, UserCheck, Wrench, Loader2, Image } from "lucide-react";
+import { Building2, Users, FileText, Bell, AlertTriangle, Radio, UserPlus, Pencil, Trash2, ClipboardList, ArrowLeft, Merge, Clock, TrendingUp, Calendar, UserCheck, Wrench, Loader2, Image, Shield, ShieldOff } from "lucide-react";
 import { format } from "date-fns";
 import { useNavigate } from "react-router-dom";
 import { useState } from "react";
@@ -27,6 +27,9 @@ export default function SuperAdminDashboard() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [userToDelete, setUserToDelete] = useState<any>(null);
   const [isMergeDialogOpen, setIsMergeDialogOpen] = useState(false);
+  const [superAdminDialogOpen, setSuperAdminDialogOpen] = useState(false);
+  const [superAdminAction, setSuperAdminAction] = useState<'grant' | 'revoke'>('grant');
+  const [superAdminTargetUser, setSuperAdminTargetUser] = useState<any>(null);
   
   // Dialog states for stat cards
   const [isUsersListOpen, setIsUsersListOpen] = useState(false);
@@ -381,6 +384,35 @@ export default function SuperAdminDashboard() {
     setDeleteDialogOpen(true);
   };
 
+  const handleSuperAdminToggle = (user: any) => {
+    setSuperAdminTargetUser(user);
+    setSuperAdminAction(user.isSuperAdmin ? 'revoke' : 'grant');
+    setSuperAdminDialogOpen(true);
+  };
+
+  const handleConfirmSuperAdminToggle = async () => {
+    if (!superAdminTargetUser) return;
+
+    try {
+      const { data, error } = await supabase.functions.invoke('admin-manage-user', {
+        body: {
+          action: superAdminAction === 'grant' ? 'grant_super_admin' : 'revoke_super_admin',
+          userId: superAdminTargetUser.id
+        }
+      });
+
+      if (error) throw error;
+      if (!data.success) throw new Error(data.error);
+
+      setSuperAdminDialogOpen(false);
+      setSuperAdminTargetUser(null);
+      refetchUsers();
+      queryClient.invalidateQueries({ queryKey: ["admin-users"] });
+    } catch (error: any) {
+      console.error('Error toggling super admin:', error);
+    }
+  };
+
   // Cleanup function for duplicate summaries
   const handleCleanupDuplicates = async () => {
     setIsCleaningUp(true);
@@ -631,6 +663,18 @@ export default function SuperAdminDashboard() {
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleSuperAdminToggle(user)}
+                        title={user.isSuperAdmin ? 'Remove Super Admin' : 'Make Super Admin'}
+                      >
+                        {user.isSuperAdmin ? (
+                          <ShieldOff className="h-4 w-4 text-orange-500" />
+                        ) : (
+                          <Shield className="h-4 w-4 text-blue-500" />
+                        )}
+                      </Button>
                       <Button
                         variant="ghost"
                         size="sm"
@@ -985,6 +1029,41 @@ export default function SuperAdminDashboard() {
         open={isMergeDialogOpen}
         onOpenChange={setIsMergeDialogOpen}
       />
+
+      {/* Super Admin Toggle Confirmation Dialog */}
+      <AlertDialog open={superAdminDialogOpen} onOpenChange={setSuperAdminDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {superAdminAction === 'grant' ? 'Grant Super Admin Access' : 'Revoke Super Admin Access'}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {superAdminAction === 'grant' ? (
+                <>
+                  Are you sure you want to grant super admin privileges to{' '}
+                  <strong>{superAdminTargetUser?.email}</strong>?
+                  They will have full access to manage all organizations, users, and system settings.
+                </>
+              ) : (
+                <>
+                  Are you sure you want to revoke super admin privileges from{' '}
+                  <strong>{superAdminTargetUser?.email}</strong>?
+                  They will lose access to the super admin dashboard and system-wide management capabilities.
+                </>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleConfirmSuperAdminToggle}
+              className={superAdminAction === 'grant' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-orange-600 hover:bg-orange-700'}
+            >
+              {superAdminAction === 'grant' ? 'Grant Access' : 'Revoke Access'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
