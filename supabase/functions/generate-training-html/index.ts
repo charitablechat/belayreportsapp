@@ -7,44 +7,63 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Embedded logos as base64 - will be fetched from storage
-let ROPE_WORKS_LOGO = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
-let ACCT_LOGO = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
+// Placeholder logos (1x1 transparent PNG)
+const PLACEHOLDER_LOGO = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
+
+// Convert array buffer to base64 in chunks to avoid stack overflow
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  const chunkSize = 8192;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const chunk = bytes.subarray(i, Math.min(i + chunkSize, bytes.length));
+    binary += String.fromCharCode.apply(null, Array.from(chunk));
+  }
+  return btoa(binary);
+}
 
 async function getLogoBase64(supabaseUrl: string): Promise<{ropeWorks: string, acct: string}> {
-  // Try fetching from storage bucket first (admin uploaded logos)
-  try {
-    const ropeWorksUrl = `${supabaseUrl}/storage/v1/object/public/pdf-templates/rope-works-logo-embedded.png`;
-    const acctUrl = `${supabaseUrl}/storage/v1/object/public/pdf-templates/acct-logo-embedded.png`;
-    const [ropeWorksResponse, acctResponse] = await Promise.all([fetch(ropeWorksUrl), fetch(acctUrl)]);
-    if (ropeWorksResponse.ok && acctResponse.ok) {
-      const [ropeWorksBlob, acctBlob] = await Promise.all([ropeWorksResponse.blob(), acctResponse.blob()]);
-      const [ropeWorksBuffer, acctBuffer] = await Promise.all([ropeWorksBlob.arrayBuffer(), acctBlob.arrayBuffer()]);
-      const ropeWorksBase64 = btoa(String.fromCharCode(...new Uint8Array(ropeWorksBuffer)));
-      const acctBase64 = btoa(String.fromCharCode(...new Uint8Array(acctBuffer)));
-      return { ropeWorks: `data:image/png;base64,${ropeWorksBase64}`, acct: `data:image/png;base64,${acctBase64}` };
-    }
-  } catch (error) { console.log('Storage logos not found, trying public folder...'); }
+  const storageBaseUrl = 'https://ssgzcgvygnsrqalisshx.supabase.co/storage/v1/object/public/pdf-templates';
+  const ropeWorksUrl = `${storageBaseUrl}/rope-works-logo-embedded.png`;
+  const acctUrl = `${storageBaseUrl}/acct-logo-embedded.png`;
   
-  // Fallback: Try fetching from public folder (deployed assets)
-  try {
-    const baseUrl = 'https://ssgzcgvygnsrqalisshx.supabase.co';
-    const ropeWorksPublicUrl = `${baseUrl}/storage/v1/object/public/pdf-templates/rope-works-logo.png`;
-    const acctPublicUrl = `${baseUrl}/storage/v1/object/public/pdf-templates/acct-accredited-vendor.png`;
-    const [ropeWorksResponse, acctResponse] = await Promise.all([fetch(ropeWorksPublicUrl), fetch(acctPublicUrl)]);
-    if (ropeWorksResponse.ok && acctResponse.ok) {
-      const [ropeWorksBlob, acctBlob] = await Promise.all([ropeWorksResponse.blob(), acctResponse.blob()]);
-      const [ropeWorksBuffer, acctBuffer] = await Promise.all([ropeWorksBlob.arrayBuffer(), acctBlob.arrayBuffer()]);
-      const ropeWorksBase64 = btoa(String.fromCharCode(...new Uint8Array(ropeWorksBuffer)));
-      const acctBase64 = btoa(String.fromCharCode(...new Uint8Array(acctBuffer)));
-      console.log('Successfully loaded logos from public folder');
-      return { ropeWorks: `data:image/png;base64,${ropeWorksBase64}`, acct: `data:image/png;base64,${acctBase64}` };
-    }
-  } catch (error) { console.warn('Failed to fetch logos from public folder:', error); }
+  console.log('Fetching logos from storage...');
   
-  // Final fallback: use placeholders (will be invisible instead of purple)
-  console.warn('Using placeholder logos - logos may not display correctly');
-  return { ropeWorks: ROPE_WORKS_LOGO, acct: ACCT_LOGO };
+  try {
+    const [ropeWorksResponse, acctResponse] = await Promise.all([
+      fetch(ropeWorksUrl),
+      fetch(acctUrl)
+    ]);
+    
+    if (ropeWorksResponse.ok && acctResponse.ok) {
+      const [ropeWorksBuffer, acctBuffer] = await Promise.all([
+        ropeWorksResponse.arrayBuffer(),
+        acctResponse.arrayBuffer()
+      ]);
+      
+      const ropeWorksBase64 = arrayBufferToBase64(ropeWorksBuffer);
+      const acctBase64 = arrayBufferToBase64(acctBuffer);
+      
+      const ropeWorksMime = ropeWorksResponse.headers.get('content-type') || 'image/png';
+      const acctMime = acctResponse.headers.get('content-type') || 'image/png';
+      
+      console.log('Successfully loaded logos from storage');
+      console.log('Rope Works base64 length:', ropeWorksBase64.length);
+      console.log('ACCT base64 length:', acctBase64.length);
+      
+      return {
+        ropeWorks: `data:${ropeWorksMime};base64,${ropeWorksBase64}`,
+        acct: `data:${acctMime};base64,${acctBase64}`
+      };
+    } else {
+      console.error('Failed to fetch logos:', ropeWorksResponse.status, acctResponse.status);
+    }
+  } catch (error) {
+    console.error('Error fetching logos:', error);
+  }
+  
+  console.warn('Using placeholder logos');
+  return { ropeWorks: PLACEHOLDER_LOGO, acct: PLACEHOLDER_LOGO };
 }
 
 function deduplicateHtmlContent(html: string | null): string {
