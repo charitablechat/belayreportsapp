@@ -614,17 +614,37 @@ serve(async (req) => {
 
     if (signedUrlError) throw signedUrlError;
 
-    // Save to database
-    await supabase
+    // Check for existing report to enforce one-to-one rule
+    const { data: existingReport } = await supabase
       .from('inspection_reports')
-      .insert({
-        inspection_id: inspectionId,
-        pdf_url: fileName,
-        generated_by: user.id,
-        file_size_bytes: pdfUint8Array.length
-      });
+      .select('id')
+      .eq('inspection_id', inspectionId)
+      .maybeSingle();
 
-    console.log('Report saved successfully');
+    if (existingReport) {
+      // Update existing report
+      await supabase
+        .from('inspection_reports')
+        .update({
+          pdf_url: fileName,
+          generated_by: user.id,
+          file_size_bytes: pdfUint8Array.length,
+          generated_at: new Date().toISOString()
+        })
+        .eq('id', existingReport.id);
+      console.log('Existing report updated successfully');
+    } else {
+      // Insert new report
+      await supabase
+        .from('inspection_reports')
+        .insert({
+          inspection_id: inspectionId,
+          pdf_url: fileName,
+          generated_by: user.id,
+          file_size_bytes: pdfUint8Array.length
+        });
+      console.log('New report created successfully');
+    }
 
     return new Response(
       JSON.stringify({

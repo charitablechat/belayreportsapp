@@ -556,26 +556,52 @@ serve(async (req) => {
       .from('inspection-reports')
       .createSignedUrl(filePath, 60 * 60 * 24); // 24 hours
 
-    // Save report record
-    await supabaseAdmin.from('training_reports').insert({
-      training_id: trainingId,
-      pdf_url: urlData?.signedUrl || '',
-      generated_by: user.id,
-      file_size_bytes: pdfBytes.byteLength,
-      metadata: {
-        generator: 'generate-training-pdf',
-        format: 'pdf',
-        sections_included: {
-          delivery_approaches: content.deliveryApproaches.length,
-          operating_systems: content.operatingSystems.length,
-          immediate_attention: content.immediateAttention.length,
-          verifiable_items: content.verifiableItems.length,
-          systems_in_place: content.systemsInPlace.length,
-          has_summary: !!(content.summary.observations || content.summary.recommendations),
-          photo_count: 0
-        }
+    // Check for existing report to enforce one-to-one rule
+    const { data: existingReport } = await supabaseAdmin
+      .from('training_reports')
+      .select('id, version')
+      .eq('training_id', trainingId)
+      .maybeSingle();
+
+    const reportMetadata = {
+      generator: 'generate-training-pdf',
+      format: 'pdf',
+      sections_included: {
+        delivery_approaches: content.deliveryApproaches.length,
+        operating_systems: content.operatingSystems.length,
+        immediate_attention: content.immediateAttention.length,
+        verifiable_items: content.verifiableItems.length,
+        systems_in_place: content.systemsInPlace.length,
+        has_summary: !!(content.summary.observations || content.summary.recommendations),
+        photo_count: 0
       }
-    });
+    };
+
+    if (existingReport) {
+      // Update existing report, increment version
+      await supabaseAdmin
+        .from('training_reports')
+        .update({
+          pdf_url: urlData?.signedUrl || '',
+          generated_by: user.id,
+          file_size_bytes: pdfBytes.byteLength,
+          version: (existingReport.version || 1) + 1,
+          generated_at: new Date().toISOString(),
+          metadata: reportMetadata
+        })
+        .eq('id', existingReport.id);
+      console.log('Existing training report updated successfully');
+    } else {
+      // Insert new report
+      await supabaseAdmin.from('training_reports').insert({
+        training_id: trainingId,
+        pdf_url: urlData?.signedUrl || '',
+        generated_by: user.id,
+        file_size_bytes: pdfBytes.byteLength,
+        metadata: reportMetadata
+      });
+      console.log('New training report created successfully');
+    }
 
     return new Response(
       JSON.stringify({
