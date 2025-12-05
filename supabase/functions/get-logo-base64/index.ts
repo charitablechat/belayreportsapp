@@ -15,10 +15,19 @@ async function imageUrlToBase64(url: string): Promise<string> {
     throw new Error(`Failed to fetch image: ${response.status} ${response.statusText}`);
   }
   
-  const blob = await response.blob();
-  const buffer = await blob.arrayBuffer();
-  const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)));
-  const mimeType = blob.type || 'image/png';
+  const buffer = await response.arrayBuffer();
+  const bytes = new Uint8Array(buffer);
+  
+  // Convert to base64 in chunks to avoid stack overflow
+  let binary = '';
+  const chunkSize = 8192;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const chunk = bytes.subarray(i, Math.min(i + chunkSize, bytes.length));
+    binary += String.fromCharCode.apply(null, Array.from(chunk));
+  }
+  
+  const base64 = btoa(binary);
+  const mimeType = response.headers.get('content-type') || 'image/png';
   return `data:${mimeType};base64,${base64}`;
 }
 
@@ -28,56 +37,42 @@ serve(async (req) => {
   }
 
   try {
-    // Try multiple possible URLs for the logos
-    const possibleUrls = [
-      // From the deployed preview (app's public folder)
-      'https://lovable.dev/projects/18ac3c0c-3b99-4fe2-b1ed-a2c9e8c2cd73/pdf-templates/rope-works-logo-embedded.png',
-      'https://lovable.dev/projects/18ac3c0c-3b99-4fe2-b1ed-a2c9e8c2cd73/pdf-templates/acct-logo-embedded.png',
-    ];
+    // Fetch from Supabase storage bucket (public)
+    const storageBaseUrl = 'https://ssgzcgvygnsrqalisshx.supabase.co/storage/v1/object/public/pdf-templates';
+    const ropeWorksUrl = `${storageBaseUrl}/rope-works-logo-embedded.png`;
+    const acctUrl = `${storageBaseUrl}/acct-logo-embedded.png`;
     
-    console.log('Attempting to fetch logos from public URLs...');
+    console.log('Attempting to fetch logos from storage URLs...');
+    console.log('Rope Works URL:', ropeWorksUrl);
+    console.log('ACCT URL:', acctUrl);
     
-    try {
-      const ropeWorksBase64 = await imageUrlToBase64(possibleUrls[0]);
-      const acctBase64 = await imageUrlToBase64(possibleUrls[1]);
-      
-      console.log('Successfully converted logos');
-      console.log('Rope Works base64 length:', ropeWorksBase64.length);
-      console.log('ACCT base64 length:', acctBase64.length);
-      
-      return new Response(
-        JSON.stringify({ 
-          ropeWorksLogo: ropeWorksBase64,
-          acctLogo: acctBase64,
-          ropeWorksLength: ropeWorksBase64.length,
-          acctLength: acctBase64.length,
-          success: true
-        }),
-        {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-          status: 200,
-        }
-      );
-    } catch (fetchError) {
-      console.error('Failed to fetch from public URLs:', fetchError);
-      
-      return new Response(
-        JSON.stringify({ 
-          error: 'Logos not found in expected locations',
-          message: 'Please upload rope-works-logo-embedded.png and acct-logo-embedded.png to Supabase Storage bucket "pdf-templates"',
-          details: fetchError instanceof Error ? fetchError.message : String(fetchError),
-          suggestion: 'Navigate to /base64-converter in the app to manually generate the base64 strings'
-        }),
-        {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-          status: 404,
-        }
-      );
-    }
-  } catch (error) {
-    console.error("Error:", error);
+    const ropeWorksBase64 = await imageUrlToBase64(ropeWorksUrl);
+    const acctBase64 = await imageUrlToBase64(acctUrl);
+    
+    console.log('Successfully converted logos');
+    console.log('Rope Works base64 length:', ropeWorksBase64.length);
+    console.log('ACCT base64 length:', acctBase64.length);
+    
     return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
+      JSON.stringify({ 
+        ropeWorksLogo: ropeWorksBase64,
+        acctLogo: acctBase64,
+        ropeWorksLength: ropeWorksBase64.length,
+        acctLength: acctBase64.length,
+        success: true
+      }),
+      {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 200,
+      }
+    );
+  } catch (error) {
+    console.error("Error fetching logos:", error);
+    return new Response(
+      JSON.stringify({ 
+        error: error instanceof Error ? error.message : "Unknown error",
+        message: 'Please ensure rope-works-logo-embedded.png and acct-logo-embedded.png are uploaded to the pdf-templates storage bucket'
+      }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
         status: 500,
