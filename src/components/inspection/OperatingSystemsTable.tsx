@@ -58,8 +58,8 @@ export default function OperatingSystemsTable({ systems, onUpdate, onImmediateSa
           <table className="w-full border-collapse">
             <thead>
               <tr className="bg-blue-50 dark:bg-blue-950/20">
-                <th className="border p-3 text-left font-semibold text-sm">Operating System</th>
                 <th className="border p-3 text-left font-semibold text-sm">Element Name</th>
+                <th className="border p-3 text-left font-semibold text-sm">Operating System</th>
                 <th className="border p-3 text-left font-semibold text-sm w-48">Result</th>
                 <th className="border p-3 text-left font-semibold text-sm">Comments and/or Required Changes</th>
                 <th className="border p-3 text-center font-semibold text-sm w-16"></th>
@@ -69,12 +69,6 @@ export default function OperatingSystemsTable({ systems, onUpdate, onImmediateSa
               {systems.map((system, index) => (
                 <tr key={system.id || index} className="hover:bg-muted/50">
                   <td className="border p-2">
-                    <SystemTypeSelect
-                      value={system.system_name}
-                      onChange={(value) => updateSystem(index, "system_name", value)}
-                    />
-                  </td>
-                  <td className="border p-2">
                     <HistoryAutocomplete
                       value={system.name || ""}
                       onChange={(value) => updateSystem(index, "name", value)}
@@ -82,6 +76,12 @@ export default function OperatingSystemsTable({ systems, onUpdate, onImmediateSa
                       storageKey="rope-works-operating-system-names"
                       placeholder="Enter or select name"
                       className="border-0 bg-transparent"
+                    />
+                  </td>
+                  <td className="border p-2">
+                    <SystemTypeSelect
+                      value={system.system_name}
+                      onChange={(value) => updateSystem(index, "system_name", value)}
                     />
                   </td>
                   <td className="border p-2">
@@ -128,14 +128,6 @@ export default function OperatingSystemsTable({ systems, onUpdate, onImmediateSa
               </Button>
               <div className="space-y-3 pr-8">
                 <div>
-                  <Label className="text-xs text-muted-foreground">Operating System</Label>
-                  <SystemTypeSelect
-                    value={system.system_name}
-                    onChange={(value) => updateSystem(index, "system_name", value)}
-                  />
-                </div>
-                
-                <div>
                   <Label className="text-xs text-muted-foreground">Element Name</Label>
                   <HistoryAutocomplete
                     value={system.name || ""}
@@ -143,6 +135,14 @@ export default function OperatingSystemsTable({ systems, onUpdate, onImmediateSa
                     onBlur={onImmediateSave}
                     storageKey="rope-works-operating-system-names"
                     placeholder="Enter or select name"
+                  />
+                </div>
+                
+                <div>
+                  <Label className="text-xs text-muted-foreground">Operating System</Label>
+                  <SystemTypeSelect
+                    value={system.system_name}
+                    onChange={(value) => updateSystem(index, "system_name", value)}
                   />
                 </div>
                 
