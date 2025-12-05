@@ -9,9 +9,11 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ArrowLeft, Camera, Loader2, User } from "lucide-react";
 import ropeWorksLogo from "@/assets/rope-works-logo.png";
 import { triggerHaptic } from "@/lib/haptics";
+import { useToast } from "@/hooks/use-toast";
 
 export default function Profile() {
   const navigate = useNavigate();
+  const { toast } = useToast();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -125,9 +127,18 @@ export default function Profile() {
 
       triggerHaptic('success');
       setProfile({ ...profile, avatar_url: publicUrl });
+      toast({
+        title: "Avatar Updated",
+        description: "Your profile picture has been updated successfully.",
+      });
     } catch (error: any) {
       console.error("Error uploading avatar:", error);
       triggerHaptic('error');
+      toast({
+        title: "Upload Failed",
+        description: error.message || "Failed to upload avatar. Please try again.",
+        variant: "destructive",
+      });
     } finally {
       setUploading(false);
     }
@@ -155,9 +166,18 @@ export default function Profile() {
 
       if (profileError) throw profileError;
       triggerHaptic('success');
+      toast({
+        title: "Profile Updated",
+        description: "Your profile has been saved successfully.",
+      });
     } catch (error: any) {
       console.error("Error updating profile:", error);
       triggerHaptic('error');
+      toast({
+        title: "Update Failed",
+        description: error.message || "Failed to update profile. Please try again.",
+        variant: "destructive",
+      });
     } finally {
       setSaving(false);
     }
