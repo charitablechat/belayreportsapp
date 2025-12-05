@@ -9,33 +9,15 @@ export function AutoLogoInitializer() {
   const [message, setMessage] = useState('');
 
   useEffect(() => {
-    checkAndInitializeLogos();
+    initializeLogos();
   }, []);
 
-  const checkAndInitializeLogos = async () => {
-    setStatus('checking');
-    
+  const initializeLogos = async () => {
+    setStatus('uploading');
+    setMessage('Syncing logos to storage...');
+
     try {
-      // Check if logos already exist in storage
-      const { data: existingFiles } = await supabase.storage
-        .from('pdf-templates')
-        .list('', {
-          search: 'logo-embedded'
-        });
-
-      const hasRopeWorks = existingFiles?.some(f => f.name === 'rope-works-logo-embedded.png');
-      const hasAcct = existingFiles?.some(f => f.name === 'acct-logo-embedded.png');
-
-      if (hasRopeWorks && hasAcct) {
-        setStatus('success');
-        setMessage('Logos already configured');
-        return;
-      }
-
-      // Upload logos from public folder
-      setStatus('uploading');
-      setMessage('Initializing logos from public folder...');
-
+      // Always upload logos to ensure latest versions are in storage
       const results = await Promise.allSettled([
         uploadLogoFromPublic('/pdf-templates/rope-works-logo.png', 'rope-works-logo-embedded.png'),
         uploadLogoFromPublic('/pdf-templates/acct-accredited-vendor.png', 'acct-logo-embedded.png')
@@ -45,16 +27,16 @@ export function AutoLogoInitializer() {
       
       if (allSuccessful) {
         setStatus('success');
-        setMessage('Logos initialized successfully');
-        toast.success('Report logos are now configured');
+        setMessage('Logos synced to storage');
       } else {
+        const failedCount = results.filter(r => r.status === 'rejected').length;
         setStatus('error');
-        setMessage('Some logos failed to upload - please upload manually');
+        setMessage(`${failedCount} logo(s) failed to upload`);
       }
     } catch (error) {
       console.error('Error initializing logos:', error);
       setStatus('error');
-      setMessage('Failed to initialize logos');
+      setMessage('Failed to sync logos');
     }
   };
 
@@ -67,7 +49,7 @@ export function AutoLogoInitializer() {
 
     const blob = await response.blob();
     
-    // Upload to Supabase storage
+    // Upload to Supabase storage with upsert to overwrite existing
     const { error } = await supabase.storage
       .from('pdf-templates')
       .upload(storageName, blob, {
@@ -80,8 +62,8 @@ export function AutoLogoInitializer() {
     }
   };
 
-  if (status === 'idle' || status === 'checking') {
-    return null; // Silent initialization
+  if (status === 'idle') {
+    return null;
   }
 
   if (status === 'success') {
@@ -95,7 +77,7 @@ export function AutoLogoInitializer() {
     );
   }
 
-  if (status === 'uploading') {
+  if (status === 'uploading' || status === 'checking') {
     return (
       <Alert className="mb-4 border-blue-200 bg-blue-50">
         <Loader2 className="h-4 w-4 text-blue-600 animate-spin" />
