@@ -155,6 +155,19 @@ export function ReportCard({ report, type, onDelete, onClick, getStatusBadge }: 
               {getReportStatus()}
             </Badge>
             
+            {/* Universal Sync Status Badge */}
+            {report.synced_at ? (
+              <Badge variant="outline" className="gap-1 text-xs px-2 py-0.5 text-green-600 border-green-300">
+                <Check className="w-3 h-3" />
+                Synced
+              </Badge>
+            ) : (
+              <Badge variant="secondary" className="gap-1 text-xs px-2 py-0.5">
+                <Cloud className="w-3 h-3" />
+                Local
+              </Badge>
+            )}
+            
             {getStatusBadge && isInspection && getStatusBadge(report)}
           </div>
         </div>

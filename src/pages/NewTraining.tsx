@@ -16,14 +16,16 @@ export default function NewTraining() {
           return;
         }
 
+        const now = new Date().toISOString();
         const newTraining = {
           inspector_id: user.id,
           organization: '',
-          start_date: new Date().toISOString().split('T')[0],
-          end_date: new Date().toISOString().split('T')[0],
+          start_date: now.split('T')[0],
+          end_date: now.split('T')[0],
           status: 'draft',
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
+          created_at: now,
+          updated_at: now,
+          synced_at: now,
         };
 
         const { data, error } = await supabase

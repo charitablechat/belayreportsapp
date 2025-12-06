@@ -245,10 +245,14 @@ export default function TrainingForm() {
       // If online, try to sync to Supabase
       if (isOnline) {
         try {
-          // Update main training record
+          // Update main training record with synced_at
+          const syncedTraining = {
+            ...updatedTraining,
+            synced_at: new Date().toISOString(),
+          };
           const { error: trainingError } = await supabase
             .from('trainings')
-            .update(updatedTraining)
+            .update(syncedTraining)
             .eq('id', id);
 
           if (trainingError) throw trainingError;
