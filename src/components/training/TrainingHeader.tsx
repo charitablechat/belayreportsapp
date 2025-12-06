@@ -15,6 +15,12 @@ interface TrainingHeaderProps {
   onUpdate: (field: string, value: any) => void;
 }
 
+// Parse date string as local time to avoid timezone shifting
+const parseLocalDate = (dateStr: string) => {
+  if (!dateStr) return undefined;
+  return new Date(dateStr + 'T00:00:00');
+};
+
 export default function TrainingHeader({ training, onUpdate }: TrainingHeaderProps) {
   return (
     <Card>
@@ -43,15 +49,16 @@ export default function TrainingHeader({ training, onUpdate }: TrainingHeaderPro
                   )}
                 >
                   <CalendarIcon className="mr-2 h-4 w-4" />
-                  {training.start_date ? format(new Date(training.start_date), "PPP") : "Pick a date"}
+                  {training.start_date ? format(parseLocalDate(training.start_date)!, "PPP") : "Pick a date"}
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-auto p-0">
                 <Calendar
                   mode="single"
-                  selected={training.start_date ? new Date(training.start_date) : undefined}
+                  selected={parseLocalDate(training.start_date)}
                   onSelect={(date) => onUpdate('start_date', date ? format(date, 'yyyy-MM-dd') : '')}
                   initialFocus
+                  className="pointer-events-auto"
                 />
               </PopoverContent>
             </Popover>
@@ -69,15 +76,16 @@ export default function TrainingHeader({ training, onUpdate }: TrainingHeaderPro
                   )}
                 >
                   <CalendarIcon className="mr-2 h-4 w-4" />
-                  {training.end_date ? format(new Date(training.end_date), "PPP") : "Pick a date"}
+                  {training.end_date ? format(parseLocalDate(training.end_date)!, "PPP") : "Pick a date"}
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-auto p-0">
                 <Calendar
                   mode="single"
-                  selected={training.end_date ? new Date(training.end_date) : undefined}
+                  selected={parseLocalDate(training.end_date)}
                   onSelect={(date) => onUpdate('end_date', date ? format(date, 'yyyy-MM-dd') : '')}
                   initialFocus
+                  className="pointer-events-auto"
                 />
               </PopoverContent>
             </Popover>

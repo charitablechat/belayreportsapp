@@ -14,6 +14,12 @@ interface DailyAssessmentHeaderProps {
   onUpdate: (field: string, value: any) => void;
 }
 
+// Parse date string as local time to avoid timezone shifting
+const parseLocalDate = (dateStr: string) => {
+  if (!dateStr) return undefined;
+  return new Date(dateStr + 'T00:00:00');
+};
+
 export default function DailyAssessmentHeader({ assessment, onUpdate }: DailyAssessmentHeaderProps) {
   return (
     <Card>
@@ -32,7 +38,7 @@ export default function DailyAssessmentHeader({ assessment, onUpdate }: DailyAss
                 >
                   <CalendarIcon className="mr-2 h-4 w-4" />
                   {assessment.assessment_date ? (
-                    format(new Date(assessment.assessment_date), "PPP")
+                    format(parseLocalDate(assessment.assessment_date)!, "PPP")
                   ) : (
                     <span>Pick a date</span>
                   )}
@@ -41,9 +47,10 @@ export default function DailyAssessmentHeader({ assessment, onUpdate }: DailyAss
               <PopoverContent className="w-auto p-0">
                 <Calendar
                   mode="single"
-                  selected={assessment.assessment_date ? new Date(assessment.assessment_date) : undefined}
+                  selected={parseLocalDate(assessment.assessment_date)}
                   onSelect={(date) => onUpdate("assessment_date", date ? format(date, "yyyy-MM-dd") : null)}
                   initialFocus
+                  className="pointer-events-auto"
                 />
               </PopoverContent>
             </Popover>
