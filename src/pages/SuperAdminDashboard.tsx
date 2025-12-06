@@ -15,6 +15,7 @@ import { useState } from "react";
 import { UserManagementDialog } from "@/components/admin/UserManagementDialog";
 import { FormCMSManager } from "@/components/admin/FormCMSManager";
 import { MergeOrganizationsDialog } from "@/components/admin/MergeOrganizationsDialog";
+import { toast } from "sonner";
 
 export default function SuperAdminDashboard() {
   const { loading } = useRequireSuperAdmin();
@@ -321,10 +322,13 @@ export default function SuperAdminDashboard() {
       if (error) throw error;
       if (!data.success) throw new Error(data.error);
 
+      toast.success(`User ${userData.email} created successfully`);
       refetchUsers();
       queryClient.invalidateQueries({ queryKey: ["admin-users"] });
     } catch (error: any) {
       console.error('Error creating user:', error);
+      const message = error?.message || 'Failed to create user';
+      toast.error(message);
       throw error;
     }
   };
@@ -342,10 +346,12 @@ export default function SuperAdminDashboard() {
       if (error) throw error;
       if (!data.success) throw new Error(data.error);
 
+      toast.success('User updated successfully');
       refetchUsers();
       queryClient.invalidateQueries({ queryKey: ["admin-users"] });
     } catch (error: any) {
       console.error('Error updating user:', error);
+      toast.error(error?.message || 'Failed to update user');
       throw error;
     }
   };
@@ -364,12 +370,14 @@ export default function SuperAdminDashboard() {
       if (error) throw error;
       if (!data.success) throw new Error(data.error);
 
+      toast.success('User deleted successfully');
       setDeleteDialogOpen(false);
       setUserToDelete(null);
       refetchUsers();
       queryClient.invalidateQueries({ queryKey: ["admin-users"] });
     } catch (error: any) {
       console.error('Error deleting user:', error);
+      toast.error(error?.message || 'Failed to delete user');
     }
   };
 
@@ -404,12 +412,16 @@ export default function SuperAdminDashboard() {
       if (error) throw error;
       if (!data.success) throw new Error(data.error);
 
+      toast.success(superAdminAction === 'grant' 
+        ? 'Super admin privileges granted' 
+        : 'Super admin privileges revoked');
       setSuperAdminDialogOpen(false);
       setSuperAdminTargetUser(null);
       refetchUsers();
       queryClient.invalidateQueries({ queryKey: ["admin-users"] });
     } catch (error: any) {
       console.error('Error toggling super admin:', error);
+      toast.error(error?.message || 'Failed to update super admin status');
     }
   };
 
@@ -422,9 +434,10 @@ export default function SuperAdminDashboard() {
       if (error) throw error;
       if (!data.success) throw new Error(data.error);
 
-      console.log('Cleanup result:', data);
+      toast.success(`Cleanup complete: ${data.updatedCount} records updated`);
     } catch (error: any) {
       console.error('Error during cleanup:', error);
+      toast.error(error?.message || 'Cleanup failed');
     } finally{
       setIsCleaningUp(false);
     }
