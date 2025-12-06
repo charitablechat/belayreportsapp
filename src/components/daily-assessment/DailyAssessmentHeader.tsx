@@ -15,9 +15,12 @@ interface DailyAssessmentHeaderProps {
 }
 
 // Parse date string as local time to avoid timezone shifting
-const parseLocalDate = (dateStr: string) => {
+const parseLocalDate = (dateStr: string | null | undefined) => {
   if (!dateStr) return undefined;
-  return new Date(dateStr + 'T00:00:00');
+  // Handle dates that might already include time component
+  const dateOnly = dateStr.split('T')[0];
+  const [year, month, day] = dateOnly.split('-').map(Number);
+  return new Date(year, month - 1, day);
 };
 
 export default function DailyAssessmentHeader({ assessment, onUpdate }: DailyAssessmentHeaderProps) {
