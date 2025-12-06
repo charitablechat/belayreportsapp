@@ -1,7 +1,7 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { VoiceInput } from "@/components/ui/voice-input";
+import { VoiceNameInput } from "@/components/ui/voice-name-input";
 import { Label } from "@/components/ui/label";
-import { VoiceTextarea } from "@/components/ui/voice-textarea";
+import { VoiceNameTextarea } from "@/components/ui/voice-name-textarea";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
@@ -94,21 +94,21 @@ export default function TrainingHeader({ training, onUpdate }: TrainingHeaderPro
 
         <div className="space-y-2">
           <Label htmlFor="trainer_of_record">Trainer(s) of Record</Label>
-          <VoiceInput
+          <VoiceNameInput
             id="trainer_of_record"
             value={training.trainer_of_record || ''}
             onChange={(e) => onUpdate('trainer_of_record', e.target.value)}
-            placeholder="Enter trainer names"
+            placeholder="Enter trainer names (voice extracts names only)"
           />
         </div>
 
         <div className="space-y-2">
           <Label htmlFor="trainee_names">Trainee Name(s)</Label>
-          <VoiceTextarea
+          <VoiceNameTextarea
             id="trainee_names"
             value={training.trainee_names || ''}
             onChange={(e) => onUpdate('trainee_names', e.target.value)}
-            placeholder="Enter trainee names (one per line)"
+            placeholder="Enter trainee names (one per line, voice extracts names only)"
             rows={4}
           />
         </div>
