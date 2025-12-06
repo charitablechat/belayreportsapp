@@ -13,6 +13,36 @@ import ropeWorksLogo from "@/assets/rope-works-logo.png";
 import authBackgroundVideo from "@/assets/auth-background.mp4";
 import { hasCachedSession as checkCachedSession } from "@/lib/cached-auth";
 import { triggerHaptic } from "@/lib/haptics";
+import { toast } from "sonner";
+
+// Helper to get user-friendly error messages
+const getAuthErrorMessage = (error: any): string => {
+  const message = error?.message?.toLowerCase() || '';
+  
+  if (message.includes('user already registered') || message.includes('already been registered')) {
+    return 'An account with this email already exists. Try signing in instead.';
+  }
+  if (message.includes('invalid login credentials') || message.includes('invalid credentials')) {
+    return 'Invalid email or password. Please check your credentials and try again.';
+  }
+  if (message.includes('email not confirmed')) {
+    return 'Please check your email and confirm your account before signing in.';
+  }
+  if (message.includes('password should be at least')) {
+    return 'Password must be at least 6 characters long.';
+  }
+  if (message.includes('unable to validate email') || message.includes('invalid email')) {
+    return 'Please enter a valid email address.';
+  }
+  if (message.includes('rate limit') || message.includes('too many requests')) {
+    return 'Too many attempts. Please wait a moment and try again.';
+  }
+  if (message.includes('network') || message.includes('fetch')) {
+    return 'Network error. Please check your connection and try again.';
+  }
+  
+  return error?.message || 'An unexpected error occurred. Please try again.';
+};
 
 export default function Auth() {
   const navigate = useNavigate();
@@ -23,6 +53,7 @@ export default function Auth() {
   const [isSignUp, setIsSignUp] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [isForgotPassword, setIsForgotPassword] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleGoToDashboard = () => {
     navigate("/dashboard");
@@ -30,12 +61,15 @@ export default function Auth() {
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError(null);
     
     if (!email || !password) {
+      setError("Please enter both email and password.");
       return;
     }
 
     if (password.length < 6) {
+      setError("Password must be at least 6 characters long.");
       return;
     }
 
@@ -53,6 +87,7 @@ export default function Auth() {
         });
 
         if (error) throw error;
+        toast.success("Account created! Check your email to confirm your account.");
         setIsSignUp(false);
       } else {
         const { error } = await supabase.auth.signInWithPassword({
@@ -64,6 +99,9 @@ export default function Auth() {
       }
     } catch (error: any) {
       console.error("Authentication error:", error);
+      const friendlyMessage = getAuthErrorMessage(error);
+      setError(friendlyMessage);
+      toast.error(friendlyMessage);
     } finally {
       setLoading(false);
     }
@@ -71,8 +109,10 @@ export default function Auth() {
 
   const handleForgotPassword = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError(null);
     
     if (!email) {
+      setError("Please enter your email address.");
       return;
     }
 
@@ -85,9 +125,13 @@ export default function Auth() {
       });
 
       if (error) throw error;
+      toast.success("Password reset email sent! Check your inbox.");
       setIsForgotPassword(false);
     } catch (error: any) {
       console.error("Password reset error:", error);
+      const friendlyMessage = getAuthErrorMessage(error);
+      setError(friendlyMessage);
+      toast.error(friendlyMessage);
     } finally {
       setLoading(false);
     }
@@ -133,6 +177,13 @@ export default function Auth() {
           </CardDescription>
         </CardHeader>
         <CardContent>
+          {error && (
+            <Alert className="mb-4 border-destructive/50 bg-destructive/10">
+              <AlertDescription className="text-sm text-destructive">
+                {error}
+              </AlertDescription>
+            </Alert>
+          )}
           {!isOnline && (
             <Alert className="mb-4 border-orange-500/50 bg-orange-500/10">
               <WifiOff className="h-4 w-4 text-orange-500" />
