@@ -41,8 +41,25 @@ export function ReportCard({ report, type, onDelete, onClick, getStatusBadge }: 
   };
 
   const getInspectorName = () => {
-    const firstName = report.inspector?.first_name || report.training?.trainer?.first_name || report.trainer?.first_name || '';
-    const lastName = report.inspector?.last_name || report.training?.trainer?.last_name || report.trainer?.last_name || '';
+    // For training reports, try trainer profile first, then trainer_of_record field
+    if (type === 'training') {
+      const firstName = report.trainer?.first_name || '';
+      const lastName = report.trainer?.last_name || '';
+      const trainerName = `${firstName} ${lastName}`.trim();
+      return trainerName || report.trainer_of_record || 'Unknown';
+    }
+    
+    // For daily assessments, try inspector profile first, then trainer_of_record field
+    if (type === 'daily') {
+      const firstName = report.inspector?.first_name || '';
+      const lastName = report.inspector?.last_name || '';
+      const inspectorName = `${firstName} ${lastName}`.trim();
+      return inspectorName || report.trainer_of_record || 'Unknown';
+    }
+    
+    // For inspections, use inspector profile
+    const firstName = report.inspector?.first_name || '';
+    const lastName = report.inspector?.last_name || '';
     return `${firstName} ${lastName}`.trim() || 'Unknown';
   };
 
