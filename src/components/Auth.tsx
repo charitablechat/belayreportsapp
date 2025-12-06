@@ -245,6 +245,45 @@ export default function Auth() {
                     )}
                   </button>
                 </div>
+                {isSignUp && password.length > 0 && (
+                  <div className="space-y-2 pt-1">
+                    <div className="flex gap-1">
+                      {[1, 2, 3, 4].map((level) => {
+                        const strength = 
+                          (password.length >= 6 ? 1 : 0) +
+                          (/[A-Z]/.test(password) ? 1 : 0) +
+                          (/[0-9]/.test(password) ? 1 : 0) +
+                          (/[^A-Za-z0-9]/.test(password) ? 1 : 0);
+                        const isActive = level <= strength;
+                        const colorClass = strength <= 1 ? 'bg-destructive' : strength === 2 ? 'bg-orange-500' : strength === 3 ? 'bg-yellow-500' : 'bg-green-500';
+                        return (
+                          <div 
+                            key={level} 
+                            className={`h-1 flex-1 rounded-full transition-colors ${isActive ? colorClass : 'bg-muted'}`} 
+                          />
+                        );
+                      })}
+                    </div>
+                    <ul className="text-xs space-y-0.5">
+                      <li className={`flex items-center gap-1.5 ${password.length >= 6 ? 'text-green-600 dark:text-green-400' : 'text-muted-foreground'}`}>
+                        <span className={`w-1 h-1 rounded-full ${password.length >= 6 ? 'bg-green-500' : 'bg-muted-foreground'}`} />
+                        At least 6 characters
+                      </li>
+                      <li className={`flex items-center gap-1.5 ${/[A-Z]/.test(password) ? 'text-green-600 dark:text-green-400' : 'text-muted-foreground'}`}>
+                        <span className={`w-1 h-1 rounded-full ${/[A-Z]/.test(password) ? 'bg-green-500' : 'bg-muted-foreground'}`} />
+                        One uppercase letter
+                      </li>
+                      <li className={`flex items-center gap-1.5 ${/[0-9]/.test(password) ? 'text-green-600 dark:text-green-400' : 'text-muted-foreground'}`}>
+                        <span className={`w-1 h-1 rounded-full ${/[0-9]/.test(password) ? 'bg-green-500' : 'bg-muted-foreground'}`} />
+                        One number
+                      </li>
+                      <li className={`flex items-center gap-1.5 ${/[^A-Za-z0-9]/.test(password) ? 'text-green-600 dark:text-green-400' : 'text-muted-foreground'}`}>
+                        <span className={`w-1 h-1 rounded-full ${/[^A-Za-z0-9]/.test(password) ? 'bg-green-500' : 'bg-muted-foreground'}`} />
+                        One special character
+                      </li>
+                    </ul>
+                  </div>
+                )}
                 {!isSignUp && (
                   <div className="text-right">
                     <button
