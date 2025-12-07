@@ -2,7 +2,7 @@ import { useRequireSuperAdmin } from "@/hooks/useRequireSuperAdmin";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { StatCard } from "@/components/admin/StatCard";
+import { StatCard, StatCardHoverContent } from "@/components/admin/StatCard";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -537,12 +537,30 @@ export default function SuperAdminDashboard() {
           value={stats?.organizations || 0}
           icon={Building2}
           onClick={() => setIsOrgsListOpen(true)}
+          hoverContent={{
+            title: "All Organizations",
+            description: "Total client organizations registered in the system.",
+            details: [
+              { label: "Total registered", value: stats?.organizations || 0 },
+              { label: "With inspections", value: organizations?.filter(o => o.inspections?.length > 0).length || 0 },
+            ],
+            tip: "Click to view full organization list"
+          }}
         />
         <StatCard
           title="Total Users"
           value={stats?.users || 0}
           icon={Users}
           onClick={() => setIsUsersListOpen(true)}
+          hoverContent={{
+            title: "System Users",
+            description: "All registered users including inspectors and admins.",
+            details: [
+              { label: "Super admins", value: managedUsers?.filter((u: any) => u.isSuperAdmin).length || 0 },
+              { label: "Regular users", value: managedUsers?.filter((u: any) => !u.isSuperAdmin).length || 0 },
+            ],
+            tip: "Click to manage user accounts"
+          }}
         />
         <StatCard
           title="Inspections"
@@ -550,12 +568,31 @@ export default function SuperAdminDashboard() {
           icon={ClipboardList}
           description={`${stats?.statusCounts?.completed || 0} completed, ${stats?.statusCounts?.draft || 0} draft`}
           onClick={() => setIsInspectionsListOpen(true)}
+          hoverContent={{
+            title: "Inspection Reports",
+            description: "Field inspection reports for adventure courses.",
+            details: [
+              { label: "Completed", value: stats?.statusCounts?.completed || 0 },
+              { label: "Draft", value: stats?.statusCounts?.draft || 0 },
+              { label: "In progress", value: stats?.statusCounts?.in_progress || 0 },
+            ],
+            tip: "Click to view all inspections"
+          }}
         />
         <StatCard
           title="Recent Notifications"
           value={stats?.recentNotifications || 0}
           icon={Bell}
           description="Last 7 days"
+          hoverContent={{
+            title: "Push Notifications",
+            description: "Notifications sent to users in the last 7 days.",
+            details: [
+              { label: "Weekly total", value: stats?.recentNotifications || 0 },
+              { label: "Daily average", value: ((stats?.recentNotifications || 0) / 7).toFixed(1) },
+            ],
+            tip: "View the Notifications tab for details"
+          }}
         />
       </div>
 
@@ -564,23 +601,56 @@ export default function SuperAdminDashboard() {
           title="Unresolved Conflicts"
           value={stats?.unresolvedConflicts || 0}
           icon={AlertTriangle}
+          hoverContent={{
+            title: "Sync Conflicts",
+            description: "Data conflicts from offline sync that require manual resolution.",
+            details: [
+              { label: "Pending", value: stats?.unresolvedConflicts || 0 },
+            ],
+            tip: stats?.unresolvedConflicts > 0 ? "Resolve these to prevent data loss" : "No conflicts to resolve"
+          }}
         />
         <StatCard
           title="Active Subscriptions"
           value={stats?.activeSubscriptions || 0}
           icon={Radio}
+          hoverContent={{
+            title: "Push Subscriptions",
+            description: "Devices registered to receive push notifications.",
+            details: [
+              { label: "Subscribed devices", value: stats?.activeSubscriptions || 0 },
+            ],
+            tip: "Users can subscribe from their profile settings"
+          }}
         />
         <StatCard
           title="Avg Completion Time"
           value={avgCompletionTime ? `${avgCompletionTime.toFixed(1)}h` : "0h"}
           icon={Clock}
           description="Average time to complete"
+          hoverContent={{
+            title: "Inspection Duration",
+            description: "Average time from inspection creation to completion.",
+            details: [
+              { label: "Average", value: avgCompletionTime ? `${avgCompletionTime.toFixed(1)} hours` : "N/A" },
+            ],
+            tip: "Based on completed inspections only"
+          }}
         />
         <StatCard
           title="Completion Rate"
           value={completionRate ? `${completionRate.toFixed(1)}%` : "0%"}
           icon={TrendingUp}
           description="Completed inspections"
+          hoverContent={{
+            title: "Report Completion",
+            description: "Percentage of all inspections marked as complete.",
+            details: [
+              { label: "Completed", value: stats?.statusCounts?.completed || 0 },
+              { label: "Total reports", value: stats?.inspections || 0 },
+            ],
+            tip: completionRate && completionRate >= 80 ? "Great completion rate!" : "Encourage inspectors to complete drafts"
+          }}
         />
       </div>
 
@@ -590,24 +660,60 @@ export default function SuperAdminDashboard() {
           value={inspectionsThisMonth || 0}
           icon={Calendar}
           description="Inspections created"
+          hoverContent={{
+            title: "Monthly Activity",
+            description: "Inspections created in the current calendar month.",
+            details: [
+              { label: "This month", value: inspectionsThisMonth || 0 },
+            ],
+            tip: "Track monthly trends over time"
+          }}
         />
         <StatCard
           title="Active Inspectors"
           value={activeInspectors || 0}
           icon={UserCheck}
           description="Unique inspectors"
+          hoverContent={{
+            title: "Inspector Activity",
+            description: "Unique inspectors who have created at least one inspection.",
+            details: [
+              { label: "Active inspectors", value: activeInspectors || 0 },
+              { label: "Total users", value: stats?.users || 0 },
+            ],
+            tip: "Inspectors with completed reports"
+          }}
         />
         <StatCard
           title="Training Reports"
           value={stats?.trainings || 0}
           icon={GraduationCap}
           description={`${stats?.trainingStatusCounts?.completed || 0} completed, ${stats?.trainingStatusCounts?.draft || 0} draft`}
+          hoverContent={{
+            title: "Training Sessions",
+            description: "Documented training sessions and audit reports.",
+            details: [
+              { label: "Completed", value: stats?.trainingStatusCounts?.completed || 0 },
+              { label: "Draft", value: stats?.trainingStatusCounts?.draft || 0 },
+              { label: "In progress", value: stats?.trainingStatusCounts?.in_progress || 0 },
+            ],
+            tip: "View Training Reports tab for full list"
+          }}
         />
         <StatCard
           title="Daily Assessments"
           value={stats?.dailyAssessments || 0}
           icon={ClipboardCheck}
           description={`${stats?.dailyStatusCounts?.completed || 0} completed, ${stats?.dailyStatusCounts?.draft || 0} draft`}
+          hoverContent={{
+            title: "Daily Facility Checks",
+            description: "Daily assessment reports for facility operations.",
+            details: [
+              { label: "Completed", value: stats?.dailyStatusCounts?.completed || 0 },
+              { label: "Draft", value: stats?.dailyStatusCounts?.draft || 0 },
+            ],
+            tip: "Regular assessments ensure safety compliance"
+          }}
         />
       </div>
 
