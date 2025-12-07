@@ -35,20 +35,7 @@ export const UpdateNotification = () => {
     }
   }, [needsUpdate, updateAndReload]);
 
-  useEffect(() => {
-    if (offlineReady && !hasShownOfflineReady.current) {
-      hasShownOfflineReady.current = true;
-      
-      if (import.meta.env.DEV) {
-        console.log('[Update Notification] App ready for offline use');
-      }
-
-      toast.success('Ready for Offline Use', {
-        description: 'The app is now available offline',
-        icon: <RefreshCw className="w-4 h-4" />,
-      });
-    }
-  }, [offlineReady]);
+  // Removed offline ready toast notification as per user request
 
   return null;
 };
