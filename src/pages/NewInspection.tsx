@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -31,6 +31,37 @@ export default function NewInspection() {
     latitude: null as number | null,
     longitude: null as number | null,
   });
+
+  // Fetch user profile on mount to get their name
+  useEffect(() => {
+    const fetchUserProfile = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('first_name, last_name')
+            .eq('id', user.id)
+            .single();
+          
+          if (profile) {
+            const fullName = [profile.first_name, profile.last_name].filter(Boolean).join(' ').trim();
+            // Pre-populate previous_inspector with user's name
+            if (fullName) {
+              setFormData(prev => ({
+                ...prev,
+                previous_inspector: prev.previous_inspector || fullName
+              }));
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching user profile:', error);
+      }
+    };
+
+    fetchUserProfile();
+  }, []);
 
   const handleLocationCapture = async () => {
     triggerHaptic('light');
