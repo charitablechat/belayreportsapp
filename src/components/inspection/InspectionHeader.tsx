@@ -2,6 +2,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { VoiceInput } from "@/components/ui/voice-input";
 import { VoiceTextarea } from "@/components/ui/voice-textarea";
+import { OrganizationAutocomplete } from "@/components/OrganizationAutocomplete";
+import { DatabaseAutocomplete } from "@/components/DatabaseAutocomplete";
 
 interface InspectionHeaderProps {
   inspection: any;
@@ -14,6 +16,7 @@ export default function InspectionHeader({ inspection, userProfile, onUpdate, on
   const inspectorName = userProfile?.first_name && userProfile?.last_name
     ? `${userProfile.first_name} ${userProfile.last_name}`
     : 'Current User';
+
   const renderField = (label: string, field: string, value: string, type: string = "text", isTextarea: boolean = false) => {
     return (
       <div>
@@ -64,14 +67,45 @@ export default function InspectionHeader({ inspection, userProfile, onUpdate, on
                   className="bg-muted/50 cursor-not-allowed"
                 />
               </div>
-              {renderField("Facility Name", "organization", inspection?.organization)}
+              <div>
+                <Label className="text-sm text-muted-foreground">Facility Name</Label>
+                <OrganizationAutocomplete
+                  value={inspection?.organization || ""}
+                  onChange={(value) => {
+                    onUpdate("organization", value);
+                    onImmediateSave?.();
+                  }}
+                />
+              </div>
               {renderField("Location", "location", inspection?.location)}
-              {renderField("Previous Inspector", "previous_inspector", inspection?.previous_inspector)}
+              <div>
+                <Label className="text-sm text-muted-foreground">Previous Inspector</Label>
+                <DatabaseAutocomplete
+                  value={inspection?.previous_inspector || ""}
+                  onChange={(value) => {
+                    onUpdate("previous_inspector", value);
+                    onImmediateSave?.();
+                  }}
+                  fieldType="inspector_name"
+                  placeholder="Select or enter inspector..."
+                />
+              </div>
             </div>
             <div className="space-y-4">
               {renderField("ACCT#", "acct_number", inspection?.acct_number)}
               {renderField("Inspection Date", "inspection_date", inspection?.inspection_date, "date")}
-              {renderField("Onsite Contact", "onsite_contact", inspection?.onsite_contact)}
+              <div>
+                <Label className="text-sm text-muted-foreground">Onsite Contact</Label>
+                <DatabaseAutocomplete
+                  value={inspection?.onsite_contact || ""}
+                  onChange={(value) => {
+                    onUpdate("onsite_contact", value);
+                    onImmediateSave?.();
+                  }}
+                  fieldType="onsite_contact"
+                  placeholder="Select or enter contact..."
+                />
+              </div>
               {renderField("Prev. Inspection Date", "previous_inspection_date", inspection?.previous_inspection_date, "date")}
             </div>
           </div>

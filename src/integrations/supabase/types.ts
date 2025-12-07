@@ -1458,6 +1458,36 @@ export type Database = {
           },
         ]
       }
+      user_field_history: {
+        Row: {
+          created_at: string | null
+          field_type: string
+          id: string
+          last_used_at: string | null
+          usage_count: number | null
+          user_id: string
+          value: string
+        }
+        Insert: {
+          created_at?: string | null
+          field_type: string
+          id?: string
+          last_used_at?: string | null
+          usage_count?: number | null
+          user_id: string
+          value: string
+        }
+        Update: {
+          created_at?: string | null
+          field_type?: string
+          id?: string
+          last_used_at?: string | null
+          usage_count?: number | null
+          user_id?: string
+          value?: string
+        }
+        Relationships: []
+      }
       user_roles: {
         Row: {
           created_at: string | null

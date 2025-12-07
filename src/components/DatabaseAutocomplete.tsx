@@ -1,12 +1,21 @@
-import { useState, useEffect } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { useState, useEffect, useRef } from "react";
+import { Check, ChevronsUpDown, Pencil, Trash2, X, Plus, Loader2 } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Check, ChevronsUpDown, Pencil, Trash2, Plus, Loader2 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -17,7 +26,18 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { supabase } from "@/integrations/supabase/client";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+
+export type FieldType = 
+  | "organization" 
+  | "trainer_name" 
+  | "onsite_contact" 
+  | "inspector_name" 
+  | "equipment_type" 
+  | "zipline_name" 
+  | "system_element";
 
 interface HistoryItem {
   id: string;
@@ -26,27 +46,34 @@ interface HistoryItem {
   last_used_at: string;
 }
 
-interface OrganizationAutocompleteProps {
+interface DatabaseAutocompleteProps {
   value: string;
   onChange: (value: string) => void;
+  fieldType: FieldType;
+  placeholder?: string;
   disabled?: boolean;
+  className?: string;
 }
 
-export const OrganizationAutocomplete = ({
+export function DatabaseAutocomplete({
   value,
   onChange,
+  fieldType,
+  placeholder = "Select or enter...",
   disabled = false,
-}: OrganizationAutocompleteProps) => {
+  className,
+}: DatabaseAutocompleteProps) {
   const [open, setOpen] = useState(false);
-  const [search, setSearch] = useState("");
+  const [searchValue, setSearchValue] = useState("");
   const [editingItem, setEditingItem] = useState<HistoryItem | null>(null);
   const [editValue, setEditValue] = useState("");
   const [deletingItem, setDeletingItem] = useState<HistoryItem | null>(null);
   const queryClient = useQueryClient();
+  const inputRef = useRef<HTMLInputElement>(null);
 
-  // Fetch user's organization history from database
-  const { data: historyItems = [], isLoading: isLoadingHistory } = useQuery({
-    queryKey: ["field-history", "organization"],
+  // Fetch history items for this field type
+  const { data: historyItems = [], isLoading } = useQuery({
+    queryKey: ["field-history", fieldType],
     queryFn: async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return [];
@@ -55,52 +82,26 @@ export const OrganizationAutocomplete = ({
         .from("user_field_history")
         .select("id, value, usage_count, last_used_at")
         .eq("user_id", user.id)
-        .eq("field_type", "organization")
+        .eq("field_type", fieldType)
         .order("usage_count", { ascending: false })
         .order("last_used_at", { ascending: false });
 
       if (error) {
-        console.error("Error fetching organization history:", error);
+        console.error("Error fetching field history:", error);
         return [];
       }
       return data as HistoryItem[];
     },
   });
 
-  // Also fetch from organizations table for global suggestions
-  const { data: organizations = [], isLoading: isLoadingOrgs } = useQuery({
-    queryKey: ["organizations"],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("organizations")
-        .select("id, name")
-        .order("name");
-
-      if (error) throw error;
-      return data;
-    },
-  });
-
-  // Combine and deduplicate: user history first, then global orgs
-  const allOptions = [...historyItems.map(h => h.value)];
-  organizations.forEach(org => {
-    if (!allOptions.some(v => v.toLowerCase() === org.name.toLowerCase())) {
-      allOptions.push(org.name);
-    }
-  });
-
-  // Filter based on search
-  const filteredOptions = allOptions.filter((opt) =>
-    opt.toLowerCase().includes(search.toLowerCase())
+  // Filter items based on search
+  const filteredItems = historyItems.filter((item) =>
+    item.value.toLowerCase().includes(searchValue.toLowerCase())
   );
 
-  // Check if search is a new entry
-  const isNewEntry = search.trim() && 
-    !allOptions.some(opt => opt.toLowerCase() === search.toLowerCase().trim());
-
-  // Get history item by value
-  const getHistoryItem = (val: string) => 
-    historyItems.find(h => h.value.toLowerCase() === val.toLowerCase());
+  // Check if search value is a new entry
+  const isNewEntry = searchValue.trim() && 
+    !historyItems.some(item => item.value.toLowerCase() === searchValue.toLowerCase().trim());
 
   // Mutation to save/update history
   const saveMutation = useMutation({
@@ -111,12 +112,13 @@ export const OrganizationAutocomplete = ({
       const trimmedValue = newValue.trim();
       if (!trimmedValue) return;
 
+      // Try to upsert - increment usage count if exists, create if not
       const { error } = await supabase
         .from("user_field_history")
         .upsert(
           {
             user_id: user.id,
-            field_type: "organization",
+            field_type: fieldType,
             value: trimmedValue,
             usage_count: 1,
             last_used_at: new Date().toISOString(),
@@ -127,11 +129,24 @@ export const OrganizationAutocomplete = ({
         );
 
       if (error) {
-        console.error("Error saving organization history:", error);
+        // If upsert failed, try to update
+        const { error: updateError } = await supabase
+          .from("user_field_history")
+          .update({
+            usage_count: supabase.rpc ? undefined : 1, // Will increment via SQL
+            last_used_at: new Date().toISOString(),
+          })
+          .eq("user_id", user.id)
+          .eq("field_type", fieldType)
+          .eq("value", trimmedValue);
+
+        if (updateError) {
+          console.error("Error saving history:", updateError);
+        }
       }
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["field-history", "organization"] });
+      queryClient.invalidateQueries({ queryKey: ["field-history", fieldType] });
     },
   });
 
@@ -147,8 +162,9 @@ export const OrganizationAutocomplete = ({
       return { id, newValue: newValue.trim() };
     },
     onSuccess: ({ newValue }) => {
-      queryClient.invalidateQueries({ queryKey: ["field-history", "organization"] });
+      queryClient.invalidateQueries({ queryKey: ["field-history", fieldType] });
       toast.success("Entry updated");
+      // Update current value if it was the one being edited
       if (editingItem && value === editingItem.value) {
         onChange(newValue);
       }
@@ -172,7 +188,7 @@ export const OrganizationAutocomplete = ({
       if (error) throw error;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["field-history", "organization"] });
+      queryClient.invalidateQueries({ queryKey: ["field-history", fieldType] });
       toast.success("Entry deleted");
       setDeletingItem(null);
     },
@@ -186,7 +202,14 @@ export const OrganizationAutocomplete = ({
     onChange(selectedValue);
     saveMutation.mutate(selectedValue);
     setOpen(false);
-    setSearch("");
+    setSearchValue("");
+  };
+
+  const handleCreateNew = () => {
+    const newValue = searchValue.trim();
+    if (newValue) {
+      handleSelect(newValue);
+    }
   };
 
   const handleEditClick = (e: React.MouseEvent, item: HistoryItem) => {
@@ -212,8 +235,6 @@ export const OrganizationAutocomplete = ({
     }
   };
 
-  const isLoading = isLoadingHistory || isLoadingOrgs;
-
   return (
     <>
       <Popover open={open} onOpenChange={setOpen}>
@@ -222,21 +243,22 @@ export const OrganizationAutocomplete = ({
             variant="outline"
             role="combobox"
             aria-expanded={open}
-            className="w-full justify-between font-normal"
+            className={cn("w-full justify-between font-normal", className)}
             disabled={disabled}
           >
             <span className={cn("truncate", !value && "text-muted-foreground")}>
-              {value || "Select or type organization..."}
+              {value || placeholder}
             </span>
             <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
           </Button>
         </PopoverTrigger>
         <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
           <Command shouldFilter={false}>
-            <CommandInput 
-              placeholder="Search or type organization..." 
-              value={search}
-              onValueChange={setSearch}
+            <CommandInput
+              placeholder={`Search or type new...`}
+              value={searchValue}
+              onValueChange={setSearchValue}
+              ref={inputRef}
             />
             <CommandList>
               {isLoading ? (
@@ -245,91 +267,58 @@ export const OrganizationAutocomplete = ({
                 </div>
               ) : (
                 <>
-                  {filteredOptions.length === 0 && !isNewEntry && (
-                    <CommandEmpty>No organizations found. Start typing to create one.</CommandEmpty>
+                  {filteredItems.length === 0 && !isNewEntry && (
+                    <CommandEmpty>No entries found. Start typing to create one.</CommandEmpty>
                   )}
                   
                   {isNewEntry && (
                     <CommandGroup heading="Create new">
                       <CommandItem
-                        onSelect={() => handleSelect(search.trim())}
+                        onSelect={handleCreateNew}
                         className="cursor-pointer"
                       >
                         <Plus className="mr-2 h-4 w-4 text-primary" />
-                        <span>Create "{search.trim()}"</span>
+                        <span>Create "{searchValue.trim()}"</span>
                       </CommandItem>
                     </CommandGroup>
                   )}
                   
-                  {historyItems.length > 0 && (
-                    <CommandGroup heading="Your recent entries">
-                      {historyItems
-                        .filter(item => item.value.toLowerCase().includes(search.toLowerCase()))
-                        .map((item) => (
-                          <CommandItem
-                            key={item.id}
-                            value={item.value}
-                            onSelect={() => handleSelect(item.value)}
-                            className="cursor-pointer group"
-                          >
-                            <Check
-                              className={cn(
-                                "mr-2 h-4 w-4",
-                                value === item.value ? "opacity-100" : "opacity-0"
-                              )}
-                            />
-                            <span className="flex-1 truncate">{item.value}</span>
-                            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-6 w-6"
-                                onClick={(e) => handleEditClick(e, item)}
-                              >
-                                <Pencil className="h-3 w-3" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-6 w-6 text-destructive hover:text-destructive"
-                                onClick={(e) => handleDeleteClick(e, item)}
-                              >
-                                <Trash2 className="h-3 w-3" />
-                              </Button>
-                            </div>
-                          </CommandItem>
-                        ))}
-                    </CommandGroup>
-                  )}
-                  
-                  {organizations.filter(org => 
-                    org.name.toLowerCase().includes(search.toLowerCase()) &&
-                    !historyItems.some(h => h.value.toLowerCase() === org.name.toLowerCase())
-                  ).length > 0 && (
-                    <CommandGroup heading="All organizations">
-                      {organizations
-                        .filter(org => 
-                          org.name.toLowerCase().includes(search.toLowerCase()) &&
-                          !historyItems.some(h => h.value.toLowerCase() === org.name.toLowerCase())
-                        )
-                        .map((org) => (
-                          <CommandItem
-                            key={org.id}
-                            value={org.name}
-                            onSelect={() => handleSelect(org.name)}
-                            className="cursor-pointer"
-                          >
-                            <Check
-                              className={cn(
-                                "mr-2 h-4 w-4",
-                                value.toLowerCase() === org.name.toLowerCase()
-                                  ? "opacity-100"
-                                  : "opacity-0"
-                              )}
-                            />
-                            {org.name}
-                          </CommandItem>
-                        ))}
+                  {filteredItems.length > 0 && (
+                    <CommandGroup heading="Recent entries">
+                      {filteredItems.map((item) => (
+                        <CommandItem
+                          key={item.id}
+                          value={item.value}
+                          onSelect={() => handleSelect(item.value)}
+                          className="cursor-pointer group"
+                        >
+                          <Check
+                            className={cn(
+                              "mr-2 h-4 w-4",
+                              value === item.value ? "opacity-100" : "opacity-0"
+                            )}
+                          />
+                          <span className="flex-1 truncate">{item.value}</span>
+                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6"
+                              onClick={(e) => handleEditClick(e, item)}
+                            >
+                              <Pencil className="h-3 w-3" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6 text-destructive hover:text-destructive"
+                              onClick={(e) => handleDeleteClick(e, item)}
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        </CommandItem>
+                      ))}
                     </CommandGroup>
                   )}
                 </>
@@ -343,7 +332,7 @@ export const OrganizationAutocomplete = ({
       <AlertDialog open={!!editingItem} onOpenChange={(open) => !open && setEditingItem(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Edit Organization</AlertDialogTitle>
+            <AlertDialogTitle>Edit Entry</AlertDialogTitle>
             <AlertDialogDescription>
               Update this saved entry. This won't change existing reports.
             </AlertDialogDescription>
@@ -370,7 +359,7 @@ export const OrganizationAutocomplete = ({
       <AlertDialog open={!!deletingItem} onOpenChange={(open) => !open && setDeletingItem(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Organization</AlertDialogTitle>
+            <AlertDialogTitle>Delete Entry</AlertDialogTitle>
             <AlertDialogDescription>
               Are you sure you want to delete "{deletingItem?.value}"? This won't affect existing reports.
             </AlertDialogDescription>
@@ -389,4 +378,4 @@ export const OrganizationAutocomplete = ({
       </AlertDialog>
     </>
   );
-};
+}
