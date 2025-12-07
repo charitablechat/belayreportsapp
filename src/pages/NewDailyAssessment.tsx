@@ -16,6 +16,17 @@ export default function NewDailyAssessment() {
           return;
         }
 
+        // Fetch user profile to get their name
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('first_name, last_name')
+          .eq('id', user.id)
+          .single();
+
+        const fullName = profile 
+          ? [profile.first_name, profile.last_name].filter(Boolean).join(' ').trim()
+          : '';
+
         const assessmentId = crypto.randomUUID();
         const newAssessment = {
           id: assessmentId,
@@ -24,6 +35,7 @@ export default function NewDailyAssessment() {
           assessment_date: new Date().toISOString().split('T')[0],
           status: 'draft',
           organization: '',
+          trainer_of_record: fullName || null,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
           synced_at: null as string | null,

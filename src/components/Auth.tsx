@@ -50,6 +50,8 @@ export default function Auth() {
   const [loading, setLoading] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [isSignUp, setIsSignUp] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [isForgotPassword, setIsForgotPassword] = useState(false);
@@ -68,6 +70,11 @@ export default function Auth() {
       return;
     }
 
+    if (isSignUp && (!firstName.trim() || !lastName.trim())) {
+      setError("Please enter your first and last name.");
+      return;
+    }
+
     if (password.length < 6) {
       setError("Password must be at least 6 characters long.");
       return;
@@ -83,6 +90,10 @@ export default function Auth() {
           password,
           options: {
             emailRedirectTo: `${window.location.origin}/`,
+            data: {
+              first_name: firstName.trim(),
+              last_name: lastName.trim(),
+            },
           },
         });
 
@@ -205,6 +216,34 @@ export default function Auth() {
             </GradientButton>
           )}
           <form onSubmit={isForgotPassword ? handleForgotPassword : handleAuth} className="space-y-4">
+            {isSignUp && !isForgotPassword && (
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label htmlFor="firstName">First Name</Label>
+                  <Input
+                    id="firstName"
+                    type="text"
+                    placeholder="John"
+                    value={firstName}
+                    onChange={(e) => setFirstName(e.target.value)}
+                    required
+                    maxLength={50}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="lastName">Last Name</Label>
+                  <Input
+                    id="lastName"
+                    type="text"
+                    placeholder="Smith"
+                    value={lastName}
+                    onChange={(e) => setLastName(e.target.value)}
+                    required
+                    maxLength={50}
+                  />
+                </div>
+              </div>
+            )}
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
               <Input

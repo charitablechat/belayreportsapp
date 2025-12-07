@@ -16,6 +16,17 @@ export default function NewTraining() {
           return;
         }
 
+        // Fetch user profile to get their name
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('first_name, last_name')
+          .eq('id', user.id)
+          .single();
+
+        const fullName = profile 
+          ? [profile.first_name, profile.last_name].filter(Boolean).join(' ').trim()
+          : '';
+
         const now = new Date().toISOString();
         const newTraining = {
           inspector_id: user.id,
@@ -23,6 +34,7 @@ export default function NewTraining() {
           start_date: now.split('T')[0],
           end_date: now.split('T')[0],
           status: 'draft',
+          trainer_of_record: fullName || null,
           created_at: now,
           updated_at: now,
           synced_at: now,
