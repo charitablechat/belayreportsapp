@@ -12,7 +12,7 @@ interface UserFormData {
   firstName: string;
   lastName: string;
   organizationId?: string;
-  role?: 'admin' | 'inspector' | 'super_admin';
+  role?: 'admin' | 'inspector';
 }
 
 interface UserManagementDialogProps {
@@ -188,7 +188,6 @@ export function UserManagementDialog({
                       <SelectContent>
                         <SelectItem value="inspector">Inspector</SelectItem>
                         <SelectItem value="admin">Admin</SelectItem>
-                        <SelectItem value="super_admin">Super Admin</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
