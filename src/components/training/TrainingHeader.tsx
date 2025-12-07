@@ -1,4 +1,4 @@
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { VoiceNameInput } from "@/components/ui/voice-name-input";
 import { Label } from "@/components/ui/label";
 import { VoiceNameTextarea } from "@/components/ui/voice-name-textarea";
@@ -9,6 +9,7 @@ import { CalendarIcon } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { OrganizationAutocomplete } from "@/components/OrganizationAutocomplete";
+import { DatabaseAutocomplete } from "@/components/DatabaseAutocomplete";
 
 interface TrainingHeaderProps {
   training: any;
@@ -97,11 +98,11 @@ export default function TrainingHeader({ training, onUpdate }: TrainingHeaderPro
 
         <div className="space-y-2">
           <Label htmlFor="trainer_of_record">Trainer(s) of Record</Label>
-          <VoiceNameInput
-            id="trainer_of_record"
+          <DatabaseAutocomplete
             value={training.trainer_of_record || ''}
-            onChange={(e) => onUpdate('trainer_of_record', e.target.value)}
-            placeholder="Enter trainer names (voice extracts names only)"
+            onChange={(value) => onUpdate('trainer_of_record', value)}
+            fieldType="trainer_name"
+            placeholder="Select or enter trainer name..."
           />
         </div>
 
