@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Building2, Users, FileText, Bell, AlertTriangle, Radio, UserPlus, Pencil, Trash2, ClipboardList, ArrowLeft, Merge, Clock, TrendingUp, Calendar, UserCheck, Wrench, Loader2, Image, Shield, ShieldOff } from "lucide-react";
+import { Building2, Users, FileText, Bell, AlertTriangle, Radio, UserPlus, Pencil, Trash2, ClipboardList, ArrowLeft, Merge, Clock, TrendingUp, Calendar, UserCheck, Wrench, Loader2, Image, Shield, ShieldOff, GraduationCap, ClipboardCheck, Check, Cloud, CloudOff } from "lucide-react";
 import { format } from "date-fns";
 import { useNavigate } from "react-router-dom";
 import { useState } from "react";
@@ -64,6 +64,10 @@ export default function SuperAdminDashboard() {
         { count: notificationsCount },
         { count: conflictsCount },
         { count: subscriptionsCount },
+        { count: trainingsCount },
+        { data: trainingsByStatus },
+        { count: dailyAssessmentsCount },
+        { data: dailyAssessmentsByStatus },
       ] = await Promise.all([
         supabase.from("organizations").select("*", { count: "exact", head: true }),
         supabase.from("inspections").select("*", { count: "exact", head: true }),
@@ -71,9 +75,23 @@ export default function SuperAdminDashboard() {
         supabase.from("notifications_log").select("*", { count: "exact", head: true }).gte("sent_at", new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()),
         supabase.from("sync_conflicts").select("*", { count: "exact", head: true }).eq("resolved", false),
         supabase.from("push_subscriptions").select("*", { count: "exact", head: true }),
+        supabase.from("trainings").select("*", { count: "exact", head: true }),
+        supabase.from("trainings").select("status"),
+        supabase.from("daily_assessments").select("*", { count: "exact", head: true }),
+        supabase.from("daily_assessments").select("status"),
       ]);
 
       const statusCounts = inspectionsByStatus?.reduce((acc, item) => {
+        acc[item.status] = (acc[item.status] || 0) + 1;
+        return acc;
+      }, {} as Record<string, number>);
+
+      const trainingStatusCounts = trainingsByStatus?.reduce((acc, item) => {
+        acc[item.status] = (acc[item.status] || 0) + 1;
+        return acc;
+      }, {} as Record<string, number>);
+
+      const dailyStatusCounts = dailyAssessmentsByStatus?.reduce((acc, item) => {
         acc[item.status] = (acc[item.status] || 0) + 1;
         return acc;
       }, {} as Record<string, number>);
@@ -83,6 +101,10 @@ export default function SuperAdminDashboard() {
         users: managedUsers?.length || 0,
         inspections: inspectionsCount || 0,
         statusCounts: statusCounts || {},
+        trainings: trainingsCount || 0,
+        trainingStatusCounts: trainingStatusCounts || {},
+        dailyAssessments: dailyAssessmentsCount || 0,
+        dailyStatusCounts: dailyStatusCounts || {},
         recentNotifications: notificationsCount || 0,
         unresolvedConflicts: conflictsCount || 0,
         activeSubscriptions: subscriptionsCount || 0,
@@ -156,6 +178,46 @@ export default function SuperAdminDashboard() {
           *,
           organizations(name),
           inspector:profiles!inspections_inspector_id_profiles_fkey(first_name, last_name)
+        `)
+        .order("created_at", { ascending: false })
+        .limit(100);
+
+      if (error) throw error;
+      return data;
+    },
+    enabled: !loading,
+  });
+
+  // All trainings query
+  const { data: allTrainings } = useQuery({
+    queryKey: ["admin-trainings"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("trainings")
+        .select(`
+          *,
+          organizations(name),
+          trainer:profiles!trainings_inspector_id_profiles_fkey(first_name, last_name)
+        `)
+        .order("created_at", { ascending: false })
+        .limit(100);
+
+      if (error) throw error;
+      return data;
+    },
+    enabled: !loading,
+  });
+
+  // All daily assessments query
+  const { data: allDailyAssessments } = useQuery({
+    queryKey: ["admin-daily-assessments"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("daily_assessments")
+        .select(`
+          *,
+          organizations(name),
+          inspector:profiles!daily_assessments_inspector_id_fkey(first_name, last_name)
         `)
         .order("created_at", { ascending: false })
         .limit(100);
@@ -522,7 +584,7 @@ export default function SuperAdminDashboard() {
         />
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <StatCard
           title="This Month"
           value={inspectionsThisMonth || 0}
@@ -535,6 +597,18 @@ export default function SuperAdminDashboard() {
           icon={UserCheck}
           description="Unique inspectors"
         />
+        <StatCard
+          title="Training Reports"
+          value={stats?.trainings || 0}
+          icon={GraduationCap}
+          description={`${stats?.trainingStatusCounts?.completed || 0} completed, ${stats?.trainingStatusCounts?.draft || 0} draft`}
+        />
+        <StatCard
+          title="Daily Assessments"
+          value={stats?.dailyAssessments || 0}
+          icon={ClipboardCheck}
+          description={`${stats?.dailyStatusCounts?.completed || 0} completed, ${stats?.dailyStatusCounts?.draft || 0} draft`}
+        />
       </div>
 
       {/* Tabs for different sections */}
@@ -543,6 +617,8 @@ export default function SuperAdminDashboard() {
           <TabsTrigger value="organizations" className="justify-start">Organizations</TabsTrigger>
           <TabsTrigger value="user-management" className="justify-start">User Management</TabsTrigger>
           <TabsTrigger value="inspections" className="justify-start">Inspections</TabsTrigger>
+          <TabsTrigger value="trainings" className="justify-start">Training Reports</TabsTrigger>
+          <TabsTrigger value="daily-assessments" className="justify-start">Daily Assessments</TabsTrigger>
           <TabsTrigger value="form-cms" className="justify-start">Form CMS</TabsTrigger>
           <TabsTrigger value="notifications" className="justify-start">Notifications</TabsTrigger>
           <TabsTrigger value="conflicts" className="justify-start">Conflicts</TabsTrigger>
@@ -743,6 +819,112 @@ export default function SuperAdminDashboard() {
                       ? `${(inspection as any).inspector.first_name} ${(inspection as any).inspector.last_name}`
                       : 'Unknown'}
                   </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TabsContent>
+
+        <TabsContent value="trainings" className="space-y-4">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Organization</TableHead>
+                <TableHead>Trainer</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Sync</TableHead>
+                <TableHead>Start Date</TableHead>
+                <TableHead>End Date</TableHead>
+                <TableHead>Created</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {allTrainings?.map((training) => (
+                <TableRow 
+                  key={training.id}
+                  className="cursor-pointer hover:bg-muted/50 transition-colors"
+                  onClick={() => navigate(`/training/${training.id}`)}
+                >
+                  <TableCell>{training.organizations?.name || training.organization}</TableCell>
+                  <TableCell>
+                    {(training as any).trainer?.first_name && (training as any).trainer?.last_name
+                      ? `${(training as any).trainer.first_name} ${(training as any).trainer.last_name}`
+                      : training.trainer_of_record || 'Unknown'}
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant={training.status === "completed" ? "default" : "secondary"}>
+                      {training.status}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    {training.synced_at ? (
+                      <Badge variant="outline" className="text-green-600 border-green-600">
+                        <Cloud className="h-3 w-3 mr-1" />
+                        Synced
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline" className="text-orange-600 border-orange-600">
+                        <CloudOff className="h-3 w-3 mr-1" />
+                        Pending
+                      </Badge>
+                    )}
+                  </TableCell>
+                  <TableCell>{format(new Date(training.start_date), "PP")}</TableCell>
+                  <TableCell>{format(new Date(training.end_date), "PP")}</TableCell>
+                  <TableCell>{format(new Date(training.created_at), "PP")}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TabsContent>
+
+        <TabsContent value="daily-assessments" className="space-y-4">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Organization</TableHead>
+                <TableHead>Site</TableHead>
+                <TableHead>Inspector</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Sync</TableHead>
+                <TableHead>Assessment Date</TableHead>
+                <TableHead>Created</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {allDailyAssessments?.map((assessment) => (
+                <TableRow 
+                  key={assessment.id}
+                  className="cursor-pointer hover:bg-muted/50 transition-colors"
+                  onClick={() => navigate(`/daily-assessment/${assessment.id}`)}
+                >
+                  <TableCell>{assessment.organizations?.name || assessment.organization}</TableCell>
+                  <TableCell>{assessment.site || '-'}</TableCell>
+                  <TableCell>
+                    {(assessment as any).inspector?.first_name && (assessment as any).inspector?.last_name
+                      ? `${(assessment as any).inspector.first_name} ${(assessment as any).inspector.last_name}`
+                      : assessment.trainer_of_record || 'Unknown'}
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant={assessment.status === "completed" ? "default" : "secondary"}>
+                      {assessment.status}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    {assessment.synced_at ? (
+                      <Badge variant="outline" className="text-green-600 border-green-600">
+                        <Cloud className="h-3 w-3 mr-1" />
+                        Synced
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline" className="text-orange-600 border-orange-600">
+                        <CloudOff className="h-3 w-3 mr-1" />
+                        Pending
+                      </Badge>
+                    )}
+                  </TableCell>
+                  <TableCell>{format(new Date(assessment.assessment_date), "PP")}</TableCell>
+                  <TableCell>{format(new Date(assessment.created_at), "PP")}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
