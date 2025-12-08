@@ -297,6 +297,7 @@ export default function SuperAdminDashboard() {
         .select("created_at, started_at, updated_at")
         .eq("status", "completed")
         .not("updated_at", "is", null)
+        .not("started_at", "is", null)
         .gte("updated_at", thirtyDaysAgo);
       
       if (error) throw error;
