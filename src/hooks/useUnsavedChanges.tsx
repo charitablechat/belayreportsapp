@@ -1,5 +1,5 @@
-import { useEffect, useCallback, useRef } from "react";
-import { useBlocker } from "react-router-dom";
+import { useEffect, useState, useCallback } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
 
 interface UseUnsavedChangesOptions {
   hasUnsavedChanges: boolean;
@@ -10,15 +10,9 @@ export function useUnsavedChanges({
   hasUnsavedChanges,
   message = "You have unsaved changes. Are you sure you want to leave?",
 }: UseUnsavedChangesOptions) {
-  const blockerRef = useRef<ReturnType<typeof useBlocker> | null>(null);
-
-  // Block in-app navigation using React Router's useBlocker
-  const blocker = useBlocker(
-    ({ currentLocation, nextLocation }) =>
-      hasUnsavedChanges && currentLocation.pathname !== nextLocation.pathname
-  );
-
-  blockerRef.current = blocker;
+  const [pendingNavigation, setPendingNavigation] = useState<string | null>(null);
+  const navigate = useNavigate();
+  const location = useLocation();
 
   // Handle browser back/forward, refresh, and close
   useEffect(() => {
@@ -34,22 +28,32 @@ export function useUnsavedChanges({
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, [hasUnsavedChanges, message]);
 
-  const confirmNavigation = useCallback(() => {
-    if (blocker.state === "blocked") {
-      blocker.proceed();
+  // Intercept navigation attempts
+  const safeNavigate = useCallback((to: string) => {
+    if (hasUnsavedChanges) {
+      setPendingNavigation(to);
+    } else {
+      navigate(to);
     }
-  }, [blocker]);
+  }, [hasUnsavedChanges, navigate]);
+
+  const confirmNavigation = useCallback(() => {
+    if (pendingNavigation) {
+      const destination = pendingNavigation;
+      setPendingNavigation(null);
+      navigate(destination);
+    }
+  }, [pendingNavigation, navigate]);
 
   const cancelNavigation = useCallback(() => {
-    if (blocker.state === "blocked") {
-      blocker.reset();
-    }
-  }, [blocker]);
+    setPendingNavigation(null);
+  }, []);
 
   return {
-    isBlocked: blocker.state === "blocked",
+    isBlocked: pendingNavigation !== null,
     confirmNavigation,
     cancelNavigation,
+    safeNavigate,
     message,
   };
 }
