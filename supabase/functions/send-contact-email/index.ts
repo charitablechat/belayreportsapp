@@ -58,6 +58,41 @@ const handler = async (req: Request): Promise<Response> => {
       );
     }
 
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return new Response(
+        JSON.stringify({ error: "Invalid email format" }),
+        {
+          status: 400,
+          headers: { "Content-Type": "application/json", ...corsHeaders },
+        }
+      );
+    }
+
+    // Validate name length
+    if (name.length > 100) {
+      return new Response(
+        JSON.stringify({ error: "Name too long (max 100 characters)" }),
+        {
+          status: 400,
+          headers: { "Content-Type": "application/json", ...corsHeaders },
+        }
+      );
+    }
+
+    // Validate subject (must be one of allowed values)
+    const allowedSubjects = ['bug', 'feature', 'question', 'other'];
+    if (!allowedSubjects.includes(subject)) {
+      return new Response(
+        JSON.stringify({ error: "Invalid subject type" }),
+        {
+          status: 400,
+          headers: { "Content-Type": "application/json", ...corsHeaders },
+        }
+      );
+    }
+
     // Validate message length
     if (message.length > 1000) {
       return new Response(
