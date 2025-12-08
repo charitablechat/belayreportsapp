@@ -3,8 +3,10 @@ import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useFormConfiguration } from "@/hooks/useFormConfiguration";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Save, FileText, Loader2 } from "lucide-react";
+import { ArrowLeft, Save, FileText, Loader2, WifiOff, Check } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Badge } from "@/components/ui/badge";
+import { AutoSaveIndicator } from "@/components/AutoSaveIndicator";
 import DailyAssessmentHeader from "@/components/daily-assessment/DailyAssessmentHeader";
 import BeginningOfDaySection from "@/components/daily-assessment/BeginningOfDaySection";
 import EndOfDaySection from "@/components/daily-assessment/EndOfDaySection";
@@ -30,6 +32,7 @@ export default function DailyAssessmentForm() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [generating, setGenerating] = useState(false);
   const [assessment, setAssessment] = useState<any>(null);
   const [beginningOfDay, setBeginningOfDay] = useState<any[]>([]);
@@ -171,6 +174,7 @@ export default function DailyAssessmentForm() {
         // Update synced_at
         updatedAssessment.synced_at = new Date().toISOString();
         await saveDailyAssessmentOffline(updatedAssessment);
+        setLastSaved(new Date());
       } else {
         // Queue for sync
         await queueAssessmentOperation('update', id!, updatedAssessment);
@@ -348,10 +352,23 @@ export default function DailyAssessmentForm() {
       />
       <div className="container mx-auto px-4 py-8 max-w-5xl">
       <div className="flex items-center justify-between mb-6">
-        <Button variant="ghost" onClick={() => navigate('/dashboard')}>
-          <ArrowLeft className={isMobileView ? "h-4 w-4" : "mr-2 h-4 w-4"} />
-          {!isMobileView && "Back to Dashboard"}
-        </Button>
+        <div className="flex items-center gap-3">
+          <Button variant="ghost" onClick={() => navigate('/dashboard')}>
+            <ArrowLeft className={isMobileView ? "h-4 w-4" : "mr-2 h-4 w-4"} />
+            {!isMobileView && "Back to Dashboard"}
+          </Button>
+          {!navigator.onLine && (
+            <Badge variant="secondary" className="gap-1">
+              <WifiOff className="h-3 w-3" />
+              <span className="hidden sm:inline">Offline</span>
+            </Badge>
+          )}
+          <AutoSaveIndicator
+            lastSaved={lastSaved}
+            isSaving={saving}
+            hasUnsavedChanges={hasUnsavedChanges}
+          />
+        </div>
         <div className="flex gap-2">
           <Button onClick={handleGenerateReport} disabled={generating} variant="outline">
             <FileText className={isMobileView ? "h-4 w-4" : "mr-2 h-4 w-4"} />
