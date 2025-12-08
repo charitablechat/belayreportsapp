@@ -286,24 +286,30 @@ export default function SuperAdminDashboard() {
     enabled: !loading,
   });
 
-  // Average completion time query
+  // Average completion time query (last 30 days only, uses started_at if available)
   const { data: avgCompletionTime } = useQuery({
     queryKey: ["avg-completion-time"],
     queryFn: async () => {
+      const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+      
       const { data, error } = await supabase
         .from("inspections")
-        .select("created_at, updated_at")
+        .select("created_at, started_at, updated_at")
         .eq("status", "completed")
-        .not("updated_at", "is", null);
+        .not("updated_at", "is", null)
+        .gte("updated_at", thirtyDaysAgo);
       
       if (error) throw error;
       
       if (!data || data.length === 0) return 0;
       
       const totalHours = data.reduce((sum, inspection) => {
-        const created = new Date(inspection.created_at).getTime();
-        const updated = new Date(inspection.updated_at).getTime();
-        return sum + (updated - created) / (1000 * 60 * 60);
+        // Use started_at if available, otherwise fall back to created_at
+        const startTime = inspection.started_at 
+          ? new Date(inspection.started_at).getTime()
+          : new Date(inspection.created_at).getTime();
+        const endTime = new Date(inspection.updated_at).getTime();
+        return sum + (endTime - startTime) / (1000 * 60 * 60);
       }, 0);
       
       return totalHours / data.length;
