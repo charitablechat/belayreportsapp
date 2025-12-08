@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Building2, Users, FileText, Bell, AlertTriangle, Radio, UserPlus, Pencil, Trash2, ClipboardList, ArrowLeft, Merge, Clock, TrendingUp, Calendar, UserCheck, Wrench, Loader2, Image, Shield, ShieldOff, GraduationCap, ClipboardCheck, Check, Cloud, CloudOff } from "lucide-react";
+import { Building2, Users, FileText, Bell, AlertTriangle, UserPlus, Pencil, Trash2, ClipboardList, ArrowLeft, Merge, Clock, Calendar, Wrench, Loader2, Image, Shield, ShieldOff, GraduationCap, ClipboardCheck, Check, Cloud, CloudOff } from "lucide-react";
 import { format } from "date-fns";
 import { useNavigate } from "react-router-dom";
 import { useState } from "react";
@@ -63,7 +63,6 @@ export default function SuperAdminDashboard() {
         { data: inspectionsByStatus },
         { count: notificationsCount },
         { count: conflictsCount },
-        { count: subscriptionsCount },
         { count: trainingsCount },
         { data: trainingsByStatus },
         { count: dailyAssessmentsCount },
@@ -74,7 +73,6 @@ export default function SuperAdminDashboard() {
         supabase.from("inspections").select("status"),
         supabase.from("notifications_log").select("*", { count: "exact", head: true }).gte("sent_at", new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()),
         supabase.from("sync_conflicts").select("*", { count: "exact", head: true }).eq("resolved", false),
-        supabase.from("push_subscriptions").select("*", { count: "exact", head: true }),
         supabase.from("trainings").select("*", { count: "exact", head: true }),
         supabase.from("trainings").select("status"),
         supabase.from("daily_assessments").select("*", { count: "exact", head: true }),
@@ -107,7 +105,6 @@ export default function SuperAdminDashboard() {
         dailyStatusCounts: dailyStatusCounts || {},
         recentNotifications: notificationsCount || 0,
         unresolvedConflicts: conflictsCount || 0,
-        activeSubscriptions: subscriptionsCount || 0,
       };
     },
     enabled: !loading && managedUsers !== undefined,
@@ -314,29 +311,6 @@ export default function SuperAdminDashboard() {
     enabled: !loading,
   });
 
-  // Completion rate query
-  const { data: completionRate } = useQuery({
-    queryKey: ["completion-rate"],
-    queryFn: async () => {
-      const { count: totalCount, error: totalError } = await supabase
-        .from("inspections")
-        .select("*", { count: "exact", head: true });
-      
-      const { count: completedCount, error: completedError } = await supabase
-        .from("inspections")
-        .select("*", { count: "exact", head: true })
-        .eq("status", "completed");
-      
-      if (totalError || completedError) throw totalError || completedError;
-      
-      const total = totalCount || 0;
-      const completed = completedCount || 0;
-      
-      return total > 0 ? (completed / total) * 100 : 0;
-    },
-    enabled: !loading,
-  });
-
   // Inspections this month query
   const { data: inspectionsThisMonth } = useQuery({
     queryKey: ["inspections-this-month"],
@@ -351,22 +325,6 @@ export default function SuperAdminDashboard() {
       
       if (error) throw error;
       return count || 0;
-    },
-    enabled: !loading,
-  });
-
-  // Active inspectors query
-  const { data: activeInspectors } = useQuery({
-    queryKey: ["active-inspectors"],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("inspections")
-        .select("inspector_id");
-      
-      if (error) throw error;
-      
-      const uniqueInspectors = new Set(data?.map(i => i.inspector_id) || []);
-      return uniqueInspectors.size;
     },
     enabled: !loading,
   });
@@ -530,8 +488,8 @@ export default function SuperAdminDashboard() {
         </div>
       </div>
 
-      {/* Overview Stats */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      {/* Overview Stats - Row 1 */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         <StatCard
           title="Organizations"
           value={stats?.organizations || 0}
@@ -579,111 +537,10 @@ export default function SuperAdminDashboard() {
             tip: "Click to view all inspections"
           }}
         />
-        <StatCard
-          title="Recent Notifications"
-          value={stats?.recentNotifications || 0}
-          icon={Bell}
-          description="Last 7 days"
-          hoverContent={{
-            title: "Push Notifications",
-            description: "Notifications sent to users in the last 7 days.",
-            details: [
-              { label: "Weekly total", value: stats?.recentNotifications || 0 },
-              { label: "Daily average", value: ((stats?.recentNotifications || 0) / 7).toFixed(1) },
-            ],
-            tip: "View the Notifications tab for details"
-          }}
-        />
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <StatCard
-          title="Unresolved Conflicts"
-          value={stats?.unresolvedConflicts || 0}
-          icon={AlertTriangle}
-          hoverContent={{
-            title: "Sync Conflicts",
-            description: "Data conflicts from offline sync that require manual resolution.",
-            details: [
-              { label: "Pending", value: stats?.unresolvedConflicts || 0 },
-            ],
-            tip: stats?.unresolvedConflicts > 0 ? "Resolve these to prevent data loss" : "No conflicts to resolve"
-          }}
-        />
-        <StatCard
-          title="Active Subscriptions"
-          value={stats?.activeSubscriptions || 0}
-          icon={Radio}
-          hoverContent={{
-            title: "Push Subscriptions",
-            description: "Devices registered to receive push notifications.",
-            details: [
-              { label: "Subscribed devices", value: stats?.activeSubscriptions || 0 },
-            ],
-            tip: "Users can subscribe from their profile settings"
-          }}
-        />
-        <StatCard
-          title="Avg Completion Time"
-          value={avgCompletionTime ? `${avgCompletionTime.toFixed(1)}h` : "0h"}
-          icon={Clock}
-          description="Average time to complete"
-          hoverContent={{
-            title: "Inspection Duration",
-            description: "Average time from inspection creation to completion.",
-            details: [
-              { label: "Average", value: avgCompletionTime ? `${avgCompletionTime.toFixed(1)} hours` : "N/A" },
-            ],
-            tip: "Based on completed inspections only"
-          }}
-        />
-        <StatCard
-          title="Completion Rate"
-          value={completionRate ? `${completionRate.toFixed(1)}%` : "0%"}
-          icon={TrendingUp}
-          description="Completed inspections"
-          hoverContent={{
-            title: "Report Completion",
-            description: "Percentage of all inspections marked as complete.",
-            details: [
-              { label: "Completed", value: stats?.statusCounts?.completed || 0 },
-              { label: "Total reports", value: stats?.inspections || 0 },
-            ],
-            tip: completionRate && completionRate >= 80 ? "Great completion rate!" : "Encourage inspectors to complete drafts"
-          }}
-        />
-      </div>
-
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <StatCard
-          title="This Month"
-          value={inspectionsThisMonth || 0}
-          icon={Calendar}
-          description="Inspections created"
-          hoverContent={{
-            title: "Monthly Activity",
-            description: "Inspections created in the current calendar month.",
-            details: [
-              { label: "This month", value: inspectionsThisMonth || 0 },
-            ],
-            tip: "Track monthly trends over time"
-          }}
-        />
-        <StatCard
-          title="Active Inspectors"
-          value={activeInspectors || 0}
-          icon={UserCheck}
-          description="Unique inspectors"
-          hoverContent={{
-            title: "Inspector Activity",
-            description: "Unique inspectors who have created at least one inspection.",
-            details: [
-              { label: "Active inspectors", value: activeInspectors || 0 },
-              { label: "Total users", value: stats?.users || 0 },
-            ],
-            tip: "Inspectors with completed reports"
-          }}
-        />
+      {/* Overview Stats - Row 2 */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         <StatCard
           title="Training Reports"
           value={stats?.trainings || 0}
@@ -713,6 +570,66 @@ export default function SuperAdminDashboard() {
               { label: "Draft", value: stats?.dailyStatusCounts?.draft || 0 },
             ],
             tip: "Regular assessments ensure safety compliance"
+          }}
+        />
+        <StatCard
+          title="Recent Notifications"
+          value={stats?.recentNotifications || 0}
+          icon={Bell}
+          description="Last 7 days"
+          hoverContent={{
+            title: "Push Notifications",
+            description: "Notifications sent to users in the last 7 days.",
+            details: [
+              { label: "Weekly total", value: stats?.recentNotifications || 0 },
+              { label: "Daily average", value: ((stats?.recentNotifications || 0) / 7).toFixed(1) },
+            ],
+            tip: "View the Notifications tab for details"
+          }}
+        />
+      </div>
+
+      {/* Overview Stats - Row 3 */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <StatCard
+          title="Unresolved Conflicts"
+          value={stats?.unresolvedConflicts || 0}
+          icon={AlertTriangle}
+          hoverContent={{
+            title: "Sync Conflicts",
+            description: "Data conflicts from offline sync that require manual resolution.",
+            details: [
+              { label: "Pending", value: stats?.unresolvedConflicts || 0 },
+            ],
+            tip: stats?.unresolvedConflicts > 0 ? "Resolve these to prevent data loss" : "No conflicts to resolve"
+          }}
+        />
+        <StatCard
+          title="Avg Completion Time"
+          value={avgCompletionTime ? `${avgCompletionTime.toFixed(1)}h` : "0h"}
+          icon={Clock}
+          description="Average time to complete"
+          hoverContent={{
+            title: "Inspection Duration",
+            description: "Average time from inspection creation to completion.",
+            details: [
+              { label: "Average", value: avgCompletionTime ? `${avgCompletionTime.toFixed(1)} hours` : "N/A" },
+            ],
+            tip: "Based on completed inspections only"
+          }}
+        />
+        <StatCard
+          title="This Month"
+          value={inspectionsThisMonth || 0}
+          icon={Calendar}
+          description="Inspections created"
+          hoverContent={{
+            title: "Monthly Activity",
+            description: "Inspections created in the current calendar month.",
+            details: [
+              { label: "This month", value: inspectionsThisMonth || 0 },
+            ],
+            tip: "Track monthly trends over time"
           }}
         />
       </div>
