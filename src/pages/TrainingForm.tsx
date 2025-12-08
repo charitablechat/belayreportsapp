@@ -31,6 +31,7 @@ import { triggerCompletionConfetti } from "@/lib/confetti";
 import { triggerHaptic } from "@/lib/haptics";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useSwipeNavigation } from "@/hooks/useSwipeNavigation";
+import { SwipeBackIndicator } from "@/components/SwipeBackIndicator";
 import { FloatingActionButton } from "@/components/ui/floating-action-button";
 import { Check } from "lucide-react";
 import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
@@ -70,8 +71,10 @@ export default function TrainingForm() {
   const tabOrder = ["info", "delivery", "systems", "attention", "verifiable", "summary"];
   
   // Swipe navigation for mobile (swipe right on first tab navigates back)
-  const swipeContainerRef = useSwipeNavigation({
+  const isFirstTab = currentTab === tabOrder[0];
+  const { containerRef: swipeContainerRef, swipeState } = useSwipeNavigation({
     enabled: isMobile,
+    isFirstTab,
     onSwipeLeft: () => {
       const currentIndex = tabOrder.indexOf(currentTab);
       if (currentIndex < tabOrder.length - 1) {
@@ -781,6 +784,14 @@ export default function TrainingForm() {
 
       {/* Main Content */}
       <div className="container mx-auto px-4 py-8">
+        {/* Swipe back indicator for mobile */}
+        {isMobile && isFirstTab && (
+          <SwipeBackIndicator 
+            progress={swipeState.swipeProgress} 
+            isActive={swipeState.isSwipingBack} 
+          />
+        )}
+
         <Tabs value={currentTab} onValueChange={setCurrentTab} className="space-y-6">
           <div ref={swipeContainerRef}>
             <TabsList className="grid w-full grid-cols-4 lg:grid-cols-6">
