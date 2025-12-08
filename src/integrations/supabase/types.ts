@@ -810,6 +810,7 @@ export type Database = {
           organization_id: string | null
           previous_inspection_date: string | null
           previous_inspector: string | null
+          started_at: string | null
           status: string
           synced_at: string | null
           updated_at: string | null
@@ -830,6 +831,7 @@ export type Database = {
           organization_id?: string | null
           previous_inspection_date?: string | null
           previous_inspector?: string | null
+          started_at?: string | null
           status?: string
           synced_at?: string | null
           updated_at?: string | null
@@ -850,6 +852,7 @@ export type Database = {
           organization_id?: string | null
           previous_inspection_date?: string | null
           previous_inspector?: string | null
+          started_at?: string | null
           status?: string
           synced_at?: string | null
           updated_at?: string | null
