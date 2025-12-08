@@ -658,7 +658,7 @@ export default function SuperAdminDashboard() {
           <TabsTrigger value="form-cms" className="justify-start">Form CMS</TabsTrigger>
           <TabsTrigger value="notifications" className="justify-start">Notifications</TabsTrigger>
           <TabsTrigger value="conflicts" className="justify-start">Conflicts</TabsTrigger>
-          <TabsTrigger value="subscriptions" className="justify-start">Subscriptions</TabsTrigger>
+          
           <TabsTrigger value="maintenance" className="justify-start">Maintenance</TabsTrigger>
         </TabsList>
 
