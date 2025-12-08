@@ -37,6 +37,12 @@ export default function SuperAdminDashboard() {
   const [isOrgsListOpen, setIsOrgsListOpen] = useState(false);
   const [isInspectionsListOpen, setIsInspectionsListOpen] = useState(false);
   const [isCleaningUp, setIsCleaningUp] = useState(false);
+  
+  // Pagination states for dialogs
+  const [usersPage, setUsersPage] = useState(1);
+  const [orgsPage, setOrgsPage] = useState(1);
+  const [inspectionsPage, setInspectionsPage] = useState(1);
+  const ITEMS_PER_PAGE = 10;
 
   // Managed users query
   const { data: managedUsers, refetch: refetchUsers } = useQuery({
@@ -1112,10 +1118,10 @@ export default function SuperAdminDashboard() {
       </Tabs>
 
       {/* Users List Dialog */}
-      <Dialog open={isUsersListOpen} onOpenChange={setIsUsersListOpen}>
+      <Dialog open={isUsersListOpen} onOpenChange={(open) => { setIsUsersListOpen(open); if (!open) setUsersPage(1); }}>
         <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>All Users</DialogTitle>
+            <DialogTitle>All Users ({managedUsers?.length || 0})</DialogTitle>
           </DialogHeader>
           <Table>
             <TableHeader>
@@ -1128,7 +1134,7 @@ export default function SuperAdminDashboard() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {managedUsers?.map((user: any) => (
+              {managedUsers?.slice((usersPage - 1) * ITEMS_PER_PAGE, usersPage * ITEMS_PER_PAGE).map((user: any) => (
                 <TableRow key={user.id}>
                   <TableCell className="font-medium">{user.email}</TableCell>
                   <TableCell>
@@ -1155,14 +1161,29 @@ export default function SuperAdminDashboard() {
               ))}
             </TableBody>
           </Table>
+          {managedUsers && managedUsers.length > ITEMS_PER_PAGE && (
+            <div className="flex items-center justify-between pt-4 border-t">
+              <span className="text-sm text-muted-foreground">
+                Showing {((usersPage - 1) * ITEMS_PER_PAGE) + 1}-{Math.min(usersPage * ITEMS_PER_PAGE, managedUsers.length)} of {managedUsers.length}
+              </span>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" onClick={() => setUsersPage(p => Math.max(1, p - 1))} disabled={usersPage === 1}>
+                  Previous
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => setUsersPage(p => p + 1)} disabled={usersPage * ITEMS_PER_PAGE >= managedUsers.length}>
+                  Next
+                </Button>
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
 
       {/* Organizations List Dialog */}
-      <Dialog open={isOrgsListOpen} onOpenChange={setIsOrgsListOpen}>
+      <Dialog open={isOrgsListOpen} onOpenChange={(open) => { setIsOrgsListOpen(open); if (!open) setOrgsPage(1); }}>
         <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>All Organizations</DialogTitle>
+            <DialogTitle>All Organizations ({organizations?.length || 0})</DialogTitle>
           </DialogHeader>
           <Table>
             <TableHeader>
@@ -1174,7 +1195,7 @@ export default function SuperAdminDashboard() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {organizations?.map((org: any) => (
+              {organizations?.slice((orgsPage - 1) * ITEMS_PER_PAGE, orgsPage * ITEMS_PER_PAGE).map((org: any) => (
                 <TableRow key={org.id}>
                   <TableCell className="font-medium">{org.name}</TableCell>
                   <TableCell>{org.organization_members?.[0]?.count || 0}</TableCell>
@@ -1184,14 +1205,29 @@ export default function SuperAdminDashboard() {
               ))}
             </TableBody>
           </Table>
+          {organizations && organizations.length > ITEMS_PER_PAGE && (
+            <div className="flex items-center justify-between pt-4 border-t">
+              <span className="text-sm text-muted-foreground">
+                Showing {((orgsPage - 1) * ITEMS_PER_PAGE) + 1}-{Math.min(orgsPage * ITEMS_PER_PAGE, organizations.length)} of {organizations.length}
+              </span>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" onClick={() => setOrgsPage(p => Math.max(1, p - 1))} disabled={orgsPage === 1}>
+                  Previous
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => setOrgsPage(p => p + 1)} disabled={orgsPage * ITEMS_PER_PAGE >= organizations.length}>
+                  Next
+                </Button>
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
 
       {/* Inspections List Dialog */}
-      <Dialog open={isInspectionsListOpen} onOpenChange={setIsInspectionsListOpen}>
+      <Dialog open={isInspectionsListOpen} onOpenChange={(open) => { setIsInspectionsListOpen(open); if (!open) setInspectionsPage(1); }}>
         <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>All Inspections</DialogTitle>
+            <DialogTitle>All Inspections ({allInspections?.length || 0})</DialogTitle>
           </DialogHeader>
           <Table>
             <TableHeader>
@@ -1203,7 +1239,7 @@ export default function SuperAdminDashboard() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {allInspections?.map((inspection) => (
+              {allInspections?.slice((inspectionsPage - 1) * ITEMS_PER_PAGE, inspectionsPage * ITEMS_PER_PAGE).map((inspection) => (
                 <TableRow key={inspection.id}>
                   <TableCell className="font-medium">{inspection.organization}</TableCell>
                   <TableCell>{inspection.location}</TableCell>
@@ -1217,6 +1253,21 @@ export default function SuperAdminDashboard() {
               ))}
             </TableBody>
           </Table>
+          {allInspections && allInspections.length > ITEMS_PER_PAGE && (
+            <div className="flex items-center justify-between pt-4 border-t">
+              <span className="text-sm text-muted-foreground">
+                Showing {((inspectionsPage - 1) * ITEMS_PER_PAGE) + 1}-{Math.min(inspectionsPage * ITEMS_PER_PAGE, allInspections.length)} of {allInspections.length}
+              </span>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" onClick={() => setInspectionsPage(p => Math.max(1, p - 1))} disabled={inspectionsPage === 1}>
+                  Previous
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => setInspectionsPage(p => p + 1)} disabled={inspectionsPage * ITEMS_PER_PAGE >= allInspections.length}>
+                  Next
+                </Button>
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
 
