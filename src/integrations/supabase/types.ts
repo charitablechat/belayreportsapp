@@ -922,6 +922,7 @@ export type Database = {
           id: string
           inspection_completed: boolean | null
           sync_conflicts: boolean | null
+          training_completed: boolean | null
           updated_at: string | null
           user_id: string
         }
@@ -930,6 +931,7 @@ export type Database = {
           id?: string
           inspection_completed?: boolean | null
           sync_conflicts?: boolean | null
+          training_completed?: boolean | null
           updated_at?: string | null
           user_id: string
         }
@@ -938,6 +940,7 @@ export type Database = {
           id?: string
           inspection_completed?: boolean | null
           sync_conflicts?: boolean | null
+          training_completed?: boolean | null
           updated_at?: string | null
           user_id?: string
         }
