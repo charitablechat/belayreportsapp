@@ -25,7 +25,7 @@ const Index = () => {
                 if (expiresAt && expiresAt * 1000 > Date.now()) {
                   console.log('[Auth] Valid cached session found, navigating to dashboard');
                   setSession(parsed);
-                  navigate("/dashboard");
+                  navigate("/dashboard", { replace: true });
                   return;
                 }
               }
@@ -52,9 +52,9 @@ const Index = () => {
             timeoutPromise
           ]) as any;
 
-          if (!error && session) {
+        if (!error && session) {
             setSession(session);
-            navigate("/dashboard");
+            navigate("/dashboard", { replace: true });
             return;
           }
         } catch (authError) {
@@ -71,7 +71,7 @@ const Index = () => {
                 const expiresAt = parsed.expires_at;
                 if (expiresAt && expiresAt * 1000 > Date.now()) {
                   setSession(parsed);
-                  navigate("/dashboard");
+                  navigate("/dashboard", { replace: true });
                   return;
                 }
               }
@@ -92,7 +92,7 @@ const Index = () => {
       (_event, session) => {
         setSession(session);
         if (session) {
-          navigate("/dashboard");
+          navigate("/dashboard", { replace: true });
         }
       }
     );

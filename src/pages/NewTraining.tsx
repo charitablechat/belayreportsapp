@@ -12,7 +12,7 @@ export default function NewTraining() {
         const { data: { user } } = await supabase.auth.getUser();
         
         if (!user) {
-          navigate("/");
+          navigate("/", { replace: true });
           return;
         }
 
@@ -48,10 +48,10 @@ export default function NewTraining() {
 
         if (error) throw error;
 
-        navigate(`/training/${data.id}`);
+        navigate(`/training/${data.id}`, { replace: true });
       } catch (error) {
         console.error('Error creating training:', error);
-        navigate("/dashboard");
+        navigate("/dashboard", { replace: true });
       }
     };
 

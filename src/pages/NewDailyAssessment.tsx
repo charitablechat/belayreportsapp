@@ -12,7 +12,7 @@ export default function NewDailyAssessment() {
         const { data: { user } } = await supabase.auth.getUser();
         
         if (!user) {
-          navigate("/");
+          navigate("/", { replace: true });
           return;
         }
 
@@ -66,10 +66,10 @@ export default function NewDailyAssessment() {
           await queueAssessmentOperation('create', assessmentId, newAssessment);
         }
 
-        navigate(`/daily-assessment/${assessmentId}`);
+        navigate(`/daily-assessment/${assessmentId}`, { replace: true });
       } catch (error) {
         console.error('Error creating daily assessment:', error);
-        navigate("/dashboard");
+        navigate("/dashboard", { replace: true });
       }
     };
 
