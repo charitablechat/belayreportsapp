@@ -8,6 +8,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { ArrowLeft, Save, CheckCircle, Loader2, WifiOff, CloudOff, LogOut, User, FileText } from "lucide-react";
 import { UserAvatar } from "@/components/ui/user-avatar";
+import { AutoSaveIndicator } from "@/components/AutoSaveIndicator";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -1387,36 +1388,13 @@ export default function InspectionForm() {
                 </Badge>
               )}
               <SyncStatusIndicator />
-              <div className="text-xs hidden sm:block">
-                {saveError && (
-                  <div className="flex items-center gap-1 text-destructive">
-                    <span>⚠️ {saveError}</span>
-                    <Button 
-                      variant="ghost" 
-                      size="sm" 
-                      className="h-5 px-2 text-xs"
-                      onClick={saveProgress}
-                    >
-                      Retry
-                    </Button>
-                  </div>
-                )}
-                {!saveError && autoSaving && (
-                  <span className="flex items-center gap-1 text-blue-600">
-                    <Loader2 className="w-3 h-3 animate-spin" />
-                    Saving...
-                  </span>
-                )}
-                {!saveError && !autoSaving && lastSaved && (
-                  <span className="text-green-600 flex items-center gap-1">
-                    <CheckCircle className="w-3 h-3" />
-                    Saved {formatTime(lastSaved)}
-                  </span>
-                )}
-                {!saveError && !autoSaving && !lastSaved && hasUnsavedChanges && (
-                  <span className="text-yellow-600">Unsaved changes</span>
-                )}
-              </div>
+              <AutoSaveIndicator
+                lastSaved={lastSaved}
+                isSaving={autoSaving}
+                hasUnsavedChanges={hasUnsavedChanges}
+                error={saveError}
+                className="hidden sm:flex"
+              />
             </div>
             
             <div className="flex items-center gap-2">

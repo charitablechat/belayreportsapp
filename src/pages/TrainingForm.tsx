@@ -6,6 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, Save, FileDown, FileText, ChevronLeft, WifiOff, Wifi, Mail, CheckCircle } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { AutoSaveIndicator } from "@/components/AutoSaveIndicator";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -696,11 +697,11 @@ export default function TrainingForm() {
                   Online
                 </Badge>
               )}
-              {lastSaved && (
-                <span className="text-sm text-muted-foreground">
-                  Saved {lastSaved.toLocaleTimeString()}
-                </span>
-              )}
+              <AutoSaveIndicator
+                lastSaved={lastSaved}
+                isSaving={isSaving}
+                hasUnsavedChanges={hasUnsavedChanges}
+              />
               <Button
                 onClick={saveTraining}
                 disabled={isSaving || !isOnline}
