@@ -6,13 +6,16 @@ import { ComponentProps } from 'react';
 
 interface VoiceInputProps extends ComponentProps<typeof Input> {
   onValueChange?: (value: string) => void;
+  onEnter?: () => void;
 }
 
 export const VoiceInput = ({ 
   value, 
   onChange, 
   onValueChange,
+  onEnter,
   className,
+  onKeyDown,
   ...props 
 }: VoiceInputProps) => {
   const { isListening, isSupported, toggleListening } = useSpeechToText({
@@ -38,6 +41,13 @@ export const VoiceInput = ({
         value={value}
         onChange={onChange}
         className={cn('pr-10', className)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && onEnter) {
+            e.preventDefault();
+            onEnter();
+          }
+          onKeyDown?.(e);
+        }}
         {...props}
       />
       <div className="absolute right-2 top-1/2 -translate-y-1/2">
