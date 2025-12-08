@@ -11,6 +11,7 @@ export const PushNotificationManager = () => {
   const { isSupported, isSubscribed, isLoading, permission, subscribe, unsubscribe } = usePushNotifications();
   const [preferences, setPreferences] = useState({
     inspection_completed: true,
+    training_completed: true,
     sync_conflicts: true,
   });
   const [loadingPrefs, setLoadingPrefs] = useState(true);
@@ -37,6 +38,7 @@ export const PushNotificationManager = () => {
       if (data) {
         setPreferences({
           inspection_completed: data.inspection_completed ?? true,
+          training_completed: data.training_completed ?? true,
           sync_conflicts: data.sync_conflicts ?? true,
         });
       }
@@ -143,6 +145,18 @@ export const PushNotificationManager = () => {
                 id="inspection-completed"
                 checked={preferences.inspection_completed}
                 onCheckedChange={(checked) => updatePreference('inspection_completed', checked)}
+                disabled={loadingPrefs}
+              />
+            </div>
+
+            <div className="flex items-center justify-between">
+              <Label htmlFor="training-completed" className="cursor-pointer">
+                Training Completed
+              </Label>
+              <Switch
+                id="training-completed"
+                checked={preferences.training_completed}
+                onCheckedChange={(checked) => updatePreference('training_completed', checked)}
                 disabled={loadingPrefs}
               />
             </div>
