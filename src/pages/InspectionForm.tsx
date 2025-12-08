@@ -53,6 +53,7 @@ import { FloatingActionButton } from "@/components/ui/floating-action-button";
 import { Check } from "lucide-react";
 import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
 import { UnsavedChangesDialog } from "@/components/UnsavedChangesDialog";
+import { useSaveShortcut } from "@/hooks/useKeyboardShortcuts";
 
 export default function InspectionForm() {
   const { id } = useParams();
@@ -136,7 +137,9 @@ export default function InspectionForm() {
     message: "You have unsaved changes to this inspection. Are you sure you want to leave?",
   });
 
-  // Auto-generate summary content from inspection results
+  // Keyboard shortcut ref for save (actual function set later)
+  const saveRef = useRef<(() => void) | null>(null);
+  useSaveShortcut(() => saveRef.current?.(), hasUnsavedChanges && !saving);
   const generateSummaryFromInspection = () => {
     const criticalActions: string[] = [];
     const repairsPerformed: string[] = [];
@@ -963,6 +966,11 @@ export default function InspectionForm() {
       setSaving(false);
     }
   };
+
+  // Set save ref for keyboard shortcut
+  useEffect(() => {
+    saveRef.current = saveProgress;
+  });
 
   const completeInspection = async () => {
     // Strict validation before completion - require ALL equipment to have types
