@@ -29,3 +29,6 @@ verify_jwt = false
 
 [functions.extract-names]
 verify_jwt = false
+
+[functions.migrate-field-history]
+verify_jwt = true
