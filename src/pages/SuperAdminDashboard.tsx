@@ -1113,7 +1113,7 @@ export default function SuperAdminDashboard() {
 
       {/* Users List Dialog */}
       <Dialog open={isUsersListOpen} onOpenChange={setIsUsersListOpen}>
-        <DialogContent className="max-w-4xl max-h-[80vh] md:overflow-y-visible max-md:overflow-y-auto">
+        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>All Users</DialogTitle>
           </DialogHeader>
