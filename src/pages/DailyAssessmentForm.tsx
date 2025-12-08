@@ -20,6 +20,7 @@ import { triggerCompletionConfetti } from "@/lib/confetti";
 import { triggerHaptic } from "@/lib/haptics";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useSwipeNavigation } from "@/hooks/useSwipeNavigation";
+import { SwipeBackIndicator } from "@/components/SwipeBackIndicator";
 import { FloatingActionButton } from "@/components/ui/floating-action-button";
 import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
 import { UnsavedChangesDialog } from "@/components/UnsavedChangesDialog";
@@ -49,8 +50,10 @@ export default function DailyAssessmentForm() {
   const tabOrder = ["beginning", "end", "systems", "equipment", "structure", "environment"];
   
   // Swipe navigation for mobile (swipe right on first tab navigates back)
-  const swipeContainerRef = useSwipeNavigation({
+  const isFirstTab = currentTab === tabOrder[0];
+  const { containerRef: swipeContainerRef, swipeState } = useSwipeNavigation({
     enabled: isMobileView,
+    isFirstTab,
     onSwipeLeft: () => {
       const currentIndex = tabOrder.indexOf(currentTab);
       if (currentIndex < tabOrder.length - 1) {
@@ -385,6 +388,14 @@ export default function DailyAssessmentForm() {
 
       <div className="space-y-6">
         <DailyAssessmentHeader assessment={assessment} onUpdate={handleUpdateAssessment} />
+
+        {/* Swipe back indicator for mobile */}
+        {isMobileView && isFirstTab && (
+          <SwipeBackIndicator 
+            progress={swipeState.swipeProgress} 
+            isActive={swipeState.isSwipingBack} 
+          />
+        )}
 
         <Tabs value={currentTab} onValueChange={setCurrentTab} className="w-full">
           <div ref={swipeContainerRef}>
