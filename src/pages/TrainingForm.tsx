@@ -36,6 +36,7 @@ import { FloatingActionButton } from "@/components/ui/floating-action-button";
 import { Check } from "lucide-react";
 import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
 import { UnsavedChangesDialog } from "@/components/UnsavedChangesDialog";
+import { useSaveShortcut } from "@/hooks/useKeyboardShortcuts";
 
 export default function TrainingForm() {
   const { id } = useParams();
@@ -96,6 +97,9 @@ export default function TrainingForm() {
     hasUnsavedChanges,
     message: "You have unsaved changes to this training report. Are you sure you want to leave?",
   });
+
+  // Keyboard shortcut for save (Ctrl/Cmd+S)
+  useSaveShortcut(() => saveTraining(), hasUnsavedChanges && !isSaving);
 
   // Auto-populate person submitting and submission date
   useEffect(() => {

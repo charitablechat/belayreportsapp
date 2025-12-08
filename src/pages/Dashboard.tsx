@@ -35,6 +35,7 @@ import { usePWA } from "@/hooks/usePWA";
 import { usePullToRefresh } from "@/hooks/usePullToRefresh";
 import { getOfflineInspections, deleteOfflineInspection, queueOperation } from "@/lib/offline-storage";
 import { ContactDeveloperSheet } from "@/components/ContactDeveloperSheet";
+import { InspectionsEmptyState, TrainingsEmptyState, DailyAssessmentsEmptyState } from "@/components/EmptyState";
 import { getUserWithCache } from "@/lib/cached-auth";
 import {
   AlertDialog,
@@ -774,18 +775,13 @@ export default function Dashboard() {
                   </div>
                 ) : inspections.length === 0 ? (
                   <Card>
-                    <CardContent className="py-12 text-center">
-                      <FileText className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-                      <p className="text-muted-foreground">No inspections yet</p>
-                      <GradientButton 
-                        onClick={() => {
+                    <CardContent className="p-0">
+                      <InspectionsEmptyState 
+                        onAction={() => {
                           triggerHaptic('light');
                           navigate("/inspection/new");
-                        }} 
-                        className="mt-4"
-                      >
-                        Create your first inspection
-                      </GradientButton>
+                        }}
+                      />
                     </CardContent>
                   </Card>
                 ) : (
@@ -833,18 +829,13 @@ export default function Dashboard() {
                   </div>
                 ) : trainings.length === 0 ? (
                   <Card>
-                    <CardContent className="py-12 text-center">
-                      <GraduationCap className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-                      <p className="text-muted-foreground">No training reports yet</p>
-                      <GradientButton 
-                        onClick={() => {
+                    <CardContent className="p-0">
+                      <TrainingsEmptyState 
+                        onAction={() => {
                           triggerHaptic('light');
                           navigate("/training/new");
-                        }} 
-                        className="mt-4"
-                      >
-                        Create your first training report
-                      </GradientButton>
+                        }}
+                      />
                     </CardContent>
                   </Card>
                 ) : (
@@ -891,16 +882,13 @@ export default function Dashboard() {
                   </div>
                 ) : dailyAssessments.length === 0 ? (
                   <Card>
-                    <CardContent className="py-12 text-center">
-                      <FileText className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-                      <p className="text-lg font-semibold mb-2">No Daily Assessments</p>
-                      <p className="text-muted-foreground mb-4">
-                        Get started by creating your first daily course assessment
-                      </p>
-                      <Button onClick={() => navigate("/daily-assessment/new")}>
-                        <Plus className="w-4 h-4 mr-2" />
-                        Create Daily Assessment
-                      </Button>
+                    <CardContent className="p-0">
+                      <DailyAssessmentsEmptyState 
+                        onAction={() => {
+                          triggerHaptic('light');
+                          navigate("/daily-assessment/new");
+                        }}
+                      />
                     </CardContent>
                   </Card>
                 ) : (

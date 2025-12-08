@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useFormConfiguration } from "@/hooks/useFormConfiguration";
@@ -24,6 +24,7 @@ import { SwipeBackIndicator } from "@/components/SwipeBackIndicator";
 import { FloatingActionButton } from "@/components/ui/floating-action-button";
 import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
 import { UnsavedChangesDialog } from "@/components/UnsavedChangesDialog";
+import { useSaveShortcut } from "@/hooks/useKeyboardShortcuts";
 
 export default function DailyAssessmentForm() {
   const { id } = useParams();
@@ -75,6 +76,10 @@ export default function DailyAssessmentForm() {
     hasUnsavedChanges,
     message: "You have unsaved changes to this assessment. Are you sure you want to leave?",
   });
+
+  // Keyboard shortcut ref for save (actual function set later)  
+  const saveRef = useRef<(() => void) | null>(null);
+  useSaveShortcut(() => saveRef.current?.(), hasUnsavedChanges && !saving);
 
   useEffect(() => {
     loadAssessment();
@@ -303,6 +308,11 @@ export default function DailyAssessmentForm() {
       setSaving(false);
     }
   };
+
+  // Set save ref for keyboard shortcut
+  useEffect(() => {
+    saveRef.current = handleSave;
+  });
 
   const handleGenerateReport = async () => {
     setGenerating(true);

@@ -80,7 +80,7 @@ export function ReportCard({ report, type, onDelete, onClick, getStatusBadge }: 
 
   return (
     <Card 
-      className="relative overflow-hidden cursor-pointer hover:shadow-lg transition-all hover:border-primary/50 group"
+      className="relative overflow-hidden cursor-pointer transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5 hover:border-primary/50 active:scale-[0.99] active:shadow-md group"
       onClick={() => {
         triggerHaptic('light');
         onClick(report);
