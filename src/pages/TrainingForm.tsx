@@ -69,7 +69,7 @@ export default function TrainingForm() {
   const [currentTab, setCurrentTab] = useState("info");
   const tabOrder = ["info", "delivery", "systems", "attention", "verifiable", "summary"];
   
-  // Swipe navigation for mobile
+  // Swipe navigation for mobile (swipe right on first tab navigates back)
   const swipeContainerRef = useSwipeNavigation({
     enabled: isMobile,
     onSwipeLeft: () => {
@@ -82,6 +82,8 @@ export default function TrainingForm() {
       const currentIndex = tabOrder.indexOf(currentTab);
       if (currentIndex > 0) {
         setCurrentTab(tabOrder[currentIndex - 1]);
+      } else if (currentIndex === 0) {
+        navigate('/dashboard');
       }
     },
   });
