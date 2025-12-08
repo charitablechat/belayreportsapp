@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { RefreshCw, Smartphone, MoreVertical, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -9,24 +9,26 @@ import {
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
 import { usePWA } from '@/hooks/usePWA';
-import { isMobile } from '@/lib/mobile-detection';
 import { triggerHaptic } from '@/lib/haptics';
+import { toast } from 'sonner';
 
 export const ManualUpdateButton = () => {
   const { needsUpdate, updateAndReload } = usePWA();
   const [checking, setChecking] = useState(false);
+  const previousNeedsUpdate = useRef(needsUpdate);
 
   const handleCheckForUpdates = async () => {
-    triggerHaptic('light'); // Haptic feedback when checking for updates
+    triggerHaptic('light');
     
     if (needsUpdate) {
-      // Update is already available
+      toast.loading('Updating app...', { id: 'update-apply', description: 'Please wait while the app updates' });
       triggerHaptic('success');
       updateAndReload();
       return;
     }
 
     setChecking(true);
+    toast.loading('Checking for updates...', { id: 'update-check' });
     
     try {
       if ('serviceWorker' in navigator) {
@@ -34,18 +36,45 @@ export const ManualUpdateButton = () => {
         await registration.update();
         
         // Wait a bit to see if an update was found
-        setTimeout(() => {
-          setChecking(false);
-        }, 1000);
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+        // Check if there's a waiting service worker (update found)
+        if (registration.waiting || registration.installing) {
+          toast.dismiss('update-check');
+          toast.success('Update found!', { 
+            description: 'Click "Update App" to install the latest version',
+            duration: 5000
+          });
+          triggerHaptic('success');
+        } else {
+          toast.dismiss('update-check');
+          toast.info('App is up to date', { 
+            description: 'You have the latest version',
+            duration: 3000
+          });
+        }
+        
+        setChecking(false);
+      } else {
+        toast.dismiss('update-check');
+        toast.info('Updates not supported', { 
+          description: 'Service workers are not available in this browser'
+        });
+        setChecking(false);
       }
     } catch (error) {
       console.error('[Manual Update] Error checking for updates:', error);
+      toast.dismiss('update-check');
+      toast.error('Update check failed', { 
+        description: 'Please try again later'
+      });
+      triggerHaptic('warning');
       setChecking(false);
     }
   };
 
   const handleForceRefresh = async () => {
-    triggerHaptic('warning'); // Warning haptic for cache clearing
+    toast.loading('Clearing cache...', { id: 'force-refresh' });
     
     try {
       // Unregister all service workers
@@ -67,11 +96,18 @@ export const ManualUpdateButton = () => {
       }
       
       // Reload the page after a brief delay
+      toast.dismiss('force-refresh');
+      toast.success('Cache cleared!', { description: 'Reloading app...' });
+      triggerHaptic('success');
+      
       setTimeout(() => {
         window.location.reload();
       }, 500);
     } catch (error) {
       console.error('[Force Refresh] Error:', error);
+      toast.dismiss('force-refresh');
+      toast.error('Failed to clear cache', { description: 'Please try again' });
+      triggerHaptic('warning');
     }
   };
 
