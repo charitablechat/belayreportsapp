@@ -48,7 +48,7 @@ export default function DailyAssessmentForm() {
   const [currentTab, setCurrentTab] = useState("beginning");
   const tabOrder = ["beginning", "end", "systems", "equipment", "structure", "environment"];
   
-  // Swipe navigation for mobile
+  // Swipe navigation for mobile (swipe right on first tab navigates back)
   const swipeContainerRef = useSwipeNavigation({
     enabled: isMobileView,
     onSwipeLeft: () => {
@@ -61,6 +61,8 @@ export default function DailyAssessmentForm() {
       const currentIndex = tabOrder.indexOf(currentTab);
       if (currentIndex > 0) {
         setCurrentTab(tabOrder[currentIndex - 1]);
+      } else if (currentIndex === 0) {
+        navigate('/dashboard');
       }
     },
   });
