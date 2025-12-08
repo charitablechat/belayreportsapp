@@ -237,6 +237,12 @@ export const OrganizationAutocomplete = ({
               placeholder="Search or type organization..." 
               value={search}
               onValueChange={setSearch}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && search.trim()) {
+                  e.preventDefault();
+                  handleSelect(search.trim());
+                }
+              }}
             />
             <CommandList>
               {isLoading ? (

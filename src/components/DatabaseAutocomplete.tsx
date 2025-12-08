@@ -259,6 +259,12 @@ export function DatabaseAutocomplete({
               value={searchValue}
               onValueChange={setSearchValue}
               ref={inputRef}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && searchValue.trim()) {
+                  e.preventDefault();
+                  handleSelect(searchValue.trim());
+                }
+              }}
             />
             <CommandList>
               {isLoading ? (
