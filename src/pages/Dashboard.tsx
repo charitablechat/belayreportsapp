@@ -180,7 +180,7 @@ export default function Dashboard() {
         
         // Redirect to login page when user signs out
         if (event === 'SIGNED_OUT' || !session) {
-          navigate("/");
+          navigate("/", { replace: true });
         }
       }
     );
