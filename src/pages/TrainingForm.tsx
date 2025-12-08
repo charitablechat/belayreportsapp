@@ -32,6 +32,8 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { useSwipeNavigation } from "@/hooks/useSwipeNavigation";
 import { FloatingActionButton } from "@/components/ui/floating-action-button";
 import { Check } from "lucide-react";
+import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
+import { UnsavedChangesDialog } from "@/components/UnsavedChangesDialog";
 
 export default function TrainingForm() {
   const { id } = useParams();
@@ -40,6 +42,7 @@ export default function TrainingForm() {
   const isMobile = useIsMobile();
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
   const [isGeneratingHTML, setIsGeneratingHTML] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
@@ -80,6 +83,12 @@ export default function TrainingForm() {
         setCurrentTab(tabOrder[currentIndex - 1]);
       }
     },
+  });
+
+  // Unsaved changes protection
+  const { isBlocked, confirmNavigation, cancelNavigation } = useUnsavedChanges({
+    hasUnsavedChanges,
+    message: "You have unsaved changes to this training report. Are you sure you want to leave?",
   });
 
   // Auto-populate person submitting and submission date
@@ -345,6 +354,7 @@ export default function TrainingForm() {
       }
 
       setLastSaved(new Date());
+      setHasUnsavedChanges(false);
     } catch (error) {
       console.error('Error saving training:', error);
     } finally {
@@ -628,10 +638,12 @@ export default function TrainingForm() {
 
   const updateTrainingField = (field: string, value: any) => {
     setTraining({ ...training, [field]: value });
+    setHasUnsavedChanges(true);
   };
 
   const updateSummaryField = (field: string, value: any) => {
     setSummary({ ...summary, [field]: value });
+    setHasUnsavedChanges(true);
   };
 
   if (isLoading) {
@@ -643,7 +655,14 @@ export default function TrainingForm() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <>
+      <UnsavedChangesDialog
+        isOpen={isBlocked}
+        onConfirm={confirmNavigation}
+        onCancel={cancelNavigation}
+        message="You have unsaved changes to this training report. Are you sure you want to leave?"
+      />
+      <div className="min-h-screen bg-background">
       {/* Header */}
       <div className="border-b bg-card sticky top-0 z-10">
         <div className="container mx-auto px-4 py-4">
@@ -925,6 +944,7 @@ export default function TrainingForm() {
             : []
         }
       />
-    </div>
+      </div>
+    </>
   );
 }

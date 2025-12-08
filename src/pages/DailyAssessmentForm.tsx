@@ -19,6 +19,8 @@ import { triggerHaptic } from "@/lib/haptics";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useSwipeNavigation } from "@/hooks/useSwipeNavigation";
 import { FloatingActionButton } from "@/components/ui/floating-action-button";
+import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
+import { UnsavedChangesDialog } from "@/components/UnsavedChangesDialog";
 
 export default function DailyAssessmentForm() {
   const { id } = useParams();
@@ -27,6 +29,7 @@ export default function DailyAssessmentForm() {
   const isMobileView = useIsMobile();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [assessment, setAssessment] = useState<any>(null);
   const [beginningOfDay, setBeginningOfDay] = useState<any[]>([]);
@@ -57,6 +60,12 @@ export default function DailyAssessmentForm() {
         setCurrentTab(tabOrder[currentIndex - 1]);
       }
     },
+  });
+
+  // Unsaved changes protection
+  const { isBlocked, confirmNavigation, cancelNavigation } = useUnsavedChanges({
+    hasUnsavedChanges,
+    message: "You have unsaved changes to this assessment. Are you sure you want to leave?",
   });
 
   useEffect(() => {
@@ -145,7 +154,7 @@ export default function DailyAssessmentForm() {
   const handleUpdateAssessment = async (field: string, value: any) => {
     const updatedAssessment = { ...assessment, [field]: value, updated_at: new Date().toISOString() };
     setAssessment(updatedAssessment);
-    
+    setHasUnsavedChanges(true);
     try {
       // Save offline first
       const { saveDailyAssessmentOffline, queueAssessmentOperation } = await import('@/lib/offline-storage');
@@ -277,7 +286,7 @@ export default function DailyAssessmentForm() {
         // Queue for sync
         await queueAssessmentOperation('update', id!, completedAssessment);
       }
-
+      setHasUnsavedChanges(false);
       navigate('/dashboard');
     } catch (error) {
       console.error('Error saving assessment:', error);
@@ -330,7 +339,14 @@ export default function DailyAssessmentForm() {
   const environmentSection = formConfig?.find(s => s.section_key === 'environment_checks');
 
   return (
-    <div className="container mx-auto px-4 py-8 max-w-5xl">
+    <>
+      <UnsavedChangesDialog
+        isOpen={isBlocked}
+        onConfirm={confirmNavigation}
+        onCancel={cancelNavigation}
+        message="You have unsaved changes to this assessment. Are you sure you want to leave?"
+      />
+      <div className="container mx-auto px-4 py-8 max-w-5xl">
       <div className="flex items-center justify-between mb-6">
         <Button variant="ghost" onClick={() => navigate('/dashboard')}>
           <ArrowLeft className={isMobileView ? "h-4 w-4" : "mr-2 h-4 w-4"} />
@@ -443,6 +459,7 @@ export default function DailyAssessmentForm() {
           disabled: saving,
         }}
       />
-    </div>
+      </div>
+    </>
   );
 }

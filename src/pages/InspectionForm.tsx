@@ -49,6 +49,8 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { useSwipeNavigation } from "@/hooks/useSwipeNavigation";
 import { FloatingActionButton } from "@/components/ui/floating-action-button";
 import { Check } from "lucide-react";
+import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
+import { UnsavedChangesDialog } from "@/components/UnsavedChangesDialog";
 
 export default function InspectionForm() {
   const { id } = useParams();
@@ -120,6 +122,12 @@ export default function InspectionForm() {
         setCurrentTab(tabOrder[currentIndex - 1]);
       }
     },
+  });
+
+  // Unsaved changes protection
+  const { isBlocked, confirmNavigation, cancelNavigation } = useUnsavedChanges({
+    hasUnsavedChanges,
+    message: "You have unsaved changes to this inspection. Are you sure you want to leave?",
   });
 
   // Auto-generate summary content from inspection results
@@ -1299,7 +1307,14 @@ export default function InspectionForm() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <>
+      <UnsavedChangesDialog
+        isOpen={isBlocked}
+        onConfirm={confirmNavigation}
+        onCancel={cancelNavigation}
+        message="You have unsaved changes to this inspection. Are you sure you want to leave?"
+      />
+      <div className="min-h-screen bg-background">
       {/* Offline Mode Banner */}
       {!isOnline && (
         <div className="bg-orange-500/10 border-b border-orange-500/20">
@@ -1692,6 +1707,7 @@ export default function InspectionForm() {
             : []
         }
       />
-    </div>
+      </div>
+    </>
   );
 }
