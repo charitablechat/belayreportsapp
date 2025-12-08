@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { RefreshCw, Smartphone, MoreVertical, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -12,15 +12,31 @@ import { usePWA } from '@/hooks/usePWA';
 import { triggerHaptic } from '@/lib/haptics';
 import { toast } from 'sonner';
 
+const UPDATE_FLAG_KEY = 'pwa-update-pending';
+
 export const ManualUpdateButton = () => {
   const { needsUpdate, updateAndReload } = usePWA();
   const [checking, setChecking] = useState(false);
   const previousNeedsUpdate = useRef(needsUpdate);
 
+  // Check if app was just updated after reload
+  useEffect(() => {
+    const wasUpdating = localStorage.getItem(UPDATE_FLAG_KEY);
+    if (wasUpdating) {
+      localStorage.removeItem(UPDATE_FLAG_KEY);
+      toast.success('App updated successfully!', {
+        description: 'You are now running the latest version',
+        duration: 5000
+      });
+      triggerHaptic('success');
+    }
+  }, []);
+
   const handleCheckForUpdates = async () => {
     triggerHaptic('light');
     
     if (needsUpdate) {
+      localStorage.setItem(UPDATE_FLAG_KEY, 'true');
       toast.loading('Updating app...', { id: 'update-apply', description: 'Please wait while the app updates' });
       triggerHaptic('success');
       updateAndReload();
