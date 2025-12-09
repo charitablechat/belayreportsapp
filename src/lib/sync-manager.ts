@@ -163,10 +163,18 @@ export async function syncInspections() {
 
         if (error) throw error;
 
-        // Update local storage with sync timestamp and corrected inspector_id
+        // Fetch inspector profile to attach to offline data
+        const { data: inspectorProfile } = await supabase
+          .from('profiles')
+          .select('first_name, last_name, avatar_url')
+          .eq('id', user.id)
+          .maybeSingle();
+
+        // Update local storage with sync timestamp, corrected inspector_id, and profile
         await saveInspectionOffline({
           ...inspectionToSync,
           synced_at: new Date().toISOString(),
+          inspector: inspectorProfile || { first_name: null, last_name: null, avatar_url: null },
         });
 
         if (import.meta.env.DEV) {
