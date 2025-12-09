@@ -776,7 +776,7 @@ export default function TrainingForm() {
                   onClick={saveTraining}
                   disabled={isSaving || !isOnline}
                   variant="outline"
-                  size={isMobile ? "sm" : "default"}
+                  size="default"
                 >
                   {isSaving ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
@@ -790,14 +790,17 @@ export default function TrainingForm() {
                 <Button
                   onClick={completeTraining}
                   disabled={isSaving || !isOnline}
-                  size={isMobile ? "sm" : "default"}
+                  size="default"
+                  className={isMobile ? "min-w-[100px] h-10 text-sm font-medium" : ""}
                 >
                   {isSaving ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
                   ) : (
                     <>
-                      <CheckCircle className="h-4 w-4 lg:mr-2" />
-                      <span className="hidden lg:inline">Complete & Submit</span>
+                      <CheckCircle className={isMobile ? "h-5 w-5 mr-1.5" : "h-4 w-4 lg:mr-2"} />
+                      <span className={isMobile ? "inline" : "hidden lg:inline"}>
+                        {isMobile ? "Complete" : "Complete & Submit"}
+                      </span>
                     </>
                   )}
                 </Button>
