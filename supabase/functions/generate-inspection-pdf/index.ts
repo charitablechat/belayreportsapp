@@ -619,37 +619,33 @@ serve(async (req) => {
 
     if (signedUrlError) throw signedUrlError;
 
-    // Check for existing report to enforce one-to-one rule
-    const { data: existingReport } = await supabase
+    // Use upsert to prevent race condition duplicates
+    // The unique constraint on inspection_id ensures only one report per inspection
+    // The database trigger automatically increments version on updates
+    const { error: upsertError } = await supabase
       .from('inspection_reports')
-      .select('id')
-      .eq('inspection_id', inspectionId)
-      .maybeSingle();
+      .upsert({
+        inspection_id: inspectionId,
+        pdf_url: fileName,
+        generated_by: user.id,
+        file_size_bytes: pdfUint8Array.length,
+        version: 1, // Will be auto-incremented by trigger on updates
+        generated_at: new Date().toISOString(),
+        metadata: {
+          generator: 'generate-inspection-pdf',
+          format: 'pdf'
+        }
+      }, { 
+        onConflict: 'inspection_id',
+        ignoreDuplicates: false 
+      });
 
-    if (existingReport) {
-      // Update existing report
-      await supabase
-        .from('inspection_reports')
-        .update({
-          pdf_url: fileName,
-          generated_by: user.id,
-          file_size_bytes: pdfUint8Array.length,
-          generated_at: new Date().toISOString()
-        })
-        .eq('id', existingReport.id);
-      console.log('Existing report updated successfully');
-    } else {
-      // Insert new report
-      await supabase
-        .from('inspection_reports')
-        .insert({
-          inspection_id: inspectionId,
-          pdf_url: fileName,
-          generated_by: user.id,
-          file_size_bytes: pdfUint8Array.length
-        });
-      console.log('New report created successfully');
+    if (upsertError) {
+      console.error('Failed to upsert inspection report:', upsertError);
+      throw new Error('Failed to save inspection report');
     }
+    
+    console.log('Inspection report upserted successfully');
 
     return new Response(
       JSON.stringify({
