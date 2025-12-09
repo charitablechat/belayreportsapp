@@ -597,13 +597,10 @@ export default function DailyAssessmentForm() {
           </TabsContent>
 
           <TabsContent value="end" className="space-y-4 mt-4">
-            {endSection && (
-              <EndOfDaySection 
-                section={endSection}
-                items={endOfDay} 
-                onUpdate={setEndOfDay} 
-              />
-            )}
+            <EndOfDaySection 
+              items={endOfDay} 
+              onUpdate={setEndOfDay} 
+            />
           </TabsContent>
 
           <TabsContent value="systems" className="space-y-4 mt-4">

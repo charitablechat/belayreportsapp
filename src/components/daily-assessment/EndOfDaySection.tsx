@@ -2,16 +2,23 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { VoiceTextarea } from "@/components/ui/voice-textarea";
-import { FormSection } from "@/hooks/useFormConfiguration";
 import { triggerHaptic } from "@/lib/haptics";
 
+const END_OF_DAY_ITEMS = [
+  { key: 'access_areas_secure', label: 'Access areas secure/locked' },
+  { key: 'equipment_inspected', label: 'Equipment inspected, cleaned, secured' },
+  { key: 'ladders_stored', label: 'Ladders stored/locked' },
+  { key: 'rope_equipment_logs', label: 'Rope logs, equipment logs complete' },
+  { key: 'environment_clean', label: 'Environment clean (trash, etc.) Drinking water stored/replenished' },
+  { key: 'group_check_out', label: 'Group Check out' },
+];
+
 interface EndOfDaySectionProps {
-  section: FormSection;
   items: any[];
   onUpdate: (items: any[]) => void;
 }
 
-export default function EndOfDaySection({ section, items, onUpdate }: EndOfDaySectionProps) {
+export default function EndOfDaySection({ items, onUpdate }: EndOfDaySectionProps) {
   const handleToggle = (itemKey: string) => {
     triggerHaptic('light');
     const existingItem = items.find(i => i.item_key === itemKey);
@@ -41,32 +48,30 @@ export default function EndOfDaySection({ section, items, onUpdate }: EndOfDaySe
     }
   };
 
-  const fields = section.fields || [];
-
   return (
     <Card>
       <CardHeader>
-        <CardTitle>{section.label || 'End of Day Checklist'}</CardTitle>
+        <CardTitle>End of Day Checklist</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        {fields.map((field) => {
-          const existingItem = items.find(i => i.item_key === field.field_key);
+        {END_OF_DAY_ITEMS.map((item) => {
+          const existingItem = items.find(i => i.item_key === item.key);
           return (
-            <div key={field.field_key} className="space-y-2 border-b pb-4 last:border-b-0">
+            <div key={item.key} className="space-y-2 border-b pb-4 last:border-b-0">
               <div className="flex items-center space-x-2">
                 <Checkbox
-                  id={field.field_key}
+                  id={item.key}
                   checked={existingItem?.is_complete || false}
-                  onCheckedChange={() => handleToggle(field.field_key)}
+                  onCheckedChange={() => handleToggle(item.key)}
                 />
-                <Label htmlFor={field.field_key} className="text-sm font-normal cursor-pointer">
-                  {field.label}
+                <Label htmlFor={item.key} className="text-sm font-normal cursor-pointer">
+                  {item.label}
                 </Label>
               </div>
               <VoiceTextarea
-                placeholder={field.placeholder || "Comments (optional)"}
+                placeholder="Comments (optional)"
                 value={existingItem?.comments || ''}
-                onChange={(e) => handleCommentChange(field.field_key, e.target.value)}
+                onChange={(e) => handleCommentChange(item.key, e.target.value)}
                 className="text-sm"
                 rows={2}
               />
