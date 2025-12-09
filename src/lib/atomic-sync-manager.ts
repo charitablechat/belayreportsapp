@@ -15,6 +15,7 @@ import {
 import { syncProgressEmitter } from "@/hooks/useSyncProgress";
 import { getMobileCapabilities } from "./mobile-detection";
 import { toast } from "sonner";
+import { getCachedProfile } from "./profile-cache";
 
 /**
  * Sync inspection with all related data atomically
@@ -198,12 +199,8 @@ export async function syncInspectionAtomic(inspectionId: string) {
       throw new Error(`Transaction failed after ${result.completedSteps}/${result.totalSteps} steps. Rollback: ${result.rollbackSuccess ? 'successful' : 'failed'}`);
     }
     
-    // 6. Fetch inspector profile to attach to offline data
-    const { data: inspectorProfile } = await supabase
-      .from('profiles')
-      .select('first_name, last_name, avatar_url')
-      .eq('id', user.id)
-      .maybeSingle();
+    // 6. Get cached inspector profile to attach to offline data
+    const inspectorProfile = await getCachedProfile(user.id);
     
     // Update local storage with sync timestamp and inspector profile
     await saveInspectionOffline({

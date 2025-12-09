@@ -15,6 +15,7 @@ import { OrganizationAutocomplete } from "@/components/OrganizationAutocomplete"
 import { getCurrentLocationWithAddress } from "@/lib/geolocation";
 import { getUserWithCache, getCachedUser } from "@/lib/cached-auth";
 import { triggerHaptic } from "@/lib/haptics";
+import { getCachedProfile } from "@/lib/profile-cache";
 
 export default function NewInspection() {
   const navigate = useNavigate();
@@ -145,12 +146,8 @@ export default function NewInspection() {
 
         if (error) throw error;
 
-        // Fetch the inspector profile to attach to offline data
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('first_name, last_name, avatar_url')
-          .eq('id', user.id)
-          .maybeSingle();
+        // Get cached inspector profile to attach to offline data
+        const profile = await getCachedProfile(user.id);
 
         // Cache offline with inspector profile data
         await saveInspectionOffline({
