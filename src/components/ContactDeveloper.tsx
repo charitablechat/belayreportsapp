@@ -84,12 +84,13 @@ export default function ContactDeveloper() {
 
         if (uploadError) throw uploadError;
 
-        // Get public URL
-        const { data: { publicUrl } } = supabase.storage
+        // Get signed URL (expires in 7 days - enough time for support to review)
+        const { data: signedUrlData, error: signedUrlError } = await supabase.storage
           .from("contact-attachments")
-          .getPublicUrl(uploadData.path);
+          .createSignedUrl(uploadData.path, 60 * 60 * 24 * 7);
 
-        imageUrl = publicUrl;
+        if (signedUrlError) throw signedUrlError;
+        imageUrl = signedUrlData.signedUrl;
       }
 
       const { error } = await supabase.functions.invoke("send-contact-email", {
