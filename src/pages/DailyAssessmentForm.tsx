@@ -3,10 +3,22 @@ import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useFormConfiguration } from "@/hooks/useFormConfiguration";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Save, FileText, Loader2, WifiOff, Check, Sunrise, Sunset, Settings, Package, Building, Cloud } from "lucide-react";
+import { ArrowLeft, Save, FileText, Loader2, WifiOff, Check, Sunrise, Sunset, Settings, Package, Building, Cloud, LogOut, User, CloudOff } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { AutoSaveIndicator } from "@/components/AutoSaveIndicator";
+import { UserAvatar } from "@/components/ui/user-avatar";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import ropeWorksLogo from "@/assets/rope-works-logo.png";
+import { useNetworkStatus } from "@/hooks/useNetworkStatus";
+import { SyncStatusIndicator } from "@/components/pwa/SyncStatusIndicator";
 import DailyAssessmentHeader from "@/components/daily-assessment/DailyAssessmentHeader";
 import BeginningOfDaySection from "@/components/daily-assessment/BeginningOfDaySection";
 import EndOfDaySection from "@/components/daily-assessment/EndOfDaySection";
@@ -31,6 +43,7 @@ export default function DailyAssessmentForm() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { formConfig, isLoading: isLoadingConfig } = useFormConfiguration('en', 'daily_assessment');
+  const { isOnline } = useNetworkStatus();
   const isMobileView = useIsMobile();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -46,6 +59,8 @@ export default function DailyAssessmentForm() {
   const [environmentChecks, setEnvironmentChecks] = useState<any[]>([]);
   const [viewerOpen, setViewerOpen] = useState(false);
   const [reportHtml, setReportHtml] = useState<string>('');
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [userProfile, setUserProfile] = useState<any>(null);
   
   // Tab navigation state
   const [currentTab, setCurrentTab] = useState("beginning");
@@ -102,6 +117,29 @@ export default function DailyAssessmentForm() {
       }
     };
   }, [assessment?.status, cleanupEmptyReport]);
+
+  // Fetch current user and profile
+  useEffect(() => {
+    const fetchUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      setCurrentUser(user);
+      
+      if (user) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('avatar_url, first_name, last_name')
+          .eq('id', user.id)
+          .single();
+        setUserProfile(profile);
+      }
+    };
+    fetchUser();
+  }, []);
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    navigate("/");
+  };
 
   // Keyboard shortcut ref for save (actual function set later)  
   const saveRef = useRef<(() => void) | null>(null);
@@ -391,85 +429,124 @@ export default function DailyAssessmentForm() {
         onCancel={cancelNavigation}
         message="You have unsaved changes to this assessment. Are you sure you want to leave?"
       />
+      <div className="min-h-screen bg-background">
+      {/* Offline Mode Banner */}
+      {!isOnline && (
+        <div className="bg-orange-500/10 border-b border-orange-500/20">
+          <div className="container mx-auto px-4 py-3">
+            <div className="flex items-center gap-3">
+              <CloudOff className="w-5 h-5 text-orange-600 dark:text-orange-400 shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-orange-900 dark:text-orange-100">
+                  You're working offline
+                </p>
+                <p className="text-xs text-orange-700 dark:text-orange-300 mt-0.5">
+                  Changes will be saved locally and synced when you're back online
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      <header className="border-b bg-card sticky top-0 z-20">
+        <div className="container mx-auto px-2 sm:px-4 py-2 sm:py-4">
+          {/* Top row - Back button, Logo, User Avatar */}
+          <div className="flex items-center justify-between mb-2 sm:mb-0">
+            <div className="flex items-center gap-2">
+              <Button variant="ghost" size="icon" onClick={() => navigate("/dashboard")}>
+                <ArrowLeft className="w-4 h-4" />
+              </Button>
+              <img src={ropeWorksLogo} alt="Rope Works" className="h-8 sm:h-10 w-auto object-contain" />
+            </div>
+            
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="rounded-full">
+                  <UserAvatar 
+                    userEmail={currentUser?.email ?? null}
+                    avatarUrl={userProfile?.avatar_url ?? null}
+                  />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuLabel>
+                  <div className="flex flex-col space-y-1">
+                    <p className="text-sm font-medium">Account</p>
+                    <p className="text-xs text-muted-foreground truncate">
+                      {currentUser?.email || 'user@example.com'}
+                    </p>
+                  </div>
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => navigate('/profile')}>
+                  <User className="w-4 h-4 mr-2" />
+                  Profile
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={handleSignOut}>
+                  <LogOut className="w-4 h-4 mr-2" />
+                  Sign Out
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+          
+          {/* Bottom row - Status indicators and action buttons */}
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              {!isOnline && (
+                <Badge variant="secondary" className="gap-2 text-xs">
+                  <WifiOff className="w-3 h-3" />
+                  <span className="hidden sm:inline">Offline Mode</span>
+                </Badge>
+              )}
+              <SyncStatusIndicator />
+              <AutoSaveIndicator
+                lastSaved={lastSaved}
+                isSaving={saving}
+                hasUnsavedChanges={hasUnsavedChanges}
+                className="hidden sm:flex"
+              />
+            </div>
+            
+            <div className="flex items-center gap-2">
+              <Button 
+                variant="outline" 
+                size={isMobileView ? "default" : "sm"} 
+                onClick={handleGenerateReport} 
+                disabled={generating}
+              >
+                {generating ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <>
+                    <FileText className={isMobileView ? "w-5 h-5 mr-1.5" : "w-4 h-4 mr-2"} />
+                    {isMobileView ? "" : "Report"}
+                  </>
+                )}
+              </Button>
+              <Button 
+                size={isMobileView ? "default" : "sm"} 
+                onClick={handleSave} 
+                disabled={saving}
+                className={isMobileView ? "min-w-[100px] h-10 text-sm font-medium" : ""}
+              >
+                {saving ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <>
+                    <Save className={isMobileView ? "w-5 h-5 mr-1.5" : "w-4 h-4 mr-2"} />
+                    <span>{isMobileView ? "Save" : "Save & Complete"}</span>
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        </div>
+      </header>
+      
       <div className="container mx-auto px-4 py-4 lg:py-8 max-w-5xl">
-      {/* Header - Responsive layout */}
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between mb-6">
-        {/* Row 1: Back button + Status */}
-        <div className="flex items-center justify-between lg:justify-start lg:gap-3">
-          <div className="flex items-center gap-2">
-            <Button variant="ghost" size={isMobileView ? "sm" : "default"} onClick={() => navigate('/dashboard')}>
-              <ArrowLeft className="h-4 w-4 lg:mr-2" />
-              <span className="hidden lg:inline">Back to Dashboard</span>
-            </Button>
-          </div>
-          <div className="flex items-center gap-2 lg:hidden">
-            {!navigator.onLine && (
-              <Badge variant="secondary" className="gap-1 text-xs">
-                <WifiOff className="h-3 w-3" />
-                Offline
-              </Badge>
-            )}
-          </div>
-        </div>
-        
-        {/* Row 2 (mobile) / Right side (desktop): Actions */}
-        <div className="flex items-center justify-between lg:justify-end gap-2 lg:gap-3">
-          {/* Desktop-only status badges */}
-          <div className="hidden lg:flex items-center gap-3">
-            {!navigator.onLine && (
-              <Badge variant="secondary" className="gap-1">
-                <WifiOff className="h-3 w-3" />
-                Offline
-              </Badge>
-            )}
-            <AutoSaveIndicator
-              lastSaved={lastSaved}
-              isSaving={saving}
-              hasUnsavedChanges={hasUnsavedChanges}
-            />
-          </div>
-          
-          {/* Mobile auto-save indicator */}
-          <div className="lg:hidden">
-            <AutoSaveIndicator
-              lastSaved={lastSaved}
-              isSaving={saving}
-              hasUnsavedChanges={hasUnsavedChanges}
-            />
-          </div>
-          
-          {/* Action buttons */}
-          <div className="flex items-center gap-2">
-            <Button onClick={handleGenerateReport} disabled={generating} variant="outline" size={isMobileView ? "default" : "default"}>
-              {generating ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <>
-                  <FileText className="h-4 w-4 lg:mr-2" />
-                  <span className="hidden lg:inline">Generate Report</span>
-                </>
-              )}
-            </Button>
-            <Button 
-              onClick={handleSave} 
-              disabled={saving} 
-              size={isMobileView ? "default" : "default"}
-              className={isMobileView ? "min-w-[100px] h-10 text-sm font-medium" : ""}
-            >
-              {saving ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <>
-                  <Save className={isMobileView ? "h-5 w-5 mr-1.5" : "h-4 w-4 lg:mr-2"} />
-                  <span className={isMobileView ? "inline" : "hidden lg:inline"}>
-                    {isMobileView ? "Save" : "Save & Complete"}
-                  </span>
-                </>
-              )}
-            </Button>
-          </div>
-        </div>
-      </div>
 
       <div className="space-y-6">
         <DailyAssessmentHeader assessment={assessment} onUpdate={handleUpdateAssessment} />
@@ -572,6 +649,7 @@ export default function DailyAssessmentForm() {
             )}
           </TabsContent>
         </Tabs>
+      </div>
       </div>
 
       <HtmlReportViewer
