@@ -117,7 +117,7 @@ serve(async (req) => {
 
     // Filter based on notification type preference
     const prefKey = `email_${notificationType}` as keyof typeof preferences[0];
-    const eligiblePrefs = preferences.filter(p => p[prefKey] === true && p.email_address);
+    const eligiblePrefs = preferences.filter(p => p[prefKey] === true);
 
     if (eligiblePrefs.length === 0) {
       console.log(`No super admins with ${notificationType} email notifications enabled`);
@@ -127,8 +127,40 @@ serve(async (req) => {
       );
     }
 
-    // Get profiles for super admins
+    // Get auth users to fetch their signup emails as fallback
     const eligibleUserIds = eligiblePrefs.map(p => p.user_id);
+    
+    // Fetch auth emails for users without custom email addresses
+    const userEmailMap = new Map<string, string>();
+    
+    for (const pref of eligiblePrefs) {
+      if (pref.email_address) {
+        // Use custom email if provided
+        userEmailMap.set(pref.user_id, pref.email_address);
+      } else {
+        // Fetch auth email as fallback
+        const { data: authUser, error: authError } = await supabaseAdmin.auth.admin.getUserById(pref.user_id);
+        if (authError) {
+          console.error(`Error fetching auth user ${pref.user_id}:`, authError);
+        } else if (authUser?.user?.email) {
+          userEmailMap.set(pref.user_id, authUser.user.email);
+          console.log(`Using auth email for user ${pref.user_id}: ${authUser.user.email}`);
+        }
+      }
+    }
+
+    // Filter out users without any email
+    const usersWithEmail = eligiblePrefs.filter(p => userEmailMap.has(p.user_id));
+    
+    if (usersWithEmail.length === 0) {
+      console.log('No eligible users have an email address');
+      return new Response(
+        JSON.stringify({ success: true, message: "No eligible users with email addresses" }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Get profiles for super admins
     const { data: profiles, error: profilesError } = await supabaseAdmin
       .from('profiles')
       .select('id, first_name, last_name')
@@ -212,24 +244,25 @@ serve(async (req) => {
 
     // Send emails to all eligible super admins
     const results = await Promise.allSettled(
-      eligiblePrefs.map(async (pref) => {
+      usersWithEmail.map(async (pref) => {
         const profile = profileMap.get(pref.user_id);
         const recipientName = profile 
           ? `${profile.first_name || ''} ${profile.last_name || ''}`.trim() 
           : '';
         
         const emailHtml = generateEmailHtml(recipientName);
+        const recipientEmail = userEmailMap.get(pref.user_id)!;
         
-        console.log(`Sending email to ${pref.email_address}`);
+        console.log(`Sending email to ${recipientEmail}`);
         
         const emailResult = await resend.emails.send({
           from: "Rope Works <notifications@resend.dev>",
-          to: [pref.email_address!],
+          to: [recipientEmail],
           subject: title,
           html: emailHtml,
         });
         
-        return { userId: pref.user_id, email: pref.email_address, result: emailResult };
+        return { userId: pref.user_id, email: recipientEmail, result: emailResult };
       })
     );
 

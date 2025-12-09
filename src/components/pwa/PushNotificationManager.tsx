@@ -23,6 +23,7 @@ export const PushNotificationManager = () => {
     email_sync_conflicts: false,
     email_address: '',
   });
+  const [authEmail, setAuthEmail] = useState<string | null>(null);
   const [loadingPrefs, setLoadingPrefs] = useState(true);
   const [savingEmail, setSavingEmail] = useState(false);
 
@@ -34,6 +35,9 @@ export const PushNotificationManager = () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
+
+      // Store the auth email
+      setAuthEmail(user.email || null);
 
       const { data, error } = await supabase
         .from('notification_preferences')
@@ -95,12 +99,6 @@ export const PushNotificationManager = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // Validate email if enabling email notifications
-      if (key === 'email_notifications_enabled' && value === true && !emailPreferences.email_address) {
-        toast.error('Please enter an email address first');
-        return;
-      }
-
       setEmailPreferences(prev => ({ ...prev, [key]: value }));
 
       const { error } = await supabase
@@ -157,6 +155,10 @@ export const PushNotificationManager = () => {
       setSavingEmail(false);
     }
   };
+
+  // Determine which email will be used
+  const effectiveEmail = emailPreferences.email_address || authEmail;
+  const isUsingAuthEmail = !emailPreferences.email_address && authEmail;
 
   return (
     <div className="space-y-4">
@@ -268,13 +270,29 @@ export const PushNotificationManager = () => {
         </CardHeader>
         <CardContent className="space-y-6">
           <div className="space-y-4">
+            {/* Show current email being used */}
+            {effectiveEmail && (
+              <div className="p-3 bg-muted rounded-lg">
+                <p className="text-sm">
+                  <span className="text-muted-foreground">Notifications will be sent to: </span>
+                  <span className="font-medium">{effectiveEmail}</span>
+                  {isUsingAuthEmail && (
+                    <span className="text-muted-foreground"> (your account email)</span>
+                  )}
+                </p>
+              </div>
+            )}
+
             <div className="flex flex-col gap-2">
-              <Label htmlFor="email-address">Notification Email Address</Label>
+              <Label htmlFor="email-address">Custom Email Address (optional)</Label>
+              <p className="text-xs text-muted-foreground">
+                Leave empty to use your account email ({authEmail || 'loading...'})
+              </p>
               <div className="flex gap-2">
                 <Input
                   id="email-address"
                   type="email"
-                  placeholder="Enter your email address"
+                  placeholder="Enter a different email address"
                   value={emailPreferences.email_address}
                   onChange={(e) => setEmailPreferences(prev => ({ ...prev, email_address: e.target.value }))}
                   disabled={loadingPrefs}
@@ -302,7 +320,7 @@ export const PushNotificationManager = () => {
                 variant={emailPreferences.email_notifications_enabled ? 'outline' : 'default'}
                 size="sm"
                 onClick={() => updateEmailPreference('email_notifications_enabled', !emailPreferences.email_notifications_enabled)}
-                disabled={loadingPrefs || !emailPreferences.email_address}
+                disabled={loadingPrefs || !effectiveEmail}
               >
                 {emailPreferences.email_notifications_enabled ? (
                   <>
