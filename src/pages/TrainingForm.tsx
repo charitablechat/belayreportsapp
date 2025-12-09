@@ -675,112 +675,121 @@ export default function TrainingForm() {
       <div className="min-h-screen bg-background">
       {/* Header */}
       <div className="border-b bg-card sticky top-0 z-10">
-        <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => navigate('/dashboard')}
-              >
-                <ChevronLeft className="h-5 w-5" />
-              </Button>
-              <div>
-                <h1 className="text-2xl font-bold">Training Report</h1>
-                <p className="text-sm text-muted-foreground">
-                  {training?.organization || 'New Training Report'}
-                </p>
+        <div className="container mx-auto px-4 py-3 lg:py-4">
+          {/* Mobile: Stack layout, Desktop: Single row */}
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            {/* Row 1: Back button + Title + Status badges */}
+            <div className="flex items-center justify-between lg:justify-start lg:gap-4">
+              <div className="flex items-center gap-3">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => navigate('/dashboard')}
+                >
+                  <ChevronLeft className="h-5 w-5" />
+                </Button>
+                <div>
+                  <h1 className="text-lg lg:text-2xl font-bold">Training Report</h1>
+                  <p className="text-xs lg:text-sm text-muted-foreground truncate max-w-[180px] lg:max-w-none">
+                    {training?.organization || 'New Training Report'}
+                  </p>
+                </div>
+              </div>
+              
+              {/* Status badges - visible on mobile in first row */}
+              <div className="flex items-center gap-2 lg:hidden">
+                {!isOnline ? (
+                  <Badge variant="secondary" className="gap-1 text-xs">
+                    <WifiOff className="h-3 w-3" />
+                    Offline
+                  </Badge>
+                ) : (
+                  <Badge variant="secondary" className="gap-1 text-xs">
+                    <Wifi className="h-3 w-3" />
+                    Online
+                  </Badge>
+                )}
               </div>
             </div>
             
-            <div className="flex items-center gap-3">
-              {!isOnline && (
-                <Badge variant="secondary" className="gap-1">
-                  <WifiOff className="h-3 w-3" />
-                  Offline
-                </Badge>
-              )}
-              {isOnline && (
-                <Badge variant="secondary" className="gap-1">
-                  <Wifi className="h-3 w-3" />
-                  Online
-                </Badge>
-              )}
-              <AutoSaveIndicator
-                lastSaved={lastSaved}
-                isSaving={isSaving}
-                hasUnsavedChanges={hasUnsavedChanges}
-              />
-              <Button
-                onClick={saveTraining}
-                disabled={isSaving || !isOnline}
-                variant="outline"
-              >
-                {isSaving ? (
-                  <>
-                    <Loader2 className={isMobile ? "h-4 w-4 animate-spin" : "mr-2 h-4 w-4 animate-spin"} />
-                    {!isMobile && "Saving..."}
-                    {isMobile && "..."}
-                  </>
+            {/* Row 2 (mobile) / Right side (desktop): Actions */}
+            <div className="flex items-center justify-between lg:justify-end gap-2 lg:gap-3">
+              {/* Desktop-only status badges */}
+              <div className="hidden lg:flex items-center gap-3">
+                {!isOnline ? (
+                  <Badge variant="secondary" className="gap-1">
+                    <WifiOff className="h-3 w-3" />
+                    Offline
+                  </Badge>
                 ) : (
-                  <>
-                    <Save className={isMobile ? "h-4 w-4" : "mr-2 h-4 w-4"} />
-                    {!isMobile && "Save"}
-                  </>
+                  <Badge variant="secondary" className="gap-1">
+                    <Wifi className="h-3 w-3" />
+                    Online
+                  </Badge>
                 )}
-              </Button>
-              <Button
-                onClick={completeTraining}
-                disabled={isSaving || !isOnline}
-              >
-                {isSaving ? (
-                  <>
-                    <Loader2 className={isMobile ? "h-4 w-4 animate-spin" : "mr-2 h-4 w-4 animate-spin"} />
-                    {isMobile ? "..." : "Completing..."}
-                  </>
-                ) : (
-                  <>
-                    <CheckCircle className={isMobile ? "h-4 w-4" : "mr-2 h-4 w-4"} />
-                    {isMobile ? "Complete" : "Complete & Submit"}
-                  </>
-                )}
-              </Button>
-              {/* PDF Button - Hidden but code preserved for future use
-              <Button
-                onClick={handleGeneratePDF}
-                disabled={isGeneratingPDF || !isOnline}
-              >
-                {isGeneratingPDF ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Generating...
-                  </>
-                ) : (
-                  <>
-                    <FileDown className="mr-2 h-4 w-4" />
-                    Generate PDF
-                  </>
-                )}
-              </Button>
-              */}
+                <AutoSaveIndicator
+                  lastSaved={lastSaved}
+                  isSaving={isSaving}
+                  hasUnsavedChanges={hasUnsavedChanges}
+                />
+              </div>
               
-              <Button
-                onClick={handleGenerateHTML}
-                disabled={isGeneratingHTML || !isOnline}
-                variant="outline"
-              >
-                {isGeneratingHTML ? (
-                  <>
-                    <Loader2 className={isMobile ? "h-4 w-4 animate-spin" : "mr-2 h-4 w-4 animate-spin"} />
-                    {isMobile ? "..." : "Generating..."}
-                  </>
-                ) : (
-                  <>
-                    <FileText className={isMobile ? "h-4 w-4" : "mr-2 h-4 w-4"} />
-                    {isMobile ? "Report" : "Generate Report"}
-                  </>
-                )}
-              </Button>
+              {/* Mobile auto-save indicator */}
+              <div className="lg:hidden">
+                <AutoSaveIndicator
+                  lastSaved={lastSaved}
+                  isSaving={isSaving}
+                  hasUnsavedChanges={hasUnsavedChanges}
+                />
+              </div>
+              
+              {/* Action buttons */}
+              <div className="flex items-center gap-2">
+                <Button
+                  onClick={saveTraining}
+                  disabled={isSaving || !isOnline}
+                  variant="outline"
+                  size={isMobile ? "sm" : "default"}
+                >
+                  {isSaving ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <>
+                      <Save className="h-4 w-4 lg:mr-2" />
+                      <span className="hidden lg:inline">Save</span>
+                    </>
+                  )}
+                </Button>
+                <Button
+                  onClick={completeTraining}
+                  disabled={isSaving || !isOnline}
+                  size={isMobile ? "sm" : "default"}
+                >
+                  {isSaving ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <>
+                      <CheckCircle className="h-4 w-4 lg:mr-2" />
+                      <span className="hidden lg:inline">Complete & Submit</span>
+                    </>
+                  )}
+                </Button>
+                <Button
+                  onClick={handleGenerateHTML}
+                  disabled={isGeneratingHTML || !isOnline}
+                  variant="outline"
+                  size={isMobile ? "sm" : "default"}
+                >
+                  {isGeneratingHTML ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <>
+                      <FileText className="h-4 w-4 lg:mr-2" />
+                      <span className="hidden lg:inline">Generate Report</span>
+                    </>
+                  )}
+                </Button>
+              </div>
             </div>
           </div>
         </div>
@@ -798,13 +807,13 @@ export default function TrainingForm() {
 
         <Tabs value={currentTab} onValueChange={setCurrentTab} className="space-y-6">
           <div ref={swipeContainerRef}>
-            <TabsList className="grid w-full grid-cols-4 lg:grid-cols-6">
-              <TabsTrigger value="info">Info</TabsTrigger>
-              <TabsTrigger value="delivery">{isMobile ? "Delivery" : "Delivery Approach"}</TabsTrigger>
-              <TabsTrigger value="systems">{isMobile ? "OS" : "Trained OS"}</TabsTrigger>
-              <TabsTrigger value="attention">{isMobile ? "Actions" : "Required Actions"}</TabsTrigger>
-              <TabsTrigger value="verifiable">{isMobile ? "Verified" : "Verified During Training"}</TabsTrigger>
-              <TabsTrigger value="summary">Summary</TabsTrigger>
+            <TabsList className="grid w-full grid-cols-3 lg:grid-cols-6 gap-1 lg:gap-0 h-auto p-1.5 lg:p-1">
+              <TabsTrigger value="info" className="text-xs lg:text-sm py-2">Info</TabsTrigger>
+              <TabsTrigger value="delivery" className="text-xs lg:text-sm py-2">{isMobile ? "Delivery" : "Delivery Approach"}</TabsTrigger>
+              <TabsTrigger value="systems" className="text-xs lg:text-sm py-2">{isMobile ? "Systems" : "Trained OS"}</TabsTrigger>
+              <TabsTrigger value="attention" className="text-xs lg:text-sm py-2">{isMobile ? "Actions" : "Required Actions"}</TabsTrigger>
+              <TabsTrigger value="verifiable" className="text-xs lg:text-sm py-2">{isMobile ? "Verified" : "Verified During Training"}</TabsTrigger>
+              <TabsTrigger value="summary" className="text-xs lg:text-sm py-2">Summary</TabsTrigger>
             </TabsList>
           </div>
 
