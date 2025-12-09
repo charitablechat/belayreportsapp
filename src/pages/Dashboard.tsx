@@ -370,28 +370,62 @@ export default function Dashboard() {
 
         // Update UI
         setInspections(inspections.filter(i => i.id !== inspectionToDelete.id));
-      } else {
-        // Delete training report
-        if (navigator.onLine) {
-          const { error } = await supabase
-            .from("trainings")
-            .delete()
-            .eq("id", reportToDelete.id);
+      } else if (reportToDelete) {
+        // Determine if it's a training or daily assessment
+        const isTraining = 'start_date' in reportToDelete;
+        const isDailyAssessment = 'assessment_date' in reportToDelete && !('start_date' in reportToDelete);
 
-          if (error) throw error;
-          
-          triggerHaptic('success');
-          
-          if (import.meta.env.DEV) {
-            console.log('[Dashboard] Training deleted:', reportToDelete.id);
+        if (isDailyAssessment) {
+          // Delete daily assessment
+          const { deleteOfflineDailyAssessment } = await import('@/lib/offline-storage');
+          await deleteOfflineDailyAssessment(reportToDelete.id);
+
+          if (navigator.onLine) {
+            const { error } = await supabase
+              .from("daily_assessments")
+              .delete()
+              .eq("id", reportToDelete.id);
+
+            if (error) throw error;
+            
+            triggerHaptic('success');
+            
+            if (import.meta.env.DEV) {
+              console.log('[Dashboard] Daily assessment deleted:', reportToDelete.id);
+            }
+          } else {
+            triggerHaptic('success');
+            
+            if (import.meta.env.DEV) {
+              console.log('[Dashboard] Daily assessment deletion (offline):', reportToDelete.id);
+            }
           }
-        } else {
-          triggerHaptic('error');
-          return;
-        }
 
-        // Update UI
-        setTrainings(trainings.filter(t => t.id !== reportToDelete.id));
+          // Update UI
+          setDailyAssessments(dailyAssessments.filter(a => a.id !== reportToDelete.id));
+        } else if (isTraining) {
+          // Delete training report
+          if (navigator.onLine) {
+            const { error } = await supabase
+              .from("trainings")
+              .delete()
+              .eq("id", reportToDelete.id);
+
+            if (error) throw error;
+            
+            triggerHaptic('success');
+            
+            if (import.meta.env.DEV) {
+              console.log('[Dashboard] Training deleted:', reportToDelete.id);
+            }
+          } else {
+            triggerHaptic('error');
+            return;
+          }
+
+          // Update UI
+          setTrainings(trainings.filter(t => t.id !== reportToDelete.id));
+        }
       }
 
       setDeleteDialogOpen(false);
@@ -891,21 +925,37 @@ export default function Dashboard() {
                       />
                     </CardContent>
                   </Card>
-                ) : (
-                  <div className="grid gap-4">
-                    {dailyAssessments.map((assessment) => (
-                      <ReportCard
-                        key={assessment.id}
-                        report={assessment}
-                        type="daily"
-                        onClick={() => navigate(`/daily-assessment/${assessment.id}`)}
-                        onDelete={(e) => {
-                          e.stopPropagation();
-                          setReportToDelete(assessment);
-                          setDeleteDialogOpen(true);
-                        }}
-                      />
-                    ))}
+) : (
+                  <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                    {dailyAssessments
+                      .sort((a, b) => {
+                        const getInspectorName = (assessment: any) => {
+                          const inspector = assessment.inspector;
+                          if (inspector?.first_name && inspector?.last_name) {
+                            return `${inspector.first_name} ${inspector.last_name}`;
+                          }
+                          return 'Unknown';
+                        };
+
+                        if (inspectorFilter === 'a-z') {
+                          return getInspectorName(a).localeCompare(getInspectorName(b));
+                        } else if (inspectorFilter === 'z-a') {
+                          return getInspectorName(b).localeCompare(getInspectorName(a));
+                        }
+                        return 0;
+                      })
+                      .map((assessment) => (
+                        <ReportCard
+                          key={assessment.id}
+                          report={assessment}
+                          type="daily"
+                          onClick={() => navigate(`/daily-assessment/${assessment.id}`)}
+                          onDelete={(report) => {
+                            setReportToDelete(report);
+                            setDeleteDialogOpen(true);
+                          }}
+                        />
+                      ))}
                   </div>
                 )}
               </TabsContent>
@@ -918,7 +968,11 @@ export default function Dashboard() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {inspectionToDelete ? 'Delete Inspection Report' : 'Delete Training Report'}
+              {inspectionToDelete 
+                ? 'Delete Inspection Report' 
+                : reportToDelete && 'assessment_date' in reportToDelete && !('start_date' in reportToDelete)
+                  ? 'Delete Daily Assessment'
+                  : 'Delete Training Report'}
             </AlertDialogTitle>
             <AlertDialogDescription>
               Are you sure you want to delete this report for{" "}
