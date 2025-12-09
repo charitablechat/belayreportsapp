@@ -610,13 +610,10 @@ export default function DailyAssessmentForm() {
           </TabsContent>
 
           <TabsContent value="systems" className="space-y-4 mt-4">
-            {systemsSection && (
-              <OperatingSystemsSection 
-                section={systemsSection}
-                systems={operatingSystems} 
-                onUpdate={setOperatingSystems} 
-              />
-            )}
+            <OperatingSystemsSection 
+              systems={operatingSystems} 
+              onUpdate={setOperatingSystems} 
+            />
           </TabsContent>
 
           <TabsContent value="equipment" className="space-y-4 mt-4">
