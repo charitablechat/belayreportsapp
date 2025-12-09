@@ -6,6 +6,9 @@ verify_jwt = false
 [functions.send-push-notification]
 verify_jwt = true
 
+[functions.send-notification-email]
+verify_jwt = true
+
 [functions.generate-inspection-pdf]
 verify_jwt = true
 
