@@ -1435,18 +1435,27 @@ export default function InspectionForm() {
             </div>
             
             <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" onClick={saveProgress} disabled={saving || autoSaving}>
-                <Save className={isMobileView ? "w-4 h-4" : "w-4 h-4 mr-2"} />
-                {!isMobileView && (saving ? "Saving..." : isOnline ? "Save Progress" : "Save Locally")}
-                {isMobileView && saving && "..."}
+              <Button 
+                variant="outline" 
+                size={isMobileView ? "default" : "sm"} 
+                onClick={saveProgress} 
+                disabled={saving || autoSaving}
+              >
+                <Save className={isMobileView ? "w-5 h-5 mr-1.5" : "w-4 h-4 mr-2"} />
+                {isMobileView ? (saving ? "..." : "Save") : (saving ? "Saving..." : isOnline ? "Save Progress" : "Save Locally")}
               </Button>
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <span>
-                      <Button size="sm" onClick={completeInspection} disabled={saving || autoSaving || !isOnline}>
-                        <CheckCircle className="w-4 h-4" />
-                        <span className="hidden md:inline ml-2">Complete</span>
+                      <Button 
+                        size={isMobileView ? "default" : "sm"} 
+                        onClick={completeInspection} 
+                        disabled={saving || autoSaving || !isOnline}
+                        className={isMobileView ? "min-w-[100px] h-10 text-sm font-medium" : ""}
+                      >
+                        <CheckCircle className={isMobileView ? "w-5 h-5 mr-1.5" : "w-4 h-4"} />
+                        <span className={isMobileView ? "inline" : "hidden md:inline md:ml-2"}>Complete</span>
                       </Button>
                     </span>
                   </TooltipTrigger>

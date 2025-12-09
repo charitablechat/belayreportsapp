@@ -440,7 +440,7 @@ export default function DailyAssessmentForm() {
           
           {/* Action buttons */}
           <div className="flex items-center gap-2">
-            <Button onClick={handleGenerateReport} disabled={generating} variant="outline" size={isMobileView ? "sm" : "default"}>
+            <Button onClick={handleGenerateReport} disabled={generating} variant="outline" size={isMobileView ? "default" : "default"}>
               {generating ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
@@ -450,13 +450,20 @@ export default function DailyAssessmentForm() {
                 </>
               )}
             </Button>
-            <Button onClick={handleSave} disabled={saving} size={isMobileView ? "sm" : "default"}>
+            <Button 
+              onClick={handleSave} 
+              disabled={saving} 
+              size={isMobileView ? "default" : "default"}
+              className={isMobileView ? "min-w-[100px] h-10 text-sm font-medium" : ""}
+            >
               {saving ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
                 <>
-                  <Save className="h-4 w-4 lg:mr-2" />
-                  <span className="hidden lg:inline">Save & Complete</span>
+                  <Save className={isMobileView ? "h-5 w-5 mr-1.5" : "h-4 w-4 lg:mr-2"} />
+                  <span className={isMobileView ? "inline" : "hidden lg:inline"}>
+                    {isMobileView ? "Save" : "Save & Complete"}
+                  </span>
                 </>
               )}
             </Button>
