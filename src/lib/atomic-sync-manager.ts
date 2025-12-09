@@ -198,10 +198,18 @@ export async function syncInspectionAtomic(inspectionId: string) {
       throw new Error(`Transaction failed after ${result.completedSteps}/${result.totalSteps} steps. Rollback: ${result.rollbackSuccess ? 'successful' : 'failed'}`);
     }
     
-    // 6. Update local storage with sync timestamp
+    // 6. Fetch inspector profile to attach to offline data
+    const { data: inspectorProfile } = await supabase
+      .from('profiles')
+      .select('first_name, last_name, avatar_url')
+      .eq('id', user.id)
+      .maybeSingle();
+    
+    // Update local storage with sync timestamp and inspector profile
     await saveInspectionOffline({
       ...inspection,
       synced_at: new Date().toISOString(),
+      inspector: inspectorProfile || { first_name: null, last_name: null, avatar_url: null },
     });
     
     if (import.meta.env.DEV) {

@@ -550,7 +550,7 @@ export default function InspectionForm() {
 
         const { data, error } = await supabase
           .from("inspections")
-          .select("*")
+          .select("*, inspector:profiles!inspections_inspector_id_profiles_fkey(first_name, last_name, avatar_url)")
           .eq("id", id)
           .maybeSingle();
 

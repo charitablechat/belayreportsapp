@@ -145,10 +145,18 @@ export default function NewInspection() {
 
         if (error) throw error;
 
-        // Cache offline
+        // Fetch the inspector profile to attach to offline data
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('first_name, last_name, avatar_url')
+          .eq('id', user.id)
+          .maybeSingle();
+
+        // Cache offline with inspector profile data
         await saveInspectionOffline({
           ...data,
           synced_at: new Date().toISOString(),
+          inspector: profile || { first_name: null, last_name: null, avatar_url: null },
         });
 
         navigate(`/inspection/${data.id}`);
