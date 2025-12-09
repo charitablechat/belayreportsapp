@@ -2,16 +2,24 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { VoiceTextarea } from "@/components/ui/voice-textarea";
-import { FormSection } from "@/hooks/useFormConfiguration";
 import { triggerHaptic } from "@/lib/haptics";
 
+const BEGINNING_OF_DAY_ITEMS = [
+  { key: 'first_aid_kit', label: 'First Aid Kit Available & Contents Complete' },
+  { key: 'communication_protocol', label: 'Communication protocol established/verified for operations/emergency' },
+  { key: 'equipment_stored', label: 'Equipment properly stored, locked, and maintained' },
+  { key: 'drinking_water', label: 'Drinking water available/replenished' },
+  { key: 'amenities', label: 'Sunscreen, tarps, other amenities established and available as needed' },
+  { key: 'restroom_services', label: 'Restroom services available and ready for use' },
+  { key: 'group_check_in', label: 'Group Check in' },
+];
+
 interface BeginningOfDaySectionProps {
-  section: FormSection;
   items: any[];
   onUpdate: (items: any[]) => void;
 }
 
-export default function BeginningOfDaySection({ section, items, onUpdate }: BeginningOfDaySectionProps) {
+export default function BeginningOfDaySection({ items, onUpdate }: BeginningOfDaySectionProps) {
   const handleToggle = (itemKey: string) => {
     triggerHaptic('light');
     const existingItem = items.find(i => i.item_key === itemKey);
@@ -41,32 +49,30 @@ export default function BeginningOfDaySection({ section, items, onUpdate }: Begi
     }
   };
 
-  const fields = section.fields || [];
-
   return (
     <Card>
       <CardHeader>
-        <CardTitle>{section.label || 'Beginning of Day Checklist'}</CardTitle>
+        <CardTitle>Beginning of Day Checklist</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        {fields.map((field) => {
-          const existingItem = items.find(i => i.item_key === field.field_key);
+        {BEGINNING_OF_DAY_ITEMS.map((item) => {
+          const existingItem = items.find(i => i.item_key === item.key);
           return (
-            <div key={field.field_key} className="space-y-2 border-b pb-4 last:border-b-0">
+            <div key={item.key} className="space-y-2 border-b pb-4 last:border-b-0">
               <div className="flex items-center space-x-2">
                 <Checkbox
-                  id={field.field_key}
+                  id={item.key}
                   checked={existingItem?.is_complete || false}
-                  onCheckedChange={() => handleToggle(field.field_key)}
+                  onCheckedChange={() => handleToggle(item.key)}
                 />
-                <Label htmlFor={field.field_key} className="text-sm font-normal cursor-pointer">
-                  {field.label}
+                <Label htmlFor={item.key} className="text-sm font-normal cursor-pointer">
+                  {item.label}
                 </Label>
               </div>
               <VoiceTextarea
-                placeholder={field.placeholder || "Comments (optional)"}
+                placeholder="Comments (optional)"
                 value={existingItem?.comments || ''}
-                onChange={(e) => handleCommentChange(field.field_key, e.target.value)}
+                onChange={(e) => handleCommentChange(item.key, e.target.value)}
                 className="text-sm"
                 rows={2}
               />
