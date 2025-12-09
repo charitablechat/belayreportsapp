@@ -1,87 +1,290 @@
-import { useEffect } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { ArrowLeft, CloudOff, Info, Loader2, MapPin, X } from "lucide-react";
+import ropeWorksLogo from "@/assets/rope-works-logo.png";
+import { useNetworkStatus } from "@/hooks/useNetworkStatus";
+import { OrganizationAutocomplete } from "@/components/OrganizationAutocomplete";
+import { getCurrentLocationWithAddress } from "@/lib/geolocation";
+import { getUserWithCache, getCachedUser } from "@/lib/cached-auth";
+import { triggerHaptic } from "@/lib/haptics";
+import { saveDailyAssessmentOffline, queueAssessmentOperation } from "@/lib/offline-storage";
 
 export default function NewDailyAssessment() {
   const navigate = useNavigate();
+  const { isOnline } = useNetworkStatus();
+  const [loading, setLoading] = useState(false);
+  const [locationLoading, setLocationLoading] = useState(false);
+  const [trainerName, setTrainerName] = useState("");
+  const [formData, setFormData] = useState({
+    organization: "",
+    site: "",
+    latitude: null as number | null,
+    longitude: null as number | null,
+  });
 
+  // Fetch user profile on mount to get their name
   useEffect(() => {
-    const createNewAssessment = async () => {
+    const fetchUserProfile = async () => {
       try {
         const { data: { user } } = await supabase.auth.getUser();
-        
-        if (!user) {
-          navigate("/", { replace: true });
-          return;
-        }
-
-        // Fetch user profile to get their name
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('first_name, last_name')
-          .eq('id', user.id)
-          .single();
-
-        const fullName = profile 
-          ? [profile.first_name, profile.last_name].filter(Boolean).join(' ').trim()
-          : '';
-
-        const assessmentId = crypto.randomUUID();
-        const newAssessment = {
-          id: assessmentId,
-          inspector_id: user.id,
-          site: '',
-          assessment_date: new Date().toISOString().split('T')[0],
-          status: 'draft',
-          organization: '',
-          trainer_of_record: fullName || null,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-          synced_at: null as string | null,
-        };
-
-        // Save offline first
-        const { saveDailyAssessmentOffline, queueAssessmentOperation } = await import('@/lib/offline-storage');
-        await saveDailyAssessmentOffline(newAssessment);
-
-        if (navigator.onLine) {
-          try {
-            const { error } = await supabase
-              .from('daily_assessments')
-              .insert([newAssessment]);
-
-            if (error) throw error;
-
-            // Update synced_at
-            newAssessment.synced_at = new Date().toISOString();
-            await saveDailyAssessmentOffline(newAssessment);
-          } catch (error) {
-            console.error('Error syncing to database:', error);
-            // Queue for later sync
-            await queueAssessmentOperation('create', assessmentId, newAssessment);
+        if (user) {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('first_name, last_name')
+            .eq('id', user.id)
+            .single();
+          
+          if (profile) {
+            const fullName = [profile.first_name, profile.last_name].filter(Boolean).join(' ').trim();
+            if (fullName) {
+              setTrainerName(fullName);
+            }
           }
-        } else {
-          // Queue for later sync
-          await queueAssessmentOperation('create', assessmentId, newAssessment);
         }
-
-        navigate(`/daily-assessment/${assessmentId}`, { replace: true });
       } catch (error) {
-        console.error('Error creating daily assessment:', error);
-        navigate("/dashboard", { replace: true });
+        console.error('Error fetching user profile:', error);
       }
     };
 
-    createNewAssessment();
-  }, [navigate]);
+    fetchUserProfile();
+  }, []);
+
+  const handleLocationCapture = async () => {
+    triggerHaptic('light');
+    setLocationLoading(true);
+    try {
+      const position = await getCurrentLocationWithAddress();
+      setFormData(prev => ({
+        ...prev,
+        site: prev.site || position.address,
+        latitude: position.latitude,
+        longitude: position.longitude,
+      }));
+      
+      triggerHaptic('success');
+    } catch (error: any) {
+      console.error("Failed to get location:", error);
+      triggerHaptic('error');
+    } finally {
+      setLocationLoading(false);
+    }
+  };
+
+  const handleClearLocation = () => {
+    triggerHaptic('light');
+    setFormData(prev => ({
+      ...prev,
+      latitude: null,
+      longitude: null,
+    }));
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    triggerHaptic('medium');
+    setLoading(true);
+
+    try {
+      const user = await getUserWithCache();
+      if (!user) {
+        navigate("/", { replace: true });
+        return;
+      }
+
+      const assessmentId = crypto.randomUUID();
+      const now = new Date().toISOString();
+      
+      const newAssessment = {
+        id: assessmentId,
+        inspector_id: user.id,
+        site: formData.site,
+        assessment_date: now.split('T')[0],
+        status: 'draft',
+        organization: formData.organization,
+        trainer_of_record: trainerName || null,
+        latitude: formData.latitude,
+        longitude: formData.longitude,
+        created_at: now,
+        updated_at: now,
+        synced_at: null as string | null,
+      };
+
+      // Save offline first
+      await saveDailyAssessmentOffline(newAssessment);
+
+      if (isOnline) {
+        try {
+          const { error } = await supabase
+            .from('daily_assessments')
+            .insert([newAssessment]);
+
+          if (error) throw error;
+
+          // Update synced_at
+          newAssessment.synced_at = new Date().toISOString();
+          await saveDailyAssessmentOffline(newAssessment);
+        } catch (error) {
+          console.error('Error syncing to database:', error);
+          // Queue for later sync
+          await queueAssessmentOperation('create', assessmentId, newAssessment);
+        }
+      } else {
+        // Queue for later sync
+        await queueAssessmentOperation('create', assessmentId, newAssessment);
+      }
+
+      navigate(`/daily-assessment/${assessmentId}`, { replace: true });
+      triggerHaptic('success');
+    } catch (error) {
+      console.error('Error creating daily assessment:', error);
+      triggerHaptic('error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const isFormValid = formData.organization.trim() && formData.site.trim();
 
   return (
-    <div className="flex items-center justify-center min-h-screen">
-      <div className="text-center space-y-4">
-        <Loader2 className="h-8 w-8 animate-spin mx-auto" />
-        <p className="text-muted-foreground">Creating new daily assessment...</p>
-      </div>
+    <div className="min-h-screen bg-background">
+      <header className="border-b bg-card">
+        <div className="container mx-auto px-2 md:px-4 py-4 flex items-center justify-between">
+          <Button variant="ghost" size="sm" onClick={() => navigate("/dashboard")}>
+            <ArrowLeft className="w-4 h-4" />
+            <span className="hidden sm:inline ml-2">Back to Dashboard</span>
+          </Button>
+          <img src={ropeWorksLogo} alt="Rope Works" className="h-8 md:h-10 w-auto object-contain" />
+        </div>
+      </header>
+
+      <main className="container mx-auto px-2 md:px-4 py-8 max-w-3xl">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-2xl">New Daily Assessment</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {!isOnline && (
+              <Alert className="mb-6 border-warning bg-warning/10">
+                <CloudOff className="h-4 w-4 text-warning" />
+                <AlertDescription className="text-foreground">
+                  📴 Working offline - assessment will sync when online
+                  {getCachedUser()?.email && (
+                    <div className="text-xs mt-1 opacity-80">
+                      Using cached credentials for {getCachedUser()?.email}
+                    </div>
+                  )}
+                </AlertDescription>
+              </Alert>
+            )}
+            
+            <form onSubmit={handleSubmit} className="space-y-6">
+              <div className="space-y-2">
+                <label htmlFor="organization" className="text-sm font-medium">
+                  Organization *
+                </label>
+                <OrganizationAutocomplete
+                  value={formData.organization}
+                  onChange={(value) => setFormData(prev => ({ ...prev, organization: value }))}
+                  disabled={loading}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label htmlFor="site" className="text-sm font-medium">
+                  Site / Location *
+                </label>
+                <div className="flex gap-2">
+                  <Input
+                    id="site"
+                    value={formData.site}
+                    onChange={(e) => setFormData(prev => ({ ...prev, site: e.target.value }))}
+                    placeholder="Enter site name or location"
+                    className="flex-1"
+                  />
+                  <Button 
+                    type="button" 
+                    variant="outline" 
+                    onClick={handleLocationCapture} 
+                    disabled={locationLoading}
+                  >
+                    {locationLoading ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <MapPin className={`w-4 h-4 ${formData.latitude && formData.longitude ? 'text-green-600' : ''}`} />
+                    )}
+                  </Button>
+                  {formData.latitude && formData.longitude && (
+                    <Button 
+                      type="button" 
+                      variant="outline" 
+                      onClick={handleClearLocation} 
+                      className="text-destructive hover:text-destructive"
+                    >
+                      <X className="w-4 h-4" />
+                    </Button>
+                  )}
+                </div>
+                {formData.latitude && formData.longitude && (
+                  <div className="space-y-1 mt-1">
+                    <p className="text-sm text-muted-foreground">
+                      Coordinates: {formData.latitude.toFixed(6)}, {formData.longitude.toFixed(6)}
+                    </p>
+                    <div className="flex items-start gap-1.5 text-xs text-muted-foreground">
+                      <Info className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
+                      <span>Site name auto-filled from GPS. You can edit it manually if needed.</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Trainer of Record</label>
+                <p className="text-sm text-muted-foreground">
+                  {trainerName || "Will be set from your profile"}
+                </p>
+              </div>
+
+              {!isOnline && (
+                <Alert className="border-muted bg-muted/50">
+                  <Info className="h-4 w-4" />
+                  <AlertDescription className="text-sm">
+                    <strong>Offline mode:</strong> You can create and edit assessments offline. Changes will automatically sync when you're back online.
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              <div className="flex gap-4">
+                <Button 
+                  type="submit" 
+                  disabled={loading || !isFormValid} 
+                  className="flex-1"
+                >
+                  {loading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                      Creating...
+                    </>
+                  ) : (
+                    isOnline ? "Create Assessment" : "Create Locally"
+                  )}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => navigate("/dashboard")}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
+      </main>
     </div>
   );
 }
