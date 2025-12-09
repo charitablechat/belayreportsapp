@@ -311,6 +311,13 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "daily_assessments_inspector_id_profiles_fkey"
+            columns: ["inspector_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "daily_assessments_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
