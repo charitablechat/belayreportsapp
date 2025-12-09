@@ -38,6 +38,13 @@ export default function SuperAdminDashboard() {
   const [isInspectionsListOpen, setIsInspectionsListOpen] = useState(false);
   const [isCleaningUp, setIsCleaningUp] = useState(false);
   
+  // Organization edit/delete states
+  const [editOrgDialogOpen, setEditOrgDialogOpen] = useState(false);
+  const [deleteOrgDialogOpen, setDeleteOrgDialogOpen] = useState(false);
+  const [selectedOrg, setSelectedOrg] = useState<any>(null);
+  const [editingOrgName, setEditingOrgName] = useState("");
+  const [orgToDelete, setOrgToDelete] = useState<any>(null);
+  
   // Pagination states for dialogs
   const [usersPage, setUsersPage] = useState(1);
   const [orgsPage, setOrgsPage] = useState(1);
@@ -116,15 +123,17 @@ export default function SuperAdminDashboard() {
     enabled: !loading && managedUsers !== undefined,
   });
 
-  // Organizations query
-  const { data: organizations } = useQuery({
+  // Organizations query with trainings and daily assessments
+  const { data: organizations, refetch: refetchOrganizations } = useQuery({
     queryKey: ["admin-organizations"],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("organizations")
         .select(`
           *,
-          inspections(inspection_date)
+          inspections(inspection_date),
+          trainings(id),
+          daily_assessments(id)
         `)
         .order("name", { ascending: true });
 
@@ -476,6 +485,63 @@ export default function SuperAdminDashboard() {
     }
   };
 
+  // Organization management functions
+  const handleEditOrg = (org: any) => {
+    setSelectedOrg(org);
+    setEditingOrgName(org.name);
+    setEditOrgDialogOpen(true);
+  };
+
+  const handleDeleteOrgClick = (org: any) => {
+    setOrgToDelete(org);
+    setDeleteOrgDialogOpen(true);
+  };
+
+  const handleSaveOrg = async () => {
+    if (!selectedOrg || !editingOrgName.trim()) return;
+
+    try {
+      const { error } = await supabase
+        .from("organizations")
+        .update({ name: editingOrgName.trim() })
+        .eq("id", selectedOrg.id);
+
+      if (error) throw error;
+
+      toast.success("Organization updated successfully");
+      setEditOrgDialogOpen(false);
+      setSelectedOrg(null);
+      setEditingOrgName("");
+      refetchOrganizations();
+      queryClient.invalidateQueries({ queryKey: ["admin-stats"] });
+    } catch (error: any) {
+      console.error("Error updating organization:", error);
+      toast.error(error?.message || "Failed to update organization");
+    }
+  };
+
+  const handleDeleteOrg = async () => {
+    if (!orgToDelete) return;
+
+    try {
+      const { error } = await supabase
+        .from("organizations")
+        .delete()
+        .eq("id", orgToDelete.id);
+
+      if (error) throw error;
+
+      toast.success("Organization deleted successfully");
+      setDeleteOrgDialogOpen(false);
+      setOrgToDelete(null);
+      refetchOrganizations();
+      queryClient.invalidateQueries({ queryKey: ["admin-stats"] });
+    } catch (error: any) {
+      console.error("Error deleting organization:", error);
+      toast.error(error?.message || "Failed to delete organization");
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -678,20 +744,25 @@ export default function SuperAdminDashboard() {
                 <TableRow>
                   <TableHead>Organization</TableHead>
                   <TableHead className="text-center">Inspections</TableHead>
+                  <TableHead className="text-center">Training Reports</TableHead>
+                  <TableHead className="text-center">Daily Reports</TableHead>
                   <TableHead>Last Inspection</TableHead>
                   <TableHead>Created</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {organizations?.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
+                    <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
                       No organizations found
                     </TableCell>
                   </TableRow>
                 ) : (
                   organizations?.map((org) => {
                     const inspectionCount = org.inspections?.length || 0;
+                    const trainingCount = (org as any).trainings?.length || 0;
+                    const dailyAssessmentCount = (org as any).daily_assessments?.length || 0;
                     const lastInspectionDate = org.inspections && org.inspections.length > 0
                       ? org.inspections.reduce((latest: any, insp: any) => {
                           if (!insp.inspection_date) return latest;
@@ -710,6 +781,16 @@ export default function SuperAdminDashboard() {
                             {inspectionCount}
                           </Badge>
                         </TableCell>
+                        <TableCell className="text-center">
+                          <Badge variant={trainingCount > 0 ? "default" : "outline"}>
+                            {trainingCount}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <Badge variant={dailyAssessmentCount > 0 ? "default" : "outline"}>
+                            {dailyAssessmentCount}
+                          </Badge>
+                        </TableCell>
                         <TableCell>
                           {lastInspectionDate ? (
                             <span className="text-sm">{format(new Date(lastInspectionDate), "PP")}</span>
@@ -719,6 +800,24 @@ export default function SuperAdminDashboard() {
                         </TableCell>
                         <TableCell className="text-sm text-muted-foreground">
                           {format(new Date(org.created_at), "PP")}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-2">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleEditOrg(org)}
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleDeleteOrgClick(org)}
+                            >
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                          </div>
                         </TableCell>
                       </TableRow>
                     );
@@ -1336,6 +1435,69 @@ export default function SuperAdminDashboard() {
               className={superAdminAction === 'grant' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-orange-600 hover:bg-orange-700'}
             >
               {superAdminAction === 'grant' ? 'Grant Access' : 'Revoke Access'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Edit Organization Dialog */}
+      <Dialog open={editOrgDialogOpen} onOpenChange={setEditOrgDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Organization</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Organization Name</label>
+              <input
+                type="text"
+                value={editingOrgName}
+                onChange={(e) => setEditingOrgName(e.target.value)}
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                placeholder="Enter organization name"
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setEditOrgDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleSaveOrg} disabled={!editingOrgName.trim()}>
+                Save Changes
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Organization Confirmation Dialog */}
+      <AlertDialog open={deleteOrgDialogOpen} onOpenChange={setDeleteOrgDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Organization</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete <strong>{orgToDelete?.name}</strong>?
+              {orgToDelete && (
+                <div className="mt-2 text-sm">
+                  <p>This organization has:</p>
+                  <ul className="list-disc list-inside mt-1">
+                    <li>{orgToDelete.inspections?.length || 0} inspection(s)</li>
+                    <li>{(orgToDelete as any).trainings?.length || 0} training report(s)</li>
+                    <li>{(orgToDelete as any).daily_assessments?.length || 0} daily report(s)</li>
+                  </ul>
+                  <p className="mt-2 text-destructive font-medium">
+                    Note: Related records may become orphaned.
+                  </p>
+                </div>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteOrg}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete Organization
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
