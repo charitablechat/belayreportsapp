@@ -14,6 +14,7 @@ import {
   removeQueuedAssessmentOperation,
   incrementAssessmentOperationRetry
 } from "./offline-storage";
+import { getCachedProfile } from "./profile-cache";
 
 const MAX_RETRIES = 3;
 const RETRY_DELAY = 1000; // Start with 1 second
@@ -163,12 +164,8 @@ export async function syncInspections() {
 
         if (error) throw error;
 
-        // Fetch inspector profile to attach to offline data
-        const { data: inspectorProfile } = await supabase
-          .from('profiles')
-          .select('first_name, last_name, avatar_url')
-          .eq('id', user.id)
-          .maybeSingle();
+        // Get cached inspector profile to attach to offline data
+        const inspectorProfile = await getCachedProfile(user.id);
 
         // Update local storage with sync timestamp, corrected inspector_id, and profile
         await saveInspectionOffline({
