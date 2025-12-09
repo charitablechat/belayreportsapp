@@ -296,8 +296,10 @@ export async function syncDailyAssessments() {
           continue;
         }
 
+        // Exclude joined 'inspector' object - only inspector_id column exists in DB
+        const { inspector, ...dataWithoutInspector } = op.data as any;
         const dataToSync = {
-          ...op.data,
+          ...dataWithoutInspector,
           inspector_id: user.id,
         };
 
@@ -337,8 +339,10 @@ export async function syncDailyAssessments() {
           continue;
         }
 
+        // Exclude joined 'inspector' object - only inspector_id column exists in DB
+        const { inspector, ...assessmentWithoutInspector } = assessment as any;
         const assessmentToSync = {
-          ...assessment,
+          ...assessmentWithoutInspector,
           inspector_id: user.id,
         };
 
