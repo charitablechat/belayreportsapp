@@ -25,6 +25,7 @@ import { FloatingActionButton } from "@/components/ui/floating-action-button";
 import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
 import { UnsavedChangesDialog } from "@/components/UnsavedChangesDialog";
 import { useSaveShortcut } from "@/hooks/useKeyboardShortcuts";
+import { useEmptyReportCleanup } from "@/hooks/useEmptyReportCleanup";
 
 export default function DailyAssessmentForm() {
   const { id } = useParams();
@@ -76,6 +77,31 @@ export default function DailyAssessmentForm() {
     hasUnsavedChanges,
     message: "You have unsaved changes to this assessment. Are you sure you want to leave?",
   });
+
+  // Empty report cleanup
+  const { cleanupEmptyReport } = useEmptyReportCleanup({
+    type: 'daily_assessment',
+    id,
+    status: assessment?.status,
+    data: assessment,
+    relatedData: {
+      beginningOfDay,
+      endOfDay,
+      operatingSystems,
+      equipmentChecks,
+      structureChecks,
+      environmentChecks,
+    }
+  });
+
+  // Cleanup empty reports on unmount
+  useEffect(() => {
+    return () => {
+      if (assessment?.status === 'draft') {
+        cleanupEmptyReport();
+      }
+    };
+  }, [assessment?.status, cleanupEmptyReport]);
 
   // Keyboard shortcut ref for save (actual function set later)  
   const saveRef = useRef<(() => void) | null>(null);

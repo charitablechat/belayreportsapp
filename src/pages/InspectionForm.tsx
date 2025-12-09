@@ -54,6 +54,7 @@ import { Check } from "lucide-react";
 import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
 import { UnsavedChangesDialog } from "@/components/UnsavedChangesDialog";
 import { useSaveShortcut } from "@/hooks/useKeyboardShortcuts";
+import { useEmptyReportCleanup } from "@/hooks/useEmptyReportCleanup";
 
 export default function InspectionForm() {
   const { id } = useParams();
@@ -136,6 +137,30 @@ export default function InspectionForm() {
     hasUnsavedChanges,
     message: "You have unsaved changes to this inspection. Are you sure you want to leave?",
   });
+
+  // Empty report cleanup
+  const { cleanupEmptyReport } = useEmptyReportCleanup({
+    type: 'inspection',
+    id,
+    status: inspection?.status,
+    data: inspection,
+    relatedData: {
+      systems,
+      ziplines,
+      equipment,
+      standards,
+      summary,
+    }
+  });
+
+  // Cleanup empty reports on unmount
+  useEffect(() => {
+    return () => {
+      if (inspection?.status === 'draft') {
+        cleanupEmptyReport();
+      }
+    };
+  }, [inspection?.status, cleanupEmptyReport]);
 
   // Keyboard shortcut ref for save (actual function set later)
   const saveRef = useRef<(() => void) | null>(null);

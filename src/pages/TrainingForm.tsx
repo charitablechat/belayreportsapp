@@ -37,6 +37,7 @@ import { Check } from "lucide-react";
 import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
 import { UnsavedChangesDialog } from "@/components/UnsavedChangesDialog";
 import { useSaveShortcut } from "@/hooks/useKeyboardShortcuts";
+import { useEmptyReportCleanup } from "@/hooks/useEmptyReportCleanup";
 
 export default function TrainingForm() {
   const { id } = useParams();
@@ -97,6 +98,32 @@ export default function TrainingForm() {
     hasUnsavedChanges,
     message: "You have unsaved changes to this training report. Are you sure you want to leave?",
   });
+
+  // Empty report cleanup
+  const { cleanupEmptyReport } = useEmptyReportCleanup({
+    type: 'training',
+    id,
+    status: training?.status,
+    data: training,
+    relatedData: {
+      deliveryApproaches,
+      operatingSystems,
+      immediateAttention,
+      verifiableItems,
+      systemsInPlace,
+      summary,
+    }
+  });
+
+  // Cleanup empty reports on unmount
+  useEffect(() => {
+    return () => {
+      // Only cleanup if navigating away without saving
+      if (training?.status === 'draft') {
+        cleanupEmptyReport();
+      }
+    };
+  }, [training?.status, cleanupEmptyReport]);
 
   // Keyboard shortcut for save (Ctrl/Cmd+S)
   useSaveShortcut(() => saveTraining(), hasUnsavedChanges && !isSaving);
