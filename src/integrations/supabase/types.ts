@@ -929,6 +929,11 @@ export type Database = {
       notification_preferences: {
         Row: {
           created_at: string | null
+          email_address: string | null
+          email_inspection_completed: boolean | null
+          email_notifications_enabled: boolean | null
+          email_sync_conflicts: boolean | null
+          email_training_completed: boolean | null
           id: string
           inspection_completed: boolean | null
           sync_conflicts: boolean | null
@@ -938,6 +943,11 @@ export type Database = {
         }
         Insert: {
           created_at?: string | null
+          email_address?: string | null
+          email_inspection_completed?: boolean | null
+          email_notifications_enabled?: boolean | null
+          email_sync_conflicts?: boolean | null
+          email_training_completed?: boolean | null
           id?: string
           inspection_completed?: boolean | null
           sync_conflicts?: boolean | null
@@ -947,6 +957,11 @@ export type Database = {
         }
         Update: {
           created_at?: string | null
+          email_address?: string | null
+          email_inspection_completed?: boolean | null
+          email_notifications_enabled?: boolean | null
+          email_sync_conflicts?: boolean | null
+          email_training_completed?: boolean | null
           id?: string
           inspection_completed?: boolean | null
           sync_conflicts?: boolean | null
