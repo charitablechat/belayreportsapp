@@ -46,7 +46,7 @@ export default function EquipmentChecksSection({ section, checks, onUpdate }: Eq
   return (
     <Card>
       <CardHeader>
-        <CardTitle>{section.label || 'Pre-Use Equipment Inspection'}</CardTitle>
+        <CardTitle>Pre Use Inspection Equipment/Check all that apply</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         {fields.map((field) => {
