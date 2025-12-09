@@ -49,7 +49,7 @@ import { triggerHaptic } from "@/lib/haptics";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useSwipeNavigation } from "@/hooks/useSwipeNavigation";
 import { SwipeBackIndicator } from "@/components/SwipeBackIndicator";
-import { FloatingActionButton } from "@/components/ui/floating-action-button";
+
 import { Check } from "lucide-react";
 import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
 import { UnsavedChangesDialog } from "@/components/UnsavedChangesDialog";
@@ -1719,29 +1719,6 @@ export default function InspectionForm() {
         onClose={() => setHtmlViewerOpen(false)}
       />
 
-      {/* Mobile FAB */}
-      <FloatingActionButton
-        primaryAction={{
-          icon: <Save className="h-6 w-6" />,
-          label: "Save",
-          onClick: saveProgress,
-          loading: saving,
-          disabled: saving,
-        }}
-        secondaryActions={
-          isOnline && !saving
-            ? [
-                {
-                  icon: <Check className="h-5 w-5" />,
-                  label: "Complete",
-                  onClick: completeInspection,
-                  disabled: saving,
-                  variant: "success" as const,
-                },
-              ]
-            : []
-        }
-      />
       </div>
     </>
   );
