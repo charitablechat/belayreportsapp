@@ -51,7 +51,7 @@ export default function EndOfDaySection({ items, onUpdate }: EndOfDaySectionProp
   return (
     <Card>
       <CardHeader>
-        <CardTitle>End of Day Checklist</CardTitle>
+        <CardTitle>End of Day Proceedings</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         {END_OF_DAY_ITEMS.map((item) => {
