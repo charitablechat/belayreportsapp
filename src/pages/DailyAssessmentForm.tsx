@@ -617,33 +617,24 @@ export default function DailyAssessmentForm() {
           </TabsContent>
 
           <TabsContent value="equipment" className="space-y-4 mt-4">
-            {equipmentSection && (
-              <EquipmentChecksSection 
-                section={equipmentSection}
-                checks={equipmentChecks} 
-                onUpdate={setEquipmentChecks} 
-              />
-            )}
+            <EquipmentChecksSection 
+              checks={equipmentChecks} 
+              onUpdate={setEquipmentChecks} 
+            />
           </TabsContent>
 
           <TabsContent value="structure" className="space-y-4 mt-4">
-            {structureSection && (
-              <StructureChecksSection 
-                section={structureSection}
-                checks={structureChecks} 
-                onUpdate={setStructureChecks} 
-              />
-            )}
+            <StructureChecksSection 
+              checks={structureChecks} 
+              onUpdate={setStructureChecks} 
+            />
           </TabsContent>
 
           <TabsContent value="environment" className="space-y-4 mt-4">
-            {environmentSection && (
-              <EnvironmentChecksSection 
-                section={environmentSection}
-                checks={environmentChecks} 
-                onUpdate={setEnvironmentChecks} 
-              />
-            )}
+            <EnvironmentChecksSection 
+              checks={environmentChecks} 
+              onUpdate={setEnvironmentChecks} 
+            />
           </TabsContent>
         </Tabs>
       </div>
