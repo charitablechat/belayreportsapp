@@ -33,7 +33,7 @@ import { ConflictNotification } from "@/components/sync/ConflictNotification";
 import { useConflicts } from "@/hooks/useConflicts";
 import { usePWA } from "@/hooks/usePWA";
 import { usePullToRefresh } from "@/hooks/usePullToRefresh";
-import { getOfflineInspections, deleteOfflineInspection, queueOperation } from "@/lib/offline-storage";
+import { getOfflineInspections, deleteOfflineInspection, queueOperation, saveInspectionOffline } from "@/lib/offline-storage";
 import { ContactDeveloperSheet } from "@/components/ContactDeveloperSheet";
 import { InspectionsEmptyState, TrainingsEmptyState, DailyAssessmentsEmptyState } from "@/components/EmptyState";
 import { getUserWithCache } from "@/lib/cached-auth";
@@ -233,6 +233,11 @@ export default function Dashboard() {
         
         if (data) {
           setInspections(data);
+          
+          // Save to offline storage to cache inspector profiles
+          for (const inspection of data) {
+            await saveInspectionOffline(inspection);
+          }
           
           if (import.meta.env.DEV) {
             console.log('[Dashboard] Loaded from Supabase:', data.length);
