@@ -13,6 +13,7 @@ interface ContactEmailRequest {
   subject: string;
   message: string;
   imageUrl?: string;
+  website?: string; // Honeypot field - should always be empty
 }
 
 function escapeHtml(unsafe: string): string {
@@ -45,7 +46,17 @@ const handler = async (req: Request): Promise<Response> => {
 
     console.log(`[Rate Limit] IP ${clientIP} - ${rateLimit.remaining} requests remaining`);
 
-    const { name, email, subject, message, imageUrl }: ContactEmailRequest = await req.json();
+    const { name, email, subject, message, imageUrl, website }: ContactEmailRequest = await req.json();
+
+    // Honeypot check - if the hidden field is filled, it's likely a bot
+    if (website && website.trim() !== '') {
+      console.warn(`[Honeypot] Bot detected from IP ${clientIP} - honeypot field filled`);
+      // Return success to not tip off the bot, but don't send the email
+      return new Response(JSON.stringify({ success: true }), {
+        status: 200,
+        headers: { "Content-Type": "application/json", ...corsHeaders },
+      });
+    }
 
     // Validate required fields
     if (!name || !email || !subject || !message) {

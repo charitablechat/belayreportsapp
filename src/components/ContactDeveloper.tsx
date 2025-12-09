@@ -12,6 +12,7 @@ import { usePWA } from "@/hooks/usePWA";
 interface ContactForm {
   subject: string;
   message: string;
+  website: string; // Honeypot field - should always be empty
 }
 
 export default function ContactDeveloper() {
@@ -21,6 +22,7 @@ export default function ContactDeveloper() {
   const [form, setForm] = useState<ContactForm>({
     subject: "",
     message: "",
+    website: "", // Honeypot field
   });
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
@@ -100,12 +102,13 @@ export default function ContactDeveloper() {
           subject: form.subject,
           message: form.message,
           imageUrl,
+          website: form.website, // Honeypot field
         },
       });
 
       if (error) throw error;
 
-      setForm({ subject: "", message: "" });
+      setForm({ subject: "", message: "", website: "" });
       clearImage();
       setOpen(false);
     } catch (error: any) {
@@ -152,6 +155,19 @@ export default function ContactDeveloper() {
                 value="kale@myaisummit.dev"
                 disabled
                 className="bg-muted cursor-not-allowed"
+              />
+            </div>
+            {/* Honeypot field - hidden from real users, bots will fill it */}
+            <div className="absolute -left-[9999px]" aria-hidden="true">
+              <Label htmlFor="website">Website</Label>
+              <Input
+                id="website"
+                name="website"
+                type="text"
+                value={form.website}
+                onChange={(e) => setForm(prev => ({ ...prev, website: e.target.value }))}
+                tabIndex={-1}
+                autoComplete="off"
               />
             </div>
             <div className="space-y-2">
