@@ -52,7 +52,7 @@ export default function BeginningOfDaySection({ items, onUpdate }: BeginningOfDa
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Beginning of Day Checklist</CardTitle>
+        <CardTitle>Beginning of Day Proceedings</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         {BEGINNING_OF_DAY_ITEMS.map((item) => {
