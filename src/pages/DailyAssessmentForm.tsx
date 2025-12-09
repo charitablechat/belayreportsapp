@@ -3,7 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useFormConfiguration } from "@/hooks/useFormConfiguration";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Save, FileText, Loader2, WifiOff, Check } from "lucide-react";
+import { ArrowLeft, Save, FileText, Loader2, WifiOff, Check, Sunrise, Sunset, Settings, Package, Building, Cloud } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { AutoSaveIndicator } from "@/components/AutoSaveIndicator";
@@ -365,34 +365,76 @@ export default function DailyAssessmentForm() {
         onCancel={cancelNavigation}
         message="You have unsaved changes to this assessment. Are you sure you want to leave?"
       />
-      <div className="container mx-auto px-4 py-8 max-w-5xl">
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" onClick={() => navigate('/dashboard')}>
-            <ArrowLeft className={isMobileView ? "h-4 w-4" : "mr-2 h-4 w-4"} />
-            {!isMobileView && "Back to Dashboard"}
-          </Button>
-          {!navigator.onLine && (
-            <Badge variant="secondary" className="gap-1">
-              <WifiOff className="h-3 w-3" />
-              <span className="hidden sm:inline">Offline</span>
-            </Badge>
-          )}
-          <AutoSaveIndicator
-            lastSaved={lastSaved}
-            isSaving={saving}
-            hasUnsavedChanges={hasUnsavedChanges}
-          />
+      <div className="container mx-auto px-4 py-4 lg:py-8 max-w-5xl">
+      {/* Header - Responsive layout */}
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between mb-6">
+        {/* Row 1: Back button + Status */}
+        <div className="flex items-center justify-between lg:justify-start lg:gap-3">
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" size={isMobileView ? "sm" : "default"} onClick={() => navigate('/dashboard')}>
+              <ArrowLeft className="h-4 w-4 lg:mr-2" />
+              <span className="hidden lg:inline">Back to Dashboard</span>
+            </Button>
+          </div>
+          <div className="flex items-center gap-2 lg:hidden">
+            {!navigator.onLine && (
+              <Badge variant="secondary" className="gap-1 text-xs">
+                <WifiOff className="h-3 w-3" />
+                Offline
+              </Badge>
+            )}
+          </div>
         </div>
-        <div className="flex gap-2">
-          <Button onClick={handleGenerateReport} disabled={generating} variant="outline">
-            <FileText className={isMobileView ? "h-4 w-4" : "mr-2 h-4 w-4"} />
-            {generating ? (isMobileView ? '...' : 'Generating...') : (isMobileView ? 'Report' : 'Generate Report')}
-          </Button>
-          <Button onClick={handleSave} disabled={saving}>
-            <Save className={isMobileView ? "h-4 w-4" : "mr-2 h-4 w-4"} />
-            {saving ? (isMobileView ? '...' : 'Saving...') : (isMobileView ? 'Save' : 'Save & Complete')}
-          </Button>
+        
+        {/* Row 2 (mobile) / Right side (desktop): Actions */}
+        <div className="flex items-center justify-between lg:justify-end gap-2 lg:gap-3">
+          {/* Desktop-only status badges */}
+          <div className="hidden lg:flex items-center gap-3">
+            {!navigator.onLine && (
+              <Badge variant="secondary" className="gap-1">
+                <WifiOff className="h-3 w-3" />
+                Offline
+              </Badge>
+            )}
+            <AutoSaveIndicator
+              lastSaved={lastSaved}
+              isSaving={saving}
+              hasUnsavedChanges={hasUnsavedChanges}
+            />
+          </div>
+          
+          {/* Mobile auto-save indicator */}
+          <div className="lg:hidden">
+            <AutoSaveIndicator
+              lastSaved={lastSaved}
+              isSaving={saving}
+              hasUnsavedChanges={hasUnsavedChanges}
+            />
+          </div>
+          
+          {/* Action buttons */}
+          <div className="flex items-center gap-2">
+            <Button onClick={handleGenerateReport} disabled={generating} variant="outline" size={isMobileView ? "sm" : "default"}>
+              {generating ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <>
+                  <FileText className="h-4 w-4 lg:mr-2" />
+                  <span className="hidden lg:inline">Generate Report</span>
+                </>
+              )}
+            </Button>
+            <Button onClick={handleSave} disabled={saving} size={isMobileView ? "sm" : "default"}>
+              {saving ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <>
+                  <Save className="h-4 w-4 lg:mr-2" />
+                  <span className="hidden lg:inline">Save & Complete</span>
+                </>
+              )}
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -409,13 +451,31 @@ export default function DailyAssessmentForm() {
 
         <Tabs value={currentTab} onValueChange={setCurrentTab} className="w-full">
           <div ref={swipeContainerRef}>
-            <TabsList className="grid w-full grid-cols-3 lg:grid-cols-6">
-              <TabsTrigger value="beginning">Beginning</TabsTrigger>
-              <TabsTrigger value="end">{isMobileView ? "End" : "End of Day"}</TabsTrigger>
-              <TabsTrigger value="systems">Systems</TabsTrigger>
-              <TabsTrigger value="equipment">Equipment</TabsTrigger>
-              <TabsTrigger value="structure">Structure</TabsTrigger>
-              <TabsTrigger value="environment">Environment</TabsTrigger>
+            <TabsList className="grid w-full grid-cols-3 lg:grid-cols-6 gap-1 lg:gap-0 h-auto p-1.5 lg:p-1">
+              <TabsTrigger value="beginning" className="text-xs lg:text-sm py-2 flex flex-col lg:flex-row items-center gap-1 lg:gap-1.5">
+                <Sunrise className="h-3.5 w-3.5" />
+                <span>Beginning</span>
+              </TabsTrigger>
+              <TabsTrigger value="end" className="text-xs lg:text-sm py-2 flex flex-col lg:flex-row items-center gap-1 lg:gap-1.5">
+                <Sunset className="h-3.5 w-3.5" />
+                <span>{isMobileView ? "End" : "End of Day"}</span>
+              </TabsTrigger>
+              <TabsTrigger value="systems" className="text-xs lg:text-sm py-2 flex flex-col lg:flex-row items-center gap-1 lg:gap-1.5">
+                <Settings className="h-3.5 w-3.5" />
+                <span>Systems</span>
+              </TabsTrigger>
+              <TabsTrigger value="equipment" className="text-xs lg:text-sm py-2 flex flex-col lg:flex-row items-center gap-1 lg:gap-1.5">
+                <Package className="h-3.5 w-3.5" />
+                <span>Equipment</span>
+              </TabsTrigger>
+              <TabsTrigger value="structure" className="text-xs lg:text-sm py-2 flex flex-col lg:flex-row items-center gap-1 lg:gap-1.5">
+                <Building className="h-3.5 w-3.5" />
+                <span>Structure</span>
+              </TabsTrigger>
+              <TabsTrigger value="environment" className="text-xs lg:text-sm py-2 flex flex-col lg:flex-row items-center gap-1 lg:gap-1.5">
+                <Cloud className="h-3.5 w-3.5" />
+                <span>Environment</span>
+              </TabsTrigger>
             </TabsList>
           </div>
 

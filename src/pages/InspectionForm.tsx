@@ -6,7 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { ArrowLeft, Save, CheckCircle, Loader2, WifiOff, CloudOff, LogOut, User, FileText } from "lucide-react";
+import { ArrowLeft, Save, CheckCircle, Loader2, WifiOff, CloudOff, LogOut, User, FileText, Settings, Package, ClipboardList, FileCheck } from "lucide-react";
 import { UserAvatar } from "@/components/ui/user-avatar";
 import { AutoSaveIndicator } from "@/components/AutoSaveIndicator";
 import {
@@ -1526,11 +1526,23 @@ export default function InspectionForm() {
 
         <Tabs value={currentTab} onValueChange={setCurrentTab} className="space-y-6 mt-6">
           <div ref={swipeContainerRef}>
-            <TabsList className="grid grid-cols-2 lg:grid-cols-4 w-full gap-2 h-auto p-2">
-              <TabsTrigger value="details" className="h-11">{isMobileView ? "Systems" : "Systems - Ziplines"}</TabsTrigger>
-              <TabsTrigger value="equipment" className="h-11">Equipment</TabsTrigger>
-              <TabsTrigger value="standards" className="h-11">{isMobileView ? "Criteria" : "Operations Criteria"}</TabsTrigger>
-              <TabsTrigger value="summary" className="h-11">Summary</TabsTrigger>
+            <TabsList className="grid grid-cols-2 lg:grid-cols-4 w-full gap-1 lg:gap-0 h-auto p-1.5 lg:p-1">
+              <TabsTrigger value="details" className="text-xs lg:text-sm py-2 flex flex-col lg:flex-row items-center gap-1 lg:gap-1.5">
+                <Settings className="h-3.5 w-3.5" />
+                <span>{isMobileView ? "Systems" : "Systems - Ziplines"}</span>
+              </TabsTrigger>
+              <TabsTrigger value="equipment" className="text-xs lg:text-sm py-2 flex flex-col lg:flex-row items-center gap-1 lg:gap-1.5">
+                <Package className="h-3.5 w-3.5" />
+                <span>Equipment</span>
+              </TabsTrigger>
+              <TabsTrigger value="standards" className="text-xs lg:text-sm py-2 flex flex-col lg:flex-row items-center gap-1 lg:gap-1.5">
+                <ClipboardList className="h-3.5 w-3.5" />
+                <span>{isMobileView ? "Criteria" : "Operations Criteria"}</span>
+              </TabsTrigger>
+              <TabsTrigger value="summary" className="text-xs lg:text-sm py-2 flex flex-col lg:flex-row items-center gap-1 lg:gap-1.5">
+                <FileCheck className="h-3.5 w-3.5" />
+                <span>Summary</span>
+              </TabsTrigger>
             </TabsList>
           </div>
 
