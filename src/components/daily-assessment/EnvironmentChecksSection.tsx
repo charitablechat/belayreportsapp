@@ -1,17 +1,20 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
-import { VoiceTextarea } from "@/components/ui/voice-textarea";
-import { FormSection } from "@/hooks/useFormConfiguration";
 import { triggerHaptic } from "@/lib/haptics";
 
+const ENVIRONMENT_ITEMS = [
+  { key: 'weather_conditions', label: 'Weather conditions appropriate and in line with Rope Works policy' },
+  { key: 'no_vandalism', label: 'Zero presence of course vandalism (use comment area if otherwise)' },
+  { key: 'no_overhead_hazards', label: 'Free from trees/limbs or other overhead hazards' },
+];
+
 interface EnvironmentChecksSectionProps {
-  section: FormSection;
   checks: any[];
   onUpdate: (checks: any[]) => void;
 }
 
-export default function EnvironmentChecksSection({ section, checks, onUpdate }: EnvironmentChecksSectionProps) {
+export default function EnvironmentChecksSection({ checks, onUpdate }: EnvironmentChecksSectionProps) {
   const handleToggle = (itemKey: string) => {
     triggerHaptic('light');
     const existingCheck = checks.find(c => c.item_key === itemKey);
@@ -23,53 +26,29 @@ export default function EnvironmentChecksSection({ section, checks, onUpdate }: 
           : c
       ));
     } else {
-      onUpdate([...checks, { item_key: itemKey, is_checked: true, comments: '' }]);
+      onUpdate([...checks, { item_key: itemKey, is_checked: true }]);
     }
   };
-
-  const handleCommentChange = (itemKey: string, comments: string) => {
-    const existingCheck = checks.find(c => c.item_key === itemKey);
-    
-    if (existingCheck) {
-      onUpdate(checks.map(c => 
-        c.item_key === itemKey 
-          ? { ...c, comments }
-          : c
-      ));
-    } else {
-      onUpdate([...checks, { item_key: itemKey, is_checked: false, comments }]);
-    }
-  };
-
-  const fields = section.fields || [];
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>{section.label || 'Pre-Use Environment Inspection'}</CardTitle>
+        <CardTitle>Pre Use Inspection Environment and Other</CardTitle>
       </CardHeader>
-      <CardContent className="space-y-4">
-        {fields.map((field) => {
-          const existingCheck = checks.find(c => c.item_key === field.field_key);
+      <CardContent className="space-y-3">
+        {ENVIRONMENT_ITEMS.map((item) => {
+          const existingCheck = checks.find(c => c.item_key === item.key);
           return (
-            <div key={field.field_key} className="space-y-2 border-b pb-4 last:border-b-0">
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id={field.field_key}
-                  checked={existingCheck?.is_checked || false}
-                  onCheckedChange={() => handleToggle(field.field_key)}
-                />
-                <Label htmlFor={field.field_key} className="text-sm font-normal cursor-pointer">
-                  {field.label}
-                </Label>
-              </div>
-              <VoiceTextarea
-                placeholder={field.placeholder || "Comments (optional)"}
-                value={existingCheck?.comments || ''}
-                onChange={(e) => handleCommentChange(field.field_key, e.target.value)}
-                className="text-sm"
-                rows={2}
+            <div key={item.key} className="flex items-start space-x-3">
+              <Checkbox
+                id={item.key}
+                checked={existingCheck?.is_checked || false}
+                onCheckedChange={() => handleToggle(item.key)}
+                className="mt-0.5"
               />
+              <Label htmlFor={item.key} className="text-sm font-normal cursor-pointer leading-relaxed">
+                {item.label}
+              </Label>
             </div>
           );
         })}
