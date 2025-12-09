@@ -201,18 +201,21 @@ export type Database = {
           assessment_id: string
           created_at: string | null
           id: string
+          other_description: string | null
           system_name: string
         }
         Insert: {
           assessment_id: string
           created_at?: string | null
           id?: string
+          other_description?: string | null
           system_name: string
         }
         Update: {
           assessment_id?: string
           created_at?: string | null
           id?: string
+          other_description?: string | null
           system_name?: string
         }
         Relationships: [

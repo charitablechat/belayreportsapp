@@ -1,16 +1,29 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
-import { FormSection } from "@/hooks/useFormConfiguration";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Plus, X } from "lucide-react";
 import { triggerHaptic } from "@/lib/haptics";
 
+const OPERATING_SYSTEMS = [
+  "Spotted/Spotting",
+  "Top Rope Belay System",
+  "Limited Fall System",
+  "Tensioned Rope System",
+  "Positioning",
+  "Personal Fall Arrest System",
+  "Travel Restraint System",
+  "Automated Safety System",
+  "Collective Safety System",
+];
+
 interface OperatingSystemsSectionProps {
-  section: FormSection;
   systems: any[];
   onUpdate: (systems: any[]) => void;
 }
 
-export default function OperatingSystemsSection({ section, systems, onUpdate }: OperatingSystemsSectionProps) {
+export default function OperatingSystemsSection({ systems, onUpdate }: OperatingSystemsSectionProps) {
   const handleToggle = (systemName: string) => {
     triggerHaptic('light');
     const exists = systems.some(s => s.system_name === systemName);
@@ -22,27 +35,89 @@ export default function OperatingSystemsSection({ section, systems, onUpdate }: 
     }
   };
 
-  const fields = section.fields || [];
+  const handleAddOther = () => {
+    triggerHaptic('light');
+    onUpdate([...systems, { system_name: 'Other', other_description: '' }]);
+  };
+
+  const handleUpdateOther = (index: number, description: string) => {
+    const otherSystems = systems.filter(s => s.system_name === 'Other');
+    const otherIndex = otherSystems.findIndex((_, i) => {
+      const actualIndex = systems.findIndex((s, idx) => s.system_name === 'Other' && systems.slice(0, idx).filter(x => x.system_name === 'Other').length === i);
+      return actualIndex === index;
+    });
+    
+    const updated = systems.map((s, i) => 
+      i === index ? { ...s, other_description: description } : s
+    );
+    onUpdate(updated);
+  };
+
+  const handleRemoveOther = (index: number) => {
+    triggerHaptic('light');
+    onUpdate(systems.filter((_, i) => i !== index));
+  };
+
+  const standardSystems = systems.filter(s => s.system_name !== 'Other');
+  const otherSystems = systems
+    .map((s, index) => ({ ...s, originalIndex: index }))
+    .filter(s => s.system_name === 'Other');
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>{section.label || 'Operating Systems in Use Today'}</CardTitle>
+        <CardTitle>Operating Systems in Use Today</CardTitle>
       </CardHeader>
-      <CardContent>
+      <CardContent className="space-y-4">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {fields.map((field) => (
-            <div key={field.field_key} className="flex items-center space-x-2">
+          {OPERATING_SYSTEMS.map((system) => (
+            <div key={system} className="flex items-center space-x-2">
               <Checkbox
-                id={field.field_key}
-                checked={systems.some(s => s.system_name === field.field_key)}
-                onCheckedChange={() => handleToggle(field.field_key)}
+                id={system}
+                checked={standardSystems.some(s => s.system_name === system)}
+                onCheckedChange={() => handleToggle(system)}
               />
-              <Label htmlFor={field.field_key} className="text-sm font-normal cursor-pointer">
-                {field.label}
+              <Label htmlFor={system} className="text-sm font-normal cursor-pointer">
+                {system}
               </Label>
             </div>
           ))}
+        </div>
+
+        {/* Other/Custom Systems */}
+        <div className="space-y-3 pt-4 border-t">
+          <Label className="text-sm font-medium">Custom Operating Systems</Label>
+          
+          {otherSystems.map((system) => (
+            <div key={system.originalIndex} className="flex items-center gap-2">
+              <Input
+                value={system.other_description || ''}
+                onChange={(e) => handleUpdateOther(system.originalIndex, e.target.value)}
+                placeholder="Enter custom operating system name"
+                className="flex-1"
+              />
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={() => handleRemoveOther(system.originalIndex)}
+                className="text-destructive hover:text-destructive"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          ))}
+
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={handleAddOther}
+            className="w-full"
+          >
+            <Plus className="h-4 w-4 mr-2" />
+            Add Custom Operating System
+          </Button>
         </div>
       </CardContent>
     </Card>
