@@ -59,16 +59,14 @@ serve(async (req) => {
       { data: ziplines, error: ziplinesError },
       { data: equipment, error: equipmentError },
       { data: standards, error: standardsError },
-      { data: summary, error: summaryError },
-      { data: inspectorProfile, error: profileError }
+      { data: summary, error: summaryError }
     ] = await Promise.all([
       supabase.from('inspections').select('*').eq('id', inspectionId).single(),
       supabase.from('inspection_systems').select('*').eq('inspection_id', inspectionId),
       supabase.from('inspection_ziplines').select('*').eq('inspection_id', inspectionId),
       supabase.from('inspection_equipment').select('*').eq('inspection_id', inspectionId),
       supabase.from('inspection_standards').select('*').eq('inspection_id', inspectionId),
-      supabase.from('inspection_summary').select('*').eq('inspection_id', inspectionId).maybeSingle(),
-      supabase.from('profiles').select('*').eq('id', user.id).single()
+      supabase.from('inspection_summary').select('*').eq('inspection_id', inspectionId).maybeSingle()
     ]);
 
     if (inspectionError) throw inspectionError;
@@ -78,6 +76,13 @@ serve(async (req) => {
     if (!isSuperAdmin.data && inspection.inspector_id !== user.id) {
       throw new Error('Unauthorized to generate this report');
     }
+
+    // Fetch the inspector profile using the inspection's inspector_id (not current user)
+    const { data: inspectorProfile, error: profileError } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', inspection.inspector_id)
+      .maybeSingle();
 
     // Helper functions
     const formatDate = (dateStr: string | null) => {
