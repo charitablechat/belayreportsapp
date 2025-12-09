@@ -556,13 +556,6 @@ serve(async (req) => {
       .from('inspection-reports')
       .createSignedUrl(filePath, 60 * 60 * 24); // 24 hours
 
-    // Check for existing report to enforce one-to-one rule
-    const { data: existingReport } = await supabaseAdmin
-      .from('training_reports')
-      .select('id, version')
-      .eq('training_id', trainingId)
-      .maybeSingle();
-
     const reportMetadata = {
       generator: 'generate-training-pdf',
       format: 'pdf',
@@ -577,31 +570,30 @@ serve(async (req) => {
       }
     };
 
-    if (existingReport) {
-      // Update existing report, increment version
-      await supabaseAdmin
-        .from('training_reports')
-        .update({
-          pdf_url: urlData?.signedUrl || '',
-          generated_by: user.id,
-          file_size_bytes: pdfBytes.byteLength,
-          version: (existingReport.version || 1) + 1,
-          generated_at: new Date().toISOString(),
-          metadata: reportMetadata
-        })
-        .eq('id', existingReport.id);
-      console.log('Existing training report updated successfully');
-    } else {
-      // Insert new report
-      await supabaseAdmin.from('training_reports').insert({
+    // Use upsert to prevent race condition duplicates
+    // The unique constraint on training_id ensures only one report per training
+    // The database trigger automatically increments version on updates
+    const { error: upsertError } = await supabaseAdmin
+      .from('training_reports')
+      .upsert({
         training_id: trainingId,
         pdf_url: urlData?.signedUrl || '',
         generated_by: user.id,
         file_size_bytes: pdfBytes.byteLength,
+        version: 1, // Will be auto-incremented by trigger on updates
+        generated_at: new Date().toISOString(),
         metadata: reportMetadata
+      }, { 
+        onConflict: 'training_id',
+        ignoreDuplicates: false 
       });
-      console.log('New training report created successfully');
+
+    if (upsertError) {
+      console.error('Failed to upsert training report:', upsertError);
+      throw new Error('Failed to save training report');
     }
+    
+    console.log('Training report upserted successfully');
 
     return new Response(
       JSON.stringify({
