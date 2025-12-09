@@ -289,7 +289,7 @@ export default function Dashboard() {
           .from("daily_assessments")
           .select(`
             *,
-            inspector:profiles!daily_assessments_inspector_id_fkey(first_name, last_name)
+            inspector:profiles!daily_assessments_inspector_id_profiles_fkey(first_name, last_name)
           `)
           .order("assessment_date", { ascending: false });
 
