@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Save, FileDown, FileText, ChevronLeft, WifiOff, Wifi, Mail, CheckCircle } from "lucide-react";
+import { Loader2, Save, FileDown, FileText, ChevronLeft, WifiOff, Wifi, Mail, CheckCircle, Info, Users, Settings, AlertTriangle, ClipboardCheck, FileCheck } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AutoSaveIndicator } from "@/components/AutoSaveIndicator";
 import { Input } from "@/components/ui/input";
@@ -808,12 +808,30 @@ export default function TrainingForm() {
         <Tabs value={currentTab} onValueChange={setCurrentTab} className="space-y-6">
           <div ref={swipeContainerRef}>
             <TabsList className="grid w-full grid-cols-3 lg:grid-cols-6 gap-1 lg:gap-0 h-auto p-1.5 lg:p-1">
-              <TabsTrigger value="info" className="text-xs lg:text-sm py-2">Info</TabsTrigger>
-              <TabsTrigger value="delivery" className="text-xs lg:text-sm py-2">{isMobile ? "Delivery" : "Delivery Approach"}</TabsTrigger>
-              <TabsTrigger value="systems" className="text-xs lg:text-sm py-2">{isMobile ? "Systems" : "Trained OS"}</TabsTrigger>
-              <TabsTrigger value="attention" className="text-xs lg:text-sm py-2">{isMobile ? "Actions" : "Required Actions"}</TabsTrigger>
-              <TabsTrigger value="verifiable" className="text-xs lg:text-sm py-2">{isMobile ? "Verified" : "Verified During Training"}</TabsTrigger>
-              <TabsTrigger value="summary" className="text-xs lg:text-sm py-2">Summary</TabsTrigger>
+              <TabsTrigger value="info" className="text-xs lg:text-sm py-2 flex flex-col lg:flex-row items-center gap-1 lg:gap-1.5">
+                <Info className="h-3.5 w-3.5" />
+                <span>Info</span>
+              </TabsTrigger>
+              <TabsTrigger value="delivery" className="text-xs lg:text-sm py-2 flex flex-col lg:flex-row items-center gap-1 lg:gap-1.5">
+                <Users className="h-3.5 w-3.5" />
+                <span>{isMobile ? "Delivery" : "Delivery Approach"}</span>
+              </TabsTrigger>
+              <TabsTrigger value="systems" className="text-xs lg:text-sm py-2 flex flex-col lg:flex-row items-center gap-1 lg:gap-1.5">
+                <Settings className="h-3.5 w-3.5" />
+                <span>{isMobile ? "Systems" : "Trained OS"}</span>
+              </TabsTrigger>
+              <TabsTrigger value="attention" className="text-xs lg:text-sm py-2 flex flex-col lg:flex-row items-center gap-1 lg:gap-1.5">
+                <AlertTriangle className="h-3.5 w-3.5" />
+                <span>{isMobile ? "Actions" : "Required Actions"}</span>
+              </TabsTrigger>
+              <TabsTrigger value="verifiable" className="text-xs lg:text-sm py-2 flex flex-col lg:flex-row items-center gap-1 lg:gap-1.5">
+                <ClipboardCheck className="h-3.5 w-3.5" />
+                <span>{isMobile ? "Verified" : "Verified During Training"}</span>
+              </TabsTrigger>
+              <TabsTrigger value="summary" className="text-xs lg:text-sm py-2 flex flex-col lg:flex-row items-center gap-1 lg:gap-1.5">
+                <FileCheck className="h-3.5 w-3.5" />
+                <span>Summary</span>
+              </TabsTrigger>
             </TabsList>
           </div>
 
