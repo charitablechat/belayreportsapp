@@ -66,7 +66,7 @@ export default function OperatingSystemsSection({ systems, onUpdate }: Operating
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Operating Systems in Use Today</CardTitle>
+        <CardTitle>Type of Operating System/Check all that apply</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
