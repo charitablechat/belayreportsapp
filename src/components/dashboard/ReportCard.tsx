@@ -1,6 +1,7 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -8,7 +9,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { format } from "date-fns";
-import { FileText, MoreVertical, Trash2, Download, Check, RefreshCw, Cloud } from "lucide-react";
+import { FileText, MoreVertical, Trash2, Download, Check, Cloud, User } from "lucide-react";
 import { triggerHaptic } from "@/lib/haptics";
 
 interface ReportCardProps {
@@ -61,6 +62,23 @@ export function ReportCard({ report, type, onDelete, onClick, getStatusBadge }: 
     const firstName = report.inspector?.first_name || '';
     const lastName = report.inspector?.last_name || '';
     return `${firstName} ${lastName}`.trim() || 'Unknown';
+  };
+
+  const getInspectorAvatar = () => {
+    if (type === 'training') {
+      return report.trainer?.avatar_url || null;
+    }
+    return report.inspector?.avatar_url || null;
+  };
+
+  const getInspectorInitials = () => {
+    const name = getInspectorName();
+    if (name === 'Unknown') return '?';
+    const parts = name.split(' ');
+    if (parts.length >= 2) {
+      return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+    }
+    return name.charAt(0).toUpperCase();
   };
 
   const getReportStatus = () => {
@@ -143,9 +161,17 @@ export function ReportCard({ report, type, onDelete, onClick, getStatusBadge }: 
           <p className="text-muted-foreground">
             Date: {format(new Date(getReportDate()), "PPP")}
           </p>
-          <p className="text-muted-foreground">
-            Inspector: {getInspectorName()}
-          </p>
+          <div className="flex items-center gap-2">
+            <Avatar className="h-6 w-6">
+              <AvatarImage src={getInspectorAvatar() || undefined} alt={getInspectorName()} />
+              <AvatarFallback className="text-xs bg-primary/10 text-primary">
+                {getInspectorInitials()}
+              </AvatarFallback>
+            </Avatar>
+            <span className="text-muted-foreground">
+              {getInspectorName()}
+            </span>
+          </div>
           
           <div className="flex items-center gap-2 flex-wrap pt-2">
             <Badge 
