@@ -115,12 +115,15 @@ export async function syncInspectionAtomic(inspectionId: string) {
     // 4. Build transaction steps
     const steps: TransactionStep[] = [];
     
+    // Exclude joined 'inspector' object - only inspector_id column exists in DB
+    const { inspector, ...inspectionWithoutJoin } = inspection as any;
+    
     // Step 1: Upsert inspection
     steps.push({
       table: 'inspections',
       operation: 'upsert',
       data: {
-        ...inspection,
+        ...inspectionWithoutJoin,
         synced_at: new Date().toISOString(),
       },
       rollbackData: remoteInspection || null,

@@ -55,9 +55,11 @@ export async function syncInspections() {
           continue;
         }
 
+        // Exclude joined 'inspector' object - only inspector_id column exists in DB
+        const { inspector, ...dataWithoutInspector } = op.data as any;
         const dataToSync = {
-          ...op.data,
-          inspector_id: user.id, // Fix inspector_id
+          ...dataWithoutInspector,
+          inspector_id: user.id,
         };
 
         if (op.type === 'create' || op.type === 'update') {
@@ -98,9 +100,10 @@ export async function syncInspections() {
           continue;
         }
 
-        // Fix inspector_id before syncing
+        // Exclude joined 'inspector' object - only inspector_id column exists in DB
+        const { inspector, ...inspectionWithoutJoin } = inspection as any;
         const inspectionToSync = {
-          ...inspection,
+          ...inspectionWithoutJoin,
           inspector_id: user.id,
         };
 
