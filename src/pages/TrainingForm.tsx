@@ -800,7 +800,7 @@ export default function TrainingForm() {
           <div ref={swipeContainerRef}>
             <TabsList className="grid w-full grid-cols-4 lg:grid-cols-6">
               <TabsTrigger value="info">Info</TabsTrigger>
-              <TabsTrigger value="delivery">{isMobile ? "Format" : "Training Format"}</TabsTrigger>
+              <TabsTrigger value="delivery">{isMobile ? "Delivery" : "Delivery Approach"}</TabsTrigger>
               <TabsTrigger value="systems">{isMobile ? "OS" : "Trained OS"}</TabsTrigger>
               <TabsTrigger value="attention">{isMobile ? "Actions" : "Required Actions"}</TabsTrigger>
               <TabsTrigger value="verifiable">{isMobile ? "Verified" : "Verified During Training"}</TabsTrigger>
