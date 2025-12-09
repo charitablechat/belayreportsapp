@@ -37,7 +37,7 @@ export default function StructureChecksSection({ checks, onUpdate }: StructureCh
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Pre Use Inspection Structure/Check all that apply</CardTitle>
+        <CardTitle>Pre Use Inspection Structure/Activity Area/Element</CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
         {STRUCTURE_ITEMS.map((item) => {
