@@ -617,16 +617,15 @@ export default function InspectionForm() {
 
   const performSave = async (silent: boolean = false) => {
     try {
-      // Fix inspector_id mismatch before saving
+      // Verify user is authenticated before saving
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         throw new Error('User not authenticated');
       }
       
-      // Ensure inspector_id matches current user
+      // Preserve original inspector_id - only update timestamp
       const inspectionToSave = {
         ...inspection,
-        inspector_id: user.id,
         updated_at: new Date().toISOString(),
       };
       
