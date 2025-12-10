@@ -1,8 +1,15 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
+import { checkRateLimit, getClientIP, createRateLimitResponse } from "../_shared/rate-limiter.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
+
+// Rate limit: 60 requests per minute per IP
+const RATE_LIMIT_CONFIG = {
+  maxRequests: 60,
+  windowMs: 60 * 1000,
 };
 
 serve(async (req) => {
@@ -12,6 +19,15 @@ serve(async (req) => {
   }
 
   try {
+    // Apply rate limiting
+    const clientIP = getClientIP(req);
+    const rateLimitResult = checkRateLimit(`vapid-key:${clientIP}`, RATE_LIMIT_CONFIG);
+    
+    if (!rateLimitResult.allowed) {
+      console.log(`Rate limit exceeded for IP: ${clientIP}`);
+      return createRateLimitResponse(rateLimitResult.resetAt, corsHeaders);
+    }
+
     const vapidPublicKey = Deno.env.get('VAPID_PUBLIC_KEY');
 
     if (!vapidPublicKey) {
