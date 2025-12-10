@@ -16,6 +16,7 @@ import { UserManagementDialog } from "@/components/admin/UserManagementDialog";
 import { FormCMSManager } from "@/components/admin/FormCMSManager";
 import { MergeOrganizationsDialog } from "@/components/admin/MergeOrganizationsDialog";
 import { toast } from "sonner";
+import { parseLocalDate } from "@/lib/date-utils";
 
 export default function SuperAdminDashboard() {
   const { loading } = useRequireSuperAdmin();
@@ -947,7 +948,7 @@ export default function SuperAdminDashboard() {
                       {inspection.status}
                     </Badge>
                   </TableCell>
-                  <TableCell>{format(new Date(inspection.inspection_date), "PP")}</TableCell>
+                  <TableCell>{parseLocalDate(inspection.inspection_date) ? format(parseLocalDate(inspection.inspection_date)!, "PP") : '-'}</TableCell>
                   <TableCell>{format(new Date(inspection.created_at), "PP")}</TableCell>
                   <TableCell>
                     {(inspection as any).inspector?.first_name && (inspection as any).inspector?.last_name
@@ -1004,8 +1005,8 @@ export default function SuperAdminDashboard() {
                       </Badge>
                     )}
                   </TableCell>
-                  <TableCell>{format(new Date(training.start_date), "PP")}</TableCell>
-                  <TableCell>{format(new Date(training.end_date), "PP")}</TableCell>
+                  <TableCell>{parseLocalDate(training.start_date) ? format(parseLocalDate(training.start_date)!, "PP") : '-'}</TableCell>
+                  <TableCell>{parseLocalDate(training.end_date) ? format(parseLocalDate(training.end_date)!, "PP") : '-'}</TableCell>
                   <TableCell>{format(new Date(training.created_at), "PP")}</TableCell>
                 </TableRow>
               ))}
@@ -1058,7 +1059,7 @@ export default function SuperAdminDashboard() {
                       </Badge>
                     )}
                   </TableCell>
-                  <TableCell>{format(new Date(assessment.assessment_date), "PP")}</TableCell>
+                  <TableCell>{parseLocalDate(assessment.assessment_date) ? format(parseLocalDate(assessment.assessment_date)!, "PP") : '-'}</TableCell>
                   <TableCell>{format(new Date(assessment.created_at), "PP")}</TableCell>
                 </TableRow>
               ))}
