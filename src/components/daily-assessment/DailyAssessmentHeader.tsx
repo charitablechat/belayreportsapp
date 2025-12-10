@@ -8,20 +8,12 @@ import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { OrganizationAutocomplete } from "@/components/OrganizationAutocomplete";
 import { DatabaseAutocomplete } from "@/components/DatabaseAutocomplete";
+import { parseLocalDate } from "@/lib/date-utils";
 
 interface DailyAssessmentHeaderProps {
   assessment: any;
   onUpdate: (field: string, value: any) => void;
 }
-
-// Parse date string as local time to avoid timezone shifting
-const parseLocalDate = (dateStr: string | null | undefined) => {
-  if (!dateStr) return undefined;
-  // Handle dates that might already include time component
-  const dateOnly = dateStr.split('T')[0];
-  const [year, month, day] = dateOnly.split('-').map(Number);
-  return new Date(year, month - 1, day);
-};
 
 export default function DailyAssessmentHeader({ assessment, onUpdate }: DailyAssessmentHeaderProps) {
   return (

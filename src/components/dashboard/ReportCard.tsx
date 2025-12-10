@@ -11,6 +11,7 @@ import {
 import { format } from "date-fns";
 import { FileText, MoreVertical, Trash2, Download, Check, Cloud, User } from "lucide-react";
 import { triggerHaptic } from "@/lib/haptics";
+import { parseLocalDate } from "@/lib/date-utils";
 
 interface ReportCardProps {
   report: any;
@@ -159,7 +160,7 @@ export function ReportCard({ report, type, onDelete, onClick, getStatusBadge }: 
             <p className="text-muted-foreground line-clamp-1">{getReportLocation()}</p>
           )}
           <p className="text-muted-foreground">
-            Date: {format(new Date(getReportDate()), "PPP")}
+            Date: {parseLocalDate(getReportDate()) ? format(parseLocalDate(getReportDate())!, "PPP") : 'No date'}
           </p>
           <div className="flex items-center gap-2">
             <Avatar className="h-6 w-6">
