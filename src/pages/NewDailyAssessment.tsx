@@ -9,10 +9,11 @@ import { ArrowLeft, CloudOff, Info, Loader2, MapPin, X } from "lucide-react";
 import ropeWorksLogo from "@/assets/rope-works-logo.png";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { OrganizationAutocomplete } from "@/components/OrganizationAutocomplete";
-import { getCurrentLocationWithAddress } from "@/lib/geolocation";
+import { getCurrentLocationWithAddress, getGeolocationErrorMessage } from "@/lib/geolocation";
 import { getUserWithCache, getCachedUser } from "@/lib/cached-auth";
 import { triggerHaptic } from "@/lib/haptics";
 import { saveDailyAssessmentOffline, queueAssessmentOperation } from "@/lib/offline-storage";
+import { toast } from "sonner";
 
 export default function NewDailyAssessment() {
   const navigate = useNavigate();
@@ -61,15 +62,23 @@ export default function NewDailyAssessment() {
       const position = await getCurrentLocationWithAddress();
       setFormData(prev => ({
         ...prev,
-        site: prev.site || position.address,
+        site: position.address,
         latitude: position.latitude,
         longitude: position.longitude,
       }));
       
       triggerHaptic('success');
+      toast.success("Location captured", {
+        description: position.address
+      });
     } catch (error: any) {
       console.error("Failed to get location:", error);
       triggerHaptic('error');
+      
+      const message = error.code 
+        ? getGeolocationErrorMessage(error) 
+        : "Failed to get location. Please try again.";
+      toast.error("Location Error", { description: message });
     } finally {
       setLocationLoading(false);
     }

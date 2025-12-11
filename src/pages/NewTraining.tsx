@@ -8,10 +8,11 @@ import { ArrowLeft, CloudOff, Info, Loader2, MapPin, X } from "lucide-react";
 import ropeWorksLogo from "@/assets/rope-works-logo.png";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { OrganizationAutocomplete } from "@/components/OrganizationAutocomplete";
-import { getCurrentLocationWithAddress } from "@/lib/geolocation";
+import { getCurrentLocationWithAddress, getGeolocationErrorMessage } from "@/lib/geolocation";
 import { getUserWithCache, getCachedUser } from "@/lib/cached-auth";
 import { triggerHaptic } from "@/lib/haptics";
 import { saveTrainingOffline, queueTrainingOperation } from "@/lib/offline-storage";
+import { toast } from "sonner";
 
 export default function NewTraining() {
   const navigate = useNavigate();
@@ -64,9 +65,17 @@ export default function NewTraining() {
       }));
       
       triggerHaptic('success');
+      toast.success("Location captured", {
+        description: `${position.latitude.toFixed(4)}, ${position.longitude.toFixed(4)}`
+      });
     } catch (error: any) {
       console.error("Failed to get location:", error);
       triggerHaptic('error');
+      
+      const message = error.code 
+        ? getGeolocationErrorMessage(error) 
+        : "Failed to get location. Please try again.";
+      toast.error("Location Error", { description: message });
     } finally {
       setLocationLoading(false);
     }
