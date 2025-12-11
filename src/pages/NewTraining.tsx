@@ -224,11 +224,21 @@ export default function NewTraining() {
                     className="flex-1"
                   >
                     {locationLoading ? (
-                      <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                        <span>Getting GPS...</span>
+                      </>
+                    ) : formData.latitude && formData.longitude ? (
+                      <>
+                        <MapPin className="w-4 h-4 text-green-600 mr-2" />
+                        <span>Location Captured</span>
+                      </>
                     ) : (
-                      <MapPin className={`w-4 h-4 mr-2 ${formData.latitude && formData.longitude ? 'text-green-600' : ''}`} />
+                      <>
+                        <MapPin className="w-4 h-4 mr-2" />
+                        <span>Capture Location</span>
+                      </>
                     )}
-                    {formData.latitude && formData.longitude ? 'Location Captured' : 'Capture Location'}
                   </Button>
                   {formData.latitude && formData.longitude && (
                     <Button 
