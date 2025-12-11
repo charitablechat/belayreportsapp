@@ -295,62 +295,83 @@ export default function DailyAssessmentForm() {
 
       if (navigator.onLine) {
         try {
-          // Delete existing related records
-          await Promise.all([
-            supabase.from('daily_assessment_beginning_of_day').delete().eq('assessment_id', id),
-            supabase.from('daily_assessment_end_of_day').delete().eq('assessment_id', id),
-            supabase.from('daily_assessment_operating_systems').delete().eq('assessment_id', id),
-            supabase.from('daily_assessment_equipment_checks').delete().eq('assessment_id', id),
-            supabase.from('daily_assessment_structure_checks').delete().eq('assessment_id', id),
-            supabase.from('daily_assessment_environment_checks').delete().eq('assessment_id', id),
-          ]);
-
-          // Insert new records
-          const inserts = [];
+          // Use upsert with onConflict to prevent duplicates
+          const upserts = [];
+          
           if (beginningOfDay.length > 0) {
-            inserts.push(
-              supabase.from('daily_assessment_beginning_of_day').insert(
-                beginningOfDay.map(item => ({ ...item, assessment_id: id }))
+            upserts.push(
+              supabase.from('daily_assessment_beginning_of_day').upsert(
+                beginningOfDay.map(item => ({ 
+                  ...item, 
+                  assessment_id: id,
+                  id: item.id || crypto.randomUUID()
+                })),
+                { onConflict: 'assessment_id,item_key' }
               )
             );
           }
           if (endOfDay.length > 0) {
-            inserts.push(
-              supabase.from('daily_assessment_end_of_day').insert(
-                endOfDay.map(item => ({ ...item, assessment_id: id }))
+            upserts.push(
+              supabase.from('daily_assessment_end_of_day').upsert(
+                endOfDay.map(item => ({ 
+                  ...item, 
+                  assessment_id: id,
+                  id: item.id || crypto.randomUUID()
+                })),
+                { onConflict: 'assessment_id,item_key' }
               )
             );
           }
           if (operatingSystems.length > 0) {
-            inserts.push(
-              supabase.from('daily_assessment_operating_systems').insert(
-                operatingSystems.map(item => ({ ...item, assessment_id: id }))
+            upserts.push(
+              supabase.from('daily_assessment_operating_systems').upsert(
+                operatingSystems.map(item => ({ 
+                  ...item, 
+                  assessment_id: id,
+                  id: item.id || crypto.randomUUID()
+                })),
+                { onConflict: 'assessment_id,system_name' }
               )
             );
           }
           if (equipmentChecks.length > 0) {
-            inserts.push(
-              supabase.from('daily_assessment_equipment_checks').insert(
-                equipmentChecks.map(item => ({ ...item, assessment_id: id }))
+            upserts.push(
+              supabase.from('daily_assessment_equipment_checks').upsert(
+                equipmentChecks.map(item => ({ 
+                  ...item, 
+                  assessment_id: id,
+                  id: item.id || crypto.randomUUID()
+                })),
+                { onConflict: 'assessment_id,item_key' }
               )
             );
           }
           if (structureChecks.length > 0) {
-            inserts.push(
-              supabase.from('daily_assessment_structure_checks').insert(
-                structureChecks.map(item => ({ ...item, assessment_id: id }))
+            upserts.push(
+              supabase.from('daily_assessment_structure_checks').upsert(
+                structureChecks.map(item => ({ 
+                  ...item, 
+                  assessment_id: id,
+                  id: item.id || crypto.randomUUID()
+                })),
+                { onConflict: 'assessment_id,item_key' }
               )
             );
           }
           if (environmentChecks.length > 0) {
-            inserts.push(
-              supabase.from('daily_assessment_environment_checks').insert(
-                environmentChecks.map(item => ({ ...item, assessment_id: id }))
+            upserts.push(
+              supabase.from('daily_assessment_environment_checks').upsert(
+                environmentChecks.map(item => ({ 
+                  ...item, 
+                  assessment_id: id,
+                  id: item.id || crypto.randomUUID()
+                })),
+                { onConflict: 'assessment_id,item_key' }
               )
             );
           }
 
-          await Promise.all(inserts);
+          await Promise.all(upserts);
 
           // Update assessment (keep current status)
           await supabase
@@ -411,62 +432,83 @@ export default function DailyAssessmentForm() {
 
       if (navigator.onLine) {
         try {
-          // Delete existing related records
-          await Promise.all([
-            supabase.from('daily_assessment_beginning_of_day').delete().eq('assessment_id', id),
-            supabase.from('daily_assessment_end_of_day').delete().eq('assessment_id', id),
-            supabase.from('daily_assessment_operating_systems').delete().eq('assessment_id', id),
-            supabase.from('daily_assessment_equipment_checks').delete().eq('assessment_id', id),
-            supabase.from('daily_assessment_structure_checks').delete().eq('assessment_id', id),
-            supabase.from('daily_assessment_environment_checks').delete().eq('assessment_id', id),
-          ]);
-
-          // Insert new records
-          const inserts = [];
+          // Use upsert with onConflict to prevent duplicates
+          const upserts = [];
+          
           if (beginningOfDay.length > 0) {
-            inserts.push(
-              supabase.from('daily_assessment_beginning_of_day').insert(
-                beginningOfDay.map(item => ({ ...item, assessment_id: id }))
+            upserts.push(
+              supabase.from('daily_assessment_beginning_of_day').upsert(
+                beginningOfDay.map(item => ({ 
+                  ...item, 
+                  assessment_id: id,
+                  id: item.id || crypto.randomUUID()
+                })),
+                { onConflict: 'assessment_id,item_key' }
               )
             );
           }
           if (endOfDay.length > 0) {
-            inserts.push(
-              supabase.from('daily_assessment_end_of_day').insert(
-                endOfDay.map(item => ({ ...item, assessment_id: id }))
+            upserts.push(
+              supabase.from('daily_assessment_end_of_day').upsert(
+                endOfDay.map(item => ({ 
+                  ...item, 
+                  assessment_id: id,
+                  id: item.id || crypto.randomUUID()
+                })),
+                { onConflict: 'assessment_id,item_key' }
               )
             );
           }
           if (operatingSystems.length > 0) {
-            inserts.push(
-              supabase.from('daily_assessment_operating_systems').insert(
-                operatingSystems.map(item => ({ ...item, assessment_id: id }))
+            upserts.push(
+              supabase.from('daily_assessment_operating_systems').upsert(
+                operatingSystems.map(item => ({ 
+                  ...item, 
+                  assessment_id: id,
+                  id: item.id || crypto.randomUUID()
+                })),
+                { onConflict: 'assessment_id,system_name' }
               )
             );
           }
           if (equipmentChecks.length > 0) {
-            inserts.push(
-              supabase.from('daily_assessment_equipment_checks').insert(
-                equipmentChecks.map(item => ({ ...item, assessment_id: id }))
+            upserts.push(
+              supabase.from('daily_assessment_equipment_checks').upsert(
+                equipmentChecks.map(item => ({ 
+                  ...item, 
+                  assessment_id: id,
+                  id: item.id || crypto.randomUUID()
+                })),
+                { onConflict: 'assessment_id,item_key' }
               )
             );
           }
           if (structureChecks.length > 0) {
-            inserts.push(
-              supabase.from('daily_assessment_structure_checks').insert(
-                structureChecks.map(item => ({ ...item, assessment_id: id }))
+            upserts.push(
+              supabase.from('daily_assessment_structure_checks').upsert(
+                structureChecks.map(item => ({ 
+                  ...item, 
+                  assessment_id: id,
+                  id: item.id || crypto.randomUUID()
+                })),
+                { onConflict: 'assessment_id,item_key' }
               )
             );
           }
           if (environmentChecks.length > 0) {
-            inserts.push(
-              supabase.from('daily_assessment_environment_checks').insert(
-                environmentChecks.map(item => ({ ...item, assessment_id: id }))
+            upserts.push(
+              supabase.from('daily_assessment_environment_checks').upsert(
+                environmentChecks.map(item => ({ 
+                  ...item, 
+                  assessment_id: id,
+                  id: item.id || crypto.randomUUID()
+                })),
+                { onConflict: 'assessment_id,item_key' }
               )
             );
           }
 
-          await Promise.all(inserts);
+          await Promise.all(upserts);
 
           // Update status to completed
           await supabase

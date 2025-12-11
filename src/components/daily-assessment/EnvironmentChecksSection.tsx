@@ -26,7 +26,12 @@ export default function EnvironmentChecksSection({ checks, onUpdate }: Environme
           : c
       ));
     } else {
-      onUpdate([...checks, { item_key: itemKey, is_checked: true }]);
+      // Generate stable ID immediately when creating new item
+      onUpdate([...checks, { 
+        id: crypto.randomUUID(),
+        item_key: itemKey, 
+        is_checked: true 
+      }]);
     }
   };
 

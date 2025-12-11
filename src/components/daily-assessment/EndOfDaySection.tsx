@@ -30,7 +30,13 @@ export default function EndOfDaySection({ items, onUpdate }: EndOfDaySectionProp
           : i
       ));
     } else {
-      onUpdate([...items, { item_key: itemKey, is_complete: true, comments: '' }]);
+      // Generate stable ID immediately when creating new item
+      onUpdate([...items, { 
+        id: crypto.randomUUID(),
+        item_key: itemKey, 
+        is_complete: true, 
+        comments: '' 
+      }]);
     }
   };
 
@@ -44,7 +50,13 @@ export default function EndOfDaySection({ items, onUpdate }: EndOfDaySectionProp
           : i
       ));
     } else {
-      onUpdate([...items, { item_key: itemKey, is_complete: false, comments }]);
+      // Generate stable ID immediately when creating new item
+      onUpdate([...items, { 
+        id: crypto.randomUUID(),
+        item_key: itemKey, 
+        is_complete: false, 
+        comments 
+      }]);
     }
   };
 

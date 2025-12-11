@@ -65,6 +65,31 @@ async function getLogoBase64(supabaseUrl: string): Promise<{ropeWorks: string, a
   return { ropeWorks: PLACEHOLDER_LOGO, acct: PLACEHOLDER_LOGO };
 }
 
+// Deduplicate checklist items by item_key (keeps first occurrence)
+function deduplicateChecklistItems<T extends { item_key?: string; system_name?: string }>(items: T[] | null, keyField: 'item_key' | 'system_name' = 'item_key'): T[] {
+  if (!items || items.length === 0) return [];
+  
+  const seen = new Set<string>();
+  const deduplicated: T[] = [];
+  let duplicateCount = 0;
+  
+  for (const item of items) {
+    const key = item[keyField];
+    if (key && !seen.has(key)) {
+      seen.add(key);
+      deduplicated.push(item);
+    } else if (key) {
+      duplicateCount++;
+    }
+  }
+  
+  if (duplicateCount > 0) {
+    console.warn(`Removed ${duplicateCount} duplicate items by ${keyField}`);
+  }
+  
+  return deduplicated;
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -97,6 +122,14 @@ serve(async (req) => {
       supabase.from('daily_assessment_structure_checks').select('*').eq('assessment_id', assessmentId),
       supabase.from('daily_assessment_environment_checks').select('*').eq('assessment_id', assessmentId),
     ]);
+
+    // Deduplicate all checklist data to prevent duplicate entries in reports
+    const beginningOfDay = deduplicateChecklistItems(bodData.data, 'item_key');
+    const endOfDay = deduplicateChecklistItems(eodData.data, 'item_key');
+    const operatingSystems = deduplicateChecklistItems(osData.data, 'system_name');
+    const equipmentChecks = deduplicateChecklistItems(eqData.data, 'item_key');
+    const structureChecks = deduplicateChecklistItems(stData.data, 'item_key');
+    const environmentChecks = deduplicateChecklistItems(envData.data, 'item_key');
 
     const formatDate = (dateStr: string) => {
       if (!dateStr) return 'N/A';
@@ -407,13 +440,13 @@ serve(async (req) => {
       </div>
     </div>
 
-    ${renderChecklistItems(bodData.data, 'Beginning of Day Checklist')}
-    ${renderChecklistItems(eodData.data, 'End of Day Checklist')}
+    ${renderChecklistItems(beginningOfDay, 'Beginning of Day Checklist')}
+    ${renderChecklistItems(endOfDay, 'End of Day Checklist')}
 
     <div class="section">
       <h2>Operating Systems in Use Today</h2>
       <div class="systems-grid">
-        ${osData.data?.map(s => `
+        ${operatingSystems.map(s => `
           <div class="system-item">
             <div class="checkbox checked">✓</div>
             <span>${s.system_name}</span>
@@ -438,9 +471,9 @@ serve(async (req) => {
       ${ropeWorksLogo ? `<img src="${ropeWorksLogo}" alt="Rope Works Logo" class="logo">` : ''}
     </div>
 
-    ${renderChecklistItems(eqData.data, 'Equipment Inspection')}
-    ${renderChecklistItems(stData.data, 'Structure Inspection')}
-    ${renderChecklistItems(envData.data, 'Environment Inspection')}
+    ${renderChecklistItems(equipmentChecks, 'Equipment Inspection')}
+    ${renderChecklistItems(structureChecks, 'Structure Inspection')}
+    ${renderChecklistItems(environmentChecks, 'Environment Inspection')}
 
     <div class="page-footer">
       <p>Daily Course Assessment | ${assessment.site || 'N/A'} | ${formatDate(assessment.assessment_date)} | Page 2</p>

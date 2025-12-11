@@ -31,13 +31,22 @@ export default function OperatingSystemsSection({ systems, onUpdate }: Operating
     if (exists) {
       onUpdate(systems.filter(s => s.system_name !== systemName));
     } else {
-      onUpdate([...systems, { system_name: systemName }]);
+      // Generate stable ID immediately when creating new item
+      onUpdate([...systems, { 
+        id: crypto.randomUUID(),
+        system_name: systemName 
+      }]);
     }
   };
 
   const handleAddOther = () => {
     triggerHaptic('light');
-    onUpdate([...systems, { system_name: 'Other', other_description: '' }]);
+    // Generate stable ID immediately when creating new item
+    onUpdate([...systems, { 
+      id: crypto.randomUUID(),
+      system_name: 'Other', 
+      other_description: '' 
+    }]);
   };
 
   const handleUpdateOther = (index: number, description: string) => {
