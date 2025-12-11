@@ -30,7 +30,12 @@ export default function StructureChecksSection({ checks, onUpdate }: StructureCh
           : c
       ));
     } else {
-      onUpdate([...checks, { item_key: itemKey, is_checked: true }]);
+      // Generate stable ID immediately when creating new item
+      onUpdate([...checks, { 
+        id: crypto.randomUUID(),
+        item_key: itemKey, 
+        is_checked: true 
+      }]);
     }
   };
 
