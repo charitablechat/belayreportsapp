@@ -33,7 +33,7 @@ import { ConflictNotification } from "@/components/sync/ConflictNotification";
 import { useConflicts } from "@/hooks/useConflicts";
 import { usePWA } from "@/hooks/usePWA";
 import { usePullToRefresh } from "@/hooks/usePullToRefresh";
-import { getOfflineInspections, deleteOfflineInspection, queueOperation, saveInspectionOffline } from "@/lib/offline-storage";
+import { getOfflineInspections, deleteOfflineInspection, queueOperation, saveInspectionOffline, getOfflineTrainings, saveTrainingOffline, getOfflineDailyAssessments, saveDailyAssessmentOffline } from "@/lib/offline-storage";
 import { ContactDeveloperSheet } from "@/components/ContactDeveloperSheet";
 import { InspectionsEmptyState, TrainingsEmptyState, DailyAssessmentsEmptyState } from "@/components/EmptyState";
 import { getUserWithCache } from "@/lib/cached-auth";
@@ -207,8 +207,12 @@ export default function Dashboard() {
 
   const loadInspections = async () => {
     try {
-      // Load from offline storage first
-      const offlineInspections = await getOfflineInspections();
+      // Get current user for filtering offline data
+      const user = await getUserWithCache();
+      const userId = user?.id;
+      
+      // Load from offline storage first (filtered by current user for privacy)
+      const offlineInspections = await getOfflineInspections(userId);
       
       if (offlineInspections.length > 0) {
         setInspections(offlineInspections);
@@ -251,6 +255,22 @@ export default function Dashboard() {
 
   const loadTrainingReports = async () => {
     try {
+      // Get current user for filtering offline data
+      const user = await getUserWithCache();
+      const userId = user?.id;
+      
+      // Load from offline storage first (filtered by current user for privacy)
+      const offlineTrainings = await getOfflineTrainings(userId);
+      
+      if (offlineTrainings.length > 0) {
+        setTrainings(offlineTrainings);
+        
+        if (import.meta.env.DEV) {
+          console.log('[Dashboard] Loaded trainings from offline storage:', offlineTrainings.length);
+        }
+      }
+
+      // If online, fetch from Supabase
       if (navigator.onLine) {
         const { data, error } = await supabase
           .from("trainings")
@@ -265,8 +285,13 @@ export default function Dashboard() {
         if (data) {
           setTrainings(data);
           
+          // Save to offline storage for offline access
+          for (const training of data) {
+            await saveTrainingOffline(training);
+          }
+          
           if (import.meta.env.DEV) {
-            console.log('[Dashboard] Loaded training reports:', data.length);
+            console.log('[Dashboard] Loaded training reports from Supabase:', data.length);
           }
         }
       }
@@ -277,8 +302,12 @@ export default function Dashboard() {
 
   const loadDailyAssessments = async () => {
     try {
-      // Load from offline storage first
-      const offlineAssessments = await import('@/lib/offline-storage').then(m => m.getOfflineDailyAssessments());
+      // Get current user for filtering offline data
+      const user = await getUserWithCache();
+      const userId = user?.id;
+      
+      // Load from offline storage first (filtered by current user for privacy)
+      const offlineAssessments = await getOfflineDailyAssessments(userId);
       
       if (offlineAssessments.length > 0) {
         setDailyAssessments(offlineAssessments);
@@ -304,7 +333,6 @@ export default function Dashboard() {
           setDailyAssessments(data);
           
           // Save to offline storage
-          const { saveDailyAssessmentOffline } = await import('@/lib/offline-storage');
           for (const assessment of data) {
             await saveDailyAssessmentOffline(assessment);
           }

@@ -398,11 +398,18 @@ export async function saveInspectionOffline(inspection: any) {
   );
 }
 
-export async function getOfflineInspections() {
+export async function getOfflineInspections(userId?: string) {
   return withIndexedDBErrorBoundary(
     async () => {
       const db = await getDB();
-      return await db.getAll('inspections');
+      const allInspections = await db.getAll('inspections');
+      
+      // Filter by user ID if provided (for privacy on shared devices)
+      if (userId) {
+        return allInspections.filter(i => i.inspector_id === userId);
+      }
+      
+      return allInspections;
     },
     [],
     'getOfflineInspections'
@@ -682,9 +689,16 @@ export async function saveDailyAssessmentOffline(assessment: any) {
   }
 }
 
-export async function getOfflineDailyAssessments() {
+export async function getOfflineDailyAssessments(userId?: string) {
   const db = await getDB();
-  return await db.getAll('daily_assessments');
+  const allAssessments = await db.getAll('daily_assessments');
+  
+  // Filter by user ID if provided (for privacy on shared devices)
+  if (userId) {
+    return allAssessments.filter(a => a.inspector_id === userId);
+  }
+  
+  return allAssessments;
 }
 
 export async function getOfflineDailyAssessment(id: string) {
@@ -849,9 +863,16 @@ export async function saveTrainingOffline(training: any) {
   }
 }
 
-export async function getOfflineTrainings() {
+export async function getOfflineTrainings(userId?: string) {
   const db = await getDB();
-  return await db.getAll('trainings');
+  const allTrainings = await db.getAll('trainings');
+  
+  // Filter by user ID if provided (for privacy on shared devices)
+  if (userId) {
+    return allTrainings.filter(t => t.inspector_id === userId);
+  }
+  
+  return allTrainings;
 }
 
 export async function getOfflineTraining(id: string) {
