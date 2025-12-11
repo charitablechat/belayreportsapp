@@ -290,6 +290,10 @@ export async function syncDailyAssessments() {
           if (import.meta.env.DEV) {
             console.warn('[Daily Assessment Sync] Max retries reached for operation:', op);
           }
+          // Remove the operation if max retries reached
+          if (op.id !== undefined && op.id !== null) {
+            await removeQueuedAssessmentOperation(op.id);
+          }
           continue;
         }
 
@@ -312,14 +316,20 @@ export async function syncDailyAssessments() {
           await supabase.from("daily_assessments").delete().eq('id', op.assessmentId);
         }
 
-        await removeQueuedAssessmentOperation(op.id!);
+        // Only remove if ID is valid
+        if (op.id !== undefined && op.id !== null) {
+          await removeQueuedAssessmentOperation(op.id);
+        }
         
         if (import.meta.env.DEV) {
           console.log('[Daily Assessment Sync] Processed operation:', op.type, op.assessmentId);
         }
       } catch (error) {
         console.error('[Daily Assessment Sync] Operation failed:', error);
-        await incrementAssessmentOperationRetry(op.id!);
+        // Only increment retry if ID is valid
+        if (op.id !== undefined && op.id !== null) {
+          await incrementAssessmentOperationRetry(op.id);
+        }
         
         await new Promise(resolve => 
           setTimeout(resolve, RETRY_DELAY * Math.pow(2, op.retries))
@@ -372,7 +382,7 @@ export async function syncDailyAssessments() {
     }
   } catch (error) {
     console.error('[Daily Assessment Sync] Sync failed:', error);
-    throw error;
+    // Don't re-throw - background sync errors should not propagate to UI
   }
 }
 
@@ -480,7 +490,7 @@ export async function syncTrainings() {
     }
   } catch (error) {
     console.error('[Training Sync] Sync failed:', error);
-    throw error;
+    // Don't re-throw - background sync errors should not propagate to UI
   }
 }
 

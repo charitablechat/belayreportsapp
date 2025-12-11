@@ -759,7 +759,13 @@ export async function getQueuedAssessmentOperations() {
   return operations;
 }
 
-export async function removeQueuedAssessmentOperation(id: number) {
+export async function removeQueuedAssessmentOperation(id: number | undefined | null) {
+  // Guard against undefined/null IDs to prevent IndexedDB errors
+  if (id === undefined || id === null) {
+    console.warn('[Offline Storage] Cannot remove assessment operation with undefined/null ID');
+    return;
+  }
+  
   const db = await getDB();
   await db.delete('assessment_operations', id);
   
@@ -768,7 +774,13 @@ export async function removeQueuedAssessmentOperation(id: number) {
   }
 }
 
-export async function incrementAssessmentOperationRetry(id: number) {
+export async function incrementAssessmentOperationRetry(id: number | undefined | null) {
+  // Guard against undefined/null IDs to prevent IndexedDB errors
+  if (id === undefined || id === null) {
+    console.warn('[Offline Storage] Cannot increment retry for assessment operation with undefined/null ID');
+    return;
+  }
+  
   const db = await getDB();
   const operation = await db.get('assessment_operations', id);
   if (operation) {
