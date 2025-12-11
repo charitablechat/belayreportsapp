@@ -244,11 +244,28 @@ export default function NewInspection() {
                     placeholder="Enter location"
                     className="flex-1"
                   />
-                  <Button type="button" variant="outline" onClick={handleLocationCapture} disabled={locationLoading}>
+                  <Button 
+                    type="button" 
+                    variant="outline" 
+                    onClick={handleLocationCapture} 
+                    disabled={locationLoading}
+                    className="min-w-[140px]"
+                  >
                     {locationLoading ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                        <span className="text-sm">Getting GPS...</span>
+                      </>
+                    ) : formData.latitude && formData.longitude ? (
+                      <>
+                        <MapPin className="w-4 h-4 text-green-600 mr-2" />
+                        <span className="text-sm">Update</span>
+                      </>
                     ) : (
-                      <MapPin className={`w-4 h-4 ${formData.latitude && formData.longitude ? 'text-green-600' : ''}`} />
+                      <>
+                        <MapPin className="w-4 h-4 mr-2" />
+                        <span className="text-sm">Get Location</span>
+                      </>
                     )}
                   </Button>
                   {formData.latitude && formData.longitude && (
