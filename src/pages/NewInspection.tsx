@@ -12,10 +12,11 @@ import ropeWorksLogo from "@/assets/rope-works-logo.png";
 import { saveInspectionOffline, queueOperation } from "@/lib/offline-storage";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { OrganizationAutocomplete } from "@/components/OrganizationAutocomplete";
-import { getCurrentLocationWithAddress } from "@/lib/geolocation";
+import { getCurrentLocationWithAddress, getGeolocationErrorMessage } from "@/lib/geolocation";
 import { getUserWithCache, getCachedUser } from "@/lib/cached-auth";
 import { triggerHaptic } from "@/lib/haptics";
 import { getCachedProfile } from "@/lib/profile-cache";
+import { toast } from "sonner";
 
 export default function NewInspection() {
   const navigate = useNavigate();
@@ -77,6 +78,9 @@ export default function NewInspection() {
       }));
       
       triggerHaptic('success');
+      toast.success("Location captured", {
+        description: position.address
+      });
       
       if (import.meta.env.DEV) {
         console.log('[NewInspection] Location captured:', position);
@@ -84,6 +88,11 @@ export default function NewInspection() {
     } catch (error: any) {
       console.error("Failed to get location:", error);
       triggerHaptic('error');
+      
+      const message = error.code 
+        ? getGeolocationErrorMessage(error) 
+        : "Failed to get location. Please try again.";
+      toast.error("Location Error", { description: message });
     } finally {
       setLocationLoading(false);
     }

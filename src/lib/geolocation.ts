@@ -7,6 +7,19 @@ export interface LocationWithAddress extends Location {
   address: string;
 }
 
+export function getGeolocationErrorMessage(error: GeolocationPositionError): string {
+  switch (error.code) {
+    case 1: // PERMISSION_DENIED
+      return "Location access was denied. Please enable location permissions in your browser/device settings.";
+    case 2: // POSITION_UNAVAILABLE
+      return "Unable to determine your location. Please ensure GPS is enabled.";
+    case 3: // TIMEOUT
+      return "Location request timed out. Please try again or check your GPS signal.";
+    default:
+      return "Failed to get location. Please try again.";
+  }
+}
+
 export async function getCurrentLocation(): Promise<Location> {
   return new Promise((resolve, reject) => {
     if (!("geolocation" in navigator)) {
@@ -74,10 +87,16 @@ export async function reverseGeocode(latitude: number, longitude: number): Promi
 
 export async function getCurrentLocationWithAddress(): Promise<LocationWithAddress> {
   const location = await getCurrentLocation();
-  const address = await reverseGeocode(location.latitude, location.longitude);
   
-  return {
-    ...location,
-    address
-  };
+  try {
+    const address = await reverseGeocode(location.latitude, location.longitude);
+    return { ...location, address };
+  } catch (error) {
+    // Return coordinates with fallback address if reverse geocoding fails
+    console.warn('Reverse geocoding failed, using coordinates as fallback');
+    return {
+      ...location,
+      address: `${location.latitude.toFixed(4)}, ${location.longitude.toFixed(4)}`
+    };
+  }
 }
