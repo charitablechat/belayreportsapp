@@ -3,7 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useFormConfiguration } from "@/hooks/useFormConfiguration";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Save, FileText, Loader2, WifiOff, Check, Sunrise, Sunset, Settings, Package, Building, Cloud, LogOut, User, CloudOff } from "lucide-react";
+import { ArrowLeft, Save, FileText, Loader2, WifiOff, Check, Sunrise, Sunset, Settings, Package, Building, Cloud, LogOut, User, CloudOff, SendHorizonal } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { AutoSaveIndicator } from "@/components/AutoSaveIndicator";
@@ -16,6 +16,16 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import ropeWorksLogo from "@/assets/rope-works-logo.png";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { SyncStatusIndicator } from "@/components/pwa/SyncStatusIndicator";
@@ -33,6 +43,7 @@ import { triggerHaptic } from "@/lib/haptics";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useSwipeNavigation } from "@/hooks/useSwipeNavigation";
 import { SwipeBackIndicator } from "@/components/SwipeBackIndicator";
+import { toast } from "sonner";
 
 import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
 import { UnsavedChangesDialog } from "@/components/UnsavedChangesDialog";
@@ -47,6 +58,8 @@ export default function DailyAssessmentForm() {
   const isMobileView = useIsMobile();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [showSubmitDialog, setShowSubmitDialog] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [generating, setGenerating] = useState(false);
@@ -260,10 +273,10 @@ export default function DailyAssessmentForm() {
     }
   };
 
-  const handleSave = async () => {
+  // Save progress without completing - keeps status as draft
+  const handleSaveProgress = async () => {
     setSaving(true);
     try {
-      // Save all data offline first
       const { saveDailyAssessmentOffline, saveAssessmentDataOffline, queueAssessmentOperation } = await import('@/lib/offline-storage');
       
       // Save related data offline
@@ -276,7 +289,116 @@ export default function DailyAssessmentForm() {
         saveAssessmentDataOffline('environment_checks', id!, environmentChecks),
       ]);
 
-      // Update assessment status
+      // Save assessment without changing status
+      const updatedAssessment = { ...assessment, updated_at: new Date().toISOString() };
+      await saveDailyAssessmentOffline(updatedAssessment);
+
+      if (navigator.onLine) {
+        try {
+          // Delete existing related records
+          await Promise.all([
+            supabase.from('daily_assessment_beginning_of_day').delete().eq('assessment_id', id),
+            supabase.from('daily_assessment_end_of_day').delete().eq('assessment_id', id),
+            supabase.from('daily_assessment_operating_systems').delete().eq('assessment_id', id),
+            supabase.from('daily_assessment_equipment_checks').delete().eq('assessment_id', id),
+            supabase.from('daily_assessment_structure_checks').delete().eq('assessment_id', id),
+            supabase.from('daily_assessment_environment_checks').delete().eq('assessment_id', id),
+          ]);
+
+          // Insert new records
+          const inserts = [];
+          if (beginningOfDay.length > 0) {
+            inserts.push(
+              supabase.from('daily_assessment_beginning_of_day').insert(
+                beginningOfDay.map(item => ({ ...item, assessment_id: id }))
+              )
+            );
+          }
+          if (endOfDay.length > 0) {
+            inserts.push(
+              supabase.from('daily_assessment_end_of_day').insert(
+                endOfDay.map(item => ({ ...item, assessment_id: id }))
+              )
+            );
+          }
+          if (operatingSystems.length > 0) {
+            inserts.push(
+              supabase.from('daily_assessment_operating_systems').insert(
+                operatingSystems.map(item => ({ ...item, assessment_id: id }))
+              )
+            );
+          }
+          if (equipmentChecks.length > 0) {
+            inserts.push(
+              supabase.from('daily_assessment_equipment_checks').insert(
+                equipmentChecks.map(item => ({ ...item, assessment_id: id }))
+              )
+            );
+          }
+          if (structureChecks.length > 0) {
+            inserts.push(
+              supabase.from('daily_assessment_structure_checks').insert(
+                structureChecks.map(item => ({ ...item, assessment_id: id }))
+              )
+            );
+          }
+          if (environmentChecks.length > 0) {
+            inserts.push(
+              supabase.from('daily_assessment_environment_checks').insert(
+                environmentChecks.map(item => ({ ...item, assessment_id: id }))
+              )
+            );
+          }
+
+          await Promise.all(inserts);
+
+          // Update assessment (keep current status)
+          await supabase
+            .from('daily_assessments')
+            .update({ updated_at: updatedAssessment.updated_at })
+            .eq('id', id);
+
+          // Update synced_at
+          updatedAssessment.synced_at = new Date().toISOString();
+          await saveDailyAssessmentOffline(updatedAssessment);
+        } catch (error) {
+          console.error('Error syncing to database:', error);
+          await queueAssessmentOperation('update', id!, updatedAssessment);
+        }
+      } else {
+        await queueAssessmentOperation('update', id!, updatedAssessment);
+      }
+
+      setHasUnsavedChanges(false);
+      setLastSaved(new Date());
+      setAssessment(updatedAssessment);
+      toast.success("Progress saved");
+    } catch (error) {
+      console.error('Error saving progress:', error);
+      toast.error("Failed to save progress");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Submit and complete the assessment
+  const handleSubmit = async () => {
+    setSubmitting(true);
+    setShowSubmitDialog(false);
+    try {
+      const { saveDailyAssessmentOffline, saveAssessmentDataOffline, queueAssessmentOperation } = await import('@/lib/offline-storage');
+      
+      // Save related data offline
+      await Promise.all([
+        saveAssessmentDataOffline('beginning_of_day', id!, beginningOfDay),
+        saveAssessmentDataOffline('end_of_day', id!, endOfDay),
+        saveAssessmentDataOffline('operating_systems', id!, operatingSystems),
+        saveAssessmentDataOffline('equipment_checks', id!, equipmentChecks),
+        saveAssessmentDataOffline('structure_checks', id!, structureChecks),
+        saveAssessmentDataOffline('environment_checks', id!, environmentChecks),
+      ]);
+
+      // Update assessment status to completed
       const wasAlreadyCompleted = assessment?.status === 'completed';
       const completedAssessment = { ...assessment, status: 'completed', updated_at: new Date().toISOString() };
       await saveDailyAssessmentOffline(completedAssessment);
@@ -357,25 +479,26 @@ export default function DailyAssessmentForm() {
           await saveDailyAssessmentOffline(completedAssessment);
         } catch (error) {
           console.error('Error syncing to database:', error);
-          // Queue for sync
           await queueAssessmentOperation('update', id!, completedAssessment);
         }
       } else {
-        // Queue for sync
         await queueAssessmentOperation('update', id!, completedAssessment);
       }
+
       setHasUnsavedChanges(false);
+      toast.success("Assessment submitted successfully");
       navigate('/dashboard');
     } catch (error) {
-      console.error('Error saving assessment:', error);
+      console.error('Error submitting assessment:', error);
+      toast.error("Failed to submit assessment");
     } finally {
-      setSaving(false);
+      setSubmitting(false);
     }
   };
 
-  // Set save ref for keyboard shortcut
+  // Set save ref for keyboard shortcut (save progress, not submit)
   useEffect(() => {
-    saveRef.current = handleSave;
+    saveRef.current = handleSaveProgress;
   });
 
   const handleGenerateReport = async () => {
@@ -429,6 +552,24 @@ export default function DailyAssessmentForm() {
         onCancel={cancelNavigation}
         message="You have unsaved changes to this assessment. Are you sure you want to leave?"
       />
+      
+      <AlertDialog open={showSubmitDialog} onOpenChange={setShowSubmitDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Submit Assessment</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to submit this assessment? This will mark it as complete. You can still edit it afterward if needed.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleSubmit}>
+              Submit
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      
       <div className="min-h-screen bg-background">
       {/* Offline Mode Banner */}
       {!isOnline && (
@@ -527,17 +668,32 @@ export default function DailyAssessmentForm() {
                 )}
               </Button>
               <Button 
+                variant="outline"
                 size={isMobileView ? "default" : "sm"} 
-                onClick={handleSave} 
-                disabled={saving}
-                className={isMobileView ? "min-w-[100px] h-10 text-sm font-medium" : ""}
+                onClick={handleSaveProgress} 
+                disabled={saving || submitting}
               >
                 {saving ? (
                   <Loader2 className="w-4 h-4 animate-spin" />
                 ) : (
                   <>
                     <Save className={isMobileView ? "w-5 h-5 mr-1.5" : "w-4 h-4 mr-2"} />
-                    <span>{isMobileView ? "Save" : "Save & Complete"}</span>
+                    <span>{isMobileView ? "Save" : "Save Progress"}</span>
+                  </>
+                )}
+              </Button>
+              <Button 
+                size={isMobileView ? "default" : "sm"} 
+                onClick={() => setShowSubmitDialog(true)} 
+                disabled={saving || submitting}
+                className={isMobileView ? "min-w-[90px] h-10 text-sm font-medium" : ""}
+              >
+                {submitting ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <>
+                    <SendHorizonal className={isMobileView ? "w-5 h-5 mr-1.5" : "w-4 h-4 mr-2"} />
+                    <span>Submit</span>
                   </>
                 )}
               </Button>
