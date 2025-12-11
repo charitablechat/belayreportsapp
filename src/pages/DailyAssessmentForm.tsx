@@ -296,88 +296,86 @@ export default function DailyAssessmentForm() {
       if (navigator.onLine) {
         try {
           // Use upsert with onConflict to prevent duplicates
-          const upserts = [];
-          
-          if (beginningOfDay.length > 0) {
-            upserts.push(
-              supabase.from('daily_assessment_beginning_of_day').upsert(
-                beginningOfDay.map(item => ({ 
-                  ...item, 
-                  assessment_id: id,
-                  id: item.id || crypto.randomUUID()
-                })),
-                { onConflict: 'assessment_id,item_key' }
-              )
-            );
-          }
-          if (endOfDay.length > 0) {
-            upserts.push(
-              supabase.from('daily_assessment_end_of_day').upsert(
-                endOfDay.map(item => ({ 
-                  ...item, 
-                  assessment_id: id,
-                  id: item.id || crypto.randomUUID()
-                })),
-                { onConflict: 'assessment_id,item_key' }
-              )
-            );
-          }
-          if (operatingSystems.length > 0) {
-            upserts.push(
-              supabase.from('daily_assessment_operating_systems').upsert(
-                operatingSystems.map(item => ({ 
-                  ...item, 
-                  assessment_id: id,
-                  id: item.id || crypto.randomUUID()
-                })),
-                { onConflict: 'assessment_id,system_name' }
-              )
-            );
-          }
-          if (equipmentChecks.length > 0) {
-            upserts.push(
-              supabase.from('daily_assessment_equipment_checks').upsert(
-                equipmentChecks.map(item => ({ 
-                  ...item, 
-                  assessment_id: id,
-                  id: item.id || crypto.randomUUID()
-                })),
-                { onConflict: 'assessment_id,item_key' }
-              )
-            );
-          }
-          if (structureChecks.length > 0) {
-            upserts.push(
-              supabase.from('daily_assessment_structure_checks').upsert(
-                structureChecks.map(item => ({ 
-                  ...item, 
-                  assessment_id: id,
-                  id: item.id || crypto.randomUUID()
-                })),
-                { onConflict: 'assessment_id,item_key' }
-              )
-            );
-          }
-          if (environmentChecks.length > 0) {
-            upserts.push(
-              supabase.from('daily_assessment_environment_checks').upsert(
-                environmentChecks.map(item => ({ 
-                  ...item, 
-                  assessment_id: id,
-                  id: item.id || crypto.randomUUID()
-                })),
-                { onConflict: 'assessment_id,item_key' }
-              )
-            );
-          }
+          const upsertResults = await Promise.all([
+            beginningOfDay.length > 0 
+              ? supabase.from('daily_assessment_beginning_of_day').upsert(
+                  beginningOfDay.map(item => ({ 
+                    ...item, 
+                    assessment_id: id,
+                    id: item.id || crypto.randomUUID()
+                  })),
+                  { onConflict: 'assessment_id,item_key' }
+                )
+              : { error: null, data: null },
+            endOfDay.length > 0 
+              ? supabase.from('daily_assessment_end_of_day').upsert(
+                  endOfDay.map(item => ({ 
+                    ...item, 
+                    assessment_id: id,
+                    id: item.id || crypto.randomUUID()
+                  })),
+                  { onConflict: 'assessment_id,item_key' }
+                )
+              : { error: null, data: null },
+            operatingSystems.length > 0 
+              ? supabase.from('daily_assessment_operating_systems').upsert(
+                  operatingSystems.map(item => ({ 
+                    ...item, 
+                    assessment_id: id,
+                    id: item.id || crypto.randomUUID()
+                  })),
+                  { onConflict: 'assessment_id,system_name' }
+                )
+              : { error: null, data: null },
+            equipmentChecks.length > 0 
+              ? supabase.from('daily_assessment_equipment_checks').upsert(
+                  equipmentChecks.map(item => ({ 
+                    ...item, 
+                    assessment_id: id,
+                    id: item.id || crypto.randomUUID()
+                  })),
+                  { onConflict: 'assessment_id,item_key' }
+                )
+              : { error: null, data: null },
+            structureChecks.length > 0 
+              ? supabase.from('daily_assessment_structure_checks').upsert(
+                  structureChecks.map(item => ({ 
+                    ...item, 
+                    assessment_id: id,
+                    id: item.id || crypto.randomUUID()
+                  })),
+                  { onConflict: 'assessment_id,item_key' }
+                )
+              : { error: null, data: null },
+            environmentChecks.length > 0 
+              ? supabase.from('daily_assessment_environment_checks').upsert(
+                  environmentChecks.map(item => ({ 
+                    ...item, 
+                    assessment_id: id,
+                    id: item.id || crypto.randomUUID()
+                  })),
+                  { onConflict: 'assessment_id,item_key' }
+                )
+              : { error: null, data: null },
+          ]);
 
-          await Promise.all(upserts);
+          // Check for errors in any upsert
+          const errors = upsertResults.filter(r => r.error);
+          if (errors.length > 0) {
+            console.error('Upsert errors:', errors.map(e => e.error));
+            throw new Error(`Failed to save ${errors.length} section(s)`);
+          }
 
           // Update assessment (keep current status)
-          await supabase
+          const { error: assessmentError } = await supabase
             .from('daily_assessments')
             .update({ updated_at: updatedAssessment.updated_at })
             .eq('id', id);
+
+          if (assessmentError) {
+            console.error('Assessment update error:', assessmentError);
+            throw assessmentError;
+          }
 
           // Update synced_at
           updatedAssessment.synced_at = new Date().toISOString();
@@ -385,6 +383,7 @@ export default function DailyAssessmentForm() {
         } catch (error) {
           console.error('Error syncing to database:', error);
           await queueAssessmentOperation('update', id!, updatedAssessment);
+          toast.warning("Saved locally, will sync when connection improves");
         }
       } else {
         await queueAssessmentOperation('update', id!, updatedAssessment);
