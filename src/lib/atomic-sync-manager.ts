@@ -92,9 +92,8 @@ export async function syncInspectionAtomic(inspectionId: string) {
       const timeDiff = Math.abs(remoteUpdated - localUpdated);
       
       if (timeDiff > 5000 && remoteUpdated > localUpdated) {
-        // Conflict detected - notify user immediately
-        const { data: { user } } = await supabase.auth.getUser();
-        await supabase.from('sync_conflicts').insert({
+        // Conflict detected - try to record it
+        const { error: conflictError } = await supabase.from('sync_conflicts').insert({
           inspection_id: inspectionId,
           organization_id: inspection.organization_id || user?.id || '',
           local_updated_at: inspection.updated_at,
@@ -102,11 +101,19 @@ export async function syncInspectionAtomic(inspectionId: string) {
           resolved: false,
         });
         
-        // Show immediate toast notification
-        toast.error("Sync Conflict Detected", {
-          description: `Changes conflict for ${inspection.organization} - ${inspection.location}. Please resolve in settings.`,
-          duration: 10000,
-        });
+        // Only show conflict toast if successfully recorded
+        if (!conflictError) {
+          toast.error("Sync Conflict Detected", {
+            description: `Changes conflict for ${inspection.organization} - ${inspection.location}. Please resolve in settings.`,
+            duration: 10000,
+          });
+        } else {
+          console.error('[Atomic Sync] Failed to record conflict:', conflictError);
+          toast.warning("Sync Issue Detected", {
+            description: `There may be conflicting changes for ${inspection.organization}. Try syncing again.`,
+            duration: 8000,
+          });
+        }
         
         throw new Error("Sync conflict detected - user must resolve");
       }
