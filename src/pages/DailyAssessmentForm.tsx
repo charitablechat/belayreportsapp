@@ -273,27 +273,65 @@ export default function DailyAssessmentForm() {
     }
   };
 
+  // Timeout wrapper utility for offline storage operations
+  const withTimeout = <T,>(promise: Promise<T>, ms: number, label: string): Promise<T> => {
+    return Promise.race([
+      promise,
+      new Promise<never>((_, reject) => 
+        setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms)
+      )
+    ]);
+  };
+
   // Save progress without completing - keeps status as draft
   const handleSaveProgress = async () => {
+    console.log('[Save] Starting save progress...');
+    console.log('[Save] Data sizes:', {
+      beginningOfDay: beginningOfDay.length,
+      endOfDay: endOfDay.length,
+      operatingSystems: operatingSystems.length,
+      equipmentChecks: equipmentChecks.length,
+      structureChecks: structureChecks.length,
+      environmentChecks: environmentChecks.length,
+    });
+    
     setSaving(true);
+    
     try {
       const { saveDailyAssessmentOffline, saveAssessmentDataOffline, queueAssessmentOperation } = await import('@/lib/offline-storage');
       
-      // Save related data offline
-      await Promise.all([
-        saveAssessmentDataOffline('beginning_of_day', id!, beginningOfDay),
-        saveAssessmentDataOffline('end_of_day', id!, endOfDay),
-        saveAssessmentDataOffline('operating_systems', id!, operatingSystems),
-        saveAssessmentDataOffline('equipment_checks', id!, equipmentChecks),
-        saveAssessmentDataOffline('structure_checks', id!, structureChecks),
-        saveAssessmentDataOffline('environment_checks', id!, environmentChecks),
-      ]);
+      // Save related data offline with timeout protection (non-blocking)
+      console.log('[Save] Saving to offline storage...');
+      try {
+        await withTimeout(
+          Promise.all([
+            saveAssessmentDataOffline('beginning_of_day', id!, beginningOfDay),
+            saveAssessmentDataOffline('end_of_day', id!, endOfDay),
+            saveAssessmentDataOffline('operating_systems', id!, operatingSystems),
+            saveAssessmentDataOffline('equipment_checks', id!, equipmentChecks),
+            saveAssessmentDataOffline('structure_checks', id!, structureChecks),
+            saveAssessmentDataOffline('environment_checks', id!, environmentChecks),
+          ]),
+          5000,
+          'Offline storage save'
+        );
+        console.log('[Save] Offline storage completed');
+      } catch (offlineError) {
+        console.warn('[Save] Offline storage failed or timed out:', offlineError);
+        // Continue with online save - don't block
+      }
 
       // Save assessment without changing status
       const updatedAssessment = { ...assessment, updated_at: new Date().toISOString() };
-      await saveDailyAssessmentOffline(updatedAssessment);
+      
+      try {
+        await withTimeout(saveDailyAssessmentOffline(updatedAssessment), 3000, 'Assessment offline save');
+      } catch (e) {
+        console.warn('[Save] Assessment offline save timed out:', e);
+      }
 
       if (navigator.onLine) {
+        console.log('[Save] Online - syncing to database...');
         try {
           // Use upsert with onConflict to prevent duplicates
           const upsertResults = await Promise.all([
@@ -362,9 +400,10 @@ export default function DailyAssessmentForm() {
           // Check for errors in any upsert
           const errors = upsertResults.filter(r => r.error);
           if (errors.length > 0) {
-            console.error('Upsert errors:', errors.map(e => e.error));
+            console.error('[Save] Upsert errors:', errors.map(e => e.error));
             throw new Error(`Failed to save ${errors.length} section(s)`);
           }
+          console.log('[Save] Child tables synced successfully');
 
           // Update assessment (keep current status)
           const { error: assessmentError } = await supabase
@@ -373,55 +412,88 @@ export default function DailyAssessmentForm() {
             .eq('id', id);
 
           if (assessmentError) {
-            console.error('Assessment update error:', assessmentError);
+            console.error('[Save] Assessment update error:', assessmentError);
             throw assessmentError;
           }
+          console.log('[Save] Assessment updated in database');
 
           // Update synced_at
           updatedAssessment.synced_at = new Date().toISOString();
-          await saveDailyAssessmentOffline(updatedAssessment);
+          try {
+            await withTimeout(saveDailyAssessmentOffline(updatedAssessment), 2000, 'Synced_at update');
+          } catch (e) {
+            console.warn('[Save] Synced_at offline update timed out');
+          }
+          
+          toast.success("Progress saved");
         } catch (error) {
-          console.error('Error syncing to database:', error);
-          await queueAssessmentOperation('update', id!, updatedAssessment);
+          console.error('[Save] Error syncing to database:', error);
+          try {
+            await queueAssessmentOperation('update', id!, updatedAssessment);
+          } catch (queueError) {
+            console.warn('[Save] Failed to queue operation:', queueError);
+          }
           toast.warning("Saved locally, will sync when connection improves");
         }
       } else {
-        await queueAssessmentOperation('update', id!, updatedAssessment);
+        console.log('[Save] Offline - queuing for sync');
+        try {
+          await queueAssessmentOperation('update', id!, updatedAssessment);
+        } catch (queueError) {
+          console.warn('[Save] Failed to queue operation:', queueError);
+        }
+        toast.success("Saved offline");
       }
 
       setHasUnsavedChanges(false);
       setLastSaved(new Date());
       setAssessment(updatedAssessment);
-      toast.success("Progress saved");
     } catch (error) {
-      console.error('Error saving progress:', error);
+      console.error('[Save] Error saving progress:', error);
       toast.error("Failed to save progress");
     } finally {
+      console.log('[Save] Completed, setting saving to false');
       setSaving(false);
     }
   };
 
   // Submit and complete the assessment
   const handleSubmit = async () => {
+    console.log('[Submit] Starting submit...');
     setSubmitting(true);
     setShowSubmitDialog(false);
+    
     try {
       const { saveDailyAssessmentOffline, saveAssessmentDataOffline, queueAssessmentOperation } = await import('@/lib/offline-storage');
       
-      // Save related data offline
-      await Promise.all([
-        saveAssessmentDataOffline('beginning_of_day', id!, beginningOfDay),
-        saveAssessmentDataOffline('end_of_day', id!, endOfDay),
-        saveAssessmentDataOffline('operating_systems', id!, operatingSystems),
-        saveAssessmentDataOffline('equipment_checks', id!, equipmentChecks),
-        saveAssessmentDataOffline('structure_checks', id!, structureChecks),
-        saveAssessmentDataOffline('environment_checks', id!, environmentChecks),
-      ]);
+      // Save related data offline with timeout protection (non-blocking)
+      console.log('[Submit] Saving to offline storage...');
+      try {
+        await withTimeout(
+          Promise.all([
+            saveAssessmentDataOffline('beginning_of_day', id!, beginningOfDay),
+            saveAssessmentDataOffline('end_of_day', id!, endOfDay),
+            saveAssessmentDataOffline('operating_systems', id!, operatingSystems),
+            saveAssessmentDataOffline('equipment_checks', id!, equipmentChecks),
+            saveAssessmentDataOffline('structure_checks', id!, structureChecks),
+            saveAssessmentDataOffline('environment_checks', id!, environmentChecks),
+          ]),
+          5000,
+          'Offline storage save'
+        );
+      } catch (offlineError) {
+        console.warn('[Submit] Offline storage failed or timed out:', offlineError);
+      }
 
       // Update assessment status to completed
       const wasAlreadyCompleted = assessment?.status === 'completed';
       const completedAssessment = { ...assessment, status: 'completed', updated_at: new Date().toISOString() };
-      await saveDailyAssessmentOffline(completedAssessment);
+      
+      try {
+        await withTimeout(saveDailyAssessmentOffline(completedAssessment), 3000, 'Assessment offline save');
+      } catch (e) {
+        console.warn('[Submit] Assessment offline save timed out:', e);
+      }
 
       // Trigger celebration on first completion
       if (!wasAlreadyCompleted) {
@@ -430,6 +502,7 @@ export default function DailyAssessmentForm() {
       }
 
       if (navigator.onLine) {
+        console.log('[Submit] Online - syncing to database...');
         try {
           // Use upsert with onConflict to prevent duplicates
           const upserts = [];
@@ -508,31 +581,47 @@ export default function DailyAssessmentForm() {
           }
 
           await Promise.all(upserts);
+          console.log('[Submit] Child tables synced');
 
           // Update status to completed
           await supabase
             .from('daily_assessments')
             .update({ status: 'completed', updated_at: completedAssessment.updated_at })
             .eq('id', id);
+          console.log('[Submit] Assessment status updated');
 
           // Update synced_at
           completedAssessment.synced_at = new Date().toISOString();
-          await saveDailyAssessmentOffline(completedAssessment);
+          try {
+            await withTimeout(saveDailyAssessmentOffline(completedAssessment), 2000, 'Synced_at update');
+          } catch (e) {
+            console.warn('[Submit] Synced_at offline update timed out');
+          }
         } catch (error) {
-          console.error('Error syncing to database:', error);
-          await queueAssessmentOperation('update', id!, completedAssessment);
+          console.error('[Submit] Error syncing to database:', error);
+          try {
+            await queueAssessmentOperation('update', id!, completedAssessment);
+          } catch (queueError) {
+            console.warn('[Submit] Failed to queue operation:', queueError);
+          }
         }
       } else {
-        await queueAssessmentOperation('update', id!, completedAssessment);
+        console.log('[Submit] Offline - queuing for sync');
+        try {
+          await queueAssessmentOperation('update', id!, completedAssessment);
+        } catch (queueError) {
+          console.warn('[Submit] Failed to queue operation:', queueError);
+        }
       }
 
       setHasUnsavedChanges(false);
       toast.success("Assessment submitted successfully");
       navigate('/dashboard');
     } catch (error) {
-      console.error('Error submitting assessment:', error);
+      console.error('[Submit] Error submitting assessment:', error);
       toast.error("Failed to submit assessment");
     } finally {
+      console.log('[Submit] Completed, setting submitting to false');
       setSubmitting(false);
     }
   };
