@@ -601,6 +601,18 @@ export default function InspectionForm() {
 
         if (error) throw error;
         
+        // Handle inspection not found - redirect to dashboard
+        if (!data && !offlineData) {
+          console.warn('[InspectionForm] Inspection not found:', id);
+          toast({
+            title: "Inspection not found",
+            description: "This inspection may have been deleted or doesn't exist.",
+            variant: "destructive",
+          });
+          navigate('/dashboard');
+          return;
+        }
+        
         if (data) {
           setInspection(data);
           await saveInspectionOffline(data);
@@ -676,10 +688,23 @@ export default function InspectionForm() {
           console.log('[InspectionForm] Synced and cached all data from Supabase');
         }
       } else if (!offlineData) {
-        throw new Error("No offline data available");
+        // Offline and no cached data
+        toast({
+          title: "Inspection not available offline",
+          description: "Please connect to the internet to load this inspection.",
+          variant: "destructive",
+        });
+        navigate('/dashboard');
+        return;
       }
     } catch (error: any) {
       console.error("Error loading inspection:", error);
+      toast({
+        title: "Failed to load inspection",
+        description: error.message || "An error occurred while loading the inspection.",
+        variant: "destructive",
+      });
+      navigate('/dashboard');
     } finally {
       setLoading(false);
     }

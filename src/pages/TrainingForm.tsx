@@ -270,7 +270,7 @@ export default function TrainingForm() {
           immediate_attention,
           verifiable_items,
           systems_in_place,
-          summary
+          summaryData
         ] = await Promise.all([
           getTrainingDataOffline('delivery_approaches', id),
           getTrainingDataOffline('operating_systems', id),
@@ -287,7 +287,7 @@ export default function TrainingForm() {
           setImmediateAttention(immediate_attention || []);
           setVerifiableItems(verifiable_items || []);
           setSystemsInPlace(systems_in_place || []);
-          setSummary(summary || { training_id: id });
+          setSummary(summaryData || { training_id: id });
         }
 
         // If online, fetch from Supabase and update offline storage
@@ -296,9 +296,23 @@ export default function TrainingForm() {
             .from('trainings')
             .select('*')
             .eq('id', id)
-            .single();
+            .maybeSingle();
 
-          if (!trainingError && trainingData) {
+          // Handle training not found - redirect to dashboard
+          if (!trainingData && !offlineTraining) {
+            console.warn('[TrainingForm] Training not found:', id);
+            toast({
+              title: "Training not found",
+              description: "This training may have been deleted or doesn't exist.",
+              variant: "destructive",
+            });
+            navigate('/dashboard');
+            return;
+          }
+
+          if (trainingError) throw trainingError;
+          
+          if (trainingData) {
             setTraining(trainingData);
             await saveTrainingOffline(trainingData);
 
@@ -309,14 +323,14 @@ export default function TrainingForm() {
               { data: attentionData },
               { data: verifiableData },
               { data: systemsPlaceData },
-              { data: summaryData }
+              { data: summaryResult }
             ] = await Promise.all([
               supabase.from('training_delivery_approaches').select('*').eq('training_id', id),
               supabase.from('training_operating_systems').select('*').eq('training_id', id),
               supabase.from('training_immediate_attention').select('*').eq('training_id', id),
               supabase.from('training_verifiable_items').select('*').eq('training_id', id),
               supabase.from('training_systems_in_place').select('*').eq('training_id', id),
-              supabase.from('training_summary').select('*').eq('training_id', id).single()
+              supabase.from('training_summary').select('*').eq('training_id', id).maybeSingle()
             ]);
 
             setDeliveryApproaches(approachData || []);
@@ -324,7 +338,7 @@ export default function TrainingForm() {
             setImmediateAttention(attentionData || []);
             setVerifiableItems(verifiableData || []);
             setSystemsInPlace(systemsPlaceData || []);
-            setSummary(summaryData || { training_id: id });
+            setSummary(summaryResult || { training_id: id });
 
             // Save related data offline
             await Promise.all([
@@ -333,19 +347,34 @@ export default function TrainingForm() {
               saveTrainingDataOffline('immediate_attention', id, attentionData || []),
               saveTrainingDataOffline('verifiable_items', id, verifiableData || []),
               saveTrainingDataOffline('systems_in_place', id, systemsPlaceData || []),
-              summaryData && saveTrainingDataOffline('summary', id, summaryData)
+              summaryResult && saveTrainingDataOffline('summary', id, summaryResult)
             ]);
           }
+        } else if (!offlineTraining) {
+          // Offline and no cached data
+          toast({
+            title: "Training not available offline",
+            description: "Please connect to the internet to load this training.",
+            variant: "destructive",
+          });
+          navigate('/dashboard');
+          return;
         }
       } catch (error) {
         console.error('Error loading training:', error);
+        toast({
+          title: "Failed to load training",
+          description: "An error occurred while loading the training.",
+          variant: "destructive",
+        });
+        navigate('/dashboard');
       } finally {
         setIsLoading(false);
       }
     };
 
     loadTraining();
-  }, [id, isOnline]);
+  }, [id, isOnline, navigate]);
 
   // Track if save is in progress to prevent duplicate calls
   const saveInProgressRef = useRef(false);
