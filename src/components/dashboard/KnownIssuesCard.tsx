@@ -12,6 +12,7 @@
 
 import { useState, useEffect } from 'react';
 import { AlertTriangle, Edit2, Save, X } from 'lucide-react';
+import DOMPurify from 'dompurify';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { RichTextEditor } from '@/components/ui/rich-text-editor';
@@ -189,7 +190,7 @@ export const KnownIssuesCard = ({ isSuperAdmin }: KnownIssuesCardProps) => {
             {hasContent ? (
               <div 
                 className="prose prose-sm dark:prose-invert max-w-none [&_ul]:list-disc [&_ul]:pl-5 [&_li]:my-1"
-                dangerouslySetInnerHTML={{ __html: convertToBulletList(announcement?.content || '') }}
+                dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(convertToBulletList(announcement?.content || '')) }}
               />
             ) : (
               <p className="text-muted-foreground text-sm italic">
