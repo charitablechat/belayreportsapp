@@ -290,42 +290,64 @@ export default function DailyAssessmentForm() {
           .from('daily_assessments')
           .select('*')
           .eq('id', id)
-          .single();
+          .maybeSingle();
+
+        // Handle assessment not found - redirect to dashboard
+        if (!assessmentData && !offlineAssessment) {
+          console.warn('[DailyAssessmentForm] Assessment not found:', id);
+          toast.error("Assessment not found", {
+            description: "This assessment may have been deleted or doesn't exist.",
+          });
+          navigate('/dashboard');
+          return;
+        }
 
         if (assessmentError) throw assessmentError;
-        setAssessment(assessmentData);
-
-        // Load all related data
-        const [bodData, eodData, osData, eqData, stData, envData] = await Promise.all([
-          supabase.from('daily_assessment_beginning_of_day').select('*').eq('assessment_id', id),
-          supabase.from('daily_assessment_end_of_day').select('*').eq('assessment_id', id),
-          supabase.from('daily_assessment_operating_systems').select('*').eq('assessment_id', id),
-          supabase.from('daily_assessment_equipment_checks').select('*').eq('assessment_id', id),
-          supabase.from('daily_assessment_structure_checks').select('*').eq('assessment_id', id),
-          supabase.from('daily_assessment_environment_checks').select('*').eq('assessment_id', id),
-        ]);
-
-        setBeginningOfDay(bodData.data || []);
-        setEndOfDay(eodData.data || []);
-        setOperatingSystems(osData.data || []);
-        setEquipmentChecks(eqData.data || []);
-        setStructureChecks(stData.data || []);
-        setEnvironmentChecks(envData.data || []);
         
-        // Save to offline storage
-        const { saveDailyAssessmentOffline, saveAssessmentDataOffline } = await import('@/lib/offline-storage');
-        await saveDailyAssessmentOffline(assessmentData);
-        await Promise.all([
-          saveAssessmentDataOffline('beginning_of_day', id!, bodData.data || []),
-          saveAssessmentDataOffline('end_of_day', id!, eodData.data || []),
-          saveAssessmentDataOffline('operating_systems', id!, osData.data || []),
-          saveAssessmentDataOffline('equipment_checks', id!, eqData.data || []),
-          saveAssessmentDataOffline('structure_checks', id!, stData.data || []),
-          saveAssessmentDataOffline('environment_checks', id!, envData.data || []),
-        ]);
+        if (assessmentData) {
+          setAssessment(assessmentData);
+
+          // Load all related data
+          const [bodData, eodData, osData, eqData, stData, envData] = await Promise.all([
+            supabase.from('daily_assessment_beginning_of_day').select('*').eq('assessment_id', id),
+            supabase.from('daily_assessment_end_of_day').select('*').eq('assessment_id', id),
+            supabase.from('daily_assessment_operating_systems').select('*').eq('assessment_id', id),
+            supabase.from('daily_assessment_equipment_checks').select('*').eq('assessment_id', id),
+            supabase.from('daily_assessment_structure_checks').select('*').eq('assessment_id', id),
+            supabase.from('daily_assessment_environment_checks').select('*').eq('assessment_id', id),
+          ]);
+
+          setBeginningOfDay(bodData.data || []);
+          setEndOfDay(eodData.data || []);
+          setOperatingSystems(osData.data || []);
+          setEquipmentChecks(eqData.data || []);
+          setStructureChecks(stData.data || []);
+          setEnvironmentChecks(envData.data || []);
+          
+          // Save to offline storage
+          const { saveDailyAssessmentOffline, saveAssessmentDataOffline } = await import('@/lib/offline-storage');
+          await saveDailyAssessmentOffline(assessmentData);
+          await Promise.all([
+            saveAssessmentDataOffline('beginning_of_day', id!, bodData.data || []),
+            saveAssessmentDataOffline('end_of_day', id!, eodData.data || []),
+            saveAssessmentDataOffline('operating_systems', id!, osData.data || []),
+            saveAssessmentDataOffline('equipment_checks', id!, eqData.data || []),
+            saveAssessmentDataOffline('structure_checks', id!, stData.data || []),
+            saveAssessmentDataOffline('environment_checks', id!, envData.data || []),
+          ]);
+        }
+      } else if (!offlineAssessment) {
+        // Offline and no cached data
+        toast.error("Assessment not available offline", {
+          description: "Please connect to the internet to load this assessment.",
+        });
+        navigate('/dashboard');
+        return;
       }
     } catch (error) {
       console.error('Error loading assessment:', error);
+      toast.error("Failed to load assessment");
+      navigate('/dashboard');
     } finally {
       setLoading(false);
     }
