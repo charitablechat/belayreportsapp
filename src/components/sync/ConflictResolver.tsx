@@ -15,8 +15,9 @@ import {
 } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { AlertCircle, Check, Clock, MapPin, Building2 } from 'lucide-react';
+import { AlertCircle, Check, Clock, MapPin, Building2, Loader2 } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Skeleton } from '@/components/ui/skeleton';
 
 interface ConflictResolverProps {
   open: boolean;
@@ -24,7 +25,7 @@ interface ConflictResolverProps {
 }
 
 export const ConflictResolver = ({ open, onOpenChange }: ConflictResolverProps) => {
-  const { conflicts, resolveWithLocal, resolveWithRemote, isResolving } = useConflicts();
+  const { conflicts, isLoading, resolveWithLocal, resolveWithRemote, isResolving } = useConflicts();
 
   const handleResolve = (conflictId: string, inspectionId: string, useLocal: boolean) => {
     if (useLocal) {
@@ -43,6 +44,29 @@ export const ConflictResolver = ({ open, onOpenChange }: ConflictResolverProps) 
       minute: '2-digit',
     });
   };
+
+  // Show loading state
+  if (isLoading) {
+    return (
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Loader2 className="w-5 h-5 animate-spin" />
+              Loading Conflicts
+            </DialogTitle>
+            <DialogDescription>
+              Checking for sync conflicts...
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <Skeleton className="h-24 w-full" />
+            <Skeleton className="h-24 w-full" />
+          </div>
+        </DialogContent>
+      </Dialog>
+    );
+  }
 
   if (conflicts.length === 0) {
     return (

@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { useEffect, useCallback } from 'react';
 
 export interface SyncConflict {
   id: string;
@@ -10,7 +11,6 @@ export interface SyncConflict {
   remote_updated_at: string;
   resolved: boolean;
   created_at: string;
-  // Joined inspection details
   inspection?: {
     organization: string;
     location: string;
@@ -23,7 +23,7 @@ export const useConflicts = () => {
   const queryClient = useQueryClient();
 
   // Fetch unresolved conflicts with inspection details
-  const { data: conflicts = [], isLoading } = useQuery({
+  const { data: conflicts = [], isLoading, refetch } = useQuery({
     queryKey: ['sync-conflicts'],
     queryFn: async () => {
       const { data: { user } } = await supabase.auth.getUser();
@@ -40,29 +40,60 @@ export const useConflicts = () => {
 
       if (error) throw error;
       
-      // Auto-resolve stale conflicts where inspection has synced after conflict was created
-      const validConflicts: SyncConflict[] = [];
-      for (const conflict of data as SyncConflict[]) {
-        if (conflict.inspection?.synced_at) {
-          const syncedAt = new Date(conflict.inspection.synced_at).getTime();
-          const conflictCreatedAt = new Date(conflict.created_at).getTime();
-          
-          // If inspection synced after conflict was created, auto-resolve it
-          if (syncedAt > conflictCreatedAt) {
-            await supabase
-              .from('sync_conflicts')
-              .update({ resolved: true })
-              .eq('id', conflict.id);
-            continue; // Skip this conflict, it's now resolved
-          }
-        }
-        validConflicts.push(conflict);
-      }
-      
-      return validConflicts;
+      return (data as SyncConflict[]) || [];
     },
-    enabled: navigator.onLine,
-    refetchInterval: 30000, // Check every 30 seconds
+    enabled: typeof navigator !== 'undefined' && navigator.onLine,
+    staleTime: 30000, // Consider data fresh for 30 seconds
+    refetchOnWindowFocus: false,
+    refetchInterval: 60000, // Check every 60 seconds instead of 30
+  });
+
+  // Mutation for auto-resolving stale conflicts
+  const autoResolveMutation = useMutation({
+    mutationFn: async (staleConflictIds: string[]) => {
+      if (staleConflictIds.length === 0) return;
+      
+      const { error } = await supabase
+        .from('sync_conflicts')
+        .update({ resolved: true })
+        .in('id', staleConflictIds);
+      
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sync-conflicts'] });
+    },
+  });
+
+  // Auto-resolve stale conflicts after data is fetched
+  useEffect(() => {
+    if (!conflicts || conflicts.length === 0) return;
+    
+    const staleConflictIds: string[] = [];
+    
+    for (const conflict of conflicts) {
+      if (conflict.inspection?.synced_at) {
+        const syncedAt = new Date(conflict.inspection.synced_at).getTime();
+        const conflictCreatedAt = new Date(conflict.created_at).getTime();
+        
+        // If inspection synced after conflict was created, mark for auto-resolve
+        if (syncedAt > conflictCreatedAt) {
+          staleConflictIds.push(conflict.id);
+        }
+      }
+    }
+    
+    if (staleConflictIds.length > 0) {
+      autoResolveMutation.mutate(staleConflictIds);
+    }
+  }, [conflicts]);
+
+  // Filter out stale conflicts from UI (they'll be resolved in background)
+  const validConflicts = conflicts.filter(conflict => {
+    if (!conflict.inspection?.synced_at) return true;
+    const syncedAt = new Date(conflict.inspection.synced_at).getTime();
+    const conflictCreatedAt = new Date(conflict.created_at).getTime();
+    return syncedAt <= conflictCreatedAt;
   });
 
   // Resolve conflict by choosing local version
@@ -100,7 +131,7 @@ export const useConflicts = () => {
       queryClient.invalidateQueries({ queryKey: ['sync-conflicts'] });
       toast.success('Conflict resolved with local version');
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       console.error('Failed to resolve conflict:', error);
       toast.error('Failed to resolve conflict');
     },
@@ -131,19 +162,20 @@ export const useConflicts = () => {
       queryClient.invalidateQueries({ queryKey: ['sync-conflicts'] });
       toast.success('Conflict resolved with remote version');
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       console.error('Failed to resolve conflict:', error);
       toast.error('Failed to resolve conflict');
     },
   });
 
   return {
-    conflicts,
+    conflicts: validConflicts,
     isLoading,
-    hasConflicts: conflicts.length > 0,
-    conflictCount: conflicts.length,
+    hasConflicts: validConflicts.length > 0,
+    conflictCount: validConflicts.length,
     resolveWithLocal: resolveWithLocal.mutate,
     resolveWithRemote: resolveWithRemote.mutate,
     isResolving: resolveWithLocal.isPending || resolveWithRemote.isPending,
+    refetch,
   };
 };

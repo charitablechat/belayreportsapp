@@ -118,9 +118,18 @@ async function rollbackTransaction(
       // Reverse the operation
       switch (step.operation) {
         case 'insert':
-          // Delete what was inserted
-          if (step.data.id) {
+          // Delete what was inserted - handle both single and batch inserts
+          if (Array.isArray(step.data)) {
+            // Batch insert - delete all items with IDs
+            const ids = step.data.map((item: any) => item.id).filter(Boolean);
+            if (ids.length > 0) {
+              await (supabase as any).from(step.table).delete().in('id', ids);
+            }
+          } else if (step.data?.id) {
             await (supabase as any).from(step.table).delete().eq('id', step.data.id);
+          } else if (step.filter) {
+            // Fallback to filter-based delete if no ID available
+            await (supabase as any).from(step.table).delete().match(step.filter);
           }
           break;
           
@@ -141,15 +150,22 @@ async function rollbackTransaction(
               .from(step.table)
               .update(step.rollbackData)
               .eq('id', step.data.id);
-          } else if (step.data.id) {
+          } else if (step.data?.id) {
             await (supabase as any).from(step.table).delete().eq('id', step.data.id);
           }
           break;
           
         case 'delete':
-          // Restore deleted data if available
+          // Restore deleted data if available - handle both single and batch
           if (step.rollbackData) {
-            await (supabase as any).from(step.table).insert(step.rollbackData);
+            if (Array.isArray(step.rollbackData)) {
+              // Batch restore
+              if (step.rollbackData.length > 0) {
+                await (supabase as any).from(step.table).insert(step.rollbackData);
+              }
+            } else {
+              await (supabase as any).from(step.table).insert(step.rollbackData);
+            }
           }
           break;
       }
