@@ -759,172 +759,224 @@ export default function InspectionForm() {
       // Clear any previous save errors
       setSaveError(null);
 
-      // If online, sync to Supabase
+      // If online, sync to Supabase with retry logic
       if (isOnline) {
+        const syncWithRetry = async (retries = 2): Promise<void> => {
+          try {
+            // Sanitize inspection data - convert empty strings to null for date fields
+            const sanitizeInspection = (insp: any) => ({
+              ...insp,
+              previous_inspection_date: insp.previous_inspection_date === "" ? null : insp.previous_inspection_date,
+              id: undefined, // Remove id from update
+            });
+
+            // Update main inspection record
+            const { error: inspectionError } = await supabase
+              .from("inspections")
+              .update(sanitizeInspection(inspectionToSave))
+              .eq("id", id);
+            
+            if (inspectionError) {
+              console.error('[InspectionForm Sync] Failed to update inspection:', inspectionError);
+              throw inspectionError;
+            }
+            
+            // Batch upsert systems - separate new items from existing
+            const existingSystems = validSystems.filter(s => s.id && !s.id.startsWith('temp-'));
+            const newSystems = validSystems.filter(s => !s.id || s.id.startsWith('temp-'));
+            
+            if (existingSystems.length > 0) {
+              const { error: systemsError } = await supabase
+                .from("inspection_systems")
+                .upsert(existingSystems.map(s => ({ ...s, inspection_id: id })), { onConflict: 'id' });
+              if (systemsError) {
+                console.error('[InspectionForm Sync] Failed to upsert systems:', systemsError);
+                throw systemsError;
+              }
+            }
+            
+            if (newSystems.length > 0) {
+              const { data: insertedSystems, error: newSystemsError } = await supabase
+                .from("inspection_systems")
+                .insert(newSystems.map(s => {
+                  const { id: tempId, ...systemData } = s;
+                  return { ...systemData, inspection_id: id };
+                }))
+                .select();
+              
+              if (newSystemsError) {
+                console.error('[InspectionForm Sync] Failed to insert new systems:', newSystemsError);
+                throw newSystemsError;
+              }
+              
+              // Update local state with new IDs
+              if (insertedSystems) {
+                setSystems(prev => {
+                  const updated = [...prev];
+                  newSystems.forEach((oldSystem, index) => {
+                    const newId = insertedSystems[index]?.id;
+                    if (newId) {
+                      const foundIndex = updated.findIndex(s => s.id === oldSystem.id);
+                      if (foundIndex !== -1) {
+                        updated[foundIndex] = { ...updated[foundIndex], id: newId };
+                      }
+                    }
+                  });
+                  return updated;
+                });
+              }
+            }
+
+            // Batch upsert ziplines - separate new items from existing
+            const existingZiplines = validZiplines.filter(z => z.id && !z.id.startsWith('temp-'));
+            const newZiplines = validZiplines.filter(z => !z.id || z.id.startsWith('temp-'));
+            
+            if (existingZiplines.length > 0) {
+              const { error: ziplinesError } = await supabase
+                .from("inspection_ziplines")
+                .upsert(existingZiplines.map(z => ({ ...z, inspection_id: id })), { onConflict: 'id' });
+              if (ziplinesError) {
+                console.error('[InspectionForm Sync] Failed to upsert ziplines:', ziplinesError);
+                throw ziplinesError;
+              }
+            }
+            
+            if (newZiplines.length > 0) {
+              const { data: insertedZiplines, error: newZiplinesError } = await supabase
+                .from("inspection_ziplines")
+                .insert(newZiplines.map(z => {
+                  const { id: tempId, ...ziplineData } = z;
+                  return { ...ziplineData, inspection_id: id };
+                }))
+                .select();
+              
+              if (newZiplinesError) {
+                console.error('[InspectionForm Sync] Failed to insert new ziplines:', newZiplinesError);
+                throw newZiplinesError;
+              }
+              
+              if (insertedZiplines) {
+                setZiplines(prev => {
+                  const updated = [...prev];
+                  newZiplines.forEach((oldZipline, index) => {
+                    const newId = insertedZiplines[index]?.id;
+                    if (newId) {
+                      const foundIndex = updated.findIndex(z => z.id === oldZipline.id);
+                      if (foundIndex !== -1) {
+                        updated[foundIndex] = { ...updated[foundIndex], id: newId };
+                      }
+                    }
+                  });
+                  return updated;
+                });
+              }
+            }
+
+            // Batch upsert equipment - separate new items from existing
+            const existingEquipment = validEquipment.filter(e => e.id && !e.id.startsWith('temp-'));
+            const newEquipment = validEquipment.filter(e => !e.id || e.id.startsWith('temp-'));
+            
+            if (existingEquipment.length > 0) {
+              const { error: equipmentError } = await supabase
+                .from("inspection_equipment")
+                .upsert(existingEquipment.map(e => ({ ...e, inspection_id: id })), { onConflict: 'id' });
+              if (equipmentError) {
+                console.error('[InspectionForm Sync] Failed to upsert equipment:', equipmentError);
+                throw equipmentError;
+              }
+            }
+            
+            if (newEquipment.length > 0) {
+              const { data: insertedEquipment, error: newEquipmentError } = await supabase
+                .from("inspection_equipment")
+                .insert(newEquipment.map(e => {
+                  const { id: tempId, ...equipmentData } = e;
+                  return { ...equipmentData, inspection_id: id };
+                }))
+                .select();
+              
+              if (newEquipmentError) {
+                console.error('[InspectionForm Sync] Failed to insert new equipment:', newEquipmentError);
+                throw newEquipmentError;
+              }
+              
+              if (insertedEquipment) {
+                setEquipment(prev => {
+                  const updated = [...prev];
+                  newEquipment.forEach((oldEquip, index) => {
+                    const newId = insertedEquipment[index]?.id;
+                    if (newId) {
+                      const foundIndex = updated.findIndex(e => e.id === oldEquip.id);
+                      if (foundIndex !== -1) {
+                        updated[foundIndex] = { ...updated[foundIndex], id: newId };
+                      }
+                    }
+                  });
+                  return updated;
+                });
+              }
+            }
+
+            // Upsert standards - delete old then insert new
+            await supabase.from("inspection_standards").delete().eq("inspection_id", id);
+            const standardsToInsert = standards.map(s => {
+              const { id: stdId, ...standardData } = s;
+              return { ...standardData, inspection_id: id };
+            });
+            const { error: standardsError } = await supabase
+              .from("inspection_standards")
+              .insert(standardsToInsert);
+            if (standardsError) {
+              console.error('[InspectionForm Sync] Failed to save standards:', standardsError);
+              throw standardsError;
+            }
+
+            // Save or update summary
+            const sanitizeSummary = (sum: any) => ({
+              ...sum,
+              next_inspection_date: sum.next_inspection_date === "" ? null : sum.next_inspection_date
+            });
+
+            const { error: summaryError } = await supabase
+              .from("inspection_summary")
+              .upsert(sanitizeSummary({ ...summary, inspection_id: id }), { onConflict: 'inspection_id' });
+            
+            if (summaryError) {
+              console.error('[InspectionForm Sync] Failed to save summary:', summaryError);
+              throw summaryError;
+            }
+
+            // Mark as synced
+            await saveInspectionOffline({
+              ...inspectionToSave,
+              synced_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            });
+
+            console.log('[InspectionForm Sync] Synced all data to Supabase successfully');
+          } catch (error: any) {
+            if (retries > 0 && (error?.message?.includes('network') || error?.code === 'NETWORK_ERROR')) {
+              console.log(`[InspectionForm Sync] Retrying... (${retries} attempts left)`);
+              await new Promise(resolve => setTimeout(resolve, 1000));
+              return syncWithRetry(retries - 1);
+            }
+            throw error;
+          }
+        };
+
         try {
-          // Update inspection with correct inspector_id
-          // Sanitize inspection data - convert empty strings to null for date fields
-          const sanitizeInspection = (insp: any) => ({
-            ...insp,
-            previous_inspection_date: insp.previous_inspection_date === "" ? null : insp.previous_inspection_date,
-            id: undefined, // Remove id from update
-          });
-
-          const { error: inspectionError } = await supabase
-            .from("inspections")
-            .update(sanitizeInspection(inspectionToSave))
-            .eq("id", id);
-          
-          if (inspectionError) {
-            console.error('[InspectionForm] Failed to update inspection:', inspectionError);
-            throw inspectionError;
-          }
-          
-          // Save systems
-        for (const system of validSystems) {
-          if (system.id && system.id.startsWith('temp-')) {
-            // Temporary offline ID - insert as new
-            const { id: tempId, ...systemData } = system;
-            const { data, error } = await supabase
-              .from("inspection_systems")
-              .insert({ ...systemData, inspection_id: id })
-              .select()
-              .single();
-            
-            if (data && !error) {
-              // Update local state with the new database-generated ID
-              setSystems(prev => prev.map(s => 
-                s.id === system.id ? { ...s, id: data.id } : s
-              ));
-            }
-          } else if (system.id) {
-            await supabase
-              .from("inspection_systems")
-              .update(system)
-              .eq("id", system.id);
-          } else {
-            await supabase
-              .from("inspection_systems")
-              .insert({ ...system, inspection_id: id });
-          }
-        }
-
-        // Save ziplines
-        for (const zipline of validZiplines) {
-          if (zipline.id && zipline.id.startsWith('temp-')) {
-            const { id: tempId, ...ziplineData } = zipline;
-            const { data, error } = await supabase
-              .from("inspection_ziplines")
-              .insert({ ...ziplineData, inspection_id: id })
-              .select()
-              .single();
-            
-            if (data && !error) {
-              // Update local state with the new database-generated ID
-              setZiplines(prev => prev.map(z => 
-                z.id === zipline.id ? { ...z, id: data.id } : z
-              ));
-            }
-          } else if (zipline.id) {
-            await supabase
-              .from("inspection_ziplines")
-              .update(zipline)
-              .eq("id", zipline.id);
-          } else {
-            await supabase
-              .from("inspection_ziplines")
-              .insert({ ...zipline, inspection_id: id });
-          }
-        }
-
-        // Save equipment
-        for (const item of validEquipment) {
-          if (item.id && item.id.startsWith('temp-')) {
-            const { id: tempId, ...equipmentData } = item;
-            const { data, error } = await supabase
-              .from("inspection_equipment")
-              .insert({ ...equipmentData, inspection_id: id })
-              .select()
-              .single();
-            
-            if (data && !error) {
-              // Update local state with the new database-generated ID
-              setEquipment(prev => prev.map(e => 
-                e.id === item.id ? { ...e, id: data.id } : e
-              ));
-            }
-          } else if (item.id) {
-            await supabase
-              .from("inspection_equipment")
-              .update(item)
-              .eq("id", item.id);
-          } else {
-            await supabase
-              .from("inspection_equipment")
-              .insert({ ...item, inspection_id: id });
-          }
-        }
-
-        // Save standards
-        await supabase.from("inspection_standards").delete().eq("inspection_id", id);
-        const standardsToInsert = standards.map(s => {
-          const { id: stdId, ...standardData } = s;
-          return { ...standardData, inspection_id: id };
-        });
-        await supabase.from("inspection_standards").insert(standardsToInsert);
-
-        // Save or update summary
-        // Sanitize summary data - convert empty strings to null for date fields
-        const sanitizeSummary = (sum: any) => ({
-          ...sum,
-          next_inspection_date: sum.next_inspection_date === "" ? null : sum.next_inspection_date
-        });
-
-        const { data: existingSummary } = await supabase
-          .from("inspection_summary")
-          .select("id")
-          .eq("inspection_id", id)
-          .maybeSingle();
-
-        if (existingSummary) {
-          await supabase
-            .from("inspection_summary")
-            .update(sanitizeSummary(summary))
-            .eq("inspection_id", id);
-        } else {
-          const { id: sumId, ...summaryData } = summary as any;
-          await supabase
-            .from("inspection_summary")
-            .insert(sanitizeSummary({ ...summaryData, inspection_id: id }));
-        }
-
-          // Mark as synced
-          await saveInspectionOffline({
-            ...inspectionToSave,
-            synced_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          });
-
-          if (import.meta.env.DEV) {
-            console.log('[InspectionForm] Synced all data to Supabase');
-          }
-        } catch (error) {
-          console.error('[InspectionForm] Failed to sync to Supabase:', error);
+          await syncWithRetry();
+        } catch (error: any) {
+          console.error('[InspectionForm Sync] Failed after retries:', error);
           setSaveError('Failed to sync online - saved locally');
           // Queue for later sync
           await queueOperation('update', id!, saveData);
-          
-          if (import.meta.env.DEV) {
-            console.log('[InspectionForm] Queued for later sync');
-          }
+          console.log('[InspectionForm Sync] Queued for later sync');
         }
       } else {
         // Queue operation when offline
         await queueOperation('update', id!, saveData);
-        
-        if (import.meta.env.DEV) {
-          console.log('[InspectionForm] Queued for sync when online');
-        }
+        console.log('[InspectionForm Sync] Queued for sync when online');
       }
     } catch (error: any) {
       console.error('[InspectionForm] Save error:', error);
