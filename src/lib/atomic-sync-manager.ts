@@ -478,7 +478,18 @@ export async function syncTrainingAtomic(trainingId: string) {
     }
     
     if (import.meta.env.DEV) {
-      console.log('[Atomic Sync] Training validation passed for:', trainingId);
+      console.log('[Atomic Sync] Training data gathered:', {
+        trainingId,
+        organization: training.organization,
+        relatedData: {
+          delivery_approaches: delivery_approaches.length,
+          operating_systems: operating_systems.length,
+          immediate_attention: immediate_attention.length,
+          verifiable_items: verifiable_items.length,
+          systems_in_place: systems_in_place.length,
+          hasSummary: !!summary,
+        }
+      });
     }
     
     // 3. Check for conflicts
@@ -616,7 +627,11 @@ export async function syncTrainingAtomic(trainingId: string) {
     });
     
     if (import.meta.env.DEV) {
-      console.log('[Atomic Sync] Successfully synced training:', trainingId);
+      console.log('[Atomic Sync] Successfully synced training with related data:', {
+        trainingId,
+        stepsCompleted: result.completedSteps,
+        totalSteps: result.totalSteps,
+      });
     }
     
     return { success: true };
@@ -802,7 +817,18 @@ export async function syncDailyAssessmentAtomic(assessmentId: string) {
     }
     
     if (import.meta.env.DEV) {
-      console.log('[Atomic Sync] Daily assessment validation passed for:', assessmentId);
+      console.log('[Atomic Sync] Daily assessment data gathered:', {
+        assessmentId,
+        organization: assessment.organization,
+        relatedData: {
+          beginning_of_day: beginning_of_day.length,
+          end_of_day: end_of_day.length,
+          operating_systems: operating_systems.length,
+          equipment_checks: equipment_checks.length,
+          structure_checks: structure_checks.length,
+          environment_checks: environment_checks.length,
+        }
+      });
     }
     
     // 3. Check for conflicts
@@ -934,7 +960,11 @@ export async function syncDailyAssessmentAtomic(assessmentId: string) {
     });
     
     if (import.meta.env.DEV) {
-      console.log('[Atomic Sync] Successfully synced daily assessment:', assessmentId);
+      console.log('[Atomic Sync] Successfully synced daily assessment with related data:', {
+        assessmentId,
+        stepsCompleted: result.completedSteps,
+        totalSteps: result.totalSteps,
+      });
     }
     
     return { success: true };
