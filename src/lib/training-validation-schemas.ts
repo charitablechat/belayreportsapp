@@ -23,7 +23,7 @@ export const deliveryApproachSchema = z.object({
   id: z.string().uuid(),
   training_id: z.string().uuid(),
   approach: z.enum(['Facilitated', 'Guided', 'Self-Guided']),
-  created_at: z.string().optional(),
+  created_at: z.string().optional().nullable(),
 });
 
 // Operating system validation schema
@@ -32,7 +32,7 @@ export const operatingSystemSchema = z.object({
   training_id: z.string().uuid(),
   system_name: z.string().min(1),
   other_description: z.string().max(500).optional().nullable(),
-  created_at: z.string().optional(),
+  created_at: z.string().optional().nullable(),
 });
 
 // Immediate attention validation schema
@@ -40,7 +40,7 @@ export const immediateAttentionSchema = z.object({
   id: z.string().uuid(),
   training_id: z.string().uuid(),
   item: z.string().min(1),
-  created_at: z.string().optional(),
+  created_at: z.string().optional().nullable(),
 });
 
 // Verifiable items validation schema
@@ -48,7 +48,7 @@ export const verifiableItemSchema = z.object({
   id: z.string().uuid(),
   training_id: z.string().uuid(),
   item: z.string().min(1),
-  created_at: z.string().optional(),
+  created_at: z.string().optional().nullable(),
 });
 
 // Systems in place validation schema
@@ -56,7 +56,7 @@ export const systemInPlaceSchema = z.object({
   id: z.string().uuid(),
   training_id: z.string().uuid(),
   system_item: z.string().min(1),
-  created_at: z.string().optional(),
+  created_at: z.string().optional().nullable(),
 });
 
 // Training summary validation schema
@@ -67,7 +67,7 @@ export const trainingSummarySchema = z.object({
   recommendations: z.string().max(5000).optional().nullable(),
   person_submitting: z.string().max(255).optional().nullable(),
   submission_date: z.string().optional().nullable(),
-  created_at: z.string().optional(),
+  created_at: z.string().optional().nullable(),
 });
 
 // Complete training package validation

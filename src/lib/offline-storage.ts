@@ -615,6 +615,19 @@ const storeNameMap: Record<RelatedDataType, RelatedStoreNames> = {
   summary: 'inspection_summary',
 };
 
+// UUID validation helper - checks if string is a valid UUID format
+const isValidUUID = (id: string): boolean => {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+};
+
+// Generate a proper UUID for items without valid UUIDs
+const ensureValidUUID = (id: string | undefined): string => {
+  if (!id || id.startsWith('temp-') || !isValidUUID(id)) {
+    return crypto.randomUUID();
+  }
+  return id;
+};
+
 export async function saveRelatedDataOffline(
   type: RelatedDataType,
   inspectionId: string,
@@ -632,7 +645,8 @@ export async function saveRelatedDataOffline(
     const dataWithInspectionId = {
       ...item,
       inspection_id: inspectionId,
-      id: item.id || `${inspectionId}-${type}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      // Use crypto.randomUUID() for proper UUID generation instead of composite IDs
+      id: ensureValidUUID(item.id),
     };
     await db.put(storeName, dataWithInspectionId);
   }
@@ -818,7 +832,8 @@ export async function saveAssessmentDataOffline(
     const dataWithAssessmentId = {
       ...item,
       assessment_id: assessmentId,
-      id: item.id || `${assessmentId}-${type}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      // Use crypto.randomUUID() for proper UUID generation instead of composite IDs
+      id: ensureValidUUID(item.id),
     };
     await db.put(storeName, dataWithAssessmentId);
   }
@@ -1005,7 +1020,9 @@ export async function saveTrainingDataOffline(
     const dataWithTrainingId = {
       ...item,
       training_id: trainingId,
-      id: item.id || `${trainingId}-${type}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      // Use crypto.randomUUID() for proper UUID generation instead of composite IDs
+      // This fixes the "Invalid uuid" validation error during sync
+      id: ensureValidUUID(item.id),
     };
     await db.put(storeName, dataWithTrainingId);
   }

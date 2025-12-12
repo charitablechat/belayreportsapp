@@ -287,7 +287,11 @@ export default function TrainingForm() {
           setImmediateAttention(immediate_attention || []);
           setVerifiableItems(verifiable_items || []);
           setSystemsInPlace(systems_in_place || []);
-          setSummary(summaryData || { training_id: id });
+          // Initialize summary with a proper UUID if not exists
+          setSummary(summaryData || { 
+            id: crypto.randomUUID(),
+            training_id: id 
+          });
         }
 
         // If online, fetch from Supabase and update offline storage
@@ -338,7 +342,11 @@ export default function TrainingForm() {
             setImmediateAttention(attentionData || []);
             setVerifiableItems(verifiableData || []);
             setSystemsInPlace(systemsPlaceData || []);
-            setSummary(summaryResult || { training_id: id });
+            // Initialize summary with a proper UUID if not exists
+            setSummary(summaryResult || { 
+              id: crypto.randomUUID(),
+              training_id: id 
+            });
 
             // Save related data offline
             await Promise.all([

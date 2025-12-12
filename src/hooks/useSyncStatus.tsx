@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { getUnsyncedInspections } from '@/lib/offline-storage';
 import { syncAllInspectionsAtomic } from '@/lib/atomic-sync-manager';
 import { useNetworkStatus } from './useNetworkStatus';
@@ -12,8 +12,13 @@ export interface SyncStatus {
   syncError: string | null;
 }
 
+// Minimum interval between sync attempts to prevent rapid-fire syncs
+const MIN_SYNC_INTERVAL = 5000; // 5 seconds
+
 export const useSyncStatus = () => {
   const { isOnline } = useNetworkStatus();
+  const lastSyncAttemptRef = useRef<number>(0);
+  
   const [syncStatus, setSyncStatus] = useState<SyncStatus>({
     unsyncedCount: 0,
     unsyncedInspections: [],
@@ -57,6 +62,16 @@ export const useSyncStatus = () => {
       console.log('[Sync Status] Sync already in progress');
       return;
     }
+
+    // Debounce protection - prevent rapid-fire sync attempts
+    const now = Date.now();
+    if (now - lastSyncAttemptRef.current < MIN_SYNC_INTERVAL) {
+      if (import.meta.env.DEV) {
+        console.log('[Sync Status] Debounced - too soon since last sync attempt');
+      }
+      return;
+    }
+    lastSyncAttemptRef.current = now;
 
     setSyncStatus(prev => ({ ...prev, isSyncing: true, syncError: null }));
 

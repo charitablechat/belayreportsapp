@@ -400,13 +400,31 @@ export async function syncAllInspectionsAtomic() {
 }
 
 /**
- * Helper function to transform temp- IDs to valid UUIDs
+ * Helper function to validate UUID format
+ */
+function isValidUUID(id: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+}
+
+/**
+ * Helper function to transform temp- IDs and invalid IDs to valid UUIDs
+ * This handles:
+ * - temp- prefixed IDs from UI
+ * - Composite IDs that were incorrectly generated (e.g., "uuid-type-timestamp-random")
+ * - Missing IDs
  */
 function transformTempIds<T extends { id?: string }>(items: T[]): T[] {
-  return items.map(item => ({
-    ...item,
-    id: item.id?.startsWith('temp-') ? crypto.randomUUID() : item.id
-  }));
+  return items.map(item => {
+    // Transform if: no id, starts with temp-, or not a valid UUID format
+    const needsTransform = !item.id || 
+      item.id.startsWith('temp-') || 
+      !isValidUUID(item.id);
+    
+    return {
+      ...item,
+      id: needsTransform ? crypto.randomUUID() : item.id
+    };
+  });
 }
 
 /**
