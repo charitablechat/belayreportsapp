@@ -968,9 +968,28 @@ export default function InspectionForm() {
     }
   };
 
+  // Track if save is in progress to prevent duplicate calls
+  const saveInProgressRef = useRef(false);
+
   const saveProgress = async () => {
+    // Prevent duplicate save calls
+    if (saveInProgressRef.current) {
+      console.log('[InspectionForm] Save already in progress, skipping');
+      return;
+    }
+
+    console.log('[InspectionForm] Starting save...');
+    saveInProgressRef.current = true;
     setSaving(true);
     setSaveError(null);
+
+    // Safety timeout - ensure saving state is cleared after max 30 seconds
+    const safetyTimeout = setTimeout(() => {
+      console.warn('[InspectionForm] Safety timeout reached, forcing save state reset');
+      setSaving(false);
+      saveInProgressRef.current = false;
+    }, 30000);
+
     try {
       await performSave(false); // Show warnings on manual save
       setLastSaved(new Date());
@@ -987,7 +1006,10 @@ export default function InspectionForm() {
       const errorMsg = error.message || "Failed to save progress";
       setSaveError(errorMsg);
     } finally {
+      clearTimeout(safetyTimeout);
+      console.log('[InspectionForm] Completed, setting saving to false');
       setSaving(false);
+      saveInProgressRef.current = false;
     }
   };
 
