@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef } from "react";
+import { toast } from "@/hooks/use-toast";
 import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -1525,8 +1526,17 @@ export default function InspectionForm() {
                     try {
                       await triggerSync();
                       await saveProgress();
+                      toast({
+                        title: "Sync successful",
+                        description: "Your changes have been synced to the server.",
+                      });
                     } catch (err) {
                       console.error('[InspectionForm] Manual sync failed:', err);
+                      toast({
+                        title: "Sync failed",
+                        description: "Please try again or check your connection.",
+                        variant: "destructive",
+                      });
                     }
                   }}
                   disabled={saving || autoSaving || isSyncing}
