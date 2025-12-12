@@ -1,5 +1,5 @@
-import { CheckCircle, Loader2, AlertCircle, Clock } from "lucide-react";
-import { format, formatDistanceToNow } from "date-fns";
+import { CheckCircle, Loader2, AlertCircle, Clock, RefreshCw } from "lucide-react";
+import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 
 interface AutoSaveIndicatorProps {
@@ -9,6 +9,7 @@ interface AutoSaveIndicatorProps {
   error?: string | null;
   className?: string;
   showRelativeTime?: boolean;
+  onRetry?: () => void;
 }
 
 export function AutoSaveIndicator({
@@ -18,6 +19,7 @@ export function AutoSaveIndicator({
   error = null,
   className,
   showRelativeTime = true,
+  onRetry,
 }: AutoSaveIndicatorProps) {
   const formatTime = (date: Date) => {
     if (showRelativeTime) {
@@ -39,6 +41,15 @@ export function AutoSaveIndicator({
         <AlertCircle className="w-3 h-3" />
         <span className="hidden sm:inline">{error}</span>
         <span className="sm:hidden">Error</span>
+        {onRetry && (
+          <button 
+            onClick={onRetry}
+            className="ml-1 p-0.5 rounded hover:bg-destructive/10 transition-colors"
+            title="Retry save"
+          >
+            <RefreshCw className="w-3 h-3" />
+          </button>
+        )}
       </div>
     );
   }

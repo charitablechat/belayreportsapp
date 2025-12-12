@@ -78,7 +78,7 @@ export default function InspectionForm() {
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [photoRefreshKey, setPhotoRefreshKey] = useState(0);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const [saveDebounceTimer, setSaveDebounceTimer] = useState<NodeJS.Timeout | null>(null);
+  const saveDebounceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [userProfile, setUserProfile] = useState<any>(null);
   const [htmlViewerOpen, setHtmlViewerOpen] = useState(false);
@@ -300,17 +300,15 @@ export default function InspectionForm() {
     if (!loading) {
       setHasUnsavedChanges(true);
       
-      // Clear existing debounce timer
-      if (saveDebounceTimer) {
-        clearTimeout(saveDebounceTimer);
+      // Clear existing debounce timer using ref
+      if (saveDebounceTimerRef.current) {
+        clearTimeout(saveDebounceTimerRef.current);
       }
       
       // Set new debounce timer for 3 seconds
-      const timer = setTimeout(() => {
+      saveDebounceTimerRef.current = setTimeout(() => {
         autoSaveProgress();
       }, 3000);
-      
-      setSaveDebounceTimer(timer);
     }
   }, [systems, ziplines, equipment, standards, summary]);
 
@@ -320,12 +318,12 @@ export default function InspectionForm() {
       if (hasUnsavedChanges && !saving && !autoSaving) {
         autoSaveProgress();
       }
-    }, 10000); // 10 seconds = 10,000 ms
+    }, 10000);
 
     return () => {
       clearInterval(autoSaveInterval);
-      if (saveDebounceTimer) {
-        clearTimeout(saveDebounceTimer);
+      if (saveDebounceTimerRef.current) {
+        clearTimeout(saveDebounceTimerRef.current);
       }
     };
   }, [hasUnsavedChanges, saving, autoSaving]);
@@ -711,10 +709,6 @@ export default function InspectionForm() {
         updated_at: new Date().toISOString(),
       };
 
-      // Always save to offline storage first - this is IMMEDIATE and never fails
-      await saveInspectionOffline(inspectionToSave);
-      setInspection(inspectionToSave);
-
       // Filter out empty/invalid records before saving
       const validSystems = systems.filter(s => 
         s.system_name && s.system_name.trim() !== ""
@@ -726,14 +720,37 @@ export default function InspectionForm() {
         e.equipment_type && e.equipment_type.trim() !== ""
       );
 
-      // Save all related data to offline storage
-      await Promise.all([
-        saveRelatedDataOffline('systems', id!, validSystems),
-        saveRelatedDataOffline('ziplines', id!, validZiplines),
-        saveRelatedDataOffline('equipment', id!, validEquipment),
-        saveRelatedDataOffline('standards', id!, standards),
-        saveRelatedDataOffline('summary', id!, [summary]),
-      ]);
+      // Timeout wrapper for offline storage operations
+      const withTimeout = <T,>(promise: Promise<T>, ms: number, label: string): Promise<T> => {
+        return Promise.race([
+          promise,
+          new Promise<never>((_, reject) => 
+            setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms)
+          )
+        ]);
+      };
+
+      // Save to offline storage with timeout protection
+      try {
+        await withTimeout(
+          Promise.all([
+            saveInspectionOffline(inspectionToSave),
+            saveRelatedDataOffline('systems', id!, validSystems),
+            saveRelatedDataOffline('ziplines', id!, validZiplines),
+            saveRelatedDataOffline('equipment', id!, validEquipment),
+            saveRelatedDataOffline('standards', id!, standards),
+            saveRelatedDataOffline('summary', id!, [summary]),
+          ]),
+          5000,
+          'Offline storage save'
+        );
+        setInspection(inspectionToSave);
+        console.log('[InspectionForm Save] Offline storage completed');
+      } catch (offlineError) {
+        console.warn('[InspectionForm Save] Offline storage failed or timed out:', offlineError);
+        // Continue with online save - don't block
+        setInspection(inspectionToSave);
+      }
 
       if (import.meta.env.DEV) {
         console.log('[InspectionForm] Saved all data to offline storage');
@@ -919,10 +936,10 @@ export default function InspectionForm() {
   const triggerImmediateSave = async () => {
     if (saving || autoSaving) return;
     
-    // Clear existing debounce timer
-    if (saveDebounceTimer) {
-      clearTimeout(saveDebounceTimer);
-      setSaveDebounceTimer(null);
+    // Clear existing debounce timer using ref
+    if (saveDebounceTimerRef.current) {
+      clearTimeout(saveDebounceTimerRef.current);
+      saveDebounceTimerRef.current = null;
     }
     
     setAutoSaving(true);

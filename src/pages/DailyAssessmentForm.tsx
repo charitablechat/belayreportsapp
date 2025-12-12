@@ -158,9 +158,53 @@ export default function DailyAssessmentForm() {
   const saveRef = useRef<(() => void) | null>(null);
   useSaveShortcut(() => saveRef.current?.(), hasUnsavedChanges && !saving);
 
+  // Auto-save debounce timer
+  const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const autoSaveIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
   useEffect(() => {
     loadAssessment();
   }, [id]);
+
+  // Debounced auto-save on data changes (3-second debounce)
+  useEffect(() => {
+    if (loading || !assessment) return;
+    
+    // Clear existing debounce timer
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current);
+    }
+    
+    // Set new debounce timer
+    autoSaveTimerRef.current = setTimeout(() => {
+      if (hasUnsavedChanges && !saving) {
+        console.log('[DailyAssessment AutoSave] Debounced save triggered');
+        handleSaveProgress();
+      }
+    }, 3000);
+    
+    return () => {
+      if (autoSaveTimerRef.current) {
+        clearTimeout(autoSaveTimerRef.current);
+      }
+    };
+  }, [beginningOfDay, endOfDay, operatingSystems, equipmentChecks, structureChecks, environmentChecks]);
+
+  // Backup auto-save interval (every 10 seconds)
+  useEffect(() => {
+    autoSaveIntervalRef.current = setInterval(() => {
+      if (hasUnsavedChanges && !saving && !loading) {
+        console.log('[DailyAssessment AutoSave] Interval save triggered');
+        handleSaveProgress();
+      }
+    }, 10000);
+
+    return () => {
+      if (autoSaveIntervalRef.current) {
+        clearInterval(autoSaveIntervalRef.current);
+      }
+    };
+  }, [hasUnsavedChanges, saving, loading]);
 
   const loadAssessment = async () => {
     try {
