@@ -457,8 +457,10 @@ export async function syncTrainings() {
           continue;
         }
 
+        // Exclude any non-existent columns (e.g., 'trainer' which should be 'trainer_of_record')
+        const { trainer, inspector, ...cleanData } = op.data as any;
         const dataToSync = {
-          ...op.data,
+          ...cleanData,
           inspector_id: user.id,
         };
 
@@ -503,8 +505,10 @@ export async function syncTrainings() {
           continue;
         }
 
+        // Exclude any non-existent columns (e.g., 'trainer' which should be 'trainer_of_record')
+        const { trainer, inspector, ...cleanTraining } = training as any;
         const trainingToSync = {
-          ...training,
+          ...cleanTraining,
           inspector_id: user.id,
         };
 
