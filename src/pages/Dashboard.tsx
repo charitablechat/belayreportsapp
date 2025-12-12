@@ -14,6 +14,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { ReportCard } from "@/components/dashboard/ReportCard";
 import { ReportCardSkeleton } from "@/components/dashboard/ReportCardSkeleton";
+/* TEMPORARY FEATURE: Known Issues */
+import { KnownIssuesCard } from "@/components/dashboard/KnownIssuesCard";
 import ropeWorksLogo from "@/assets/rope-works-logo.png";
 import acctLogo from "@/assets/acct-accredited-vendor.png";
 import dashboardBackgroundVideo from "@/assets/dashboard-background.mp4";
@@ -997,6 +999,10 @@ export default function Dashboard() {
               </TabsContent>
             </Tabs>
           </div>
+          
+          {/* TEMPORARY FEATURE: Known Issues - Remove when project complete */}
+          <KnownIssuesCard isSuperAdmin={!!isSuperAdmin} />
+          {/* END TEMPORARY FEATURE */}
         </section>
       </main>
 
