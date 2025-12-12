@@ -29,6 +29,28 @@ interface Announcement {
   updated_at: string;
 }
 
+// Convert paragraph-based content to bullet list
+const convertToBulletList = (htmlContent: string): string => {
+  if (!htmlContent) return '';
+  
+  // If already has bullet list, return as-is
+  if (htmlContent.includes('<ul>') || htmlContent.includes('<li>')) {
+    return htmlContent;
+  }
+  
+  // Extract text from paragraphs
+  const paragraphs = htmlContent
+    .split(/<\/?p>/gi)
+    .map(p => p.trim())
+    .filter(p => p.length > 0 && p !== '<br>');
+  
+  if (paragraphs.length === 0) return '';
+  
+  // Convert to bullet list
+  const listItems = paragraphs.map(p => `<li>${p}</li>`).join('');
+  return `<ul>${listItems}</ul>`;
+};
+
 export const KnownIssuesCard = ({ isSuperAdmin }: KnownIssuesCardProps) => {
   const [announcement, setAnnouncement] = useState<Announcement | null>(null);
   const [isEditing, setIsEditing] = useState(false);
@@ -167,7 +189,7 @@ export const KnownIssuesCard = ({ isSuperAdmin }: KnownIssuesCardProps) => {
             {hasContent ? (
               <div 
                 className="prose prose-sm dark:prose-invert max-w-none [&_ul]:list-disc [&_ul]:pl-5 [&_li]:my-1"
-                dangerouslySetInnerHTML={{ __html: announcement?.content || '' }}
+                dangerouslySetInnerHTML={{ __html: convertToBulletList(announcement?.content || '') }}
               />
             ) : (
               <p className="text-muted-foreground text-sm italic">
