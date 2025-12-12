@@ -32,7 +32,6 @@ export const ConflictResolver = ({ open, onOpenChange }: ConflictResolverProps) 
     } else {
       resolveWithRemote({ conflictId, inspectionId });
     }
-    setSelectedConflict(null);
   };
 
   const formatDate = (dateString: string) => {
