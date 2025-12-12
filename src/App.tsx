@@ -27,7 +27,7 @@ import { InstallSuccessNotification } from "@/components/pwa/InstallSuccessNotif
 import { NetworkStatusIndicator } from "@/components/pwa/NetworkStatusIndicator";
 import { SyncStatusIndicator } from "@/components/pwa/SyncStatusIndicator";
 import { PWAProvider } from "@/components/pwa/PWAProvider";
-import { syncAllInspectionsAtomic } from "@/lib/atomic-sync-manager";
+import { syncAllInspectionsAtomic, syncAllTrainingsAtomic, syncAllDailyAssessmentsAtomic } from "@/lib/atomic-sync-manager";
 import { syncPhotos } from "@/lib/sync-manager";
 import { useBackgroundSync } from "@/hooks/useBackgroundSync";
 import { useIOSSync } from "@/hooks/useIOSSync";
@@ -77,17 +77,16 @@ const AppContent = () => {
         console.log('[App] Performing initial sync on mount');
       }
       
-      syncAllInspectionsAtomic();
-      syncPhotos();
+      // Use atomic sync for all data types
+      Promise.all([
+        syncAllInspectionsAtomic(),
+        syncAllTrainingsAtomic(),
+        syncAllDailyAssessmentsAtomic(),
+        syncPhotos()
+      ]).catch(err => console.error('[App] Initial sync error:', err));
       
       // Clean up stale cached photos
       cleanupStaleCachedPhotos();
-      
-      // Import and call sync functions
-      import('@/lib/sync-manager').then(({ syncDailyAssessments, syncTrainings }) => {
-        syncDailyAssessments();
-        syncTrainings();
-      });
     }
 
     // iOS uses its own sync hook for periodic/event-based sync
@@ -102,13 +101,12 @@ const AppContent = () => {
     // Non-iOS: Periodic sync - more aggressive on mobile (1 min vs 5 min)
     const syncInterval = setInterval(() => {
       if (navigator.onLine) {
-        syncAllInspectionsAtomic();
-        syncPhotos();
-        
-        import('@/lib/sync-manager').then(({ syncDailyAssessments, syncTrainings }) => {
-          syncDailyAssessments();
-          syncTrainings();
-        });
+        Promise.all([
+          syncAllInspectionsAtomic(),
+          syncAllTrainingsAtomic(),
+          syncAllDailyAssessmentsAtomic(),
+          syncPhotos()
+        ]).catch(err => console.error('[App] Periodic sync error:', err));
       }
     }, isMobileDevice ? 60 * 1000 : 5 * 60 * 1000);
     
@@ -120,13 +118,12 @@ const AppContent = () => {
     // Sync when app becomes visible (non-iOS only, iOS handles this in useIOSSync)
     const handleVisibilityChange = () => {
       if (!document.hidden && navigator.onLine) {
-        syncAllInspectionsAtomic();
-        syncPhotos();
-        
-        import('@/lib/sync-manager').then(({ syncDailyAssessments, syncTrainings }) => {
-          syncDailyAssessments();
-          syncTrainings();
-        });
+        Promise.all([
+          syncAllInspectionsAtomic(),
+          syncAllTrainingsAtomic(),
+          syncAllDailyAssessmentsAtomic(),
+          syncPhotos()
+        ]).catch(err => console.error('[App] Visibility sync error:', err));
       }
     };
 

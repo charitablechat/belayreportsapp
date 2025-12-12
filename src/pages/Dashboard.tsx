@@ -102,9 +102,12 @@ export default function Dashboard() {
       await loadTrainingReports();
       await loadDailyAssessments();
       
-      // Also sync daily assessments
-      const { syncDailyAssessments } = await import('@/lib/sync-manager');
-      await syncDailyAssessments();
+      // Sync all data types using atomic sync
+      const { syncAllTrainingsAtomic, syncAllDailyAssessmentsAtomic } = await import('@/lib/atomic-sync-manager');
+      await Promise.all([
+        syncAllTrainingsAtomic(),
+        syncAllDailyAssessmentsAtomic()
+      ]);
     },
     isRefreshing: isSyncing,
   });
