@@ -1,7 +1,4 @@
-import { useState } from 'react';
 import { useConflicts } from '@/hooks/useConflicts';
-import { supabase } from '@/integrations/supabase/client';
-import { useQuery } from '@tanstack/react-query';
 import {
   Dialog,
   DialogContent,
@@ -28,28 +25,6 @@ interface ConflictResolverProps {
 
 export const ConflictResolver = ({ open, onOpenChange }: ConflictResolverProps) => {
   const { conflicts, resolveWithLocal, resolveWithRemote, isResolving } = useConflicts();
-  const [selectedConflict, setSelectedConflict] = useState<string | null>(null);
-
-  // Fetch inspection details for the selected conflict
-  const { data: inspectionDetails } = useQuery({
-    queryKey: ['conflict-inspection', selectedConflict],
-    queryFn: async () => {
-      if (!selectedConflict) return null;
-      
-      const conflict = conflicts.find(c => c.id === selectedConflict);
-      if (!conflict) return null;
-
-      const { data, error } = await supabase
-        .from('inspections')
-        .select('*')
-        .eq('id', conflict.inspection_id)
-        .single();
-
-      if (error) throw error;
-      return data;
-    },
-    enabled: !!selectedConflict && open,
-  });
 
   const handleResolve = (conflictId: string, inspectionId: string, useLocal: boolean) => {
     if (useLocal) {
@@ -112,9 +87,9 @@ export const ConflictResolver = ({ open, onOpenChange }: ConflictResolverProps) 
 
         <div className="space-y-4">
           {conflicts.map((conflict) => {
-            const isExpanded = selectedConflict === conflict.id;
             const localTime = formatDate(conflict.local_updated_at);
             const remoteTime = formatDate(conflict.remote_updated_at);
+            const inspectionData = conflict.inspection;
 
             return (
               <Card key={conflict.id} className="border-2 border-yellow-200 dark:border-yellow-800">
@@ -122,13 +97,13 @@ export const ConflictResolver = ({ open, onOpenChange }: ConflictResolverProps) 
                   <div className="flex items-start justify-between">
                     <div className="space-y-1">
                       <CardTitle className="text-lg">
-                        {inspectionDetails?.organization || 'Loading...'}
+                        {inspectionData?.organization || 'Unknown Organization'}
                       </CardTitle>
                       <CardDescription className="flex items-center gap-2">
-                        {inspectionDetails && (
+                        {inspectionData?.location && (
                           <>
                             <MapPin className="w-3 h-3" />
-                            {inspectionDetails.location}
+                            {inspectionData.location}
                           </>
                         )}
                       </CardDescription>

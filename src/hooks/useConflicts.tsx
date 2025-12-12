@@ -10,12 +10,19 @@ export interface SyncConflict {
   remote_updated_at: string;
   resolved: boolean;
   created_at: string;
+  // Joined inspection details
+  inspection?: {
+    organization: string;
+    location: string;
+    status: string;
+    synced_at: string | null;
+  } | null;
 }
 
 export const useConflicts = () => {
   const queryClient = useQueryClient();
 
-  // Fetch unresolved conflicts
+  // Fetch unresolved conflicts with inspection details
   const { data: conflicts = [], isLoading } = useQuery({
     queryKey: ['sync-conflicts'],
     queryFn: async () => {
@@ -24,12 +31,35 @@ export const useConflicts = () => {
 
       const { data, error } = await supabase
         .from('sync_conflicts')
-        .select('*')
+        .select(`
+          *,
+          inspection:inspections(organization, location, status, synced_at)
+        `)
         .eq('resolved', false)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      return data as SyncConflict[];
+      
+      // Auto-resolve stale conflicts where inspection has synced after conflict was created
+      const validConflicts: SyncConflict[] = [];
+      for (const conflict of data as SyncConflict[]) {
+        if (conflict.inspection?.synced_at) {
+          const syncedAt = new Date(conflict.inspection.synced_at).getTime();
+          const conflictCreatedAt = new Date(conflict.created_at).getTime();
+          
+          // If inspection synced after conflict was created, auto-resolve it
+          if (syncedAt > conflictCreatedAt) {
+            await supabase
+              .from('sync_conflicts')
+              .update({ resolved: true })
+              .eq('id', conflict.id);
+            continue; // Skip this conflict, it's now resolved
+          }
+        }
+        validConflicts.push(conflict);
+      }
+      
+      return validConflicts;
     },
     enabled: navigator.onLine,
     refetchInterval: 30000, // Check every 30 seconds
