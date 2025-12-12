@@ -244,9 +244,9 @@ serve(async (req) => {
         cellStyle = "background-color: #dcfce7; color: #166534;"; // Green highlight for pass
       }
 
-      // Mobile-friendly format using line breaks
+      // Full words format with responsive line breaks
       return {
-        html: `<span class="result-checkbox">${pass} P<br>${provisions} Prov<br>${fail} F</span>`,
+        html: `<span class="result-checkbox">${pass} Pass<br>${provisions} Provisions<br>${fail} Fail</span>`,
         cellStyle,
       };
     };
@@ -598,23 +598,25 @@ serve(async (req) => {
     }
 
     .result-checkbox {
-      font-size: 9pt;
-      white-space: nowrap;
+      font-size: 8.5pt;
+      white-space: normal;
       color: #000;
       font-weight: normal;
+      line-height: 1.4;
+      display: inline-block;
     }
 
     /* Optimized column widths for Equipment table */
     .equipment-table th:nth-child(1),
-    .equipment-table td:nth-child(1) { width: 35%; } /* Type */
+    .equipment-table td:nth-child(1) { width: 30%; } /* Type */
     .equipment-table th:nth-child(2),
-    .equipment-table td:nth-child(2) { width: 12%; } /* Quantity */
+    .equipment-table td:nth-child(2) { width: 10%; } /* Quantity */
     .equipment-table th:nth-child(3),
     .equipment-table td:nth-child(3) { width: 10%; } /* Year */
     .equipment-table th:nth-child(4),
-    .equipment-table td:nth-child(4) { width: 20%; } /* Result - wider for checkboxes */
+    .equipment-table td:nth-child(4) { width: 22%; } /* Result - wider for full words */
     .equipment-table th:nth-child(5),
-    .equipment-table td:nth-child(5) { width: auto; min-width: 150px; } /* Comments - dynamic */
+    .equipment-table td:nth-child(5) { width: auto; min-width: 120px; } /* Comments - dynamic */
 
     /* Optimized column widths for Standards table */
     .standards-table th:nth-child(1),
@@ -628,33 +630,33 @@ serve(async (req) => {
 
     /* Optimized column widths for Ziplines table (9 columns) */
     .ziplines-table th:nth-child(1),
-    .ziplines-table td:nth-child(1) { width: 13%; } /* Name */
+    .ziplines-table td:nth-child(1) { width: 11%; } /* Name */
     .ziplines-table th:nth-child(2),
-    .ziplines-table td:nth-child(2) { width: 9%; } /* Cable Type */
+    .ziplines-table td:nth-child(2) { width: 8%; } /* Cable Type */
     .ziplines-table th:nth-child(3),
-    .ziplines-table td:nth-child(3) { width: 8%; } /* Length */
+    .ziplines-table td:nth-child(3) { width: 7%; } /* Length */
     .ziplines-table th:nth-child(4),
-    .ziplines-table td:nth-child(4) { width: 10%; } /* Cable Result */
+    .ziplines-table td:nth-child(4) { width: 11%; } /* Cable Result - wider */
     .ziplines-table th:nth-child(5),
-    .ziplines-table td:nth-child(5) { width: 11%; } /* Braking System */
+    .ziplines-table td:nth-child(5) { width: 9%; } /* Braking System */
     .ziplines-table th:nth-child(6),
-    .ziplines-table td:nth-child(6) { width: 10%; } /* Braking Result */
+    .ziplines-table td:nth-child(6) { width: 11%; } /* Braking Result - wider */
     .ziplines-table th:nth-child(7),
-    .ziplines-table td:nth-child(7) { width: 9%; } /* EAD System */
+    .ziplines-table td:nth-child(7) { width: 8%; } /* EAD System */
     .ziplines-table th:nth-child(8),
-    .ziplines-table td:nth-child(8) { width: 10%; } /* EAD Result */
+    .ziplines-table td:nth-child(8) { width: 11%; } /* EAD Result - wider */
     .ziplines-table th:nth-child(9),
-    .ziplines-table td:nth-child(9) { width: auto; min-width: 150px; } /* Comments - dynamic */
+    .ziplines-table td:nth-child(9) { width: auto; min-width: 120px; } /* Comments - dynamic */
 
     /* Optimized column widths for Operating Systems table */
     .systems-table th:nth-child(1),
-    .systems-table td:nth-child(1) { width: 20%; } /* System Type */
+    .systems-table td:nth-child(1) { width: 18%; } /* System Type */
     .systems-table th:nth-child(2),
-    .systems-table td:nth-child(2) { width: 20%; } /* Name */
+    .systems-table td:nth-child(2) { width: 18%; } /* Name */
     .systems-table th:nth-child(3),
-    .systems-table td:nth-child(3) { width: 12%; } /* Result */
+    .systems-table td:nth-child(3) { width: 16%; } /* Result - wider for full words */
     .systems-table th:nth-child(4),
-    .systems-table td:nth-child(4) { width: auto; min-width: 200px; } /* Comments - dynamic */
+    .systems-table td:nth-child(4) { width: auto; min-width: 180px; } /* Comments - dynamic */
 
     /* Optimized column widths for Standards table */
     .standards-table th:nth-child(1),
