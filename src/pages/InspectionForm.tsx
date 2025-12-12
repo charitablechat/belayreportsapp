@@ -6,7 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { ArrowLeft, Save, CheckCircle, Loader2, WifiOff, CloudOff, LogOut, User, FileText, Settings, Package, ClipboardList, FileCheck } from "lucide-react";
+import { ArrowLeft, Save, CheckCircle, Loader2, WifiOff, CloudOff, LogOut, User, FileText, Settings, Package, ClipboardList, FileCheck, RefreshCw } from "lucide-react";
 import { UserAvatar } from "@/components/ui/user-avatar";
 import { AutoSaveIndicator } from "@/components/AutoSaveIndicator";
 import {
@@ -34,6 +34,7 @@ import {
   getRelatedDataOffline
 } from "@/lib/offline-storage";
 import { validateInspectionPackage } from "@/lib/validation-schemas";
+import { cn } from "@/lib/utils";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { SyncStatusIndicator } from "@/components/pwa/SyncStatusIndicator";
 import { usePWA } from "@/hooks/usePWA";
@@ -60,7 +61,7 @@ export default function InspectionForm() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { isOnline } = useNetworkStatus();
-  const { triggerSync } = usePWA();
+  const { triggerSync, isSyncing } = usePWA();
   const isMobileView = useIsMobile();
   
   // Enable keyboard avoidance for mobile
@@ -1514,6 +1515,26 @@ export default function InspectionForm() {
                   <WifiOff className="w-3 h-3" />
                   <span className="hidden sm:inline">Offline Mode</span>
                 </Badge>
+              )}
+              {saveError && isOnline && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={async () => {
+                    setSaveError(null);
+                    try {
+                      await triggerSync();
+                      await saveProgress();
+                    } catch (err) {
+                      console.error('[InspectionForm] Manual sync failed:', err);
+                    }
+                  }}
+                  disabled={saving || autoSaving || isSyncing}
+                  className="gap-1.5 text-xs h-7 bg-orange-50 border-orange-200 text-orange-700 hover:bg-orange-100 dark:bg-orange-950/30 dark:border-orange-800 dark:text-orange-400 dark:hover:bg-orange-900/40"
+                >
+                  <RefreshCw className={cn("w-3 h-3", isSyncing && "animate-spin")} />
+                  <span className="hidden sm:inline">Sync Now</span>
+                </Button>
               )}
               <SyncStatusIndicator />
               <AutoSaveIndicator
