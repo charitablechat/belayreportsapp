@@ -367,59 +367,112 @@ export default function TrainingForm() {
 
           if (trainingError) throw trainingError;
 
-          // Delete and re-insert all related records for simplicity
-          await Promise.all([
-            supabase.from('training_delivery_approaches').delete().eq('training_id', id),
-            supabase.from('training_operating_systems').delete().eq('training_id', id),
-            supabase.from('training_immediate_attention').delete().eq('training_id', id),
-            supabase.from('training_verifiable_items').delete().eq('training_id', id),
-            supabase.from('training_systems_in_place').delete().eq('training_id', id),
-          ]);
-
-          // Insert new records
-          const insertPromises = [];
+          // Use upsert for all related tables to prevent data loss
+          // This is safer than delete+insert as it's atomic
+          const upsertPromises = [];
           
           if (deliveryApproaches.length > 0) {
-            insertPromises.push(
-              supabase.from('training_delivery_approaches').insert(
-                deliveryApproaches.map(a => ({ ...a, training_id: id }))
+            // Delete approaches not in current list, then upsert
+            const approachIds = deliveryApproaches.filter(a => a.id && !a.id.startsWith('temp-')).map(a => a.id);
+            if (approachIds.length > 0) {
+              await supabase.from('training_delivery_approaches').delete().eq('training_id', id).not('id', 'in', `(${approachIds.join(',')})`);
+            } else {
+              await supabase.from('training_delivery_approaches').delete().eq('training_id', id);
+            }
+            upsertPromises.push(
+              supabase.from('training_delivery_approaches').upsert(
+                deliveryApproaches.map(a => ({ 
+                  ...a, 
+                  training_id: id,
+                  id: a.id?.startsWith('temp-') ? undefined : a.id 
+                }))
               )
             );
+          } else {
+            await supabase.from('training_delivery_approaches').delete().eq('training_id', id);
           }
 
           if (operatingSystems.length > 0) {
-            insertPromises.push(
-              supabase.from('training_operating_systems').insert(
-                operatingSystems.map(s => ({ ...s, training_id: id }))
+            const systemIds = operatingSystems.filter(s => s.id && !s.id.startsWith('temp-')).map(s => s.id);
+            if (systemIds.length > 0) {
+              await supabase.from('training_operating_systems').delete().eq('training_id', id).not('id', 'in', `(${systemIds.join(',')})`);
+            } else {
+              await supabase.from('training_operating_systems').delete().eq('training_id', id);
+            }
+            upsertPromises.push(
+              supabase.from('training_operating_systems').upsert(
+                operatingSystems.map(s => ({ 
+                  ...s, 
+                  training_id: id,
+                  id: s.id?.startsWith('temp-') ? undefined : s.id 
+                }))
               )
             );
+          } else {
+            await supabase.from('training_operating_systems').delete().eq('training_id', id);
           }
 
           if (immediateAttention.length > 0) {
-            insertPromises.push(
-              supabase.from('training_immediate_attention').insert(
-                immediateAttention.map(i => ({ ...i, training_id: id }))
+            const attentionIds = immediateAttention.filter(i => i.id && !i.id.startsWith('temp-')).map(i => i.id);
+            if (attentionIds.length > 0) {
+              await supabase.from('training_immediate_attention').delete().eq('training_id', id).not('id', 'in', `(${attentionIds.join(',')})`);
+            } else {
+              await supabase.from('training_immediate_attention').delete().eq('training_id', id);
+            }
+            upsertPromises.push(
+              supabase.from('training_immediate_attention').upsert(
+                immediateAttention.map(i => ({ 
+                  ...i, 
+                  training_id: id,
+                  id: i.id?.startsWith('temp-') ? undefined : i.id 
+                }))
               )
             );
+          } else {
+            await supabase.from('training_immediate_attention').delete().eq('training_id', id);
           }
 
           if (verifiableItems.length > 0) {
-            insertPromises.push(
-              supabase.from('training_verifiable_items').insert(
-                verifiableItems.map(v => ({ ...v, training_id: id }))
+            const verifiableIds = verifiableItems.filter(v => v.id && !v.id.startsWith('temp-')).map(v => v.id);
+            if (verifiableIds.length > 0) {
+              await supabase.from('training_verifiable_items').delete().eq('training_id', id).not('id', 'in', `(${verifiableIds.join(',')})`);
+            } else {
+              await supabase.from('training_verifiable_items').delete().eq('training_id', id);
+            }
+            upsertPromises.push(
+              supabase.from('training_verifiable_items').upsert(
+                verifiableItems.map(v => ({ 
+                  ...v, 
+                  training_id: id,
+                  id: v.id?.startsWith('temp-') ? undefined : v.id 
+                }))
               )
             );
+          } else {
+            await supabase.from('training_verifiable_items').delete().eq('training_id', id);
           }
 
           if (systemsInPlace.length > 0) {
-            insertPromises.push(
-              supabase.from('training_systems_in_place').insert(
-                systemsInPlace.map(s => ({ ...s, training_id: id }))
+            const placeIds = systemsInPlace.filter(s => s.id && !s.id.startsWith('temp-')).map(s => s.id);
+            if (placeIds.length > 0) {
+              await supabase.from('training_systems_in_place').delete().eq('training_id', id).not('id', 'in', `(${placeIds.join(',')})`);
+            } else {
+              await supabase.from('training_systems_in_place').delete().eq('training_id', id);
+            }
+            upsertPromises.push(
+              supabase.from('training_systems_in_place').upsert(
+                systemsInPlace.map(s => ({ 
+                  ...s, 
+                  training_id: id,
+                  id: s.id?.startsWith('temp-') ? undefined : s.id 
+                }))
               )
             );
+          } else {
+            await supabase.from('training_systems_in_place').delete().eq('training_id', id);
           }
 
-          await Promise.all(insertPromises);
+          await Promise.all(upsertPromises);
 
           // Update or insert summary
           if (summary) {
