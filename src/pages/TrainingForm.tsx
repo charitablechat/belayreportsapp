@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, Save, FileDown, FileText, ChevronLeft, WifiOff, Wifi, Mail, CheckCircle, Info, Users, Settings, AlertTriangle, ClipboardCheck, FileCheck, LogOut, User, CloudOff, ArrowLeft } from "lucide-react";
+import { toast } from "@/hooks/use-toast";
+import { usePWA } from "@/hooks/usePWA";
 import { UserAvatar } from "@/components/ui/user-avatar";
 import {
   DropdownMenu,
@@ -54,7 +56,13 @@ export default function TrainingForm() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { isOnline } = useNetworkStatus();
+  const { triggerSync } = usePWA();
   const isMobile = useIsMobile();
+  
+  // Auto-retry on network reconnect refs
+  const wasOfflineRef = useRef(!isOnline);
+  const autoRetryingRef = useRef(false);
+  const autoRetrySyncRef = useRef<(() => Promise<void>) | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
@@ -137,6 +145,43 @@ export default function TrainingForm() {
       }
     };
   }, [training?.status, cleanupEmptyReport]);
+
+  // Auto-retry sync when network reconnects
+  useEffect(() => {
+    if (!isOnline) {
+      wasOfflineRef.current = true;
+      return;
+    }
+    
+    // If we just came back online, auto-retry sync
+    if (wasOfflineRef.current && !autoRetryingRef.current && !isSaving) {
+      wasOfflineRef.current = false;
+      autoRetryingRef.current = true;
+      
+      console.log('[TrainingForm] Network reconnected, auto-retrying sync...');
+      
+      const retryTimeout = setTimeout(async () => {
+        try {
+          await triggerSync();
+          
+          if (autoRetrySyncRef.current) {
+            await autoRetrySyncRef.current();
+          }
+          
+          toast({
+            title: "Auto-sync successful",
+            description: "Your training changes have been synced.",
+          });
+        } catch (err) {
+          console.error('[TrainingForm] Auto-retry sync failed:', err);
+        } finally {
+          autoRetryingRef.current = false;
+        }
+      }, 2000);
+      
+      return () => clearTimeout(retryTimeout);
+    }
+  }, [isOnline, isSaving, triggerSync]);
 
   // Fetch current user and profile
   useEffect(() => {
@@ -520,6 +565,15 @@ export default function TrainingForm() {
       saveInProgressRef.current = false;
     }
   }, [training, id, deliveryApproaches, operatingSystems, immediateAttention, verifiableItems, systemsInPlace, summary, isOnline]);
+
+  // Set auto-retry sync function ref for network reconnection
+  useEffect(() => {
+    autoRetrySyncRef.current = async () => {
+      if (training && id) {
+        await saveTraining();
+      }
+    };
+  }, [saveTraining, training, id]);
 
   // Setup auto-save
   useEffect(() => {
