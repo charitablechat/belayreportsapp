@@ -81,6 +81,8 @@ export default function InspectionForm() {
   const [photoRefreshKey, setPhotoRefreshKey] = useState(0);
   const [saveError, setSaveError] = useState<string | null>(null);
   const saveDebounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const wasOfflineRef = useRef(!isOnline);
+  const autoRetryingRef = useRef(false);
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [userProfile, setUserProfile] = useState<any>(null);
   const [htmlViewerOpen, setHtmlViewerOpen] = useState(false);
@@ -164,7 +166,50 @@ export default function InspectionForm() {
     };
   }, [inspection?.status, cleanupEmptyReport]);
 
-  // Keyboard shortcut ref for save (actual function set later)
+  // Auto-retry sync when network reconnects after a failure
+  // Use a ref for the retry function to avoid stale closures
+  const autoRetrySyncRef = useRef<(() => Promise<void>) | null>(null);
+  
+  useEffect(() => {
+    // Track if we were offline
+    if (!isOnline) {
+      wasOfflineRef.current = true;
+      return;
+    }
+    
+    // If we just came back online and there's a pending save error, auto-retry
+    if (wasOfflineRef.current && saveError && !autoRetryingRef.current && !saving && !autoSaving) {
+      wasOfflineRef.current = false;
+      autoRetryingRef.current = true;
+      
+      console.log('[InspectionForm] Network reconnected, auto-retrying sync...');
+      
+      // Small delay to let network stabilize
+      const retryTimeout = setTimeout(async () => {
+        try {
+          await triggerSync();
+          
+          // Call the ref'd retry function if available
+          if (autoRetrySyncRef.current) {
+            await autoRetrySyncRef.current();
+          }
+          
+          toast({
+            title: "Auto-sync successful",
+            description: "Your changes have been synced after reconnecting.",
+          });
+        } catch (err) {
+          console.error('[InspectionForm] Auto-retry sync failed:', err);
+          // Keep the error state, user can manually retry
+        } finally {
+          autoRetryingRef.current = false;
+        }
+      }, 2000);
+      
+      return () => clearTimeout(retryTimeout);
+    }
+  }, [isOnline, saveError, saving, autoSaving, triggerSync]);
+
   const saveRef = useRef<(() => void) | null>(null);
   useSaveShortcut(() => saveRef.current?.(), hasUnsavedChanges && !saving);
   const generateSummaryFromInspection = () => {
@@ -1109,6 +1154,21 @@ export default function InspectionForm() {
   // Set save ref for keyboard shortcut
   useEffect(() => {
     saveRef.current = saveProgress;
+  });
+
+  // Set auto-retry sync function ref for network reconnection
+  useEffect(() => {
+    autoRetrySyncRef.current = async () => {
+      setSaveError(null);
+      setAutoSaving(true);
+      try {
+        await performSave(true);
+        setLastSaved(new Date());
+        setHasUnsavedChanges(false);
+      } finally {
+        setAutoSaving(false);
+      }
+    };
   });
 
   const completeInspection = async () => {
