@@ -959,9 +959,22 @@ export default function InspectionForm() {
 
             console.log('[InspectionForm Sync] Synced all data to Supabase successfully');
           } catch (error: any) {
-            if (retries > 0 && (error?.message?.includes('network') || error?.code === 'NETWORK_ERROR')) {
-              console.log(`[InspectionForm Sync] Retrying... (${retries} attempts left)`);
-              await new Promise(resolve => setTimeout(resolve, 1000));
+            // Detect network-related errors for retry
+            const isNetworkError = 
+              error?.message?.toLowerCase().includes('network') ||
+              error?.message?.toLowerCase().includes('fetch') ||
+              error?.message?.toLowerCase().includes('failed to fetch') ||
+              error?.message?.toLowerCase().includes('connection') ||
+              error?.message?.toLowerCase().includes('timeout') ||
+              error?.code === 'NETWORK_ERROR' ||
+              error?.code === 'ECONNREFUSED' ||
+              error?.name === 'TypeError' || // Often thrown on network failures
+              !navigator.onLine;
+            
+            if (retries > 0 && isNetworkError) {
+              const delay = Math.pow(2, 3 - retries) * 1000; // Exponential backoff: 2s, 4s
+              console.log(`[InspectionForm Sync] Network error, retrying in ${delay}ms... (${retries} attempts left)`);
+              await new Promise(resolve => setTimeout(resolve, delay));
               return syncWithRetry(retries - 1);
             }
             throw error;
@@ -969,13 +982,20 @@ export default function InspectionForm() {
         };
 
         try {
-          await syncWithRetry();
+          await syncWithRetry(3); // 3 retries with exponential backoff
         } catch (error: any) {
           console.error('[InspectionForm Sync] Failed after retries:', error);
           setSaveError('Failed to sync online - saved locally');
           // Queue for later sync
           await queueOperation('update', id!, saveData);
           console.log('[InspectionForm Sync] Queued for later sync');
+          
+          // Show toast for network failures with auto-retry hint
+          toast({
+            title: "Sync queued",
+            description: "Changes saved locally. Will auto-retry when connection improves.",
+            variant: "default",
+          });
         }
       } else {
         // Queue operation when offline
