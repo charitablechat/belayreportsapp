@@ -538,17 +538,28 @@ export async function syncTrainings() {
   }
 }
 
-// Auto-sync when coming online
+// Auto-sync when coming online - use atomic sync for trainings and daily assessments
 if (typeof window !== "undefined") {
-  window.addEventListener("online", () => {
+  window.addEventListener("online", async () => {
     if (import.meta.env.DEV) {
       console.log('[Sync Manager] Network online, triggering sync...');
     }
-    setTimeout(() => {
-      syncInspections();
-      syncPhotos();
-      syncDailyAssessments();
-      syncTrainings();
+    
+    // Import atomic sync functions
+    const { syncAllInspectionsAtomic, syncAllTrainingsAtomic, syncAllDailyAssessmentsAtomic } = await import('./atomic-sync-manager');
+    
+    setTimeout(async () => {
+      try {
+        // Use atomic sync for all data types
+        await Promise.all([
+          syncAllInspectionsAtomic(),
+          syncAllTrainingsAtomic(),
+          syncAllDailyAssessmentsAtomic(),
+          syncPhotos()
+        ]);
+      } catch (error) {
+        console.error('[Sync Manager] Auto-sync failed:', error);
+      }
     }, 1000);
   });
 }

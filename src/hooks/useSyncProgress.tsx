@@ -4,7 +4,7 @@ export interface SyncProgress {
   total: number;
   current: number;
   currentItem: string;
-  phase: 'inspections' | 'photos' | 'complete' | 'idle';
+  phase: 'inspections' | 'photos' | 'trainings' | 'assessments' | 'complete' | 'idle';
   errors: Array<{ id: string; error: string }>;
 }
 

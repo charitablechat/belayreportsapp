@@ -4,10 +4,24 @@ import {
   saveInspectionOffline,
   getOfflineInspection,
   getRelatedDataOffline,
+  getUnsyncedTrainings,
+  saveTrainingOffline,
+  getOfflineTraining,
+  getTrainingDataOffline,
+  getUnsyncedDailyAssessments,
+  saveDailyAssessmentOffline,
+  getOfflineDailyAssessment,
+  getAssessmentDataOffline,
 } from "./offline-storage";
 import { 
   validateInspectionPackage,
 } from "./validation-schemas";
+import {
+  validateTrainingPackage,
+} from "./training-validation-schemas";
+import {
+  validateDailyAssessmentPackage,
+} from "./daily-assessment-validation-schemas";
 import { 
   executeTransaction,
   TransactionStep 
@@ -375,6 +389,662 @@ export async function syncAllInspectionsAtomic() {
     if (failCount > 0) {
       console.error('[Atomic Sync] Errors:', errors);
     }
+  }
+  
+  return {
+    total: unsynced.length,
+    success: successCount,
+    failed: failCount,
+    errors,
+  };
+}
+
+/**
+ * Helper function to transform temp- IDs to valid UUIDs
+ */
+function transformTempIds<T extends { id?: string }>(items: T[]): T[] {
+  return items.map(item => ({
+    ...item,
+    id: item.id?.startsWith('temp-') ? crypto.randomUUID() : item.id
+  }));
+}
+
+/**
+ * Sync training with all related data atomically
+ */
+export async function syncTrainingAtomic(trainingId: string) {
+  if (!navigator.onLine) {
+    throw new Error("Cannot sync while offline");
+  }
+  
+  try {
+    // 1. Gather all data for this training
+    const training = await getOfflineTraining(trainingId);
+    if (!training) {
+      throw new Error("Training not found in local storage");
+    }
+    
+    // Verify current user matches inspector_id
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      throw new Error("User not authenticated");
+    }
+    
+    // Skip trainings that don't belong to current user
+    if (training.inspector_id !== user.id) {
+      if (import.meta.env.DEV) {
+        console.log('[Atomic Sync] Skipping training - belongs to different user', {
+          training_id: trainingId,
+        });
+      }
+      return { success: false, skipped: true, reason: 'ownership_mismatch' };
+    }
+    
+    const [rawDeliveryApproaches, rawOperatingSystems, rawImmediateAttention, rawVerifiableItems, rawSystemsInPlace, summaryArray] = await Promise.all([
+      getTrainingDataOffline('delivery_approaches', trainingId),
+      getTrainingDataOffline('operating_systems', trainingId),
+      getTrainingDataOffline('immediate_attention', trainingId),
+      getTrainingDataOffline('verifiable_items', trainingId),
+      getTrainingDataOffline('systems_in_place', trainingId),
+      getTrainingDataOffline('summary', trainingId),
+    ]);
+    
+    const rawSummary = summaryArray[0] || null;
+    
+    // Transform temp- IDs to valid UUIDs before validation
+    const delivery_approaches = transformTempIds(rawDeliveryApproaches);
+    const operating_systems = transformTempIds(rawOperatingSystems);
+    const immediate_attention = transformTempIds(rawImmediateAttention);
+    const verifiable_items = transformTempIds(rawVerifiableItems);
+    const systems_in_place = transformTempIds(rawSystemsInPlace);
+    const summary = rawSummary?.id?.startsWith('temp-') 
+      ? { ...rawSummary, id: crypto.randomUUID() } 
+      : rawSummary;
+    
+    // 2. Validate the complete package
+    const validation = validateTrainingPackage({
+      training,
+      delivery_approaches,
+      operating_systems,
+      immediate_attention,
+      verifiable_items,
+      systems_in_place,
+      summary,
+    });
+    
+    if (!validation.success) {
+      console.error('[Atomic Sync] Training validation failed:', validation.errors);
+      throw new Error(`Validation failed: ${JSON.stringify(validation.errors)}`);
+    }
+    
+    if (import.meta.env.DEV) {
+      console.log('[Atomic Sync] Training validation passed for:', trainingId);
+    }
+    
+    // 3. Check for conflicts
+    const { data: remoteTraining } = await supabase
+      .from("trainings")
+      .select("updated_at")
+      .eq("id", trainingId)
+      .maybeSingle();
+    
+    if (remoteTraining) {
+      const remoteUpdated = new Date(remoteTraining.updated_at).getTime();
+      const localUpdated = new Date(training.updated_at).getTime();
+      const timeDiff = Math.abs(remoteUpdated - localUpdated);
+      
+      if (timeDiff > 5000 && remoteUpdated > localUpdated) {
+        console.warn('[Atomic Sync] Training conflict detected:', trainingId);
+        // For trainings, we log the warning but continue with local-wins strategy
+        // since trainings don't have a sync_conflicts table reference
+        toast.warning("Training Sync Notice", {
+          description: `Training data may have been modified elsewhere. Local changes applied.`,
+          duration: 5000,
+        });
+      }
+    }
+    
+    // 4. Build transaction steps
+    const steps: TransactionStep[] = [];
+    
+    // Exclude joined objects - only column fields exist in DB
+    const { inspector, trainer, ...trainingWithoutJoin } = training as any;
+    
+    // Step 1: Upsert training
+    steps.push({
+      table: 'trainings',
+      operation: 'upsert',
+      data: {
+        ...trainingWithoutJoin,
+        synced_at: new Date().toISOString(),
+      },
+      rollbackData: remoteTraining || null,
+    });
+    
+    // Step 2: Delete existing related data (to handle deletions)
+    if (remoteTraining) {
+      steps.push(
+        { table: 'training_delivery_approaches', operation: 'delete', filter: { training_id: trainingId } },
+        { table: 'training_operating_systems', operation: 'delete', filter: { training_id: trainingId } },
+        { table: 'training_immediate_attention', operation: 'delete', filter: { training_id: trainingId } },
+        { table: 'training_verifiable_items', operation: 'delete', filter: { training_id: trainingId } },
+        { table: 'training_systems_in_place', operation: 'delete', filter: { training_id: trainingId } },
+        { table: 'training_summary', operation: 'delete', filter: { training_id: trainingId } }
+      );
+    }
+    
+    // Step 3: Insert all related data
+    if (delivery_approaches.length > 0) {
+      delivery_approaches.forEach(approach => {
+        steps.push({
+          table: 'training_delivery_approaches',
+          operation: 'insert',
+          data: approach,
+        });
+      });
+    }
+    
+    if (operating_systems.length > 0) {
+      operating_systems.forEach(system => {
+        steps.push({
+          table: 'training_operating_systems',
+          operation: 'insert',
+          data: system,
+        });
+      });
+    }
+    
+    if (immediate_attention.length > 0) {
+      immediate_attention.forEach(item => {
+        steps.push({
+          table: 'training_immediate_attention',
+          operation: 'insert',
+          data: item,
+        });
+      });
+    }
+    
+    if (verifiable_items.length > 0) {
+      verifiable_items.forEach(item => {
+        steps.push({
+          table: 'training_verifiable_items',
+          operation: 'insert',
+          data: item,
+        });
+      });
+    }
+    
+    if (systems_in_place.length > 0) {
+      systems_in_place.forEach(item => {
+        steps.push({
+          table: 'training_systems_in_place',
+          operation: 'insert',
+          data: item,
+        });
+      });
+    }
+    
+    if (summary) {
+      // Sanitize summary before sync
+      const sanitizedSummary = {
+        ...summary,
+        submission_date: summary.submission_date === "" ? null : summary.submission_date
+      };
+      
+      steps.push({
+        table: 'training_summary',
+        operation: 'insert',
+        data: sanitizedSummary,
+      });
+    }
+    
+    // 5. Execute transaction
+    const result = await executeTransaction(steps);
+    
+    if (!result.success) {
+      throw new Error(`Transaction failed after ${result.completedSteps}/${result.totalSteps} steps. Rollback: ${result.rollbackSuccess ? 'successful' : 'failed'}`);
+    }
+    
+    // 6. Get cached inspector profile to attach to offline data
+    const inspectorProfile = await getCachedProfile(user.id);
+    
+    // Update local storage with sync timestamp and inspector profile
+    await saveTrainingOffline({
+      ...training,
+      synced_at: new Date().toISOString(),
+      inspector: inspectorProfile || { first_name: null, last_name: null, avatar_url: null },
+    });
+    
+    if (import.meta.env.DEV) {
+      console.log('[Atomic Sync] Successfully synced training:', trainingId);
+    }
+    
+    return { success: true };
+    
+  } catch (error: any) {
+    console.error('[Atomic Sync] Failed to sync training:', trainingId, error);
+    throw error;
+  }
+}
+
+/**
+ * Sync all unsynced trainings atomically
+ */
+export async function syncAllTrainingsAtomic() {
+  const capabilities = getMobileCapabilities();
+  
+  if (!navigator.onLine) {
+    if (import.meta.env.DEV) {
+      console.log('[Atomic Sync] Offline - skipping training sync');
+    }
+    return;
+  }
+  
+  // Get current user to filter trainings
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    throw new Error("User not authenticated");
+  }
+  
+  // Only get unsynced trainings for the current user
+  const unsynced = await getUnsyncedTrainings(user.id);
+  
+  if (unsynced.length === 0) {
+    if (import.meta.env.DEV) {
+      console.log('[Atomic Sync] No trainings to sync');
+    }
+    return { total: 0, success: 0, failed: 0, errors: [] };
+  }
+  
+  if (import.meta.env.DEV) {
+    console.log('[Atomic Sync] Starting sync for all unsynced trainings', {
+      count: unsynced.length,
+      platform: capabilities.isIOS ? 'iOS' : capabilities.isAndroid ? 'Android' : 'Desktop',
+    });
+  }
+  
+  // Emit initial progress
+  syncProgressEmitter.emit({
+    total: unsynced.length,
+    current: 0,
+    currentItem: 'Starting training sync...',
+    phase: 'trainings',
+    errors: [],
+  });
+  
+  let successCount = 0;
+  let failCount = 0;
+  const errors: Array<{ id: string; error: string }> = [];
+  
+  // Mobile devices get retry logic
+  const maxRetries = capabilities.isMobile ? 3 : 1;
+  
+  for (let i = 0; i < unsynced.length; i++) {
+    const training = unsynced[i];
+    let retryCount = 0;
+    let synced = false;
+    
+    while (retryCount < maxRetries && !synced) {
+      // Emit progress for current item
+      syncProgressEmitter.emit({
+        total: unsynced.length,
+        current: i + 1,
+        currentItem: `${training.organization}${retryCount > 0 ? ` (retry ${retryCount})` : ''}`,
+        phase: 'trainings',
+        errors,
+      });
+      
+      try {
+        await syncTrainingAtomic(training.id);
+        successCount++;
+        synced = true;
+        
+        if (import.meta.env.DEV) {
+          console.log(`[Atomic Sync] Synced training ${i + 1}/${unsynced.length}:`, training.id);
+        }
+      } catch (error: any) {
+        retryCount++;
+        
+        if (retryCount < maxRetries) {
+          // Exponential backoff for retries
+          const delay = Math.min(1000 * Math.pow(2, retryCount - 1), 5000);
+          if (import.meta.env.DEV) {
+            console.log(`[Atomic Sync] Retry ${retryCount}/${maxRetries} for training ${training.id} after ${delay}ms`);
+          }
+          await new Promise(resolve => setTimeout(resolve, delay));
+        } else {
+          failCount++;
+          errors.push({ id: training.id, error: error.message });
+          console.error('[Atomic Sync] Failed to sync training after retries:', training.id, error);
+        }
+      }
+    }
+  }
+  
+  if (import.meta.env.DEV) {
+    console.log('[Atomic Sync] Training sync results:', {
+      total: unsynced.length,
+      success: successCount,
+      failed: failCount,
+    });
+  }
+  
+  return {
+    total: unsynced.length,
+    success: successCount,
+    failed: failCount,
+    errors,
+  };
+}
+
+/**
+ * Sync daily assessment with all related data atomically
+ */
+export async function syncDailyAssessmentAtomic(assessmentId: string) {
+  if (!navigator.onLine) {
+    throw new Error("Cannot sync while offline");
+  }
+  
+  try {
+    // 1. Gather all data for this assessment
+    const assessment = await getOfflineDailyAssessment(assessmentId);
+    if (!assessment) {
+      throw new Error("Daily assessment not found in local storage");
+    }
+    
+    // Verify current user matches inspector_id
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      throw new Error("User not authenticated");
+    }
+    
+    // Skip assessments that don't belong to current user
+    if (assessment.inspector_id !== user.id) {
+      if (import.meta.env.DEV) {
+        console.log('[Atomic Sync] Skipping assessment - belongs to different user', {
+          assessment_id: assessmentId,
+        });
+      }
+      return { success: false, skipped: true, reason: 'ownership_mismatch' };
+    }
+    
+    const [rawBeginningOfDay, rawEndOfDay, rawOperatingSystems, rawEquipmentChecks, rawStructureChecks, rawEnvironmentChecks] = await Promise.all([
+      getAssessmentDataOffline('beginning_of_day', assessmentId),
+      getAssessmentDataOffline('end_of_day', assessmentId),
+      getAssessmentDataOffline('operating_systems', assessmentId),
+      getAssessmentDataOffline('equipment_checks', assessmentId),
+      getAssessmentDataOffline('structure_checks', assessmentId),
+      getAssessmentDataOffline('environment_checks', assessmentId),
+    ]);
+    
+    // Transform temp- IDs to valid UUIDs before validation
+    const beginning_of_day = transformTempIds(rawBeginningOfDay);
+    const end_of_day = transformTempIds(rawEndOfDay);
+    const operating_systems = transformTempIds(rawOperatingSystems);
+    const equipment_checks = transformTempIds(rawEquipmentChecks);
+    const structure_checks = transformTempIds(rawStructureChecks);
+    const environment_checks = transformTempIds(rawEnvironmentChecks);
+    
+    // 2. Validate the complete package
+    const validation = validateDailyAssessmentPackage({
+      assessment,
+      beginning_of_day,
+      end_of_day,
+      operating_systems,
+      equipment_checks,
+      structure_checks,
+      environment_checks,
+    });
+    
+    if (!validation.success) {
+      console.error('[Atomic Sync] Daily assessment validation failed:', validation.errors);
+      throw new Error(`Validation failed: ${JSON.stringify(validation.errors)}`);
+    }
+    
+    if (import.meta.env.DEV) {
+      console.log('[Atomic Sync] Daily assessment validation passed for:', assessmentId);
+    }
+    
+    // 3. Check for conflicts
+    const { data: remoteAssessment } = await supabase
+      .from("daily_assessments")
+      .select("updated_at")
+      .eq("id", assessmentId)
+      .maybeSingle();
+    
+    if (remoteAssessment) {
+      const remoteUpdated = new Date(remoteAssessment.updated_at).getTime();
+      const localUpdated = new Date(assessment.updated_at).getTime();
+      const timeDiff = Math.abs(remoteUpdated - localUpdated);
+      
+      if (timeDiff > 5000 && remoteUpdated > localUpdated) {
+        console.warn('[Atomic Sync] Daily assessment conflict detected:', assessmentId);
+        toast.warning("Assessment Sync Notice", {
+          description: `Assessment data may have been modified elsewhere. Local changes applied.`,
+          duration: 5000,
+        });
+      }
+    }
+    
+    // 4. Build transaction steps
+    const steps: TransactionStep[] = [];
+    
+    // Exclude joined objects - only column fields exist in DB
+    const { inspector, ...assessmentWithoutJoin } = assessment as any;
+    
+    // Step 1: Upsert assessment
+    steps.push({
+      table: 'daily_assessments',
+      operation: 'upsert',
+      data: {
+        ...assessmentWithoutJoin,
+        synced_at: new Date().toISOString(),
+      },
+      rollbackData: remoteAssessment || null,
+    });
+    
+    // Step 2: Delete existing related data (to handle deletions)
+    if (remoteAssessment) {
+      steps.push(
+        { table: 'daily_assessment_beginning_of_day', operation: 'delete', filter: { assessment_id: assessmentId } },
+        { table: 'daily_assessment_end_of_day', operation: 'delete', filter: { assessment_id: assessmentId } },
+        { table: 'daily_assessment_operating_systems', operation: 'delete', filter: { assessment_id: assessmentId } },
+        { table: 'daily_assessment_equipment_checks', operation: 'delete', filter: { assessment_id: assessmentId } },
+        { table: 'daily_assessment_structure_checks', operation: 'delete', filter: { assessment_id: assessmentId } },
+        { table: 'daily_assessment_environment_checks', operation: 'delete', filter: { assessment_id: assessmentId } }
+      );
+    }
+    
+    // Step 3: Insert all related data
+    if (beginning_of_day.length > 0) {
+      beginning_of_day.forEach(item => {
+        steps.push({
+          table: 'daily_assessment_beginning_of_day',
+          operation: 'insert',
+          data: item,
+        });
+      });
+    }
+    
+    if (end_of_day.length > 0) {
+      end_of_day.forEach(item => {
+        steps.push({
+          table: 'daily_assessment_end_of_day',
+          operation: 'insert',
+          data: item,
+        });
+      });
+    }
+    
+    if (operating_systems.length > 0) {
+      operating_systems.forEach(system => {
+        steps.push({
+          table: 'daily_assessment_operating_systems',
+          operation: 'insert',
+          data: system,
+        });
+      });
+    }
+    
+    if (equipment_checks.length > 0) {
+      equipment_checks.forEach(check => {
+        steps.push({
+          table: 'daily_assessment_equipment_checks',
+          operation: 'insert',
+          data: check,
+        });
+      });
+    }
+    
+    if (structure_checks.length > 0) {
+      structure_checks.forEach(check => {
+        steps.push({
+          table: 'daily_assessment_structure_checks',
+          operation: 'insert',
+          data: check,
+        });
+      });
+    }
+    
+    if (environment_checks.length > 0) {
+      environment_checks.forEach(check => {
+        steps.push({
+          table: 'daily_assessment_environment_checks',
+          operation: 'insert',
+          data: check,
+        });
+      });
+    }
+    
+    // 5. Execute transaction
+    const result = await executeTransaction(steps);
+    
+    if (!result.success) {
+      throw new Error(`Transaction failed after ${result.completedSteps}/${result.totalSteps} steps. Rollback: ${result.rollbackSuccess ? 'successful' : 'failed'}`);
+    }
+    
+    // 6. Get cached inspector profile to attach to offline data
+    const inspectorProfile = await getCachedProfile(user.id);
+    
+    // Update local storage with sync timestamp and inspector profile
+    await saveDailyAssessmentOffline({
+      ...assessment,
+      synced_at: new Date().toISOString(),
+      inspector: inspectorProfile || { first_name: null, last_name: null, avatar_url: null },
+    });
+    
+    if (import.meta.env.DEV) {
+      console.log('[Atomic Sync] Successfully synced daily assessment:', assessmentId);
+    }
+    
+    return { success: true };
+    
+  } catch (error: any) {
+    console.error('[Atomic Sync] Failed to sync daily assessment:', assessmentId, error);
+    throw error;
+  }
+}
+
+/**
+ * Sync all unsynced daily assessments atomically
+ */
+export async function syncAllDailyAssessmentsAtomic() {
+  const capabilities = getMobileCapabilities();
+  
+  if (!navigator.onLine) {
+    if (import.meta.env.DEV) {
+      console.log('[Atomic Sync] Offline - skipping daily assessment sync');
+    }
+    return;
+  }
+  
+  // Get current user to filter assessments
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    throw new Error("User not authenticated");
+  }
+  
+  // Only get unsynced assessments for the current user
+  const unsynced = await getUnsyncedDailyAssessments(user.id);
+  
+  if (unsynced.length === 0) {
+    if (import.meta.env.DEV) {
+      console.log('[Atomic Sync] No daily assessments to sync');
+    }
+    return { total: 0, success: 0, failed: 0, errors: [] };
+  }
+  
+  if (import.meta.env.DEV) {
+    console.log('[Atomic Sync] Starting sync for all unsynced daily assessments', {
+      count: unsynced.length,
+      platform: capabilities.isIOS ? 'iOS' : capabilities.isAndroid ? 'Android' : 'Desktop',
+    });
+  }
+  
+  // Emit initial progress
+  syncProgressEmitter.emit({
+    total: unsynced.length,
+    current: 0,
+    currentItem: 'Starting daily assessment sync...',
+    phase: 'assessments',
+    errors: [],
+  });
+  
+  let successCount = 0;
+  let failCount = 0;
+  const errors: Array<{ id: string; error: string }> = [];
+  
+  // Mobile devices get retry logic
+  const maxRetries = capabilities.isMobile ? 3 : 1;
+  
+  for (let i = 0; i < unsynced.length; i++) {
+    const assessment = unsynced[i];
+    let retryCount = 0;
+    let synced = false;
+    
+    while (retryCount < maxRetries && !synced) {
+      // Emit progress for current item
+      syncProgressEmitter.emit({
+        total: unsynced.length,
+        current: i + 1,
+        currentItem: `${assessment.organization} - ${assessment.site}${retryCount > 0 ? ` (retry ${retryCount})` : ''}`,
+        phase: 'assessments',
+        errors,
+      });
+      
+      try {
+        await syncDailyAssessmentAtomic(assessment.id);
+        successCount++;
+        synced = true;
+        
+        if (import.meta.env.DEV) {
+          console.log(`[Atomic Sync] Synced daily assessment ${i + 1}/${unsynced.length}:`, assessment.id);
+        }
+      } catch (error: any) {
+        retryCount++;
+        
+        if (retryCount < maxRetries) {
+          // Exponential backoff for retries
+          const delay = Math.min(1000 * Math.pow(2, retryCount - 1), 5000);
+          if (import.meta.env.DEV) {
+            console.log(`[Atomic Sync] Retry ${retryCount}/${maxRetries} for assessment ${assessment.id} after ${delay}ms`);
+          }
+          await new Promise(resolve => setTimeout(resolve, delay));
+        } else {
+          failCount++;
+          errors.push({ id: assessment.id, error: error.message });
+          console.error('[Atomic Sync] Failed to sync daily assessment after retries:', assessment.id, error);
+        }
+      }
+    }
+  }
+  
+  if (import.meta.env.DEV) {
+    console.log('[Atomic Sync] Daily assessment sync results:', {
+      total: unsynced.length,
+      success: successCount,
+      failed: failCount,
+    });
   }
   
   return {

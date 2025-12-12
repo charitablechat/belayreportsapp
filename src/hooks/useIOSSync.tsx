@@ -1,5 +1,5 @@
 import { useEffect, useCallback } from 'react';
-import { syncAllInspectionsAtomic } from '@/lib/atomic-sync-manager';
+import { syncAllInspectionsAtomic, syncAllTrainingsAtomic, syncAllDailyAssessmentsAtomic } from '@/lib/atomic-sync-manager';
 import { syncPhotos } from '@/lib/sync-manager';
 import { isIOS } from '@/lib/mobile-detection';
 
@@ -20,6 +20,8 @@ export const useIOSSync = () => {
       
       await Promise.all([
         syncAllInspectionsAtomic(),
+        syncAllTrainingsAtomic(),
+        syncAllDailyAssessmentsAtomic(),
         syncPhotos()
       ]);
       
