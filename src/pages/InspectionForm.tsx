@@ -282,14 +282,14 @@ export default function InspectionForm() {
                             zipline.braking_result === 'pass w/provisions' || 
                             zipline.ead_result === 'pass w/provisions';
       
-      if (issues.length > 0) {
-        const entry = `○   Zipline- ${zipline.zipline_name} [${issues.join(', ')}]${zipline.comments ? ': ' + zipline.comments : ''}`;
-        
-        if (hasFail) {
-          criticalActions.push(entry);
-        } else if (hasProvisions) {
-          repairsPerformed.push(entry);
-        }
+      // Create entry with component issues or just overall result
+      const issueText = issues.length > 0 ? ` [${issues.join(', ')}]` : '';
+      const entry = `○   Zipline- ${zipline.zipline_name}${issueText}${zipline.comments ? ': ' + zipline.comments : ''}`;
+      
+      if (hasFail) {
+        criticalActions.push(entry);
+      } else if (hasProvisions) {
+        repairsPerformed.push(entry);
       }
     });
 
