@@ -945,7 +945,13 @@ export async function getQueuedTrainingOperations() {
   return operations;
 }
 
-export async function removeQueuedTrainingOperation(id: number) {
+export async function removeQueuedTrainingOperation(id: number | undefined | null) {
+  // Guard against undefined/null IDs to prevent IndexedDB errors
+  if (id === undefined || id === null) {
+    console.warn('[Offline Storage] Cannot remove training operation with undefined/null ID');
+    return;
+  }
+  
   const db = await getDB();
   await db.delete('training_operations', id);
   
@@ -954,7 +960,13 @@ export async function removeQueuedTrainingOperation(id: number) {
   }
 }
 
-export async function incrementTrainingOperationRetry(id: number) {
+export async function incrementTrainingOperationRetry(id: number | undefined | null) {
+  // Guard against undefined/null IDs to prevent IndexedDB errors
+  if (id === undefined || id === null) {
+    console.warn('[Offline Storage] Cannot increment retry for training operation with undefined/null ID');
+    return;
+  }
+  
   const db = await getDB();
   const operation = await db.get('training_operations', id);
   if (operation) {
