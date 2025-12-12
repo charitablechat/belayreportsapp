@@ -302,27 +302,55 @@ export default function TrainingForm() {
     loadTraining();
   }, [id, isOnline]);
 
-  // Auto-save functionality
+  // Track if save is in progress to prevent duplicate calls
+  const saveInProgressRef = useRef(false);
+
+  // Auto-save functionality with safety timeout and duplicate prevention
   const saveTraining = useCallback(async () => {
     if (!training || !id) return;
 
+    // Prevent duplicate save calls
+    if (saveInProgressRef.current) {
+      console.log('[Training Save] Save already in progress, skipping');
+      return;
+    }
+
+    console.log('[Training Save] Starting save...');
+    saveInProgressRef.current = true;
     setIsSaving(true);
+
+    // Safety timeout - ensure saving state is cleared after max 30 seconds
+    const safetyTimeout = setTimeout(() => {
+      console.warn('[Training Save] Safety timeout reached, forcing save state reset');
+      setIsSaving(false);
+      saveInProgressRef.current = false;
+    }, 30000);
+
     try {
       const updatedTraining = {
         ...training,
         updated_at: new Date().toISOString(),
       };
 
-      // Save offline first
-      await saveTrainingOffline(updatedTraining);
-      await Promise.all([
-        saveTrainingDataOffline('delivery_approaches', id, deliveryApproaches),
-        saveTrainingDataOffline('operating_systems', id, operatingSystems),
-        saveTrainingDataOffline('immediate_attention', id, immediateAttention),
-        saveTrainingDataOffline('verifiable_items', id, verifiableItems),
-        saveTrainingDataOffline('systems_in_place', id, systemsInPlace),
-        summary && saveTrainingDataOffline('summary', id, summary)
-      ]);
+      // Save offline first with timeout protection
+      try {
+        await Promise.race([
+          Promise.all([
+            saveTrainingOffline(updatedTraining),
+            saveTrainingDataOffline('delivery_approaches', id, deliveryApproaches),
+            saveTrainingDataOffline('operating_systems', id, operatingSystems),
+            saveTrainingDataOffline('immediate_attention', id, immediateAttention),
+            saveTrainingDataOffline('verifiable_items', id, verifiableItems),
+            saveTrainingDataOffline('systems_in_place', id, systemsInPlace),
+            summary && saveTrainingDataOffline('summary', id, summary)
+          ]),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Offline save timeout')), 5000))
+        ]);
+        console.log('[Training Save] Offline storage completed');
+      } catch (offlineError) {
+        console.warn('[Training Save] Offline storage failed or timed out:', offlineError);
+        // Continue with online save
+      }
 
       // If online, try to sync to Supabase
       if (isOnline) {
@@ -417,21 +445,26 @@ export default function TrainingForm() {
             ...updatedTraining,
             synced_at: new Date().toISOString()
           });
+          console.log('[Training Save] Synced to database');
         } catch (error) {
-          console.log('[Offline] Failed to sync, queuing operation');
+          console.log('[Training Save] Failed to sync, queuing operation:', error);
           await queueTrainingOperation('update', id, updatedTraining);
         }
       } else {
         // Queue for later sync
+        console.log('[Training Save] Offline - queuing for sync');
         await queueTrainingOperation('update', id, updatedTraining);
       }
 
       setLastSaved(new Date());
       setHasUnsavedChanges(false);
     } catch (error) {
-      console.error('Error saving training:', error);
+      console.error('[Training Save] Error saving training:', error);
     } finally {
+      clearTimeout(safetyTimeout);
+      console.log('[Training Save] Completed, setting isSaving to false');
       setIsSaving(false);
+      saveInProgressRef.current = false;
     }
   }, [training, id, deliveryApproaches, operatingSystems, immediateAttention, verifiableItems, systemsInPlace, summary, isOnline]);
 
