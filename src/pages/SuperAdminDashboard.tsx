@@ -15,6 +15,7 @@ import { useState } from "react";
 import { UserManagementDialog } from "@/components/admin/UserManagementDialog";
 import { FormCMSManager } from "@/components/admin/FormCMSManager";
 import { MergeOrganizationsDialog } from "@/components/admin/MergeOrganizationsDialog";
+import { DataRecoveryTool } from "@/components/admin/DataRecoveryTool";
 import { toast } from "sonner";
 import { parseLocalDate } from "@/lib/date-utils";
 
@@ -725,7 +726,7 @@ export default function SuperAdminDashboard() {
           <TabsTrigger value="form-cms" className="justify-start">Form CMS</TabsTrigger>
           <TabsTrigger value="notifications" className="justify-start">Notifications</TabsTrigger>
           <TabsTrigger value="conflicts" className="justify-start">Conflicts</TabsTrigger>
-          
+          <TabsTrigger value="data-recovery" className="justify-start">Data Recovery</TabsTrigger>
           <TabsTrigger value="maintenance" className="justify-start">Maintenance</TabsTrigger>
         </TabsList>
 
@@ -1150,6 +1151,10 @@ export default function SuperAdminDashboard() {
               ))}
             </TableBody>
           </Table>
+        </TabsContent>
+
+        <TabsContent value="data-recovery" className="space-y-4">
+          <DataRecoveryTool />
         </TabsContent>
 
         <TabsContent value="maintenance" className="space-y-4">
