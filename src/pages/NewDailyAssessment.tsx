@@ -130,7 +130,7 @@ export default function NewDailyAssessment() {
         try {
           const { error } = await supabase
             .from('daily_assessments')
-            .insert([newAssessment]);
+            .upsert([newAssessment], { onConflict: 'id' });
 
           if (error) throw error;
 
