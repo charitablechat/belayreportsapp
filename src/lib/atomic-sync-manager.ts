@@ -24,7 +24,8 @@ import {
 } from "./daily-assessment-validation-schemas";
 import { 
   executeTransaction,
-  TransactionStep 
+  TransactionStep,
+  fetchRollbackData
 } from "./transaction-manager";
 import { syncProgressEmitter } from "@/hooks/useSyncProgress";
 import { getMobileCapabilities } from "./mobile-detection";
@@ -187,13 +188,29 @@ export async function syncInspectionAtomic(inspectionId: string) {
     });
     
     // Step 2: Delete existing related data (to handle deletions)
+    // Capture existing data for rollback safety before deletion
     if (remoteInspection) {
+      // Fetch existing related data for rollback
+      const [
+        existingSystems,
+        existingZiplines,
+        existingEquipment,
+        existingStandards,
+        existingSummary
+      ] = await Promise.all([
+        fetchRollbackData('inspection_systems', { inspection_id: inspectionId }),
+        fetchRollbackData('inspection_ziplines', { inspection_id: inspectionId }),
+        fetchRollbackData('inspection_equipment', { inspection_id: inspectionId }),
+        fetchRollbackData('inspection_standards', { inspection_id: inspectionId }),
+        fetchRollbackData('inspection_summary', { inspection_id: inspectionId }),
+      ]);
+      
       steps.push(
-        { table: 'inspection_systems', operation: 'delete', filter: { inspection_id: inspectionId } },
-        { table: 'inspection_ziplines', operation: 'delete', filter: { inspection_id: inspectionId } },
-        { table: 'inspection_equipment', operation: 'delete', filter: { inspection_id: inspectionId } },
-        { table: 'inspection_standards', operation: 'delete', filter: { inspection_id: inspectionId } },
-        { table: 'inspection_summary', operation: 'delete', filter: { inspection_id: inspectionId } }
+        { table: 'inspection_systems', operation: 'delete', filter: { inspection_id: inspectionId }, rollbackData: existingSystems },
+        { table: 'inspection_ziplines', operation: 'delete', filter: { inspection_id: inspectionId }, rollbackData: existingZiplines },
+        { table: 'inspection_equipment', operation: 'delete', filter: { inspection_id: inspectionId }, rollbackData: existingEquipment },
+        { table: 'inspection_standards', operation: 'delete', filter: { inspection_id: inspectionId }, rollbackData: existingStandards },
+        { table: 'inspection_summary', operation: 'delete', filter: { inspection_id: inspectionId }, rollbackData: existingSummary }
       );
     }
     
@@ -551,14 +568,32 @@ export async function syncTrainingAtomic(trainingId: string) {
     });
     
     // Step 2: Delete existing related data (to handle deletions)
+    // Capture existing data for rollback safety before deletion
     if (remoteTraining) {
+      // Fetch existing related data for rollback
+      const [
+        existingApproaches,
+        existingSystems,
+        existingAttention,
+        existingVerifiable,
+        existingSystemsInPlace,
+        existingSummary
+      ] = await Promise.all([
+        fetchRollbackData('training_delivery_approaches', { training_id: trainingId }),
+        fetchRollbackData('training_operating_systems', { training_id: trainingId }),
+        fetchRollbackData('training_immediate_attention', { training_id: trainingId }),
+        fetchRollbackData('training_verifiable_items', { training_id: trainingId }),
+        fetchRollbackData('training_systems_in_place', { training_id: trainingId }),
+        fetchRollbackData('training_summary', { training_id: trainingId }),
+      ]);
+      
       steps.push(
-        { table: 'training_delivery_approaches', operation: 'delete', filter: { training_id: trainingId } },
-        { table: 'training_operating_systems', operation: 'delete', filter: { training_id: trainingId } },
-        { table: 'training_immediate_attention', operation: 'delete', filter: { training_id: trainingId } },
-        { table: 'training_verifiable_items', operation: 'delete', filter: { training_id: trainingId } },
-        { table: 'training_systems_in_place', operation: 'delete', filter: { training_id: trainingId } },
-        { table: 'training_summary', operation: 'delete', filter: { training_id: trainingId } }
+        { table: 'training_delivery_approaches', operation: 'delete', filter: { training_id: trainingId }, rollbackData: existingApproaches },
+        { table: 'training_operating_systems', operation: 'delete', filter: { training_id: trainingId }, rollbackData: existingSystems },
+        { table: 'training_immediate_attention', operation: 'delete', filter: { training_id: trainingId }, rollbackData: existingAttention },
+        { table: 'training_verifiable_items', operation: 'delete', filter: { training_id: trainingId }, rollbackData: existingVerifiable },
+        { table: 'training_systems_in_place', operation: 'delete', filter: { training_id: trainingId }, rollbackData: existingSystemsInPlace },
+        { table: 'training_summary', operation: 'delete', filter: { training_id: trainingId }, rollbackData: existingSummary }
       );
     }
     
@@ -888,14 +923,32 @@ export async function syncDailyAssessmentAtomic(assessmentId: string) {
     });
     
     // Step 2: Delete existing related data (to handle deletions)
+    // Capture existing data for rollback safety before deletion
     if (remoteAssessment) {
+      // Fetch existing related data for rollback
+      const [
+        existingBeginning,
+        existingEnd,
+        existingSystems,
+        existingEquipment,
+        existingStructure,
+        existingEnvironment
+      ] = await Promise.all([
+        fetchRollbackData('daily_assessment_beginning_of_day', { assessment_id: assessmentId }),
+        fetchRollbackData('daily_assessment_end_of_day', { assessment_id: assessmentId }),
+        fetchRollbackData('daily_assessment_operating_systems', { assessment_id: assessmentId }),
+        fetchRollbackData('daily_assessment_equipment_checks', { assessment_id: assessmentId }),
+        fetchRollbackData('daily_assessment_structure_checks', { assessment_id: assessmentId }),
+        fetchRollbackData('daily_assessment_environment_checks', { assessment_id: assessmentId }),
+      ]);
+      
       steps.push(
-        { table: 'daily_assessment_beginning_of_day', operation: 'delete', filter: { assessment_id: assessmentId } },
-        { table: 'daily_assessment_end_of_day', operation: 'delete', filter: { assessment_id: assessmentId } },
-        { table: 'daily_assessment_operating_systems', operation: 'delete', filter: { assessment_id: assessmentId } },
-        { table: 'daily_assessment_equipment_checks', operation: 'delete', filter: { assessment_id: assessmentId } },
-        { table: 'daily_assessment_structure_checks', operation: 'delete', filter: { assessment_id: assessmentId } },
-        { table: 'daily_assessment_environment_checks', operation: 'delete', filter: { assessment_id: assessmentId } }
+        { table: 'daily_assessment_beginning_of_day', operation: 'delete', filter: { assessment_id: assessmentId }, rollbackData: existingBeginning },
+        { table: 'daily_assessment_end_of_day', operation: 'delete', filter: { assessment_id: assessmentId }, rollbackData: existingEnd },
+        { table: 'daily_assessment_operating_systems', operation: 'delete', filter: { assessment_id: assessmentId }, rollbackData: existingSystems },
+        { table: 'daily_assessment_equipment_checks', operation: 'delete', filter: { assessment_id: assessmentId }, rollbackData: existingEquipment },
+        { table: 'daily_assessment_structure_checks', operation: 'delete', filter: { assessment_id: assessmentId }, rollbackData: existingStructure },
+        { table: 'daily_assessment_environment_checks', operation: 'delete', filter: { assessment_id: assessmentId }, rollbackData: existingEnvironment }
       );
     }
     

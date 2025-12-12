@@ -190,7 +190,7 @@ async function rollbackTransaction(
 }
 
 /**
- * Prepare rollback data by fetching current state before update
+ * Prepare rollback data by fetching current state before update (single record)
  */
 export async function prepareRollbackData(
   table: string,
@@ -208,5 +208,35 @@ export async function prepareRollbackData(
   } catch (error) {
     console.error('[Transaction] Failed to prepare rollback data:', error);
     return null;
+  }
+}
+
+/**
+ * Fetch all matching records for rollback (for delete operations that affect multiple rows)
+ * Returns an array of records that can be re-inserted during rollback
+ */
+export async function fetchRollbackData(
+  table: string,
+  filter: any
+): Promise<any[]> {
+  try {
+    const { data, error } = await (supabase as any)
+      .from(table)
+      .select('*')
+      .match(filter);
+    
+    if (error) {
+      console.error(`[Transaction] Failed to fetch rollback data for ${table}:`, error);
+      return [];
+    }
+    
+    if (import.meta.env.DEV) {
+      console.log(`[Transaction] Captured ${data?.length || 0} records from ${table} for rollback`);
+    }
+    
+    return data || [];
+  } catch (error) {
+    console.error('[Transaction] Failed to fetch rollback data:', error);
+    return [];
   }
 }
