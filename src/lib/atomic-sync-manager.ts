@@ -48,7 +48,7 @@ export async function syncInspectionAtomic(inspectionId: string) {
       return { success: false, skipped: true, reason: 'ownership_mismatch' };
     }
     
-    const [systems, ziplines, equipment, standards, summaryArray] = await Promise.all([
+    const [rawSystems, rawZiplines, rawEquipment, rawStandards, summaryArray] = await Promise.all([
       getRelatedDataOffline('systems', inspectionId),
       getRelatedDataOffline('ziplines', inspectionId),
       getRelatedDataOffline('equipment', inspectionId),
@@ -56,7 +56,24 @@ export async function syncInspectionAtomic(inspectionId: string) {
       getRelatedDataOffline('summary', inspectionId),
     ]);
     
-    const summary = summaryArray[0] || null;
+    const rawSummary = summaryArray[0] || null;
+    
+    // Transform temp- IDs to valid UUIDs before validation
+    // These temp IDs are created in the UI for new rows but need real UUIDs for DB
+    const transformTempIds = <T extends { id?: string }>(items: T[]): T[] => {
+      return items.map(item => ({
+        ...item,
+        id: item.id?.startsWith('temp-') ? crypto.randomUUID() : item.id
+      }));
+    };
+    
+    const systems = transformTempIds(rawSystems);
+    const ziplines = transformTempIds(rawZiplines);
+    const equipment = transformTempIds(rawEquipment);
+    const standards = transformTempIds(rawStandards);
+    const summary = rawSummary?.id?.startsWith('temp-') 
+      ? { ...rawSummary, id: crypto.randomUUID() } 
+      : rawSummary;
     
     // 2. Validate the complete package
     const validation = validateInspectionPackage({
