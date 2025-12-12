@@ -14,6 +14,30 @@ export type Database = {
   }
   public: {
     Tables: {
+      app_announcements: {
+        Row: {
+          announcement_type: string
+          content: string
+          id: string
+          updated_at: string | null
+          updated_by: string | null
+        }
+        Insert: {
+          announcement_type?: string
+          content?: string
+          id?: string
+          updated_at?: string | null
+          updated_by?: string | null
+        }
+        Update: {
+          announcement_type?: string
+          content?: string
+          id?: string
+          updated_at?: string | null
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
       audit_logs: {
         Row: {
           action_type: string
