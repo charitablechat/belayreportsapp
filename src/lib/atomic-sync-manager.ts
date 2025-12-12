@@ -38,16 +38,14 @@ export async function syncInspectionAtomic(inspectionId: string) {
       throw new Error("User not authenticated");
     }
     
-    // Since we now filter inspections by user before syncing, this check is just for logging
+    // Skip inspections that don't belong to current user (they were filtered but double-check)
     if (inspection.inspector_id !== user.id) {
       if (import.meta.env.DEV) {
-        console.log('[Atomic Sync] Warning: Inspector ID mismatch (should have been filtered)', {
-          inspection_inspector_id: inspection.inspector_id,
-          current_user_id: user.id,
+        console.log('[Atomic Sync] Skipping inspection - belongs to different user', {
+          inspection_id: inspectionId,
         });
       }
-      // Silently skip instead of throwing error
-      throw new Error("Inspection does not belong to current user");
+      return { success: false, skipped: true, reason: 'ownership_mismatch' };
     }
     
     const [systems, ziplines, equipment, standards, summaryArray] = await Promise.all([
@@ -101,10 +99,17 @@ export async function syncInspectionAtomic(inspectionId: string) {
           .maybeSingle();
         
         if (!existingConflict) {
+          // Validate organization_id - must have a valid value
+          const organizationId = inspection.organization_id;
+          if (!organizationId) {
+            console.error('[Atomic Sync] Cannot record conflict - missing organization_id for inspection:', inspectionId);
+            throw new Error('Sync conflict detected but organization_id is missing');
+          }
+          
           // No existing conflict - record a new one
           const { error: conflictError } = await supabase.from('sync_conflicts').insert({
             inspection_id: inspectionId,
-            organization_id: inspection.organization_id || user?.id || '',
+            organization_id: organizationId,
             local_updated_at: inspection.updated_at,
             remote_updated_at: remoteInspection.updated_at,
             resolved: false,

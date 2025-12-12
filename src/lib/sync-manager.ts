@@ -84,8 +84,9 @@ export async function syncInspections() {
       }
     }
 
-    // 2. Sync unsynced inspections
-    const unsynced = await getUnsyncedInspections();
+    // 2. Sync unsynced inspections (filter by current user)
+    const { data: { user: currentUser } } = await supabase.auth.getUser();
+    const unsynced = await getUnsyncedInspections(currentUser?.id);
     
     if (import.meta.env.DEV) {
       console.log('[Sync Manager] Syncing unsynced inspections:', unsynced.length);
@@ -125,26 +126,42 @@ export async function syncInspections() {
           const isConflict = timeDiff > 5000 && remoteUpdated > localUpdated;
           
           if (isConflict) {
-            // Log conflict to database
+            // Check if an unresolved conflict already exists
             try {
-              const { data: { user } } = await supabase.auth.getUser();
+              const { data: existingConflict } = await supabase
+                .from('sync_conflicts')
+                .select('id')
+                .eq('inspection_id', inspection.id)
+                .eq('resolved', false)
+                .maybeSingle();
               
-              await supabase.from('sync_conflicts').insert({
-                inspection_id: inspection.id,
-                organization_id: inspection.organization_id || user?.id || '',
-                local_updated_at: inspection.updated_at,
-                remote_updated_at: remoteData.updated_at,
-                resolved: false,
-              });
-              
-              if (import.meta.env.DEV) {
-                console.log('[Sync Manager] Conflict detected and logged:', inspection.id);
+              if (!existingConflict) {
+                // Validate organization_id before inserting
+                const organizationId = inspection.organization_id;
+                if (!organizationId) {
+                  console.error('[Sync Manager] Cannot record conflict - missing organization_id:', inspection.id);
+                  continue;
+                }
+                
+                await supabase.from('sync_conflicts').insert({
+                  inspection_id: inspection.id,
+                  organization_id: organizationId,
+                  local_updated_at: inspection.updated_at,
+                  remote_updated_at: remoteData.updated_at,
+                  resolved: false,
+                });
+                
+                if (import.meta.env.DEV) {
+                  console.log('[Sync Manager] Conflict detected and logged:', inspection.id);
+                }
+              } else if (import.meta.env.DEV) {
+                console.log('[Sync Manager] Conflict already exists for:', inspection.id);
               }
               
               // Skip syncing this inspection - user needs to resolve conflict
               continue;
             } catch (conflictError) {
-              console.error('[Sync Manager] Failed to log conflict:', conflictError);
+              console.error('[Sync Manager] Failed to check/log conflict:', conflictError);
               // Continue with sync even if conflict logging fails
             }
           }
@@ -434,14 +451,20 @@ export async function syncTrainings() {
           await supabase.from("trainings").delete().eq('id', op.trainingId);
         }
 
-        await removeQueuedTrainingOperation(op.id!);
+        // Only remove if ID is valid
+        if (op.id !== undefined && op.id !== null) {
+          await removeQueuedTrainingOperation(op.id);
+        }
         
         if (import.meta.env.DEV) {
           console.log('[Training Sync] Processed operation:', op.type, op.trainingId);
         }
       } catch (error) {
         console.error('[Training Sync] Operation failed:', error);
-        await incrementTrainingOperationRetry(op.id!);
+        // Only increment retry if ID is valid
+        if (op.id !== undefined && op.id !== null) {
+          await incrementTrainingOperationRetry(op.id);
+        }
         
         await new Promise(resolve => 
           setTimeout(resolve, RETRY_DELAY * Math.pow(2, op.retries))
