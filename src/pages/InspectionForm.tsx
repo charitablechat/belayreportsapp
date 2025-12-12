@@ -765,12 +765,14 @@ export default function InspectionForm() {
       if (isOnline) {
         const syncWithRetry = async (retries = 2): Promise<void> => {
           try {
-            // Sanitize inspection data - convert empty strings to null for date fields
-            const sanitizeInspection = (insp: any) => ({
-              ...insp,
-              previous_inspection_date: insp.previous_inspection_date === "" ? null : insp.previous_inspection_date,
-              id: undefined, // Remove id from update
-            });
+            // Sanitize inspection data - remove joined/computed fields and handle nulls
+            const sanitizeInspection = (insp: any) => {
+              const { id, inspector, ...rest } = insp; // Remove id and inspector (joined relation)
+              return {
+                ...rest,
+                previous_inspection_date: rest.previous_inspection_date === "" ? null : rest.previous_inspection_date,
+              };
+            };
 
             // Update main inspection record
             const { error: inspectionError } = await supabase
