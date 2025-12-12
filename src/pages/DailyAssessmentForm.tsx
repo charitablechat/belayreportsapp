@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useFormConfiguration } from "@/hooks/useFormConfiguration";
@@ -69,6 +69,9 @@ export default function DailyAssessmentForm() {
   const [submitting, setSubmitting] = useState(false);
   const [showSubmitDialog, setShowSubmitDialog] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  
+  // Track if user has interacted with the form - prevents cleanup of non-empty assessments
+  const hasUserInteractedRef = useRef(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [generating, setGenerating] = useState(false);
   const [assessment, setAssessment] = useState<any>(null);
@@ -114,7 +117,7 @@ export default function DailyAssessmentForm() {
     message: "You have unsaved changes to this assessment. Are you sure you want to leave?",
   });
 
-  // Empty report cleanup
+  // Empty report cleanup - uses refs to avoid stale closure issues
   const { cleanupEmptyReport } = useEmptyReportCleanup({
     type: 'daily_assessment',
     id,
@@ -127,7 +130,8 @@ export default function DailyAssessmentForm() {
       equipmentChecks,
       structureChecks,
       environmentChecks,
-    }
+    },
+    hasUserInteracted: hasUserInteractedRef.current,
   });
 
   // Cleanup empty reports on unmount
@@ -328,6 +332,9 @@ export default function DailyAssessmentForm() {
   };
 
   const handleUpdateAssessment = async (field: string, value: any) => {
+    // Mark that user has interacted - prevents cleanup deletion
+    hasUserInteractedRef.current = true;
+    
     const updatedAssessment = { ...assessment, [field]: value, updated_at: new Date().toISOString() };
     setAssessment(updatedAssessment);
     setHasUnsavedChanges(true);
@@ -581,6 +588,43 @@ export default function DailyAssessmentForm() {
       }
     };
   });
+
+  // Wrapper handlers that mark user interaction to prevent cleanup deletion
+  const handleBeginningOfDayUpdate = useCallback((items: any[]) => {
+    hasUserInteractedRef.current = true;
+    setBeginningOfDay(items);
+    setHasUnsavedChanges(true);
+  }, []);
+
+  const handleEndOfDayUpdate = useCallback((items: any[]) => {
+    hasUserInteractedRef.current = true;
+    setEndOfDay(items);
+    setHasUnsavedChanges(true);
+  }, []);
+
+  const handleOperatingSystemsUpdate = useCallback((items: any[]) => {
+    hasUserInteractedRef.current = true;
+    setOperatingSystems(items);
+    setHasUnsavedChanges(true);
+  }, []);
+
+  const handleEquipmentChecksUpdate = useCallback((items: any[]) => {
+    hasUserInteractedRef.current = true;
+    setEquipmentChecks(items);
+    setHasUnsavedChanges(true);
+  }, []);
+
+  const handleStructureChecksUpdate = useCallback((items: any[]) => {
+    hasUserInteractedRef.current = true;
+    setStructureChecks(items);
+    setHasUnsavedChanges(true);
+  }, []);
+
+  const handleEnvironmentChecksUpdate = useCallback((items: any[]) => {
+    hasUserInteractedRef.current = true;
+    setEnvironmentChecks(items);
+    setHasUnsavedChanges(true);
+  }, []);
 
   // Submit and complete the assessment
   const handleSubmit = async () => {
@@ -1003,42 +1047,42 @@ export default function DailyAssessmentForm() {
           <TabsContent value="beginning" className="space-y-4 mt-4">
             <BeginningOfDaySection 
               items={beginningOfDay} 
-              onUpdate={setBeginningOfDay} 
+              onUpdate={handleBeginningOfDayUpdate} 
             />
           </TabsContent>
 
           <TabsContent value="end" className="space-y-4 mt-4">
             <EndOfDaySection 
               items={endOfDay} 
-              onUpdate={setEndOfDay} 
+              onUpdate={handleEndOfDayUpdate} 
             />
           </TabsContent>
 
           <TabsContent value="systems" className="space-y-4 mt-4">
             <OperatingSystemsSection 
               systems={operatingSystems} 
-              onUpdate={setOperatingSystems} 
+              onUpdate={handleOperatingSystemsUpdate} 
             />
           </TabsContent>
 
           <TabsContent value="equipment" className="space-y-4 mt-4">
             <EquipmentChecksSection 
               checks={equipmentChecks} 
-              onUpdate={setEquipmentChecks} 
+              onUpdate={handleEquipmentChecksUpdate} 
             />
           </TabsContent>
 
           <TabsContent value="structure" className="space-y-4 mt-4">
             <StructureChecksSection 
               checks={structureChecks} 
-              onUpdate={setStructureChecks} 
+              onUpdate={handleStructureChecksUpdate} 
             />
           </TabsContent>
 
           <TabsContent value="environment" className="space-y-4 mt-4">
             <EnvironmentChecksSection 
               checks={environmentChecks} 
-              onUpdate={setEnvironmentChecks} 
+              onUpdate={handleEnvironmentChecksUpdate} 
             />
           </TabsContent>
         </Tabs>
