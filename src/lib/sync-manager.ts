@@ -294,6 +294,9 @@ export async function syncDailyAssessments() {
   }
 
   try {
+    // Track IDs synced from queue to prevent double processing
+    const syncedFromQueue = new Set<string>();
+    
     // Process queued operations first
     const queuedOps = await getQueuedAssessmentOperations();
     
@@ -329,6 +332,8 @@ export async function syncDailyAssessments() {
 
         if (op.type === 'create' || op.type === 'update') {
           await supabase.from("daily_assessments").upsert(dataToSync);
+          // Track successfully synced assessment ID
+          syncedFromQueue.add(op.assessmentId);
         } else if (op.type === 'delete') {
           await supabase.from("daily_assessments").delete().eq('id', op.assessmentId);
         }
@@ -354,8 +359,9 @@ export async function syncDailyAssessments() {
       }
     }
 
-    // Sync unsynced assessments
-    const unsynced = await getUnsyncedDailyAssessments();
+    // Phase 2: Add user ID filter to prevent cross-user sync
+    const { data: { user: syncUser } } = await supabase.auth.getUser();
+    const unsynced = await getUnsyncedDailyAssessments(syncUser?.id);
     
     if (import.meta.env.DEV) {
       console.log('[Daily Assessment Sync] Syncing unsynced assessments:', unsynced.length);
@@ -363,6 +369,17 @@ export async function syncDailyAssessments() {
     
     for (const assessment of unsynced) {
       try {
+        // Phase 3: Skip if already synced from queue
+        if (syncedFromQueue.has(assessment.id)) {
+          if (import.meta.env.DEV) {
+            console.log('[Daily Assessment Sync] Skipping - already synced from queue:', assessment.id);
+          }
+          // Update synced_at since it was successfully synced from queue
+          assessment.synced_at = new Date().toISOString();
+          await saveDailyAssessmentOffline(assessment);
+          continue;
+        }
+        
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) {
           console.error('[Daily Assessment Sync] User not authenticated, skipping sync');

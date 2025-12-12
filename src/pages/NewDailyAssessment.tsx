@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -93,8 +93,18 @@ export default function NewDailyAssessment() {
     }));
   };
 
+  // Phase 5: Ref to prevent double submissions
+  const isSubmitting = useRef(false);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Phase 5: Prevent double submission
+    if (isSubmitting.current || loading) {
+      return;
+    }
+    isSubmitting.current = true;
+    
     triggerHaptic('medium');
     setLoading(true);
 
@@ -134,16 +144,17 @@ export default function NewDailyAssessment() {
 
           if (error) throw error;
 
-          // Update synced_at
+          // Phase 4: Update synced_at - don't queue since online sync succeeded
           newAssessment.synced_at = new Date().toISOString();
           await saveDailyAssessmentOffline(newAssessment);
+          // Note: No queueAssessmentOperation here since sync was successful
         } catch (error) {
           console.error('Error syncing to database:', error);
-          // Queue for later sync
+          // Only queue for later sync if online sync failed
           await queueAssessmentOperation('create', assessmentId, newAssessment);
         }
       } else {
-        // Queue for later sync
+        // Queue for later sync only when offline
         await queueAssessmentOperation('create', assessmentId, newAssessment);
       }
 
@@ -154,6 +165,7 @@ export default function NewDailyAssessment() {
       triggerHaptic('error');
     } finally {
       setLoading(false);
+      isSubmitting.current = false;
     }
   };
 
