@@ -1,4 +1,4 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useRef, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { 
   isInspectionEmpty, 
@@ -34,64 +34,99 @@ interface UseEmptyReportCleanupOptions {
     equipmentChecks?: any[];
     structureChecks?: any[];
   };
+  /** If true, skip cleanup entirely (user has interacted with the form) */
+  hasUserInteracted?: boolean;
 }
 
 /**
  * Hook to check if a report is empty and should be cleaned up when navigating away.
  * Returns a function to check emptiness and handle cleanup.
+ * 
+ * IMPORTANT: Uses refs internally to avoid stale closure issues in cleanup effects.
  */
 export function useEmptyReportCleanup({
   type,
   id,
   status,
   data,
-  relatedData = {}
+  relatedData = {},
+  hasUserInteracted = false
 }: UseEmptyReportCleanupOptions) {
   const cleanupAttempted = useRef(false);
+  
+  // Use refs to always have current values - prevents stale closure bug
+  const dataRef = useRef(data);
+  const statusRef = useRef(status);
+  const relatedDataRef = useRef(relatedData);
+  const hasUserInteractedRef = useRef(hasUserInteracted);
+  
+  // Update refs whenever props change
+  useEffect(() => {
+    dataRef.current = data;
+    statusRef.current = status;
+    relatedDataRef.current = relatedData;
+    hasUserInteractedRef.current = hasUserInteracted;
+  }, [data, status, relatedData, hasUserInteracted]);
 
   const checkIsEmpty = useCallback(() => {
-    if (!data || !id) return true;
+    const currentData = dataRef.current;
+    const currentRelatedData = relatedDataRef.current;
+    
+    if (!currentData || !id) return true;
 
     switch (type) {
       case 'inspection':
         return isInspectionEmpty(
-          data,
-          relatedData.systems || [],
-          relatedData.ziplines || [],
-          relatedData.equipment || [],
-          relatedData.standards || [],
-          relatedData.summary
+          currentData,
+          currentRelatedData.systems || [],
+          currentRelatedData.ziplines || [],
+          currentRelatedData.equipment || [],
+          currentRelatedData.standards || [],
+          currentRelatedData.summary
         );
       case 'training':
         return isTrainingEmpty(
-          data,
-          relatedData.deliveryApproaches || [],
-          relatedData.operatingSystems || [],
-          relatedData.immediateAttention || [],
-          relatedData.verifiableItems || [],
-          relatedData.systemsInPlace || [],
-          relatedData.summary
+          currentData,
+          currentRelatedData.deliveryApproaches || [],
+          currentRelatedData.operatingSystems || [],
+          currentRelatedData.immediateAttention || [],
+          currentRelatedData.verifiableItems || [],
+          currentRelatedData.systemsInPlace || [],
+          currentRelatedData.summary
         );
       case 'daily_assessment':
         return isDailyAssessmentEmpty(
-          data,
-          relatedData.beginningOfDay || [],
-          relatedData.endOfDay || [],
-          relatedData.environmentChecks || [],
-          relatedData.equipmentChecks || [],
-          relatedData.structureChecks || [],
-          relatedData.operatingSystems || []
+          currentData,
+          currentRelatedData.beginningOfDay || [],
+          currentRelatedData.endOfDay || [],
+          currentRelatedData.environmentChecks || [],
+          currentRelatedData.equipmentChecks || [],
+          currentRelatedData.structureChecks || [],
+          currentRelatedData.operatingSystems || []
         );
       default:
         return true;
     }
-  }, [type, data, id, relatedData]);
+  }, [type, id]);
 
   const cleanupEmptyReport = useCallback(async (): Promise<boolean> => {
     if (!id || cleanupAttempted.current) return false;
     
+    // Skip cleanup if user has interacted with the form
+    if (hasUserInteractedRef.current) {
+      if (import.meta.env.DEV) {
+        console.log(`[EmptyReportCleanup] Skipping cleanup - user has interacted with form`);
+      }
+      return false;
+    }
+    
     const isEmpty = checkIsEmpty();
-    const shouldDelete = shouldDeleteEmptyReport(status, isEmpty);
+    const currentStatus = statusRef.current;
+    const shouldDelete = shouldDeleteEmptyReport(currentStatus, isEmpty);
+    
+    if (import.meta.env.DEV) {
+      console.log(`[EmptyReportCleanup] Check: isEmpty=${isEmpty}, status=${currentStatus}, shouldDelete=${shouldDelete}`);
+    }
     
     if (!shouldDelete) return false;
 
@@ -147,7 +182,7 @@ export function useEmptyReportCleanup({
       cleanupAttempted.current = false;
       return false;
     }
-  }, [id, status, type, checkIsEmpty]);
+  }, [id, type, checkIsEmpty]);
 
   return {
     checkIsEmpty,
