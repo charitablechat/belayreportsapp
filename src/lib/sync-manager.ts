@@ -59,7 +59,8 @@ export async function syncInspections() {
         const { inspector, ...dataWithoutInspector } = op.data as any;
         const dataToSync = {
           ...dataWithoutInspector,
-          inspector_id: user.id,
+          // Preserve original inspector_id, only set if not present
+          inspector_id: dataWithoutInspector.inspector_id || user.id,
         };
 
         if (op.type === 'create' || op.type === 'update') {
@@ -105,7 +106,8 @@ export async function syncInspections() {
         const { inspector, ...inspectionWithoutJoin } = inspection as any;
         const inspectionToSync = {
           ...inspectionWithoutJoin,
-          inspector_id: user.id,
+          // Preserve original inspector_id
+          inspector_id: inspectionWithoutJoin.inspector_id || user.id,
         };
 
         // Check if inspection exists in remote
@@ -327,7 +329,8 @@ export async function syncDailyAssessments() {
         const { inspector, ...dataWithoutInspector } = op.data as any;
         const dataToSync = {
           ...dataWithoutInspector,
-          inspector_id: user.id,
+          // Preserve original inspector_id
+          inspector_id: dataWithoutInspector.inspector_id || user.id,
         };
 
         if (op.type === 'create' || op.type === 'update') {
@@ -390,7 +393,8 @@ export async function syncDailyAssessments() {
         const { inspector, ...assessmentWithoutInspector } = assessment as any;
         const assessmentToSync = {
           ...assessmentWithoutInspector,
-          inspector_id: user.id,
+          // Preserve original inspector_id
+          inspector_id: assessmentWithoutInspector.inspector_id || user.id,
         };
 
         const { error: upsertError } = await supabase
@@ -461,7 +465,8 @@ export async function syncTrainings() {
         const { trainer, inspector, ...cleanData } = op.data as any;
         const dataToSync = {
           ...cleanData,
-          inspector_id: user.id,
+          // Preserve original inspector_id
+          inspector_id: cleanData.inspector_id || user.id,
         };
 
         if (op.type === 'create' || op.type === 'update') {
@@ -509,7 +514,8 @@ export async function syncTrainings() {
         const { trainer, inspector, ...cleanTraining } = training as any;
         const trainingToSync = {
           ...cleanTraining,
-          inspector_id: user.id,
+          // Preserve original inspector_id
+          inspector_id: cleanTraining.inspector_id || user.id,
         };
 
         const { error: upsertError } = await supabase
