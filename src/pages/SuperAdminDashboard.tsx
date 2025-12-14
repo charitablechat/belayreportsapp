@@ -16,6 +16,7 @@ import { UserManagementDialog } from "@/components/admin/UserManagementDialog";
 import { FormCMSManager } from "@/components/admin/FormCMSManager";
 import { MergeOrganizationsDialog } from "@/components/admin/MergeOrganizationsDialog";
 import { DataRecoveryTool } from "@/components/admin/DataRecoveryTool";
+import { ReportOwnershipTool } from "@/components/admin/ReportOwnershipTool";
 import { toast } from "sonner";
 import { parseLocalDate } from "@/lib/date-utils";
 
@@ -727,6 +728,7 @@ export default function SuperAdminDashboard() {
           <TabsTrigger value="notifications" className="justify-start">Notifications</TabsTrigger>
           <TabsTrigger value="conflicts" className="justify-start">Conflicts</TabsTrigger>
           <TabsTrigger value="data-recovery" className="justify-start">Data Recovery</TabsTrigger>
+          <TabsTrigger value="report-ownership" className="justify-start">Report Ownership</TabsTrigger>
           <TabsTrigger value="maintenance" className="justify-start">Maintenance</TabsTrigger>
         </TabsList>
 
@@ -1219,6 +1221,10 @@ export default function SuperAdminDashboard() {
               </div>
             </div>
           </div>
+        </TabsContent>
+
+        <TabsContent value="report-ownership" className="space-y-4">
+          <ReportOwnershipTool />
         </TabsContent>
       </Tabs>
 
