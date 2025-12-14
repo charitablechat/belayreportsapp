@@ -233,7 +233,7 @@ export default function Dashboard() {
           .from("inspections")
           .select(`
             *,
-            inspector:profiles!inspections_inspector_id_profiles_fkey(first_name, last_name, avatar_url)
+            inspector:profiles(first_name, last_name, avatar_url)
           `)
           .order("last_opened_at", { ascending: false, nullsFirst: false })
           .order("created_at", { ascending: false });
@@ -281,7 +281,7 @@ export default function Dashboard() {
           .from("trainings")
           .select(`
             *,
-            trainer:profiles!trainings_inspector_id_profiles_fkey(first_name, last_name, avatar_url)
+            trainer:profiles(first_name, last_name, avatar_url)
           `)
           .order("created_at", { ascending: false });
 
@@ -328,7 +328,7 @@ export default function Dashboard() {
           .from("daily_assessments")
           .select(`
             *,
-            inspector:profiles!daily_assessments_inspector_id_profiles_fkey(first_name, last_name, avatar_url)
+            inspector:profiles(first_name, last_name, avatar_url)
           `)
           .order("assessment_date", { ascending: false });
 
