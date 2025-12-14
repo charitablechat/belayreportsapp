@@ -141,18 +141,18 @@ serve(async (req) => {
       if (!items || items.length === 0) return '';
       return `
         <div class="section">
-          <h2>${title}</h2>
-          ${items.map(item => `
-            <div class="checklist-item">
-              <div class="checkbox ${item.is_complete || item.is_checked ? 'checked' : ''}">
-                ${item.is_complete || item.is_checked ? '✓' : ''}
-              </div>
-              <div class="item-content">
-                <div class="item-label">${item.item_key.replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())}</div>
-                ${item.comments ? `<div class="item-comments">${item.comments}</div>` : ''}
-              </div>
-            </div>
-          `).join('')}
+          <div class="section-title">${title}</div>
+          <ul>
+            ${items.map(item => `
+              <li class="${item.is_complete || item.is_checked ? 'checked' : 'unchecked'}">
+                <span class="checkbox-icon">${item.is_complete || item.is_checked ? '☑' : '☐'}</span>
+                <div class="item-content">
+                  <span class="item-label">${item.item_key.replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())}</span>
+                  ${item.comments ? `<div class="item-comments">${item.comments}</div>` : ''}
+                </div>
+              </li>
+            `).join('')}
+          </ul>
         </div>
       `;
     };
@@ -165,11 +165,6 @@ serve(async (req) => {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Daily Course Assessment - ${assessment.site}</title>
   <style>
-    @page {
-      size: letter;
-      margin: 0.5in;
-    }
-
     * {
       margin: 0;
       padding: 0;
@@ -177,119 +172,139 @@ serve(async (req) => {
     }
 
     body {
-      font-family: Georgia, 'Times New Roman', serif;
-      font-size: 11pt;
-      line-height: 1.4;
-      color: #000;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      line-height: 1.6;
+      color: #333;
+      background: #f5f5f5;
+      padding: 10px;
     }
 
-    .page {
-      page-break-after: always;
-      position: relative;
-      min-height: 100vh;
-      padding-bottom: 60px;
+    .container {
+      max-width: 100%;
+      width: 100%;
+      margin: 0 auto;
+      background: white;
+      padding: 20px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
     }
 
-    .page:last-child {
-      page-break-after: avoid;
-    }
-
-    .page-header {
+    .header {
       display: flex;
       justify-content: space-between;
       align-items: center;
       border-bottom: 3px solid #1e40af;
-      padding-bottom: 15px;
-      margin-bottom: 20px;
+      padding-bottom: 20px;
+      margin-bottom: 30px;
+    }
+
+    .header-left {
+      flex: 1;
+    }
+
+    .header-right {
+      text-align: right;
     }
 
     .logo {
-      height: 60px;
-      width: auto;
+      max-width: 150px;
+      margin-bottom: 10px;
     }
 
-    .page-title {
-      text-align: center;
-      flex: 1;
-      margin: 0 20px;
+    .badge {
+      max-width: 120px;
     }
 
-    .page-title h1 {
-      font-size: 20pt;
+    h1 {
       color: #1e40af;
-      margin-bottom: 5px;
+      font-size: 32px;
+      margin-bottom: 10px;
     }
 
-    .page-title .subtitle {
-      font-size: 12pt;
-      color: #666;
+    .subtitle {
+      color: #64748b;
+      font-size: 14px;
+    }
+
+    .section {
+      margin-bottom: 30px;
+    }
+
+    .section-title {
+      background: #1e40af;
+      color: white;
+      padding: 12px 20px;
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 15px;
+      border-radius: 4px;
     }
 
     .info-grid {
       display: grid;
       grid-template-columns: repeat(2, 1fr);
       gap: 15px;
-      margin-bottom: 25px;
-      background: #f8fafc;
-      padding: 15px;
-      border-radius: 8px;
+      margin-bottom: 15px;
     }
 
     .info-item {
-      display: flex;
-      flex-direction: column;
+      padding: 10px;
+      background: #f8fafc;
+      border-left: 3px solid #1e40af;
+    }
+
+    .info-item.full-width {
+      grid-column: span 2;
     }
 
     .info-label {
-      font-weight: bold;
-      font-size: 10pt;
-      color: #666;
-      margin-bottom: 3px;
+      font-weight: 600;
+      color: #475569;
+      font-size: 13px;
+      margin-bottom: 4px;
     }
 
     .info-value {
-      font-size: 11pt;
-      color: #000;
+      color: #1e293b;
     }
 
-    .section {
-      margin-bottom: 25px;
+    ul {
+      list-style: none;
+      padding-left: 0;
     }
 
-    .section h2 {
-      font-size: 14pt;
-      color: #1e40af;
-      border-bottom: 2px solid #1e40af;
-      padding-bottom: 8px;
-      margin-bottom: 15px;
-    }
-
-    .checklist-item {
+    li {
       display: flex;
       gap: 12px;
-      margin-bottom: 15px;
-      padding: 10px;
+      padding: 10px 12px;
+      margin-bottom: 8px;
       background: #f8fafc;
-      border-radius: 6px;
+      border-left: 3px solid #3b82f6;
+      border-radius: 2px;
+      align-items: flex-start;
     }
 
-    .checkbox {
-      width: 20px;
-      height: 20px;
-      border: 2px solid #1e40af;
-      border-radius: 4px;
-      flex-shrink: 0;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 14pt;
+    li.checked {
+      border-left-color: #22c55e;
+    }
+
+    li.unchecked {
+      border-left-color: #ef4444;
+    }
+
+    .checkbox-icon {
+      font-size: 18px;
       font-weight: bold;
-      color: #1e40af;
+      flex-shrink: 0;
+      width: 24px;
+      text-align: center;
     }
 
-    .checkbox.checked {
-      background: #1e40af;
-      color: white;
+    li.checked .checkbox-icon {
+      color: #22c55e;
+    }
+
+    li.unchecked .checkbox-icon {
+      color: #ef4444;
     }
 
     .item-content {
@@ -297,15 +312,15 @@ serve(async (req) => {
     }
 
     .item-label {
-      font-weight: bold;
-      margin-bottom: 5px;
+      font-weight: 500;
+      color: #1e293b;
     }
 
     .item-comments {
-      font-size: 10pt;
-      color: #666;
+      font-size: 13px;
+      color: #64748b;
       font-style: italic;
-      margin-top: 5px;
+      margin-top: 4px;
     }
 
     .systems-grid {
@@ -317,166 +332,197 @@ serve(async (req) => {
     .system-item {
       display: flex;
       align-items: center;
-      gap: 8px;
-      padding: 8px;
+      gap: 10px;
+      padding: 10px 12px;
       background: #f8fafc;
-      border-radius: 4px;
+      border-left: 3px solid #22c55e;
+      border-radius: 2px;
     }
 
-    .page-footer {
-      position: fixed;
-      bottom: 20px;
-      left: 0.5in;
-      right: 0.5in;
+    .system-item .checkbox-icon {
+      color: #22c55e;
+      font-size: 18px;
+    }
+
+    .disclaimer {
+      background: #fef3c7;
+      padding: 15px;
+      border-radius: 4px;
+      border-left: 4px solid #f59e0b;
+      margin-top: 30px;
+    }
+
+    .disclaimer-title {
+      font-weight: 700;
+      color: #92400e;
+      margin-bottom: 8px;
+    }
+
+    .disclaimer-text {
+      color: #78350f;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    .footer {
+      margin-top: 40px;
+      padding-top: 20px;
+      border-top: 2px solid #e2e8f0;
       text-align: center;
-      font-size: 9pt;
-      color: #666;
-      border-top: 1px solid #ccc;
-      padding-top: 10px;
+      color: #64748b;
+      font-size: 12px;
+    }
+
+    .page-break {
+      page-break-before: always;
+      margin-top: 30px;
     }
 
     @media print {
-      .page {
-        page-break-after: always;
+      body {
+        background: white;
+        padding: 0;
       }
-      .page:last-child {
-        page-break-after: avoid;
+      .container {
+        box-shadow: none;
+        padding: 20px;
+      }
+      .page-break {
+        page-break-before: always;
       }
     }
 
-    @media screen and (max-width: 768px) {
+    @media (max-width: 768px) {
       html, body {
         max-width: 100vw;
         overflow-x: hidden;
       }
       
-      .page {
+      body { padding: 8px; }
+      
+      .container {
         padding: 12px;
-        padding-bottom: 50px;
       }
       
-      .page-header {
+      .header {
         flex-direction: column;
+        text-align: center;
         gap: 10px;
+      }
+      
+      .header-left, .header-right {
         text-align: center;
       }
       
-      .logo {
-        height: 45px;
-      }
+      .logo { max-width: 100px; }
+      .badge { max-width: 80px; }
       
-      .page-title {
-        margin: 10px 0;
-      }
-      
-      .page-title h1 {
-        font-size: 16pt;
-      }
-      
-      .page-title .subtitle {
-        font-size: 10pt;
-      }
+      h1 { font-size: 20px; }
       
       .info-grid {
         grid-template-columns: 1fr;
         gap: 10px;
-        padding: 10px;
+      }
+
+      .info-item.full-width {
+        grid-column: span 1;
       }
       
+      .section-title {
+        font-size: 14px;
+        padding: 8px 12px;
+      }
+
       .systems-grid {
         grid-template-columns: 1fr;
       }
       
-      .checklist-item {
-        padding: 8px;
-        gap: 8px;
+      li {
+        padding: 8px 10px;
+        font-size: 13px;
       }
       
-      .section h2 {
-        font-size: 12pt;
-        padding-bottom: 6px;
-      }
-      
-      .page-footer {
-        position: relative;
-        bottom: auto;
-        left: auto;
-        right: auto;
-        padding: 10px 0;
+      .disclaimer {
+        padding: 10px;
+        font-size: 11px;
       }
     }
 
-    @media screen and (max-width: 480px) {
-      .page { padding: 8px; }
-      .page-title h1 { font-size: 14pt; }
-      .checkbox { width: 18px; height: 18px; font-size: 12pt; }
+    @media (max-width: 480px) {
+      body { padding: 4px; }
+      .container { padding: 8px; }
+      h1 { font-size: 18px; }
+      .section-title { font-size: 12px; }
     }
   </style>
 </head>
 <body>
-  <!-- Page 1: Header & Basic Info -->
-  <div class="page">
-    <div class="page-header">
-      ${acctLogo ? `<img src="${acctLogo}" alt="ACCT Logo" class="logo">` : ''}
-      <div class="page-title">
+  <div class="container">
+    <div class="header">
+      <div class="header-left">
+        <img src="${ropeWorksLogo}" alt="Rope Works Logo" class="logo">
         <h1>Daily Course Assessment</h1>
-        <div class="subtitle">Challenge Course Operations</div>
+        <div class="subtitle">Challenge Course Operations Documentation</div>
       </div>
-      ${ropeWorksLogo ? `<img src="${ropeWorksLogo}" alt="Rope Works Logo" class="logo">` : ''}
+      <div class="header-right">
+        <img src="${acctLogo}" alt="ACCT Accredited Vendor" class="badge">
+      </div>
     </div>
 
-    <div class="info-grid">
-      <div class="info-item">
-        <div class="info-label">Date</div>
-        <div class="info-value">${formatDate(assessment.assessment_date)}</div>
-      </div>
-      <div class="info-item">
-        <div class="info-label">Site</div>
-        <div class="info-value">${assessment.site || 'N/A'}</div>
-      </div>
-      <div class="info-item" style="grid-column: span 2">
-        <div class="info-label">Trainer/Facilitator of Record</div>
-        <div class="info-value">${assessment.trainer_of_record || 'N/A'}</div>
+    <div class="section">
+      <div class="section-title">Assessment Information</div>
+      <div class="info-grid">
+        <div class="info-item">
+          <div class="info-label">Date</div>
+          <div class="info-value">${formatDate(assessment.assessment_date)}</div>
+        </div>
+        <div class="info-item">
+          <div class="info-label">Site</div>
+          <div class="info-value">${assessment.site || 'N/A'}</div>
+        </div>
+        <div class="info-item full-width">
+          <div class="info-label">Trainer/Facilitator of Record</div>
+          <div class="info-value">${assessment.trainer_of_record || 'N/A'}</div>
+        </div>
       </div>
     </div>
+
+    ${operatingSystems.length > 0 ? `
+    <div class="section">
+      <div class="section-title">Operating Systems in Use Today</div>
+      <div class="systems-grid">
+        ${operatingSystems.map(s => `
+          <div class="system-item">
+            <span class="checkbox-icon">☑</span>
+            <span>${s.system_name}${s.other_description ? ` - ${s.other_description}` : ''}</span>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+    ` : ''}
 
     ${renderChecklistItems(beginningOfDay, 'Beginning of Day Checklist')}
     ${renderChecklistItems(endOfDay, 'End of Day Checklist')}
 
-    <div class="section">
-      <h2>Operating Systems in Use Today</h2>
-      <div class="systems-grid">
-        ${operatingSystems.map(s => `
-          <div class="system-item">
-            <div class="checkbox checked">✓</div>
-            <span>${s.system_name}</span>
-          </div>
-        `).join('') || '<p>No systems recorded</p>'}
-      </div>
-    </div>
-
-    <div class="page-footer">
-      <p>Daily Course Assessment | ${assessment.site || 'N/A'} | ${formatDate(assessment.assessment_date)}</p>
-    </div>
-  </div>
-
-  <!-- Page 2: Pre-Use Inspections -->
-  <div class="page">
-    <div class="page-header">
-      ${acctLogo ? `<img src="${acctLogo}" alt="ACCT Logo" class="logo">` : ''}
-      <div class="page-title">
-        <h1>Pre-Use Inspections</h1>
-        <div class="subtitle">${assessment.site || 'N/A'}</div>
-      </div>
-      ${ropeWorksLogo ? `<img src="${ropeWorksLogo}" alt="Rope Works Logo" class="logo">` : ''}
-    </div>
+    <div class="page-break"></div>
 
     ${renderChecklistItems(equipmentChecks, 'Equipment Inspection')}
     ${renderChecklistItems(structureChecks, 'Structure Inspection')}
     ${renderChecklistItems(environmentChecks, 'Environment Inspection')}
 
-    <div class="page-footer">
-      <p>Daily Course Assessment | ${assessment.site || 'N/A'} | ${formatDate(assessment.assessment_date)} | Page 2</p>
+    <div class="disclaimer">
+      <div class="disclaimer-title">DISCLAIMER</div>
+      <div class="disclaimer-text">
+        This daily assessment form documents the operational readiness checks performed for the challenge course facility. 
+        It is intended to verify that all safety systems, equipment, and environmental conditions meet operational standards 
+        before and after use. This document should be retained as part of the facility's operational records. Any items 
+        marked as incomplete or requiring attention should be addressed before course operations begin or resume.
+      </div>
+    </div>
+
+    <div class="footer">
+      <p>Generated on ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
+      <p style="margin-top: 5px;">Rope Works Daily Course Assessment | ${assessment.site || 'N/A'}</p>
     </div>
   </div>
 </body>
