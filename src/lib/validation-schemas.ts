@@ -27,7 +27,7 @@ export const systemSchema = z.object({
   system_name: z.string().optional().nullable(),
   result: z.enum(['pass', 'pass w/provisions', 'fail', 'na']),
   comments: z.string().max(2000).optional().nullable(),
-  created_at: z.string().optional(),
+  created_at: z.string().optional().nullable(),
 });
 
 // Zipline validation schema
@@ -46,7 +46,7 @@ export const ziplineSchema = z.object({
   braking_result: z.enum(['pass', 'pass w/provisions', 'fail', 'na']).optional().nullable(),
   ead_result: z.enum(['pass', 'pass w/provisions', 'fail', 'na']).optional().nullable(),
   comments: z.string().max(2000).optional().nullable(),
-  created_at: z.string().optional(),
+  created_at: z.string().optional().nullable(),
 });
 
 // Equipment validation schema
@@ -59,7 +59,7 @@ export const equipmentSchema = z.object({
   quantity: z.number().int().positive().optional().nullable(),
   result: z.enum(['pass', 'pass w/provisions', 'fail', 'na']),
   comments: z.string().max(2000).optional().nullable(),
-  created_at: z.string().optional(),
+  created_at: z.string().optional().nullable(),
 });
 
 // Standard validation schema
@@ -69,7 +69,7 @@ export const standardSchema = z.object({
   standard_name: z.string().optional().nullable(),
   has_documentation: z.boolean(),
   comments: z.string().max(2000).optional().nullable(),
-  created_at: z.string().optional(),
+  created_at: z.string().optional().nullable(),
 });
 
 // Summary validation schema
@@ -80,7 +80,7 @@ export const summarySchema = z.object({
   critical_actions: z.string().max(5000).optional().nullable(),
   future_considerations: z.string().max(5000).optional().nullable(),
   next_inspection_date: z.string().optional().nullable(),
-  created_at: z.string().optional(),
+  created_at: z.string().optional().nullable(),
 });
 
 // Complete inspection package validation
