@@ -13,6 +13,7 @@ import { FileText, MoreVertical, Trash2, Download, Check, Cloud, User } from "lu
 import { triggerHaptic } from "@/lib/haptics";
 import { parseLocalDate } from "@/lib/date-utils";
 import { SnowPile } from "@/components/christmas/SnowPile";
+import { Icicles } from "@/components/christmas/Icicles";
 
 interface ReportCardProps {
   report: any;
@@ -201,6 +202,7 @@ export function ReportCard({ report, type, onDelete, onClick, getStatusBadge }: 
           </div>
         </div>
       </CardContent>
+      <Icicles />
     </Card>
   );
 }
