@@ -473,3 +473,71 @@ button[title="Sync"],
     padding-right: max(1rem, var(--safe-area-right));
   }
 }
+
+/* Christmas Theme Animations */
+@keyframes snowfall {
+  0% {
+    transform: translateY(-10vh) translateX(0) rotate(0deg);
+  }
+  25% {
+    transform: translateY(25vh) translateX(10px) rotate(90deg);
+  }
+  50% {
+    transform: translateY(50vh) translateX(-10px) rotate(180deg);
+  }
+  75% {
+    transform: translateY(75vh) translateX(10px) rotate(270deg);
+  }
+  100% {
+    transform: translateY(110vh) translateX(0) rotate(360deg);
+  }
+}
+
+@keyframes christmas-glow {
+  0%, 100% {
+    opacity: 1;
+    filter: brightness(1);
+  }
+  50% {
+    opacity: 0.6;
+    filter: brightness(0.7);
+  }
+}
+
+@keyframes twinkle {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+
+.animate-snowfall {
+  animation: snowfall linear infinite;
+}
+
+.animate-christmas-glow {
+  animation: christmas-glow 1.5s ease-in-out infinite;
+}
+
+.animate-twinkle {
+  animation: twinkle 2s ease-in-out infinite;
+}
+
+/* Christmas gradient background */
+.christmas-gradient {
+  background: linear-gradient(
+    135deg,
+    hsl(0, 70%, 25%) 0%,
+    hsl(120, 60%, 20%) 50%,
+    hsl(0, 70%, 25%) 100%
+  );
+}
+
+/* Christmas card border glow */
+.christmas-card-glow {
+  box-shadow: 
+    0 0 10px hsl(0, 100%, 50%, 0.1),
+    0 0 20px hsl(120, 100%, 40%, 0.05);
+}
