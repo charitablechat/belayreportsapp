@@ -39,6 +39,9 @@ import { getOfflineInspections, deleteOfflineInspection, queueOperation, saveIns
 import { ContactDeveloperSheet } from "@/components/ContactDeveloperSheet";
 import { InspectionsEmptyState, TrainingsEmptyState, DailyAssessmentsEmptyState } from "@/components/EmptyState";
 import { getUserWithCache } from "@/lib/cached-auth";
+/* Christmas Theme Components */
+import { Snowfall } from "@/components/christmas/Snowfall";
+import { HolidayBanner } from "@/components/christmas/HolidayBanner";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -519,6 +522,9 @@ export default function Dashboard() {
 
   return (
     <div className="relative min-h-screen">
+      {/* Christmas Snowfall Animation */}
+      <Snowfall />
+      
       {/* Pull to Refresh Indicator - Mobile Only */}
       {isActive && (
         <div 
@@ -546,10 +552,10 @@ export default function Dashboard() {
         </div>
       )}
       
-      {/* Background - Video on desktop, gradient on mobile */}
+      {/* Background - Christmas gradient on mobile, video on desktop */}
       <div className="absolute inset-0 z-0">
-        {/* Static gradient fallback for mobile and reduced motion */}
-        <div className="absolute inset-0 bg-gradient-to-br from-primary/20 via-secondary/10 to-accent/20 md:hidden" />
+        {/* Christmas gradient for mobile */}
+        <div className="absolute inset-0 bg-gradient-to-br from-red-900/30 via-green-900/20 to-red-900/30 md:hidden" />
         
         {/* Video background - desktop only, respects reduced motion */}
         <video 
@@ -567,9 +573,12 @@ export default function Dashboard() {
         </video>
         
         {/* Gradient fallback when motion is reduced */}
-        <div className="absolute inset-0 bg-gradient-to-br from-primary/20 via-secondary/10 to-accent/20 hidden motion-reduce:block" />
+        <div className="absolute inset-0 bg-gradient-to-br from-red-900/30 via-green-900/20 to-red-900/30 hidden motion-reduce:block" />
       </div>
       <div className="relative z-10 min-h-screen bg-background/80 backdrop-blur-sm">
+        {/* Holiday Banner */}
+        <HolidayBanner />
+        
         <header className="border-b bg-card/95 backdrop-blur-sm">
         <div className="container mx-auto px-1 md:px-4 py-3 md:py-4">
           {/* Top row - Logos, status indicators, and user dropdown */}
@@ -712,10 +721,15 @@ export default function Dashboard() {
             <div className="container mx-auto px-2 md:px-4 py-16">
               <div className="text-center mb-8">
                 <h2 className="text-4xl font-bold text-primary dark:text-white mb-2">
+                  <span className="mr-2">🎄</span>
                   Welcome to Rope Works
+                  <span className="ml-2">🎄</span>
                 </h2>
                 <p className="text-lg text-muted-foreground dark:text-neutral-200">
                   Choose a report type to get started
+                </p>
+                <p className="text-sm text-green-600 dark:text-green-400 mt-2 font-medium">
+                  ❄️ Wishing you a safe and joyful holiday season! ❄️
                 </p>
               </div>
 
