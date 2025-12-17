@@ -42,6 +42,8 @@ import { getUserWithCache } from "@/lib/cached-auth";
 /* Christmas Theme Components */
 import { Snowfall } from "@/components/christmas/Snowfall";
 import { HolidayBanner } from "@/components/christmas/HolidayBanner";
+import { SnowPile } from "@/components/christmas/SnowPile";
+import { Icicles } from "@/components/christmas/Icicles";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -736,13 +738,14 @@ export default function Dashboard() {
               <div className="grid md:grid-cols-3 gap-6 max-w-6xl mx-auto">
                 {/* INSPECTION CARD - FUNCTIONAL */}
                 <Card 
-                  className="relative overflow-hidden hover:shadow-2xl transition-all duration-300 border-2 hover:border-blue-500 cursor-pointer group"
+                  className="relative overflow-visible hover:shadow-2xl transition-all duration-300 border-2 hover:border-blue-500 cursor-pointer group"
                   onClick={() => {
                     triggerHaptic('light'); // Haptic feedback when starting new inspection
                     navigate("/inspection/new");
                   }}
                 >
-                  <div className="absolute inset-0 bg-gradient-to-br from-blue-50 to-transparent opacity-50" />
+                  <SnowPile />
+                  <div className="absolute inset-0 bg-gradient-to-br from-blue-50 to-transparent opacity-50 rounded-lg" />
                   <CardHeader className="relative z-10 text-center pb-4">
                     <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-blue-100 flex items-center justify-center group-hover:scale-110 transition-transform">
                       <FileText className="w-8 h-8 text-blue-600" />
@@ -758,17 +761,19 @@ export default function Dashboard() {
                       <ArrowRight className="w-4 h-4 ml-2" />
                     </GradientButton>
                   </CardContent>
+                  <Icicles />
                 </Card>
 
                 {/* TRAINING CARD - FUNCTIONAL */}
                 <Card 
-                  className="relative overflow-hidden hover:shadow-2xl transition-all duration-300 border-2 hover:border-green-500 cursor-pointer group"
+                  className="relative overflow-visible hover:shadow-2xl transition-all duration-300 border-2 hover:border-green-500 cursor-pointer group"
                   onClick={() => {
                     triggerHaptic('light');
                     navigate("/training/new");
                   }}
                 >
-                  <div className="absolute inset-0 bg-gradient-to-br from-green-50 to-transparent opacity-50" />
+                  <SnowPile />
+                  <div className="absolute inset-0 bg-gradient-to-br from-green-50 to-transparent opacity-50 rounded-lg" />
                   <CardHeader className="relative z-10 text-center pb-4">
                     <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-green-100 flex items-center justify-center group-hover:scale-110 transition-transform">
                       <GraduationCap className="w-8 h-8 text-green-600" />
@@ -784,17 +789,19 @@ export default function Dashboard() {
                       <ArrowRight className="w-4 h-4 ml-2" />
                     </GradientButton>
                   </CardContent>
+                  <Icicles />
                 </Card>
 
                 {/* DAILY COURSE ASSESSMENT CARD - FUNCTIONAL */}
                 <Card 
-                  className="relative overflow-hidden hover:shadow-2xl transition-all duration-300 border-2 hover:border-purple-500 cursor-pointer group"
+                  className="relative overflow-visible hover:shadow-2xl transition-all duration-300 border-2 hover:border-purple-500 cursor-pointer group"
                   onClick={() => {
                     triggerHaptic('light');
                     navigate("/daily-assessment/new");
                   }}
                 >
-                  <div className="absolute inset-0 bg-gradient-to-br from-purple-50 to-transparent opacity-50" />
+                  <SnowPile />
+                  <div className="absolute inset-0 bg-gradient-to-br from-purple-50 to-transparent opacity-50 rounded-lg" />
                   <CardHeader className="relative z-10 text-center pb-4">
                     <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-purple-100 flex items-center justify-center group-hover:scale-110 transition-transform">
                       <FileText className="w-8 h-8 text-purple-600" />
@@ -810,6 +817,7 @@ export default function Dashboard() {
                       <ArrowRight className="w-4 h-4 ml-2" />
                     </GradientButton>
                   </CardContent>
+                  <Icicles />
                 </Card>
               </div>
             </div>
