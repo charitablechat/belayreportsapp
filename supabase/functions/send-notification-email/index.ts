@@ -5,7 +5,7 @@ import { checkRateLimit, getClientIP, createRateLimitResponse } from "../_shared
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-webhook-secret",
 };
 
 interface NotificationEmailRequest {
@@ -31,6 +31,20 @@ serve(async (req) => {
   }
 
   try {
+    // Validate webhook secret from database trigger
+    const webhookSecret = req.headers.get('x-webhook-secret');
+    const expectedWebhookSecret = Deno.env.get('WEBHOOK_SECRET');
+    
+    if (!webhookSecret || !expectedWebhookSecret || webhookSecret !== expectedWebhookSecret) {
+      console.error('Invalid or missing webhook secret');
+      return new Response(
+        JSON.stringify({ success: false, error: 'Unauthorized - Invalid webhook secret' }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    console.log('Webhook secret validated - request from database trigger');
+
     // Rate limiting - 10 emails per minute per IP
     const clientIP = getClientIP(req);
     const rateLimitResult = checkRateLimit(`notification-email:${clientIP}`, {
@@ -54,18 +68,10 @@ serve(async (req) => {
 
     const resend = new Resend(resendApiKey);
 
-    // Check for service role authorization (from database trigger)
-    const authHeader = req.headers.get("Authorization");
-    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-    
-    let isServiceRole = false;
-    if (authHeader && authHeader === `Bearer ${serviceRoleKey}`) {
-      isServiceRole = true;
-    }
-
     // Create Supabase admin client
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey!, {
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
       auth: { persistSession: false }
     });
 
