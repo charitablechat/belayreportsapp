@@ -1632,7 +1632,6 @@ export type Database = {
         Args: { org_name: string }
         Returns: string
       }
-      get_service_role_key: { Args: never; Returns: string }
       get_table_record_count: {
         Args: { p_schema_name?: string; p_table_name: string }
         Returns: number
@@ -1645,6 +1644,7 @@ export type Database = {
         }
         Returns: boolean
       }
+      internal_get_webhook_secret: { Args: never; Returns: string }
       is_super_admin: { Args: never; Returns: boolean }
       merge_organizations: {
         Args: {
