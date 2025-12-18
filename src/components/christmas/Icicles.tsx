@@ -51,42 +51,20 @@ export function Icicles({ className = "" }: IciclesProps) {
         <line x1="48" y1="3" x2="48" y2="11" stroke="#ffffff" strokeWidth="0.5" opacity="0.6" />
         <line x1="13" y1="3" x2="13" y2="9" stroke="#ffffff" strokeWidth="0.5" opacity="0.6" />
         
-        {/* Animated water droplets */}
-        <circle cx="128" cy="14" r="1" fill="url(#dropletGradient)" className="animate-drip-1" />
-        <circle cx="48" cy="13" r="0.8" fill="url(#dropletGradient)" className="animate-drip-2" />
-        <circle cx="168" cy="12" r="0.9" fill="url(#dropletGradient)" className="animate-drip-3" />
+        {/* Animated water droplets using native SVG animations */}
+        <circle cx="128" cy="14" r="1" fill="url(#dropletGradient)">
+          <animate attributeName="cy" values="14;20;14" dur="3s" repeatCount="indefinite" keyTimes="0;0.9;1" />
+          <animate attributeName="opacity" values="0.8;1;0.6;0;0.8" dur="3s" repeatCount="indefinite" keyTimes="0;0.1;0.9;0.99;1" />
+        </circle>
+        <circle cx="48" cy="13" r="0.8" fill="url(#dropletGradient)">
+          <animate attributeName="cy" values="13;19;13" dur="3.5s" repeatCount="indefinite" keyTimes="0;0.9;1" begin="1.2s" />
+          <animate attributeName="opacity" values="0.8;1;0.6;0;0.8" dur="3.5s" repeatCount="indefinite" keyTimes="0;0.1;0.9;0.99;1" begin="1.2s" />
+        </circle>
+        <circle cx="168" cy="12" r="0.9" fill="url(#dropletGradient)">
+          <animate attributeName="cy" values="12;18;12" dur="4s" repeatCount="indefinite" keyTimes="0;0.9;1" begin="2.4s" />
+          <animate attributeName="opacity" values="0.8;1;0.6;0;0.8" dur="4s" repeatCount="indefinite" keyTimes="0;0.1;0.9;0.99;1" begin="2.4s" />
+        </circle>
       </svg>
-      
-      <style>{`
-        .animate-drip-1 {
-          animation: drip 3s ease-in infinite;
-          animation-delay: 0s;
-        }
-        .animate-drip-2 {
-          animation: drip 3.5s ease-in infinite;
-          animation-delay: 1.2s;
-        }
-        .animate-drip-3 {
-          animation: drip 4s ease-in infinite;
-          animation-delay: 2.4s;
-        }
-        @keyframes drip {
-          0% {
-            transform: translateY(0);
-            opacity: 0.8;
-          }
-          10% {
-            opacity: 1;
-          }
-          90% {
-            opacity: 0.6;
-          }
-          100% {
-            transform: translateY(6px);
-            opacity: 0;
-          }
-        }
-      `}</style>
     </div>
   );
 }
