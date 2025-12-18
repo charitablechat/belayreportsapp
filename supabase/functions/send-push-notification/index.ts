@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-webhook-secret',
 };
 
 // Input validation schema
@@ -39,21 +39,21 @@ serve(async (req) => {
   }
 
   try {
-    // Get authorization header
-    const authHeader = req.headers.get('Authorization');
-    if (!authHeader) {
-      console.error('Missing authorization header');
+    // Validate webhook secret from database trigger
+    const webhookSecret = req.headers.get('x-webhook-secret');
+    const expectedWebhookSecret = Deno.env.get('WEBHOOK_SECRET');
+    
+    if (!webhookSecret || !expectedWebhookSecret || webhookSecret !== expectedWebhookSecret) {
+      console.error('Invalid or missing webhook secret');
       return new Response(
-        JSON.stringify({ error: 'Unauthorized - Missing authorization header' }),
+        JSON.stringify({ error: 'Unauthorized - Invalid webhook secret' }),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Check if this is a service role request (from database trigger)
-    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-    const isServiceRole = authHeader === `Bearer ${serviceRoleKey}`;
+    console.log('Webhook secret validated - request from database trigger');
     
-    // Parse and validate payload early
+    // Parse and validate payload
     const payload = await req.json();
 
     if (!validateNotificationPayload(payload)) {
@@ -62,51 +62,6 @@ serve(async (req) => {
         JSON.stringify({ error: 'Invalid request payload' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
-    }
-
-    // If not service role, verify user authentication and authorization
-    if (!isServiceRole) {
-      console.log('Authenticating user request');
-      
-      // Create Supabase client with user's JWT for authorization check
-      const supabaseClient = createClient(
-        Deno.env.get('SUPABASE_URL') ?? '',
-        Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-        { global: { headers: { Authorization: authHeader } } }
-      );
-
-      // Verify user is authenticated
-      const { data: { user }, error: authError } = await supabaseClient.auth.getUser();
-      if (authError || !user) {
-        console.error('Authentication failed:', authError);
-        return new Response(
-          JSON.stringify({ error: 'Unauthorized - Invalid token' }),
-          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-
-      console.log('Received notification request from user:', user.id);
-
-      // Verify user is super_admin for the organization
-      const { data: userRoles, error: rolesError } = await supabaseClient
-        .from('user_roles')
-        .select('role')
-        .eq('user_id', user.id)
-        .eq('organization_id', payload.organizationId)
-        .eq('role', 'super_admin')
-        .single();
-
-      if (rolesError || !userRoles) {
-        console.error('User is not a super_admin for this organization:', user.id, payload.organizationId);
-        return new Response(
-          JSON.stringify({ error: 'Forbidden - Super admin access required' }),
-          { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-
-      console.log('Authorization verified for super_admin:', user.id);
-    } else {
-      console.log('Service role authenticated - request from database trigger');
     }
 
     // Create service role client for privileged operations
