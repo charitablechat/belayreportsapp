@@ -203,10 +203,11 @@ serve(async (req) => {
     const ziplines = ziplinesRes.data || [];
     const summary = summaryRes.data;
 
-    // Format dates
+    // Format dates in Central Time (CST/CDT)
     const formatDate = (dateStr: string | null) => {
       if (!dateStr) return "N/A";
       return new Date(dateStr).toLocaleDateString("en-US", {
+        timeZone: "America/Chicago",
         year: "numeric",
         month: "long",
         day: "numeric",
