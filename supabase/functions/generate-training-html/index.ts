@@ -406,6 +406,15 @@ serve(async (req) => {
     </div>
     ` : ''}
 
+    ${content.immediateAttention.length > 0 ? `
+    <div class="section">
+      <div class="section-title" style="background: #dc2626;">Actions Requiring Immediate Attention</div>
+      <ul>
+        ${content.immediateAttention.map(item => `<li style="border-left-color: #dc2626;">⚠ ${item}</li>`).join('')}
+      </ul>
+    </div>
+    ` : ''}
+
     ${content.verifiableItems.length > 0 ? `
     <div class="section">
       <div class="section-title">Items Verified During Training</div>
@@ -420,15 +429,6 @@ serve(async (req) => {
       <div class="section-title">Systems in Place</div>
       <ul>
         ${content.systemsInPlace.map(item => `<li>☑ ${item}</li>`).join('')}
-      </ul>
-    </div>
-    ` : ''}
-
-    ${content.immediateAttention.length > 0 ? `
-    <div class="section">
-      <div class="section-title" style="background: #dc2626;">Actions Requiring Immediate Attention</div>
-      <ul>
-        ${content.immediateAttention.map(item => `<li style="border-left-color: #dc2626;">⚠ ${item}</li>`).join('')}
       </ul>
     </div>
     ` : ''}
