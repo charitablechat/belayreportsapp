@@ -1005,7 +1005,7 @@ export default function TrainingForm() {
                 ) : (
                   <>
                     <Save className={isMobile ? "w-5 h-5 mr-1.5" : "w-4 h-4 mr-2"} />
-                    {isMobile ? "" : "Save"}
+                    {isMobile ? "" : "Save Progress"}
                   </>
                 )}
               </Button>
@@ -1024,21 +1024,23 @@ export default function TrainingForm() {
                   </>
                 )}
               </Button>
-              <Button
-                variant="outline"
-                size={isMobile ? "default" : "sm"}
-                onClick={handleGenerateHTML}
-                disabled={isGeneratingHTML || !isOnline}
-              >
-                {isGeneratingHTML ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <>
-                    <FileText className={isMobile ? "w-5 h-5 mr-1.5" : "w-4 h-4 mr-2"} />
-                    {isMobile ? "" : "Report"}
-                  </>
-                )}
-              </Button>
+              {training?.status === 'completed' && (
+                <Button
+                  variant="outline"
+                  size={isMobile ? "default" : "sm"}
+                  onClick={handleGenerateHTML}
+                  disabled={isGeneratingHTML || !isOnline}
+                >
+                  {isGeneratingHTML ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <>
+                      <FileText className={isMobile ? "w-5 h-5 mr-1.5" : "w-4 h-4 mr-2"} />
+                      {isMobile ? "" : "Generate Report"}
+                    </>
+                  )}
+                </Button>
+              )}
             </div>
           </div>
         </div>

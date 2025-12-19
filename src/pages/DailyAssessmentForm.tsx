@@ -3,7 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useFormConfiguration } from "@/hooks/useFormConfiguration";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Save, FileText, Loader2, WifiOff, Check, Sunrise, Sunset, Settings, Package, Building, Cloud, LogOut, User, CloudOff, SendHorizonal } from "lucide-react";
+import { ArrowLeft, Save, FileText, Loader2, WifiOff, Check, Sunrise, Sunset, Settings, Package, Building, Cloud, LogOut, User, CloudOff, CheckCircle } from "lucide-react";
 import { usePWA } from "@/hooks/usePWA";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
@@ -1038,21 +1038,6 @@ export default function DailyAssessmentForm() {
             
             <div className="flex items-center gap-2">
               <Button 
-                variant="outline" 
-                size={isMobileView ? "default" : "sm"} 
-                onClick={handleGenerateReport} 
-                disabled={generating}
-              >
-                {generating ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <>
-                    <FileText className={isMobileView ? "w-5 h-5 mr-1.5" : "w-4 h-4 mr-2"} />
-                    {isMobileView ? "" : "Report"}
-                  </>
-                )}
-              </Button>
-              <Button 
                 variant="outline"
                 size={isMobileView ? "default" : "sm"} 
                 onClick={handleSaveProgress} 
@@ -1063,7 +1048,7 @@ export default function DailyAssessmentForm() {
                 ) : (
                   <>
                     <Save className={isMobileView ? "w-5 h-5 mr-1.5" : "w-4 h-4 mr-2"} />
-                    <span>{isMobileView ? "Save" : "Save Progress"}</span>
+                    {isMobileView ? "" : "Save Progress"}
                   </>
                 )}
               </Button>
@@ -1071,17 +1056,34 @@ export default function DailyAssessmentForm() {
                 size={isMobileView ? "default" : "sm"} 
                 onClick={() => setShowSubmitDialog(true)} 
                 disabled={saving || submitting}
-                className={isMobileView ? "min-w-[90px] h-10 text-sm font-medium" : ""}
+                className={isMobileView ? "min-w-[100px] h-10 text-sm font-medium" : ""}
               >
                 {submitting ? (
                   <Loader2 className="w-4 h-4 animate-spin" />
                 ) : (
                   <>
-                    <SendHorizonal className={isMobileView ? "w-5 h-5 mr-1.5" : "w-4 h-4 mr-2"} />
-                    <span>Submit</span>
+                    <CheckCircle className={isMobileView ? "w-5 h-5 mr-1.5" : "w-4 h-4 mr-2"} />
+                    <span>Complete</span>
                   </>
                 )}
               </Button>
+              {assessment?.status === 'completed' && (
+                <Button 
+                  variant="outline" 
+                  size={isMobileView ? "default" : "sm"} 
+                  onClick={handleGenerateReport} 
+                  disabled={generating}
+                >
+                  {generating ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <>
+                      <FileText className={isMobileView ? "w-5 h-5 mr-1.5" : "w-4 h-4 mr-2"} />
+                      {isMobileView ? "" : "Generate Report"}
+                    </>
+                  )}
+                </Button>
+              )}
             </div>
           </div>
         </div>
