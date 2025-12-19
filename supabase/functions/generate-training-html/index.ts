@@ -434,6 +434,12 @@ serve(async (req) => {
     ${content.systemsInPlace.length > 0 ? `
     <div class="section">
       <div class="section-title">Systems in Place</div>
+      <p style="margin: 10px 0 8px 0; font-weight: 600; color: #333;">
+        Check ONLY if the following are in place:
+      </p>
+      <p style="margin: 0 0 15px 0; font-style: italic; color: #666; line-height: 1.6;">
+        The following were either addressed in discussion with training participants or a staff supervisor. We recommend following up to address any unchecked areas.
+      </p>
       <ul>
         ${content.systemsInPlace.map(item => `<li>☑ ${item}</li>`).join('')}
       </ul>
