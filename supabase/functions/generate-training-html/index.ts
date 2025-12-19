@@ -431,7 +431,6 @@ serve(async (req) => {
     </div>
     ` : ''}
 
-    ${content.systemsInPlace.length > 0 ? `
     <div class="section">
       <div class="section-title">Systems in Place</div>
       <p style="margin: 10px 0 8px 0; font-weight: 600; color: #333;">
@@ -441,10 +440,24 @@ serve(async (req) => {
         The following were either addressed in discussion with training participants or a staff supervisor. We recommend following up to address any unchecked areas.
       </p>
       <ul>
-        ${content.systemsInPlace.map(item => `<li>☑ ${item}</li>`).join('')}
+        ${(() => {
+          const ALL_SYSTEMS_IN_PLACE = [
+            'A system for conducting and documenting a periodic internal monitoring of the course, surrounding environment, and equipment',
+            'A system in place for incident documentation',
+            'A system in place to inform participants of the inherent and other risks associated with participation',
+            'A system in place for assessing and confirming activity corridors are clear of obstructions',
+            'A system in place to engage a qualified person to review the site\'s risk management and program quality every five years. (CHPT 2 ANSI/ACCT B.2.7)',
+            'Unable to check any of the above at this time'
+          ];
+          return ALL_SYSTEMS_IN_PLACE.map(item => {
+            const isChecked = content.systemsInPlace.includes(item);
+            const checkmark = isChecked ? '☑' : '☐';
+            const style = isChecked ? '' : 'style="border-left-color: #94a3b8; background: #f1f5f9;"';
+            return `<li ${style}>${checkmark} ${item}</li>`;
+          }).join('');
+        })()}
       </ul>
     </div>
-    ` : ''}
 
     ${content.summary.observations || content.summary.recommendations ? `
     <div class="section">
