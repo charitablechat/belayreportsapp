@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { GradientButton } from "@/components/ui/gradient-button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, LogOut, FileText, GraduationCap, ArrowRight, Download, Settings, Trash2, MoreVertical, Bell, AlertCircle, Cloud, User, Loader2, Check, RefreshCw, MessageCircle, Shield } from "lucide-react";
+import { Plus, LogOut, FileText, GraduationCap, ArrowRight, Download, Settings, Trash2, MoreVertical, Bell, AlertCircle, Cloud, User, Loader2, Check, RefreshCw, MessageCircle, Shield, GitMerge } from "lucide-react";
 import { UserAvatar } from "@/components/ui/user-avatar";
 import { toast } from "sonner";
 import { format } from "date-fns";
@@ -594,6 +594,33 @@ export default function Dashboard() {
             <div className="flex items-center gap-2">
               <NetworkQualityIndicator />
               <SyncStatusIndicator />
+              
+              {/* Sync Conflicts Resolution Button */}
+              {hasConflicts && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button 
+                      variant="destructive" 
+                      size="sm"
+                      className="gap-1 animate-pulse"
+                      onClick={() => {
+                        triggerHaptic('warning');
+                        setConflictsDialogOpen(true);
+                      }}
+                    >
+                      <GitMerge className="w-4 h-4" />
+                      <span className="hidden sm:inline">Resolve</span>
+                      <Badge variant="secondary" className="ml-1 bg-white/20 text-white text-xs px-1.5">
+                        {conflictCount}
+                      </Badge>
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>{conflictCount} sync conflict{conflictCount > 1 ? 's' : ''} need resolution</p>
+                  </TooltipContent>
+                </Tooltip>
+              )}
+              
               {isSuperAdmin && (
                 <Badge variant="default" className="bg-warning text-warning-foreground border-warning/50 shadow-lg shadow-warning/20 animate-pulse hidden sm:flex items-center gap-1">
                   <Shield className="w-3 h-3" />
@@ -646,6 +673,18 @@ export default function Dashboard() {
                 <DropdownMenuItem onClick={() => setNotificationsDialogOpen(true)}>
                   <Bell className="w-4 h-4 mr-2" />
                   Notifications
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => {
+                  triggerHaptic('light');
+                  setConflictsDialogOpen(true);
+                }}>
+                  <GitMerge className="w-4 h-4 mr-2" />
+                  Sync Conflicts
+                  {hasConflicts && (
+                    <Badge variant="destructive" className="ml-auto text-xs px-1.5">
+                      {conflictCount}
+                    </Badge>
+                  )}
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => navigate('/capabilities')}>
                   Device Capabilities
