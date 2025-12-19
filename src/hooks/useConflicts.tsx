@@ -66,12 +66,19 @@ export const useConflicts = () => {
   });
 
   // Auto-resolve stale conflicts after data is fetched
+  // PREVENTIVE MEASURE: Aggressively clean up conflicts that are no longer relevant
   useEffect(() => {
     if (!conflicts || conflicts.length === 0) return;
     
     const staleConflictIds: string[] = [];
+    const now = Date.now();
     
     for (const conflict of conflicts) {
+      // Auto-resolve if:
+      // 1. Inspection was synced after conflict was created
+      // 2. Conflict is older than 24 hours (stale cleanup)
+      // 3. Inspection no longer exists (orphaned conflict)
+      
       if (conflict.inspection?.synced_at) {
         const syncedAt = new Date(conflict.inspection.synced_at).getTime();
         const conflictCreatedAt = new Date(conflict.created_at).getTime();
@@ -79,7 +86,21 @@ export const useConflicts = () => {
         // If inspection synced after conflict was created, mark for auto-resolve
         if (syncedAt > conflictCreatedAt) {
           staleConflictIds.push(conflict.id);
+          continue;
         }
+      }
+      
+      // Auto-resolve conflicts older than 24 hours as stale
+      const conflictAge = now - new Date(conflict.created_at).getTime();
+      const twentyFourHours = 24 * 60 * 60 * 1000;
+      if (conflictAge > twentyFourHours) {
+        staleConflictIds.push(conflict.id);
+        continue;
+      }
+      
+      // Auto-resolve orphaned conflicts (inspection no longer exists)
+      if (!conflict.inspection) {
+        staleConflictIds.push(conflict.id);
       }
     }
     
