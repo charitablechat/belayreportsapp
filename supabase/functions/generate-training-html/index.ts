@@ -135,8 +135,9 @@ serve(async (req) => {
       </div>
     `;
 
-    const pageFooter = `
+    const createPageFooter = (pageNum: number, totalPages: number) => `
       <div class="page-footer">
+        <div class="page-number">Page ${pageNum} of ${totalPages}</div>
         <div class="footer-line"></div>
         <div class="footer-text">
           The information contained in this report has been documented by a Qualified Professional.<br>
@@ -145,6 +146,8 @@ serve(async (req) => {
         </div>
       </div>
     `;
+    
+    const totalPages = 4;
 
     // Build systems in place HTML
     const ALL_SYSTEMS_IN_PLACE = [
@@ -226,6 +229,13 @@ serve(async (req) => {
     .page-footer {
       margin-top: 30px;
       padding-top: 15px;
+    }
+    
+    .page-footer .page-number {
+      text-align: center;
+      font-size: 10px;
+      color: #64748b;
+      margin-bottom: 8px;
     }
     
     .page-footer .footer-line {
@@ -519,7 +529,7 @@ serve(async (req) => {
         ${content.standardsText}
       </div>
     </div>
-    ${pageFooter}
+    ${createPageFooter(1, totalPages)}
   </div>
 
   <!-- Page 2: Delivery, Operating Systems, Immediate Attention -->
@@ -559,7 +569,7 @@ serve(async (req) => {
       </div>
       ` : ''}
     </div>
-    ${pageFooter}
+    ${createPageFooter(2, totalPages)}
   </div>
 
   <!-- Page 3: Verifiable Items and Systems in Place -->
@@ -594,7 +604,7 @@ serve(async (req) => {
         </ul>
       </div>
     </div>
-    ${pageFooter}
+    ${createPageFooter(3, totalPages)}
   </div>
 
   <!-- Page 4: Training Summary and Disclaimer -->
@@ -656,7 +666,7 @@ serve(async (req) => {
         Generated on ${new Date().toLocaleString('en-US', { timeZone: 'America/Chicago', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
       </div>
     </div>
-    ${pageFooter}
+    ${createPageFooter(4, totalPages)}
   </div>
 </body>
 </html>`;
