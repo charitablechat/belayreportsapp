@@ -532,7 +532,7 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({ html }),
       {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        headers: { ...corsHeaders, 'Content-Type': 'application/json; charset=utf-8' },
         status: 200,
       }
     );
@@ -542,7 +542,7 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({ error: errorMessage }),
       {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        headers: { ...corsHeaders, 'Content-Type': 'application/json; charset=utf-8' },
         status: 500,
       }
     );
