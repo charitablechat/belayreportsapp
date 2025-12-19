@@ -123,7 +123,47 @@ serve(async (req) => {
     const trainingData = await fetchTrainingData(trainingId, supabase);
     const content = formatTrainingContent(trainingData);
 
-    // Generate HTML
+    // Helper functions for page header and footer
+    const pageHeader = `
+      <div class="page-header">
+        <div class="header-left">
+          <img src="${ropeWorksLogo}" alt="Rope Works Logo" class="logo">
+        </div>
+        <div class="header-right">
+          <img src="${acctLogo}" alt="ACCT Accredited Vendor" class="badge">
+        </div>
+      </div>
+    `;
+
+    const pageFooter = `
+      <div class="page-footer">
+        <div class="footer-line"></div>
+        <div class="footer-text">
+          The information contained in this report has been documented by a Qualified Professional.<br>
+          This report is effective for one year from the date of inspection. Issued by:<br>
+          Rope Works Inc., PO Box 1074, Dripping Springs, TX 78620
+        </div>
+      </div>
+    `;
+
+    // Build systems in place HTML
+    const ALL_SYSTEMS_IN_PLACE = [
+      'A system for conducting and documenting a periodic internal monitoring of the course, surrounding environment, and equipment',
+      'A system in place for incident documentation',
+      'A system in place to inform participants of the inherent and other risks associated with participation',
+      'A system in place for assessing and confirming activity corridors are clear of obstructions',
+      'A system in place to engage a qualified person to review the site\'s risk management and program quality every five years. (CHPT 2 ANSI/ACCT B.2.7)',
+      'Unable to check any of the above at this time'
+    ];
+    
+    const systemsInPlaceHtml = ALL_SYSTEMS_IN_PLACE.map(item => {
+      const isChecked = content.systemsInPlace.includes(item);
+      const checkmark = isChecked ? '☑' : '☐';
+      const style = isChecked ? '' : 'style="border-left-color: #94a3b8; background: #f1f5f9;"';
+      return `<li ${style}>${checkmark} ${item}</li>`;
+    }).join('');
+
+    // Generate HTML with page-based structure
     const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -143,46 +183,81 @@ serve(async (req) => {
       background: #f5f5f5;
       padding: 10px;
     }
-    .container {
+    
+    /* Page structure for print */
+    .page {
       max-width: 100%;
       width: 100%;
-      margin: 0 auto;
+      margin: 0 auto 20px auto;
       background: white;
       padding: 20px;
       box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+      position: relative;
+      min-height: auto;
     }
-    .header {
+    
+    .page-header {
       display: flex;
       justify-content: space-between;
       align-items: center;
       border-bottom: 3px solid #1e40af;
-      padding-bottom: 20px;
-      margin-bottom: 30px;
+      padding-bottom: 15px;
+      margin-bottom: 20px;
     }
-    .header-left {
+    
+    .page-header .header-left {
       flex: 1;
     }
-    .header-right {
+    
+    .page-header .header-right {
       text-align: right;
     }
-    .logo {
-      max-width: 150px;
-      margin-bottom: 10px;
-    }
-    .badge {
+    
+    .page-header .logo {
       max-width: 120px;
+      height: auto;
     }
-    h1 {
+    
+    .page-header .badge {
+      max-width: 100px;
+      height: auto;
+    }
+    
+    .page-footer {
+      margin-top: 30px;
+      padding-top: 15px;
+    }
+    
+    .page-footer .footer-line {
+      border-top: 2px solid #e2e8f0;
+      margin-bottom: 15px;
+    }
+    
+    .page-footer .footer-text {
+      text-align: center;
+      color: #64748b;
+      font-size: 11px;
+      line-height: 1.5;
+    }
+    
+    .page-content {
+      flex: 1;
+    }
+    
+    .page-title {
       color: #1e40af;
-      font-size: 32px;
-      margin-bottom: 10px;
+      font-size: 28px;
+      margin-bottom: 8px;
     }
-    .subtitle {
+    
+    .page-subtitle {
       color: #64748b;
       font-size: 14px;
+      margin-bottom: 20px;
     }
+    
     .section {
-      margin-bottom: 30px;
+      margin-bottom: 25px;
     }
     .section-title {
       background: #1e40af;
@@ -197,7 +272,7 @@ serve(async (req) => {
       background: #dbeafe;
       padding: 15px;
       border-radius: 4px;
-      margin-bottom: 30px;
+      margin-bottom: 25px;
       color: #1e40af;
       font-size: 14px;
       line-height: 1.6;
@@ -253,7 +328,7 @@ serve(async (req) => {
       padding: 15px;
       border-radius: 4px;
       border-left: 4px solid #f59e0b;
-      margin-top: 30px;
+      margin-bottom: 20px;
     }
     .disclaimer-title {
       font-weight: 700;
@@ -265,24 +340,34 @@ serve(async (req) => {
       font-size: 13px;
       line-height: 1.6;
     }
-    .footer {
-      margin-top: 40px;
-      padding-top: 20px;
-      border-top: 2px solid #e2e8f0;
+    .generated-timestamp {
       text-align: center;
       color: #64748b;
       font-size: 12px;
+      margin-top: 15px;
     }
+    
     @media print {
       body {
         background: white;
         padding: 0;
       }
-      .container {
+      .page {
         box-shadow: none;
-        padding: 20px;
+        padding: 15mm 15mm 20mm 15mm;
+        margin: 0;
+        page-break-after: always;
+        min-height: 100vh;
+      }
+      .page:last-child {
+        page-break-after: auto;
+      }
+      @page {
+        margin: 0;
+        size: letter;
       }
     }
+    
     @media (max-width: 768px) {
       html, body {
         max-width: 100vw;
@@ -291,24 +376,24 @@ serve(async (req) => {
       
       body { padding: 8px; }
       
-      .container {
+      .page {
         padding: 12px;
       }
       
-      .header {
+      .page-header {
         flex-direction: column;
         text-align: center;
         gap: 10px;
       }
       
-      .header-left, .header-right {
+      .page-header .header-left, .page-header .header-right {
         text-align: center;
       }
       
-      .logo { max-width: 100px; }
-      .badge { max-width: 80px; }
+      .page-header .logo { max-width: 100px; }
+      .page-header .badge { max-width: 80px; }
       
-      h1 { font-size: 20px; }
+      .page-title { font-size: 20px; }
       
       .info-grid {
         grid-template-columns: 1fr;
@@ -334,186 +419,192 @@ serve(async (req) => {
         padding: 10px;
         font-size: 11px;
       }
+      
+      .page-footer .footer-text {
+        font-size: 10px;
+      }
     }
 
     @media (max-width: 480px) {
       body { padding: 4px; }
-      .container { padding: 8px; }
-      h1 { font-size: 18px; }
+      .page { padding: 8px; }
+      .page-title { font-size: 18px; }
       .section-title { font-size: 12px; }
     }
   </style>
 </head>
 <body>
-  <div class="container">
-    <div class="header">
-      <div class="header-left">
-        <img src="${ropeWorksLogo}" alt="Rope Works Logo" class="logo">
-        <h1>Training Report</h1>
-        <div class="subtitle">Professional Training Documentation</div>
-      </div>
-      <div class="header-right">
-        <img src="${acctLogo}" alt="ACCT Accredited Vendor" class="badge">
-      </div>
-    </div>
+  <!-- Page 1: Cover and Facility Information -->
+  <div class="page">
+    ${pageHeader}
+    <div class="page-content">
+      <h1 class="page-title">Training Report</h1>
+      <div class="page-subtitle">Professional Training Documentation</div>
 
-    <div class="section">
-      <div class="section-title">Facility Information</div>
-      <div class="info-grid">
-        <div class="info-item">
-          <div class="info-label">Organization</div>
-          <div class="info-value">${content.facilityInfo.organization}</div>
-        </div>
-        <div class="info-item">
-          <div class="info-label">Training Dates</div>
-          <div class="info-value">${content.facilityInfo.startDate} - ${content.facilityInfo.endDate}</div>
-        </div>
-        <div class="info-item">
-          <div class="info-label">Trainer of Record</div>
-          <div class="info-value">${content.facilityInfo.trainerOfRecord}</div>
-        </div>
-        <div class="info-item">
-          <div class="info-label">Trainee Names</div>
-          <div class="info-value">${content.facilityInfo.traineeNames}</div>
-        </div>
-      </div>
-    </div>
-
-    <div class="standards-box">
-      ${content.standardsText}
-    </div>
-
-    ${content.deliveryApproaches.length > 0 ? `
-    <div class="section">
-      <div class="section-title">Delivery Approach</div>
-      <ul>
-        ${content.deliveryApproaches.map(approach => `<li>☑ ${approach}</li>`).join('')}
-      </ul>
-    </div>
-    ` : ''}
-
-    ${content.operatingSystems.length > 0 ? `
-    <div class="section">
-      <div class="section-title">Trained Operating Systems</div>
-      <ul>
-        ${content.operatingSystems.map(sys => `
-          <li>
-            <strong>☑ ${sys.name}</strong>
-            ${sys.description ? `<div class="description">${sys.description}</div>` : ''}
-          </li>
-        `).join('')}
-      </ul>
-    </div>
-    ` : ''}
-
-    ${content.immediateAttention.length > 0 ? `
-    <div class="section">
-      <div class="section-title" style="background: #dc2626;">Actions Requiring Immediate Attention</div>
-      <p style="margin: 10px 0 15px 0; font-style: italic; color: #666;">This area lists requirements the trainer either noted as a deficiency at your site or a need to update procedures/policy during the operations of your aerial adventure training.</p>
-      <ul>
-        ${content.immediateAttention.map(item => `<li style="border-left-color: #dc2626;">⚠ ${item}</li>`).join('')}
-      </ul>
-    </div>
-    ` : ''}
-
-    ${content.verifiableItems.length > 0 ? `
-    <div class="section">
-      <div class="section-title">Items Verified During Training</div>
-      <p style="margin: 10px 0 15px 0; font-style: italic; color: #666; line-height: 1.6;">
-        It is the responsibility of the client to read, understand, and follow all manufacturer guidelines, notices and recalls for the equipment used for your site's operations. This includes proper documentation and inventory tracking of each item used for course operations. This should be done according to a written checklist that is monitored by the course manager or other qualified person at your site. Records should be available at your annual inspection that include and indicate the date of purchase, date of first use and the equipment shall be identifiable by the serial number/tag or other unique identifier that matches your written documentation and the manufacturer retirement criteria.
-      </p>
-      <p style="margin: 0 0 15px 0; font-weight: 600; color: #333;">
-        CHECK ONLY THOSE THAT WERE VERIFIABLE AND IN PLACE DURING TRAINING.
-      </p>
-      <ul>
-        ${content.verifiableItems.map(item => `<li>☑ ${item}</li>`).join('')}
-      </ul>
-    </div>
-    ` : ''}
-
-    <div class="section">
-      <div class="section-title">Systems in Place</div>
-      <p style="margin: 10px 0 8px 0; font-weight: 600; color: #333;">
-        Check ONLY if the following are in place:
-      </p>
-      <p style="margin: 0 0 15px 0; font-style: italic; color: #666; line-height: 1.6;">
-        The following were either addressed in discussion with training participants or a staff supervisor. We recommend following up to address any unchecked areas.
-      </p>
-      <ul>
-        ${(() => {
-          const ALL_SYSTEMS_IN_PLACE = [
-            'A system for conducting and documenting a periodic internal monitoring of the course, surrounding environment, and equipment',
-            'A system in place for incident documentation',
-            'A system in place to inform participants of the inherent and other risks associated with participation',
-            'A system in place for assessing and confirming activity corridors are clear of obstructions',
-            'A system in place to engage a qualified person to review the site\'s risk management and program quality every five years. (CHPT 2 ANSI/ACCT B.2.7)',
-            'Unable to check any of the above at this time'
-          ];
-          return ALL_SYSTEMS_IN_PLACE.map(item => {
-            const isChecked = content.systemsInPlace.includes(item);
-            const checkmark = isChecked ? '☑' : '☐';
-            const style = isChecked ? '' : 'style="border-left-color: #94a3b8; background: #f1f5f9;"';
-            return `<li ${style}>${checkmark} ${item}</li>`;
-          }).join('');
-        })()}
-      </ul>
-    </div>
-
-    ${content.summary.observations || content.summary.recommendations ? `
-    <div class="section">
-      <div class="section-title">Training Summary</div>
-      ${content.summary.observations ? `
-        <div style="margin-bottom: 20px;">
-          <div class="info-label" style="margin-bottom: 8px;">Training Observations</div>
-          <p style="margin: 0 0 12px 0; font-style: italic; color: #666; line-height: 1.5; font-size: 14px;">
-            This area lists/describes any observations at the time of training pertaining to staff, equipment function, or operations:
-          </p>
-          <div class="text-content">${deduplicateHtmlContent(content.summary.observations)}</div>
-        </div>
-      ` : ''}
-      ${content.summary.recommendations ? `
-        <div style="margin-bottom: 20px;">
-          <div class="info-label" style="margin-bottom: 8px;">Training Recommendations</div>
-          <p style="margin: 0 0 12px 0; font-style: italic; color: #666; line-height: 1.5; font-size: 14px;">
-            This area lists recommendations from the trainer after visiting your site regarding staff, equipment function, or operations:
-          </p>
-          <div class="text-content">${deduplicateHtmlContent(content.summary.recommendations)}</div>
-        </div>
-      ` : ''}
-      ${content.summary.personSubmitting || content.summary.submissionDate ? `
-      <div style="margin-top: 20px;">
-        <div class="section-title">Person Submitting Form</div>
-        <p style="margin: 0 0 16px 0; font-style: italic; color: #666; line-height: 1.5; font-size: 14px;">
-          The trainer listed on this report verifies the report is complete and ready for client submission on the following date.
-        </p>
+      <div class="section">
+        <div class="section-title">Facility Information</div>
         <div class="info-grid">
-          ${content.summary.personSubmitting ? `
           <div class="info-item">
-            <div class="info-label">Person Submitting</div>
-            <div class="info-value">${content.summary.personSubmitting}</div>
+            <div class="info-label">Organization</div>
+            <div class="info-value">${content.facilityInfo.organization}</div>
           </div>
-          ` : ''}
-          ${content.summary.submissionDate ? `
           <div class="info-item">
-            <div class="info-label">Submission Date</div>
-            <div class="info-value">${content.summary.submissionDate}</div>
+            <div class="info-label">Training Dates</div>
+            <div class="info-value">${content.facilityInfo.startDate} - ${content.facilityInfo.endDate}</div>
           </div>
-          ` : ''}
+          <div class="info-item">
+            <div class="info-label">Trainer of Record</div>
+            <div class="info-value">${content.facilityInfo.trainerOfRecord}</div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">Trainee Names</div>
+            <div class="info-value">${content.facilityInfo.traineeNames}</div>
+          </div>
         </div>
+      </div>
+
+      <div class="standards-box">
+        ${content.standardsText}
+      </div>
+    </div>
+    ${pageFooter}
+  </div>
+
+  <!-- Page 2: Delivery, Operating Systems, Immediate Attention -->
+  <div class="page">
+    ${pageHeader}
+    <div class="page-content">
+      ${content.deliveryApproaches.length > 0 ? `
+      <div class="section">
+        <div class="section-title">Delivery Approach</div>
+        <ul>
+          ${content.deliveryApproaches.map(approach => `<li>☑ ${approach}</li>`).join('')}
+        </ul>
+      </div>
+      ` : ''}
+
+      ${content.operatingSystems.length > 0 ? `
+      <div class="section">
+        <div class="section-title">Trained Operating Systems</div>
+        <ul>
+          ${content.operatingSystems.map(sys => `
+            <li>
+              <strong>☑ ${sys.name}</strong>
+              ${sys.description ? `<div class="description">${sys.description}</div>` : ''}
+            </li>
+          `).join('')}
+        </ul>
+      </div>
+      ` : ''}
+
+      ${content.immediateAttention.length > 0 ? `
+      <div class="section">
+        <div class="section-title" style="background: #dc2626;">Actions Requiring Immediate Attention</div>
+        <p style="margin: 10px 0 15px 0; font-style: italic; color: #666;">This area lists requirements the trainer either noted as a deficiency at your site or a need to update procedures/policy during the operations of your aerial adventure training.</p>
+        <ul>
+          ${content.immediateAttention.map(item => `<li style="border-left-color: #dc2626;">⚠ ${item}</li>`).join('')}
+        </ul>
       </div>
       ` : ''}
     </div>
-    ` : ''}
+    ${pageFooter}
+  </div>
 
-    <div class="disclaimer">
-      <div class="disclaimer-title">DISCLAIMER</div>
-      <div class="disclaimer-text">${content.disclaimer}</div>
-    </div>
+  <!-- Page 3: Verifiable Items and Systems in Place -->
+  <div class="page">
+    ${pageHeader}
+    <div class="page-content">
+      ${content.verifiableItems.length > 0 ? `
+      <div class="section">
+        <div class="section-title">Items Verified During Training</div>
+        <p style="margin: 10px 0 15px 0; font-style: italic; color: #666; line-height: 1.6;">
+          It is the responsibility of the client to read, understand, and follow all manufacturer guidelines, notices and recalls for the equipment used for your site's operations. This includes proper documentation and inventory tracking of each item used for course operations. This should be done according to a written checklist that is monitored by the course manager or other qualified person at your site. Records should be available at your annual inspection that include and indicate the date of purchase, date of first use and the equipment shall be identifiable by the serial number/tag or other unique identifier that matches your written documentation and the manufacturer retirement criteria.
+        </p>
+        <p style="margin: 0 0 15px 0; font-weight: 600; color: #333;">
+          CHECK ONLY THOSE THAT WERE VERIFIABLE AND IN PLACE DURING TRAINING.
+        </p>
+        <ul>
+          ${content.verifiableItems.map(item => `<li>☑ ${item}</li>`).join('')}
+        </ul>
+      </div>
+      ` : ''}
 
-    <div class="footer">
-      <p>Generated on ${new Date().toLocaleString('en-US', { timeZone: 'America/Chicago', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
-      <p style="margin-top: 5px;">Rope Works Training Report</p>
+      <div class="section">
+        <div class="section-title">Systems in Place</div>
+        <p style="margin: 10px 0 8px 0; font-weight: 600; color: #333;">
+          Check ONLY if the following are in place:
+        </p>
+        <p style="margin: 0 0 15px 0; font-style: italic; color: #666; line-height: 1.6;">
+          The following were either addressed in discussion with training participants or a staff supervisor. We recommend following up to address any unchecked areas.
+        </p>
+        <ul>
+          ${systemsInPlaceHtml}
+        </ul>
+      </div>
     </div>
+    ${pageFooter}
+  </div>
+
+  <!-- Page 4: Training Summary and Disclaimer -->
+  <div class="page">
+    ${pageHeader}
+    <div class="page-content">
+      ${content.summary.observations || content.summary.recommendations ? `
+      <div class="section">
+        <div class="section-title">Training Summary</div>
+        ${content.summary.observations ? `
+          <div style="margin-bottom: 20px;">
+            <div class="info-label" style="margin-bottom: 8px;">Training Observations</div>
+            <p style="margin: 0 0 12px 0; font-style: italic; color: #666; line-height: 1.5; font-size: 14px;">
+              This area lists/describes any observations at the time of training pertaining to staff, equipment function, or operations:
+            </p>
+            <div class="text-content">${deduplicateHtmlContent(content.summary.observations)}</div>
+          </div>
+        ` : ''}
+        ${content.summary.recommendations ? `
+          <div style="margin-bottom: 20px;">
+            <div class="info-label" style="margin-bottom: 8px;">Training Recommendations</div>
+            <p style="margin: 0 0 12px 0; font-style: italic; color: #666; line-height: 1.5; font-size: 14px;">
+              This area lists recommendations from the trainer after visiting your site regarding staff, equipment function, or operations:
+            </p>
+            <div class="text-content">${deduplicateHtmlContent(content.summary.recommendations)}</div>
+          </div>
+        ` : ''}
+        ${content.summary.personSubmitting || content.summary.submissionDate ? `
+        <div style="margin-top: 20px;">
+          <div class="section-title">Person Submitting Form</div>
+          <p style="margin: 0 0 16px 0; font-style: italic; color: #666; line-height: 1.5; font-size: 14px;">
+            The trainer listed on this report verifies the report is complete and ready for client submission on the following date.
+          </p>
+          <div class="info-grid">
+            ${content.summary.personSubmitting ? `
+            <div class="info-item">
+              <div class="info-label">Person Submitting</div>
+              <div class="info-value">${content.summary.personSubmitting}</div>
+            </div>
+            ` : ''}
+            ${content.summary.submissionDate ? `
+            <div class="info-item">
+              <div class="info-label">Submission Date</div>
+              <div class="info-value">${content.summary.submissionDate}</div>
+            </div>
+            ` : ''}
+          </div>
+        </div>
+        ` : ''}
+      </div>
+      ` : ''}
+
+      <div class="disclaimer">
+        <div class="disclaimer-title">DISCLAIMER</div>
+        <div class="disclaimer-text">${content.disclaimer}</div>
+      </div>
+
+      <div class="generated-timestamp">
+        Generated on ${new Date().toLocaleString('en-US', { timeZone: 'America/Chicago', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+      </div>
+    </div>
+    ${pageFooter}
   </div>
 </body>
 </html>`;
