@@ -409,6 +409,7 @@ serve(async (req) => {
     ${content.immediateAttention.length > 0 ? `
     <div class="section">
       <div class="section-title" style="background: #dc2626;">Actions Requiring Immediate Attention</div>
+      <p style="margin: 10px 0 15px 0; font-style: italic; color: #666;">This area lists requirements the trainer either noted as a deficiency at your site or a need to update procedures/policy during the operations of your aerial adventure training.</p>
       <ul>
         ${content.immediateAttention.map(item => `<li style="border-left-color: #dc2626;">⚠ ${item}</li>`).join('')}
       </ul>
