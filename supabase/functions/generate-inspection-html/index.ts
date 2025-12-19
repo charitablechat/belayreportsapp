@@ -838,6 +838,12 @@ serve(async (req) => {
         display: none !important;
       }
 
+      /* Content wrapper - adds padding to prevent content from going under fixed header/footer */
+      .content-wrapper {
+        padding-top: 80px !important;  /* Space for fixed header */
+        padding-bottom: 75px !important; /* Space for fixed footer */
+      }
+
       /* Adjust page content to account for fixed header/footer */
       .page {
         display: block !important;
@@ -871,10 +877,10 @@ serve(async (req) => {
         line-height: 1.4;
       }
 
-      /* Page setup and margins */
+      /* Page setup and margins - increased to account for fixed header/footer */
       @page {
         size: letter portrait;
-        margin: 0.9in 0.5in 0.85in 0.5in;
+        margin: 1in 0.5in 0.9in 0.5in;
       }
 
       /* Prevent breaks within critical elements */
@@ -1223,6 +1229,9 @@ serve(async (req) => {
       Rope Works Inc., PO Box 1074, Dripping Springs, TX 78620
     </div>
   </div>
+
+  <!-- CONTENT WRAPPER - Provides padding for fixed header/footer in print -->
+  <div class="content-wrapper">
 
   <!-- PAGE 1: COVER PAGE -->
   <div class="page">
@@ -2109,6 +2118,8 @@ serve(async (req) => {
   `
       : ""
   }
+
+  </div> <!-- End content-wrapper -->
 
 </body>
 </html>`;
