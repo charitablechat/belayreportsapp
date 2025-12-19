@@ -481,19 +481,25 @@ serve(async (req) => {
         </div>
       ` : ''}
       ${content.summary.personSubmitting || content.summary.submissionDate ? `
-      <div class="info-grid">
-        ${content.summary.personSubmitting ? `
-        <div class="info-item">
-          <div class="info-label">Person Submitting</div>
-          <div class="info-value">${content.summary.personSubmitting}</div>
+      <div style="margin-top: 20px;">
+        <div class="section-title">Person Submitting Form</div>
+        <p style="margin: 0 0 16px 0; font-style: italic; color: #666; line-height: 1.5; font-size: 14px;">
+          The trainer listed on this report verifies the report is complete and ready for client submission on the following date.
+        </p>
+        <div class="info-grid">
+          ${content.summary.personSubmitting ? `
+          <div class="info-item">
+            <div class="info-label">Person Submitting</div>
+            <div class="info-value">${content.summary.personSubmitting}</div>
+          </div>
+          ` : ''}
+          ${content.summary.submissionDate ? `
+          <div class="info-item">
+            <div class="info-label">Submission Date</div>
+            <div class="info-value">${content.summary.submissionDate}</div>
+          </div>
+          ` : ''}
         </div>
-        ` : ''}
-        ${content.summary.submissionDate ? `
-        <div class="info-item">
-          <div class="info-label">Submission Date</div>
-          <div class="info-value">${content.summary.submissionDate}</div>
-        </div>
-        ` : ''}
       </div>
       ` : ''}
     </div>
