@@ -34,6 +34,9 @@ export default function ImmediateAttentionSection({ items, onUpdate }: Immediate
     <Card>
       <CardHeader>
         <CardTitle>Immediate Attention</CardTitle>
+        <p className="text-sm text-muted-foreground italic mt-1">
+          This area lists requirements the trainer either noted as a deficiency at your site or a need to update procedures/policy during the operations of your aerial adventure training.
+        </p>
       </CardHeader>
       <CardContent className="space-y-4">
         {IMMEDIATE_ATTENTION_ITEMS.map((item) => (
