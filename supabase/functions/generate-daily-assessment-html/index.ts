@@ -158,6 +158,15 @@ serve(async (req) => {
       return date.toLocaleDateString('en-US', { timeZone: 'America/Chicago', year: 'numeric', month: 'long', day: 'numeric' });
     };
 
+    const generatedTimestamp = new Date().toLocaleString('en-US', { 
+      timeZone: 'America/Chicago', 
+      year: 'numeric', 
+      month: 'long', 
+      day: 'numeric', 
+      hour: '2-digit', 
+      minute: '2-digit' 
+    });
+
     const renderChecklistItems = (items: any[] | null, title: string) => {
       if (!items || items.length === 0) return '';
       return `
@@ -177,6 +186,31 @@ serve(async (req) => {
         </div>
       `;
     };
+
+    // Helper functions for page structure (matching inspection/training reports)
+    const createPageHeader = () => `
+      <div class="page-header">
+        <div class="header-left">
+          <img src="${ropeWorksLogo}" alt="Rope Works">
+        </div>
+        <div class="header-right">
+          <img src="${acctLogo}" alt="ACCT Accredited Vendor">
+        </div>
+      </div>
+    `;
+
+    const createPageFooter = (pageNum: number, totalPages: number) => `
+      <div class="page-footer">
+        <div class="page-number">Page ${pageNum} of ${totalPages}</div>
+        <div class="footer-line"></div>
+        <div class="disclaimer-footer">
+          Daily Course Assessment Documentation | ${assessment.site || 'N/A'}<br>
+          Generated on ${generatedTimestamp}
+        </div>
+      </div>
+    `;
+
+    const totalPages = 2;
 
     const html = `
 <!DOCTYPE html>
@@ -200,70 +234,119 @@ serve(async (req) => {
       padding: 10px;
     }
 
-    .container {
-      max-width: 100%;
-      width: 100%;
-      margin: 0 auto;
+    /* Page structure - matching inspection/training reports */
+    .page {
+      display: block;
+      padding: 0.5in;
+      padding-bottom: 0.75in;
       background: white;
-      padding: 20px;
+      margin-bottom: 20px;
       box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+      page-break-after: auto;
+      page-break-inside: auto;
     }
 
-    .header {
+    .page-content {
+      min-height: 200px;
+    }
+
+    .page:last-child {
+      page-break-after: avoid;
+    }
+
+    /* In-page header/footer for screen display */
+    .page-header {
       display: flex;
       justify-content: space-between;
       align-items: center;
+      padding-bottom: 10px;
       border-bottom: 3px solid #1e40af;
-      padding-bottom: 20px;
-      margin-bottom: 30px;
+      margin-bottom: 15px;
+      position: relative;
     }
 
     .header-left {
-      flex: 1;
+      flex: 0 0 auto;
+      display: flex;
+      align-items: center;
+    }
+
+    .header-left img {
+      height: 55px;
+      width: auto;
+      object-fit: contain;
     }
 
     .header-right {
+      flex: 0 0 auto;
+      display: flex;
+      align-items: center;
+    }
+
+    .header-right img {
+      height: 50px;
+      width: auto;
+      object-fit: contain;
+    }
+
+    .page-footer {
+      margin-top: 20px;
+      font-size: 9pt;
+      color: #666;
+      position: relative;
+    }
+
+    .page-number {
       text-align: right;
+      font-weight: normal;
+      font-size: 9pt;
+      color: #333;
+      margin-bottom: 4px;
     }
 
-    .logo {
-      max-width: 150px;
-      margin-bottom: 10px;
+    .footer-line {
+      border-top: 1px solid #000;
+      margin-bottom: 8px;
     }
 
-    .badge {
-      max-width: 120px;
+    .disclaimer-footer {
+      text-align: center;
+      line-height: 1.5;
+      font-size: 8.5pt;
+      margin: 0 auto;
     }
 
-    h1 {
+    .page-title {
       color: #1e40af;
-      font-size: 32px;
-      margin-bottom: 10px;
+      font-size: 24px;
+      margin-bottom: 8px;
+      font-weight: 700;
     }
 
-    .subtitle {
+    .page-subtitle {
       color: #64748b;
       font-size: 14px;
+      margin-bottom: 20px;
     }
 
     .section {
-      margin-bottom: 30px;
+      margin-bottom: 20px;
     }
 
     .section-title {
       background: #1e40af;
       color: white;
-      padding: 12px 20px;
-      font-size: 18px;
+      padding: 10px 15px;
+      font-size: 14px;
       font-weight: 600;
-      margin-bottom: 15px;
+      margin-bottom: 12px;
       border-radius: 4px;
     }
 
     .info-grid {
       display: grid;
       grid-template-columns: repeat(2, 1fr);
-      gap: 15px;
+      gap: 12px;
       margin-bottom: 15px;
     }
 
@@ -280,12 +363,13 @@ serve(async (req) => {
     .info-label {
       font-weight: 600;
       color: #475569;
-      font-size: 13px;
+      font-size: 12px;
       margin-bottom: 4px;
     }
 
     .info-value {
       color: #1e293b;
+      font-size: 13px;
     }
 
     ul {
@@ -295,9 +379,9 @@ serve(async (req) => {
 
     li {
       display: flex;
-      gap: 12px;
-      padding: 10px 12px;
-      margin-bottom: 8px;
+      gap: 10px;
+      padding: 8px 10px;
+      margin-bottom: 6px;
       background: #f8fafc;
       border-left: 3px solid #3b82f6;
       border-radius: 2px;
@@ -313,10 +397,10 @@ serve(async (req) => {
     }
 
     .checkbox-icon {
-      font-size: 18px;
+      font-size: 16px;
       font-weight: bold;
       flex-shrink: 0;
-      width: 24px;
+      width: 20px;
       text-align: center;
     }
 
@@ -335,81 +419,133 @@ serve(async (req) => {
     .item-label {
       font-weight: 500;
       color: #1e293b;
+      font-size: 13px;
     }
 
     .item-comments {
-      font-size: 13px;
+      font-size: 12px;
       color: #64748b;
       font-style: italic;
-      margin-top: 4px;
+      margin-top: 3px;
     }
 
     .systems-grid {
       display: grid;
       grid-template-columns: repeat(2, 1fr);
-      gap: 10px;
+      gap: 8px;
     }
 
     .system-item {
       display: flex;
       align-items: center;
-      gap: 10px;
-      padding: 10px 12px;
+      gap: 8px;
+      padding: 8px 10px;
       background: #f8fafc;
       border-left: 3px solid #22c55e;
       border-radius: 2px;
+      font-size: 13px;
     }
 
     .system-item .checkbox-icon {
       color: #22c55e;
-      font-size: 18px;
+      font-size: 16px;
     }
 
     .disclaimer {
       background: #fef3c7;
-      padding: 15px;
+      padding: 12px;
       border-radius: 4px;
       border-left: 4px solid #f59e0b;
-      margin-top: 30px;
+      margin-top: 20px;
     }
 
     .disclaimer-title {
       font-weight: 700;
       color: #92400e;
-      margin-bottom: 8px;
+      margin-bottom: 6px;
+      font-size: 13px;
     }
 
     .disclaimer-text {
       color: #78350f;
-      font-size: 13px;
-      line-height: 1.6;
-    }
-
-    .footer {
-      margin-top: 40px;
-      padding-top: 20px;
-      border-top: 2px solid #e2e8f0;
-      text-align: center;
-      color: #64748b;
       font-size: 12px;
+      line-height: 1.5;
     }
 
-    .page-break {
-      page-break-before: always;
-      margin-top: 30px;
-    }
-
+    /* Print styles - matching inspection/training reports */
     @media print {
       body {
         background: white;
         padding: 0;
+        print-color-adjust: exact;
+        -webkit-print-color-adjust: exact;
+        font-size: 10pt;
+        line-height: 1.4;
       }
-      .container {
-        box-shadow: none;
-        padding: 20px;
+
+      @page {
+        size: letter portrait;
+        margin: 0.5in;
       }
-      .page-break {
-        page-break-before: always;
+
+      .page {
+        display: flex !important;
+        flex-direction: column !important;
+        position: relative !important;
+        min-height: 9in !important;
+        height: auto !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        box-sizing: border-box !important;
+        page-break-after: always !important;
+        page-break-inside: avoid !important;
+        box-shadow: none !important;
+      }
+
+      .page:last-child {
+        page-break-after: avoid !important;
+      }
+
+      .page > .page-header {
+        display: flex !important;
+        flex-shrink: 0 !important;
+        height: 60px !important;
+        margin-bottom: 10px !important;
+      }
+
+      .page > .page-footer {
+        display: block !important;
+        flex-shrink: 0 !important;
+        margin-top: auto !important;
+        padding-top: 10px !important;
+      }
+
+      .page-content {
+        display: block !important;
+        flex: 1 !important;
+        overflow: visible !important;
+      }
+
+      /* Keep sections together */
+      .section, .info-grid, .systems-grid, li {
+        page-break-inside: avoid;
+      }
+
+      .section-title {
+        page-break-after: avoid;
+      }
+
+      /* Color enforcement */
+      *, *::before, *::after {
+        print-color-adjust: exact !important;
+        -webkit-print-color-adjust: exact !important;
+      }
+
+      * {
+        box-shadow: none !important;
+        text-shadow: none !important;
+        animation: none !important;
+        transition: none !important;
       }
     }
 
@@ -421,24 +557,19 @@ serve(async (req) => {
       
       body { padding: 8px; }
       
-      .container {
+      .page {
         padding: 12px;
       }
       
-      .header {
-        flex-direction: column;
-        text-align: center;
+      .page-header {
+        flex-direction: row;
         gap: 10px;
       }
       
-      .header-left, .header-right {
-        text-align: center;
-      }
+      .header-left img { height: 40px; }
+      .header-right img { height: 35px; }
       
-      .logo { max-width: 100px; }
-      .badge { max-width: 80px; }
-      
-      h1 { font-size: 20px; }
+      .page-title { font-size: 18px; }
       
       .info-grid {
         grid-template-columns: 1fr;
@@ -450,7 +581,7 @@ serve(async (req) => {
       }
       
       .section-title {
-        font-size: 14px;
+        font-size: 13px;
         padding: 8px 12px;
       }
 
@@ -460,91 +591,87 @@ serve(async (req) => {
       
       li {
         padding: 8px 10px;
-        font-size: 13px;
+        font-size: 12px;
       }
       
       .disclaimer {
         padding: 10px;
-        font-size: 11px;
       }
     }
 
     @media (max-width: 480px) {
       body { padding: 4px; }
-      .container { padding: 8px; }
-      h1 { font-size: 18px; }
+      .page { padding: 8px; }
+      .page-title { font-size: 16px; }
       .section-title { font-size: 12px; }
     }
   </style>
 </head>
 <body>
-  <div class="container">
-    <div class="header">
-      <div class="header-left">
-        <img src="${ropeWorksLogo}" alt="Rope Works Logo" class="logo">
-        <h1>Daily Course Assessment</h1>
-        <div class="subtitle">Challenge Course Operations Documentation</div>
-      </div>
-      <div class="header-right">
-        <img src="${acctLogo}" alt="ACCT Accredited Vendor" class="badge">
-      </div>
-    </div>
+  <!-- Page 1: Assessment Info + Operating Systems + Beginning/End of Day -->
+  <div class="page">
+    ${createPageHeader()}
+    <div class="page-content">
+      <h1 class="page-title">Daily Course Assessment</h1>
+      <p class="page-subtitle">Challenge Course Operations Documentation</p>
 
-    <div class="section">
-      <div class="section-title">Assessment Information</div>
-      <div class="info-grid">
-        <div class="info-item">
-          <div class="info-label">Date</div>
-          <div class="info-value">${formatDate(assessment.assessment_date)}</div>
-        </div>
-        <div class="info-item">
-          <div class="info-label">Site</div>
-          <div class="info-value">${assessment.site || 'N/A'}</div>
-        </div>
-        <div class="info-item full-width">
-          <div class="info-label">Trainer/Facilitator of Record</div>
-          <div class="info-value">${assessment.trainer_of_record || 'N/A'}</div>
-        </div>
-      </div>
-    </div>
-
-    ${operatingSystems.length > 0 ? `
-    <div class="section">
-      <div class="section-title">Operating Systems in Use Today</div>
-      <div class="systems-grid">
-        ${operatingSystems.map(s => `
-          <div class="system-item">
-            <span class="checkbox-icon">☑</span>
-            <span>${s.system_name}${s.other_description ? ` - ${s.other_description}` : ''}</span>
+      <div class="section">
+        <div class="section-title">Assessment Information</div>
+        <div class="info-grid">
+          <div class="info-item">
+            <div class="info-label">Date</div>
+            <div class="info-value">${formatDate(assessment.assessment_date)}</div>
           </div>
-        `).join('')}
+          <div class="info-item">
+            <div class="info-label">Site</div>
+            <div class="info-value">${assessment.site || 'N/A'}</div>
+          </div>
+          <div class="info-item full-width">
+            <div class="info-label">Trainer/Facilitator of Record</div>
+            <div class="info-value">${assessment.trainer_of_record || 'N/A'}</div>
+          </div>
+        </div>
+      </div>
+
+      ${operatingSystems.length > 0 ? `
+      <div class="section">
+        <div class="section-title">Operating Systems in Use Today</div>
+        <div class="systems-grid">
+          ${operatingSystems.map(s => `
+            <div class="system-item">
+              <span class="checkbox-icon">☑</span>
+              <span>${s.system_name}${s.other_description ? ` - ${s.other_description}` : ''}</span>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+      ` : ''}
+
+      ${renderChecklistItems(beginningOfDay, 'Beginning of Day Checklist')}
+      ${renderChecklistItems(endOfDay, 'End of Day Checklist')}
+    </div>
+    ${createPageFooter(1, totalPages)}
+  </div>
+
+  <!-- Page 2: Inspections + Disclaimer -->
+  <div class="page">
+    ${createPageHeader()}
+    <div class="page-content">
+      ${renderChecklistItems(equipmentChecks, 'Equipment Inspection')}
+      ${renderChecklistItems(structureChecks, 'Structure Inspection')}
+      ${renderChecklistItems(environmentChecks, 'Environment Inspection')}
+
+      <div class="disclaimer">
+        <div class="disclaimer-title">DISCLAIMER</div>
+        <div class="disclaimer-text">
+          This daily assessment form documents the operational readiness checks performed for the challenge course facility. 
+          It is intended to verify that all safety systems, equipment, and environmental conditions meet operational standards 
+          before and after use. This document should be retained as part of the facility's operational records. Any items 
+          marked as incomplete or requiring attention should be addressed before course operations begin or resume.
+        </div>
       </div>
     </div>
-    ` : ''}
-
-    ${renderChecklistItems(beginningOfDay, 'Beginning of Day Checklist')}
-    ${renderChecklistItems(endOfDay, 'End of Day Checklist')}
-
-    <div class="page-break"></div>
-
-    ${renderChecklistItems(equipmentChecks, 'Equipment Inspection')}
-    ${renderChecklistItems(structureChecks, 'Structure Inspection')}
-    ${renderChecklistItems(environmentChecks, 'Environment Inspection')}
-
-    <div class="disclaimer">
-      <div class="disclaimer-title">DISCLAIMER</div>
-      <div class="disclaimer-text">
-        This daily assessment form documents the operational readiness checks performed for the challenge course facility. 
-        It is intended to verify that all safety systems, equipment, and environmental conditions meet operational standards 
-        before and after use. This document should be retained as part of the facility's operational records. Any items 
-        marked as incomplete or requiring attention should be addressed before course operations begin or resume.
-      </div>
-    </div>
-
-    <div class="footer">
-      <p>Generated on ${new Date().toLocaleString('en-US', { timeZone: 'America/Chicago', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
-      <p style="margin-top: 5px;">Rope Works Daily Course Assessment | ${assessment.site || 'N/A'}</p>
-    </div>
+    ${createPageFooter(2, totalPages)}
   </div>
 </body>
 </html>
