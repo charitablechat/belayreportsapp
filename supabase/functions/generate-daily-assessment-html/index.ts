@@ -151,10 +151,11 @@ serve(async (req) => {
   - Environment Checks: ${environmentChecks.length} (checked: ${environmentChecks.filter(i => i.is_checked).length})
 `);
 
+    // Format dates in Central Time (CST/CDT)
     const formatDate = (dateStr: string) => {
       if (!dateStr) return 'N/A';
       const date = new Date(dateStr);
-      return date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+      return date.toLocaleDateString('en-US', { timeZone: 'America/Chicago', year: 'numeric', month: 'long', day: 'numeric' });
     };
 
     const renderChecklistItems = (items: any[] | null, title: string) => {
@@ -541,7 +542,7 @@ serve(async (req) => {
     </div>
 
     <div class="footer">
-      <p>Generated on ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
+      <p>Generated on ${new Date().toLocaleString('en-US', { timeZone: 'America/Chicago', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
       <p style="margin-top: 5px;">Rope Works Daily Course Assessment | ${assessment.site || 'N/A'}</p>
     </div>
   </div>
