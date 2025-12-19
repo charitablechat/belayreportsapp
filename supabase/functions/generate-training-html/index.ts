@@ -349,22 +349,74 @@ serve(async (req) => {
     
     @media print {
       body {
+        print-color-adjust: exact;
+        -webkit-print-color-adjust: exact;
         background: white;
+        color: black;
+        font-size: 10pt;
+        line-height: 1.4;
         padding: 0;
       }
-      .page {
-        box-shadow: none;
-        padding: 15mm 15mm 20mm 15mm;
-        margin: 0;
-        page-break-after: always;
-        min-height: 100vh;
-      }
-      .page:last-child {
-        page-break-after: auto;
-      }
+
       @page {
-        margin: 0;
-        size: letter;
+        size: letter portrait;
+        margin: 0.5in;
+      }
+
+      .page {
+        display: flex !important;
+        flex-direction: column !important;
+        position: relative !important;
+        min-height: 9in !important;
+        height: auto !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        box-sizing: border-box !important;
+        page-break-after: always !important;
+        page-break-inside: avoid !important;
+        box-shadow: none !important;
+      }
+
+      .page:last-child {
+        page-break-after: avoid !important;
+      }
+
+      .page-header {
+        display: flex !important;
+        flex-shrink: 0 !important;
+        height: 60px !important;
+        margin-bottom: 10px !important;
+      }
+
+      .page-content {
+        display: block !important;
+        flex: 1 !important;
+        overflow: visible !important;
+      }
+
+      .page-footer {
+        display: block !important;
+        flex-shrink: 0 !important;
+        margin-top: auto !important;
+        padding-top: 10px !important;
+      }
+
+      .section {
+        page-break-inside: avoid;
+      }
+
+      .section-title {
+        page-break-after: avoid;
+      }
+
+      li {
+        page-break-inside: avoid;
+      }
+
+      .info-grid,
+      .standards-box,
+      .disclaimer {
+        page-break-inside: avoid;
       }
     }
     
