@@ -55,7 +55,10 @@ export function openHtmlReport(options: ViewerOptions): boolean {
  */
 export function downloadHtmlReport(html: string, filename: string): void {
   try {
-    const blob = new Blob([html], { type: 'text/html' });
+    // Add UTF-8 BOM (Byte Order Mark) to ensure proper encoding detection
+    // when the file is opened locally in browsers or email clients
+    const BOM = '\uFEFF';
+    const blob = new Blob([BOM + html], { type: 'text/html;charset=utf-8' });
     const url = window.URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
