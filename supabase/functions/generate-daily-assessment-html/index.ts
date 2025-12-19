@@ -489,16 +489,15 @@ serve(async (req) => {
       }
 
       .page {
-        display: flex !important;
-        flex-direction: column !important;
+        display: block !important;
         position: relative !important;
-        min-height: 9in !important;
+        min-height: auto !important;
         height: auto !important;
         padding: 0 !important;
         margin: 0 !important;
         box-sizing: border-box !important;
         page-break-after: always !important;
-        page-break-inside: avoid !important;
+        page-break-inside: auto !important;
         box-shadow: none !important;
       }
 
@@ -510,24 +509,36 @@ serve(async (req) => {
         display: flex !important;
         flex-shrink: 0 !important;
         height: 60px !important;
+        max-height: 60px !important;
+        overflow: hidden !important;
         margin-bottom: 10px !important;
+        position: relative !important;
       }
 
       .page > .page-footer {
         display: block !important;
-        flex-shrink: 0 !important;
-        margin-top: auto !important;
+        margin-top: 15px !important;
         padding-top: 10px !important;
+        page-break-inside: avoid !important;
+        page-break-before: auto !important;
       }
 
       .page-content {
         display: block !important;
-        flex: 1 !important;
         overflow: visible !important;
       }
 
-      /* Keep sections together */
-      .section, .info-grid, .systems-grid, li {
+      /* Keep sections together but allow page breaks between them */
+      .section {
+        page-break-inside: avoid;
+        page-break-after: auto;
+      }
+
+      .info-grid, .systems-grid {
+        page-break-inside: avoid;
+      }
+
+      li {
         page-break-inside: avoid;
       }
 
