@@ -16,6 +16,7 @@ import { ReportCard } from "@/components/dashboard/ReportCard";
 import { ReportCardSkeleton } from "@/components/dashboard/ReportCardSkeleton";
 /* TEMPORARY FEATURE: Known Issues */
 import { KnownIssuesCard } from "@/components/dashboard/KnownIssuesCard";
+import { DeveloperNotesCard } from "@/components/dashboard/DeveloperNotesCard";
 import ropeWorksLogo from "@/assets/rope-works-logo.png";
 import acctLogo from "@/assets/acct-accredited-vendor.png";
 import dashboardBackgroundVideo from "@/assets/dashboard-background.mp4";
@@ -1063,6 +1064,7 @@ export default function Dashboard() {
           
           {/* TEMPORARY FEATURE: Known Issues - Remove when project complete */}
           <KnownIssuesCard isSuperAdmin={!!isSuperAdmin} />
+          <DeveloperNotesCard isSuperAdmin={!!isSuperAdmin} />
           {/* END TEMPORARY FEATURE */}
         </section>
       </main>
