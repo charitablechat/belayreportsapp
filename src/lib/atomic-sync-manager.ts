@@ -121,52 +121,71 @@ export async function syncInspectionAtomic(inspectionId: string) {
       const localUpdated = new Date(inspection.updated_at).getTime();
       const timeDiff = Math.abs(remoteUpdated - localUpdated);
       
-      if (timeDiff > 5000 && remoteUpdated > localUpdated) {
-        // Check if an unresolved conflict already exists for this inspection
-        const { data: existingConflict } = await supabase
-          .from('sync_conflicts')
-          .select('id')
-          .eq('inspection_id', inspectionId)
-          .eq('resolved', false)
-          .maybeSingle();
+      // PREVENTIVE MEASURE: Skip conflict detection if local data was never synced
+      // or if the inspection has already been synced after the local update
+      const localSyncedAt = inspection.synced_at ? new Date(inspection.synced_at).getTime() : 0;
+      const isAlreadySynced = localSyncedAt >= localUpdated;
+      
+      // Only flag as conflict if:
+      // 1. Remote is significantly newer (>5 seconds)
+      // 2. Remote was updated AFTER our last sync (genuine concurrent edit)
+      // 3. Local changes haven't been synced yet
+      if (timeDiff > 5000 && remoteUpdated > localUpdated && !isAlreadySynced) {
+        // Additional check: verify remote was updated after our last known sync
+        const remoteUpdatedAfterOurSync = localSyncedAt === 0 || remoteUpdated > localSyncedAt;
         
-        if (!existingConflict) {
-          // Validate organization_id - must have a valid value
-          const organizationId = inspection.organization_id;
-          if (!organizationId) {
-            console.error('[Atomic Sync] Cannot record conflict - missing organization_id for inspection:', inspectionId);
-            throw new Error('Sync conflict detected but organization_id is missing');
-          }
-          
-          // No existing conflict - record a new one
-          const { error: conflictError } = await supabase.from('sync_conflicts').insert({
-            inspection_id: inspectionId,
-            organization_id: organizationId,
-            local_updated_at: inspection.updated_at,
-            remote_updated_at: remoteInspection.updated_at,
-            resolved: false,
-          });
-          
-          // Only show conflict toast if successfully recorded
-          if (!conflictError) {
-            toast.error("Sync Conflict Detected", {
-              description: `Changes conflict for ${inspection.organization} - ${inspection.location}. Please resolve in settings.`,
-              duration: 10000,
-            });
-          } else {
-            console.error('[Atomic Sync] Failed to record conflict:', conflictError);
-            toast.warning("Sync Issue Detected", {
-              description: `There may be conflicting changes for ${inspection.organization}. Try syncing again.`,
-              duration: 8000,
-            });
+        if (!remoteUpdatedAfterOurSync) {
+          // Remote change predates our last sync - not a real conflict, proceed with sync
+          if (import.meta.env.DEV) {
+            console.log('[Atomic Sync] Skipping conflict - remote change predates our last sync');
           }
         } else {
-          if (import.meta.env.DEV) {
-            console.log('[Atomic Sync] Conflict already exists for inspection:', inspectionId);
+          // Check if an unresolved conflict already exists for this inspection
+          const { data: existingConflict } = await supabase
+            .from('sync_conflicts')
+            .select('id')
+            .eq('inspection_id', inspectionId)
+            .eq('resolved', false)
+            .maybeSingle();
+          
+          if (!existingConflict) {
+            // Validate organization_id - must have a valid value
+            const organizationId = inspection.organization_id;
+            if (!organizationId) {
+              console.error('[Atomic Sync] Cannot record conflict - missing organization_id for inspection:', inspectionId);
+              throw new Error('Sync conflict detected but organization_id is missing');
+            }
+            
+            // No existing conflict - record a new one
+            const { error: conflictError } = await supabase.from('sync_conflicts').insert({
+              inspection_id: inspectionId,
+              organization_id: organizationId,
+              local_updated_at: inspection.updated_at,
+              remote_updated_at: remoteInspection.updated_at,
+              resolved: false,
+            });
+            
+            // Only show conflict toast if successfully recorded
+            if (!conflictError) {
+              toast.error("Sync Conflict Detected", {
+                description: `Changes conflict for ${inspection.organization} - ${inspection.location}. Please resolve in settings.`,
+                duration: 10000,
+              });
+            } else {
+              console.error('[Atomic Sync] Failed to record conflict:', conflictError);
+              toast.warning("Sync Issue Detected", {
+                description: `There may be conflicting changes for ${inspection.organization}. Try syncing again.`,
+                duration: 8000,
+              });
+            }
+          } else {
+            if (import.meta.env.DEV) {
+              console.log('[Atomic Sync] Conflict already exists for inspection:', inspectionId);
+            }
           }
+          
+          throw new Error("Sync conflict detected - user must resolve");
         }
-        
-        throw new Error("Sync conflict detected - user must resolve");
       }
     }
     
