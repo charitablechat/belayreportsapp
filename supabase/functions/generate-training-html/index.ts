@@ -127,10 +127,10 @@ serve(async (req) => {
     const pageHeader = `
       <div class="page-header">
         <div class="header-left">
-          <img src="${ropeWorksLogo}" alt="Rope Works Logo" class="logo">
+          <img src="${ropeWorksLogo}" alt="Rope Works Logo">
         </div>
         <div class="header-right">
-          <img src="${acctLogo}" alt="ACCT Accredited Vendor" class="badge">
+          <img src="${acctLogo}" alt="ACCT Accredited Vendor">
         </div>
       </div>
     `;
@@ -209,21 +209,27 @@ serve(async (req) => {
     }
     
     .page-header .header-left {
-      flex: 1;
+      flex: 0 0 auto;
+      display: flex;
+      align-items: center;
+    }
+    
+    .page-header .header-left img {
+      height: 55px;
+      width: auto;
+      object-fit: contain;
     }
     
     .page-header .header-right {
-      text-align: right;
+      flex: 0 0 auto;
+      display: flex;
+      align-items: center;
     }
     
-    .page-header .logo {
-      max-width: 120px;
-      height: auto;
-    }
-    
-    .page-header .badge {
-      max-width: 100px;
-      height: auto;
+    .page-header .header-right img {
+      height: 50px;
+      width: auto;
+      object-fit: contain;
     }
     
     .page-footer {
@@ -394,8 +400,14 @@ serve(async (req) => {
       .page-header {
         display: flex !important;
         flex-shrink: 0 !important;
-        height: 60px !important;
+        height: 70px !important;
         margin-bottom: 10px !important;
+      }
+      
+      .page-header .header-left img,
+      .page-header .header-right img {
+        max-height: 55px !important;
+        width: auto !important;
       }
 
       .page-content {
