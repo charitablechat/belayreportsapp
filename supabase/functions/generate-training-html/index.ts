@@ -206,16 +206,23 @@ serve(async (req) => {
       border-bottom: 3px solid #1e40af;
       padding-bottom: 15px;
       margin-bottom: 20px;
+      position: relative;
+      overflow: hidden;
+      height: 70px;
+      max-height: 70px;
     }
     
     .page-header .header-left {
       flex: 0 0 auto;
       display: flex;
       align-items: center;
+      overflow: hidden;
     }
     
     .page-header .header-left img {
       height: 55px;
+      max-height: 55px;
+      max-width: 200px;
       width: auto;
       object-fit: contain;
     }
@@ -224,10 +231,13 @@ serve(async (req) => {
       flex: 0 0 auto;
       display: flex;
       align-items: center;
+      overflow: hidden;
     }
     
     .page-header .header-right img {
       height: 50px;
+      max-height: 50px;
+      max-width: 180px;
       width: auto;
       object-fit: contain;
     }
@@ -397,17 +407,29 @@ serve(async (req) => {
         page-break-after: avoid !important;
       }
 
-      .page-header {
+      .page > .page-header {
         display: flex !important;
         flex-shrink: 0 !important;
-        height: 70px !important;
+        height: 60px !important;
+        max-height: 60px !important;
+        overflow: hidden !important;
         margin-bottom: 10px !important;
+        position: relative !important;
       }
       
-      .page-header .header-left img,
-      .page-header .header-right img {
-        max-height: 55px !important;
+      .page > .page-header .header-left,
+      .page > .page-header .header-right {
+        flex: 0 0 auto !important;
+        overflow: hidden !important;
+      }
+      
+      .page > .page-header .header-left img,
+      .page > .page-header .header-right img {
+        max-height: 50px !important;
+        max-width: 180px !important;
+        height: auto !important;
         width: auto !important;
+        object-fit: contain !important;
       }
 
       .page-content {
