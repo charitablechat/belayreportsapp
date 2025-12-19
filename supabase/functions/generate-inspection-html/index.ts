@@ -311,7 +311,7 @@ serve(async (req) => {
   <style>
     @page {
       size: letter;
-      margin: 0.35in 0.45in;
+      margin: 0.9in 0.5in 0.85in 0.5in; /* Top/bottom margins for fixed header/footer */
     }
 
     @viewport {
@@ -322,6 +322,8 @@ serve(async (req) => {
       --spacing-tight: 8px;
       --spacing-normal: 12px;
       --spacing-relaxed: 16px;
+      --header-height: 70px;
+      --footer-height: 65px;
     }
 
     * {
@@ -344,10 +346,14 @@ serve(async (req) => {
       background: #fff;
     }
 
+    /* Fixed header/footer - hidden on screen, fixed on print */
+    .print-header,
+    .print-footer {
+      display: none;
+    }
+
     .page {
-      display: flex;
-      flex-direction: column;
-      min-height: auto;
+      display: block;
       padding: 0.5in;
       padding-bottom: 0.75in;
       page-break-after: auto;
@@ -355,7 +361,6 @@ serve(async (req) => {
     }
     
     .page-content {
-      flex: 1 0 auto;
       min-height: 200px; /* Prevent collapsed pages */
     }
 
@@ -372,6 +377,7 @@ serve(async (req) => {
       margin-bottom: 0;
     }
 
+    /* In-page header/footer for screen display */
     .page-header {
       display: flex;
       justify-content: space-between;
@@ -779,6 +785,82 @@ serve(async (req) => {
     }
 
     @media print {
+      /* CRITICAL: Fixed header/footer that appears on EVERY printed page */
+      .print-header {
+        display: flex !important;
+        position: fixed !important;
+        top: 0 !important;
+        left: 0 !important;
+        right: 0 !important;
+        height: var(--header-height) !important;
+        justify-content: space-between !important;
+        align-items: center !important;
+        padding: 0.15in 0.5in !important;
+        border-bottom: 3px solid #1e40af !important;
+        background: white !important;
+        z-index: 9999 !important;
+      }
+
+      .print-header .header-left img,
+      .print-header .header-right img {
+        height: 50px !important;
+        width: auto !important;
+        object-fit: contain !important;
+      }
+
+      .print-footer {
+        display: block !important;
+        position: fixed !important;
+        bottom: 0 !important;
+        left: 0 !important;
+        right: 0 !important;
+        height: var(--footer-height) !important;
+        padding: 0.1in 0.5in !important;
+        background: white !important;
+        z-index: 9999 !important;
+      }
+
+      .print-footer .footer-line {
+        border-top: 1px solid #000 !important;
+        margin-bottom: 6px !important;
+      }
+
+      .print-footer .disclaimer {
+        text-align: center !important;
+        font-size: 8pt !important;
+        line-height: 1.4 !important;
+        color: #333 !important;
+      }
+
+      /* Hide in-page headers/footers when printing - use fixed ones instead */
+      .page > .page-header,
+      .page > .page-footer {
+        display: none !important;
+      }
+
+      /* Adjust page content to account for fixed header/footer */
+      .page {
+        display: block !important;
+        position: relative !important;
+        min-height: auto !important;
+        height: auto !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        box-sizing: border-box !important;
+        page-break-after: auto !important;
+        page-break-inside: auto !important;
+      }
+
+      .page-content {
+        display: block !important;
+        min-height: auto !important;
+        height: auto !important;
+      }
+
+      .page:last-child {
+        page-break-after: avoid !important;
+      }
+
       /* Force accurate color reproduction */
       body {
         print-color-adjust: exact;
@@ -792,32 +874,10 @@ serve(async (req) => {
       /* Page setup and margins */
       @page {
         size: letter portrait;
-        margin: 0.5in;
-      }
-
-      /* Page break controls with validation */
-      .page {
-        display: flex;
-        flex-direction: column;
-        page-break-after: auto;
-        page-break-inside: auto;
-        min-height: auto;
-        margin: 0;
-        padding: 0;
-        box-sizing: border-box;
-      }
-      
-      .page-content {
-        flex: 1 0 auto;
-        min-height: auto;
-      }
-      
-      .page:last-child {
-        page-break-after: avoid;
+        margin: 0.9in 0.5in 0.85in 0.5in;
       }
 
       /* Prevent breaks within critical elements */
-      .page-header,
       .info-grid,
       .key-section,
       .critical-box,
@@ -970,485 +1030,82 @@ serve(async (req) => {
         background: #f9f9f9 !important;
       }
 
-      /* Footer positioning for print with validation */
-      .page-footer {
-        position: relative;
-        margin-top: 20px;
-        page-break-inside: avoid;
-        padding-top: 8px;
-        min-height: 30px; /* Ensure footer space */
-      }
-
-      /* Phase 1: Print Layout Fix - Dynamic Content Flow */
-      @media print {
-        /* Phase 3: Page Margin Harmonization */
-        .page {
-          display: block !important;
-          position: relative;
-          min-height: auto;
-          height: auto;
-          padding: 0 !important;
-          margin: 0 !important;
-          box-sizing: border-box;
-        }
-        
-        .page-content {
-          display: block;
-          min-height: auto;
-          height: auto;
-        }
-        
-        .page-footer {
-          position: relative;
-          margin-top: 20px;
-        }
-        
-        /* Phase 2: Print Color Enforcement */
-        *, *::before, *::after {
-          print-color-adjust: exact !important;
-          -webkit-print-color-adjust: exact !important;
-        }
-        
-        /* Specific element color enforcement */
-        table th, 
-        table tr:nth-child(even), 
-        .key-section, 
-        .critical-box, 
-        .text-block, 
-        .info-grid, 
-        .info-cell,
-        .result-pass,
-        .result-attention,
-        .result-fail {
-          print-color-adjust: exact !important;
-          -webkit-print-color-adjust: exact !important;
-        }
-        
-        /* Phase 4: Print Resets - Remove Visual Artifacts */
-        /* Hide link URLs that browsers add by default */
-        a[href]::after {
-          content: none !important;
-        }
-        
-        /* Remove shadows and transforms that can cause rendering issues */
-        * {
-          box-shadow: none !important;
-          text-shadow: none !important;
-        }
-        
-        /* Reset transforms except for header centering */
-        *:not(.header-center) {
-          transform: none !important;
-        }
-        
-        /* Normalize zoom and ensure consistent rendering */
-        body {
-          zoom: 1 !important;
-          -webkit-transform: scale(1) !important;
-          transform: scale(1) !important;
-        }
-        
-        /* Remove any animations or transitions */
-        *, *::before, *::after {
-          animation: none !important;
-          transition: none !important;
-        }
-        
-        /* Phase 5: Image Handling Optimization */
-        /* Constrain image sizes while preserving quality */
-        img {
-          max-width: 100% !important;
-          max-height: 400px !important;
-          height: auto !important;
-          page-break-inside: avoid !important;
-          object-fit: contain !important;
-        }
-        
-        /* Ensure crisp image rendering */
-        img {
-          image-rendering: -webkit-optimize-contrast !important;
-          image-rendering: crisp-edges !important;
-          -ms-interpolation-mode: nearest-neighbor !important;
-        }
-        
-        /* Logo-specific constraints */
-        .logo-container img,
-        .header-logo img {
-          max-height: 80px !important;
-          width: auto !important;
-        }
-        
-        /* Photo gallery images */
-        .photo-grid img,
-        .photo-item img {
-          max-width: 100% !important;
-          max-height: 300px !important;
-          display: block !important;
-          margin: 0 auto !important;
-        }
-        
-        /* Phase 6: Table Print Optimization */
-        /* Prevent table breaks inside rows */
-        table {
-          page-break-inside: auto !important;
-          border-collapse: collapse !important;
-          width: 100% !important;
-        }
-        
-        tr {
-          page-break-inside: avoid !important;
-          page-break-after: auto !important;
-        }
-        
-        thead {
-          display: table-header-group !important;
-        }
-        
-        tfoot {
-          display: table-footer-group !important;
-        }
-        
-        /* Ensure proper column widths */
-        th, td {
-          page-break-inside: avoid !important;
-          padding: 6px 8px !important;
-          vertical-align: top !important;
-        }
-        
-        /* Specific table layouts */
-        .equipment-table th,
-        .systems-table th,
-        .ziplines-table th {
-          white-space: nowrap !important;
-          font-weight: bold !important;
-        }
-        
-        /* Prevent awkward breaks in key sections */
-        .key-section,
-        .critical-box,
-        .info-grid {
-          page-break-inside: avoid !important;
-        }
-        
-        /* Phase 7: Typography Refinements */
-        /* Optimize font rendering for print */
-        body {
-          font-size: 10pt !important;
-          line-height: 1.4 !important;
-          font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif !important;
-          -webkit-font-smoothing: antialiased !important;
-          -moz-osx-font-smoothing: grayscale !important;
-        }
-        
-        /* Heading hierarchy for print */
-        h1 {
-          font-size: 20pt !important;
-          line-height: 1.2 !important;
-          margin-bottom: 12px !important;
-          font-weight: 700 !important;
-        }
-        
-        h2 {
-          font-size: 14pt !important;
-          line-height: 1.3 !important;
-          margin-top: 10px !important;
-          margin-bottom: 8px !important;
-          font-weight: 600 !important;
-        }
-        
-        h3 {
-          font-size: 11pt !important;
-          line-height: 1.3 !important;
-          margin-top: 8px !important;
-          margin-bottom: 6px !important;
-          font-weight: 600 !important;
-        }
-        
-        /* Paragraph and text spacing */
-        p {
-          margin-bottom: 6px !important;
-          line-height: 1.4 !important;
-        }
-        
-        /* List optimization */
-        ul, ol {
-          margin: 6px 0 !important;
-          padding-left: 20px !important;
-        }
-        
-        li {
-          margin-bottom: 4px !important;
-          line-height: 1.4 !important;
-        }
-        
-        /* Strong emphasis visibility */
-        strong, b {
-          font-weight: 700 !important;
-          color: #000 !important;
-        }
-        
-        /* Phase 8: Final Polish - Result Badges and Spacing */
-        /* Result badge styling with proper colors */
-        .result-pass {
-          background-color: #22c55e !important;
-          color: #ffffff !important;
-          padding: 4px 10px !important;
-          border-radius: 4px !important;
-          font-weight: 600 !important;
-          display: inline-block !important;
-        }
-        
-        .result-attention {
-          background-color: #f59e0b !important;
-          color: #ffffff !important;
-          padding: 4px 10px !important;
-          border-radius: 4px !important;
-          font-weight: 600 !important;
-          display: inline-block !important;
-        }
-        
-        .result-fail {
-          background-color: #ef4444 !important;
-          color: #ffffff !important;
-          padding: 4px 10px !important;
-          border-radius: 4px !important;
-          font-weight: 600 !important;
-          display: inline-block !important;
-        }
-        
-        /* Section spacing optimization */
-        .key-section {
-          margin-bottom: 10px !important;
-          padding: 10px !important;
-        }
-        
-        .critical-box {
-          margin: 10px 0 !important;
-          padding: 10px !important;
-          border: 2px solid #ef4444 !important;
-        }
-        
-        /* Info grid spacing */
-        .info-grid {
-          margin-bottom: 8px !important;
-        }
-        
-        .info-cell {
-          padding: 6px !important;
-          margin-bottom: 4px !important;
-        }
-        
-        /* Footer positioning and styling */
-        .page-footer {
-          font-size: 8pt !important;
-          color: #666 !important;
-          padding: 8px 80px 8px 0 !important;
-          border-top: 1px solid #000 !important;
-          margin-top: 10px !important;
-        }
-        
-        /* Ensure proper spacing around tables */
-        table {
-          margin: 8px 0 !important;
-        }
-        
-        /* Section headers */
-        .section-header {
-          background-color: #f3f4f6 !important;
-          padding: 8px !important;
-          margin: 10px 0 6px 0 !important;
-          border-left: 4px solid #3b82f6 !important;
-        }
-      }
-
-      /* Text optimization with overflow handling */
-      body, p, li, td {
-        orphans: 3;
-        widows: 3;
-        overflow-wrap: break-word;
-        word-wrap: break-word;
-      }
-
-      /* Prevent text overflow in constrained spaces */
-      p, li, td, th, div {
-        max-width: 100%;
-      }
-
-      /* Optimized spacing and typography for print density */
-      .page-header {
-        display: flex !important;
-        flex-direction: row !important;
-        justify-content: space-between !important;
-        align-items: center !important;
-        gap: 15px !important;
-        padding-bottom: 8px !important;
-        margin-bottom: 12px !important;
-        border-bottom: 3px solid #1e40af !important;
+      .result-attention {
+        background-color: #f59e0b !important;
+        color: #ffffff !important;
+        padding: 4px 10px !important;
+        border-radius: 4px !important;
+        font-weight: 600 !important;
+        display: inline-block !important;
       }
       
-      .header-left,
-      .header-right {
-        flex: 0 0 auto !important;
-        position: relative !important;
+      .result-fail {
+        background-color: #ef4444 !important;
+        color: #ffffff !important;
+        padding: 4px 10px !important;
+        border-radius: 4px !important;
+        font-weight: 600 !important;
+        display: inline-block !important;
       }
       
-      .header-left img,
-      .header-right img {
-        height: 50px !important;
-        width: auto !important;
-        max-width: 150px !important;
+      /* Section spacing optimization */
+      .key-section {
+        margin-bottom: 10px !important;
+        padding: 10px !important;
       }
       
-      .header-center {
-        position: static !important;
-        flex: 1 1 auto !important;
-        text-align: center !important;
-        transform: none !important;
-        order: 2 !important;
-      }
-      
-      .header-left {
-        order: 1 !important;
-      }
-      
-      .header-right {
-        order: 3 !important;
-      }
-      
-      .header-title {
-        font-size: 8pt !important;
-        letter-spacing: 0.5px !important;
-        white-space: normal !important;
-        line-height: 1.3 !important;
-        max-width: 260px !important;
-      }
-
-      h1 {
-        font-size: 20pt;
-        line-height: 1.2;
-        margin-bottom: 12px;
-      }
-
-      h2 {
-        margin: 8px 0 5px 0;
-        font-size: 15pt;
-        line-height: 1.25;
-      }
-
-      h3 {
-        margin: 6px 0 4px 0;
-        font-size: 12pt;
-        line-height: 1.2;
-      }
-
-      .info-grid {
-        margin: 8px 0;
-      }
-
-      .info-cell {
-        padding: 5px 7px;
-      }
-
-      .info-label {
-        font-size: 9pt;
-        margin-bottom: 2px;
-      }
-
-      .info-value {
-        font-size: 10pt;
-        line-height: 1.3;
-      }
-
-      .key-section, .text-block {
-        padding: 7px 10px;
-        margin: 7px 0;
-        font-size: 9.5pt;
-        line-height: 1.4;
-      }
-
       .critical-box {
-        padding: 8px 10px;
-        margin: 7px 0;
+        margin: 10px 0 !important;
+        padding: 10px !important;
+        border: 2px solid #ef4444 !important;
       }
-
+      
+      /* Info grid spacing */
+      .info-grid {
+        margin-bottom: 8px !important;
+      }
+      
+      .info-cell {
+        padding: 6px !important;
+        margin-bottom: 4px !important;
+      }
+      
+      /* Ensure proper spacing around tables */
       table {
-        margin: 7px 0;
-        font-size: 9pt;
+        margin: 8px 0 !important;
       }
-
-      table th {
-        padding: 4px 6px;
-        font-size: 9.5pt;
+      
+      /* Section headers */
+      .section-header {
+        background-color: #f3f4f6 !important;
+        padding: 8px !important;
+        margin: 10px 0 6px 0 !important;
+        border-left: 4px solid #3b82f6 !important;
       }
-
-      table td {
-        padding: 4px 6px;
-        line-height: 1.25;
+      
+      /* Print color enforcement */
+      *, *::before, *::after {
+        print-color-adjust: exact !important;
+        -webkit-print-color-adjust: exact !important;
       }
-
-      .bullet-list {
-        margin: 4px 0 4px 16px;
-        font-size: 9.5pt;
+      
+      /* Hide link URLs that browsers add by default */
+      a[href]::after {
+        content: none !important;
       }
-
-      .bullet-list li {
-        margin-bottom: 3px;
-        line-height: 1.35;
+      
+      /* Remove shadows and transforms */
+      * {
+        box-shadow: none !important;
+        text-shadow: none !important;
       }
-
-      .bullet-list li:last-child {
-        margin-bottom: 0;
+      
+      /* Remove any animations or transitions */
+      *, *::before, *::after {
+        animation: none !important;
+        transition: none !important;
       }
-
-      /* General list optimization */
-      ul, ol {
-        margin: 5px 0 5px 16px;
-        padding-left: 4px;
-      }
-
-      ul li, ol li {
-        margin-bottom: 3px;
-        line-height: 1.35;
-      }
-
-      ul li:last-child, ol li:last-child {
-        margin-bottom: 0;
-      }
-
-      .page-footer {
-        font-size: 8.5pt;
-      }
-
-      .page-number {
-        font-size: 8.5pt !important;
-        margin-bottom: 3px !important;
-      }
-
-      .footer-line {
-        border-top: 1px solid #000 !important;
-        margin-bottom: 6px !important;
-      }
-
-      .disclaimer {
-        font-size: 8pt;
-        line-height: 1.3;
-      }
-
-      /* Ensure borders print properly */
-      .page-header {
-        border-bottom: 3px solid #1e40af !important;
-      }
-
-      /* List styling for print */
-      ul, ol {
-        page-break-inside: avoid;
-        margin-left: 20px;
-      }
-
-      li {
-        page-break-inside: avoid;
-      }
-    }
+    } /* End @media print */
 
     /* Mobile optimizations */
     @media screen and (max-width: 768px) {
@@ -1546,6 +1203,26 @@ serve(async (req) => {
   </style>
 </head>
 <body>
+
+  <!-- FIXED HEADER - Appears on every printed page -->
+  <div class="print-header">
+    <div class="header-left">
+      <img src="${ropeWorksLogo}" alt="Rope Works">
+    </div>
+    <div class="header-right">
+      <img src="${acctLogo}" alt="ACCT Accredited Vendor">
+    </div>
+  </div>
+
+  <!-- FIXED FOOTER - Appears on every printed page -->
+  <div class="print-footer">
+    <div class="footer-line"></div>
+    <div class="disclaimer">
+      The information contained in this report has been documented by a Qualified Professional.<br>
+      This report is effective for one year from the date of inspection. Issued by:<br>
+      Rope Works Inc., PO Box 1074, Dripping Springs, TX 78620
+    </div>
+  </div>
 
   <!-- PAGE 1: COVER PAGE -->
   <div class="page">
