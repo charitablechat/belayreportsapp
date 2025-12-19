@@ -416,20 +416,20 @@ serve(async (req) => {
     </div>
     ` : ''}
 
-    ${content.systemsInPlace.length > 0 ? `
-    <div class="section">
-      <div class="section-title">Systems in Place</div>
-      <ul>
-        ${content.systemsInPlace.map(item => `<li>☑ ${item}</li>`).join('')}
-      </ul>
-    </div>
-    ` : ''}
-
     ${content.verifiableItems.length > 0 ? `
     <div class="section">
       <div class="section-title">Items Verified During Training</div>
       <ul>
         ${content.verifiableItems.map(item => `<li>☑ ${item}</li>`).join('')}
+      </ul>
+    </div>
+    ` : ''}
+
+    ${content.systemsInPlace.length > 0 ? `
+    <div class="section">
+      <div class="section-title">Systems in Place</div>
+      <ul>
+        ${content.systemsInPlace.map(item => `<li>☑ ${item}</li>`).join('')}
       </ul>
     </div>
     ` : ''}
