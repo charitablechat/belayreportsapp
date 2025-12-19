@@ -29,9 +29,9 @@ export function Snowfall() {
   useEffect(() => {
     if (prefersReducedMotion) return;
 
-    // Generate snowflakes
+    // Generate snowflakes - doubled count for more visibility
     const flakes: Snowflake[] = [];
-    const count = window.innerWidth < 768 ? 30 : 50;
+    const count = window.innerWidth < 768 ? 60 : 100;
 
     for (let i = 0; i < count; i++) {
       flakes.push({
@@ -39,8 +39,8 @@ export function Snowfall() {
         left: Math.random() * 100,
         animationDuration: 8 + Math.random() * 12,
         animationDelay: Math.random() * -20,
-        size: 4 + Math.random() * 8,
-        opacity: 0.3 + Math.random() * 0.5,
+        size: 8 + Math.random() * 8, // 8-16px
+        opacity: 0.5 + Math.random() * 0.4, // 0.5-0.9
       });
     }
 
@@ -50,7 +50,7 @@ export function Snowfall() {
   if (prefersReducedMotion) return null;
 
   return (
-    <div className="fixed inset-0 pointer-events-none overflow-hidden z-10">
+    <div className="fixed inset-0 pointer-events-none overflow-hidden z-50">
       {snowflakes.map((flake) => (
         <div
           key={flake.id}
