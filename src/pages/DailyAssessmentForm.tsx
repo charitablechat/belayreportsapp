@@ -822,9 +822,72 @@ export default function DailyAssessmentForm() {
     saveRef.current = handleSaveProgress;
   });
 
+  // Verify that database has the expected data
+  const verifyDataSaved = async (): Promise<boolean> => {
+    try {
+      const [eqResult, stResult, envResult, bodResult, eodResult] = await Promise.all([
+        supabase.from('daily_assessment_equipment_checks').select('id', { count: 'exact' }).eq('assessment_id', id),
+        supabase.from('daily_assessment_structure_checks').select('id', { count: 'exact' }).eq('assessment_id', id),
+        supabase.from('daily_assessment_environment_checks').select('id', { count: 'exact' }).eq('assessment_id', id),
+        supabase.from('daily_assessment_beginning_of_day').select('id', { count: 'exact' }).eq('assessment_id', id),
+        supabase.from('daily_assessment_end_of_day').select('id', { count: 'exact' }).eq('assessment_id', id),
+      ]);
+
+      const expectedEquipment = equipmentChecks.filter(c => c.is_checked).length;
+      const expectedStructure = structureChecks.filter(c => c.is_checked).length;
+      const expectedEnvironment = environmentChecks.filter(c => c.is_checked).length;
+      const expectedBeginning = beginningOfDay.filter(c => c.is_complete).length;
+      const expectedEnd = endOfDay.filter(c => c.is_complete).length;
+
+      console.log(`[Report] Database has: equipment=${eqResult.count}, structure=${stResult.count}, environment=${envResult.count}, beginning=${bodResult.count}, end=${eodResult.count}`);
+      console.log(`[Report] Expected (checked): equipment=${expectedEquipment}, structure=${expectedStructure}, environment=${expectedEnvironment}, beginning=${expectedBeginning}, end=${expectedEnd}`);
+
+      // Verify we have at least as many records as checked items
+      return (
+        (eqResult.count ?? 0) >= expectedEquipment &&
+        (stResult.count ?? 0) >= expectedStructure &&
+        (envResult.count ?? 0) >= expectedEnvironment &&
+        (bodResult.count ?? 0) >= expectedBeginning &&
+        (eodResult.count ?? 0) >= expectedEnd
+      );
+    } catch (error) {
+      console.error('[Report] Error verifying data:', error);
+      return false;
+    }
+  };
+
   const handleGenerateReport = async () => {
     setGenerating(true);
     try {
+      // Force save any pending changes before generating
+      if (hasUnsavedChanges) {
+        console.log('[Report] Saving pending changes before generating report...');
+        toast.info("Saving changes before generating report...");
+        await handleSaveProgress();
+        // Wait for data to be committed
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+
+      // Verify data was saved correctly
+      if (navigator.onLine) {
+        console.log('[Report] Verifying data was saved...');
+        const verified = await verifyDataSaved();
+        
+        if (!verified) {
+          console.warn('[Report] Data verification failed, retrying save...');
+          toast.info("Syncing data, please wait...");
+          await handleSaveProgress();
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          
+          const retryVerified = await verifyDataSaved();
+          if (!retryVerified) {
+            console.warn('[Report] Second verification failed, proceeding anyway');
+            toast.warning("Some items may not appear in the report if not yet synced.");
+          }
+        }
+      }
+
+      console.log('[Report] Generating report...');
       const { data, error } = await supabase.functions.invoke('generate-daily-assessment-html', {
         body: { assessmentId: id },
       });
@@ -845,6 +908,7 @@ export default function DailyAssessmentForm() {
       }
     } catch (error) {
       console.error('Error generating report:', error);
+      toast.error("Failed to generate report");
     } finally {
       setGenerating(false);
     }

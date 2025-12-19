@@ -123,6 +123,16 @@ serve(async (req) => {
       supabase.from('daily_assessment_environment_checks').select('*').eq('assessment_id', assessmentId),
     ]);
 
+    // Log raw data counts before deduplication
+    console.log(`[Report] Raw data fetched from database:
+  - Beginning of Day: ${bodData.data?.length ?? 0}
+  - End of Day: ${eodData.data?.length ?? 0}
+  - Operating Systems: ${osData.data?.length ?? 0}
+  - Equipment Checks: ${eqData.data?.length ?? 0}
+  - Structure Checks: ${stData.data?.length ?? 0}
+  - Environment Checks: ${envData.data?.length ?? 0}
+`);
+
     // Deduplicate all checklist data to prevent duplicate entries in reports
     const beginningOfDay = deduplicateChecklistItems(bodData.data, 'item_key');
     const endOfDay = deduplicateChecklistItems(eodData.data, 'item_key');
@@ -130,6 +140,16 @@ serve(async (req) => {
     const equipmentChecks = deduplicateChecklistItems(eqData.data, 'item_key');
     const structureChecks = deduplicateChecklistItems(stData.data, 'item_key');
     const environmentChecks = deduplicateChecklistItems(envData.data, 'item_key');
+
+    // Log counts after deduplication
+    console.log(`[Report] After deduplication:
+  - Beginning of Day: ${beginningOfDay.length} (checked: ${beginningOfDay.filter(i => i.is_complete).length})
+  - End of Day: ${endOfDay.length} (checked: ${endOfDay.filter(i => i.is_complete).length})
+  - Operating Systems: ${operatingSystems.length}
+  - Equipment Checks: ${equipmentChecks.length} (checked: ${equipmentChecks.filter(i => i.is_checked).length})
+  - Structure Checks: ${structureChecks.length} (checked: ${structureChecks.filter(i => i.is_checked).length})
+  - Environment Checks: ${environmentChecks.length} (checked: ${environmentChecks.filter(i => i.is_checked).length})
+`);
 
     const formatDate = (dateStr: string) => {
       if (!dateStr) return 'N/A';
