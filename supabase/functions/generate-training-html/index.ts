@@ -464,13 +464,19 @@ serve(async (req) => {
       <div class="section-title">Training Summary</div>
       ${content.summary.observations ? `
         <div style="margin-bottom: 20px;">
-          <div class="info-label" style="margin-bottom: 8px;">Observations</div>
+          <div class="info-label" style="margin-bottom: 8px;">Training Observations</div>
+          <p style="margin: 0 0 12px 0; font-style: italic; color: #666; line-height: 1.5; font-size: 14px;">
+            This area lists/describes any observations at the time of training pertaining to staff, equipment function, or operations:
+          </p>
           <div class="text-content">${deduplicateHtmlContent(content.summary.observations)}</div>
         </div>
       ` : ''}
       ${content.summary.recommendations ? `
         <div style="margin-bottom: 20px;">
-          <div class="info-label" style="margin-bottom: 8px;">Recommendations</div>
+          <div class="info-label" style="margin-bottom: 8px;">Training Recommendations</div>
+          <p style="margin: 0 0 12px 0; font-style: italic; color: #666; line-height: 1.5; font-size: 14px;">
+            This area lists recommendations from the trainer after visiting your site regarding staff, equipment function, or operations:
+          </p>
           <div class="text-content">${deduplicateHtmlContent(content.summary.recommendations)}</div>
         </div>
       ` : ''}
