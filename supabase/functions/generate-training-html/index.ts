@@ -511,7 +511,7 @@ serve(async (req) => {
     </div>
 
     <div class="footer">
-      <p>Generated on ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
+      <p>Generated on ${new Date().toLocaleString('en-US', { timeZone: 'America/Chicago', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
       <p style="margin-top: 5px;">Rope Works Training Report</p>
     </div>
   </div>
