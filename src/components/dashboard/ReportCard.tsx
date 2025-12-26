@@ -13,7 +13,6 @@ import { FileText, MoreVertical, Trash2, Download, Check, Cloud, User } from "lu
 import { triggerHaptic } from "@/lib/haptics";
 import { parseLocalDate } from "@/lib/date-utils";
 import { SnowPile } from "@/components/christmas/SnowPile";
-import { Icicles } from "@/components/christmas/Icicles";
 
 interface ReportCardProps {
   report: any;
@@ -101,7 +100,7 @@ export function ReportCard({ report, type, onDelete, onClick, getStatusBadge }: 
 
   return (
     <Card 
-      className="relative overflow-visible cursor-pointer transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5 hover:border-primary/50 active:scale-[0.99] active:shadow-md group christmas-card-glow"
+      className="relative overflow-visible cursor-pointer transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5 hover:border-primary/50 active:scale-[0.99] active:shadow-md group nye-card-glow"
       onClick={() => {
         triggerHaptic('light');
         onClick(report);
@@ -202,7 +201,6 @@ export function ReportCard({ report, type, onDelete, onClick, getStatusBadge }: 
           </div>
         </div>
       </CardContent>
-      <Icicles />
     </Card>
   );
 }

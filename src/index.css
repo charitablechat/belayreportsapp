@@ -474,7 +474,7 @@ button[title="Sync"],
   }
 }
 
-/* Christmas Theme Animations */
+/* Holiday Theme Animations */
 @keyframes snowfall {
   0% {
     transform: translateY(-10vh) translateX(0) rotate(0deg);
@@ -493,14 +493,16 @@ button[title="Sync"],
   }
 }
 
-@keyframes christmas-glow {
+@keyframes nye-sparkle {
   0%, 100% {
     opacity: 1;
-    filter: brightness(1);
+    filter: brightness(1.2);
+    transform: scale(1);
   }
   50% {
-    opacity: 0.6;
-    filter: brightness(0.7);
+    opacity: 0.5;
+    filter: brightness(0.8);
+    transform: scale(0.9);
   }
 }
 
@@ -513,31 +515,50 @@ button[title="Sync"],
   }
 }
 
+@keyframes firework-burst {
+  0% {
+    transform: scale(0);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.5);
+    opacity: 0.8;
+  }
+  100% {
+    transform: scale(2);
+    opacity: 0;
+  }
+}
+
 .animate-snowfall {
   animation: snowfall linear infinite;
 }
 
-.animate-christmas-glow {
-  animation: christmas-glow 1.5s ease-in-out infinite;
+.animate-nye-sparkle {
+  animation: nye-sparkle 1.2s ease-in-out infinite;
 }
 
 .animate-twinkle {
   animation: twinkle 2s ease-in-out infinite;
 }
 
-/* Christmas gradient background */
-.christmas-gradient {
+.animate-firework-burst {
+  animation: firework-burst 1s ease-out infinite;
+}
+
+/* New Year's Eve gradient background */
+.nye-gradient {
   background: linear-gradient(
     135deg,
-    hsl(0, 70%, 25%) 0%,
-    hsl(120, 60%, 20%) 50%,
-    hsl(0, 70%, 25%) 100%
+    hsl(270, 70%, 15%) 0%,
+    hsl(45, 80%, 25%) 50%,
+    hsl(270, 70%, 15%) 100%
   );
 }
 
-/* Christmas card border glow */
-.christmas-card-glow {
+/* New Year's Eve card border glow */
+.nye-card-glow {
   box-shadow: 
-    0 0 10px hsl(0, 100%, 50%, 0.1),
-    0 0 20px hsl(120, 100%, 40%, 0.05);
+    0 0 10px hsl(45, 100%, 50%, 0.1),
+    0 0 20px hsl(270, 70%, 50%, 0.05);
 }
