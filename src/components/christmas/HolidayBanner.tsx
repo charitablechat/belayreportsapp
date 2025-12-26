@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { X } from "lucide-react";
-import { ChristmasLights } from "./ChristmasLights";
+import { Sparkles } from "./Sparkles";
 
 export function HolidayBanner() {
   const [dismissed, setDismissed] = useState(() => {
@@ -15,26 +15,28 @@ export function HolidayBanner() {
   if (dismissed) return null;
 
   return (
-    <div className="relative bg-gradient-to-r from-red-900/90 via-green-900/90 to-red-900/90 text-white overflow-hidden">
-      {/* Christmas lights on top */}
+    <div className="relative nye-gradient text-white overflow-hidden">
+      {/* Sparkles on top */}
       <div className="absolute top-0 left-0 right-0">
-        <ChristmasLights />
+        <Sparkles />
       </div>
       
       {/* Banner content */}
       <div className="relative pt-10 pb-3 px-4">
         <div className="flex items-center justify-center gap-2 text-center">
-          <span className="text-xl" role="img" aria-label="Christmas tree">🎄</span>
+          <span className="text-xl" role="img" aria-label="Fireworks">🎆</span>
           <span className="font-semibold text-sm sm:text-base">
-            Happy Holidays from Rope Works!
+            Happy New Year from Rope Works!
           </span>
-          <span className="text-xl" role="img" aria-label="Santa">🎅</span>
+          <span className="text-xl" role="img" aria-label="Champagne">🍾</span>
         </div>
         
-        {/* Decorative snowflakes */}
-        <div className="absolute top-10 left-4 text-white/30 text-xs">❄</div>
-        <div className="absolute top-12 right-8 text-white/30 text-xs">❄</div>
-        <div className="absolute bottom-2 left-1/4 text-white/20 text-xs">❄</div>
+        {/* Decorative stars */}
+        <div className="absolute top-10 left-4 text-amber-300/40 text-xs animate-twinkle">✦</div>
+        <div className="absolute top-12 right-8 text-amber-300/40 text-xs animate-twinkle" style={{ animationDelay: '0.5s' }}>✦</div>
+        <div className="absolute bottom-2 left-1/4 text-amber-300/30 text-xs animate-twinkle" style={{ animationDelay: '1s' }}>✦</div>
+        <div className="absolute top-11 left-1/3 text-purple-300/30 text-xs animate-twinkle" style={{ animationDelay: '0.3s' }}>⭐</div>
+        <div className="absolute bottom-1 right-1/4 text-amber-300/30 text-xs animate-twinkle" style={{ animationDelay: '0.7s' }}>✦</div>
         
         {/* Dismiss button */}
         <button

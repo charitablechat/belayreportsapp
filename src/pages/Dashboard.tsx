@@ -40,11 +40,10 @@ import { getOfflineInspections, deleteOfflineInspection, queueOperation, saveIns
 import { ContactDeveloperSheet } from "@/components/ContactDeveloperSheet";
 import { InspectionsEmptyState, TrainingsEmptyState, DailyAssessmentsEmptyState } from "@/components/EmptyState";
 import { getUserWithCache } from "@/lib/cached-auth";
-/* Christmas Theme Components */
+/* Holiday Theme Components */
 import { Snowfall } from "@/components/christmas/Snowfall";
 import { HolidayBanner } from "@/components/christmas/HolidayBanner";
 import { SnowPile } from "@/components/christmas/SnowPile";
-import { Icicles } from "@/components/christmas/Icicles";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -801,7 +800,6 @@ export default function Dashboard() {
                       <ArrowRight className="w-4 h-4 ml-2" />
                     </GradientButton>
                   </CardContent>
-                  <Icicles />
                 </Card>
 
                 {/* TRAINING CARD - FUNCTIONAL */}
@@ -829,7 +827,6 @@ export default function Dashboard() {
                       <ArrowRight className="w-4 h-4 ml-2" />
                     </GradientButton>
                   </CardContent>
-                  <Icicles />
                 </Card>
 
                 {/* DAILY COURSE ASSESSMENT CARD - FUNCTIONAL */}
@@ -857,7 +854,7 @@ export default function Dashboard() {
                       <ArrowRight className="w-4 h-4 ml-2" />
                     </GradientButton>
                   </CardContent>
-                  <Icicles />
+                  
                 </Card>
               </div>
             </div>
