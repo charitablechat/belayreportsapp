@@ -1244,6 +1244,7 @@ serve(async (req) => {
       h1 { font-size: 14pt; }
       h2 { font-size: 11pt; }
     }
+  </style>
 </head>
 <body>
 
