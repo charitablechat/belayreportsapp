@@ -311,7 +311,7 @@ serve(async (req) => {
   <style>
     @page {
       size: letter;
-      margin: 0.5in;
+      margin: 1in 0.5in 0.9in 0.5in; /* top right bottom left - space for fixed header/footer */
     }
 
     @viewport {
@@ -344,10 +344,10 @@ serve(async (req) => {
       background: #fff;
     }
 
-    /* Hidden fixed elements - not used, kept for compatibility */
+    /* Fixed elements - hidden on screen, shown in print */
     .print-header,
     .print-footer {
-      display: none !important;
+      display: none;
     }
 
     .page {
@@ -783,19 +783,61 @@ serve(async (req) => {
     }
 
     @media print {
-      /* Hide the fixed print elements - we use in-page headers/footers instead */
-      .print-header,
-      .print-footer {
-        display: none !important;
-      }
-
-      /* SHOW in-page headers/footers during print */
-      .page > .page-header {
-        display: flex !important;
-      }
-
-      .page > .page-footer {
+      /* Show fixed header/footer for print - these repeat on every page */
+      .print-header {
         display: block !important;
+        position: fixed !important;
+        top: 0 !important;
+        left: 0 !important;
+        right: 0 !important;
+        height: 0.7in !important;
+        background: white !important;
+        z-index: 9999 !important;
+        padding: 0.1in 0.3in !important;
+      }
+      
+      .print-header-inner {
+        display: flex !important;
+        justify-content: space-between !important;
+        align-items: center !important;
+        height: 100% !important;
+        border-bottom: 3px solid #1e40af !important;
+        padding-bottom: 5px !important;
+      }
+      
+      .print-footer {
+        display: block !important;
+        position: fixed !important;
+        bottom: 0 !important;
+        left: 0 !important;
+        right: 0 !important;
+        height: 0.65in !important;
+        background: white !important;
+        z-index: 9999 !important;
+        padding: 0.05in 0.3in !important;
+      }
+      
+      .print-footer-inner {
+        display: block !important;
+        height: 100% !important;
+      }
+      
+      .print-footer .footer-line {
+        border-top: 1px solid #000 !important;
+        margin-bottom: 4px !important;
+      }
+      
+      .print-footer .disclaimer {
+        text-align: center !important;
+        font-size: 7.5pt !important;
+        line-height: 1.35 !important;
+        color: #666 !important;
+      }
+
+      /* Hide in-page headers/footers during print - fixed ones are used instead */
+      .page > .page-header,
+      .page > .page-footer {
+        display: none !important;
       }
 
       /* Content wrapper - no extra padding needed */
@@ -809,7 +851,7 @@ serve(async (req) => {
         position: relative !important;
         min-height: auto !important;
         height: auto !important;
-        padding: 0.3in !important;
+        padding: 0 !important;
         margin: 0 !important;
         box-sizing: border-box !important;
         page-break-after: always !important;
@@ -834,10 +876,10 @@ serve(async (req) => {
         line-height: 1.4;
       }
 
-      /* Page setup */
+      /* Page setup - with margins for fixed header/footer */
       @page {
         size: letter portrait;
-        margin: 0.4in 0.5in;
+        margin: 0.85in 0.4in 0.75in 0.4in;
       }
 
       /* Prevent breaks within critical elements */
