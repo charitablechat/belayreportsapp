@@ -311,7 +311,7 @@ serve(async (req) => {
   <style>
     @page {
       size: letter;
-      margin: 0.9in 0.5in 0.85in 0.5in; /* Top/bottom margins for fixed header/footer */
+      margin: 1in 0.5in 1in 0.5in; /* Top/bottom margins for fixed header/footer */
     }
 
     @viewport {
@@ -323,7 +323,7 @@ serve(async (req) => {
       --spacing-normal: 12px;
       --spacing-relaxed: 16px;
       --header-height: 70px;
-      --footer-height: 65px;
+      --footer-height: 85px;
     }
 
     * {
@@ -346,18 +346,50 @@ serve(async (req) => {
       background: #fff;
     }
 
-    /* Fixed header/footer - hidden on screen, fixed on print */
-    .print-header,
+    /* Fixed header/footer for PRINT - positioned in @page margins */
+    .print-header {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: var(--header-height);
+      background: #fff;
+      z-index: 1000;
+      padding: 0 0.5in;
+    }
+
     .print-footer {
       display: none;
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: var(--footer-height);
+      background: #fff;
+      z-index: 1000;
+      padding: 0 0.5in;
+    }
+
+    .print-header-inner {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 0;
+      border-bottom: 3px solid #1e40af;
+      height: 100%;
+    }
+
+    .print-footer-inner {
+      padding-top: 8px;
     }
 
     .page {
       display: block;
       padding: 0.5in;
       padding-bottom: 0.75in;
-      page-break-after: auto;
-      page-break-inside: auto;
+      page-break-after: always;
+      page-break-inside: avoid;
     }
     
     .page-content {
@@ -377,7 +409,7 @@ serve(async (req) => {
       margin-bottom: 0;
     }
 
-    /* In-page header/footer for screen display */
+    /* In-page header/footer for SCREEN display */
     .page-header {
       display: flex;
       justify-content: space-between;
@@ -785,42 +817,79 @@ serve(async (req) => {
     }
 
     @media print {
-      /* REMOVE fixed positioning approach - it doesn't work reliably for print */
-      /* Instead, keep in-page headers/footers visible and use @page margins */
-      
-      .print-header,
-      .print-footer {
-        display: none !important; /* Hide the fixed elements completely */
+      /* Show fixed header/footer for print - these repeat on every page */
+      .print-header {
+        display: block !important;
+        position: fixed !important;
+        top: 0 !important;
+        left: 0 !important;
+        right: 0 !important;
+        height: var(--header-height) !important;
+        background: #fff !important;
+        padding: 0 0.5in !important;
+        z-index: 1000 !important;
       }
 
-      /* KEEP in-page headers/footers visible for print */
-      .page > .page-header {
+      .print-footer {
+        display: block !important;
+        position: fixed !important;
+        bottom: 0 !important;
+        left: 0 !important;
+        right: 0 !important;
+        height: var(--footer-height) !important;
+        background: #fff !important;
+        padding: 0 0.5in !important;
+        z-index: 1000 !important;
+      }
+
+      .print-header-inner {
         display: flex !important;
-        flex-shrink: 0 !important;
-        height: 60px !important;
-        margin-bottom: 10px !important;
+        justify-content: space-between !important;
+        align-items: center !important;
+        padding: 10px 0 !important;
+        border-bottom: 3px solid #1e40af !important;
+        height: 100% !important;
+      }
+
+      .print-footer-inner {
+        padding-top: 8px !important;
+      }
+
+      .print-footer .footer-line {
+        border-top: 1px solid #000 !important;
+        margin-bottom: 8px !important;
+      }
+
+      .print-footer .disclaimer {
+        text-align: center !important;
+        line-height: 1.4 !important;
+        font-size: 8pt !important;
+        color: #666 !important;
+        font-style: italic !important;
+      }
+
+      /* HIDE in-page headers/footers during print - fixed ones are used instead */
+      .page > .page-header {
+        display: none !important;
       }
 
       .page > .page-footer {
-        display: block !important;
-        flex-shrink: 0 !important;
-        margin-top: auto !important;
-        padding-top: 10px !important;
+        display: none !important;
       }
 
-      /* Content wrapper - no longer needs padding for fixed elements */
+      /* Content wrapper needs padding for fixed header/footer */
       .content-wrapper {
-        padding: 0 !important;
+        padding-top: var(--header-height) !important;
+        padding-bottom: var(--footer-height) !important;
       }
 
-      /* Page structure for print - use flexbox to push footer to bottom */
+      /* Page structure for print */
       .page {
-        display: flex !important;
-        flex-direction: column !important;
+        display: block !important;
         position: relative !important;
-        min-height: 9in !important; /* Letter height minus @page margins */
+        min-height: auto !important;
         height: auto !important;
-        padding: 0 !important;
+        padding: 0.25in 0 !important;
         margin: 0 !important;
         box-sizing: border-box !important;
         page-break-after: always !important;
@@ -829,7 +898,6 @@ serve(async (req) => {
 
       .page-content {
         display: block !important;
-        flex: 1 !important; /* Take remaining space between header and footer */
         overflow: visible !important;
       }
 
@@ -847,10 +915,10 @@ serve(async (req) => {
         line-height: 1.4;
       }
 
-      /* Page setup - proper margins for header/footer space */
+      /* Page setup - proper margins for fixed header/footer space */
       @page {
         size: letter portrait;
-        margin: 0.5in;
+        margin: 1in 0.5in;
       }
 
       /* Prevent breaks within critical elements */
@@ -1176,11 +1244,37 @@ serve(async (req) => {
       h1 { font-size: 14pt; }
       h2 { font-size: 11pt; }
     }
-  </style>
 </head>
 <body>
 
-  <!-- Content container (fixed header/footer approach removed - using in-page headers/footers instead) -->
+  <!-- Fixed header for print - repeats on every printed page -->
+  <div class="print-header">
+    <div class="print-header-inner">
+      <div class="header-left">
+        <img src="${ropeWorksLogo}" alt="Rope Works" style="height: 50px; width: auto;">
+      </div>
+      <div class="header-center">
+        <div class="header-title"></div>
+      </div>
+      <div class="header-right">
+        <img src="${acctLogo}" alt="ACCT Accredited Vendor" style="height: 45px; width: auto;">
+      </div>
+    </div>
+  </div>
+
+  <!-- Fixed footer for print - repeats on every printed page -->
+  <div class="print-footer">
+    <div class="print-footer-inner">
+      <div class="footer-line"></div>
+      <div class="disclaimer">
+        The information contained in this report has been documented by a Qualified Professional.<br>
+        This report is effective for one year from the date of inspection. Issued by:<br>
+        Rope Works Inc., PO Box 1074, Dripping Springs, TX 78620
+      </div>
+    </div>
+  </div>
+
+  <!-- Content container -->
   <div class="content-wrapper">
 
   <!-- PAGE 1: COVER PAGE -->
