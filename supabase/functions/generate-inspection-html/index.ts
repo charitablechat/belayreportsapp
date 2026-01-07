@@ -283,7 +283,7 @@ serve(async (req) => {
       equipmentRowCount > 0 && standardsRowCount > 0 && equipmentRowCount <= 6 && standardsRowCount <= 6;
 
     // Calculate page count with consolidation
-    let pageCount = 2; // Cover + Key
+    let pageCount = 3; // Cover + Reminders + Key
 
     if (canCombineSystemsZiplines) {
       pageCount++; // Combined systems/ziplines page
@@ -1280,8 +1280,35 @@ serve(async (req) => {
       <div class="text-block">
         <p>This report covers the condition of the aerial adventure site for the date of inspection reflected on this form. The inspection provided is strictly an evaluation of the structural condition of the course elements and equipment. The inspection does not include training on how to operate the equipment, nor how to operate the course. The inspection only verifies the existence of written local operating procedures (LOP), an emergency action plan (EAP), and training documentation. The inspection does not perform a review or evaluate the LOP, EAP and training documentation. Potential problems can occur afterwards due to vandalism, improper use, weather, etc. Rope Works Inc. is not responsible for modifications or repairs made to the challenge course by anyone other than a Rope Works Inc. employee. We recommend you conduct your own periodic internal monitoring at a minimum on a quarterly basis. At a minimum an annual professional inspection is required by a qualified professional to be in compliance with the Association for Challenge Course Technology ANSI/ACCT current published standards.</p>
       </div>
+    </div>
 
-      <h2>REMINDERS AND REQUIREMENTS</h2>
+    <div class="page-footer">
+      <div class="page-number">Page 1 of ${pageCount}</div>
+      <div class="footer-line"></div>
+      <div class="disclaimer">
+        The information contained in this report has been documented by a Qualified Professional.<br>
+        This report is effective for one year from the date of inspection. Issued by:<br>
+        Rope Works Inc., PO Box 1074, Dripping Springs, TX 78620
+      </div>
+    </div>
+  </div>
+
+  <!-- PAGE 2: REMINDERS AND REQUIREMENTS -->
+  <div class="page">
+    <div class="page-header">
+      <div class="header-left">
+        <img src="${ropeWorksLogo}" alt="Rope Works">
+      </div>
+      <div class="header-center">
+        <div class="header-title"></div>
+      </div>
+      <div class="header-right">
+        <img src="${acctLogo}" alt="ACCT Accredited Vendor">
+      </div>
+    </div>
+
+    <div class="page-content">
+      <h2 style="margin-top: 5px;">REMINDERS AND REQUIREMENTS</h2>
       <ul class="bullet-list">
         <li><strong>Fall Protection:</strong> Employers are required to issue staff appropriate fall protection for the duties to be performed.</li>
         <li><strong>Periodic Internal Monitoring:</strong> A Periodic Internal Monitoring of the aerial activities on your site shall be conducted by qualified personnel.</li>
@@ -1292,7 +1319,7 @@ serve(async (req) => {
     </div>
 
     <div class="page-footer">
-      <div class="page-number">1</div>
+      <div class="page-number">Page 2 of ${pageCount}</div>
       <div class="footer-line"></div>
       <div class="disclaimer">
         The information contained in this report has been documented by a Qualified Professional.<br>
@@ -1302,7 +1329,7 @@ serve(async (req) => {
     </div>
   </div>
 
-  <!-- PAGE 2: INSPECTION KEY -->
+  <!-- PAGE 3: INSPECTION KEY -->
   <div class="page">
     <div class="page-header">
       <div class="header-left">
@@ -1369,7 +1396,7 @@ serve(async (req) => {
     </div>
 
     <div class="page-footer">
-      <div class="page-number">2</div>
+      <div class="page-number">Page 3 of ${pageCount}</div>
       <div class="footer-line"></div>
       <div class="disclaimer">
         The information contained in this report has been documented by a Qualified Professional.<br>
@@ -1489,7 +1516,7 @@ serve(async (req) => {
     </div>
 
     <div class="page-footer">
-      <div class="page-number">3</div>
+      <div class="page-number">Page 4 of ${pageCount}</div>
       <div class="footer-line"></div>
       <div class="disclaimer">
         The information contained in this report has been documented by a Qualified Professional.<br>
@@ -1553,7 +1580,7 @@ serve(async (req) => {
     </div>
 
     <div class="page-footer">
-      <div class="page-number">3</div>
+      <div class="page-number">Page 4 of ${pageCount}</div>
       <div class="footer-line"></div>
       <div class="disclaimer">
         The information contained in this report has been documented by a Qualified Professional.<br>
@@ -1635,7 +1662,7 @@ serve(async (req) => {
     </div>
 
     <div class="page-footer">
-      <div class="page-number">${systems.length > 0 ? "4" : "3"}</div>
+      <div class="page-number">Page ${systems.length > 0 ? "5" : "4"} of ${pageCount}</div>
       <div class="footer-line"></div>
       <div class="disclaimer">
         The information contained in this report has been documented by a Qualified Professional.<br>
@@ -1770,7 +1797,7 @@ serve(async (req) => {
     </div>
 
     <div class="page-footer">
-      <div class="page-number">${pageCount - 1}</div>
+      <div class="page-number">Page ${pageCount - 1} of ${pageCount}</div>
       <div class="footer-line"></div>
       <div class="disclaimer">
         The information contained in this report has been documented by a Qualified Professional.<br>
@@ -1860,7 +1887,7 @@ serve(async (req) => {
     </div>
 
     <div class="page-footer">
-      <div class="page-number">${systems.length > 0 ? (ziplines.length > 0 ? "5" : "4") : ziplines.length > 0 ? "4" : "3"}</div>
+      <div class="page-number">Page ${systems.length > 0 ? (ziplines.length > 0 ? "6" : "5") : ziplines.length > 0 ? "5" : "4"} of ${pageCount}</div>
       <div class="footer-line"></div>
       <div class="disclaimer">
         The information contained in this report has been documented by a Qualified Professional.<br>
@@ -1926,7 +1953,7 @@ serve(async (req) => {
     </div>
 
     <div class="page-footer">
-      <div class="page-number">${pageCount - 1}</div>
+      <div class="page-number">Page ${pageCount - 1} of ${pageCount}</div>
       <div class="footer-line"></div>
       <div class="disclaimer">
         The information contained in this report has been documented by a Qualified Professional.<br>
@@ -2070,7 +2097,7 @@ serve(async (req) => {
     </div>
 
     <div class="page-footer">
-      <div class="page-number">${pageCount}</div>
+      <div class="page-number">Page ${pageCount} of ${pageCount}</div>
       <div class="footer-line"></div>
       <div class="disclaimer">
         The information contained in this report has been documented by a Qualified Professional.<br>
