@@ -1300,7 +1300,7 @@ serve(async (req) => {
     </div>
 
     <div class="page-footer">
-      <div class="page-number">Page 1 of ${pageCount}</div>
+      <div class="page-number">Page 1</div>
       <div class="footer-line"></div>
       <div class="disclaimer">
         The information contained in this report has been documented by a Qualified Professional.<br>
@@ -1336,7 +1336,7 @@ serve(async (req) => {
     </div>
 
     <div class="page-footer">
-      <div class="page-number">Page 2 of ${pageCount}</div>
+      <div class="page-number">Page 2</div>
       <div class="footer-line"></div>
       <div class="disclaimer">
         The information contained in this report has been documented by a Qualified Professional.<br>
@@ -1413,7 +1413,7 @@ serve(async (req) => {
     </div>
 
     <div class="page-footer">
-      <div class="page-number">Page 3 of ${pageCount}</div>
+      <div class="page-number">Page 3</div>
       <div class="footer-line"></div>
       <div class="disclaimer">
         The information contained in this report has been documented by a Qualified Professional.<br>
@@ -1533,7 +1533,7 @@ serve(async (req) => {
     </div>
 
     <div class="page-footer">
-      <div class="page-number">Page 4 of ${pageCount}</div>
+      <div class="page-number">Page 4</div>
       <div class="footer-line"></div>
       <div class="disclaimer">
         The information contained in this report has been documented by a Qualified Professional.<br>
@@ -1597,7 +1597,7 @@ serve(async (req) => {
     </div>
 
     <div class="page-footer">
-      <div class="page-number">Page 4 of ${pageCount}</div>
+      <div class="page-number">Page 4</div>
       <div class="footer-line"></div>
       <div class="disclaimer">
         The information contained in this report has been documented by a Qualified Professional.<br>
@@ -1679,7 +1679,7 @@ serve(async (req) => {
     </div>
 
     <div class="page-footer">
-      <div class="page-number">Page ${systems.length > 0 ? "5" : "4"} of ${pageCount}</div>
+      <div class="page-number">Page ${systems.length > 0 ? "5" : "4"}</div>
       <div class="footer-line"></div>
       <div class="disclaimer">
         The information contained in this report has been documented by a Qualified Professional.<br>
@@ -1814,7 +1814,7 @@ serve(async (req) => {
     </div>
 
     <div class="page-footer">
-      <div class="page-number">Page ${pageCount - 1} of ${pageCount}</div>
+      <div class="page-number">Page ${pageCount - 1}</div>
       <div class="footer-line"></div>
       <div class="disclaimer">
         The information contained in this report has been documented by a Qualified Professional.<br>
@@ -1904,7 +1904,7 @@ serve(async (req) => {
     </div>
 
     <div class="page-footer">
-      <div class="page-number">Page ${systems.length > 0 ? (ziplines.length > 0 ? "6" : "5") : ziplines.length > 0 ? "5" : "4"} of ${pageCount}</div>
+      <div class="page-number">Page ${systems.length > 0 ? (ziplines.length > 0 ? "6" : "5") : ziplines.length > 0 ? "5" : "4"}</div>
       <div class="footer-line"></div>
       <div class="disclaimer">
         The information contained in this report has been documented by a Qualified Professional.<br>
@@ -1970,7 +1970,7 @@ serve(async (req) => {
     </div>
 
     <div class="page-footer">
-      <div class="page-number">Page ${pageCount - 1} of ${pageCount}</div>
+      <div class="page-number">Page ${pageCount - 1}</div>
       <div class="footer-line"></div>
       <div class="disclaimer">
         The information contained in this report has been documented by a Qualified Professional.<br>
@@ -2114,7 +2114,7 @@ serve(async (req) => {
     </div>
 
     <div class="page-footer">
-      <div class="page-number">Page ${pageCount} of ${pageCount}</div>
+      <div class="page-number">Page ${pageCount}</div>
       <div class="footer-line"></div>
       <div class="disclaimer">
         The information contained in this report has been documented by a Qualified Professional.<br>
