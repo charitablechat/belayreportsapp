@@ -166,9 +166,9 @@ serve(async (req) => {
       align-items: center;
     }
     
-    .page-header .header-left img {
-      height: 35px;
-      max-height: 35px;
+    .header-logo-left {
+      height: 35px !important;
+      max-height: 35px !important;
       max-width: 200px;
       width: auto;
       object-fit: contain;
@@ -180,9 +180,9 @@ serve(async (req) => {
       align-items: center;
     }
     
-    .page-header .header-right img {
-      height: 35px;
-      max-height: 35px;
+    .header-logo-right {
+      height: 35px !important;
+      max-height: 35px !important;
       max-width: 180px;
       width: auto;
       object-fit: contain;
@@ -417,8 +417,8 @@ serve(async (req) => {
       }
       
       /* LOGO FIX: Force visibility - logos must render in PDF, capped at 35px */
-      .page-header .header-left img,
-      .page-header .header-right img {
+      .header-logo-left,
+      .header-logo-right {
         display: block !important;
         visibility: visible !important;
         opacity: 1 !important;
