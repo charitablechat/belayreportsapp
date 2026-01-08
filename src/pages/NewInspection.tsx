@@ -133,11 +133,23 @@ export default function NewInspection() {
         inspection_date: new Date().toISOString().split('T')[0],
       };
 
-      if (isOnline) {
+        // Clean up empty strings to null for database
+        const cleanedFormData = {
+          organization: formData.organization || '',
+          location: formData.location || '',
+          onsite_contact: formData.onsite_contact || null,
+          previous_inspector: formData.previous_inspector || null,
+          previous_inspection_date: formData.previous_inspection_date || null,
+          course_history: formData.course_history || null,
+          latitude: formData.latitude,
+          longitude: formData.longitude,
+        };
+
+        if (isOnline) {
         // Create in Supabase
         if (import.meta.env.DEV) {
           console.log('[NewInspection] Submitting to Supabase:', {
-            ...formData,
+            ...cleanedFormData,
             inspector_id: user.id,
             status: "draft",
           });
@@ -146,7 +158,7 @@ export default function NewInspection() {
         const { data, error } = await supabase
           .from("inspections")
           .insert({
-            ...formData,
+            ...cleanedFormData,
             inspector_id: user.id,
             status: "draft",
           })
@@ -225,7 +237,7 @@ export default function NewInspection() {
             
             <form onSubmit={handleSubmit} className="space-y-6">
               <div className="space-y-2">
-                <Label htmlFor="organization">Organization *</Label>
+                <Label htmlFor="organization">Organization</Label>
                 <OrganizationAutocomplete
                   value={formData.organization}
                   onChange={(value) => setFormData(prev => ({ ...prev, organization: value }))}
@@ -234,13 +246,12 @@ export default function NewInspection() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="location">Location *</Label>
+                <Label htmlFor="location">Location</Label>
                 <div className="flex gap-2">
                   <Input
                     id="location"
                     value={formData.location}
                     onChange={(e) => setFormData(prev => ({ ...prev, location: e.target.value }))}
-                    required
                     placeholder="Enter location"
                     className="flex-1"
                   />
@@ -312,8 +323,8 @@ export default function NewInspection() {
                   <Input
                     id="previous_inspection_date"
                     type="date"
-                    value={formData.previous_inspection_date}
-                    onChange={(e) => setFormData(prev => ({ ...prev, previous_inspection_date: e.target.value }))}
+                    value={formData.previous_inspection_date || ""}
+                    onChange={(e) => setFormData(prev => ({ ...prev, previous_inspection_date: e.target.value || "" }))}
                   />
                 </div>
               </div>
