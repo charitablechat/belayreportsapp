@@ -136,8 +136,8 @@ export const SHARED_HEADER_FOOTER_CSS = `
      * --pdf-footer-h: Reserved space for fixed footer
      */
     :root {
-      /* Unified logo height for all reports (HTML + PDF): 32px */
-      --report-logo-h: 32px;
+      /* Hard cap: logos NEVER exceed 35px in any report (HTML + PDF) */
+      --report-logo-max-h: 35px;
       --pdf-header-h: 55px;
       --pdf-footer-h: 70px;
     }
@@ -172,13 +172,15 @@ export const SHARED_HEADER_FOOTER_CSS = `
       width: 50%;
     }
 
-    /* Unified logo sizing: 32px height for both logos, all reports */
+    /* Hard-capped logo sizing: max 35px for both logos, all reports */
     .header-logo-left,
     .header-logo-right {
-      height: var(--report-logo-h);
-      max-height: var(--report-logo-h);
-      width: auto;
-      object-fit: contain;
+      height: auto !important;
+      max-height: var(--report-logo-max-h) !important;
+      width: auto !important;
+      max-width: 100% !important;
+      object-fit: contain !important;
+      display: block;
     }
     
     /* FOOTER STYLES - NO LOGOS, only disclaimer */
@@ -278,18 +280,32 @@ export const SHARED_PRINT_CSS = `
       text-align: right !important;
     }
     
-    /* LOGO VISIBILITY - Force header logos to render in PDF at unified 32px height */
+    /* LOGO VISIBILITY - Force header logos to render in PDF, hard capped at 35px */
     .header-logo-left,
     .header-logo-right {
       display: inline-block !important;
       visibility: visible !important;
       opacity: 1 !important;
-      height: 32px !important;
-      max-height: 32px !important;
+      height: auto !important;
+      max-height: 35px !important;
       width: auto !important;
+      max-width: 100% !important;
       object-fit: contain !important;
       -webkit-print-color-adjust: exact !important;
       print-color-adjust: exact !important;
+    }
+    
+    /* PHOTO VISIBILITY - Ensure photos render in PDF */
+    .photo-gallery img,
+    .inspection-photo {
+      display: block !important;
+      visibility: visible !important;
+      opacity: 1 !important;
+      max-width: 100% !important;
+      height: auto !important;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+      page-break-inside: avoid !important;
     }
     
     /* FOOTER - visible, NO logos */
