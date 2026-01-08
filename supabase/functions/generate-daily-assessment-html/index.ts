@@ -218,6 +218,20 @@ serve(async (req) => {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Daily Course Assessment - ${assessment.site}</title>
   <style>
+    /* 
+     * FIX: Content Clipping Prevention
+     * --------------------------------
+     * Previous issue: overflow:hidden and max-height caused content to be clipped.
+     * Solution: Use CSS variables for header/footer heights, allow content to flow
+     * naturally across pages, and use page-break rules instead of fixed heights.
+     */
+    
+    :root {
+      --pdf-header-h: 85px;   /* Header height including border */
+      --pdf-footer-h: 80px;   /* Footer height including padding */
+      --page-padding: 0.25in;
+    }
+    
     * {
       margin: 0;
       padding: 0;
@@ -232,23 +246,22 @@ serve(async (req) => {
       padding: 10px;
     }
 
-    /* Page structure - matching inspection/training reports */
+    /* Page structure - allow natural content flow */
     .page {
-      display: flex;
-      flex-direction: column;
-      padding: 0.25in;
+      display: block;
+      padding: var(--page-padding);
       background: white;
       margin-bottom: 20px;
       box-shadow: 0 2px 10px rgba(0,0,0,0.1);
       page-break-after: always;
-      page-break-inside: avoid;
-      min-height: 9in;
-      max-height: 9.5in;
-      overflow: hidden;
+      page-break-inside: auto;
+      min-height: auto;
+      /* No max-height or overflow:hidden - content must flow naturally */
     }
 
     .page-content {
       min-height: 200px;
+      /* Content flows naturally, no clipping */
     }
 
     .page:last-child {
@@ -473,11 +486,19 @@ serve(async (req) => {
       line-height: 1.5;
     }
 
-    /* Print styles - matching inspection/training reports */
+    /* 
+     * Print styles - Content Flow Fix
+     * --------------------------------
+     * FIX: Removed fixed heights and overflow:hidden that caused clipping.
+     * Content now flows naturally across pages. Browser handles pagination.
+     */
     @media print {
-      body {
+      html, body {
+        height: auto !important;
+        overflow: visible !important;
         background: white;
         padding: 0;
+        margin: 0;
         print-color-adjust: exact;
         -webkit-print-color-adjust: exact;
         font-size: 10pt;
@@ -486,56 +507,71 @@ serve(async (req) => {
 
       @page {
         size: letter portrait;
-        margin: 0.5in;
+        margin: 0.5in 0.5in 0.6in 0.5in; /* Extra bottom margin for footer */
       }
 
       .page {
-        display: flex !important;
-        flex-direction: column !important;
+        display: block !important;
         position: relative !important;
-        min-height: 9in !important;
-        height: 9.5in !important;
-        max-height: 9.5in !important;
-        padding: 0.2in !important;
-        margin: 0 !important;
+        /* Allow content to flow - no fixed height, no hidden overflow */
+        height: auto !important;
+        min-height: auto !important;
+        max-height: none !important;
+        padding: 0 !important;
+        margin: 0 0 20px 0 !important;
         box-sizing: border-box !important;
         page-break-after: always !important;
-        page-break-inside: avoid !important;
+        page-break-inside: auto !important; /* Allow breaks within page */
         box-shadow: none !important;
-        overflow: hidden !important;
+        overflow: visible !important; /* CRITICAL: Allow content to flow */
       }
 
       .page:last-child {
         page-break-after: avoid !important;
+        margin-bottom: 0 !important;
       }
 
       .page > .page-header {
         display: flex !important;
-        flex-shrink: 0 !important;
         height: 60px !important;
         max-height: 60px !important;
-        overflow: hidden !important;
         margin-bottom: 10px !important;
         position: relative !important;
+        /* Header stays together */
+        page-break-inside: avoid !important;
+        page-break-after: avoid !important;
+      }
+      
+      .page > .page-header img {
+        max-height: 50px !important;
+        width: auto !important;
+        object-fit: contain !important;
       }
 
       .page > .page-footer {
         display: block !important;
         margin-top: 15px !important;
         padding-top: 10px !important;
+        /* Footer stays together */
         page-break-inside: avoid !important;
         page-break-before: auto !important;
       }
 
       .page-content {
         display: block !important;
-        overflow: visible !important;
+        height: auto !important;
+        overflow: visible !important; /* CRITICAL: No clipping */
       }
 
       /* Keep sections together but allow page breaks between them */
       .section {
         page-break-inside: avoid;
         page-break-after: auto;
+      }
+      
+      .section-title {
+        page-break-after: avoid;
+        page-break-inside: avoid;
       }
 
       .info-grid, .systems-grid {
@@ -546,8 +582,8 @@ serve(async (req) => {
         page-break-inside: avoid;
       }
 
-      .section-title {
-        page-break-after: avoid;
+      .disclaimer {
+        page-break-inside: avoid;
       }
 
       /* Color enforcement */

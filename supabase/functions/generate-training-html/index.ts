@@ -172,6 +172,22 @@ serve(async (req) => {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Training Report - ${content.facilityInfo.organization}</title>
   <style>
+    /* 
+     * FIX: Content Clipping Prevention
+     * --------------------------------
+     * Previous issue: overflow:hidden and max-height caused content to be clipped.
+     * Solution: Allow content to flow naturally across pages using page-break rules.
+     * 
+     * ACCT Logo Fix: Logo uses same data URI pattern as inspection report.
+     * Logo should render in PDF as it uses inline base64, not external URL.
+     */
+    
+    :root {
+      --pdf-header-h: 85px;
+      --pdf-footer-h: 80px;
+      --page-padding: 0.25in;
+    }
+    
     * {
       margin: 0;
       padding: 0;
@@ -185,20 +201,17 @@ serve(async (req) => {
       padding: 10px;
     }
     
-    /* Page structure for print */
+    /* Page structure - allow natural content flow */
     .page {
       max-width: 100%;
       width: 100%;
       margin: 0 auto 20px auto;
       background: white;
-      padding: 0.25in;
+      padding: var(--page-padding);
       box-shadow: 0 2px 10px rgba(0,0,0,0.1);
       position: relative;
-      min-height: 9in;
-      max-height: 9.5in;
-      overflow: hidden;
-      display: flex;
-      flex-direction: column;
+      min-height: auto;
+      /* No max-height or overflow:hidden - content must flow naturally */
     }
     
     .page-header {
@@ -375,86 +388,112 @@ serve(async (req) => {
       margin-top: 15px;
     }
     
+    /* 
+     * Print styles - Content Flow Fix
+     * --------------------------------
+     * FIX: Removed fixed heights and overflow:hidden that caused clipping.
+     * Content now flows naturally across pages. Browser handles pagination.
+     *
+     * ACCT Logo Fix: Ensured header images use !important display rules
+     * and are never hidden by print CSS. Logo renders via inline base64.
+     */
     @media print {
-      body {
+      html, body {
+        height: auto !important;
+        overflow: visible !important;
+        background: white;
+        padding: 0;
+        margin: 0;
         print-color-adjust: exact;
         -webkit-print-color-adjust: exact;
-        background: white;
-        color: black;
         font-size: 10pt;
         line-height: 1.4;
-        padding: 0;
       }
 
       @page {
         size: letter portrait;
-        margin: 0.5in;
+        margin: 0.5in 0.5in 0.6in 0.5in; /* Extra bottom margin for footer */
       }
 
       .page {
-        display: flex !important;
-        flex-direction: column !important;
+        display: block !important;
         position: relative !important;
-        min-height: 9in !important;
-        height: 9.5in !important;
-        max-height: 9.5in !important;
-        padding: 0.2in !important;
-        margin: 0 !important;
+        /* Allow content to flow - no fixed height, no hidden overflow */
+        height: auto !important;
+        min-height: auto !important;
+        max-height: none !important;
+        padding: 0 !important;
+        margin: 0 0 20px 0 !important;
         box-sizing: border-box !important;
         page-break-after: always !important;
-        page-break-inside: avoid !important;
+        page-break-inside: auto !important; /* Allow breaks within page */
         box-shadow: none !important;
-        overflow: hidden !important;
+        overflow: visible !important; /* CRITICAL: Allow content to flow */
       }
 
       .page:last-child {
         page-break-after: avoid !important;
+        margin-bottom: 0 !important;
       }
 
+      /* 
+       * Header Logo Fix
+       * Ensure both logos are always visible in print/PDF mode
+       */
       .page > .page-header {
         display: flex !important;
-        flex-shrink: 0 !important;
+        visibility: visible !important;
         height: 60px !important;
         max-height: 60px !important;
-        overflow: hidden !important;
         margin-bottom: 10px !important;
         position: relative !important;
+        page-break-inside: avoid !important;
+        page-break-after: avoid !important;
       }
       
       .page > .page-header .header-left,
       .page > .page-header .header-right {
+        display: flex !important;
+        visibility: visible !important;
         flex: 0 0 auto !important;
-        overflow: hidden !important;
       }
       
+      /* Ensure logos are visible in print - never hidden */
       .page > .page-header .header-left img,
       .page > .page-header .header-right img {
+        display: block !important;
+        visibility: visible !important;
         max-height: 50px !important;
         max-width: 180px !important;
         height: auto !important;
         width: auto !important;
         object-fit: contain !important;
+        /* Ensure print doesn't strip images */
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
       }
 
       .page-content {
         display: block !important;
-        flex: 1 !important;
-        overflow: visible !important;
+        height: auto !important;
+        overflow: visible !important; /* CRITICAL: No clipping */
       }
 
       .page-footer {
         display: block !important;
-        flex-shrink: 0 !important;
-        margin-top: auto !important;
+        margin-top: 15px !important;
         padding-top: 10px !important;
+        page-break-inside: avoid !important;
       }
 
       .section {
         page-break-inside: avoid;
+        page-break-after: auto;
       }
 
       .section-title {
         page-break-after: avoid;
+        page-break-inside: avoid;
       }
 
       li {
@@ -465,6 +504,19 @@ serve(async (req) => {
       .standards-box,
       .disclaimer {
         page-break-inside: avoid;
+      }
+      
+      /* Color enforcement */
+      *, *::before, *::after {
+        print-color-adjust: exact !important;
+        -webkit-print-color-adjust: exact !important;
+      }
+
+      * {
+        box-shadow: none !important;
+        text-shadow: none !important;
+        animation: none !important;
+        transition: none !important;
       }
     }
     
