@@ -167,8 +167,8 @@ serve(async (req) => {
     }
     
     .page-header .header-left img {
-      height: 55px;
-      max-height: 55px;
+      height: 35px;
+      max-height: 35px;
       max-width: 200px;
       width: auto;
       object-fit: contain;
@@ -181,8 +181,8 @@ serve(async (req) => {
     }
     
     .page-header .header-right img {
-      height: 50px;
-      max-height: 50px;
+      height: 35px;
+      max-height: 35px;
       max-width: 180px;
       width: auto;
       object-fit: contain;
@@ -416,15 +416,15 @@ serve(async (req) => {
         flex: 0 0 auto !important;
       }
       
-      /* LOGO FIX: Force visibility - logos must render in PDF */
+      /* LOGO FIX: Force visibility - logos must render in PDF, capped at 35px */
       .page-header .header-left img,
       .page-header .header-right img {
         display: block !important;
         visibility: visible !important;
         opacity: 1 !important;
-        max-height: 50px !important;
+        height: 35px !important;
+        max-height: 35px !important;
         max-width: 180px !important;
-        height: auto !important;
         width: auto !important;
         object-fit: contain !important;
         -webkit-print-color-adjust: exact !important;

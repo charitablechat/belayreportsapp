@@ -220,27 +220,36 @@ serve(async (req) => {
     console.log(`[Inspection HTML] Found ${photos.length} photos for inspection ${inspectionId}`);
 
     // Convert photos to base64 data URIs for reliable PDF rendering
+    // Use supabase.storage.download() for private bucket access
     const photoDataUris: { id: string; dataUri: string; caption: string; section: string }[] = [];
     for (const photo of photos) {
       try {
-        // Build full storage URL
-        const photoUrl = `${supabaseUrl}/storage/v1/object/public/inspection-photos/${photo.photo_url}`;
-        console.log(`[Inspection HTML] Fetching photo: ${photoUrl}`);
+        console.log(`[Inspection HTML] Downloading photo from private bucket: ${photo.photo_url}`);
         
-        const photoResponse = await fetch(photoUrl);
-        if (photoResponse.ok) {
-          const photoBuffer = await photoResponse.arrayBuffer();
-          const photoBase64 = arrayBufferToBase64(photoBuffer);
-          const photoMime = photoResponse.headers.get('content-type') || 'image/jpeg';
+        // Use Supabase storage download (works with private buckets via service role key)
+        const { data: fileData, error: downloadError } = await supabase
+          .storage
+          .from('inspection-photos')
+          .download(photo.photo_url);
+        
+        if (downloadError) {
+          console.warn(`[Inspection HTML] Failed to download photo ${photo.id}:`, downloadError.message);
+          continue;
+        }
+        
+        if (fileData) {
+          // Convert blob to base64
+          const arrayBuffer = await fileData.arrayBuffer();
+          const photoBase64 = arrayBufferToBase64(arrayBuffer);
+          const photoMime = fileData.type || 'image/jpeg';
+          
           photoDataUris.push({
             id: photo.id,
             dataUri: `data:${photoMime};base64,${photoBase64}`,
             caption: photo.caption || '',
             section: photo.photo_section || 'general',
           });
-          console.log(`[Inspection HTML] Successfully converted photo ${photo.id} to base64`);
-        } else {
-          console.warn(`[Inspection HTML] Failed to fetch photo ${photo.id}: ${photoResponse.status}`);
+          console.log(`[Inspection HTML] Successfully converted photo ${photo.id} to base64 (${Math.round(arrayBuffer.byteLength / 1024)}KB)`);
         }
       } catch (photoError) {
         console.error(`[Inspection HTML] Error processing photo ${photo.id}:`, photoError);
@@ -444,7 +453,8 @@ serve(async (req) => {
     }
 
     .header-left img {
-      height: 55px;
+      height: 35px;
+      max-height: 35px;
       width: auto;
       object-fit: contain;
     }
@@ -474,7 +484,8 @@ serve(async (req) => {
     }
 
     .header-right img {
-      height: 50px;
+      height: 35px;
+      max-height: 35px;
       width: auto;
       object-fit: contain;
     }
@@ -1114,6 +1125,44 @@ serve(async (req) => {
       *, *::before, *::after {
         print-color-adjust: exact !important;
         -webkit-print-color-adjust: exact !important;
+      }
+      
+      /* LOGO FIX: Force visibility - logos must render in PDF, capped at 35px */
+      .page-header .header-left img,
+      .page-header .header-right img {
+        display: block !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+        height: 35px !important;
+        max-height: 35px !important;
+        max-width: 180px !important;
+        width: auto !important;
+        object-fit: contain !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+      }
+      
+      /* PHOTO FIX: Ensure photos render in PDF */
+      .photo-gallery {
+        display: block !important;
+        visibility: visible !important;
+      }
+      
+      .photo-item {
+        display: block !important;
+        visibility: visible !important;
+        page-break-inside: avoid !important;
+        margin-bottom: 20px !important;
+      }
+      
+      .inspection-photo {
+        display: block !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+        max-width: 100% !important;
+        height: auto !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
       }
       
       /* Hide link URLs that browsers add by default */
