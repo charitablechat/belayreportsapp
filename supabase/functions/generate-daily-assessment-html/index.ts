@@ -1,69 +1,17 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.7.1";
+import { 
+  getLogoBase64, 
+  createPageHeader, 
+  createPageFooter,
+  SHARED_HEADER_FOOTER_CSS,
+  SHARED_PRINT_CSS 
+} from "../_shared/report-layout.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
-
-// Placeholder logos (1x1 transparent PNG)
-const PLACEHOLDER_LOGO = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
-
-// Convert array buffer to base64 in chunks to avoid stack overflow
-function arrayBufferToBase64(buffer: ArrayBuffer): string {
-  const bytes = new Uint8Array(buffer);
-  let binary = '';
-  const chunkSize = 8192;
-  for (let i = 0; i < bytes.length; i += chunkSize) {
-    const chunk = bytes.subarray(i, Math.min(i + chunkSize, bytes.length));
-    binary += String.fromCharCode.apply(null, Array.from(chunk));
-  }
-  return btoa(binary);
-}
-
-async function getLogoBase64(supabaseUrl: string): Promise<{ropeWorks: string, acct: string}> {
-  const storageBaseUrl = 'https://ssgzcgvygnsrqalisshx.supabase.co/storage/v1/object/public/pdf-templates';
-  const ropeWorksUrl = `${storageBaseUrl}/rope-works-logo-embedded.png`;
-  const acctUrl = `${storageBaseUrl}/acct-logo-embedded.png`;
-  
-  console.log('Fetching logos from storage...');
-  
-  try {
-    const [ropeWorksResponse, acctResponse] = await Promise.all([
-      fetch(ropeWorksUrl),
-      fetch(acctUrl)
-    ]);
-    
-    if (ropeWorksResponse.ok && acctResponse.ok) {
-      const [ropeWorksBuffer, acctBuffer] = await Promise.all([
-        ropeWorksResponse.arrayBuffer(),
-        acctResponse.arrayBuffer()
-      ]);
-      
-      const ropeWorksBase64 = arrayBufferToBase64(ropeWorksBuffer);
-      const acctBase64 = arrayBufferToBase64(acctBuffer);
-      
-      const ropeWorksMime = ropeWorksResponse.headers.get('content-type') || 'image/png';
-      const acctMime = acctResponse.headers.get('content-type') || 'image/png';
-      
-      console.log('Successfully loaded logos from storage');
-      console.log('Rope Works base64 length:', ropeWorksBase64.length);
-      console.log('ACCT base64 length:', acctBase64.length);
-      
-      return {
-        ropeWorks: `data:${ropeWorksMime};base64,${ropeWorksBase64}`,
-        acct: `data:${acctMime};base64,${acctBase64}`
-      };
-    } else {
-      console.error('Failed to fetch logos:', ropeWorksResponse.status, acctResponse.status);
-    }
-  } catch (error) {
-    console.error('Error fetching logos:', error);
-  }
-  
-  console.warn('Using placeholder logos');
-  return { ropeWorks: PLACEHOLDER_LOGO, acct: PLACEHOLDER_LOGO };
-}
 
 // Deduplicate checklist items by item_key (keeps first occurrence)
 function deduplicateChecklistItems<T extends { item_key?: string; system_name?: string }>(items: T[] | null, keyField: 'item_key' | 'system_name' = 'item_key'): T[] {
@@ -102,8 +50,8 @@ serve(async (req) => {
 
     const { assessmentId } = await req.json();
     
-    // Fetch logos from storage
-    const logos = await getLogoBase64(supabaseUrl);
+    // Fetch logos from storage using shared helper
+    const logos = await getLogoBase64();
     const ropeWorksLogo = logos.ropeWorks;
     const acctLogo = logos.acct;
 
@@ -187,28 +135,12 @@ serve(async (req) => {
       `;
     };
 
-    // Helper functions for page structure (matching inspection/training reports)
-    const createPageHeader = () => `
-      <div class="page-header">
-        <div class="header-left">
-          <img src="${ropeWorksLogo}" alt="Rope Works">
-        </div>
-        <div class="header-right">
-          <img src="${acctLogo}" alt="ACCT Accredited Vendor">
-        </div>
-      </div>
-    `;
+    // Footer disclaimer text for daily assessment
+    const footerDisclaimerText = `Daily Course Assessment Documentation | ${assessment.site || 'N/A'}<br>Generated on ${generatedTimestamp}`;
 
-    const createPageFooter = (pageNum: number) => `
-      <div class="page-footer">
-        <div class="page-number">Page ${pageNum}</div>
-        <div class="footer-line"></div>
-        <div class="disclaimer-footer">
-          Daily Course Assessment Documentation | ${assessment.site || 'N/A'}<br>
-          Generated on ${generatedTimestamp}
-        </div>
-      </div>
-    `;
+    // Helper wrappers using shared layout functions
+    const header = () => createPageHeader(ropeWorksLogo, acctLogo);
+    const footer = (pageNum: number) => createPageFooter(pageNum, footerDisclaimerText, ropeWorksLogo, acctLogo);
 
     const html = `
 <!DOCTYPE html>
@@ -314,6 +246,31 @@ serve(async (req) => {
       color: #666;
       position: relative;
     }
+    
+    /* Footer logo row - same line, left/right alignment */
+    .footer-logo-row {
+      display: flex;
+      flex-wrap: nowrap;
+      justify-content: space-between;
+      align-items: center;
+      width: 100%;
+      margin-bottom: 8px;
+    }
+    
+    .footer-logo-left,
+    .footer-logo-right {
+      flex: 0 0 auto;
+      display: flex;
+      align-items: center;
+    }
+    
+    .footer-logo {
+      height: 35px;
+      max-height: 35px;
+      max-width: 140px;
+      width: auto;
+      object-fit: contain;
+    }
 
     .page-number {
       text-align: right;
@@ -328,7 +285,7 @@ serve(async (req) => {
       margin-bottom: 8px;
     }
 
-    .disclaimer-footer {
+    .footer-disclaimer {
       text-align: center;
       line-height: 1.5;
       font-size: 8.5pt;
@@ -587,6 +544,32 @@ serve(async (req) => {
         padding-top: 10px !important;
         page-break-inside: avoid !important;
       }
+      
+      /* Footer logo visibility in print */
+      .footer-logo-row {
+        display: flex !important;
+        flex-wrap: nowrap !important;
+        visibility: visible !important;
+      }
+      
+      .footer-logo-left,
+      .footer-logo-right {
+        display: flex !important;
+        visibility: visible !important;
+      }
+      
+      .footer-logo {
+        display: block !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+        max-height: 30px !important;
+        max-width: 120px !important;
+        height: auto !important;
+        width: auto !important;
+        object-fit: contain !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+      }
 
       /* Prevent awkward page breaks within items */
       .section {
@@ -686,7 +669,7 @@ serve(async (req) => {
 <body>
   <!-- Page 1: Assessment Info + Operating Systems -->
   <div class="page">
-    ${createPageHeader()}
+    ${header()}
     <div class="page-content">
       <h1 class="page-title">Daily Course Assessment</h1>
       <p class="page-subtitle">Challenge Course Operations Documentation</p>
@@ -725,31 +708,31 @@ serve(async (req) => {
 
       ${renderChecklistItems(beginningOfDay, 'Beginning of Day Checklist')}
     </div>
-    ${createPageFooter(1)}
+    ${footer(1)}
   </div>
 
   <!-- Page 2: End of Day Checklist -->
   <div class="page">
-    ${createPageHeader()}
+    ${header()}
     <div class="page-content">
       ${renderChecklistItems(endOfDay, 'End of Day Checklist')}
     </div>
-    ${createPageFooter(2)}
+    ${footer(2)}
   </div>
 
   <!-- Page 3: Equipment + Structure Inspections -->
   <div class="page">
-    ${createPageHeader()}
+    ${header()}
     <div class="page-content">
       ${renderChecklistItems(equipmentChecks, 'Equipment Inspection')}
       ${renderChecklistItems(structureChecks, 'Structure Inspection')}
     </div>
-    ${createPageFooter(3)}
+    ${footer(3)}
   </div>
 
   <!-- Page 4: Environment + Disclaimer -->
   <div class="page">
-    ${createPageHeader()}
+    ${header()}
     <div class="page-content">
       ${renderChecklistItems(environmentChecks, 'Environment Inspection')}
 
@@ -763,7 +746,7 @@ serve(async (req) => {
         </div>
       </div>
     </div>
-    ${createPageFooter(4)}
+    ${footer(4)}
   </div>
 </body>
 </html>

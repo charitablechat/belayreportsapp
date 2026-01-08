@@ -1,70 +1,16 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.4";
 import { fetchTrainingData, formatTrainingContent } from "../_shared/training-formatter.ts";
+import { 
+  getLogoBase64, 
+  createPageHeader, 
+  createPageFooter 
+} from "../_shared/report-layout.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
-
-// Placeholder logos (1x1 transparent PNG)
-const PLACEHOLDER_LOGO = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
-
-// Convert array buffer to base64 in chunks to avoid stack overflow
-function arrayBufferToBase64(buffer: ArrayBuffer): string {
-  const bytes = new Uint8Array(buffer);
-  let binary = '';
-  const chunkSize = 8192;
-  for (let i = 0; i < bytes.length; i += chunkSize) {
-    const chunk = bytes.subarray(i, Math.min(i + chunkSize, bytes.length));
-    binary += String.fromCharCode.apply(null, Array.from(chunk));
-  }
-  return btoa(binary);
-}
-
-async function getLogoBase64(supabaseUrl: string): Promise<{ropeWorks: string, acct: string}> {
-  const storageBaseUrl = 'https://ssgzcgvygnsrqalisshx.supabase.co/storage/v1/object/public/pdf-templates';
-  const ropeWorksUrl = `${storageBaseUrl}/rope-works-logo-embedded.png`;
-  const acctUrl = `${storageBaseUrl}/acct-logo-embedded.png`;
-  
-  console.log('Fetching logos from storage...');
-  
-  try {
-    const [ropeWorksResponse, acctResponse] = await Promise.all([
-      fetch(ropeWorksUrl),
-      fetch(acctUrl)
-    ]);
-    
-    if (ropeWorksResponse.ok && acctResponse.ok) {
-      const [ropeWorksBuffer, acctBuffer] = await Promise.all([
-        ropeWorksResponse.arrayBuffer(),
-        acctResponse.arrayBuffer()
-      ]);
-      
-      const ropeWorksBase64 = arrayBufferToBase64(ropeWorksBuffer);
-      const acctBase64 = arrayBufferToBase64(acctBuffer);
-      
-      const ropeWorksMime = ropeWorksResponse.headers.get('content-type') || 'image/png';
-      const acctMime = acctResponse.headers.get('content-type') || 'image/png';
-      
-      console.log('Successfully loaded logos from storage');
-      console.log('Rope Works base64 length:', ropeWorksBase64.length);
-      console.log('ACCT base64 length:', acctBase64.length);
-      
-      return {
-        ropeWorks: `data:${ropeWorksMime};base64,${ropeWorksBase64}`,
-        acct: `data:${acctMime};base64,${acctBase64}`
-      };
-    } else {
-      console.error('Failed to fetch logos:', ropeWorksResponse.status, acctResponse.status);
-    }
-  } catch (error) {
-    console.error('Error fetching logos:', error);
-  }
-  
-  console.warn('Using placeholder logos');
-  return { ropeWorks: PLACEHOLDER_LOGO, acct: PLACEHOLDER_LOGO };
-}
 
 function deduplicateHtmlContent(html: string | null): string {
   if (!html) return '';
@@ -114,8 +60,8 @@ serve(async (req) => {
       throw new Error('Training ID is required');
     }
 
-    // Fetch logos from storage
-    const logos = await getLogoBase64(supabaseUrl);
+    // Fetch logos from storage using shared helper
+    const logos = await getLogoBase64();
     const ropeWorksLogo = logos.ropeWorks;
     const acctLogo = logos.acct;
 
@@ -123,29 +69,12 @@ serve(async (req) => {
     const trainingData = await fetchTrainingData(trainingId, supabase);
     const content = formatTrainingContent(trainingData);
 
-    // Helper functions for page header and footer
-    const pageHeader = `
-      <div class="page-header">
-        <div class="header-left">
-          <img src="${ropeWorksLogo}" alt="Rope Works Logo">
-        </div>
-        <div class="header-right">
-          <img src="${acctLogo}" alt="ACCT Accredited Vendor">
-        </div>
-      </div>
-    `;
+    // Footer disclaimer text for training reports
+    const footerDisclaimerText = `The information contained in this report has been documented by a Qualified Professional.<br>This report is effective for one year from the date of inspection. Issued by:<br>Rope Works Inc., PO Box 1074, Dripping Springs, TX 78620`;
 
-    const createPageFooter = (pageNum: number) => `
-      <div class="page-footer">
-        <div class="page-number">Page ${pageNum}</div>
-        <div class="footer-line"></div>
-        <div class="footer-text">
-          The information contained in this report has been documented by a Qualified Professional.<br>
-          This report is effective for one year from the date of inspection. Issued by:<br>
-          Rope Works Inc., PO Box 1074, Dripping Springs, TX 78620
-        </div>
-      </div>
-    `;
+    // Helper wrappers using shared layout functions (with logos in header AND footer)
+    const header = () => createPageHeader(ropeWorksLogo, acctLogo);
+    const footer = (pageNum: number) => createPageFooter(pageNum, footerDisclaimerText, ropeWorksLogo, acctLogo);
 
     // Build systems in place HTML
     const ALL_SYSTEMS_IN_PLACE = [
@@ -262,6 +191,31 @@ serve(async (req) => {
       padding-top: 15px;
     }
     
+    /* Footer logo row - same line, left/right alignment */
+    .footer-logo-row {
+      display: flex;
+      flex-wrap: nowrap;
+      justify-content: space-between;
+      align-items: center;
+      width: 100%;
+      margin-bottom: 8px;
+    }
+    
+    .footer-logo-left,
+    .footer-logo-right {
+      flex: 0 0 auto;
+      display: flex;
+      align-items: center;
+    }
+    
+    .footer-logo {
+      height: 35px;
+      max-height: 35px;
+      max-width: 140px;
+      width: auto;
+      object-fit: contain;
+    }
+    
     .page-footer .page-number {
       text-align: center;
       font-size: 10px;
@@ -274,7 +228,7 @@ serve(async (req) => {
       margin-bottom: 15px;
     }
     
-    .page-footer .footer-text {
+    .footer-disclaimer {
       text-align: center;
       color: #64748b;
       font-size: 11px;
@@ -591,7 +545,7 @@ serve(async (req) => {
 <body>
   <!-- Page 1: Cover and Facility Information -->
   <div class="page">
-    ${pageHeader}
+    ${header()}
     <div class="page-content">
       <h1 class="page-title">Training Report</h1>
       <div class="page-subtitle">Professional Training Documentation</div>
@@ -622,12 +576,12 @@ serve(async (req) => {
         ${content.standardsText}
       </div>
     </div>
-    ${createPageFooter(1)}
+    ${footer(1)}
   </div>
 
   <!-- Page 2: Delivery, Operating Systems, Immediate Attention -->
   <div class="page">
-    ${pageHeader}
+    ${header()}
     <div class="page-content">
       ${content.deliveryApproaches.length > 0 ? `
       <div class="section">
@@ -662,12 +616,12 @@ serve(async (req) => {
       </div>
       ` : ''}
     </div>
-    ${createPageFooter(2)}
+    ${footer(2)}
   </div>
 
   <!-- Page 3: Verifiable Items -->
   <div class="page">
-    ${pageHeader}
+    ${header()}
     <div class="page-content">
       ${content.verifiableItems.length > 0 ? `
       <div class="section">
@@ -689,12 +643,12 @@ serve(async (req) => {
       </div>
       `}
     </div>
-    ${createPageFooter(3)}
+    ${footer(3)}
   </div>
 
   <!-- Page 4: Systems in Place -->
   <div class="page">
-    ${pageHeader}
+    ${header()}
     <div class="page-content">
       <div class="section">
         <div class="section-title">Systems in Place</div>
@@ -709,12 +663,12 @@ serve(async (req) => {
         </ul>
       </div>
     </div>
-    ${createPageFooter(4)}
+    ${footer(4)}
   </div>
 
   <!-- Page 5: Training Summary -->
   <div class="page">
-    ${pageHeader}
+    ${header()}
     <div class="page-content">
       ${content.summary.observations || content.summary.recommendations ? `
       <div class="section">
@@ -745,12 +699,12 @@ serve(async (req) => {
       </div>
       `}
     </div>
-    ${createPageFooter(5)}
+    ${footer(5)}
   </div>
 
   <!-- Page 6: Submission and Disclaimer -->
   <div class="page">
-    ${pageHeader}
+    ${header()}
     <div class="page-content">
       ${content.summary.personSubmitting || content.summary.submissionDate ? `
       <div class="section">
@@ -784,7 +738,7 @@ serve(async (req) => {
         Generated on ${new Date().toLocaleString('en-US', { timeZone: 'America/Chicago', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
       </div>
     </div>
-    ${createPageFooter(6)}
+    ${footer(6)}
   </div>
 </body>
 </html>`;
