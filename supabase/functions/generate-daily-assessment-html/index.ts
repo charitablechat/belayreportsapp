@@ -221,14 +221,19 @@ serve(async (req) => {
     /* 
      * FIX: Content Clipping Prevention
      * --------------------------------
-     * Previous issue: overflow:hidden and max-height caused content to be clipped.
-     * Solution: Use CSS variables for header/footer heights, allow content to flow
-     * naturally across pages, and use page-break rules instead of fixed heights.
+     * PROBLEM: Content was running underneath the footer because pages had:
+     *   - overflow: hidden (clips content)
+     *   - max-height constraints (limits page height)
+     * SOLUTION: Remove these constraints and let content flow naturally.
+     * The browser/PDF engine will paginate correctly with proper @page margins.
+     *
+     * LOGO FIX: ACCT logo uses same inline base64 as Inspection Report.
+     * We add explicit visibility rules to ensure logos always render in print.
      */
     
     :root {
-      --pdf-header-h: 85px;   /* Header height including border */
-      --pdf-footer-h: 80px;   /* Footer height including padding */
+      --pdf-header-h: 85px;
+      --pdf-footer-h: 80px;
       --page-padding: 0.25in;
     }
     
@@ -246,7 +251,10 @@ serve(async (req) => {
       padding: 10px;
     }
 
-    /* Page structure - allow natural content flow */
+    /* 
+     * Page structure - NO FIXED HEIGHTS, NO OVERFLOW HIDDEN
+     * Content flows naturally and browser handles pagination
+     */
     .page {
       display: block;
       padding: var(--page-padding);
@@ -254,21 +262,18 @@ serve(async (req) => {
       margin-bottom: 20px;
       box-shadow: 0 2px 10px rgba(0,0,0,0.1);
       page-break-after: always;
-      page-break-inside: auto;
-      min-height: auto;
-      /* No max-height or overflow:hidden - content must flow naturally */
+      /* CRITICAL: No max-height, no overflow:hidden */
     }
 
     .page-content {
-      min-height: 200px;
-      /* Content flows naturally, no clipping */
+      /* Content flows naturally - no clipping */
     }
 
     .page:last-child {
       page-break-after: avoid;
     }
 
-    /* In-page header/footer for screen display */
+    /* Header styling - logos must be visible */
     .page-header {
       display: flex;
       justify-content: space-between;
@@ -487,43 +492,44 @@ serve(async (req) => {
     }
 
     /* 
-     * Print styles - Content Flow Fix
+     * PRINT STYLES - Content Flow Fix
      * --------------------------------
-     * FIX: Removed fixed heights and overflow:hidden that caused clipping.
-     * Content now flows naturally across pages. Browser handles pagination.
+     * CRITICAL: height: auto and overflow: visible allow content to flow
+     * across multiple pages without clipping. The @page margins reserve
+     * space so content doesn't run under fixed headers/footers.
      */
     @media print {
       html, body {
         height: auto !important;
         overflow: visible !important;
-        background: white;
-        padding: 0;
-        margin: 0;
+        background: white !important;
+        padding: 0 !important;
+        margin: 0 !important;
         print-color-adjust: exact;
         -webkit-print-color-adjust: exact;
         font-size: 10pt;
         line-height: 1.4;
       }
 
+      /* Reserve space for content - prevents footer overlap */
       @page {
         size: letter portrait;
-        margin: 0.5in 0.5in 0.6in 0.5in; /* Extra bottom margin for footer */
+        margin: 0.5in 0.5in 0.7in 0.5in;
       }
 
       .page {
         display: block !important;
         position: relative !important;
-        /* Allow content to flow - no fixed height, no hidden overflow */
+        /* CRITICAL FIX: Allow content to flow naturally */
         height: auto !important;
         min-height: auto !important;
         max-height: none !important;
+        overflow: visible !important;
         padding: 0 !important;
-        margin: 0 0 20px 0 !important;
-        box-sizing: border-box !important;
-        page-break-after: always !important;
-        page-break-inside: auto !important; /* Allow breaks within page */
+        margin: 0 0 10px 0 !important;
         box-shadow: none !important;
-        overflow: visible !important; /* CRITICAL: Allow content to flow */
+        page-break-after: always !important;
+        page-break-inside: auto !important;
       }
 
       .page:last-child {
@@ -531,44 +537,63 @@ serve(async (req) => {
         margin-bottom: 0 !important;
       }
 
-      .page > .page-header {
+      /* 
+       * LOGO VISIBILITY FIX
+       * Ensure both logos are ALWAYS visible in print/PDF
+       * Never hidden by any print CSS rules
+       */
+      .page-header {
         display: flex !important;
-        height: 60px !important;
-        max-height: 60px !important;
+        visibility: visible !important;
+        height: auto !important;
+        max-height: 70px !important;
         margin-bottom: 10px !important;
         position: relative !important;
-        /* Header stays together */
         page-break-inside: avoid !important;
         page-break-after: avoid !important;
       }
       
-      .page > .page-header img {
+      .page-header .header-left,
+      .page-header .header-right {
+        display: flex !important;
+        visibility: visible !important;
+        flex: 0 0 auto !important;
+      }
+      
+      /* LOGO FIX: Force visibility - logos must render in PDF */
+      .page-header .header-left img,
+      .page-header .header-right img {
+        display: block !important;
+        visibility: visible !important;
+        opacity: 1 !important;
         max-height: 50px !important;
+        max-width: 180px !important;
+        height: auto !important;
         width: auto !important;
         object-fit: contain !important;
-      }
-
-      .page > .page-footer {
-        display: block !important;
-        margin-top: 15px !important;
-        padding-top: 10px !important;
-        /* Footer stays together */
-        page-break-inside: avoid !important;
-        page-break-before: auto !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
       }
 
       .page-content {
         display: block !important;
         height: auto !important;
-        overflow: visible !important; /* CRITICAL: No clipping */
+        overflow: visible !important;
       }
 
-      /* Keep sections together but allow page breaks between them */
+      .page-footer {
+        display: block !important;
+        margin-top: 15px !important;
+        padding-top: 10px !important;
+        page-break-inside: avoid !important;
+      }
+
+      /* Prevent awkward page breaks within items */
       .section {
         page-break-inside: avoid;
         page-break-after: auto;
       }
-      
+
       .section-title {
         page-break-after: avoid;
         page-break-inside: avoid;
@@ -586,7 +611,7 @@ serve(async (req) => {
         page-break-inside: avoid;
       }
 
-      /* Color enforcement */
+      /* Color enforcement for PDF */
       *, *::before, *::after {
         print-color-adjust: exact !important;
         -webkit-print-color-adjust: exact !important;
