@@ -3,10 +3,11 @@
  * ================================
  * This file provides consistent header/footer layouts across all report types.
  * 
- * LOGO PLACEMENT:
- * - Both Rope Works and ACCT logos appear in BOTH header AND footer
- * - Logos are on the same horizontal line: Rope Works LEFT, ACCT RIGHT
- * - Uses flexbox with nowrap to prevent vertical stacking in PDF
+ * LOGO PLACEMENT (PDF EXPORT REQUIREMENTS):
+ * - HEADER: Both logos on same horizontal line (Rope Works LEFT, ACCT RIGHT)
+ * - FOOTER: NO LOGOS - only page number and disclaimer text
+ * 
+ * This ensures PDF exports have consistent branding without footer clutter.
  * 
  * PDF RELIABILITY:
  * - Logos are <img> elements (not CSS backgrounds) for maximum PDF support
@@ -75,7 +76,7 @@ export async function getLogoBase64(): Promise<{ropeWorks: string, acct: string}
 }
 
 /**
- * Creates the page header with both logos
+ * Creates the page header with both logos on same line
  * - Rope Works logo: LEFT aligned
  * - ACCT logo: RIGHT aligned
  * - Both on same horizontal line (flexbox nowrap)
@@ -94,33 +95,18 @@ export function createPageHeader(ropeWorksLogo: string, acctLogo: string): strin
 }
 
 /**
- * Creates the page footer with both logos and disclaimer text
- * - Logo row at top of footer: Rope Works LEFT, ACCT RIGHT
- * - Page number
- * - Footer line
- * - Disclaimer text
+ * Creates the page footer with ONLY page number and disclaimer text
+ * NO LOGOS IN FOOTER (per PDF export requirements)
  * 
  * @param pageNum - Current page number (no total count due to dynamic content)
  * @param disclaimerText - The disclaimer/footer text content
- * @param ropeWorksLogo - Base64 data URI for Rope Works logo
- * @param acctLogo - Base64 data URI for ACCT logo
  */
 export function createPageFooter(
   pageNum: number, 
-  disclaimerText: string,
-  ropeWorksLogo: string,
-  acctLogo: string
+  disclaimerText: string
 ): string {
   return `
     <div class="page-footer">
-      <div class="footer-logo-row">
-        <div class="footer-logo-left">
-          <img src="${ropeWorksLogo}" alt="Rope Works" class="footer-logo">
-        </div>
-        <div class="footer-logo-right">
-          <img src="${acctLogo}" alt="ACCT Accredited Vendor" class="footer-logo">
-        </div>
-      </div>
       <div class="page-number">Page ${pageNum}</div>
       <div class="footer-line"></div>
       <div class="footer-disclaimer">${disclaimerText}</div>
@@ -130,28 +116,37 @@ export function createPageFooter(
 
 /**
  * Shared CSS for header/footer layout
- * Ensures consistent logo placement across all report types in both screen and print/PDF
+ * HEADER: Both logos on same horizontal line (Rope Works LEFT, ACCT RIGHT)
+ * FOOTER: NO logos - only page number, line, and disclaimer
  */
 export const SHARED_HEADER_FOOTER_CSS = `
     /* 
      * SHARED HEADER/FOOTER LAYOUT
      * ============================
-     * Both logos (Rope Works + ACCT) appear in header AND footer
-     * Logos are on same line: LEFT (Rope Works) and RIGHT (ACCT)
-     * flexbox with nowrap prevents vertical stacking in PDF
+     * HEADER: Both logos on same line (LEFT: Rope Works, RIGHT: ACCT)
+     * FOOTER: NO logos - only page number and disclaimer text
+     * 
+     * PDF LAYOUT VARIABLES:
+     * --pdf-header-h: Reserved space for fixed header
+     * --pdf-footer-h: Reserved space for fixed footer
      */
+    :root {
+      --pdf-header-h: 80px;
+      --pdf-footer-h: 70px;
+    }
     
-    /* HEADER STYLES */
+    /* HEADER STYLES - Both logos on same line */
     .page-header {
       display: flex;
       flex-wrap: nowrap;
       justify-content: space-between;
       align-items: center;
-      padding-bottom: 10px;
+      padding: 10px 0;
       border-bottom: 3px solid #1e40af;
       margin-bottom: 15px;
       position: relative;
       width: 100%;
+      min-height: 60px;
     }
 
     .header-left {
@@ -184,42 +179,13 @@ export const SHARED_HEADER_FOOTER_CSS = `
       object-fit: contain;
     }
     
-    /* FOOTER STYLES */
+    /* FOOTER STYLES - NO LOGOS, only disclaimer */
     .page-footer {
       margin-top: 20px;
       font-size: 9pt;
       color: #666;
       position: relative;
-    }
-    
-    /* Footer logo row - same line, left/right */
-    .footer-logo-row {
-      display: flex;
-      flex-wrap: nowrap;
-      justify-content: space-between;
-      align-items: center;
-      width: 100%;
-      margin-bottom: 8px;
-    }
-    
-    .footer-logo-left {
-      flex: 0 0 auto;
-      display: flex;
-      align-items: center;
-    }
-    
-    .footer-logo-right {
-      flex: 0 0 auto;
-      display: flex;
-      align-items: center;
-    }
-    
-    .footer-logo {
-      height: 35px;
-      max-height: 35px;
-      max-width: 140px;
-      width: auto;
-      object-fit: contain;
+      padding-top: 10px;
     }
 
     .page-number {
@@ -244,18 +210,40 @@ export const SHARED_HEADER_FOOTER_CSS = `
 `;
 
 /**
- * Print/PDF CSS for header/footer
- * Ensures logos always render and never get hidden in print mode
+ * Print/PDF CSS for proper layout and logo visibility
+ * CRITICAL: Ensures logos render in header only, never in footer
+ * Prevents content clipping by reserving space for header/footer
  */
 export const SHARED_PRINT_CSS = `
     /* 
-     * PRINT/PDF LOGO VISIBILITY
-     * ==========================
-     * CRITICAL: Force both logos to ALWAYS render in PDF exports
-     * Never hidden by print CSS rules
+     * PRINT/PDF LAYOUT FIX
+     * ====================
+     * 1. Header: Logos always visible, same line (LEFT/RIGHT)
+     * 2. Footer: NO logos - disclaimer only
+     * 3. Body content: Reserved padding to prevent clipping
+     * 4. Proper pagination with page breaks
      */
     
-    /* Header in print */
+    @page {
+      size: Letter;
+      margin: 0.5in 0.5in 0.7in 0.5in;
+    }
+    
+    html, body {
+      height: auto !important;
+      overflow: visible !important;
+    }
+    
+    /* Content area with reserved space for header/footer */
+    .page, .pdf-content, .report-root {
+      height: auto !important;
+      min-height: auto !important;
+      overflow: visible !important;
+      padding-top: 5px;
+      padding-bottom: 10px;
+    }
+    
+    /* HEADER - always visible with both logos */
     .page-header {
       display: flex !important;
       flex-wrap: nowrap !important;
@@ -274,7 +262,7 @@ export const SHARED_PRINT_CSS = `
       flex: 0 0 auto !important;
     }
     
-    /* LOGO VISIBILITY FIX - Force all logos to render in PDF */
+    /* LOGO VISIBILITY - Force header logos to render in PDF */
     .page-header .header-left img,
     .page-header .header-right img,
     .header-logo-left,
@@ -291,7 +279,7 @@ export const SHARED_PRINT_CSS = `
       print-color-adjust: exact !important;
     }
     
-    /* Footer in print */
+    /* FOOTER - visible, NO logos */
     .page-footer {
       display: block !important;
       visibility: visible !important;
@@ -300,28 +288,36 @@ export const SHARED_PRINT_CSS = `
       page-break-inside: avoid !important;
     }
     
-    .footer-logo-row {
-      display: flex !important;
-      flex-wrap: nowrap !important;
-      visibility: visible !important;
-    }
-    
-    .footer-logo-left,
-    .footer-logo-right {
-      display: flex !important;
-      visibility: visible !important;
-    }
-    
-    .footer-logo {
+    .page-number {
       display: block !important;
       visibility: visible !important;
-      opacity: 1 !important;
-      max-height: 30px !important;
-      max-width: 120px !important;
-      height: auto !important;
-      width: auto !important;
-      object-fit: contain !important;
-      -webkit-print-color-adjust: exact !important;
-      print-color-adjust: exact !important;
+    }
+    
+    .footer-line {
+      display: block !important;
+      visibility: visible !important;
+    }
+    
+    .footer-disclaimer {
+      display: block !important;
+      visibility: visible !important;
+    }
+    
+    /* PAGE BREAK CONTROLS - prevent awkward splits */
+    .section-title,
+    .checklist-item,
+    .row,
+    .info-grid,
+    .systems-grid,
+    .info-table tr,
+    h2, h3 {
+      page-break-inside: avoid;
+      break-inside: avoid;
+    }
+    
+    /* Allow sections to flow across pages */
+    .section {
+      page-break-inside: auto;
+      break-inside: auto;
     }
 `;
