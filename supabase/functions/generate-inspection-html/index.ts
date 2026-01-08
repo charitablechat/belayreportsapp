@@ -283,7 +283,8 @@ serve(async (req) => {
       equipmentRowCount > 0 && standardsRowCount > 0 && equipmentRowCount <= 6 && standardsRowCount <= 6;
 
     // Calculate page count with consolidation
-    let pageCount = 3; // Cover + Reminders + Key
+    // Pages: Cover + Reminders + Categories + Results Key = 4 base pages
+    let pageCount = 4;
 
     if (canCombineSystemsZiplines) {
       pageCount++; // Combined systems/ziplines page
@@ -299,7 +300,8 @@ serve(async (req) => {
       if (standards.length > 0) pageCount++;
     }
 
-    if (summary) pageCount++;
+    // Summary takes 2 pages (content + retirement guidelines)
+    if (summary) pageCount += 2;
 
     // Generate HTML
     const html = `<!DOCTYPE html>
@@ -353,12 +355,13 @@ serve(async (req) => {
     .page {
       display: flex;
       flex-direction: column;
-      min-height: 9.5in; /* Force each page to be roughly letter height minus margins */
-      max-height: 10in;
-      padding: 0.3in;
+      min-height: 9in; /* Slightly smaller to ensure content fits with margins */
+      max-height: 9.5in; /* Strict max to prevent overflow */
+      padding: 0.25in;
       page-break-after: always;
       page-break-inside: avoid;
       overflow: hidden;
+      box-sizing: border-box;
     }
     
     .page-content {
@@ -811,15 +814,15 @@ serve(async (req) => {
       .page {
         display: flex !important;
         flex-direction: column !important;
-        min-height: auto !important;
-        height: auto !important;
-        max-height: none !important;
+        min-height: 9in !important;
+        height: 9.5in !important;
+        max-height: 9.5in !important;
         padding: 0.2in !important;
         margin: 0 !important;
         box-sizing: border-box !important;
         page-break-after: always !important;
         page-break-inside: avoid !important;
-        overflow: visible !important;
+        overflow: hidden !important;
       }
 
       .page-content {
@@ -1346,7 +1349,7 @@ serve(async (req) => {
     </div>
   </div>
 
-  <!-- PAGE 3: INSPECTION KEY -->
+  <!-- PAGE 3: INSPECTION CATEGORIES -->
   <div class="page">
     <div class="page-header">
       <div class="header-left">
@@ -1383,8 +1386,35 @@ serve(async (req) => {
         <h3>Equipment</h3>
         <p>This represents the equipment utilized in the operation of the course activities. This includes but is not limited to: rope, carabiners, helmets, belay devices, pulleys, trolleys, lanyards, harnesses, and rescue equipment.</p>
       </div>
+    </div>
 
-      <h2 style="margin-top: 30px;">INSPECTION RESULTS KEY</h2>
+    <div class="page-footer">
+      <div class="page-number">Page 3</div>
+      <div class="footer-line"></div>
+      <div class="disclaimer">
+        The information contained in this report has been documented by a Qualified Professional.<br>
+        This report is effective for one year from the date of inspection. Issued by:<br>
+        Rope Works Inc., PO Box 1074, Dripping Springs, TX 78620
+      </div>
+    </div>
+  </div>
+
+  <!-- PAGE 4: INSPECTION RESULTS KEY -->
+  <div class="page">
+    <div class="page-header">
+      <div class="header-left">
+        <img src="${ropeWorksLogo}" alt="Rope Works">
+      </div>
+      <div class="header-center">
+        <div class="header-title"></div>
+      </div>
+      <div class="header-right">
+        <img src="${acctLogo}" alt="ACCT Accredited Vendor">
+      </div>
+    </div>
+
+    <div class="page-content">
+      <h2 style="margin-top: 5px;">INSPECTION RESULTS KEY</h2>
       <p style="margin-bottom: 15px; font-size: 10pt; line-height: 1.6;">
         This represents the overall rating for each system based on the condition of the items inspected on the day of the inspection. 
         Rope Works Inc. inspects all challenge course and canopy/zip line tours to the standards set forth by the Association for Challenge Course Technology (ACCT). 
@@ -1413,7 +1443,7 @@ serve(async (req) => {
     </div>
 
     <div class="page-footer">
-      <div class="page-number">Page 3</div>
+      <div class="page-number">Page 4</div>
       <div class="footer-line"></div>
       <div class="disclaimer">
         The information contained in this report has been documented by a Qualified Professional.<br>
@@ -1533,7 +1563,7 @@ serve(async (req) => {
     </div>
 
     <div class="page-footer">
-      <div class="page-number">Page 4</div>
+      <div class="page-number">Page 5</div>
       <div class="footer-line"></div>
       <div class="disclaimer">
         The information contained in this report has been documented by a Qualified Professional.<br>
@@ -1597,7 +1627,7 @@ serve(async (req) => {
     </div>
 
     <div class="page-footer">
-      <div class="page-number">Page 4</div>
+      <div class="page-number">Page 5</div>
       <div class="footer-line"></div>
       <div class="disclaimer">
         The information contained in this report has been documented by a Qualified Professional.<br>
@@ -1679,7 +1709,7 @@ serve(async (req) => {
     </div>
 
     <div class="page-footer">
-      <div class="page-number">Page ${systems.length > 0 ? "5" : "4"}</div>
+      <div class="page-number">Page ${systems.length > 0 ? "6" : "5"}</div>
       <div class="footer-line"></div>
       <div class="disclaimer">
         The information contained in this report has been documented by a Qualified Professional.<br>
@@ -1814,7 +1844,7 @@ serve(async (req) => {
     </div>
 
     <div class="page-footer">
-      <div class="page-number">Page ${pageCount - 1}</div>
+      <div class="page-number">Page ${pageCount - 2}</div>
       <div class="footer-line"></div>
       <div class="disclaimer">
         The information contained in this report has been documented by a Qualified Professional.<br>
@@ -1904,7 +1934,7 @@ serve(async (req) => {
     </div>
 
     <div class="page-footer">
-      <div class="page-number">Page ${systems.length > 0 ? (ziplines.length > 0 ? "6" : "5") : ziplines.length > 0 ? "5" : "4"}</div>
+      <div class="page-number">Page ${systems.length > 0 ? (ziplines.length > 0 ? "7" : "6") : ziplines.length > 0 ? "6" : "5"}</div>
       <div class="footer-line"></div>
       <div class="disclaimer">
         The information contained in this report has been documented by a Qualified Professional.<br>
@@ -1970,7 +2000,7 @@ serve(async (req) => {
     </div>
 
     <div class="page-footer">
-      <div class="page-number">Page ${pageCount - 1}</div>
+      <div class="page-number">Page ${pageCount - 2}</div>
       <div class="footer-line"></div>
       <div class="disclaimer">
         The information contained in this report has been documented by a Qualified Professional.<br>
@@ -2008,8 +2038,8 @@ serve(async (req) => {
       ${
         summary.repairs_performed
           ? `
-      <div style="margin-bottom: 25px;">
-        <h3 style="font-size: 12pt; font-weight: bold; margin-bottom: 10px; color: #1a1a1a; border-bottom: 2px solid #16a34a; padding-bottom: 5px;">Repairs Performed</h3>
+      <div style="margin-bottom: 20px;">
+        <h3 style="font-size: 12pt; font-weight: bold; margin-bottom: 8px; color: #1a1a1a; border-bottom: 2px solid #16a34a; padding-bottom: 5px;">Repairs Performed</h3>
         <div class="text-block" style="padding: 10px 15px; background: #f9f9f9; border-left: 4px solid #16a34a;">
           ${deduplicateHtmlContent(summary.repairs_performed)}
         </div>
@@ -2021,13 +2051,13 @@ serve(async (req) => {
       ${
         summary.critical_actions
           ? `
-      <div class="critical-box" style="margin-bottom: 25px; padding: 15px; background: #fef2f2; border: 2px solid #dc2626; border-radius: 4px;">
-        <h3 style="font-size: 12pt; font-weight: bold; margin-bottom: 10px; color: #dc2626; text-transform: uppercase;">⚠ Critical Actions Required</h3>
-        <div style="font-size: 10pt; line-height: 1.6; color: #1a1a1a;">
+      <div class="critical-box" style="margin-bottom: 20px; padding: 12px; background: #fef2f2; border: 2px solid #dc2626; border-radius: 4px;">
+        <h3 style="font-size: 11pt; font-weight: bold; margin-bottom: 8px; color: #dc2626; text-transform: uppercase;">⚠ Critical Actions Required</h3>
+        <div style="font-size: 10pt; line-height: 1.5; color: #1a1a1a;">
           ${deduplicateHtmlContent(summary.critical_actions)}
         </div>
-        <p style="margin-top: 10px; font-size: 9pt; font-style: italic; color: #7f1d1d;">
-          <strong>IMPORTANT:</strong> Items listed above must be addressed immediately. Do not use affected equipment or systems until corrective actions are completed and verified by a qualified professional.
+        <p style="margin-top: 8px; font-size: 9pt; font-style: italic; color: #7f1d1d;">
+          <strong>IMPORTANT:</strong> Items listed above must be addressed immediately.
         </p>
       </div>
       `
@@ -2037,8 +2067,8 @@ serve(async (req) => {
       ${
         summary.future_considerations
           ? `
-      <div style="margin-bottom: 25px;">
-        <h3 style="font-size: 12pt; font-weight: bold; margin-bottom: 10px; color: #1a1a1a; border-bottom: 2px solid #ea580c; padding-bottom: 5px;">Future Considerations</h3>
+      <div style="margin-bottom: 20px;">
+        <h3 style="font-size: 12pt; font-weight: bold; margin-bottom: 8px; color: #1a1a1a; border-bottom: 2px solid #ea580c; padding-bottom: 5px;">Future Considerations</h3>
         <div class="text-block" style="padding: 10px 15px; background: #fff7ed; border-left: 4px solid #ea580c;">
           ${deduplicateHtmlContent(summary.future_considerations)}
         </div>
@@ -2050,7 +2080,7 @@ serve(async (req) => {
       ${
         summary.next_inspection_date
           ? `
-      <div style="margin-bottom: 25px; padding: 12px 15px; background: #f0f9ff; border-left: 4px solid #0284c7;">
+      <div style="margin-bottom: 20px; padding: 12px 15px; background: #f0f9ff; border-left: 4px solid #0284c7;">
         <h3 style="font-size: 11pt; font-weight: bold; margin-bottom: 5px; color: #0284c7;">Next Scheduled Inspection</h3>
         <p style="font-size: 11pt; margin: 0; color: #1a1a1a;"><strong>${formatDate(summary.next_inspection_date)}</strong></p>
         <p style="font-size: 9pt; margin-top: 5px; color: #666; font-style: italic;">Annual professional inspections are required to maintain ACCT compliance.</p>
@@ -2058,58 +2088,83 @@ serve(async (req) => {
       `
           : ""
       }
+    </div>
 
-      <div style="margin-top: 30px; padding-top: 20px; border-top: 2px solid #e5e5e5;">
-        <h3 style="font-size: 12pt; font-weight: bold; margin-bottom: 15px; color: #1a1a1a;">Equipment Retirement Guidelines</h3>
-        
-        <p style="font-size: 10pt; line-height: 1.6; margin-bottom: 12px; color: #1a1a1a;">
-          <strong>Equipment must be retired from service when any of the following conditions are met:</strong>
+    <div class="page-footer">
+      <div class="page-number">Page ${pageCount - 1}</div>
+      <div class="footer-line"></div>
+      <div class="disclaimer">
+        The information contained in this report has been documented by a Qualified Professional.<br>
+        This report is effective for one year from the date of inspection. Issued by:<br>
+        Rope Works Inc., PO Box 1074, Dripping Springs, TX 78620
+      </div>
+    </div>
+  </div>
+
+  <!-- PAGE: RETIREMENT GUIDELINES -->
+  <div class="page">
+    <div class="page-header">
+      <div class="header-left">
+        <img src="${ropeWorksLogo}" alt="Rope Works">
+      </div>
+      <div class="header-center">
+        <div class="header-title"></div>
+      </div>
+      <div class="header-right">
+        <img src="${acctLogo}" alt="ACCT Accredited Vendor">
+      </div>
+    </div>
+
+    <div class="page-content">
+      <h2 style="margin-top: 10px; margin-bottom: 15px;">EQUIPMENT RETIREMENT GUIDELINES</h2>
+      
+      <p style="font-size: 10pt; line-height: 1.6; margin-bottom: 12px; color: #1a1a1a;">
+        <strong>Equipment must be retired from service when any of the following conditions are met:</strong>
+      </p>
+      
+      <table style="width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 10pt;">
+        <thead>
+          <tr>
+            <th style="background: #e5e7eb; color: #000; padding: 8px; text-align: left; font-weight: bold; border: 1px solid #000; width: 40%;">Retirement Criteria</th>
+            <th style="background: #e5e7eb; color: #000; padding: 8px; text-align: left; font-weight: bold; border: 1px solid #000; width: 60%;">Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style="padding: 6px 8px; border: 1px solid #000; vertical-align: top;">Manufacturer's Lifespan</td>
+            <td style="padding: 6px 8px; border: 1px solid #000; vertical-align: top;">Manufacturer's recommended lifespan has been exceeded</td>
+          </tr>
+          <tr>
+            <td style="padding: 6px 8px; border: 1px solid #000; vertical-align: top;">Visible Damage</td>
+            <td style="padding: 6px 8px; border: 1px solid #000; vertical-align: top;">Visible damage, wear, or deterioration affecting structural integrity</td>
+          </tr>
+          <tr>
+            <td style="padding: 6px 8px; border: 1px solid #000; vertical-align: top;">Impact/Shock Loading</td>
+            <td style="padding: 6px 8px; border: 1px solid #000; vertical-align: top;">Equipment subjected to impact forces or shock loading beyond design parameters</td>
+          </tr>
+          <tr>
+            <td style="padding: 6px 8px; border: 1px solid #000; vertical-align: top;">Missing Markings</td>
+            <td style="padding: 6px 8px; border: 1px solid #000; vertical-align: top;">Missing or illegible manufacturer identification markings</td>
+          </tr>
+          <tr>
+            <td style="padding: 6px 8px; border: 1px solid #000; vertical-align: top;">Fails Inspection</td>
+            <td style="padding: 6px 8px; border: 1px solid #000; vertical-align: top;">Equipment fails inspection criteria outlined in current ACCT standards</td>
+          </tr>
+          <tr>
+            <td style="padding: 6px 8px; border: 1px solid #000; vertical-align: top;">Incomplete Documentation</td>
+            <td style="padding: 6px 8px; border: 1px solid #000; vertical-align: top;">Incomplete or unavailable documentation of equipment history</td>
+          </tr>
+          <tr>
+            <td style="padding: 6px 8px; border: 1px solid #000; vertical-align: top;">Incident Involvement</td>
+            <td style="padding: 6px 8px; border: 1px solid #000; vertical-align: top;">Equipment is involved in any incident resulting in injury or near-miss</td>
+          </tr>
+        </tbody>
+      </table>
+      
+      <div style="margin-top: 15px; padding: 12px; border: 1px solid #000;">
+        <p style="font-size: 10pt; line-height: 1.5; margin: 0; color: #1a1a1a;">
+          <strong>Retirement Procedure:</strong> All retired equipment must be clearly marked "RETIRED - DO NOT USE", immediately removed from service, and physically destroyed or rendered permanently unusable to prevent accidental future use. Complete documentation of the retirement, including date, reason, and method of disposal, must be maintained in accordance with ACCT record-keeping requirements.
         </p>
-        
-        <table style="width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 10pt;">
-          <thead>
-            <tr>
-              <th style="background: #e5e7eb; color: #000; padding: 8px; text-align: left; font-weight: bold; border: 1px solid #000; width: 50%;">Retirement Criteria</th>
-              <th style="background: #e5e7eb; color: #000; padding: 8px; text-align: left; font-weight: bold; border: 1px solid #000; width: 50%;">Description</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td style="padding: 8px; border: 1px solid #000; vertical-align: top;">Manufacturer's Lifespan</td>
-              <td style="padding: 8px; border: 1px solid #000; vertical-align: top;">Manufacturer's recommended lifespan has been exceeded</td>
-            </tr>
-            <tr>
-              <td style="padding: 8px; border: 1px solid #000; vertical-align: top;">Visible Damage</td>
-              <td style="padding: 8px; border: 1px solid #000; vertical-align: top;">Visible damage, wear, or deterioration affecting structural integrity</td>
-            </tr>
-            <tr>
-              <td style="padding: 8px; border: 1px solid #000; vertical-align: top;">Impact/Shock Loading</td>
-              <td style="padding: 8px; border: 1px solid #000; vertical-align: top;">Equipment subjected to impact forces or shock loading beyond design parameters</td>
-            </tr>
-            <tr>
-              <td style="padding: 8px; border: 1px solid #000; vertical-align: top;">Missing Markings</td>
-              <td style="padding: 8px; border: 1px solid #000; vertical-align: top;">Missing or illegible manufacturer identification markings</td>
-            </tr>
-            <tr>
-              <td style="padding: 8px; border: 1px solid #000; vertical-align: top;">Fails Inspection</td>
-              <td style="padding: 8px; border: 1px solid #000; vertical-align: top;">Equipment fails inspection criteria outlined in current ACCT standards</td>
-            </tr>
-            <tr>
-              <td style="padding: 8px; border: 1px solid #000; vertical-align: top;">Incomplete Documentation</td>
-              <td style="padding: 8px; border: 1px solid #000; vertical-align: top;">Incomplete or unavailable documentation of equipment history</td>
-            </tr>
-            <tr>
-              <td style="padding: 8px; border: 1px solid #000; vertical-align: top;">Incident Involvement</td>
-              <td style="padding: 8px; border: 1px solid #000; vertical-align: top;">Equipment is involved in any incident resulting in injury or near-miss</td>
-            </tr>
-          </tbody>
-        </table>
-        
-        <div style="margin-top: 15px; padding: 12px; border: 1px solid #000;">
-          <p style="font-size: 10pt; line-height: 1.6; margin: 0; color: #1a1a1a;">
-            <strong>Retirement Procedure:</strong> All retired equipment must be clearly marked "RETIRED - DO NOT USE", immediately removed from service, and physically destroyed or rendered permanently unusable to prevent accidental future use. Complete documentation of the retirement, including date, reason, and method of disposal, must be maintained in accordance with ACCT record-keeping requirements.
-          </p>
-        </div>
       </div>
     </div>
 
