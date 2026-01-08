@@ -136,18 +136,21 @@ export const SHARED_HEADER_FOOTER_CSS = `
      * --pdf-footer-h: Reserved space for fixed footer
      */
     :root {
-      --pdf-header-h: 80px;
+      /* Reference: Daily Assessment North Pole PDF - logos ~30-35px height */
+      --pdf-logo-max-h: 35px;
+      --pdf-header-h: 55px;
       --pdf-footer-h: 70px;
     }
     
     /* HEADER STYLES - Both logos on same line using TABLE layout for PDF reliability */
     .page-header {
-      padding: 10px 0;
-      border-bottom: 3px solid #1e40af;
-      margin-bottom: 15px;
+      padding: 8px 0;
+      border-bottom: 2px solid #1e40af;
+      margin-bottom: 12px;
       position: relative;
       width: 100%;
-      min-height: 60px;
+      min-height: 40px;
+      max-height: 50px;
     }
 
     /* Table layout forces single row - more reliable than flexbox in PDF */
@@ -169,18 +172,19 @@ export const SHARED_HEADER_FOOTER_CSS = `
       width: 50%;
     }
 
+    /* Logo sizing matched to reference PDF (Daily Assessment North Pole) */
     .header-logo-left {
-      height: 55px;
-      max-height: 55px;
-      max-width: 200px;
+      height: var(--pdf-logo-max-h);
+      max-height: var(--pdf-logo-max-h);
+      max-width: 120px;
       width: auto;
       object-fit: contain;
     }
 
     .header-logo-right {
-      height: 50px;
-      max-height: 50px;
-      max-width: 180px;
+      height: 30px;
+      max-height: 30px;
+      max-width: 100px;
       width: auto;
       object-fit: contain;
     }
@@ -254,8 +258,8 @@ export const SHARED_PRINT_CSS = `
       display: block !important;
       visibility: visible !important;
       height: auto !important;
-      max-height: 80px !important;
-      margin-bottom: 10px !important;
+      max-height: 55px !important;
+      margin-bottom: 8px !important;
       page-break-inside: avoid !important;
       page-break-after: avoid !important;
     }
@@ -282,14 +286,26 @@ export const SHARED_PRINT_CSS = `
       text-align: right !important;
     }
     
-    /* LOGO VISIBILITY - Force header logos to render in PDF */
-    .header-logo-left,
+    /* LOGO VISIBILITY - Force header logos to render in PDF at reference size */
+    .header-logo-left {
+      display: inline-block !important;
+      visibility: visible !important;
+      opacity: 1 !important;
+      max-height: 35px !important;
+      max-width: 120px !important;
+      height: auto !important;
+      width: auto !important;
+      object-fit: contain !important;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+    
     .header-logo-right {
       display: inline-block !important;
       visibility: visible !important;
       opacity: 1 !important;
-      max-height: 55px !important;
-      max-width: 180px !important;
+      max-height: 30px !important;
+      max-width: 100px !important;
       height: auto !important;
       width: auto !important;
       object-fit: contain !important;
