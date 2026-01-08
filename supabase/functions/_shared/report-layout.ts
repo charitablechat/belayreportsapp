@@ -82,14 +82,19 @@ export async function getLogoBase64(): Promise<{ropeWorks: string, acct: string}
  * - Both on same horizontal line (flexbox nowrap)
  */
 export function createPageHeader(ropeWorksLogo: string, acctLogo: string): string {
+  // Use table layout for PDF reliability - tables never wrap cells to new rows
   return `
     <div class="page-header">
-      <div class="header-left">
-        <img src="${ropeWorksLogo}" alt="Rope Works" class="header-logo-left">
-      </div>
-      <div class="header-right">
-        <img src="${acctLogo}" alt="ACCT Accredited Vendor" class="header-logo-right">
-      </div>
+      <table class="header-logo-table" cellpadding="0" cellspacing="0" border="0">
+        <tr>
+          <td class="header-cell-left">
+            <img src="${ropeWorksLogo}" alt="Rope Works" class="header-logo-left">
+          </td>
+          <td class="header-cell-right">
+            <img src="${acctLogo}" alt="ACCT Accredited Vendor" class="header-logo-right">
+          </td>
+        </tr>
+      </table>
     </div>
   `;
 }
@@ -135,12 +140,8 @@ export const SHARED_HEADER_FOOTER_CSS = `
       --pdf-footer-h: 70px;
     }
     
-    /* HEADER STYLES - Both logos on same line */
+    /* HEADER STYLES - Both logos on same line using TABLE layout for PDF reliability */
     .page-header {
-      display: flex;
-      flex-wrap: nowrap;
-      justify-content: space-between;
-      align-items: center;
       padding: 10px 0;
       border-bottom: 3px solid #1e40af;
       margin-bottom: 15px;
@@ -149,13 +150,25 @@ export const SHARED_HEADER_FOOTER_CSS = `
       min-height: 60px;
     }
 
-    .header-left {
-      flex: 0 0 auto;
-      display: flex;
-      align-items: center;
+    /* Table layout forces single row - more reliable than flexbox in PDF */
+    .header-logo-table {
+      width: 100%;
+      table-layout: fixed;
+      border-collapse: collapse;
     }
 
-    .header-left img,
+    .header-cell-left {
+      text-align: left;
+      vertical-align: middle;
+      width: 50%;
+    }
+
+    .header-cell-right {
+      text-align: right;
+      vertical-align: middle;
+      width: 50%;
+    }
+
     .header-logo-left {
       height: 55px;
       max-height: 55px;
@@ -164,13 +177,6 @@ export const SHARED_HEADER_FOOTER_CSS = `
       object-fit: contain;
     }
 
-    .header-right {
-      flex: 0 0 auto;
-      display: flex;
-      align-items: center;
-    }
-
-    .header-right img,
     .header-logo-right {
       height: 50px;
       max-height: 50px;
@@ -243,34 +249,46 @@ export const SHARED_PRINT_CSS = `
       padding-bottom: 10px;
     }
     
-    /* HEADER - always visible with both logos */
+    /* HEADER - always visible with both logos on same line */
     .page-header {
-      display: flex !important;
-      flex-wrap: nowrap !important;
+      display: block !important;
       visibility: visible !important;
       height: auto !important;
-      max-height: 70px !important;
+      max-height: 80px !important;
       margin-bottom: 10px !important;
       page-break-inside: avoid !important;
       page-break-after: avoid !important;
     }
     
-    .page-header .header-left,
-    .page-header .header-right {
-      display: flex !important;
+    /* Table layout ensures logos stay on same row in PDF */
+    .header-logo-table {
+      width: 100% !important;
+      table-layout: fixed !important;
+      border-collapse: collapse !important;
+    }
+    
+    .header-cell-left,
+    .header-cell-right {
+      display: table-cell !important;
       visibility: visible !important;
-      flex: 0 0 auto !important;
+      vertical-align: middle !important;
+    }
+    
+    .header-cell-left {
+      text-align: left !important;
+    }
+    
+    .header-cell-right {
+      text-align: right !important;
     }
     
     /* LOGO VISIBILITY - Force header logos to render in PDF */
-    .page-header .header-left img,
-    .page-header .header-right img,
     .header-logo-left,
     .header-logo-right {
-      display: block !important;
+      display: inline-block !important;
       visibility: visible !important;
       opacity: 1 !important;
-      max-height: 50px !important;
+      max-height: 55px !important;
       max-width: 180px !important;
       height: auto !important;
       width: auto !important;
