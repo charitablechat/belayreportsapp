@@ -136,8 +136,8 @@ export const SHARED_HEADER_FOOTER_CSS = `
      * --pdf-footer-h: Reserved space for fixed footer
      */
     :root {
-      /* Reference: Daily Assessment North Pole PDF - logos ~30-35px height */
-      --pdf-logo-max-h: 35px;
+      /* Unified logo height for all reports (HTML + PDF): 32px */
+      --report-logo-h: 32px;
       --pdf-header-h: 55px;
       --pdf-footer-h: 70px;
     }
@@ -172,19 +172,11 @@ export const SHARED_HEADER_FOOTER_CSS = `
       width: 50%;
     }
 
-    /* Logo sizing matched to reference PDF (Daily Assessment North Pole) */
-    .header-logo-left {
-      height: var(--pdf-logo-max-h);
-      max-height: var(--pdf-logo-max-h);
-      max-width: 120px;
-      width: auto;
-      object-fit: contain;
-    }
-
+    /* Unified logo sizing: 32px height for both logos, all reports */
+    .header-logo-left,
     .header-logo-right {
-      height: 30px;
-      max-height: 30px;
-      max-width: 100px;
+      height: var(--report-logo-h);
+      max-height: var(--report-logo-h);
       width: auto;
       object-fit: contain;
     }
@@ -286,27 +278,14 @@ export const SHARED_PRINT_CSS = `
       text-align: right !important;
     }
     
-    /* LOGO VISIBILITY - Force header logos to render in PDF at reference size */
-    .header-logo-left {
-      display: inline-block !important;
-      visibility: visible !important;
-      opacity: 1 !important;
-      max-height: 35px !important;
-      max-width: 120px !important;
-      height: auto !important;
-      width: auto !important;
-      object-fit: contain !important;
-      -webkit-print-color-adjust: exact !important;
-      print-color-adjust: exact !important;
-    }
-    
+    /* LOGO VISIBILITY - Force header logos to render in PDF at unified 32px height */
+    .header-logo-left,
     .header-logo-right {
       display: inline-block !important;
       visibility: visible !important;
       opacity: 1 !important;
-      max-height: 30px !important;
-      max-width: 100px !important;
-      height: auto !important;
+      height: 32px !important;
+      max-height: 32px !important;
       width: auto !important;
       object-fit: contain !important;
       -webkit-print-color-adjust: exact !important;
