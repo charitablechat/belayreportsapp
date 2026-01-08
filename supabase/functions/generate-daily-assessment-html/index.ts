@@ -199,9 +199,9 @@ serve(async (req) => {
       </div>
     `;
 
-    const createPageFooter = (pageNum: number, totalPages: number) => `
+    const createPageFooter = (pageNum: number) => `
       <div class="page-footer">
-        <div class="page-number">Page ${pageNum} of ${totalPages}</div>
+        <div class="page-number">Page ${pageNum}</div>
         <div class="footer-line"></div>
         <div class="disclaimer-footer">
           Daily Course Assessment Documentation | ${assessment.site || 'N/A'}<br>
@@ -209,8 +209,6 @@ serve(async (req) => {
         </div>
       </div>
     `;
-
-    const totalPages = 2;
 
     const html = `
 <!DOCTYPE html>
@@ -236,14 +234,17 @@ serve(async (req) => {
 
     /* Page structure - matching inspection/training reports */
     .page {
-      display: block;
-      padding: 0.5in;
-      padding-bottom: 0.75in;
+      display: flex;
+      flex-direction: column;
+      padding: 0.25in;
       background: white;
       margin-bottom: 20px;
       box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-      page-break-after: auto;
-      page-break-inside: auto;
+      page-break-after: always;
+      page-break-inside: avoid;
+      min-height: 9in;
+      max-height: 9.5in;
+      overflow: hidden;
     }
 
     .page-content {
@@ -489,16 +490,19 @@ serve(async (req) => {
       }
 
       .page {
-        display: block !important;
+        display: flex !important;
+        flex-direction: column !important;
         position: relative !important;
-        min-height: auto !important;
-        height: auto !important;
-        padding: 0 !important;
+        min-height: 9in !important;
+        height: 9.5in !important;
+        max-height: 9.5in !important;
+        padding: 0.2in !important;
         margin: 0 !important;
         box-sizing: border-box !important;
         page-break-after: always !important;
-        page-break-inside: auto !important;
+        page-break-inside: avoid !important;
         box-shadow: none !important;
+        overflow: hidden !important;
       }
 
       .page:last-child {
@@ -619,7 +623,7 @@ serve(async (req) => {
   </style>
 </head>
 <body>
-  <!-- Page 1: Assessment Info + Operating Systems + Beginning/End of Day -->
+  <!-- Page 1: Assessment Info + Operating Systems -->
   <div class="page">
     ${createPageHeader()}
     <div class="page-content">
@@ -659,17 +663,33 @@ serve(async (req) => {
       ` : ''}
 
       ${renderChecklistItems(beginningOfDay, 'Beginning of Day Checklist')}
-      ${renderChecklistItems(endOfDay, 'End of Day Checklist')}
     </div>
-    ${createPageFooter(1, totalPages)}
+    ${createPageFooter(1)}
   </div>
 
-  <!-- Page 2: Inspections + Disclaimer -->
+  <!-- Page 2: End of Day Checklist -->
+  <div class="page">
+    ${createPageHeader()}
+    <div class="page-content">
+      ${renderChecklistItems(endOfDay, 'End of Day Checklist')}
+    </div>
+    ${createPageFooter(2)}
+  </div>
+
+  <!-- Page 3: Equipment + Structure Inspections -->
   <div class="page">
     ${createPageHeader()}
     <div class="page-content">
       ${renderChecklistItems(equipmentChecks, 'Equipment Inspection')}
       ${renderChecklistItems(structureChecks, 'Structure Inspection')}
+    </div>
+    ${createPageFooter(3)}
+  </div>
+
+  <!-- Page 4: Environment + Disclaimer -->
+  <div class="page">
+    ${createPageHeader()}
+    <div class="page-content">
       ${renderChecklistItems(environmentChecks, 'Environment Inspection')}
 
       <div class="disclaimer">
@@ -682,7 +702,7 @@ serve(async (req) => {
         </div>
       </div>
     </div>
-    ${createPageFooter(2, totalPages)}
+    ${createPageFooter(4)}
   </div>
 </body>
 </html>
