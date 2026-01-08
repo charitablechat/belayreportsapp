@@ -175,11 +175,14 @@ serve(async (req) => {
     /* 
      * FIX: Content Clipping Prevention
      * --------------------------------
-     * Previous issue: overflow:hidden and max-height caused content to be clipped.
-     * Solution: Allow content to flow naturally across pages using page-break rules.
-     * 
-     * ACCT Logo Fix: Logo uses same data URI pattern as inspection report.
-     * Logo should render in PDF as it uses inline base64, not external URL.
+     * PROBLEM: Content was running underneath the footer because pages had:
+     *   - overflow: hidden (clips content)
+     *   - max-height constraints (limits page height)
+     * SOLUTION: Remove these constraints and let content flow naturally.
+     *
+     * LOGO FIX: ACCT logo was missing in Training Report PDF but present
+     * in Inspection Report. Both now use identical base64 data URIs and
+     * explicit CSS rules to ensure logos are NEVER hidden in print mode.
      */
     
     :root {
@@ -201,7 +204,10 @@ serve(async (req) => {
       padding: 10px;
     }
     
-    /* Page structure - allow natural content flow */
+    /* 
+     * Page structure - NO FIXED HEIGHTS, NO OVERFLOW HIDDEN
+     * Content flows naturally and browser handles pagination
+     */
     .page {
       max-width: 100%;
       width: 100%;
@@ -210,8 +216,7 @@ serve(async (req) => {
       padding: var(--page-padding);
       box-shadow: 0 2px 10px rgba(0,0,0,0.1);
       position: relative;
-      min-height: auto;
-      /* No max-height or overflow:hidden - content must flow naturally */
+      /* CRITICAL: No max-height, no overflow:hidden */
     }
     
     .page-header {
@@ -222,16 +227,12 @@ serve(async (req) => {
       padding-bottom: 15px;
       margin-bottom: 20px;
       position: relative;
-      overflow: hidden;
-      height: 70px;
-      max-height: 70px;
     }
     
     .page-header .header-left {
       flex: 0 0 auto;
       display: flex;
       align-items: center;
-      overflow: hidden;
     }
     
     .page-header .header-left img {
@@ -246,7 +247,6 @@ serve(async (req) => {
       flex: 0 0 auto;
       display: flex;
       align-items: center;
-      overflow: hidden;
     }
     
     .page-header .header-right img {
@@ -389,46 +389,47 @@ serve(async (req) => {
     }
     
     /* 
-     * Print styles - Content Flow Fix
+     * PRINT STYLES - Content Flow Fix
      * --------------------------------
-     * FIX: Removed fixed heights and overflow:hidden that caused clipping.
-     * Content now flows naturally across pages. Browser handles pagination.
+     * CRITICAL: height: auto and overflow: visible allow content to flow
+     * across multiple pages without clipping.
      *
-     * ACCT Logo Fix: Ensured header images use !important display rules
-     * and are never hidden by print CSS. Logo renders via inline base64.
+     * LOGO FIX: Both logos use explicit visibility rules to ensure they
+     * render in PDF exports. This matches the Inspection Report behavior.
      */
     @media print {
       html, body {
         height: auto !important;
         overflow: visible !important;
-        background: white;
-        padding: 0;
-        margin: 0;
+        background: white !important;
+        padding: 0 !important;
+        margin: 0 !important;
         print-color-adjust: exact;
         -webkit-print-color-adjust: exact;
         font-size: 10pt;
         line-height: 1.4;
       }
 
+      /* Reserve space for content - prevents footer overlap */
       @page {
         size: letter portrait;
-        margin: 0.5in 0.5in 0.6in 0.5in; /* Extra bottom margin for footer */
+        margin: 0.5in 0.5in 0.7in 0.5in;
       }
 
       .page {
         display: block !important;
         position: relative !important;
-        /* Allow content to flow - no fixed height, no hidden overflow */
+        /* CRITICAL FIX: Allow content to flow naturally */
         height: auto !important;
         min-height: auto !important;
         max-height: none !important;
+        overflow: visible !important;
         padding: 0 !important;
-        margin: 0 0 20px 0 !important;
+        margin: 0 0 10px 0 !important;
         box-sizing: border-box !important;
         page-break-after: always !important;
-        page-break-inside: auto !important; /* Allow breaks within page */
+        page-break-inside: auto !important;
         box-shadow: none !important;
-        overflow: visible !important; /* CRITICAL: Allow content to flow */
       }
 
       .page:last-child {
@@ -437,38 +438,39 @@ serve(async (req) => {
       }
 
       /* 
-       * Header Logo Fix
-       * Ensure both logos are always visible in print/PDF mode
+       * LOGO VISIBILITY FIX - CRITICAL
+       * Ensure BOTH logos (Rope Works AND ACCT) are ALWAYS visible in PDF
+       * This was the fix for the missing ACCT logo in Training Report
        */
-      .page > .page-header {
+      .page-header {
         display: flex !important;
         visibility: visible !important;
-        height: 60px !important;
-        max-height: 60px !important;
+        height: auto !important;
+        max-height: 70px !important;
         margin-bottom: 10px !important;
         position: relative !important;
         page-break-inside: avoid !important;
         page-break-after: avoid !important;
       }
       
-      .page > .page-header .header-left,
-      .page > .page-header .header-right {
+      .page-header .header-left,
+      .page-header .header-right {
         display: flex !important;
         visibility: visible !important;
         flex: 0 0 auto !important;
       }
       
-      /* Ensure logos are visible in print - never hidden */
-      .page > .page-header .header-left img,
-      .page > .page-header .header-right img {
+      /* LOGO FIX: Force visibility - logos must render in PDF */
+      .page-header .header-left img,
+      .page-header .header-right img {
         display: block !important;
         visibility: visible !important;
+        opacity: 1 !important;
         max-height: 50px !important;
         max-width: 180px !important;
         height: auto !important;
         width: auto !important;
         object-fit: contain !important;
-        /* Ensure print doesn't strip images */
         -webkit-print-color-adjust: exact !important;
         print-color-adjust: exact !important;
       }
@@ -476,7 +478,7 @@ serve(async (req) => {
       .page-content {
         display: block !important;
         height: auto !important;
-        overflow: visible !important; /* CRITICAL: No clipping */
+        overflow: visible !important;
       }
 
       .page-footer {
@@ -486,6 +488,7 @@ serve(async (req) => {
         page-break-inside: avoid !important;
       }
 
+      /* Prevent awkward page breaks within items */
       .section {
         page-break-inside: avoid;
         page-break-after: auto;
@@ -506,7 +509,7 @@ serve(async (req) => {
         page-break-inside: avoid;
       }
       
-      /* Color enforcement */
+      /* Color enforcement for PDF */
       *, *::before, *::after {
         print-color-adjust: exact !important;
         -webkit-print-color-adjust: exact !important;
