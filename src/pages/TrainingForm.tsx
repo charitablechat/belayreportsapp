@@ -42,6 +42,7 @@ import { HtmlReportViewer } from "@/components/HtmlReportViewer";
 import { openHtmlReport } from "@/lib/html-report-viewer";
 import { triggerCompletionConfetti } from "@/lib/confetti";
 import { triggerHaptic } from "@/lib/haptics";
+import { useReportSync } from "@/hooks/useReportSync";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useSwipeNavigation } from "@/hooks/useSwipeNavigation";
 import { SwipeBackIndicator } from "@/components/SwipeBackIndicator";
@@ -58,6 +59,7 @@ export default function TrainingForm() {
   const { isOnline } = useNetworkStatus();
   const { triggerSync } = usePWA();
   const isMobile = useIsMobile();
+  const { syncReport } = useReportSync(id, 'training');
   
   // Auto-retry on network reconnect refs
   const wasOfflineRef = useRef(!isOnline);
@@ -732,6 +734,10 @@ export default function TrainingForm() {
       if (error) throw error;
       
       const html = data.html;
+      
+      // Auto-sync report to database for "latest report" functionality
+      await syncReport(html);
+      
       const filename = `training-report-${training?.organization || 'report'}-${new Date().toISOString().split('T')[0]}.html`;
       const title = `Training Report - ${training?.organization || 'Report'}`;
 

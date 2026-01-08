@@ -45,6 +45,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { useSwipeNavigation } from "@/hooks/useSwipeNavigation";
 import { SwipeBackIndicator } from "@/components/SwipeBackIndicator";
 import { toast } from "sonner";
+import { useReportSync } from "@/hooks/useReportSync";
 
 import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
 import { UnsavedChangesDialog } from "@/components/UnsavedChangesDialog";
@@ -58,6 +59,7 @@ export default function DailyAssessmentForm() {
   const { isOnline } = useNetworkStatus();
   const { triggerSync } = usePWA();
   const isMobileView = useIsMobile();
+  const { syncReport } = useReportSync(id, 'daily_assessment');
   
   // Auto-retry on network reconnect refs
   const wasOfflineRef = useRef(!isOnline);
@@ -895,6 +897,10 @@ export default function DailyAssessmentForm() {
       if (error) throw error;
 
       const html = data.html;
+      
+      // Auto-sync report to database for "latest report" functionality
+      await syncReport(html);
+      
       const filename = `daily-assessment-${assessment?.site || 'report'}-${new Date().toISOString().split('T')[0]}.html`;
       const title = `Daily Assessment - ${assessment?.site || 'Report'}`;
 
