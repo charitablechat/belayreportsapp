@@ -45,6 +45,7 @@ import { HtmlReportViewer } from "@/components/HtmlReportViewer";
 import { openHtmlReport } from "@/lib/html-report-viewer";
 import { useKeyboardAvoidance } from "@/hooks/useKeyboardAvoidance";
 import { useScrollBoundaryDetection } from "@/hooks/useScrollBoundaryDetection";
+import { useReportSync } from "@/hooks/useReportSync";
 import { isMobile } from "@/lib/mobile-detection";
 import { triggerCompletionConfetti } from "@/lib/confetti";
 import { triggerHaptic } from "@/lib/haptics";
@@ -64,6 +65,7 @@ export default function InspectionForm() {
   const { isOnline } = useNetworkStatus();
   const { triggerSync, isSyncing } = usePWA();
   const isMobileView = useIsMobile();
+  const { syncReport } = useReportSync(id, 'inspection');
   
   // Enable keyboard avoidance for mobile
   useKeyboardAvoidance();

@@ -294,10 +294,13 @@ export type Database = {
           id: string
           inspector_id: string
           last_opened_at: string | null
+          latest_report_generated_at: string | null
+          latest_report_html: string | null
           latitude: number | null
           longitude: number | null
           organization: string
           organization_id: string | null
+          report_version: number | null
           site: string
           status: string
           synced_at: string | null
@@ -310,10 +313,13 @@ export type Database = {
           id?: string
           inspector_id: string
           last_opened_at?: string | null
+          latest_report_generated_at?: string | null
+          latest_report_html?: string | null
           latitude?: number | null
           longitude?: number | null
           organization?: string
           organization_id?: string | null
+          report_version?: number | null
           site?: string
           status?: string
           synced_at?: string | null
@@ -326,10 +332,13 @@ export type Database = {
           id?: string
           inspector_id?: string
           last_opened_at?: string | null
+          latest_report_generated_at?: string | null
+          latest_report_html?: string | null
           latitude?: number | null
           longitude?: number | null
           organization?: string
           organization_id?: string | null
+          report_version?: number | null
           site?: string
           status?: string
           synced_at?: string | null
@@ -836,6 +845,8 @@ export type Database = {
           inspection_date: string
           inspector_id: string
           last_opened_at: string | null
+          latest_report_generated_at: string | null
+          latest_report_html: string | null
           latitude: number | null
           location: string
           longitude: number | null
@@ -844,6 +855,7 @@ export type Database = {
           organization_id: string | null
           previous_inspection_date: string | null
           previous_inspector: string | null
+          report_version: number | null
           started_at: string | null
           status: string
           synced_at: string | null
@@ -857,6 +869,8 @@ export type Database = {
           inspection_date?: string
           inspector_id: string
           last_opened_at?: string | null
+          latest_report_generated_at?: string | null
+          latest_report_html?: string | null
           latitude?: number | null
           location: string
           longitude?: number | null
@@ -865,6 +879,7 @@ export type Database = {
           organization_id?: string | null
           previous_inspection_date?: string | null
           previous_inspector?: string | null
+          report_version?: number | null
           started_at?: string | null
           status?: string
           synced_at?: string | null
@@ -878,6 +893,8 @@ export type Database = {
           inspection_date?: string
           inspector_id?: string
           last_opened_at?: string | null
+          latest_report_generated_at?: string | null
+          latest_report_html?: string | null
           latitude?: number | null
           location?: string
           longitude?: number | null
@@ -886,6 +903,7 @@ export type Database = {
           organization_id?: string | null
           previous_inspection_date?: string | null
           previous_inspector?: string | null
+          report_version?: number | null
           started_at?: string | null
           status?: string
           synced_at?: string | null
@@ -1451,10 +1469,13 @@ export type Database = {
           id: string
           inspector_id: string
           last_opened_at: string | null
+          latest_report_generated_at: string | null
+          latest_report_html: string | null
           latitude: number | null
           longitude: number | null
           organization: string
           organization_id: string | null
+          report_version: number | null
           start_date: string
           status: string
           synced_at: string | null
@@ -1468,10 +1489,13 @@ export type Database = {
           id?: string
           inspector_id: string
           last_opened_at?: string | null
+          latest_report_generated_at?: string | null
+          latest_report_html?: string | null
           latitude?: number | null
           longitude?: number | null
           organization: string
           organization_id?: string | null
+          report_version?: number | null
           start_date?: string
           status?: string
           synced_at?: string | null
@@ -1485,10 +1509,13 @@ export type Database = {
           id?: string
           inspector_id?: string
           last_opened_at?: string | null
+          latest_report_generated_at?: string | null
+          latest_report_html?: string | null
           latitude?: number | null
           longitude?: number | null
           organization?: string
           organization_id?: string | null
+          report_version?: number | null
           start_date?: string
           status?: string
           synced_at?: string | null
