@@ -135,9 +135,9 @@ serve(async (req) => {
       </div>
     `;
 
-    const createPageFooter = (pageNum: number, totalPages: number) => `
+    const createPageFooter = (pageNum: number) => `
       <div class="page-footer">
-        <div class="page-number">Page ${pageNum} of ${totalPages}</div>
+        <div class="page-number">Page ${pageNum}</div>
         <div class="footer-line"></div>
         <div class="footer-text">
           The information contained in this report has been documented by a Qualified Professional.<br>
@@ -146,8 +146,6 @@ serve(async (req) => {
         </div>
       </div>
     `;
-    
-    const totalPages = 4;
 
     // Build systems in place HTML
     const ALL_SYSTEMS_IN_PLACE = [
@@ -193,10 +191,14 @@ serve(async (req) => {
       width: 100%;
       margin: 0 auto 20px auto;
       background: white;
-      padding: 20px;
+      padding: 0.25in;
       box-shadow: 0 2px 10px rgba(0,0,0,0.1);
       position: relative;
-      min-height: auto;
+      min-height: 9in;
+      max-height: 9.5in;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
     }
     
     .page-header {
@@ -394,13 +396,15 @@ serve(async (req) => {
         flex-direction: column !important;
         position: relative !important;
         min-height: 9in !important;
-        height: auto !important;
-        padding: 0 !important;
+        height: 9.5in !important;
+        max-height: 9.5in !important;
+        padding: 0.2in !important;
         margin: 0 !important;
         box-sizing: border-box !important;
         page-break-after: always !important;
         page-break-inside: avoid !important;
         box-shadow: none !important;
+        overflow: hidden !important;
       }
 
       .page:last-child {
@@ -563,7 +567,7 @@ serve(async (req) => {
         ${content.standardsText}
       </div>
     </div>
-    ${createPageFooter(1, totalPages)}
+    ${createPageFooter(1)}
   </div>
 
   <!-- Page 2: Delivery, Operating Systems, Immediate Attention -->
@@ -603,10 +607,10 @@ serve(async (req) => {
       </div>
       ` : ''}
     </div>
-    ${createPageFooter(2, totalPages)}
+    ${createPageFooter(2)}
   </div>
 
-  <!-- Page 3: Verifiable Items and Systems in Place -->
+  <!-- Page 3: Verifiable Items -->
   <div class="page">
     ${pageHeader}
     <div class="page-content">
@@ -623,8 +627,20 @@ serve(async (req) => {
           ${content.verifiableItems.map(item => `<li>☑ ${item}</li>`).join('')}
         </ul>
       </div>
-      ` : ''}
+      ` : `
+      <div class="section">
+        <div class="section-title">Items Verified During Training</div>
+        <p style="margin: 10px 0 15px 0; font-style: italic; color: #666;">No items were verified during this training session.</p>
+      </div>
+      `}
+    </div>
+    ${createPageFooter(3)}
+  </div>
 
+  <!-- Page 4: Systems in Place -->
+  <div class="page">
+    ${pageHeader}
+    <div class="page-content">
       <div class="section">
         <div class="section-title">Systems in Place</div>
         <p style="margin: 10px 0 8px 0; font-weight: 600; color: #333;">
@@ -638,10 +654,10 @@ serve(async (req) => {
         </ul>
       </div>
     </div>
-    ${createPageFooter(3, totalPages)}
+    ${createPageFooter(4)}
   </div>
 
-  <!-- Page 4: Training Summary and Disclaimer -->
+  <!-- Page 5: Training Summary -->
   <div class="page">
     ${pageHeader}
     <div class="page-content">
@@ -666,28 +682,41 @@ serve(async (req) => {
             <div class="text-content">${deduplicateHtmlContent(content.summary.recommendations)}</div>
           </div>
         ` : ''}
-        ${content.summary.personSubmitting || content.summary.submissionDate ? `
-        <div style="margin-top: 20px;">
-          <div class="section-title">Person Submitting Form</div>
-          <p style="margin: 0 0 16px 0; font-style: italic; color: #666; line-height: 1.5; font-size: 14px;">
-            The trainer listed on this report verifies the report is complete and ready for client submission on the following date.
-          </p>
-          <div class="info-grid">
-            ${content.summary.personSubmitting ? `
-            <div class="info-item">
-              <div class="info-label">Person Submitting</div>
-              <div class="info-value">${content.summary.personSubmitting}</div>
-            </div>
-            ` : ''}
-            ${content.summary.submissionDate ? `
-            <div class="info-item">
-              <div class="info-label">Submission Date</div>
-              <div class="info-value">${content.summary.submissionDate}</div>
-            </div>
-            ` : ''}
+      </div>
+      ` : `
+      <div class="section">
+        <div class="section-title">Training Summary</div>
+        <p style="margin: 10px 0 15px 0; font-style: italic; color: #666;">No observations or recommendations were recorded for this training session.</p>
+      </div>
+      `}
+    </div>
+    ${createPageFooter(5)}
+  </div>
+
+  <!-- Page 6: Submission and Disclaimer -->
+  <div class="page">
+    ${pageHeader}
+    <div class="page-content">
+      ${content.summary.personSubmitting || content.summary.submissionDate ? `
+      <div class="section">
+        <div class="section-title">Person Submitting Form</div>
+        <p style="margin: 0 0 16px 0; font-style: italic; color: #666; line-height: 1.5; font-size: 14px;">
+          The trainer listed on this report verifies the report is complete and ready for client submission on the following date.
+        </p>
+        <div class="info-grid">
+          ${content.summary.personSubmitting ? `
+          <div class="info-item">
+            <div class="info-label">Person Submitting</div>
+            <div class="info-value">${content.summary.personSubmitting}</div>
           </div>
+          ` : ''}
+          ${content.summary.submissionDate ? `
+          <div class="info-item">
+            <div class="info-label">Submission Date</div>
+            <div class="info-value">${content.summary.submissionDate}</div>
+          </div>
+          ` : ''}
         </div>
-        ` : ''}
       </div>
       ` : ''}
 
@@ -700,7 +729,7 @@ serve(async (req) => {
         Generated on ${new Date().toLocaleString('en-US', { timeZone: 'America/Chicago', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
       </div>
     </div>
-    ${createPageFooter(4, totalPages)}
+    ${createPageFooter(6)}
   </div>
 </body>
 </html>`;
