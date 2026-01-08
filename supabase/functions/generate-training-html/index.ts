@@ -72,9 +72,11 @@ serve(async (req) => {
     // Footer disclaimer text for training reports
     const footerDisclaimerText = `The information contained in this report has been documented by a Qualified Professional.<br>This report is effective for one year from the date of inspection. Issued by:<br>Rope Works Inc., PO Box 1074, Dripping Springs, TX 78620`;
 
-    // Helper wrappers using shared layout functions (with logos in header AND footer)
+    // Helper wrappers using shared layout functions
+    // HEADER: Both logos (Rope Works LEFT, ACCT RIGHT on same line)
+    // FOOTER: NO logos - only page number and disclaimer text
     const header = () => createPageHeader(ropeWorksLogo, acctLogo);
-    const footer = (pageNum: number) => createPageFooter(pageNum, footerDisclaimerText, ropeWorksLogo, acctLogo);
+    const footer = (pageNum: number) => createPageFooter(pageNum, footerDisclaimerText);
 
     // Build systems in place HTML
     const ALL_SYSTEMS_IN_PLACE = [

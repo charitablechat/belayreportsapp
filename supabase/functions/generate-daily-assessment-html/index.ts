@@ -139,8 +139,10 @@ serve(async (req) => {
     const footerDisclaimerText = `Daily Course Assessment Documentation | ${assessment.site || 'N/A'}<br>Generated on ${generatedTimestamp}`;
 
     // Helper wrappers using shared layout functions
+    // HEADER: Both logos (Rope Works LEFT, ACCT RIGHT on same line)
+    // FOOTER: NO logos - only page number and disclaimer text
     const header = () => createPageHeader(ropeWorksLogo, acctLogo);
-    const footer = (pageNum: number) => createPageFooter(pageNum, footerDisclaimerText, ropeWorksLogo, acctLogo);
+    const footer = (pageNum: number) => createPageFooter(pageNum, footerDisclaimerText);
 
     const html = `
 <!DOCTYPE html>
