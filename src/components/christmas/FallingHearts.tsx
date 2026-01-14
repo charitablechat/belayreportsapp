@@ -40,7 +40,7 @@ export function FallingHearts() {
 
     // Reduce count on mobile for performance
     const isMobile = window.innerWidth < 768;
-    const heartCount = isMobile ? 15 : 30;
+    const heartCount = isMobile ? 8 : 15;
 
     const newHearts: Heart[] = Array.from({ length: heartCount }, (_, i) => ({
       id: i,
