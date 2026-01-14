@@ -207,12 +207,13 @@ function parseTextToList(textContent: string | null | undefined): string[] {
 // Helper to render a bullet list from array
 function renderBulletList(items: string[], fallbackHtml: string): string {
   if (items.length > 0) {
-    return `<ul style="margin: 0; list-style: disc; padding-left: 24px;">
-      ${items.map(item => `<li style="background: none; border-left: none; padding: 6px 0; margin-bottom: 4px; line-height: 1.5;">${item}</li>`).join('')}
+    return `<ul class="summary-list" style="list-style: disc; list-style-position: outside; padding-left: 24px; margin: 0;">
+      ${items.map(item => `<li style="display: list-item; list-style-type: disc; padding: 6px 0; margin: 0 0 4px 0; line-height: 1.5; background: none; border-left: none;">${item}</li>`).join('')}
     </ul>`;
   }
   return fallbackHtml;
 }
+
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -900,7 +901,28 @@ serve(async (req) => {
       page-break-inside: avoid;
     }
 
-    @media print {
+    /* Bullet list base styling for summary sections */
+    ul.summary-list {
+      list-style: disc;
+      list-style-position: outside;
+      padding-left: 24px;
+      margin: 0;
+    }
+    
+    ul.summary-list li {
+      display: list-item;
+      list-style-type: disc;
+      padding: 6px 0;
+      margin: 0 0 4px 0;
+      line-height: 1.5;
+      background: none;
+      border-left: none;
+    }
+    
+    ul.summary-list li::marker {
+      color: #1e40af;
+    }
+
       /* Hide fixed print elements - we use in-page headers/footers */
       .print-header,
       .print-footer {
@@ -1236,6 +1258,29 @@ serve(async (req) => {
       *, *::before, *::after {
         animation: none !important;
         transition: none !important;
+      }
+      
+      /* Bullet list styling for PDF print */
+      ul {
+        list-style: disc !important;
+        list-style-position: inside !important;
+        padding-left: 16px !important;
+        margin: 0 !important;
+      }
+      
+      ul li {
+        display: list-item !important;
+        list-style-type: disc !important;
+        padding: 4px 0 !important;
+        margin: 0 0 4px 0 !important;
+        line-height: 1.5 !important;
+        background: none !important;
+        border-left: none !important;
+      }
+      
+      ul li::marker {
+        color: #1e40af !important;
+        font-size: 10pt !important;
       }
     } /* End @media print */
 
