@@ -1,15 +1,24 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { X, Heart } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CandyHearts } from "./CandyHearts";
 
 function useCountdown(targetDate: Date) {
-  const [timeLeft, setTimeLeft] = useState({
-    days: 0,
-    hours: 0,
-    minutes: 0,
-    seconds: 0,
-    isPast: false,
+  const [timeLeft, setTimeLeft] = useState(() => {
+    const now = new Date();
+    const difference = targetDate.getTime() - now.getTime();
+    
+    if (difference <= 0) {
+      return { days: 0, hours: 0, minutes: 0, seconds: 0, isPast: true };
+    }
+    
+    return {
+      days: Math.floor(difference / (1000 * 60 * 60 * 24)),
+      hours: Math.floor((difference / (1000 * 60 * 60)) % 24),
+      minutes: Math.floor((difference / 1000 / 60) % 60),
+      seconds: Math.floor((difference / 1000) % 60),
+      isPast: false,
+    };
   });
 
   useEffect(() => {
@@ -30,7 +39,6 @@ function useCountdown(targetDate: Date) {
       };
     };
 
-    setTimeLeft(calculateTimeLeft());
     const timer = setInterval(() => setTimeLeft(calculateTimeLeft()), 1000);
     return () => clearInterval(timer);
   }, [targetDate]);
@@ -43,8 +51,8 @@ export function HolidayBanner() {
     return sessionStorage.getItem("valentine-banner-dismissed") === "true";
   });
 
-  // Valentine's Day 2026
-  const valentinesDay = new Date("2026-02-14T00:00:00");
+  // Valentine's Day 2026 - memoized to prevent infinite re-renders
+  const valentinesDay = useMemo(() => new Date("2026-02-14T00:00:00"), []);
   const { days, hours, minutes, seconds, isPast } = useCountdown(valentinesDay);
 
   const handleDismiss = () => {
