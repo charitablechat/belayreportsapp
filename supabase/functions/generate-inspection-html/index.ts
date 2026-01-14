@@ -158,6 +158,62 @@ function deduplicateHtmlContent(html: string | null): string {
   return Array.from(uniqueLines.values()).join("\n");
 }
 
+// Helper function to strip HTML tags from content
+function stripHtmlTags(html: string | null | undefined): string {
+  if (!html) return '';
+  return html
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// Helper function to parse text content into a bullet list array
+function parseTextToList(textContent: string | null | undefined): string[] {
+  if (!textContent) return [];
+  
+  const text = stripHtmlTags(textContent);
+  if (!text || text === 'N/A') return [];
+  
+  // First, try splitting by newlines (most common for bullet-style content)
+  let items = text.split(/\n/).map(item => item.trim()).filter(Boolean);
+  
+  // If we only got one item and it's long, try splitting by sentences
+  if (items.length === 1 && items[0].length > 100) {
+    // Split on period followed by space and capital letter, or period at end
+    const sentencePattern = /(?<=[.!?])\s+(?=[A-Z])/;
+    const sentences = items[0].split(sentencePattern).map(s => s.trim()).filter(Boolean);
+    if (sentences.length > 1) {
+      items = sentences;
+    }
+  }
+  
+  // Clean up each item - remove leading bullets/dashes/numbers if present
+  items = items.map(item => {
+    return item
+      .replace(/^[\-•●○◦▪▸►]\s*/, '') // Remove bullet characters
+      .replace(/^\d+[.)]\s*/, '') // Remove numbered list markers
+      .trim();
+  }).filter(Boolean);
+  
+  return items;
+}
+
+// Helper to render a bullet list from array
+function renderBulletList(items: string[], fallbackHtml: string): string {
+  if (items.length > 0) {
+    return `<ul style="margin: 0; list-style: disc; padding-left: 24px;">
+      ${items.map(item => `<li style="background: none; border-left: none; padding: 6px 0; margin-bottom: 4px; line-height: 1.5;">${item}</li>`).join('')}
+    </ul>`;
+  }
+  return fallbackHtml;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -2193,7 +2249,7 @@ serve(async (req) => {
       <div style="margin-bottom: 20px;">
         <h3 style="font-size: 12pt; font-weight: bold; margin-bottom: 8px; color: #1a1a1a; border-bottom: 2px solid #16a34a; padding-bottom: 5px;">Repairs Performed</h3>
         <div class="text-block" style="padding: 10px 15px; background: #f9f9f9; border-left: 4px solid #16a34a;">
-          ${deduplicateHtmlContent(summary.repairs_performed)}
+          ${renderBulletList(parseTextToList(summary.repairs_performed), deduplicateHtmlContent(summary.repairs_performed))}
         </div>
       </div>
       `
@@ -2206,7 +2262,7 @@ serve(async (req) => {
       <div class="critical-box" style="margin-bottom: 20px; padding: 12px; background: #fef2f2; border: 2px solid #dc2626; border-radius: 4px;">
         <h3 style="font-size: 11pt; font-weight: bold; margin-bottom: 8px; color: #dc2626; text-transform: uppercase;">⚠ Critical Actions Required</h3>
         <div style="font-size: 10pt; line-height: 1.5; color: #1a1a1a;">
-          ${deduplicateHtmlContent(summary.critical_actions)}
+          ${renderBulletList(parseTextToList(summary.critical_actions), deduplicateHtmlContent(summary.critical_actions))}
         </div>
         <p style="margin-top: 8px; font-size: 9pt; font-style: italic; color: #7f1d1d;">
           <strong>IMPORTANT:</strong> Items listed above must be addressed immediately.
@@ -2222,7 +2278,7 @@ serve(async (req) => {
       <div style="margin-bottom: 20px;">
         <h3 style="font-size: 12pt; font-weight: bold; margin-bottom: 8px; color: #1a1a1a; border-bottom: 2px solid #ea580c; padding-bottom: 5px;">Future Considerations</h3>
         <div class="text-block" style="padding: 10px 15px; background: #fff7ed; border-left: 4px solid #ea580c;">
-          ${deduplicateHtmlContent(summary.future_considerations)}
+          ${renderBulletList(parseTextToList(summary.future_considerations), deduplicateHtmlContent(summary.future_considerations))}
         </div>
       </div>
       `
