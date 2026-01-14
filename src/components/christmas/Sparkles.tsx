@@ -53,7 +53,7 @@ export function SparkleContainer({ sparkles }: SparkleContainerProps) {
   if (sparkles.length === 0) return null;
 
   return (
-    <div className="absolute inset-0 pointer-events-none overflow-hidden z-50">
+    <div className="absolute inset-0 pointer-events-none z-[100]" style={{ overflow: 'visible' }}>
       {sparkles.map((sparkle) => (
         <div
           key={sparkle.id}
@@ -70,6 +70,7 @@ export function SparkleContainer({ sparkles }: SparkleContainerProps) {
             viewBox="0 0 24 24"
             fill="none"
             xmlns="http://www.w3.org/2000/svg"
+            style={{ filter: `drop-shadow(0 0 3px ${sparkle.color})` }}
           >
             <path
               d="M12 0L14.59 9.41L24 12L14.59 14.59L12 24L9.41 14.59L0 12L9.41 9.41L12 0Z"
