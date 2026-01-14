@@ -1,6 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { toast } from 'sonner';
 import { useEffect, useCallback, useState } from 'react';
 import { useIsMobile } from '@/hooks/use-mobile';
 
@@ -194,18 +193,11 @@ export const useConflicts = () => {
           .eq('id', conflict.id);
       }
     },
-    onSuccess: (_, variables) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sync-conflicts'] });
-      const strategyLabel = autoResolveStrategy === 'last-write-wins' 
-        ? 'last-write-wins' 
-        : autoResolveStrategy === 'local-wins' 
-          ? 'local version' 
-          : 'remote version';
-      toast.success(`${variables.length} conflict${variables.length > 1 ? 's' : ''} auto-resolved using ${strategyLabel}`);
     },
     onError: (error: Error) => {
       console.error('Failed to auto-resolve conflicts:', error);
-      toast.error('Failed to auto-resolve conflicts');
     },
   });
 
@@ -249,11 +241,9 @@ export const useConflicts = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sync-conflicts'] });
-      toast.success('Conflict resolved with local version');
     },
     onError: (error: Error) => {
       console.error('Failed to resolve conflict:', error);
-      toast.error('Failed to resolve conflict');
     },
   });
 
@@ -280,11 +270,9 @@ export const useConflicts = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sync-conflicts'] });
-      toast.success('Conflict resolved with remote version');
     },
     onError: (error: Error) => {
       console.error('Failed to resolve conflict:', error);
-      toast.error('Failed to resolve conflict');
     },
   });
 
