@@ -9,11 +9,12 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { format } from "date-fns";
-import { FileText, MoreVertical, Trash2, Download, Check, Cloud, User } from "lucide-react";
+import { FileText, MoreVertical, Trash2, Download, Check, Cloud } from "lucide-react";
 import { triggerHaptic } from "@/lib/haptics";
 import { parseLocalDate } from "@/lib/date-utils";
 import { HeartsBorder } from "@/components/christmas/HeartsBorder";
 import { triggerValentineBurst } from "@/lib/confetti";
+import { useSparkles, SparkleContainer } from "@/components/christmas/Sparkles";
 
 interface ReportCardProps {
   report: any;
@@ -24,6 +25,7 @@ interface ReportCardProps {
 }
 
 export function ReportCard({ report, type, onDelete, onClick, getStatusBadge }: ReportCardProps) {
+  const { sparkles, triggerSparkles } = useSparkles();
   const isInspection = type === 'inspection';
   const isDaily = type === 'daily';
   
@@ -102,8 +104,9 @@ export function ReportCard({ report, type, onDelete, onClick, getStatusBadge }: 
   return (
     <Card 
       className="relative overflow-visible cursor-pointer transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5 hover:border-primary/50 active:scale-[0.99] active:shadow-md group valentine-card-glow"
-      onClick={() => {
+      onClick={(e) => {
         triggerHaptic('light');
+        triggerSparkles(e);
         // Trigger Valentine's confetti for completed reports
         if (getReportStatus() === 'completed') {
           triggerValentineBurst();
@@ -111,6 +114,7 @@ export function ReportCard({ report, type, onDelete, onClick, getStatusBadge }: 
         onClick(report);
       }}
     >
+      <SparkleContainer sparkles={sparkles} />
       <HeartsBorder />
       {getReportStatus() === 'completed' && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">

@@ -1,45 +1,126 @@
-export function Sparkles() {
-  const colors = [
-    "hsl(45, 100%, 50%)",   // Gold
-    "hsl(39, 77%, 83%)",    // Champagne
-    "hsl(0, 0%, 75%)",      // Silver
-    "hsl(45, 100%, 60%)",   // Light Gold
-    "hsl(270, 70%, 60%)",   // Purple
-  ];
+import { useState, useCallback } from "react";
 
-  const sparkleCount = 20;
+interface Sparkle {
+  id: number;
+  x: number;
+  y: number;
+  size: number;
+  color: string;
+  delay: number;
+}
+
+const SPARKLE_COLORS = [
+  "hsl(350, 80%, 65%)",   // Rose red
+  "hsl(340, 70%, 75%)",   // Pink
+  "hsl(45, 100%, 70%)",   // Gold
+  "hsl(0, 0%, 100%)",     // White
+  "hsl(320, 60%, 70%)",   // Magenta pink
+];
+
+export function useSparkles() {
+  const [sparkles, setSparkles] = useState<Sparkle[]>([]);
+
+  const triggerSparkles = useCallback((event: React.MouseEvent) => {
+    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+
+    const newSparkles: Sparkle[] = Array.from({ length: 8 }, (_, i) => ({
+      id: Date.now() + i,
+      x: x + (Math.random() - 0.5) * 40,
+      y: y + (Math.random() - 0.5) * 40,
+      size: 4 + Math.random() * 8,
+      color: SPARKLE_COLORS[Math.floor(Math.random() * SPARKLE_COLORS.length)],
+      delay: Math.random() * 0.1,
+    }));
+
+    setSparkles(prev => [...prev, ...newSparkles]);
+
+    // Clean up sparkles after animation
+    setTimeout(() => {
+      setSparkles(prev => prev.filter(s => !newSparkles.find(ns => ns.id === s.id)));
+    }, 700);
+  }, []);
+
+  return { sparkles, triggerSparkles };
+}
+
+interface SparkleContainerProps {
+  sparkles: Sparkle[];
+}
+
+export function SparkleContainer({ sparkles }: SparkleContainerProps) {
+  if (sparkles.length === 0) return null;
 
   return (
-    <div className="relative w-full overflow-hidden h-8">
-      {/* Wire/string */}
-      <div className="absolute top-3 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-amber-700/40 to-transparent" />
-      
-      {/* Sparkles */}
-      <div className="flex justify-between px-2">
-        {Array.from({ length: sparkleCount }).map((_, i) => (
-          <div
-            key={i}
-            className="relative animate-nye-sparkle"
-            style={{
-              animationDelay: `${(i % 5) * 0.15}s`,
-            }}
+    <div className="absolute inset-0 pointer-events-none overflow-hidden z-50">
+      {sparkles.map((sparkle) => (
+        <div
+          key={sparkle.id}
+          className="absolute animate-sparkle-burst"
+          style={{
+            left: sparkle.x,
+            top: sparkle.y,
+            animationDelay: `${sparkle.delay}s`,
+          }}
+        >
+          <svg
+            width={sparkle.size}
+            height={sparkle.size}
+            viewBox="0 0 24 24"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
           >
-            {/* Wire connector */}
-            <div className="absolute top-0 left-1/2 -translate-x-1/2 w-0.5 h-3 bg-amber-700/40" />
-            
-            {/* Star sparkle */}
-            <div
-              className="w-3 h-3 mt-3 relative flex items-center justify-center"
-              style={{
-                color: colors[i % colors.length],
-                textShadow: `0 0 8px ${colors[i % colors.length]}`,
-              }}
-            >
-              <span className="text-xs">✦</span>
-            </div>
-          </div>
-        ))}
-      </div>
+            <path
+              d="M12 0L14.59 9.41L24 12L14.59 14.59L12 24L9.41 14.59L0 12L9.41 9.41L12 0Z"
+              fill={sparkle.color}
+            />
+          </svg>
+        </div>
+      ))}
     </div>
   );
+}
+
+// Hook for hover sparkles - creates sparkles on mouse movement
+export function useHoverSparkles() {
+  const [sparkles, setSparkles] = useState<Sparkle[]>([]);
+  const [isHovering, setIsHovering] = useState(false);
+
+  const handleMouseMove = useCallback((event: React.MouseEvent) => {
+    if (!isHovering) return;
+    
+    // Only create sparkle 20% of the time to avoid too many
+    if (Math.random() > 0.2) return;
+
+    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+
+    const newSparkle: Sparkle = {
+      id: Date.now() + Math.random(),
+      x: x + (Math.random() - 0.5) * 20,
+      y: y + (Math.random() - 0.5) * 20,
+      size: 3 + Math.random() * 5,
+      color: SPARKLE_COLORS[Math.floor(Math.random() * SPARKLE_COLORS.length)],
+      delay: 0,
+    };
+
+    setSparkles(prev => [...prev, newSparkle]);
+
+    // Clean up sparkle after animation
+    setTimeout(() => {
+      setSparkles(prev => prev.filter(s => s.id !== newSparkle.id));
+    }, 600);
+  }, [isHovering]);
+
+  const handleMouseEnter = useCallback(() => setIsHovering(true), []);
+  const handleMouseLeave = useCallback(() => setIsHovering(false), []);
+
+  return { 
+    sparkles, 
+    handleMouseMove, 
+    handleMouseEnter, 
+    handleMouseLeave 
+  };
 }
