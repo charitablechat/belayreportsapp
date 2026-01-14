@@ -58,7 +58,7 @@ export function FallingHearts() {
   if (prefersReducedMotion) return null;
 
   return (
-    <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden">
+    <div className="fixed inset-0 pointer-events-none z-[45] overflow-hidden">
       {hearts.map((heart) => (
         <div
           key={heart.id}
