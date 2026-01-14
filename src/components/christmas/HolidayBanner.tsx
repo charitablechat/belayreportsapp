@@ -102,28 +102,31 @@ export function HolidayBanner() {
 
         {!isPast && (
           <div className="flex justify-center items-center gap-2 md:gap-4 text-sm md:text-base">
-            {/* Left candy hearts */}
-            <div className="hidden md:flex flex-col gap-1 items-center">
-              <div 
-                className="px-2 py-1 rounded-sm text-[8px] font-bold animate-candy-wiggle"
-                style={{ 
-                  backgroundColor: "hsl(340, 60%, 85%)", 
-                  color: "hsl(340, 50%, 35%)",
-                  boxShadow: "inset 0 1px 2px rgba(255,255,255,0.6), 0 1px 2px rgba(0,0,0,0.15)"
-                }}
-              >
-                BE MINE
+            {/* Left candy hearts - Heart shaped */}
+            <div className="hidden md:flex flex-col gap-2 items-center">
+              <div className="relative animate-candy-wiggle">
+                <svg width="50" height="45" viewBox="0 0 50 45" className="drop-shadow-md">
+                  <defs>
+                    <linearGradient id="candy1" x1="0%" y1="0%" x2="100%" y2="100%">
+                      <stop offset="0%" stopColor="hsl(340, 70%, 88%)" />
+                      <stop offset="100%" stopColor="hsl(340, 60%, 80%)" />
+                    </linearGradient>
+                  </defs>
+                  <path d="M25 42 C25 42 5 28 5 15 C5 8 10 3 17 3 C21 3 24 5 25 8 C26 5 29 3 33 3 C40 3 45 8 45 15 C45 28 25 42 25 42Z" fill="url(#candy1)" stroke="hsl(340, 50%, 75%)" strokeWidth="1"/>
+                </svg>
+                <span className="absolute inset-0 flex items-center justify-center text-[7px] font-bold pt-1" style={{ color: "hsl(340, 50%, 40%)" }}>BE MINE</span>
               </div>
-              <div 
-                className="px-2 py-1 rounded-sm text-[8px] font-bold animate-candy-wiggle"
-                style={{ 
-                  backgroundColor: "hsl(280, 40%, 85%)", 
-                  color: "hsl(280, 40%, 35%)",
-                  animationDelay: "0.3s",
-                  boxShadow: "inset 0 1px 2px rgba(255,255,255,0.6), 0 1px 2px rgba(0,0,0,0.15)"
-                }}
-              >
-                XOXO
+              <div className="relative animate-candy-wiggle" style={{ animationDelay: "0.3s" }}>
+                <svg width="45" height="40" viewBox="0 0 50 45" className="drop-shadow-md">
+                  <defs>
+                    <linearGradient id="candy2" x1="0%" y1="0%" x2="100%" y2="100%">
+                      <stop offset="0%" stopColor="hsl(280, 50%, 88%)" />
+                      <stop offset="100%" stopColor="hsl(280, 40%, 80%)" />
+                    </linearGradient>
+                  </defs>
+                  <path d="M25 42 C25 42 5 28 5 15 C5 8 10 3 17 3 C21 3 24 5 25 8 C26 5 29 3 33 3 C40 3 45 8 45 15 C45 28 25 42 25 42Z" fill="url(#candy2)" stroke="hsl(280, 40%, 75%)" strokeWidth="1"/>
+                </svg>
+                <span className="absolute inset-0 flex items-center justify-center text-[8px] font-bold pt-1" style={{ color: "hsl(280, 40%, 40%)" }}>XOXO</span>
               </div>
             </div>
             
@@ -147,29 +150,31 @@ export function HolidayBanner() {
               </div>
             </div>
             
-            {/* Right candy hearts */}
-            <div className="hidden md:flex flex-col gap-1 items-center">
-              <div 
-                className="px-2 py-1 rounded-sm text-[8px] font-bold animate-candy-wiggle"
-                style={{ 
-                  backgroundColor: "hsl(50, 70%, 88%)", 
-                  color: "hsl(50, 50%, 35%)",
-                  animationDelay: "0.5s",
-                  boxShadow: "inset 0 1px 2px rgba(255,255,255,0.6), 0 1px 2px rgba(0,0,0,0.15)"
-                }}
-              >
-                SWEET
+            {/* Right candy hearts - Heart shaped */}
+            <div className="hidden md:flex flex-col gap-2 items-center">
+              <div className="relative animate-candy-wiggle" style={{ animationDelay: "0.5s" }}>
+                <svg width="48" height="43" viewBox="0 0 50 45" className="drop-shadow-md">
+                  <defs>
+                    <linearGradient id="candy3" x1="0%" y1="0%" x2="100%" y2="100%">
+                      <stop offset="0%" stopColor="hsl(50, 80%, 90%)" />
+                      <stop offset="100%" stopColor="hsl(50, 70%, 82%)" />
+                    </linearGradient>
+                  </defs>
+                  <path d="M25 42 C25 42 5 28 5 15 C5 8 10 3 17 3 C21 3 24 5 25 8 C26 5 29 3 33 3 C40 3 45 8 45 15 C45 28 25 42 25 42Z" fill="url(#candy3)" stroke="hsl(50, 60%, 75%)" strokeWidth="1"/>
+                </svg>
+                <span className="absolute inset-0 flex items-center justify-center text-[7px] font-bold pt-1" style={{ color: "hsl(50, 50%, 35%)" }}>SWEET</span>
               </div>
-              <div 
-                className="px-2 py-1 rounded-sm text-[8px] font-bold animate-candy-wiggle"
-                style={{ 
-                  backgroundColor: "hsl(160, 40%, 82%)", 
-                  color: "hsl(160, 40%, 35%)",
-                  animationDelay: "0.7s",
-                  boxShadow: "inset 0 1px 2px rgba(255,255,255,0.6), 0 1px 2px rgba(0,0,0,0.15)"
-                }}
-              >
-                LOVE
+              <div className="relative animate-candy-wiggle" style={{ animationDelay: "0.7s" }}>
+                <svg width="45" height="40" viewBox="0 0 50 45" className="drop-shadow-md">
+                  <defs>
+                    <linearGradient id="candy4" x1="0%" y1="0%" x2="100%" y2="100%">
+                      <stop offset="0%" stopColor="hsl(160, 50%, 85%)" />
+                      <stop offset="100%" stopColor="hsl(160, 40%, 78%)" />
+                    </linearGradient>
+                  </defs>
+                  <path d="M25 42 C25 42 5 28 5 15 C5 8 10 3 17 3 C21 3 24 5 25 8 C26 5 29 3 33 3 C40 3 45 8 45 15 C45 28 25 42 25 42Z" fill="url(#candy4)" stroke="hsl(160, 40%, 70%)" strokeWidth="1"/>
+                </svg>
+                <span className="absolute inset-0 flex items-center justify-center text-[8px] font-bold pt-1" style={{ color: "hsl(160, 40%, 35%)" }}>LOVE</span>
               </div>
             </div>
           </div>
