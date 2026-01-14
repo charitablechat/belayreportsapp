@@ -158,40 +158,38 @@ function deduplicateHtmlContent(html: string | null): string {
   return Array.from(uniqueLines.values()).join("\n");
 }
 
-// Helper function to strip HTML tags from content
+// Helper function to strip HTML tags while preserving line breaks
 function stripHtmlTags(html: string | null | undefined): string {
   if (!html) return '';
   return html
-    .replace(/<[^>]*>/g, ' ')
+    // Convert block-level elements to newlines first
+    .replace(/<\/p>/gi, '\n')
+    .replace(/<\/div>/gi, '\n')
+    .replace(/<\/li>/gi, '\n')
+    .replace(/<br\s*\/?>/gi, '\n')
+    // Remove remaining HTML tags
+    .replace(/<[^>]*>/g, '')
     .replace(/&nbsp;/g, ' ')
     .replace(/&amp;/g, '&')
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"')
     .replace(/&#39;/g, "'")
-    .replace(/\s+/g, ' ')
+    // Collapse multiple spaces (but preserve newlines)
+    .replace(/[ \t]+/g, ' ')
     .trim();
 }
 
 // Helper function to parse text content into a bullet list array
+// Each line becomes a separate bullet point
 function parseTextToList(textContent: string | null | undefined): string[] {
   if (!textContent) return [];
   
   const text = stripHtmlTags(textContent);
   if (!text || text === 'N/A') return [];
   
-  // First, try splitting by newlines (most common for bullet-style content)
+  // Split by newlines - each line becomes a bullet point
   let items = text.split(/\n/).map(item => item.trim()).filter(Boolean);
-  
-  // If we only got one item and it's long, try splitting by sentences
-  if (items.length === 1 && items[0].length > 100) {
-    // Split on period followed by space and capital letter, or period at end
-    const sentencePattern = /(?<=[.!?])\s+(?=[A-Z])/;
-    const sentences = items[0].split(sentencePattern).map(s => s.trim()).filter(Boolean);
-    if (sentences.length > 1) {
-      items = sentences;
-    }
-  }
   
   // Clean up each item - remove leading bullets/dashes/numbers if present
   items = items.map(item => {
