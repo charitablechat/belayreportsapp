@@ -45,6 +45,7 @@ import { FallingHearts } from "@/components/christmas/FallingHearts";
 import { HolidayBanner } from "@/components/christmas/HolidayBanner";
 import { HeartsBorder } from "@/components/christmas/HeartsBorder";
 import { ChocolateDecorations } from "@/components/christmas/ChocolateDecorations";
+import { RosePetals } from "@/components/christmas/RosePetals";
 import { triggerValentineConfetti } from "@/lib/confetti";
 import {
   AlertDialog,
@@ -531,6 +532,9 @@ export default function Dashboard() {
       
       {/* Scattered Chocolate Decorations */}
       <ChocolateDecorations />
+      
+      {/* Rose Petals */}
+      <RosePetals />
       
       {/* Pull to Refresh Indicator - Mobile Only */}
       {isActive && (
