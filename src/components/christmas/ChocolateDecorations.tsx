@@ -127,7 +127,7 @@ export function ChocolateDecorations() {
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
-  if (reducedMotion) return null;
+  if (reducedMotion || isMobile) return null;
 
   const animationStyle = {
     animation: 'float-gentle 6s ease-in-out infinite',

@@ -769,7 +769,8 @@ export default function Dashboard() {
             <div className="container mx-auto px-2 md:px-4 py-16">
               <div className="text-center mb-8">
                 <h2 className="text-4xl font-bold text-primary dark:text-white mb-2">
-                  Welcome to Rope Works
+                  <span className="block md:inline">Welcome to</span>{' '}
+                  <span className="block md:inline">Rope Works</span>
                 </h2>
                 <p className="text-lg text-muted-foreground dark:text-neutral-200">
                   Choose a report type to get started
