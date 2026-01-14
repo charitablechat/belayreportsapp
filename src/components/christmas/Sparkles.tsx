@@ -85,13 +85,10 @@ export function SparkleContainer({ sparkles }: SparkleContainerProps) {
 // Hook for hover sparkles - creates sparkles on mouse movement
 export function useHoverSparkles() {
   const [sparkles, setSparkles] = useState<Sparkle[]>([]);
-  const [isHovering, setIsHovering] = useState(false);
 
   const handleMouseMove = useCallback((event: React.MouseEvent) => {
-    if (!isHovering) return;
-    
-    // Only create sparkle 20% of the time to avoid too many
-    if (Math.random() > 0.2) return;
+    // Only create sparkle 25% of the time to avoid too many
+    if (Math.random() > 0.25) return;
 
     const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
     const x = event.clientX - rect.left;
@@ -112,15 +109,58 @@ export function useHoverSparkles() {
     setTimeout(() => {
       setSparkles(prev => prev.filter(s => s.id !== newSparkle.id));
     }, 600);
-  }, [isHovering]);
+  }, []);
 
-  const handleMouseEnter = useCallback(() => setIsHovering(true), []);
-  const handleMouseLeave = useCallback(() => setIsHovering(false), []);
+  return { sparkles, handleMouseMove };
+}
 
-  return { 
-    sparkles, 
-    handleMouseMove, 
-    handleMouseEnter, 
-    handleMouseLeave 
-  };
+// Combined hook for both click and hover sparkles
+export function useClickAndHoverSparkles() {
+  const [sparkles, setSparkles] = useState<Sparkle[]>([]);
+
+  const triggerSparkles = useCallback((event: React.MouseEvent) => {
+    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+
+    const newSparkles: Sparkle[] = Array.from({ length: 8 }, (_, i) => ({
+      id: Date.now() + i,
+      x: x + (Math.random() - 0.5) * 40,
+      y: y + (Math.random() - 0.5) * 40,
+      size: 4 + Math.random() * 8,
+      color: SPARKLE_COLORS[Math.floor(Math.random() * SPARKLE_COLORS.length)],
+      delay: Math.random() * 0.1,
+    }));
+
+    setSparkles(prev => [...prev, ...newSparkles]);
+
+    setTimeout(() => {
+      setSparkles(prev => prev.filter(s => !newSparkles.find(ns => ns.id === s.id)));
+    }, 700);
+  }, []);
+
+  const handleMouseMove = useCallback((event: React.MouseEvent) => {
+    if (Math.random() > 0.2) return;
+
+    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+
+    const newSparkle: Sparkle = {
+      id: Date.now() + Math.random(),
+      x: x + (Math.random() - 0.5) * 20,
+      y: y + (Math.random() - 0.5) * 20,
+      size: 3 + Math.random() * 5,
+      color: SPARKLE_COLORS[Math.floor(Math.random() * SPARKLE_COLORS.length)],
+      delay: 0,
+    };
+
+    setSparkles(prev => [...prev, newSparkle]);
+
+    setTimeout(() => {
+      setSparkles(prev => prev.filter(s => s.id !== newSparkle.id));
+    }, 600);
+  }, []);
+
+  return { sparkles, triggerSparkles, handleMouseMove };
 }
