@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 
+type ChocolateType = "darkHeart" | "milkHeart" | "redFoilHeart" | "whiteHeart" | "squareSwirl" | "roundTruffle";
+
 interface Chocolate {
   id: number;
-  type: "heart" | "truffle" | "box";
+  type: ChocolateType;
   left: number;
   top: number;
   size: number;
@@ -29,8 +31,7 @@ export function ChocolateDecorations() {
   useEffect(() => {
     if (prefersReducedMotion) return;
 
-    // Generate scattered chocolates
-    const types: Array<"heart" | "truffle" | "box"> = ["heart", "truffle", "box"];
+    const types: ChocolateType[] = ["darkHeart", "milkHeart", "redFoilHeart", "whiteHeart", "squareSwirl", "roundTruffle"];
     const count = window.innerWidth < 768 ? 8 : 12;
     const items: Chocolate[] = [];
 
@@ -40,8 +41,8 @@ export function ChocolateDecorations() {
         type: types[Math.floor(Math.random() * types.length)],
         left: Math.random() * 100,
         top: Math.random() * 100,
-        size: 20 + Math.random() * 16, // 20-36px
-        rotation: Math.random() * 30 - 15, // -15 to 15 degrees
+        size: 24 + Math.random() * 16,
+        rotation: Math.random() * 30 - 15,
         delay: Math.random() * 2,
       });
     }
@@ -51,12 +52,23 @@ export function ChocolateDecorations() {
 
   if (prefersReducedMotion) return null;
 
+  const renderChocolate = (type: ChocolateType) => {
+    switch (type) {
+      case "darkHeart": return <DarkChocolateHeart />;
+      case "milkHeart": return <MilkChocolateHeart />;
+      case "redFoilHeart": return <RedFoilHeart />;
+      case "whiteHeart": return <WhiteChocolateHeart />;
+      case "squareSwirl": return <SquareChocolate />;
+      case "roundTruffle": return <RoundTruffle />;
+    }
+  };
+
   return (
     <div className="fixed inset-0 pointer-events-none overflow-hidden z-[40]">
       {chocolates.map((choco) => (
         <div
           key={choco.id}
-          className="absolute animate-float-gentle opacity-60 hover:opacity-90 transition-opacity"
+          className="absolute animate-float-gentle opacity-70 hover:opacity-90 transition-opacity"
           style={{
             left: `${choco.left}%`,
             top: `${choco.top}%`,
@@ -66,42 +78,71 @@ export function ChocolateDecorations() {
             animationDelay: `${choco.delay}s`,
           }}
         >
-          {choco.type === "heart" && <ChocolateHeart />}
-          {choco.type === "truffle" && <ChocolateTruffle />}
-          {choco.type === "box" && <ChocolateBox />}
+          {renderChocolate(choco.type)}
         </div>
       ))}
     </div>
   );
 }
 
-function ChocolateHeart() {
+function DarkChocolateHeart() {
   return (
     <svg viewBox="0 0 100 100" className="w-full h-full drop-shadow-lg">
       <defs>
-        <linearGradient id="chocolateHeartGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#8B4513" />
-          <stop offset="30%" stopColor="#6B3510" />
-          <stop offset="70%" stopColor="#5C2D0E" />
-          <stop offset="100%" stopColor="#4A2409" />
+        <linearGradient id="darkHeartGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#4A2C2A" />
+          <stop offset="40%" stopColor="#2D1810" />
+          <stop offset="100%" stopColor="#1A0F0A" />
         </linearGradient>
-        <linearGradient id="chocolateShine" x1="0%" y1="0%" x2="50%" y2="50%">
-          <stop offset="0%" stopColor="#D4A574" stopOpacity="0.6" />
-          <stop offset="100%" stopColor="#8B4513" stopOpacity="0" />
-        </linearGradient>
+        <radialGradient id="darkHeartShine" cx="30%" cy="30%" r="50%">
+          <stop offset="0%" stopColor="#6B4540" stopOpacity="0.6" />
+          <stop offset="100%" stopColor="#2D1810" stopOpacity="0" />
+        </radialGradient>
       </defs>
       <path
-        d="M50 88 C20 60 5 40 5 25 C5 10 20 5 35 5 C45 5 50 15 50 15 C50 15 55 5 65 5 C80 5 95 10 95 25 C95 40 80 60 50 88Z"
-        fill="url(#chocolateHeartGradient)"
+        d="M50 85 C20 55 5 35 5 22 C5 8 18 2 32 2 C44 2 50 12 50 12 C50 12 56 2 68 2 C82 2 95 8 95 22 C95 35 80 55 50 85Z"
+        fill="url(#darkHeartGrad)"
       />
       <path
-        d="M50 88 C20 60 5 40 5 25 C5 10 20 5 35 5 C45 5 50 15 50 15 C50 15 55 5 65 5 C80 5 95 10 95 25 C95 40 80 60 50 88Z"
-        fill="url(#chocolateShine)"
+        d="M50 85 C20 55 5 35 5 22 C5 8 18 2 32 2 C44 2 50 12 50 12 C50 12 56 2 68 2 C82 2 95 8 95 22 C95 35 80 55 50 85Z"
+        fill="url(#darkHeartShine)"
       />
-      {/* Decorative swirl */}
       <path
-        d="M35 30 Q45 25 50 35 Q55 25 65 30"
-        stroke="#D4A574"
+        d="M35 25 Q45 20 50 28 Q55 20 65 25"
+        stroke="#5C3D38"
+        strokeWidth="2.5"
+        fill="none"
+        opacity="0.5"
+      />
+    </svg>
+  );
+}
+
+function MilkChocolateHeart() {
+  return (
+    <svg viewBox="0 0 100 100" className="w-full h-full drop-shadow-lg">
+      <defs>
+        <linearGradient id="milkHeartGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#A0674B" />
+          <stop offset="40%" stopColor="#7B4A35" />
+          <stop offset="100%" stopColor="#5C3628" />
+        </linearGradient>
+        <radialGradient id="milkHeartShine" cx="25%" cy="25%" r="40%">
+          <stop offset="0%" stopColor="#C4916E" stopOpacity="0.7" />
+          <stop offset="100%" stopColor="#7B4A35" stopOpacity="0" />
+        </radialGradient>
+      </defs>
+      <path
+        d="M50 85 C20 55 5 35 5 22 C5 8 18 2 32 2 C44 2 50 12 50 12 C50 12 56 2 68 2 C82 2 95 8 95 22 C95 35 80 55 50 85Z"
+        fill="url(#milkHeartGrad)"
+      />
+      <path
+        d="M50 85 C20 55 5 35 5 22 C5 8 18 2 32 2 C44 2 50 12 50 12 C50 12 56 2 68 2 C82 2 95 8 95 22 C95 35 80 55 50 85Z"
+        fill="url(#milkHeartShine)"
+      />
+      <path
+        d="M30 30 Q40 22 50 32 Q60 22 70 30"
+        stroke="#C4916E"
         strokeWidth="2"
         fill="none"
         opacity="0.4"
@@ -110,56 +151,137 @@ function ChocolateHeart() {
   );
 }
 
-function ChocolateTruffle() {
+function RedFoilHeart() {
   return (
     <svg viewBox="0 0 100 100" className="w-full h-full drop-shadow-lg">
       <defs>
-        <radialGradient id="truffleGradient" cx="30%" cy="30%" r="70%">
-          <stop offset="0%" stopColor="#8B4513" />
-          <stop offset="50%" stopColor="#5C2D0E" />
-          <stop offset="100%" stopColor="#3D1F0A" />
-        </radialGradient>
-        <radialGradient id="truffleShine" cx="25%" cy="25%" r="30%">
-          <stop offset="0%" stopColor="#D4A574" stopOpacity="0.5" />
-          <stop offset="100%" stopColor="#8B4513" stopOpacity="0" />
-        </radialGradient>
+        <linearGradient id="redFoilGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#E53E3E" />
+          <stop offset="30%" stopColor="#C53030" />
+          <stop offset="60%" stopColor="#9B2C2C" />
+          <stop offset="100%" stopColor="#742A2A" />
+        </linearGradient>
+        <linearGradient id="redFoilShine" x1="0%" y1="0%" x2="50%" y2="50%">
+          <stop offset="0%" stopColor="#FC8181" stopOpacity="0.8" />
+          <stop offset="50%" stopColor="#E53E3E" stopOpacity="0.3" />
+          <stop offset="100%" stopColor="#C53030" stopOpacity="0" />
+        </linearGradient>
       </defs>
-      <circle cx="50" cy="50" r="40" fill="url(#truffleGradient)" />
-      <circle cx="50" cy="50" r="40" fill="url(#truffleShine)" />
-      {/* Cocoa powder texture */}
-      <circle cx="35" cy="35" r="3" fill="#4A2409" opacity="0.3" />
-      <circle cx="60" cy="40" r="2" fill="#4A2409" opacity="0.3" />
-      <circle cx="45" cy="55" r="2.5" fill="#4A2409" opacity="0.3" />
+      <path
+        d="M50 85 C20 55 5 35 5 22 C5 8 18 2 32 2 C44 2 50 12 50 12 C50 12 56 2 68 2 C82 2 95 8 95 22 C95 35 80 55 50 85Z"
+        fill="url(#redFoilGrad)"
+      />
+      <path
+        d="M50 85 C20 55 5 35 5 22 C5 8 18 2 32 2 C44 2 50 12 50 12 C50 12 56 2 68 2 C82 2 95 8 95 22 C95 35 80 55 50 85Z"
+        fill="url(#redFoilShine)"
+      />
+      {/* Foil crinkle lines */}
+      <path d="M25 20 L30 25 L25 30" stroke="#FC8181" strokeWidth="1" fill="none" opacity="0.4" />
+      <path d="M70 18 L75 23 L72 28" stroke="#FC8181" strokeWidth="1" fill="none" opacity="0.4" />
+      <path d="M45 40 L50 45 L48 50" stroke="#FC8181" strokeWidth="1" fill="none" opacity="0.3" />
     </svg>
   );
 }
 
-function ChocolateBox() {
+function WhiteChocolateHeart() {
   return (
-    <svg viewBox="0 0 100 80" className="w-full h-full drop-shadow-lg">
+    <svg viewBox="0 0 100 100" className="w-full h-full drop-shadow-lg">
       <defs>
-        <linearGradient id="boxGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#C41E3A" />
-          <stop offset="50%" stopColor="#8B0000" />
-          <stop offset="100%" stopColor="#5C0000" />
+        <linearGradient id="whiteHeartGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#FFF8E7" />
+          <stop offset="40%" stopColor="#F5E6D3" />
+          <stop offset="100%" stopColor="#E8D5C4" />
         </linearGradient>
-        <linearGradient id="ribbonGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%" stopColor="#FFD700" />
-          <stop offset="50%" stopColor="#FFA500" />
-          <stop offset="100%" stopColor="#FFD700" />
-        </linearGradient>
+        <radialGradient id="whiteHeartShine" cx="30%" cy="25%" r="35%">
+          <stop offset="0%" stopColor="#FFFFFF" stopOpacity="0.9" />
+          <stop offset="100%" stopColor="#F5E6D3" stopOpacity="0" />
+        </radialGradient>
       </defs>
-      {/* Box */}
-      <rect x="10" y="20" width="80" height="50" rx="3" fill="url(#boxGradient)" />
-      {/* Lid */}
-      <rect x="5" y="15" width="90" height="12" rx="2" fill="url(#boxGradient)" />
-      {/* Ribbon horizontal */}
-      <rect x="5" y="35" width="90" height="8" fill="url(#ribbonGradient)" opacity="0.9" />
-      {/* Ribbon vertical */}
-      <rect x="45" y="15" width="10" height="55" fill="url(#ribbonGradient)" opacity="0.9" />
-      {/* Bow */}
-      <ellipse cx="50" cy="18" rx="15" ry="8" fill="url(#ribbonGradient)" />
-      <circle cx="50" cy="18" r="5" fill="#FFD700" />
+      <path
+        d="M50 85 C20 55 5 35 5 22 C5 8 18 2 32 2 C44 2 50 12 50 12 C50 12 56 2 68 2 C82 2 95 8 95 22 C95 35 80 55 50 85Z"
+        fill="url(#whiteHeartGrad)"
+        stroke="#D4C4B0"
+        strokeWidth="0.5"
+      />
+      <path
+        d="M50 85 C20 55 5 35 5 22 C5 8 18 2 32 2 C44 2 50 12 50 12 C50 12 56 2 68 2 C82 2 95 8 95 22 C95 35 80 55 50 85Z"
+        fill="url(#whiteHeartShine)"
+      />
+      <path
+        d="M35 28 Q45 22 50 30 Q55 22 65 28"
+        stroke="#C4A67D"
+        strokeWidth="2"
+        fill="none"
+        opacity="0.3"
+      />
+    </svg>
+  );
+}
+
+function SquareChocolate() {
+  return (
+    <svg viewBox="0 0 100 100" className="w-full h-full drop-shadow-lg">
+      <defs>
+        <linearGradient id="squareGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#5D4037" />
+          <stop offset="50%" stopColor="#3E2723" />
+          <stop offset="100%" stopColor="#2A1B18" />
+        </linearGradient>
+        <radialGradient id="squareShine" cx="25%" cy="25%" r="50%">
+          <stop offset="0%" stopColor="#8D6E63" stopOpacity="0.5" />
+          <stop offset="100%" stopColor="#3E2723" stopOpacity="0" />
+        </radialGradient>
+      </defs>
+      <rect x="15" y="15" width="70" height="70" rx="8" fill="url(#squareGrad)" />
+      <rect x="15" y="15" width="70" height="70" rx="8" fill="url(#squareShine)" />
+      {/* Decorative swirl on top */}
+      <path
+        d="M35 50 Q50 30 65 50 Q50 45 50 55 Q50 45 35 50"
+        stroke="#8D6E63"
+        strokeWidth="3"
+        fill="none"
+        opacity="0.6"
+      />
+      <circle cx="50" cy="50" r="4" fill="#6D4C41" opacity="0.7" />
+    </svg>
+  );
+}
+
+function RoundTruffle() {
+  return (
+    <svg viewBox="0 0 100 100" className="w-full h-full drop-shadow-lg">
+      <defs>
+        <radialGradient id="truffleGrad" cx="35%" cy="35%" r="65%">
+          <stop offset="0%" stopColor="#6D4C41" />
+          <stop offset="50%" stopColor="#4E342E" />
+          <stop offset="100%" stopColor="#3E2723" />
+        </radialGradient>
+        <radialGradient id="truffleShine" cx="30%" cy="30%" r="30%">
+          <stop offset="0%" stopColor="#A1887F" stopOpacity="0.7" />
+          <stop offset="100%" stopColor="#4E342E" stopOpacity="0" />
+        </radialGradient>
+      </defs>
+      <circle cx="50" cy="50" r="38" fill="url(#truffleGrad)" />
+      <circle cx="50" cy="50" r="38" fill="url(#truffleShine)" />
+      {/* Decorative drizzle on top */}
+      <path
+        d="M32 45 Q40 40 50 45 Q60 40 68 45"
+        stroke="#8D6E63"
+        strokeWidth="2.5"
+        fill="none"
+        opacity="0.6"
+      />
+      <path
+        d="M35 52 Q45 48 55 52 Q62 48 65 52"
+        stroke="#A1887F"
+        strokeWidth="2"
+        fill="none"
+        opacity="0.4"
+      />
+      {/* Cocoa dust specks */}
+      <circle cx="40" cy="60" r="1.5" fill="#3E2723" opacity="0.4" />
+      <circle cx="58" cy="58" r="1" fill="#3E2723" opacity="0.3" />
+      <circle cx="52" cy="65" r="1.2" fill="#3E2723" opacity="0.35" />
     </svg>
   );
 }
