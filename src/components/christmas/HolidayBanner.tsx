@@ -1,32 +1,37 @@
 import { useState, useEffect } from "react";
-import { X } from "lucide-react";
-import { Sparkles } from "./Sparkles";
+import { X, Heart } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { CandyHearts } from "./CandyHearts";
 
 function useCountdown(targetDate: Date) {
-  const [timeLeft, setTimeLeft] = useState(() => calculateTimeLeft(targetDate));
-
-  function calculateTimeLeft(target: Date) {
-    const now = new Date();
-    const difference = target.getTime() - now.getTime();
-
-    if (difference <= 0) {
-      return { days: 0, hours: 0, minutes: 0, seconds: 0, isNewYear: true };
-    }
-
-    return {
-      days: Math.floor(difference / (1000 * 60 * 60 * 24)),
-      hours: Math.floor((difference / (1000 * 60 * 60)) % 24),
-      minutes: Math.floor((difference / 1000 / 60) % 60),
-      seconds: Math.floor((difference / 1000) % 60),
-      isNewYear: false,
-    };
-  }
+  const [timeLeft, setTimeLeft] = useState({
+    days: 0,
+    hours: 0,
+    minutes: 0,
+    seconds: 0,
+    isPast: false,
+  });
 
   useEffect(() => {
-    const timer = setInterval(() => {
-      setTimeLeft(calculateTimeLeft(targetDate));
-    }, 1000);
+    const calculateTimeLeft = () => {
+      const now = new Date();
+      const difference = targetDate.getTime() - now.getTime();
 
+      if (difference <= 0) {
+        return { days: 0, hours: 0, minutes: 0, seconds: 0, isPast: true };
+      }
+
+      return {
+        days: Math.floor(difference / (1000 * 60 * 60 * 24)),
+        hours: Math.floor((difference / (1000 * 60 * 60)) % 24),
+        minutes: Math.floor((difference / 1000 / 60) % 60),
+        seconds: Math.floor((difference / 1000) % 60),
+        isPast: false,
+      };
+    };
+
+    setTimeLeft(calculateTimeLeft());
+    const timer = setInterval(() => setTimeLeft(calculateTimeLeft()), 1000);
     return () => clearInterval(timer);
   }, [targetDate]);
 
@@ -34,81 +39,93 @@ function useCountdown(targetDate: Date) {
 }
 
 export function HolidayBanner() {
-  const [dismissed, setDismissed] = useState(() => {
-    return sessionStorage.getItem("holiday-banner-dismissed") === "true";
+  const [isDismissed, setIsDismissed] = useState(() => {
+    return sessionStorage.getItem("valentine-banner-dismissed") === "true";
   });
 
-  // Target: Midnight on January 1, 2026
-  const newYearDate = new Date("2026-01-01T00:00:00");
-  const { days, hours, minutes, seconds, isNewYear } = useCountdown(newYearDate);
+  // Valentine's Day 2026
+  const valentinesDay = new Date("2026-02-14T00:00:00");
+  const { days, hours, minutes, seconds, isPast } = useCountdown(valentinesDay);
 
   const handleDismiss = () => {
-    setDismissed(true);
-    sessionStorage.setItem("holiday-banner-dismissed", "true");
+    setIsDismissed(true);
+    sessionStorage.setItem("valentine-banner-dismissed", "true");
   };
 
-  if (dismissed) return null;
+  if (isDismissed) return null;
 
   return (
-    <div className="relative nye-gradient text-white overflow-hidden">
-      {/* Sparkles on top */}
+    <div className="relative overflow-hidden rounded-lg valentine-gradient text-white mb-6 shadow-lg">
+      {/* Candy hearts decoration at top */}
       <div className="absolute top-0 left-0 right-0">
-        <Sparkles />
+        <CandyHearts />
       </div>
-      
-      {/* Banner content */}
-      <div className="relative pt-10 pb-3 px-4">
-        <div className="flex flex-col items-center justify-center gap-1 text-center">
-          <div className="flex items-center gap-2">
-            <span className="text-xl" role="img" aria-label="Fireworks">🎆</span>
-            <span className="font-semibold text-sm sm:text-base">
-              {isNewYear ? "Happy New Year 2026!" : "Happy New Year from Rope Works!"}
-            </span>
-            <span className="text-xl" role="img" aria-label="Champagne">🍾</span>
-          </div>
-          
-          {/* Countdown Timer */}
-          {!isNewYear && (
-            <div className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm mt-1">
-              <div className="flex flex-col items-center bg-white/10 rounded px-1.5 sm:px-2 py-0.5">
-                <span className="font-bold text-amber-300">{days}</span>
-                <span className="text-[10px] text-white/70">days</span>
-              </div>
-              <span className="text-white/50">:</span>
-              <div className="flex flex-col items-center bg-white/10 rounded px-1.5 sm:px-2 py-0.5">
-                <span className="font-bold text-amber-300">{hours.toString().padStart(2, '0')}</span>
-                <span className="text-[10px] text-white/70">hrs</span>
-              </div>
-              <span className="text-white/50">:</span>
-              <div className="flex flex-col items-center bg-white/10 rounded px-1.5 sm:px-2 py-0.5">
-                <span className="font-bold text-amber-300">{minutes.toString().padStart(2, '0')}</span>
-                <span className="text-[10px] text-white/70">min</span>
-              </div>
-              <span className="text-white/50">:</span>
-              <div className="flex flex-col items-center bg-white/10 rounded px-1.5 sm:px-2 py-0.5">
-                <span className="font-bold text-amber-300">{seconds.toString().padStart(2, '0')}</span>
-                <span className="text-[10px] text-white/70">sec</span>
-              </div>
-            </div>
-          )}
-        </div>
-        
-        {/* Decorative stars */}
-        <div className="absolute top-10 left-4 text-amber-300/40 text-xs animate-twinkle">✦</div>
-        <div className="absolute top-12 right-8 text-amber-300/40 text-xs animate-twinkle" style={{ animationDelay: '0.5s' }}>✦</div>
-        <div className="absolute bottom-2 left-1/4 text-amber-300/30 text-xs animate-twinkle" style={{ animationDelay: '1s' }}>✦</div>
-        <div className="absolute top-11 left-1/3 text-purple-300/30 text-xs animate-twinkle" style={{ animationDelay: '0.3s' }}>⭐</div>
-        <div className="absolute bottom-1 right-1/4 text-amber-300/30 text-xs animate-twinkle" style={{ animationDelay: '0.7s' }}>✦</div>
-        
+
+      {/* Content */}
+      <div className="relative z-10 px-4 py-6 pt-10 text-center">
         {/* Dismiss button */}
-        <button
+        <Button
+          variant="ghost"
+          size="icon"
+          className="absolute top-2 right-2 text-white/70 hover:text-white hover:bg-white/10 h-7 w-7"
           onClick={handleDismiss}
-          className="absolute top-10 right-2 p-1 rounded-full hover:bg-white/10 transition-colors"
-          aria-label="Dismiss banner"
         >
-          <X className="w-4 h-4" />
-        </button>
+          <X className="h-4 w-4" />
+        </Button>
+
+        {/* Floating hearts decoration */}
+        <div className="absolute inset-0 pointer-events-none overflow-hidden">
+          <Heart className="absolute top-4 left-[10%] w-4 h-4 text-pink-200/30 animate-heart-pulse" style={{ animationDelay: "0s" }} fill="currentColor" />
+          <Heart className="absolute top-8 right-[15%] w-3 h-3 text-red-200/25 animate-heart-pulse" style={{ animationDelay: "0.5s" }} fill="currentColor" />
+          <Heart className="absolute bottom-6 left-[20%] w-3 h-3 text-pink-100/20 animate-heart-pulse" style={{ animationDelay: "1s" }} fill="currentColor" />
+          <Heart className="absolute bottom-4 right-[25%] w-4 h-4 text-red-100/25 animate-heart-pulse" style={{ animationDelay: "0.3s" }} fill="currentColor" />
+          <Heart className="absolute top-12 left-[40%] w-2 h-2 text-pink-200/30 animate-heart-pulse" style={{ animationDelay: "0.7s" }} fill="currentColor" />
+        </div>
+
+        {/* Emojis */}
+        <div className="text-2xl mb-2 flex justify-center gap-2">
+          💕 🍫 🌹 💝 ❤️
+        </div>
+
+        {/* Message */}
+        <h3 className="text-lg md:text-xl font-bold mb-3 drop-shadow-md">
+          {isPast ? "Happy Valentine's Day!" : "Valentine's Day Countdown"}
+        </h3>
+
+        {!isPast && (
+          <div className="flex justify-center gap-3 md:gap-4 text-sm md:text-base">
+            <div className="bg-white/15 backdrop-blur-sm rounded-lg px-3 py-2 min-w-[60px]">
+              <div className="text-xl md:text-2xl font-bold">{days}</div>
+              <div className="text-xs text-white/80">days</div>
+            </div>
+            <div className="bg-white/15 backdrop-blur-sm rounded-lg px-3 py-2 min-w-[60px]">
+              <div className="text-xl md:text-2xl font-bold">{hours}</div>
+              <div className="text-xs text-white/80">hours</div>
+            </div>
+            <div className="bg-white/15 backdrop-blur-sm rounded-lg px-3 py-2 min-w-[60px]">
+              <div className="text-xl md:text-2xl font-bold">{minutes}</div>
+              <div className="text-xs text-white/80">min</div>
+            </div>
+            <div className="bg-white/15 backdrop-blur-sm rounded-lg px-3 py-2 min-w-[60px]">
+              <div className="text-xl md:text-2xl font-bold">{seconds}</div>
+              <div className="text-xs text-white/80">sec</div>
+            </div>
+          </div>
+        )}
+
+        {isPast && (
+          <p className="text-white/90 text-sm md:text-base">
+            Wishing you love and happiness! 💖
+          </p>
+        )}
+
+        <p className="text-xs text-white/70 mt-3">
+          From all of us at Rope Works
+        </p>
       </div>
+
+      {/* Bottom decorative gradient */}
+      <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-pink-400/50 via-red-400/50 to-pink-400/50" />
     </div>
   );
 }

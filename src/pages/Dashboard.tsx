@@ -41,9 +41,9 @@ import { ContactDeveloperSheet } from "@/components/ContactDeveloperSheet";
 import { InspectionsEmptyState, TrainingsEmptyState, DailyAssessmentsEmptyState } from "@/components/EmptyState";
 import { getUserWithCache } from "@/lib/cached-auth";
 /* Holiday Theme Components */
-import { Snowfall } from "@/components/christmas/Snowfall";
+import { FallingHearts } from "@/components/christmas/FallingHearts";
 import { HolidayBanner } from "@/components/christmas/HolidayBanner";
-import { SnowPile } from "@/components/christmas/SnowPile";
+import { HeartsBorder } from "@/components/christmas/HeartsBorder";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -524,8 +524,8 @@ export default function Dashboard() {
 
   return (
     <div className="relative min-h-screen">
-      {/* Christmas Snowfall Animation */}
-      <Snowfall />
+      {/* Valentine's Falling Hearts Animation */}
+      <FallingHearts />
       
       {/* Pull to Refresh Indicator - Mobile Only */}
       {isActive && (
@@ -778,8 +778,8 @@ export default function Dashboard() {
                     navigate("/inspection/new");
                   }}
                 >
-                  <SnowPile />
-                  <div className="absolute inset-0 bg-gradient-to-br from-blue-50 to-transparent opacity-50 rounded-lg" />
+                  <HeartsBorder />
+                  <div className="absolute inset-0 bg-gradient-to-br from-pink-50 to-transparent opacity-50 rounded-lg" />
                   <CardHeader className="relative z-10 text-center pb-4">
                     <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-blue-100 flex items-center justify-center group-hover:scale-110 transition-transform">
                       <FileText className="w-8 h-8 text-blue-600" />
@@ -805,8 +805,8 @@ export default function Dashboard() {
                     navigate("/training/new");
                   }}
                 >
-                  <SnowPile />
-                  <div className="absolute inset-0 bg-gradient-to-br from-green-50 to-transparent opacity-50 rounded-lg" />
+                  <HeartsBorder />
+                  <div className="absolute inset-0 bg-gradient-to-br from-rose-50 to-transparent opacity-50 rounded-lg" />
                   <CardHeader className="relative z-10 text-center pb-4">
                     <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-green-100 flex items-center justify-center group-hover:scale-110 transition-transform">
                       <GraduationCap className="w-8 h-8 text-green-600" />
@@ -832,8 +832,8 @@ export default function Dashboard() {
                     navigate("/daily-assessment/new");
                   }}
                 >
-                  <SnowPile />
-                  <div className="absolute inset-0 bg-gradient-to-br from-purple-50 to-transparent opacity-50 rounded-lg" />
+                  <HeartsBorder />
+                  <div className="absolute inset-0 bg-gradient-to-br from-red-50 to-transparent opacity-50 rounded-lg" />
                   <CardHeader className="relative z-10 text-center pb-4">
                     <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-purple-100 flex items-center justify-center group-hover:scale-110 transition-transform">
                       <FileText className="w-8 h-8 text-purple-600" />
