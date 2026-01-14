@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useEffect, useCallback, useState } from 'react';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 // Storage key for auto-resolve preference
 const AUTO_RESOLVE_KEY = 'sync_auto_resolve_strategy';
@@ -26,18 +27,32 @@ export type AutoResolveStrategy = 'manual' | 'last-write-wins' | 'local-wins' | 
 
 export const useConflicts = () => {
   const queryClient = useQueryClient();
+  const isMobile = useIsMobile();
   
-  // Auto-resolve strategy state
+  // Auto-resolve strategy state - default to 'last-write-wins' on mobile
   const [autoResolveStrategy, setAutoResolveStrategyState] = useState<AutoResolveStrategy>(() => {
+    // On mobile, always default to last-write-wins for seamless experience
+    if (typeof window !== 'undefined' && window.innerWidth < 768) {
+      return 'last-write-wins';
+    }
     const stored = localStorage.getItem(AUTO_RESOLVE_KEY);
     return (stored as AutoResolveStrategy) || 'manual';
   });
   
-  // Persist strategy changes
+  // Update strategy when mobile state changes
+  useEffect(() => {
+    if (isMobile) {
+      setAutoResolveStrategyState('last-write-wins');
+    }
+  }, [isMobile]);
+  
+  // Persist strategy changes (only for non-mobile)
   const setAutoResolveStrategy = useCallback((strategy: AutoResolveStrategy) => {
-    localStorage.setItem(AUTO_RESOLVE_KEY, strategy);
+    if (!isMobile) {
+      localStorage.setItem(AUTO_RESOLVE_KEY, strategy);
+    }
     setAutoResolveStrategyState(strategy);
-  }, []);
+  }, [isMobile]);
 
   // Fetch unresolved conflicts with inspection details
   const { data: conflicts = [], isLoading, refetch } = useQuery({
