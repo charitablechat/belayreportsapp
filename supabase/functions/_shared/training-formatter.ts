@@ -115,6 +115,38 @@ export function parseTraineeNames(traineeNamesStr: string | null): string[] {
   return names;
 }
 
+// Helper function to parse text content into a bullet list array
+// Handles various formats: HTML lists, line breaks, sentences ending with periods
+export function parseTextToList(textContent: string | null | undefined): string[] {
+  if (!textContent) return [];
+  
+  const text = stripHtml(textContent);
+  if (!text || text === 'N/A') return [];
+  
+  // First, try splitting by newlines (most common for bullet-style content)
+  let items = text.split(/\n/).map(item => item.trim()).filter(Boolean);
+  
+  // If we only got one item and it's long, try splitting by sentences
+  if (items.length === 1 && items[0].length > 100) {
+    // Split on period followed by space and capital letter, or period at end
+    const sentencePattern = /(?<=[.!?])\s+(?=[A-Z])/;
+    const sentences = items[0].split(sentencePattern).map(s => s.trim()).filter(Boolean);
+    if (sentences.length > 1) {
+      items = sentences;
+    }
+  }
+  
+  // Clean up each item - remove leading bullets/dashes/numbers if present
+  items = items.map(item => {
+    return item
+      .replace(/^[\-•●○◦▪▸►]\s*/, '') // Remove bullet characters
+      .replace(/^\d+[.)]\s*/, '') // Remove numbered list markers
+      .trim();
+  }).filter(Boolean);
+  
+  return items;
+}
+
 // Content formatters - returns structured data ready for rendering
 export interface FormattedContent {
   facilityInfo: {
@@ -133,7 +165,9 @@ export interface FormattedContent {
   systemsInPlace: string[];
   summary: {
     observations?: string;
+    observationsList: string[];
     recommendations?: string;
+    recommendationsList: string[];
     personSubmitting?: string;
     submissionDate?: string;
   };
@@ -163,7 +197,9 @@ export function formatTrainingContent(data: TrainingData): FormattedContent {
     systemsInPlace: data.systemsInPlace.map(s => stripHtml(s.system_item)),
     summary: {
       observations: data.summary?.observations ? stripHtml(data.summary.observations) : undefined,
+      observationsList: parseTextToList(data.summary?.observations),
       recommendations: data.summary?.recommendations ? stripHtml(data.summary.recommendations) : undefined,
+      recommendationsList: parseTextToList(data.summary?.recommendations),
       personSubmitting: data.summary?.person_submitting ? stripHtml(data.summary.person_submitting) : undefined,
       submissionDate: data.summary?.submission_date ? formatDate(data.summary.submission_date) : undefined
     },
