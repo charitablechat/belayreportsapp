@@ -14,7 +14,7 @@ import { triggerHaptic } from "@/lib/haptics";
 import { parseLocalDate } from "@/lib/date-utils";
 import { HeartsBorder } from "@/components/christmas/HeartsBorder";
 import { triggerValentineBurst } from "@/lib/confetti";
-import { useSparkles, SparkleContainer } from "@/components/christmas/Sparkles";
+import { useClickAndHoverSparkles, SparkleContainer } from "@/components/christmas/Sparkles";
 
 interface ReportCardProps {
   report: any;
@@ -25,7 +25,7 @@ interface ReportCardProps {
 }
 
 export function ReportCard({ report, type, onDelete, onClick, getStatusBadge }: ReportCardProps) {
-  const { sparkles, triggerSparkles } = useSparkles();
+  const { sparkles, triggerSparkles, handleMouseMove } = useClickAndHoverSparkles();
   const isInspection = type === 'inspection';
   const isDaily = type === 'daily';
   
@@ -113,6 +113,7 @@ export function ReportCard({ report, type, onDelete, onClick, getStatusBadge }: 
         }
         onClick(report);
       }}
+      onMouseMove={handleMouseMove}
     >
       <SparkleContainer sparkles={sparkles} />
       <HeartsBorder />

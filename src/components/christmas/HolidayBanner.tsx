@@ -101,22 +101,76 @@ export function HolidayBanner() {
         </h3>
 
         {!isPast && (
-          <div className="flex justify-center gap-3 md:gap-4 text-sm md:text-base">
-            <div className="bg-white/15 backdrop-blur-sm rounded-lg px-3 py-2 min-w-[60px]">
-              <div className="text-xl md:text-2xl font-bold">{days}</div>
-              <div className="text-xs text-white/80">days</div>
+          <div className="flex justify-center items-center gap-2 md:gap-4 text-sm md:text-base">
+            {/* Left candy hearts */}
+            <div className="hidden md:flex flex-col gap-1 items-center">
+              <div 
+                className="px-2 py-1 rounded-sm text-[8px] font-bold animate-candy-wiggle"
+                style={{ 
+                  backgroundColor: "hsl(340, 60%, 85%)", 
+                  color: "hsl(340, 50%, 35%)",
+                  boxShadow: "inset 0 1px 2px rgba(255,255,255,0.6), 0 1px 2px rgba(0,0,0,0.15)"
+                }}
+              >
+                BE MINE
+              </div>
+              <div 
+                className="px-2 py-1 rounded-sm text-[8px] font-bold animate-candy-wiggle"
+                style={{ 
+                  backgroundColor: "hsl(280, 40%, 85%)", 
+                  color: "hsl(280, 40%, 35%)",
+                  animationDelay: "0.3s",
+                  boxShadow: "inset 0 1px 2px rgba(255,255,255,0.6), 0 1px 2px rgba(0,0,0,0.15)"
+                }}
+              >
+                XOXO
+              </div>
             </div>
-            <div className="bg-white/15 backdrop-blur-sm rounded-lg px-3 py-2 min-w-[60px]">
-              <div className="text-xl md:text-2xl font-bold">{hours}</div>
-              <div className="text-xs text-white/80">hours</div>
+            
+            {/* Countdown boxes */}
+            <div className="flex gap-3 md:gap-4">
+              <div className="bg-white/15 backdrop-blur-sm rounded-lg px-3 py-2 min-w-[60px]">
+                <div className="text-xl md:text-2xl font-bold">{days}</div>
+                <div className="text-xs text-white/80">days</div>
+              </div>
+              <div className="bg-white/15 backdrop-blur-sm rounded-lg px-3 py-2 min-w-[60px]">
+                <div className="text-xl md:text-2xl font-bold">{hours}</div>
+                <div className="text-xs text-white/80">hours</div>
+              </div>
+              <div className="bg-white/15 backdrop-blur-sm rounded-lg px-3 py-2 min-w-[60px]">
+                <div className="text-xl md:text-2xl font-bold">{minutes}</div>
+                <div className="text-xs text-white/80">min</div>
+              </div>
+              <div className="bg-white/15 backdrop-blur-sm rounded-lg px-3 py-2 min-w-[60px]">
+                <div className="text-xl md:text-2xl font-bold">{seconds}</div>
+                <div className="text-xs text-white/80">sec</div>
+              </div>
             </div>
-            <div className="bg-white/15 backdrop-blur-sm rounded-lg px-3 py-2 min-w-[60px]">
-              <div className="text-xl md:text-2xl font-bold">{minutes}</div>
-              <div className="text-xs text-white/80">min</div>
-            </div>
-            <div className="bg-white/15 backdrop-blur-sm rounded-lg px-3 py-2 min-w-[60px]">
-              <div className="text-xl md:text-2xl font-bold">{seconds}</div>
-              <div className="text-xs text-white/80">sec</div>
+            
+            {/* Right candy hearts */}
+            <div className="hidden md:flex flex-col gap-1 items-center">
+              <div 
+                className="px-2 py-1 rounded-sm text-[8px] font-bold animate-candy-wiggle"
+                style={{ 
+                  backgroundColor: "hsl(50, 70%, 88%)", 
+                  color: "hsl(50, 50%, 35%)",
+                  animationDelay: "0.5s",
+                  boxShadow: "inset 0 1px 2px rgba(255,255,255,0.6), 0 1px 2px rgba(0,0,0,0.15)"
+                }}
+              >
+                SWEET
+              </div>
+              <div 
+                className="px-2 py-1 rounded-sm text-[8px] font-bold animate-candy-wiggle"
+                style={{ 
+                  backgroundColor: "hsl(160, 40%, 82%)", 
+                  color: "hsl(160, 40%, 35%)",
+                  animationDelay: "0.7s",
+                  boxShadow: "inset 0 1px 2px rgba(255,255,255,0.6), 0 1px 2px rgba(0,0,0,0.15)"
+                }}
+              >
+                LOVE
+              </div>
             </div>
           </div>
         )}
