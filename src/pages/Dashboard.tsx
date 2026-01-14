@@ -44,6 +44,8 @@ import { getUserWithCache } from "@/lib/cached-auth";
 import { FallingHearts } from "@/components/christmas/FallingHearts";
 import { HolidayBanner } from "@/components/christmas/HolidayBanner";
 import { HeartsBorder } from "@/components/christmas/HeartsBorder";
+import { ChocolateDecorations } from "@/components/christmas/ChocolateDecorations";
+import { triggerValentineConfetti } from "@/lib/confetti";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -526,6 +528,9 @@ export default function Dashboard() {
     <div className="relative min-h-screen">
       {/* Valentine's Falling Hearts Animation */}
       <FallingHearts />
+      
+      {/* Scattered Chocolate Decorations */}
+      <ChocolateDecorations />
       
       {/* Pull to Refresh Indicator - Mobile Only */}
       {isActive && (

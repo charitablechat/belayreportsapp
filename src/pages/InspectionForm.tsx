@@ -47,7 +47,7 @@ import { useKeyboardAvoidance } from "@/hooks/useKeyboardAvoidance";
 import { useScrollBoundaryDetection } from "@/hooks/useScrollBoundaryDetection";
 import { useReportSync } from "@/hooks/useReportSync";
 import { isMobile } from "@/lib/mobile-detection";
-import { triggerCompletionConfetti } from "@/lib/confetti";
+import { triggerValentineConfetti } from "@/lib/confetti";
 import { triggerHaptic } from "@/lib/haptics";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useSwipeNavigation } from "@/hooks/useSwipeNavigation";
@@ -1340,9 +1340,9 @@ export default function InspectionForm() {
         // Update local state to reflect completion
         setInspection({ ...inspection, status: "completed" });
         
-        // Trigger celebration on first completion
+        // Trigger Valentine's celebration on first completion
         if (!wasAlreadyCompleted) {
-          triggerCompletionConfetti();
+          triggerValentineConfetti();
           triggerHaptic('success');
         }
         
@@ -1358,9 +1358,9 @@ export default function InspectionForm() {
         // Update local state to reflect completion
         setInspection(updatedInspection);
         
-        // Trigger celebration on first completion
+        // Trigger Valentine's celebration on first completion
         if (!wasAlreadyCompleted) {
-          triggerCompletionConfetti();
+          triggerValentineConfetti();
           triggerHaptic('success');
         }
         

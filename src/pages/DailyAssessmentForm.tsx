@@ -39,7 +39,7 @@ import StructureChecksSection from "@/components/daily-assessment/StructureCheck
 import EnvironmentChecksSection from "@/components/daily-assessment/EnvironmentChecksSection";
 import { HtmlReportViewer } from "@/components/HtmlReportViewer";
 import { openHtmlReport } from "@/lib/html-report-viewer";
-import { triggerCompletionConfetti } from "@/lib/confetti";
+import { triggerValentineConfetti } from "@/lib/confetti";
 import { triggerHaptic } from "@/lib/haptics";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useSwipeNavigation } from "@/hooks/useSwipeNavigation";
@@ -688,9 +688,9 @@ export default function DailyAssessmentForm() {
         console.warn('[Submit] Assessment offline save timed out:', e);
       }
 
-      // Trigger celebration on first completion
+      // Trigger Valentine's celebration on first completion
       if (!wasAlreadyCompleted) {
-        triggerCompletionConfetti();
+        triggerValentineConfetti();
         triggerHaptic('success');
       }
 

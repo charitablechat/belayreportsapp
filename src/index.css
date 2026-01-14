@@ -628,3 +628,17 @@ button[title="Sync"],
     0 0 10px hsl(340, 80%, 70%, 0.12),
     0 0 20px hsl(350, 70%, 60%, 0.06);
 }
+
+/* Floating animation for chocolate decorations */
+@keyframes float-gentle {
+  0%, 100% {
+    transform: translateY(0) rotate(var(--rotation, 0deg));
+  }
+  50% {
+    transform: translateY(-10px) rotate(calc(var(--rotation, 0deg) + 3deg));
+  }
+}
+
+.animate-float-gentle {
+  animation: float-gentle 4s ease-in-out infinite;
+}
