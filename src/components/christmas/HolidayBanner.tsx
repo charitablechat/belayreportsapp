@@ -101,32 +101,44 @@ export function HolidayBanner() {
         </h3>
 
         {!isPast && (
-          <div className="flex justify-center items-center gap-2 md:gap-4 text-sm md:text-base">
-            {/* Left candy hearts - Heart shaped */}
-            <div className="hidden md:flex flex-col gap-2 items-center">
+          <div className="flex justify-center items-center gap-3 md:gap-6 text-sm md:text-base">
+            {/* Left candy hearts - 3 in a horizontal row */}
+            <div className="hidden md:flex flex-row gap-2 items-center">
               <div className="relative animate-candy-wiggle">
-                <svg width="50" height="45" viewBox="0 0 50 45" className="drop-shadow-md">
+                <svg width="42" height="38" viewBox="0 0 50 45" className="drop-shadow-md">
                   <defs>
-                    <linearGradient id="candy1" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <linearGradient id="candyL1" x1="0%" y1="0%" x2="100%" y2="100%">
                       <stop offset="0%" stopColor="hsl(340, 70%, 88%)" />
                       <stop offset="100%" stopColor="hsl(340, 60%, 80%)" />
                     </linearGradient>
                   </defs>
-                  <path d="M25 42 C25 42 5 28 5 15 C5 8 10 3 17 3 C21 3 24 5 25 8 C26 5 29 3 33 3 C40 3 45 8 45 15 C45 28 25 42 25 42Z" fill="url(#candy1)" stroke="hsl(340, 50%, 75%)" strokeWidth="1"/>
+                  <path d="M25 42 C25 42 5 28 5 15 C5 8 10 3 17 3 C21 3 24 5 25 8 C26 5 29 3 33 3 C40 3 45 8 45 15 C45 28 25 42 25 42Z" fill="url(#candyL1)" stroke="hsl(340, 50%, 75%)" strokeWidth="1"/>
                 </svg>
-                <span className="absolute inset-0 flex items-center justify-center text-[7px] font-bold pt-1" style={{ color: "hsl(340, 50%, 40%)" }}>BE MINE</span>
+                <span className="absolute inset-0 flex items-center justify-center text-[6px] font-bold pt-0.5" style={{ color: "hsl(340, 50%, 40%)" }}>BE MINE</span>
               </div>
-              <div className="relative animate-candy-wiggle" style={{ animationDelay: "0.3s" }}>
-                <svg width="45" height="40" viewBox="0 0 50 45" className="drop-shadow-md">
+              <div className="relative animate-candy-wiggle" style={{ animationDelay: "0.2s" }}>
+                <svg width="42" height="38" viewBox="0 0 50 45" className="drop-shadow-md">
                   <defs>
-                    <linearGradient id="candy2" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <linearGradient id="candyL2" x1="0%" y1="0%" x2="100%" y2="100%">
                       <stop offset="0%" stopColor="hsl(280, 50%, 88%)" />
                       <stop offset="100%" stopColor="hsl(280, 40%, 80%)" />
                     </linearGradient>
                   </defs>
-                  <path d="M25 42 C25 42 5 28 5 15 C5 8 10 3 17 3 C21 3 24 5 25 8 C26 5 29 3 33 3 C40 3 45 8 45 15 C45 28 25 42 25 42Z" fill="url(#candy2)" stroke="hsl(280, 40%, 75%)" strokeWidth="1"/>
+                  <path d="M25 42 C25 42 5 28 5 15 C5 8 10 3 17 3 C21 3 24 5 25 8 C26 5 29 3 33 3 C40 3 45 8 45 15 C45 28 25 42 25 42Z" fill="url(#candyL2)" stroke="hsl(280, 40%, 75%)" strokeWidth="1"/>
                 </svg>
-                <span className="absolute inset-0 flex items-center justify-center text-[8px] font-bold pt-1" style={{ color: "hsl(280, 40%, 40%)" }}>XOXO</span>
+                <span className="absolute inset-0 flex items-center justify-center text-[7px] font-bold pt-0.5" style={{ color: "hsl(280, 40%, 40%)" }}>XOXO</span>
+              </div>
+              <div className="relative animate-candy-wiggle" style={{ animationDelay: "0.4s" }}>
+                <svg width="42" height="38" viewBox="0 0 50 45" className="drop-shadow-md">
+                  <defs>
+                    <linearGradient id="candyL3" x1="0%" y1="0%" x2="100%" y2="100%">
+                      <stop offset="0%" stopColor="hsl(0, 0%, 95%)" />
+                      <stop offset="100%" stopColor="hsl(0, 0%, 88%)" />
+                    </linearGradient>
+                  </defs>
+                  <path d="M25 42 C25 42 5 28 5 15 C5 8 10 3 17 3 C21 3 24 5 25 8 C26 5 29 3 33 3 C40 3 45 8 45 15 C45 28 25 42 25 42Z" fill="url(#candyL3)" stroke="hsl(0, 0%, 80%)" strokeWidth="1"/>
+                </svg>
+                <span className="absolute inset-0 flex items-center justify-center text-[6px] font-bold pt-0.5" style={{ color: "hsl(340, 30%, 45%)" }}>CUTIE</span>
               </div>
             </div>
             
@@ -150,31 +162,43 @@ export function HolidayBanner() {
               </div>
             </div>
             
-            {/* Right candy hearts - Heart shaped */}
-            <div className="hidden md:flex flex-col gap-2 items-center">
+            {/* Right candy hearts - 3 in a horizontal row */}
+            <div className="hidden md:flex flex-row gap-2 items-center">
               <div className="relative animate-candy-wiggle" style={{ animationDelay: "0.5s" }}>
-                <svg width="48" height="43" viewBox="0 0 50 45" className="drop-shadow-md">
+                <svg width="42" height="38" viewBox="0 0 50 45" className="drop-shadow-md">
                   <defs>
-                    <linearGradient id="candy3" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <linearGradient id="candyR1" x1="0%" y1="0%" x2="100%" y2="100%">
                       <stop offset="0%" stopColor="hsl(50, 80%, 90%)" />
                       <stop offset="100%" stopColor="hsl(50, 70%, 82%)" />
                     </linearGradient>
                   </defs>
-                  <path d="M25 42 C25 42 5 28 5 15 C5 8 10 3 17 3 C21 3 24 5 25 8 C26 5 29 3 33 3 C40 3 45 8 45 15 C45 28 25 42 25 42Z" fill="url(#candy3)" stroke="hsl(50, 60%, 75%)" strokeWidth="1"/>
+                  <path d="M25 42 C25 42 5 28 5 15 C5 8 10 3 17 3 C21 3 24 5 25 8 C26 5 29 3 33 3 C40 3 45 8 45 15 C45 28 25 42 25 42Z" fill="url(#candyR1)" stroke="hsl(50, 60%, 75%)" strokeWidth="1"/>
                 </svg>
-                <span className="absolute inset-0 flex items-center justify-center text-[7px] font-bold pt-1" style={{ color: "hsl(50, 50%, 35%)" }}>SWEET</span>
+                <span className="absolute inset-0 flex items-center justify-center text-[6px] font-bold pt-0.5" style={{ color: "hsl(50, 50%, 35%)" }}>SWEET</span>
               </div>
               <div className="relative animate-candy-wiggle" style={{ animationDelay: "0.7s" }}>
-                <svg width="45" height="40" viewBox="0 0 50 45" className="drop-shadow-md">
+                <svg width="42" height="38" viewBox="0 0 50 45" className="drop-shadow-md">
                   <defs>
-                    <linearGradient id="candy4" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <linearGradient id="candyR2" x1="0%" y1="0%" x2="100%" y2="100%">
                       <stop offset="0%" stopColor="hsl(160, 50%, 85%)" />
                       <stop offset="100%" stopColor="hsl(160, 40%, 78%)" />
                     </linearGradient>
                   </defs>
-                  <path d="M25 42 C25 42 5 28 5 15 C5 8 10 3 17 3 C21 3 24 5 25 8 C26 5 29 3 33 3 C40 3 45 8 45 15 C45 28 25 42 25 42Z" fill="url(#candy4)" stroke="hsl(160, 40%, 70%)" strokeWidth="1"/>
+                  <path d="M25 42 C25 42 5 28 5 15 C5 8 10 3 17 3 C21 3 24 5 25 8 C26 5 29 3 33 3 C40 3 45 8 45 15 C45 28 25 42 25 42Z" fill="url(#candyR2)" stroke="hsl(160, 40%, 70%)" strokeWidth="1"/>
                 </svg>
-                <span className="absolute inset-0 flex items-center justify-center text-[8px] font-bold pt-1" style={{ color: "hsl(160, 40%, 35%)" }}>LOVE</span>
+                <span className="absolute inset-0 flex items-center justify-center text-[7px] font-bold pt-0.5" style={{ color: "hsl(160, 40%, 35%)" }}>LOVE</span>
+              </div>
+              <div className="relative animate-candy-wiggle" style={{ animationDelay: "0.9s" }}>
+                <svg width="42" height="38" viewBox="0 0 50 45" className="drop-shadow-md">
+                  <defs>
+                    <linearGradient id="candyR3" x1="0%" y1="0%" x2="100%" y2="100%">
+                      <stop offset="0%" stopColor="hsl(340, 55%, 82%)" />
+                      <stop offset="100%" stopColor="hsl(340, 50%, 75%)" />
+                    </linearGradient>
+                  </defs>
+                  <path d="M25 42 C25 42 5 28 5 15 C5 8 10 3 17 3 C21 3 24 5 25 8 C26 5 29 3 33 3 C40 3 45 8 45 15 C45 28 25 42 25 42Z" fill="url(#candyR3)" stroke="hsl(340, 45%, 70%)" strokeWidth="1"/>
+                </svg>
+                <span className="absolute inset-0 flex items-center justify-center text-[7px] font-bold pt-0.5" style={{ color: "hsl(340, 45%, 40%)" }}>HUG ME</span>
               </div>
             </div>
           </div>

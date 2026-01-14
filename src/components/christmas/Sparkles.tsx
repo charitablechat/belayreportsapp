@@ -1,4 +1,5 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
+import { createPortal } from "react-dom";
 
 interface Sparkle {
   id: number;
@@ -21,25 +22,24 @@ export function useSparkles() {
   const [sparkles, setSparkles] = useState<Sparkle[]>([]);
 
   const triggerSparkles = useCallback((event: React.MouseEvent) => {
-    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
-    const x = event.clientX - rect.left;
-    const y = event.clientY - rect.top;
+    // Use viewport coordinates for portal rendering
+    const x = event.clientX;
+    const y = event.clientY;
 
-    const newSparkles: Sparkle[] = Array.from({ length: 8 }, (_, i) => ({
+    const newSparkles: Sparkle[] = Array.from({ length: 10 }, (_, i) => ({
       id: Date.now() + i,
-      x: x + (Math.random() - 0.5) * 40,
-      y: y + (Math.random() - 0.5) * 40,
-      size: 4 + Math.random() * 8,
+      x: x + (Math.random() - 0.5) * 60,
+      y: y + (Math.random() - 0.5) * 60,
+      size: 8 + Math.random() * 12,
       color: SPARKLE_COLORS[Math.floor(Math.random() * SPARKLE_COLORS.length)],
-      delay: Math.random() * 0.1,
+      delay: Math.random() * 0.15,
     }));
 
     setSparkles(prev => [...prev, ...newSparkles]);
 
-    // Clean up sparkles after animation
     setTimeout(() => {
       setSparkles(prev => prev.filter(s => !newSparkles.find(ns => ns.id === s.id)));
-    }, 700);
+    }, 800);
   }, []);
 
   return { sparkles, triggerSparkles };
@@ -50,10 +50,17 @@ interface SparkleContainerProps {
 }
 
 export function SparkleContainer({ sparkles }: SparkleContainerProps) {
-  if (sparkles.length === 0) return null;
+  const [mounted, setMounted] = useState(false);
 
-  return (
-    <div className="absolute inset-0 pointer-events-none z-[100]" style={{ overflow: 'visible' }}>
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!mounted || sparkles.length === 0) return null;
+
+  // Render sparkles in a portal at the document body level
+  return createPortal(
+    <div className="fixed inset-0 pointer-events-none" style={{ zIndex: 9999 }}>
       {sparkles.map((sparkle) => (
         <div
           key={sparkle.id}
@@ -61,6 +68,7 @@ export function SparkleContainer({ sparkles }: SparkleContainerProps) {
           style={{
             left: sparkle.x,
             top: sparkle.y,
+            transform: 'translate(-50%, -50%)',
             animationDelay: `${sparkle.delay}s`,
           }}
         >
@@ -70,7 +78,9 @@ export function SparkleContainer({ sparkles }: SparkleContainerProps) {
             viewBox="0 0 24 24"
             fill="none"
             xmlns="http://www.w3.org/2000/svg"
-            style={{ filter: `drop-shadow(0 0 3px ${sparkle.color})` }}
+            style={{ 
+              filter: `drop-shadow(0 0 4px ${sparkle.color}) drop-shadow(0 0 8px ${sparkle.color})` 
+            }}
           >
             <path
               d="M12 0L14.59 9.41L24 12L14.59 14.59L12 24L9.41 14.59L0 12L9.41 9.41L12 0Z"
@@ -79,7 +89,8 @@ export function SparkleContainer({ sparkles }: SparkleContainerProps) {
           </svg>
         </div>
       ))}
-    </div>
+    </div>,
+    document.body
   );
 }
 
@@ -88,25 +99,23 @@ export function useHoverSparkles() {
   const [sparkles, setSparkles] = useState<Sparkle[]>([]);
 
   const handleMouseMove = useCallback((event: React.MouseEvent) => {
-    // Only create sparkle 25% of the time to avoid too many
-    if (Math.random() > 0.25) return;
+    // Only create sparkle 30% of the time
+    if (Math.random() > 0.3) return;
 
-    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
-    const x = event.clientX - rect.left;
-    const y = event.clientY - rect.top;
+    const x = event.clientX;
+    const y = event.clientY;
 
     const newSparkle: Sparkle = {
       id: Date.now() + Math.random(),
-      x: x + (Math.random() - 0.5) * 20,
-      y: y + (Math.random() - 0.5) * 20,
-      size: 3 + Math.random() * 5,
+      x: x + (Math.random() - 0.5) * 30,
+      y: y + (Math.random() - 0.5) * 30,
+      size: 6 + Math.random() * 8,
       color: SPARKLE_COLORS[Math.floor(Math.random() * SPARKLE_COLORS.length)],
       delay: 0,
     };
 
     setSparkles(prev => [...prev, newSparkle]);
 
-    // Clean up sparkle after animation
     setTimeout(() => {
       setSparkles(prev => prev.filter(s => s.id !== newSparkle.id));
     }, 600);
@@ -120,38 +129,36 @@ export function useClickAndHoverSparkles() {
   const [sparkles, setSparkles] = useState<Sparkle[]>([]);
 
   const triggerSparkles = useCallback((event: React.MouseEvent) => {
-    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
-    const x = event.clientX - rect.left;
-    const y = event.clientY - rect.top;
+    const x = event.clientX;
+    const y = event.clientY;
 
-    const newSparkles: Sparkle[] = Array.from({ length: 8 }, (_, i) => ({
+    const newSparkles: Sparkle[] = Array.from({ length: 10 }, (_, i) => ({
       id: Date.now() + i,
-      x: x + (Math.random() - 0.5) * 40,
-      y: y + (Math.random() - 0.5) * 40,
-      size: 4 + Math.random() * 8,
+      x: x + (Math.random() - 0.5) * 60,
+      y: y + (Math.random() - 0.5) * 60,
+      size: 8 + Math.random() * 12,
       color: SPARKLE_COLORS[Math.floor(Math.random() * SPARKLE_COLORS.length)],
-      delay: Math.random() * 0.1,
+      delay: Math.random() * 0.15,
     }));
 
     setSparkles(prev => [...prev, ...newSparkles]);
 
     setTimeout(() => {
       setSparkles(prev => prev.filter(s => !newSparkles.find(ns => ns.id === s.id)));
-    }, 700);
+    }, 800);
   }, []);
 
   const handleMouseMove = useCallback((event: React.MouseEvent) => {
-    if (Math.random() > 0.2) return;
+    if (Math.random() > 0.25) return;
 
-    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
-    const x = event.clientX - rect.left;
-    const y = event.clientY - rect.top;
+    const x = event.clientX;
+    const y = event.clientY;
 
     const newSparkle: Sparkle = {
       id: Date.now() + Math.random(),
-      x: x + (Math.random() - 0.5) * 20,
-      y: y + (Math.random() - 0.5) * 20,
-      size: 3 + Math.random() * 5,
+      x: x + (Math.random() - 0.5) * 30,
+      y: y + (Math.random() - 0.5) * 30,
+      size: 6 + Math.random() * 8,
       color: SPARKLE_COLORS[Math.floor(Math.random() * SPARKLE_COLORS.length)],
       delay: 0,
     };
