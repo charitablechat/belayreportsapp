@@ -84,6 +84,37 @@ export async function fetchTrainingData(
   };
 }
 
+// Helper function to parse trainee names into an array
+export function parseTraineeNames(traineeNamesStr: string | null): string[] {
+  if (!traineeNamesStr) return [];
+  
+  const text = stripHtml(traineeNamesStr);
+  if (!text || text === 'N/A') return [];
+  
+  // Split by common delimiters: newlines, commas, or multiple spaces between names
+  // First try newlines
+  let names = text.split(/\n/).map(n => n.trim()).filter(Boolean);
+  
+  // If only one result, try commas
+  if (names.length <= 1) {
+    names = text.split(/,/).map(n => n.trim()).filter(Boolean);
+  }
+  
+  // If still only one result and it contains multiple capitalized words, 
+  // try to split by detecting name patterns (e.g., "John Smith Jane Doe")
+  if (names.length === 1 && names[0].length > 20) {
+    // Try to split on patterns like "FirstName LastName" followed by another "FirstName"
+    // Look for lowercase letter followed by space and uppercase letter as a name boundary
+    const namePattern = /([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)/g;
+    const matches = names[0].match(namePattern);
+    if (matches && matches.length > 1) {
+      names = matches.map(n => n.trim()).filter(Boolean);
+    }
+  }
+  
+  return names;
+}
+
 // Content formatters - returns structured data ready for rendering
 export interface FormattedContent {
   facilityInfo: {
@@ -92,6 +123,7 @@ export interface FormattedContent {
     endDate: string;
     trainerOfRecord: string;
     traineeNames: string;
+    traineeNamesList: string[];
   };
   standardsText: string;
   deliveryApproaches: string[];
@@ -109,13 +141,16 @@ export interface FormattedContent {
 }
 
 export function formatTrainingContent(data: TrainingData): FormattedContent {
+  const traineeNamesList = parseTraineeNames(data.training.trainee_names);
+  
   return {
     facilityInfo: {
       organization: stripHtml(data.training.organization) || 'N/A',
       startDate: formatDate(data.training.start_date),
       endDate: formatDate(data.training.end_date),
       trainerOfRecord: stripHtml(data.training.trainer_of_record) || 'N/A',
-      traineeNames: stripHtml(data.training.trainee_names) || 'N/A'
+      traineeNames: stripHtml(data.training.trainee_names) || 'N/A',
+      traineeNamesList: traineeNamesList
     },
     standardsText: 'Rope Works Inc. completed a site visit for training and operations on the above date(s). LISTED BELOW are the operating systems on your site we trained or reviewed in accordance with Rope Works Inc. operational procedures and the Association for Challenge Course Technology (ACCT) operational and training standards. Standards applied include ANSI/ACCT 03-2016 and ANSI/ACCT 03-2019.',
     deliveryApproaches: data.approaches.map(a => stripHtml(a.approach)),

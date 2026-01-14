@@ -567,9 +567,15 @@ serve(async (req) => {
             <div class="info-label">Trainer of Record</div>
             <div class="info-value">${content.facilityInfo.trainerOfRecord}</div>
           </div>
-          <div class="info-item">
+          <div class="info-item" style="grid-column: 1 / -1;">
             <div class="info-label">Trainee Names</div>
-            <div class="info-value">${content.facilityInfo.traineeNames}</div>
+            <div class="info-value">
+              ${content.facilityInfo.traineeNamesList.length > 0 
+                ? `<ul class="trainee-names-list" style="margin-top: 8px; list-style: disc; padding-left: 20px;">
+                    ${content.facilityInfo.traineeNamesList.map(name => `<li style="background: none; border-left: none; padding: 4px 0; margin-bottom: 2px;">${name}</li>`).join('')}
+                   </ul>`
+                : content.facilityInfo.traineeNames}
+            </div>
           </div>
         </div>
       </div>
