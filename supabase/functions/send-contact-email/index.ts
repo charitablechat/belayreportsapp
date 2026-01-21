@@ -12,7 +12,9 @@ interface ContactEmailRequest {
   email: string;
   subject: string;
   message: string;
-  imageUrl?: string;
+  attachmentUrl?: string;
+  attachmentName?: string;
+  attachmentType?: string;
   website?: string; // Honeypot field - should always be empty
 }
 
@@ -46,7 +48,7 @@ const handler = async (req: Request): Promise<Response> => {
 
     console.log(`[Rate Limit] IP ${clientIP} - ${rateLimit.remaining} requests remaining`);
 
-    const { name, email, subject, message, imageUrl, website }: ContactEmailRequest = await req.json();
+    const { name, email, subject, message, attachmentUrl, attachmentName, attachmentType, website }: ContactEmailRequest = await req.json();
 
     // Honeypot check - if the hidden field is filled, it's likely a bot
     if (website && website.trim() !== '') {
@@ -149,10 +151,15 @@ const handler = async (req: Request): Promise<Response> => {
           <p><strong>Subject:</strong> ${escapeHtml(subjectText)}</p>
           <p><strong>Message:</strong></p>
           <p>${escapeHtml(message).replace(/\n/g, "<br>")}</p>
-          ${imageUrl ? `
-            <h3>Attached Image:</h3>
-            <p><a href="${escapeHtml(imageUrl)}">View full size image</a></p>
-            <img src="${escapeHtml(imageUrl)}" alt="Attachment" style="max-width: 600px; height: auto; margin-top: 10px; border: 1px solid #ddd; border-radius: 4px;" />
+          ${attachmentUrl ? `
+            <h3>Attached File:</h3>
+            <p><strong>File:</strong> ${escapeHtml(attachmentName || 'attachment')}</p>
+            <p><a href="${escapeHtml(attachmentUrl)}" style="color: #0066cc; text-decoration: underline;">
+              📎 Download/View Attachment
+            </a></p>
+            ${attachmentType?.startsWith('image/') ? `
+              <img src="${escapeHtml(attachmentUrl)}" alt="Attachment" style="max-width: 600px; height: auto; margin-top: 10px; border: 1px solid #ddd; border-radius: 4px;" />
+            ` : ''}
           ` : ''}
           <hr>
           <p style="color: #666; font-size: 12px;">
