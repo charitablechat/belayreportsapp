@@ -117,6 +117,7 @@ export function parseTraineeNames(traineeNamesStr: string | null): string[] {
 
 // Helper function to parse text content into a bullet list array
 // Handles various formats: HTML lists, line breaks, sentences ending with periods
+// ALWAYS splits sentences into individual bullets for consistent report formatting
 export function parseTextToList(textContent: string | null | undefined): string[] {
   if (!textContent) return [];
   
@@ -126,9 +127,10 @@ export function parseTextToList(textContent: string | null | undefined): string[
   // First, try splitting by newlines (most common for bullet-style content)
   let items = text.split(/\n/).map(item => item.trim()).filter(Boolean);
   
-  // If we only got one item and it's long, try splitting by sentences
-  if (items.length === 1 && items[0].length > 100) {
-    // Split on period followed by space and capital letter, or period at end
+  // If we only got one item, ALWAYS try splitting by sentences (removed 100-char threshold)
+  // This ensures every sentence becomes its own bullet point
+  if (items.length === 1) {
+    // Split on period/exclamation/question followed by space and capital letter
     const sentencePattern = /(?<=[.!?])\s+(?=[A-Z])/;
     const sentences = items[0].split(sentencePattern).map(s => s.trim()).filter(Boolean);
     if (sentences.length > 1) {
