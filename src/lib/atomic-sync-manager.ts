@@ -29,7 +29,6 @@ import {
 } from "./transaction-manager";
 import { syncProgressEmitter } from "@/hooks/useSyncProgress";
 import { getMobileCapabilities } from "./mobile-detection";
-import { toast } from "sonner";
 import { getCachedProfile } from "./profile-cache";
 
 /**
@@ -156,7 +155,7 @@ export async function syncInspectionAtomic(inspectionId: string) {
               throw new Error('Sync conflict detected but organization_id is missing');
             }
             
-            // No existing conflict - record a new one
+            // No existing conflict - record a new one (will be auto-resolved silently)
             const { error: conflictError } = await supabase.from('sync_conflicts').insert({
               inspection_id: inspectionId,
               organization_id: organizationId,
@@ -165,30 +164,21 @@ export async function syncInspectionAtomic(inspectionId: string) {
               resolved: false,
             });
             
-            // Only show conflict toast if successfully recorded
-            if (!conflictError) {
-              toast.error("Sync Conflict Detected", {
-                description: `Changes conflict for ${inspection.organization} - ${inspection.location}. Please resolve in settings.`,
-                duration: 10000,
-              });
-            } else {
+            if (conflictError) {
               console.error('[Atomic Sync] Failed to record conflict:', conflictError);
-              toast.warning("Sync Issue Detected", {
-                description: `There may be conflicting changes for ${inspection.organization}. Try syncing again.`,
-                duration: 8000,
-              });
             }
+            // No toast notifications - conflicts are resolved automatically via useConflicts hook
           } else {
             if (import.meta.env.DEV) {
               console.log('[Atomic Sync] Conflict already exists for inspection:', inspectionId);
             }
           }
           
-          throw new Error("Sync conflict detected - user must resolve");
+          // Return success - the useConflicts hook will handle auto-resolution
+          return { success: true, conflict: true };
         }
       }
     }
-    
     // 4. Build transaction steps
     const steps: TransactionStep[] = [];
     
@@ -560,12 +550,8 @@ export async function syncTrainingAtomic(trainingId: string) {
       
       if (timeDiff > 5000 && remoteUpdated > localUpdated) {
         console.warn('[Atomic Sync] Training conflict detected:', trainingId);
-        // For trainings, we log the warning but continue with local-wins strategy
-        // since trainings don't have a sync_conflicts table reference
-        toast.warning("Training Sync Notice", {
-          description: `Training data may have been modified elsewhere. Local changes applied.`,
-          duration: 5000,
-        });
+        // For trainings, we use local-wins strategy silently
+        // No toast notification - conflicts are resolved automatically
       }
     }
     
@@ -917,10 +903,8 @@ export async function syncDailyAssessmentAtomic(assessmentId: string) {
       
       if (timeDiff > 5000 && remoteUpdated > localUpdated) {
         console.warn('[Atomic Sync] Daily assessment conflict detected:', assessmentId);
-        toast.warning("Assessment Sync Notice", {
-          description: `Assessment data may have been modified elsewhere. Local changes applied.`,
-          duration: 5000,
-        });
+        // For daily assessments, we use local-wins strategy silently
+        // No toast notification - conflicts are resolved automatically
       }
     }
     

@@ -14,13 +14,11 @@ export const PushNotificationManager = () => {
   const [preferences, setPreferences] = useState({
     inspection_completed: true,
     training_completed: true,
-    sync_conflicts: true,
   });
   const [emailPreferences, setEmailPreferences] = useState({
     email_notifications_enabled: false,
     email_inspection_completed: true,
     email_training_completed: true,
-    email_sync_conflicts: false,
     email_address: '',
   });
   const [authEmail, setAuthEmail] = useState<string | null>(null);
@@ -53,13 +51,11 @@ export const PushNotificationManager = () => {
         setPreferences({
           inspection_completed: data.inspection_completed ?? true,
           training_completed: data.training_completed ?? true,
-          sync_conflicts: data.sync_conflicts ?? true,
         });
         setEmailPreferences({
           email_notifications_enabled: data.email_notifications_enabled ?? false,
           email_inspection_completed: data.email_inspection_completed ?? true,
           email_training_completed: data.email_training_completed ?? true,
-          email_sync_conflicts: data.email_sync_conflicts ?? false,
           email_address: data.email_address ?? '',
         });
       }
@@ -238,18 +234,6 @@ export const PushNotificationManager = () => {
                       disabled={loadingPrefs}
                     />
                   </div>
-
-                  <div className="flex items-center justify-between">
-                    <Label htmlFor="sync-conflicts" className="cursor-pointer">
-                      Sync Conflicts
-                    </Label>
-                    <Switch
-                      id="sync-conflicts"
-                      checked={preferences.sync_conflicts}
-                      onCheckedChange={(checked) => updatePreference('sync_conflicts', checked)}
-                      disabled={loadingPrefs}
-                    />
-                  </div>
                 </div>
               )}
             </>
@@ -361,18 +345,6 @@ export const PushNotificationManager = () => {
                   id="email-training-completed"
                   checked={emailPreferences.email_training_completed}
                   onCheckedChange={(checked) => updateEmailPreference('email_training_completed', checked)}
-                  disabled={loadingPrefs}
-                />
-              </div>
-
-              <div className="flex items-center justify-between">
-                <Label htmlFor="email-sync-conflicts" className="cursor-pointer">
-                  Sync Conflicts
-                </Label>
-                <Switch
-                  id="email-sync-conflicts"
-                  checked={emailPreferences.email_sync_conflicts}
-                  onCheckedChange={(checked) => updateEmailPreference('email_sync_conflicts', checked)}
                   disabled={loadingPrefs}
                 />
               </div>
