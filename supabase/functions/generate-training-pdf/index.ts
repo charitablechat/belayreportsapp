@@ -419,7 +419,7 @@ serve(async (req) => {
     }
 
     // Training Summary Section
-    if (content.summary.observations || content.summary.recommendations) {
+    if (content.summary.observationsList.length > 0 || content.summary.recommendationsList.length > 0) {
       doc.setFontSize(14);
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(30, 64, 175);
@@ -429,43 +429,58 @@ serve(async (req) => {
       doc.line(margin, yPos, pageWidth - margin, yPos);
       yPos += 8;
 
-      if (content.summary.observations) {
+      if (content.summary.observationsList.length > 0) {
         doc.setFontSize(12);
         doc.setFont('helvetica', 'bold');
         doc.setTextColor(0, 0, 0);
         doc.text('Training Observations', margin, yPos);
         yPos += 6;
-        doc.setFontSize(10);
-        doc.setFont('helvetica', 'normal');
-        const obsLines = doc.splitTextToSize(content.summary.observations, contentWidth);
-        obsLines.forEach((line: string) => {
-          if (yPos > pageHeight - 40) {
-            doc.addPage();
-            yPos = margin;
-          }
-          doc.text(line, margin, yPos);
-          yPos += 5;
+
+        // Use autoTable for consistent bullet formatting - each sentence as its own bullet
+        const observationData = content.summary.observationsList.map((item: string) => ['• ' + item]);
+
+        doc.autoTable({
+          startY: yPos,
+          head: [],
+          body: observationData,
+          theme: 'plain',
+          styles: {
+            font: customFontLoaded ? 'Roboto' : 'helvetica',
+            fontSize: 10,
+            cellPadding: 3,
+            textColor: [0, 0, 0]
+          },
+          margin: { left: margin, right: margin }
         });
-        yPos += 8;
+
+        yPos = doc.lastAutoTable.finalY + 8;
       }
 
-      if (content.summary.recommendations) {
+      if (content.summary.recommendationsList.length > 0) {
         doc.setFontSize(12);
         doc.setFont('helvetica', 'bold');
+        doc.setTextColor(0, 0, 0);
         doc.text('Training Recommendations', margin, yPos);
         yPos += 6;
-        doc.setFontSize(10);
-        doc.setFont('helvetica', 'normal');
-        const recLines = doc.splitTextToSize(content.summary.recommendations, contentWidth);
-        recLines.forEach((line: string) => {
-          if (yPos > pageHeight - 40) {
-            doc.addPage();
-            yPos = margin;
-          }
-          doc.text(line, margin, yPos);
-          yPos += 5;
+
+        // Use autoTable for consistent bullet formatting - each sentence as its own bullet
+        const recommendationData = content.summary.recommendationsList.map((item: string) => ['• ' + item]);
+
+        doc.autoTable({
+          startY: yPos,
+          head: [],
+          body: recommendationData,
+          theme: 'plain',
+          styles: {
+            font: customFontLoaded ? 'Roboto' : 'helvetica',
+            fontSize: 10,
+            cellPadding: 3,
+            textColor: [0, 0, 0]
+          },
+          margin: { left: margin, right: margin }
         });
-        yPos += 8;
+
+        yPos = doc.lastAutoTable.finalY + 8;
       }
     }
 
