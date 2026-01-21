@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Send, X, Upload, Image as ImageIcon } from "lucide-react";
+import { Send, X, Upload, File as FileIcon, Image as ImageIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -28,34 +28,35 @@ export function ContactDeveloperSheet({ open, onOpenChange }: ContactDeveloperSh
     message: "",
     website: "", // Honeypot field
   });
-  const [imageFile, setImageFile] = useState<File | null>(null);
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [attachedFile, setAttachedFile] = useState<File | null>(null);
+  const [filePreview, setFilePreview] = useState<string | null>(null);
 
-  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Validate file type
-    if (!file.type.startsWith("image/")) {
+    // Validate file size (10MB max for all file types)
+    if (file.size > 10 * 1024 * 1024) {
       return;
     }
 
-    // Validate file size (5MB max)
-    if (file.size > 5 * 1024 * 1024) {
-      return;
+    setAttachedFile(file);
+    
+    // Only create preview for images
+    if (file.type.startsWith("image/")) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setFilePreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    } else {
+      setFilePreview(null);
     }
-
-    setImageFile(file);
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      setImagePreview(reader.result as string);
-    };
-    reader.readAsDataURL(file);
   };
 
-  const clearImage = () => {
-    setImageFile(null);
-    setImagePreview(null);
+  const clearFile = () => {
+    setAttachedFile(null);
+    setFilePreview(null);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -76,14 +77,16 @@ export function ContactDeveloperSheet({ open, onOpenChange }: ContactDeveloperSh
     setLoading(true);
 
     try {
-      let imageUrl: string | undefined;
+      let attachmentUrl: string | undefined;
+      let attachmentName: string | undefined;
+      let attachmentType: string | undefined;
 
-      // Upload image if selected
-      if (imageFile) {
-        const fileName = `${Date.now()}_${imageFile.name}`;
+      // Upload file if selected
+      if (attachedFile) {
+        const fileName = `${Date.now()}_${attachedFile.name}`;
         const { data: uploadData, error: uploadError } = await supabase.storage
           .from("contact-attachments")
-          .upload(fileName, imageFile, {
+          .upload(fileName, attachedFile, {
             cacheControl: "3600",
             upsert: false,
           });
@@ -96,7 +99,9 @@ export function ContactDeveloperSheet({ open, onOpenChange }: ContactDeveloperSh
           .createSignedUrl(uploadData.path, 60 * 60 * 24 * 7);
 
         if (signedUrlError) throw signedUrlError;
-        imageUrl = signedUrlData.signedUrl;
+        attachmentUrl = signedUrlData.signedUrl;
+        attachmentName = attachedFile.name;
+        attachmentType = attachedFile.type;
       }
 
       const { error } = await supabase.functions.invoke("send-contact-email", {
@@ -105,7 +110,9 @@ export function ContactDeveloperSheet({ open, onOpenChange }: ContactDeveloperSh
           email: "kale@myaisummit.dev",
           subject: form.subject,
           message: form.message,
-          imageUrl,
+          attachmentUrl,
+          attachmentName,
+          attachmentType,
           website: form.website, // Honeypot field
         },
       });
@@ -113,7 +120,7 @@ export function ContactDeveloperSheet({ open, onOpenChange }: ContactDeveloperSh
       if (error) throw error;
 
       setForm({ subject: "", message: "", website: "" });
-      clearImage();
+      clearFile();
       onOpenChange(false);
     } catch (error: any) {
       console.error("Error sending message:", error);
@@ -198,47 +205,55 @@ export function ContactDeveloperSheet({ open, onOpenChange }: ContactDeveloperSh
             </p>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="image">Attach Image (Optional)</Label>
+            <Label htmlFor="attachment">Attach File (Optional)</Label>
             <div className="flex items-center gap-2">
               <Button
                 type="button"
                 variant="outline"
                 className="w-full"
-                onClick={() => document.getElementById("image")?.click()}
+                onClick={() => document.getElementById("attachment")?.click()}
               >
                 <Upload className="h-4 w-4 mr-2" />
-                {imageFile ? imageFile.name : "Choose Image"}
+                {attachedFile ? attachedFile.name : "Choose File"}
               </Button>
               <Input
-                id="image"
+                id="attachment"
                 type="file"
-                accept="image/*"
-                onChange={handleImageSelect}
+                onChange={handleFileSelect}
                 className="hidden"
               />
-              {imageFile && (
+              {attachedFile && (
                 <Button 
                   type="button" 
                   variant="ghost" 
                   size="icon"
-                  onClick={clearImage}
+                  onClick={clearFile}
                 >
                   <X className="h-4 w-4" />
                 </Button>
               )}
             </div>
-            {imagePreview && (
+            {attachedFile && (
               <div className="relative mt-2 rounded border bg-muted p-2">
-                <ImageIcon className="h-4 w-4 absolute top-3 left-3 text-muted-foreground" />
-                <img 
-                  src={imagePreview} 
-                  alt="Preview" 
-                  className="w-full h-auto max-h-48 object-contain rounded"
-                />
+                {filePreview ? (
+                  <>
+                    <ImageIcon className="h-4 w-4 absolute top-3 left-3 text-muted-foreground" />
+                    <img 
+                      src={filePreview} 
+                      alt="Preview" 
+                      className="w-full h-auto max-h-48 object-contain rounded"
+                    />
+                  </>
+                ) : (
+                  <div className="flex items-center gap-2 py-2">
+                    <FileIcon className="h-6 w-6 text-muted-foreground" />
+                    <span className="text-sm text-muted-foreground truncate">{attachedFile.name}</span>
+                  </div>
+                )}
               </div>
             )}
             <p className="text-xs text-muted-foreground">
-              Max file size: 5MB. Formats: JPG, PNG, GIF, WebP
+              Max file size: 10MB. All file types accepted (PDF, images, documents, etc.)
             </p>
           </div>
           {!isOnline && (
