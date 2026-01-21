@@ -121,8 +121,13 @@ export function parseTraineeNames(traineeNamesStr: string | null): string[] {
 export function parseTextToList(textContent: string | null | undefined): string[] {
   if (!textContent) return [];
   
-  const text = stripHtml(textContent);
+  let text = stripHtml(textContent);
   if (!text || text === 'N/A') return [];
+  
+  // CRITICAL FIX: Normalize spacing after sentence-ending punctuation
+  // Insert a space after .!? when immediately followed by a capital letter (no space)
+  // This handles cases like "ladder.Ladders" → "ladder. Ladders"
+  text = text.replace(/([.!?])([A-Z])/g, '$1 $2');
   
   // First, try splitting by newlines (most common for bullet-style content)
   let items = text.split(/\n/).map(item => item.trim()).filter(Boolean);
