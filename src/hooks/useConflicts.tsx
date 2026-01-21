@@ -1,10 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { useEffect, useCallback, useState } from 'react';
-import { useIsMobile } from '@/hooks/use-mobile';
-
-// Storage key for auto-resolve preference
-const AUTO_RESOLVE_KEY = 'sync_auto_resolve_strategy';
+import { useEffect } from 'react';
 
 export interface SyncConflict {
   id: string;
@@ -22,36 +18,13 @@ export interface SyncConflict {
   } | null;
 }
 
-export type AutoResolveStrategy = 'manual' | 'last-write-wins' | 'local-wins' | 'remote-wins';
+export type AutoResolveStrategy = 'last-write-wins';
 
 export const useConflicts = () => {
   const queryClient = useQueryClient();
-  const isMobile = useIsMobile();
   
-  // Auto-resolve strategy state - default to 'last-write-wins' on mobile
-  const [autoResolveStrategy, setAutoResolveStrategyState] = useState<AutoResolveStrategy>(() => {
-    // On mobile, always default to last-write-wins for seamless experience
-    if (typeof window !== 'undefined' && window.innerWidth < 768) {
-      return 'last-write-wins';
-    }
-    const stored = localStorage.getItem(AUTO_RESOLVE_KEY);
-    return (stored as AutoResolveStrategy) || 'manual';
-  });
-  
-  // Update strategy when mobile state changes
-  useEffect(() => {
-    if (isMobile) {
-      setAutoResolveStrategyState('last-write-wins');
-    }
-  }, [isMobile]);
-  
-  // Persist strategy changes (only for non-mobile)
-  const setAutoResolveStrategy = useCallback((strategy: AutoResolveStrategy) => {
-    if (!isMobile) {
-      localStorage.setItem(AUTO_RESOLVE_KEY, strategy);
-    }
-    setAutoResolveStrategyState(strategy);
-  }, [isMobile]);
+  // Always use last-write-wins strategy for all users
+  const autoResolveStrategy: AutoResolveStrategy = 'last-write-wins';
 
   // Fetch unresolved conflicts with inspection details
   const { data: conflicts = [], isLoading, refetch } = useQuery({
@@ -74,9 +47,9 @@ export const useConflicts = () => {
       return (data as SyncConflict[]) || [];
     },
     enabled: typeof navigator !== 'undefined' && navigator.onLine,
-    staleTime: 30000, // Consider data fresh for 30 seconds
+    staleTime: 30000,
     refetchOnWindowFocus: false,
-    refetchInterval: 60000, // Check every 60 seconds instead of 30
+    refetchInterval: 60000,
   });
 
   // Mutation for auto-resolving stale conflicts
@@ -97,7 +70,6 @@ export const useConflicts = () => {
   });
 
   // Auto-resolve stale conflicts after data is fetched
-  // PREVENTIVE MEASURE: Aggressively clean up conflicts that are no longer relevant
   useEffect(() => {
     if (!conflicts || conflicts.length === 0) return;
     
@@ -114,7 +86,6 @@ export const useConflicts = () => {
         const syncedAt = new Date(conflict.inspection.synced_at).getTime();
         const conflictCreatedAt = new Date(conflict.created_at).getTime();
         
-        // If inspection synced after conflict was created, mark for auto-resolve
         if (syncedAt > conflictCreatedAt) {
           staleConflictIds.push(conflict.id);
           continue;
@@ -140,7 +111,7 @@ export const useConflicts = () => {
     }
   }, [conflicts]);
 
-  // Filter out stale conflicts from UI (they'll be resolved in background)
+  // Filter out stale conflicts
   const validConflicts = conflicts.filter(conflict => {
     if (!conflict.inspection?.synced_at) return true;
     const syncedAt = new Date(conflict.inspection.synced_at).getTime();
@@ -148,23 +119,15 @@ export const useConflicts = () => {
     return syncedAt <= conflictCreatedAt;
   });
 
-  // Auto-resolve conflicts based on strategy
+  // Auto-resolve conflicts using last-write-wins strategy
   const autoResolveConflicts = useMutation({
     mutationFn: async (conflictsToResolve: SyncConflict[]) => {
       for (const conflict of conflictsToResolve) {
         const localTime = new Date(conflict.local_updated_at).getTime();
         const remoteTime = new Date(conflict.remote_updated_at).getTime();
         
-        let useLocal = false;
-        
-        if (autoResolveStrategy === 'last-write-wins') {
-          // Most recent change wins
-          useLocal = localTime > remoteTime;
-        } else if (autoResolveStrategy === 'local-wins') {
-          useLocal = true;
-        } else if (autoResolveStrategy === 'remote-wins') {
-          useLocal = false;
-        }
+        // Last-write-wins: most recent change wins
+        const useLocal = localTime > remoteTime;
         
         if (useLocal) {
           // Apply local version
@@ -201,99 +164,17 @@ export const useConflicts = () => {
     },
   });
 
-  // Trigger auto-resolution when strategy is not manual and conflicts exist
+  // Automatically resolve all conflicts when they exist
   useEffect(() => {
-    if (autoResolveStrategy !== 'manual' && validConflicts.length > 0 && !autoResolveConflicts.isPending) {
+    if (validConflicts.length > 0 && !autoResolveConflicts.isPending) {
       autoResolveConflicts.mutate(validConflicts);
     }
-  }, [autoResolveStrategy, validConflicts.length]);
-
-  // Resolve conflict by choosing local version
-  const resolveWithLocal = useMutation({
-    mutationFn: async ({ conflictId, inspectionId }: { conflictId: string; inspectionId: string }) => {
-      const { data: localInspection } = await supabase
-        .from('inspections')
-        .select('*')
-        .eq('id', inspectionId)
-        .single();
-
-      if (!localInspection) throw new Error('Local inspection not found');
-
-      // Update with local version
-      const { error: updateError } = await supabase
-        .from('inspections')
-        .update({
-          ...localInspection,
-          updated_at: new Date().toISOString(),
-          synced_at: new Date().toISOString(),
-        })
-        .eq('id', inspectionId);
-
-      if (updateError) throw updateError;
-
-      // Mark conflict as resolved
-      const { error: resolveError } = await supabase
-        .from('sync_conflicts')
-        .update({ resolved: true })
-        .eq('id', conflictId);
-
-      if (resolveError) throw resolveError;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['sync-conflicts'] });
-    },
-    onError: (error: Error) => {
-      console.error('Failed to resolve conflict:', error);
-    },
-  });
-
-  // Resolve conflict by choosing remote version
-  const resolveWithRemote = useMutation({
-    mutationFn: async ({ conflictId, inspectionId }: { conflictId: string; inspectionId: string }) => {
-      // Fetch latest remote version
-      const { data: remoteInspection, error: fetchError } = await supabase
-        .from('inspections')
-        .select('*')
-        .eq('id', inspectionId)
-        .single();
-
-      if (fetchError) throw fetchError;
-      if (!remoteInspection) throw new Error('Remote inspection not found');
-
-      // Mark conflict as resolved (remote is already the current version)
-      const { error: resolveError } = await supabase
-        .from('sync_conflicts')
-        .update({ resolved: true })
-        .eq('id', conflictId);
-
-      if (resolveError) throw resolveError;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['sync-conflicts'] });
-    },
-    onError: (error: Error) => {
-      console.error('Failed to resolve conflict:', error);
-    },
-  });
-
-  // Resolve all conflicts with the current strategy
-  const resolveAllWithStrategy = useCallback(() => {
-    if (validConflicts.length > 0 && autoResolveStrategy !== 'manual') {
-      autoResolveConflicts.mutate(validConflicts);
-    }
-  }, [validConflicts, autoResolveStrategy]);
+  }, [validConflicts.length]);
 
   return {
     conflicts: validConflicts,
     isLoading,
-    hasConflicts: validConflicts.length > 0,
-    conflictCount: validConflicts.length,
-    resolveWithLocal: resolveWithLocal.mutate,
-    resolveWithRemote: resolveWithRemote.mutate,
-    isResolving: resolveWithLocal.isPending || resolveWithRemote.isPending || autoResolveConflicts.isPending,
     refetch,
-    autoResolveStrategy,
-    setAutoResolveStrategy,
-    resolveAllWithStrategy,
+    isResolving: autoResolveConflicts.isPending,
   };
 };

@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { GradientButton } from "@/components/ui/gradient-button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, LogOut, FileText, GraduationCap, ArrowRight, Download, Settings, Trash2, MoreVertical, Bell, AlertCircle, Cloud, User, Loader2, Check, RefreshCw, MessageCircle, Shield, GitMerge } from "lucide-react";
+import { Plus, LogOut, FileText, GraduationCap, ArrowRight, Download, Settings, Trash2, MoreVertical, Bell, Cloud, User, Loader2, Check, RefreshCw, MessageCircle, Shield } from "lucide-react";
 import { UserAvatar } from "@/components/ui/user-avatar";
 import { toast } from "sonner";
 import { format } from "date-fns";
@@ -31,8 +31,6 @@ import { SyncControlPanel } from "@/components/pwa/SyncControlPanel";
 import { ManualUpdateButton } from "@/components/pwa/ManualUpdateButton";
 import { OfflineSimulator } from "@/components/dev/OfflineSimulator";
 import { PushNotificationManager } from "@/components/pwa/PushNotificationManager";
-import { ConflictResolver } from "@/components/sync/ConflictResolver";
-import { ConflictNotification } from "@/components/sync/ConflictNotification";
 import { useConflicts } from "@/hooks/useConflicts";
 import { usePWA } from "@/hooks/usePWA";
 import { usePullToRefresh } from "@/hooks/usePullToRefresh";
@@ -92,14 +90,14 @@ export default function Dashboard() {
   const [reportToDelete, setReportToDelete] = useState<any>(null);
   const [activeReportTab, setActiveReportTab] = useState("inspections");
   const [notificationsDialogOpen, setNotificationsDialogOpen] = useState(false);
-  const [conflictsDialogOpen, setConflictsDialogOpen] = useState(false);
   const [contactSheetOpen, setContactSheetOpen] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [userProfile, setUserProfile] = useState<any>(null);
   const [inspectorFilter, setInspectorFilter] = useState<string>("all");
   const { isInstallable, isInstalled, promptInstall } = usePWAInstall();
-  const { hasConflicts, conflictCount } = useConflicts();
+  // Silent auto-resolution of conflicts via last-write-wins
+  useConflicts();
   const { photosByInspection, triggerSync, isSyncing } = usePWA();
   const { progress } = useSyncProgress();
   
@@ -602,31 +600,7 @@ export default function Dashboard() {
               <NetworkQualityIndicator />
               <SyncStatusIndicator />
               
-              {/* Sync Conflicts Resolution Button */}
-              {hasConflicts && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button 
-                      variant="destructive" 
-                      size="sm"
-                      className="gap-1 animate-pulse"
-                      onClick={() => {
-                        triggerHaptic('warning');
-                        setConflictsDialogOpen(true);
-                      }}
-                    >
-                      <GitMerge className="w-4 h-4" />
-                      <span className="hidden sm:inline">Resolve</span>
-                      <Badge variant="secondary" className="ml-1 bg-white/20 text-white text-xs px-1.5">
-                        {conflictCount}
-                      </Badge>
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>{conflictCount} sync conflict{conflictCount > 1 ? 's' : ''} need resolution</p>
-                  </TooltipContent>
-                </Tooltip>
-              )}
+              {/* Conflicts are now resolved automatically via last-write-wins */}
               
               {isSuperAdmin && (
                 <Badge variant="default" className="bg-warning text-warning-foreground border-warning/50 shadow-lg shadow-warning/20 animate-pulse hidden sm:flex items-center gap-1">
@@ -681,18 +655,6 @@ export default function Dashboard() {
                   <Bell className="w-4 h-4 mr-2" />
                   Notifications
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => {
-                  triggerHaptic('light');
-                  setConflictsDialogOpen(true);
-                }}>
-                  <GitMerge className="w-4 h-4 mr-2" />
-                  Sync Conflicts
-                  {hasConflicts && (
-                    <Badge variant="destructive" className="ml-auto text-xs px-1.5">
-                      {conflictCount}
-                    </Badge>
-                  )}
-                </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => navigate('/capabilities')}>
                   Device Capabilities
                 </DropdownMenuItem>
@@ -734,34 +696,7 @@ export default function Dashboard() {
       </header>
 
       <main className="container mx-auto px-1 md:px-4 py-8">
-        {/* Conflict Notification */}
-        <ConflictNotification onViewConflicts={() => setConflictsDialogOpen(true)} />
-
-        {/* Sync Conflicts Banner */}
-        {hasConflicts && (
-          <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400" />
-                <div>
-                  <p className="text-sm font-semibold text-red-800 dark:text-red-200">
-                    Sync Conflict{conflictCount > 1 ? 's' : ''} Detected
-                  </p>
-                  <p className="text-xs text-red-700 dark:text-red-300">
-                    {conflictCount} inspection{conflictCount > 1 ? 's have' : ' has'} conflicting versions that need resolution.
-                  </p>
-                </div>
-              </div>
-              <Button 
-                variant="destructive" 
-                size="sm"
-                onClick={() => setConflictsDialogOpen(true)}
-              >
-                Resolve Now
-              </Button>
-            </div>
-          </div>
-        )}
+        {/* Conflicts are now resolved automatically via last-write-wins strategy */}
 
         {/* Foyer Section */}
         <section className="mb-12">
@@ -1110,10 +1045,6 @@ export default function Dashboard() {
         </DialogContent>
       </Dialog>
 
-      <ConflictResolver 
-        open={conflictsDialogOpen} 
-        onOpenChange={setConflictsDialogOpen}
-      />
       
       <ContactDeveloperSheet 
         open={contactSheetOpen} 
