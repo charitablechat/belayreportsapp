@@ -383,32 +383,52 @@ export default function Dashboard() {
 
     const isInspection = !!inspectionToDelete;
 
+    // Get current user ID for soft delete
+    const userId = currentUser?.id;
+    if (!userId) {
+      toast.error("Unable to identify user for deletion");
+      return;
+    }
+
+    // Import soft delete utility
+    const { addDays } = await import('date-fns');
+    const now = new Date();
+    const retentionUntil = addDays(now, 60);
+    
+    const softDeleteData = {
+      deleted_at: now.toISOString(),
+      deleted_by: userId,
+      retention_until: retentionUntil.toISOString(),
+    };
+
     try {
       if (isInspection) {
-        // Delete from offline storage
+        // Soft delete from offline storage
         await deleteOfflineInspection(inspectionToDelete.id);
 
         if (navigator.onLine) {
-          // Delete from Supabase
+          // Soft delete from Supabase (UPDATE instead of DELETE)
           const { error } = await supabase
             .from("inspections")
-            .delete()
+            .update(softDeleteData)
             .eq("id", inspectionToDelete.id);
 
           if (error) throw error;
           
           triggerHaptic('success');
+          toast.success("Inspection moved to trash. It will be permanently deleted in 60 days.");
           
           if (import.meta.env.DEV) {
-            console.log('[Dashboard] Inspection deleted:', inspectionToDelete.id);
+            console.log('[Dashboard] Inspection soft-deleted:', inspectionToDelete.id);
           }
         } else {
-          // Queue for later deletion
-          await queueOperation('delete', inspectionToDelete.id, inspectionToDelete);
+          // Queue for later soft-deletion
+          await queueOperation('update', inspectionToDelete.id, { ...inspectionToDelete, ...softDeleteData });
           triggerHaptic('success');
+          toast.success("Inspection will be deleted when you're back online.");
           
           if (import.meta.env.DEV) {
-            console.log('[Dashboard] Inspection deletion queued:', inspectionToDelete.id);
+            console.log('[Dashboard] Inspection soft-deletion queued:', inspectionToDelete.id);
           }
         }
 
@@ -420,50 +440,54 @@ export default function Dashboard() {
         const isDailyAssessment = 'assessment_date' in reportToDelete && !('start_date' in reportToDelete);
 
         if (isDailyAssessment) {
-          // Delete daily assessment
+          // Soft delete daily assessment
           const { deleteOfflineDailyAssessment } = await import('@/lib/offline-storage');
           await deleteOfflineDailyAssessment(reportToDelete.id);
 
           if (navigator.onLine) {
             const { error } = await supabase
               .from("daily_assessments")
-              .delete()
+              .update(softDeleteData)
               .eq("id", reportToDelete.id);
 
             if (error) throw error;
             
             triggerHaptic('success');
+            toast.success("Daily assessment moved to trash. It will be permanently deleted in 60 days.");
             
             if (import.meta.env.DEV) {
-              console.log('[Dashboard] Daily assessment deleted:', reportToDelete.id);
+              console.log('[Dashboard] Daily assessment soft-deleted:', reportToDelete.id);
             }
           } else {
             triggerHaptic('success');
+            toast.success("Assessment will be deleted when you're back online.");
             
             if (import.meta.env.DEV) {
-              console.log('[Dashboard] Daily assessment deletion (offline):', reportToDelete.id);
+              console.log('[Dashboard] Daily assessment soft-deletion queued:', reportToDelete.id);
             }
           }
 
           // Update UI
           setDailyAssessments(dailyAssessments.filter(a => a.id !== reportToDelete.id));
         } else if (isTraining) {
-          // Delete training report
+          // Soft delete training report
           if (navigator.onLine) {
             const { error } = await supabase
               .from("trainings")
-              .delete()
+              .update(softDeleteData)
               .eq("id", reportToDelete.id);
 
             if (error) throw error;
             
             triggerHaptic('success');
+            toast.success("Training moved to trash. It will be permanently deleted in 60 days.");
             
             if (import.meta.env.DEV) {
-              console.log('[Dashboard] Training deleted:', reportToDelete.id);
+              console.log('[Dashboard] Training soft-deleted:', reportToDelete.id);
             }
           } else {
             triggerHaptic('error');
+            toast.error("Cannot delete training while offline.");
             return;
           }
 
@@ -476,7 +500,8 @@ export default function Dashboard() {
       setInspectionToDelete(null);
       setReportToDelete(null);
     } catch (error: any) {
-      console.error("Error deleting report:", error);
+      console.error("Error soft-deleting report:", error);
+      toast.error("Failed to delete report");
       triggerHaptic('error');
     }
   };
