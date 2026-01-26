@@ -104,7 +104,7 @@ serve(async (req) => {
     // Get notification preferences for super admins who have email notifications enabled
     const { data: preferences, error: prefsError } = await supabaseAdmin
       .from('notification_preferences')
-      .select('user_id, email_notifications_enabled, email_inspection_completed, email_training_completed, email_sync_conflicts, email_address')
+      .select('user_id, email_notifications_enabled, email_inspection_completed, email_training_completed, email_sync_conflicts')
       .in('user_id', superAdminIds)
       .eq('email_notifications_enabled', true);
 
@@ -133,25 +133,17 @@ serve(async (req) => {
       );
     }
 
-    // Get auth users to fetch their signup emails as fallback
-    const eligibleUserIds = eligiblePrefs.map(p => p.user_id);
-    
-    // Fetch auth emails for users without custom email addresses
+    // Get auth users to fetch their emails (only source of email data now)
     const userEmailMap = new Map<string, string>();
     
     for (const pref of eligiblePrefs) {
-      if (pref.email_address) {
-        // Use custom email if provided
-        userEmailMap.set(pref.user_id, pref.email_address);
-      } else {
-        // Fetch auth email as fallback
-        const { data: authUser, error: authError } = await supabaseAdmin.auth.admin.getUserById(pref.user_id);
-        if (authError) {
-          console.error(`Error fetching auth user ${pref.user_id}:`, authError);
-        } else if (authUser?.user?.email) {
-          userEmailMap.set(pref.user_id, authUser.user.email);
-          console.log(`Using auth email for user ${pref.user_id}: ${authUser.user.email}`);
-        }
+      // Fetch auth email - this is the only source of email data
+      const { data: authUser, error: authError } = await supabaseAdmin.auth.admin.getUserById(pref.user_id);
+      if (authError) {
+        console.error(`Error fetching auth user ${pref.user_id}:`, authError);
+      } else if (authUser?.user?.email) {
+        userEmailMap.set(pref.user_id, authUser.user.email);
+        console.log(`Retrieved auth email for user ${pref.user_id}`);
       }
     }
 
@@ -165,6 +157,8 @@ serve(async (req) => {
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+
+    const eligibleUserIds = usersWithEmail.map(p => p.user_id);
 
     // Get profiles for super admins
     const { data: profiles, error: profilesError } = await supabaseAdmin
