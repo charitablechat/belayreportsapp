@@ -719,17 +719,50 @@ export default function SuperAdminDashboard() {
       {/* Tabs for different sections */}
       <Tabs defaultValue="organizations" className="space-y-4">
         <TabsList className="flex flex-col h-auto w-full items-stretch">
-          <TabsTrigger value="organizations" className="justify-start">Organizations</TabsTrigger>
-          <TabsTrigger value="user-management" className="justify-start">User Management</TabsTrigger>
-          <TabsTrigger value="inspections" className="justify-start">Inspections</TabsTrigger>
-          <TabsTrigger value="trainings" className="justify-start">Training Reports</TabsTrigger>
-          <TabsTrigger value="daily-assessments" className="justify-start">Daily Assessments</TabsTrigger>
-          <TabsTrigger value="form-cms" className="justify-start">Form CMS</TabsTrigger>
-          <TabsTrigger value="notifications" className="justify-start">Notifications</TabsTrigger>
-          <TabsTrigger value="conflicts" className="justify-start">Conflicts</TabsTrigger>
-          <TabsTrigger value="data-recovery" className="justify-start">Data Recovery</TabsTrigger>
-          <TabsTrigger value="report-ownership" className="justify-start">Report Ownership</TabsTrigger>
-          <TabsTrigger value="maintenance" className="justify-start">Maintenance</TabsTrigger>
+          <TabsTrigger value="organizations" className="justify-between w-full">
+            <span>Organizations</span>
+            <span className="text-xs text-muted-foreground font-normal ml-4">Manage client facilities and companies</span>
+          </TabsTrigger>
+          <TabsTrigger value="user-management" className="justify-between w-full">
+            <span>User Management</span>
+            <span className="text-xs text-muted-foreground font-normal ml-4">Create, edit, and manage user accounts</span>
+          </TabsTrigger>
+          <TabsTrigger value="inspections" className="justify-between w-full">
+            <span>Inspections</span>
+            <span className="text-xs text-muted-foreground font-normal ml-4">View and manage all inspection reports</span>
+          </TabsTrigger>
+          <TabsTrigger value="trainings" className="justify-between w-full">
+            <span>Training Reports</span>
+            <span className="text-xs text-muted-foreground font-normal ml-4">View and manage training documentation</span>
+          </TabsTrigger>
+          <TabsTrigger value="daily-assessments" className="justify-between w-full">
+            <span>Daily Assessments</span>
+            <span className="text-xs text-muted-foreground font-normal ml-4">View daily operational assessments</span>
+          </TabsTrigger>
+          <TabsTrigger value="form-cms" className="justify-between w-full">
+            <span>Form CMS</span>
+            <span className="text-xs text-muted-foreground font-normal ml-4">Customize form fields and options</span>
+          </TabsTrigger>
+          <TabsTrigger value="notifications" className="justify-between w-full">
+            <span>Notifications</span>
+            <span className="text-xs text-muted-foreground font-normal ml-4">View notification history and logs</span>
+          </TabsTrigger>
+          <TabsTrigger value="conflicts" className="justify-between w-full">
+            <span>Conflicts</span>
+            <span className="text-xs text-muted-foreground font-normal ml-4">Resolve data synchronization conflicts</span>
+          </TabsTrigger>
+          <TabsTrigger value="data-recovery" className="justify-between w-full">
+            <span>Data Recovery</span>
+            <span className="text-xs text-muted-foreground font-normal ml-4">Recover deleted or corrupted data</span>
+          </TabsTrigger>
+          <TabsTrigger value="report-ownership" className="justify-between w-full">
+            <span>Report Ownership</span>
+            <span className="text-xs text-muted-foreground font-normal ml-4">Transfer report ownership between users</span>
+          </TabsTrigger>
+          <TabsTrigger value="maintenance" className="justify-between w-full">
+            <span>Maintenance</span>
+            <span className="text-xs text-muted-foreground font-normal ml-4">System maintenance and cleanup tools</span>
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="organizations" className="space-y-4">
