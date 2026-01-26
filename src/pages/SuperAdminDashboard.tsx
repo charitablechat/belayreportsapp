@@ -849,7 +849,6 @@ export default function SuperAdminDashboard() {
               <TableRow>
                 <TableHead>Email</TableHead>
                 <TableHead>Name</TableHead>
-                <TableHead>Organizations</TableHead>
                 <TableHead>Roles</TableHead>
                 <TableHead>Last Sign In</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
@@ -860,19 +859,6 @@ export default function SuperAdminDashboard() {
                 <TableRow key={user.id}>
                   <TableCell className="font-medium">{user.email}</TableCell>
                   <TableCell>{user.firstName} {user.lastName}</TableCell>
-                  <TableCell>
-                    {user.organizations?.length > 0 ? (
-                      <div className="flex flex-wrap gap-1">
-                        {user.organizations.map((org: any, idx: number) => (
-                          <Badge key={idx} variant="secondary" className="text-xs">
-                            {org.name}
-                          </Badge>
-                        ))}
-                      </div>
-                    ) : (
-                      <span className="text-muted-foreground text-sm">No organizations</span>
-                    )}
-                  </TableCell>
                   <TableCell>
                     {user.roles?.length > 0 ? (
                       <div className="flex flex-wrap gap-1">
