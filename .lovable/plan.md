@@ -1,190 +1,63 @@
 
+## Data Retention System - IMPLEMENTED ✅
 
-## Data Retention System Implementation
+### Summary
 
-### Current State Analysis
+The data retention system has been fully implemented with soft-delete pattern:
 
-Your application currently uses **hard deletion** for all data tables (`inspections`, `trainings`, `daily_assessments`). When a user deletes a record, it's immediately and permanently removed from the database. There's no mechanism to:
-- Recover accidentally deleted data
-- Enforce retention periods
-- Differentiate between completed vs deleted data lifecycle states
-
----
-
-### Requirements Summary
-
-| Data State | Retention Policy |
-|------------|------------------|
-| **Completed** | Indefinite (never auto-deleted) |
-| **Deleted** | Minimum 60 days, then eligible for permanent removal |
+| Component | Status |
+|-----------|--------|
+| Database schema | ✅ Added `deleted_at`, `deleted_by`, `retention_until` columns |
+| RLS policies | ✅ Updated to exclude soft-deleted records |
+| Frontend delete handlers | ✅ Changed DELETE to UPDATE with soft-delete fields |
+| Data Recovery UI | ✅ New DeletedRecordsRecovery component added |
+| Cleanup job | ✅ pg_cron scheduled daily at 3:00 AM UTC |
+| useSoftDelete hook | ✅ Reusable utility for soft-delete operations |
 
 ---
 
-### Solution Architecture
+### Database Changes
 
-```text
-┌─────────────────────────────────────────────────────────────────────────┐
-│                        SOFT DELETE PATTERN                              │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                         │
-│  ┌──────────────┐    Delete Action    ┌──────────────────────┐         │
-│  │ Active Data  │ ─────────────────▶  │ Soft-Deleted Data    │         │
-│  │ status:      │                     │ deleted_at: NOW()    │         │
-│  │ 'draft' or   │                     │ retention_until:     │         │
-│  │ 'completed'  │ ◀──────────────────│ NOW() + 60 days      │         │
-│  └──────────────┘    Restore Action   └──────────────────────┘         │
-│                                                 │                       │
-│                                                 │ After 60 days        │
-│                                                 ▼                       │
-│                                        ┌──────────────────────┐         │
-│                                        │ Permanent Deletion   │         │
-│                                        │ (via cleanup job)    │         │
-│                                        └──────────────────────┘         │
-└─────────────────────────────────────────────────────────────────────────┘
-```
+Added to tables: `inspections`, `trainings`, `daily_assessments`:
+- `deleted_at` (timestamptz) - When record was soft-deleted
+- `deleted_by` (uuid) - User who deleted
+- `retention_until` (timestamptz) - Date when permanent deletion allowed
+
+New database functions:
+- `soft_delete_record()` - Helper for soft-delete operations
+- `restore_deleted_record()` - Restore soft-deleted records (super admin only)
+- `cleanup_expired_deleted_records()` - Permanently delete expired records
+- `get_deleted_records()` - Fetch deleted records for recovery UI
 
 ---
 
-### Implementation Steps
+### RLS Policy Updates
 
-#### Step 1: Database Schema Updates
-
-Add soft-delete columns to all three data tables:
-
-| Column | Type | Purpose |
-|--------|------|---------|
-| `deleted_at` | `timestamp with time zone` | Records when deletion occurred (NULL = active) |
-| `deleted_by` | `uuid` | User who performed the deletion |
-| `retention_until` | `timestamp with time zone` | Calculated date when permanent deletion is allowed |
-
-**Tables affected:**
-- `inspections`
-- `trainings`
-- `daily_assessments`
-
-#### Step 2: Update RLS Policies
-
-Modify existing Row Level Security policies to automatically filter out soft-deleted records from normal queries:
-
-```sql
--- Users only see active (non-deleted) records
-WHERE deleted_at IS NULL
-```
-
-Super admins in the Data Recovery section will query with special logic to include deleted records.
-
-#### Step 3: Modify Application Delete Logic
-
-Replace hard `DELETE` statements with soft-delete `UPDATE` statements:
-
-**Before:**
-```typescript
-await supabase.from('inspections').delete().eq('id', id);
-```
-
-**After:**
-```typescript
-await supabase.from('inspections').update({
-  deleted_at: new Date().toISOString(),
-  deleted_by: userId,
-  retention_until: addDays(new Date(), 60).toISOString()
-}).eq('id', id);
-```
-
-**Files requiring updates:**
-- `src/pages/Dashboard.tsx` - User deletion actions
-- `src/pages/SuperAdminDashboard.tsx` - Admin deletion actions
-- `src/hooks/useEmptyReportCleanup.tsx` - Auto-cleanup logic
-- `src/lib/offline-storage.ts` - Offline deletion queue
-
-#### Step 4: Create Restore Functionality
-
-Add restore capability to the Data Recovery tool:
-
-```typescript
-// Restore a soft-deleted record
-await supabase.from('inspections').update({
-  deleted_at: null,
-  deleted_by: null,
-  retention_until: null
-}).eq('id', id);
-```
-
-This allows admins to recover accidentally deleted data within the 60-day window.
-
-#### Step 5: Implement Cleanup Mechanism
-
-Create a scheduled database function or Edge Function to permanently delete records past their retention period:
-
-```sql
--- Delete records where retention period has expired
-DELETE FROM inspections 
-WHERE deleted_at IS NOT NULL 
-AND retention_until < NOW();
-```
-
-**Two options for scheduling:**
-
-| Option | Approach | Pros | Cons |
-|--------|----------|------|------|
-| **A** | pg_cron database extension | Runs automatically, no external dependencies | Requires enabling extension |
-| **B** | Manual admin action | Simple to implement | Requires admin to remember |
-
-Recommended: **Option A** with a daily cleanup job running at 3:00 AM.
+All SELECT policies updated to filter `WHERE deleted_at IS NULL` for normal users.
+Super admins have additional policies to view deleted records for recovery.
+DELETE policies restricted to super admins only (for permanent deletion).
 
 ---
 
-### Data Recovery UI Enhancements
+### Retention Behavior
 
-Enhance the existing Data Recovery tool to show:
-
-1. **Deleted Records Tab** - List all soft-deleted items with:
-   - Original data (organization, date, etc.)
-   - When deleted and by whom
-   - Days remaining until permanent deletion
-   - Restore button
-
-2. **Permanent Delete Option** - Allow super admins to immediately purge specific records (bypassing 60-day wait)
-
-3. **Visual Indicators**:
-   - Red badge for items nearing permanent deletion (< 7 days)
-   - Orange badge for items mid-retention (7-30 days)
-   - Green badge for recently deleted (> 30 days remaining)
+1. **User deletes record** → Soft-delete (UPDATE with 60-day retention)
+2. **Record visible in Data Recovery** → Super admins can restore or permanently delete
+3. **After 60 days** → Automatic cleanup via pg_cron (runs daily at 3 AM UTC)
 
 ---
 
-### Cascade Considerations
+### New Components
 
-When a parent record is soft-deleted, related child records need handling:
-
-| Parent Table | Related Tables |
-|--------------|----------------|
-| `inspections` | `inspection_equipment`, `inspection_photos`, `inspection_standards`, `inspection_summary`, `inspection_systems`, `inspection_ziplines`, `inspection_reports` |
-| `trainings` | `training_items`, `training_summary`, `training_reports` |
-| `daily_assessments` | Related assessment tables |
-
-**Strategy:** When soft-deleting a parent, all child records remain linked. If the parent is restored, children are automatically available. If parent is permanently deleted, children cascade-delete via existing FK constraints.
+- `src/hooks/useSoftDelete.tsx` - Utility hook for soft-delete operations
+- `src/components/admin/DeletedRecordsRecovery.tsx` - UI for viewing/restoring deleted records
 
 ---
 
-### Migration Safety
+### Visual Indicators in Data Recovery
 
-Following your existing migration practices:
-1. Create backup tables before schema changes
-2. Use migration audit functions (`start_migration_audit`, `complete_migration_audit`)
-3. Check for data loss after migration
-4. New columns will default to NULL (no impact on existing records)
-
----
-
-### Summary of Changes
-
-| Component | Change Type |
-|-----------|-------------|
-| Database schema | Add 3 columns to 3 tables |
-| RLS policies | Update to exclude deleted_at IS NOT NULL |
-| Frontend delete handlers | Change DELETE to UPDATE |
-| Data Recovery Tool | Add restore UI and deleted items view |
-| Cleanup job | New pg_cron scheduled function |
-| Offline storage | Update queue to handle soft deletes |
-
+| Days Remaining | Badge Color |
+|----------------|-------------|
+| ≤ 7 days | 🔴 Red (destructive) |
+| 8-30 days | 🟠 Orange (secondary) |
+| > 30 days | 🟢 Green (default) |
