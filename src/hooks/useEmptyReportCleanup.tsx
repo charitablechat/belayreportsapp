@@ -1,5 +1,6 @@
 import { useCallback, useRef, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { addDays } from "date-fns";
 import { 
   isInspectionEmpty, 
   isTrainingEmpty, 
@@ -17,6 +18,7 @@ interface UseEmptyReportCleanupOptions {
   id: string | undefined;
   status: string | undefined;
   data: any;
+  userId?: string | undefined;
   relatedData?: {
     systems?: any[];
     ziplines?: any[];
@@ -43,12 +45,16 @@ interface UseEmptyReportCleanupOptions {
  * Returns a function to check emptiness and handle cleanup.
  * 
  * IMPORTANT: Uses refs internally to avoid stale closure issues in cleanup effects.
+ * 
+ * NOTE: Empty report cleanup now uses SOFT DELETE (sets deleted_at, deleted_by, retention_until)
+ * instead of hard delete. This allows recovery within 60 days.
  */
 export function useEmptyReportCleanup({
   type,
   id,
   status,
   data,
+  userId,
   relatedData = {},
   hasUserInteracted = false
 }: UseEmptyReportCleanupOptions) {
@@ -57,6 +63,7 @@ export function useEmptyReportCleanup({
   // Use refs to always have current values - prevents stale closure bug
   const dataRef = useRef(data);
   const statusRef = useRef(status);
+  const userIdRef = useRef(userId);
   const relatedDataRef = useRef(relatedData);
   const hasUserInteractedRef = useRef(hasUserInteracted);
   
@@ -64,9 +71,10 @@ export function useEmptyReportCleanup({
   useEffect(() => {
     dataRef.current = data;
     statusRef.current = status;
+    userIdRef.current = userId;
     relatedDataRef.current = relatedData;
     hasUserInteractedRef.current = hasUserInteracted;
-  }, [data, status, relatedData, hasUserInteracted]);
+  }, [data, status, userId, relatedData, hasUserInteracted]);
 
   const checkIsEmpty = useCallback(() => {
     const currentData = dataRef.current;
@@ -122,6 +130,7 @@ export function useEmptyReportCleanup({
     
     const isEmpty = checkIsEmpty();
     const currentStatus = statusRef.current;
+    const currentUserId = userIdRef.current;
     const shouldDelete = shouldDeleteEmptyReport(currentStatus, isEmpty);
     
     if (import.meta.env.DEV) {
@@ -132,28 +141,33 @@ export function useEmptyReportCleanup({
 
     cleanupAttempted.current = true;
     
+    // Prepare soft-delete data
+    const now = new Date();
+    const retentionUntil = addDays(now, 60);
+    const softDeleteData = {
+      deleted_at: now.toISOString(),
+      deleted_by: currentUserId || null,
+      retention_until: retentionUntil.toISOString(),
+    };
+    
+    // Map type to table name
+    const tableMap = {
+      'inspection': 'inspections',
+      'training': 'trainings',
+      'daily_assessment': 'daily_assessments',
+    } as const;
+    const tableName = tableMap[type];
+    
     try {
-      // Delete from Supabase if online
+      // Soft-delete from Supabase if online (UPDATE instead of DELETE)
       if (navigator.onLine) {
-        let error: any = null;
-        
-        switch (type) {
-          case 'inspection':
-            const inspResult = await supabase.from('inspections').delete().eq('id', id);
-            error = inspResult.error;
-            break;
-          case 'training':
-            const trainResult = await supabase.from('trainings').delete().eq('id', id);
-            error = trainResult.error;
-            break;
-          case 'daily_assessment':
-            const assessResult = await supabase.from('daily_assessments').delete().eq('id', id);
-            error = assessResult.error;
-            break;
-        }
+        const { error } = await supabase
+          .from(tableName)
+          .update(softDeleteData)
+          .eq('id', id);
 
         if (error) {
-          console.error(`Error deleting empty ${type}:`, error);
+          console.error(`Error soft-deleting empty ${type}:`, error);
           cleanupAttempted.current = false;
           return false;
         }
@@ -173,7 +187,7 @@ export function useEmptyReportCleanup({
       }
 
       if (import.meta.env.DEV) {
-        console.log(`[EmptyReportCleanup] Deleted empty ${type}: ${id}`);
+        console.log(`[EmptyReportCleanup] Soft-deleted empty ${type}: ${id}`);
       }
       
       return true;

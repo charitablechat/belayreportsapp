@@ -16,6 +16,7 @@ import { UserManagementDialog } from "@/components/admin/UserManagementDialog";
 import { FormCMSManager } from "@/components/admin/FormCMSManager";
 import { MergeOrganizationsDialog } from "@/components/admin/MergeOrganizationsDialog";
 import { DataRecoveryTool } from "@/components/admin/DataRecoveryTool";
+import { DeletedRecordsRecovery } from "@/components/admin/DeletedRecordsRecovery";
 import { ReportOwnershipTool } from "@/components/admin/ReportOwnershipTool";
 import { toast } from "sonner";
 import { parseLocalDate } from "@/lib/date-utils";
@@ -1186,7 +1187,11 @@ export default function SuperAdminDashboard() {
         </TabsContent>
 
         <TabsContent value="data-recovery" className="space-y-4">
-          <DataRecoveryTool />
+          <DeletedRecordsRecovery />
+          <div className="border-t pt-6 mt-6">
+            <h3 className="text-lg font-semibold mb-4">Local Browser Data Recovery</h3>
+            <DataRecoveryTool />
+          </div>
         </TabsContent>
 
         <TabsContent value="maintenance" className="space-y-4">

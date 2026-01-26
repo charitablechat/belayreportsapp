@@ -291,6 +291,8 @@ export type Database = {
         Row: {
           assessment_date: string
           created_at: string
+          deleted_at: string | null
+          deleted_by: string | null
           id: string
           inspector_id: string
           last_opened_at: string | null
@@ -301,6 +303,7 @@ export type Database = {
           organization: string
           organization_id: string | null
           report_version: number | null
+          retention_until: string | null
           site: string
           status: string
           synced_at: string | null
@@ -310,6 +313,8 @@ export type Database = {
         Insert: {
           assessment_date?: string
           created_at?: string
+          deleted_at?: string | null
+          deleted_by?: string | null
           id?: string
           inspector_id: string
           last_opened_at?: string | null
@@ -320,6 +325,7 @@ export type Database = {
           organization?: string
           organization_id?: string | null
           report_version?: number | null
+          retention_until?: string | null
           site?: string
           status?: string
           synced_at?: string | null
@@ -329,6 +335,8 @@ export type Database = {
         Update: {
           assessment_date?: string
           created_at?: string
+          deleted_at?: string | null
+          deleted_by?: string | null
           id?: string
           inspector_id?: string
           last_opened_at?: string | null
@@ -339,6 +347,7 @@ export type Database = {
           organization?: string
           organization_id?: string | null
           report_version?: number | null
+          retention_until?: string | null
           site?: string
           status?: string
           synced_at?: string | null
@@ -841,6 +850,8 @@ export type Database = {
           acct_number: string | null
           course_history: string | null
           created_at: string | null
+          deleted_at: string | null
+          deleted_by: string | null
           id: string
           inspection_date: string
           inspector_id: string
@@ -856,6 +867,7 @@ export type Database = {
           previous_inspection_date: string | null
           previous_inspector: string | null
           report_version: number | null
+          retention_until: string | null
           started_at: string | null
           status: string
           synced_at: string | null
@@ -865,6 +877,8 @@ export type Database = {
           acct_number?: string | null
           course_history?: string | null
           created_at?: string | null
+          deleted_at?: string | null
+          deleted_by?: string | null
           id?: string
           inspection_date?: string
           inspector_id: string
@@ -880,6 +894,7 @@ export type Database = {
           previous_inspection_date?: string | null
           previous_inspector?: string | null
           report_version?: number | null
+          retention_until?: string | null
           started_at?: string | null
           status?: string
           synced_at?: string | null
@@ -889,6 +904,8 @@ export type Database = {
           acct_number?: string | null
           course_history?: string | null
           created_at?: string | null
+          deleted_at?: string | null
+          deleted_by?: string | null
           id?: string
           inspection_date?: string
           inspector_id?: string
@@ -904,6 +921,7 @@ export type Database = {
           previous_inspection_date?: string | null
           previous_inspector?: string | null
           report_version?: number | null
+          retention_until?: string | null
           started_at?: string | null
           status?: string
           synced_at?: string | null
@@ -1465,6 +1483,8 @@ export type Database = {
       trainings: {
         Row: {
           created_at: string
+          deleted_at: string | null
+          deleted_by: string | null
           end_date: string
           id: string
           inspector_id: string
@@ -1476,6 +1496,7 @@ export type Database = {
           organization: string
           organization_id: string | null
           report_version: number | null
+          retention_until: string | null
           start_date: string
           status: string
           synced_at: string | null
@@ -1485,6 +1506,8 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          deleted_at?: string | null
+          deleted_by?: string | null
           end_date?: string
           id?: string
           inspector_id: string
@@ -1496,6 +1519,7 @@ export type Database = {
           organization: string
           organization_id?: string | null
           report_version?: number | null
+          retention_until?: string | null
           start_date?: string
           status?: string
           synced_at?: string | null
@@ -1505,6 +1529,8 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          deleted_at?: string | null
+          deleted_by?: string | null
           end_date?: string
           id?: string
           inspector_id?: string
@@ -1516,6 +1542,7 @@ export type Database = {
           organization?: string
           organization_id?: string | null
           report_version?: number | null
+          retention_until?: string | null
           start_date?: string
           status?: string
           synced_at?: string | null
@@ -1649,6 +1676,14 @@ export type Database = {
           records_before: number
         }[]
       }
+      cleanup_expired_deleted_records: {
+        Args: never
+        Returns: {
+          daily_assessments_deleted: number
+          inspections_deleted: number
+          trainings_deleted: number
+        }[]
+      }
       complete_migration_audit: {
         Args: {
           p_audit_id: string
@@ -1679,6 +1714,20 @@ export type Database = {
           total_members: number
         }[]
       }
+      get_deleted_records: {
+        Args: { p_table_name?: string }
+        Returns: {
+          days_remaining: number
+          deleted_at: string
+          deleted_by: string
+          deleter_name: string
+          organization: string
+          record_date: string
+          record_id: string
+          retention_until: string
+          table_name: string
+        }[]
+      }
       get_or_create_organization: {
         Args: { org_name: string }
         Returns: string
@@ -1705,6 +1754,10 @@ export type Database = {
         }
         Returns: Json
       }
+      restore_deleted_record: {
+        Args: { p_record_id: string; p_table_name: string }
+        Returns: boolean
+      }
       restore_from_backup: {
         Args: {
           p_backup_table_name: string
@@ -1712,6 +1765,15 @@ export type Database = {
           p_target_table_name: string
         }
         Returns: number
+      }
+      soft_delete_record: {
+        Args: {
+          p_deleted_by: string
+          p_record_id: string
+          p_retention_days?: number
+          p_table_name: string
+        }
+        Returns: boolean
       }
       start_migration_audit: {
         Args: {
