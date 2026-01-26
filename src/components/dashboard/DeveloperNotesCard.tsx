@@ -14,6 +14,7 @@ import { RichTextEditor } from '@/components/ui/rich-text-editor';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
+import { convertToBulletList } from '@/lib/html-content-cleaner';
 
 interface DeveloperNotesCardProps {
   isSuperAdmin: boolean;
@@ -24,28 +25,6 @@ interface Announcement {
   content: string;
   updated_at: string;
 }
-
-// Convert paragraph-based content to bullet list
-const convertToBulletList = (htmlContent: string): string => {
-  if (!htmlContent) return '';
-  
-  // If already has bullet list, return as-is
-  if (htmlContent.includes('<ul>') || htmlContent.includes('<li>')) {
-    return htmlContent;
-  }
-  
-  // Extract text from paragraphs
-  const paragraphs = htmlContent
-    .split(/<\/?p>/gi)
-    .map(p => p.trim())
-    .filter(p => p.length > 0 && p !== '<br>');
-  
-  if (paragraphs.length === 0) return '';
-  
-  // Convert to bullet list
-  const listItems = paragraphs.map(p => `<li>${p}</li>`).join('');
-  return `<ul>${listItems}</ul>`;
-};
 
 export const DeveloperNotesCard = ({ isSuperAdmin }: DeveloperNotesCardProps) => {
   const [announcement, setAnnouncement] = useState<Announcement | null>(null);
