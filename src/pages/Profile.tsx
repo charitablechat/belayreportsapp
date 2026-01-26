@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { ArrowLeft, Camera, Loader2, User } from "lucide-react";
+import { ArrowLeft, Camera, Check, Loader2, Lock, User, X } from "lucide-react";
 import ropeWorksLogo from "@/assets/rope-works-logo.png";
 import { triggerHaptic } from "@/lib/haptics";
 import { useToast } from "@/hooks/use-toast";
@@ -25,6 +25,17 @@ export default function Profile() {
     acct_number: "",
   });
   const [email, setEmail] = useState("");
+  
+  // Password change state
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [changingPassword, setChangingPassword] = useState(false);
+
+  // Password validation
+  const passwordMinLength = newPassword.length >= 8;
+  const passwordMaxLength = newPassword.length <= 72;
+  const passwordsMatch = newPassword === confirmPassword && confirmPassword.length > 0;
+  const isPasswordValid = passwordMinLength && passwordMaxLength && passwordsMatch;
 
   useEffect(() => {
     loadProfile();
@@ -189,6 +200,44 @@ export default function Profile() {
     return (first + last).toUpperCase() || email.substring(0, 2).toUpperCase();
   };
 
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!isPasswordValid) {
+      triggerHaptic('error');
+      return;
+    }
+
+    triggerHaptic('medium');
+    setChangingPassword(true);
+
+    try {
+      const { error } = await supabase.auth.updateUser({ password: newPassword });
+      
+      if (error) throw error;
+
+      triggerHaptic('success');
+      toast({
+        title: "Password Updated",
+        description: "Your password has been changed successfully.",
+      });
+      
+      // Clear password fields
+      setNewPassword("");
+      setConfirmPassword("");
+    } catch (error: any) {
+      console.error("Error updating password:", error);
+      triggerHaptic('error');
+      toast({
+        title: "Password Update Failed",
+        description: error.message || "Failed to update password. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setChangingPassword(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
@@ -341,6 +390,104 @@ export default function Profile() {
                     </>
                   ) : (
                     "Save Changes"
+                  )}
+                </Button>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
+
+        {/* Security Section */}
+        <Card className="mt-6">
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <Lock className="h-5 w-5 text-muted-foreground" />
+              <CardTitle>Security</CardTitle>
+            </div>
+            <CardDescription>
+              Update your account password
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleChangePassword} className="space-y-6">
+              {/* New Password */}
+              <div className="space-y-2">
+                <Label htmlFor="new_password">New Password</Label>
+                <Input
+                  id="new_password"
+                  type="password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="Enter your new password"
+                  maxLength={72}
+                />
+              </div>
+
+              {/* Confirm Password */}
+              <div className="space-y-2">
+                <Label htmlFor="confirm_password">Confirm New Password</Label>
+                <Input
+                  id="confirm_password"
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="Confirm your new password"
+                  maxLength={72}
+                />
+              </div>
+
+              {/* Password Requirements */}
+              {(newPassword.length > 0 || confirmPassword.length > 0) && (
+                <div className="space-y-2 text-sm">
+                  <p className="font-medium text-muted-foreground">Password Requirements:</p>
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      {passwordMinLength ? (
+                        <Check className="h-4 w-4 text-green-500" />
+                      ) : (
+                        <X className="h-4 w-4 text-destructive" />
+                      )}
+                      <span className={passwordMinLength ? "text-green-500" : "text-muted-foreground"}>
+                        At least 8 characters
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {confirmPassword.length > 0 ? (
+                        passwordsMatch ? (
+                          <Check className="h-4 w-4 text-green-500" />
+                        ) : (
+                          <X className="h-4 w-4 text-destructive" />
+                        )
+                      ) : (
+                        <div className="h-4 w-4 rounded-full border border-muted-foreground/50" />
+                      )}
+                      <span className={
+                        confirmPassword.length > 0
+                          ? passwordsMatch
+                            ? "text-green-500"
+                            : "text-destructive"
+                          : "text-muted-foreground"
+                      }>
+                        Passwords match
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Update Password Button */}
+              <div className="flex justify-end">
+                <Button 
+                  type="submit" 
+                  disabled={changingPassword || !isPasswordValid}
+                >
+                  {changingPassword ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Updating...
+                    </>
+                  ) : (
+                    "Update Password"
                   )}
                 </Button>
               </div>
