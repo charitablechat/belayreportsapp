@@ -4,7 +4,6 @@ import { supabase } from "@/integrations/supabase/client";
 import { useFormConfiguration } from "@/hooks/useFormConfiguration";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Save, FileText, Loader2, WifiOff, Check, Sunrise, Sunset, Settings, Package, Building, Cloud, LogOut, User, CloudOff, CheckCircle } from "lucide-react";
-import { usePWA } from "@/hooks/usePWA";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { AutoSaveIndicator } from "@/components/AutoSaveIndicator";
@@ -57,14 +56,8 @@ export default function DailyAssessmentForm() {
   const navigate = useNavigate();
   const { formConfig, isLoading: isLoadingConfig } = useFormConfiguration('en', 'daily_assessment');
   const { isOnline } = useNetworkStatus();
-  const { triggerSync } = usePWA();
   const isMobileView = useIsMobile();
   const { syncReport } = useReportSync(id, 'daily_assessment');
-  
-  // Auto-retry on network reconnect refs
-  const wasOfflineRef = useRef(!isOnline);
-  const autoRetryingRef = useRef(false);
-  const autoRetrySyncRef = useRef<(() => Promise<void>) | null>(null);
   
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -145,39 +138,7 @@ export default function DailyAssessmentForm() {
     };
   }, [assessment?.status, cleanupEmptyReport]);
 
-  // Auto-retry sync when network reconnects
-  useEffect(() => {
-    if (!isOnline) {
-      wasOfflineRef.current = true;
-      return;
-    }
-    
-    // If we just came back online, auto-retry sync
-    if (wasOfflineRef.current && !autoRetryingRef.current && !saving) {
-      wasOfflineRef.current = false;
-      autoRetryingRef.current = true;
-      
-      console.log('[DailyAssessmentForm] Network reconnected, auto-retrying sync...');
-      
-      const retryTimeout = setTimeout(async () => {
-        try {
-          await triggerSync();
-          
-          if (autoRetrySyncRef.current) {
-            await autoRetrySyncRef.current();
-          }
-          
-          toast.success("Auto-sync successful - your assessment has been synced.");
-        } catch (err) {
-          console.error('[DailyAssessmentForm] Auto-retry sync failed:', err);
-        } finally {
-          autoRetryingRef.current = false;
-        }
-      }, 2000);
-      
-      return () => clearTimeout(retryTimeout);
-    }
-  }, [isOnline, saving, triggerSync]);
+  // Auto-retry on network reconnect is now handled by useAutoSync hook
 
   // Fetch current user and profile
   useEffect(() => {
@@ -604,14 +565,7 @@ export default function DailyAssessmentForm() {
     }
   };
 
-  // Set auto-retry sync function ref for network reconnection
-  useEffect(() => {
-    autoRetrySyncRef.current = async () => {
-      if (assessment && id) {
-        await handleSaveProgress();
-      }
-    };
-  });
+  // Auto-save/sync retry is now handled by useAutoSync hook
 
   // Wrapper handlers that mark user interaction to prevent cleanup deletion
   const handleBeginningOfDayUpdate = useCallback((items: any[]) => {

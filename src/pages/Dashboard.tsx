@@ -27,7 +27,6 @@ import { useSyncProgress } from "@/hooks/useSyncProgress";
 import { NetworkStatusIndicator } from "@/components/pwa/NetworkStatusIndicator";
 import { NetworkQualityIndicator } from "@/components/pwa/NetworkQualityIndicator";
 import { SyncStatusIndicator } from "@/components/pwa/SyncStatusIndicator";
-import { SyncControlPanel } from "@/components/pwa/SyncControlPanel";
 import { ManualUpdateButton } from "@/components/pwa/ManualUpdateButton";
 import { OfflineSimulator } from "@/components/dev/OfflineSimulator";
 import { PushNotificationManager } from "@/components/pwa/PushNotificationManager";
@@ -98,24 +97,17 @@ export default function Dashboard() {
   const { isInstallable, isInstalled, promptInstall } = usePWAInstall();
   // Silent auto-resolution of conflicts via last-write-wins
   useConflicts();
-  const { photosByInspection, triggerSync, isSyncing } = usePWA();
+  const { photosByInspection, isSyncing } = usePWA();
   const { progress } = useSyncProgress();
   
-  // Pull to refresh for mobile
+  // Pull to refresh for mobile - only reloads data, sync is automatic
   const { isPulling, pullDistance, shouldTriggerRefresh, isActive } = usePullToRefresh({
     onRefresh: async () => {
       triggerHaptic('medium'); // Haptic feedback when refresh triggers
-      await triggerSync();
+      // Only reload data - sync happens automatically in background
       await loadInspections();
       await loadTrainingReports();
       await loadDailyAssessments();
-      
-      // Sync all data types using atomic sync
-      const { syncAllTrainingsAtomic, syncAllDailyAssessmentsAtomic } = await import('@/lib/atomic-sync-manager');
-      await Promise.all([
-        syncAllTrainingsAtomic(),
-        syncAllDailyAssessmentsAtomic()
-      ]);
     },
     isRefreshing: isSyncing,
   });
@@ -616,7 +608,6 @@ export default function Dashboard() {
             <div className="flex items-center gap-2 md:gap-3">
               <img src={ropeWorksLogo} alt="Rope Works" className="h-8 md:h-12 w-auto object-contain" />
               <img src={acctLogo} alt="ACCT Accredited Vendor" className="h-8 md:h-12 w-auto object-contain" />
-              <SyncControlPanel />
             </div>
             
             <div className="flex items-center gap-2">

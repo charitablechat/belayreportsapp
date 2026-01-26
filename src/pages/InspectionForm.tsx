@@ -63,7 +63,7 @@ export default function InspectionForm() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { isOnline } = useNetworkStatus();
-  const { triggerSync, isSyncing } = usePWA();
+  const { isSyncing } = usePWA();
   const isMobileView = useIsMobile();
   const { syncReport } = useReportSync(id, 'inspection');
   
@@ -172,49 +172,8 @@ export default function InspectionForm() {
     };
   }, [inspection?.status, cleanupEmptyReport]);
 
-  // Auto-retry sync when network reconnects after a failure
-  // Use a ref for the retry function to avoid stale closures
-  const autoRetrySyncRef = useRef<(() => Promise<void>) | null>(null);
-  
-  useEffect(() => {
-    // Track if we were offline
-    if (!isOnline) {
-      wasOfflineRef.current = true;
-      return;
-    }
-    
-    // If we just came back online and there's a pending save error, auto-retry
-    if (wasOfflineRef.current && saveError && !autoRetryingRef.current && !saving && !autoSaving) {
-      wasOfflineRef.current = false;
-      autoRetryingRef.current = true;
-      
-      console.log('[InspectionForm] Network reconnected, auto-retrying sync...');
-      
-      // Small delay to let network stabilize
-      const retryTimeout = setTimeout(async () => {
-        try {
-          await triggerSync();
-          
-          // Call the ref'd retry function if available
-          if (autoRetrySyncRef.current) {
-            await autoRetrySyncRef.current();
-          }
-          
-          toast({
-            title: "Auto-sync successful",
-            description: "Your changes have been synced after reconnecting.",
-          });
-        } catch (err) {
-          console.error('[InspectionForm] Auto-retry sync failed:', err);
-          // Keep the error state, user can manually retry
-        } finally {
-          autoRetryingRef.current = false;
-        }
-      }, 2000);
-      
-      return () => clearTimeout(retryTimeout);
-    }
-  }, [isOnline, saveError, saving, autoSaving, triggerSync]);
+  // Auto-retry on network reconnect is now handled by useAutoSync hook
+  // This component only needs to handle local save retries
 
   const saveRef = useRef<(() => void) | null>(null);
   useSaveShortcut(() => saveRef.current?.(), hasUnsavedChanges && !saving);
@@ -1194,10 +1153,7 @@ export default function InspectionForm() {
       if (import.meta.env.DEV) {
         console.log("Immediate save triggered at", new Date().toLocaleTimeString());
       }
-      // Trigger sync after successful save
-      if (isOnline) {
-        triggerSync().catch(err => console.error("Immediate sync failed:", err));
-      }
+      // Sync is now handled automatically by useAutoSync hook
     } catch (error: any) {
       console.error("Immediate save failed:", error);
       setSaveError(error.message || 'Immediate save failed');
@@ -1217,10 +1173,7 @@ export default function InspectionForm() {
       if (import.meta.env.DEV) {
         console.log("Auto-saved successfully at", new Date().toLocaleTimeString());
       }
-      // Trigger sync after successful save
-      if (isOnline) {
-        triggerSync().catch(err => console.error("Auto-sync failed:", err));
-      }
+      // Sync is now handled automatically by useAutoSync hook
     } catch (error: any) {
       console.error("Auto-save failed:", error);
       setSaveError(error.message || 'Auto-save failed');
@@ -1258,10 +1211,7 @@ export default function InspectionForm() {
       if (import.meta.env.DEV) {
         console.log('[InspectionForm] Progress saved:', isOnline ? 'online' : 'offline');
       }
-      // Trigger sync after successful save
-      if (isOnline) {
-        await triggerSync();
-      }
+      // Sync is now handled automatically by useAutoSync hook
     } catch (error: any) {
       console.error("Save error:", error);
       const errorMsg = error.message || "Failed to save progress";
@@ -1279,20 +1229,7 @@ export default function InspectionForm() {
     saveRef.current = saveProgress;
   });
 
-  // Set auto-retry sync function ref for network reconnection
-  useEffect(() => {
-    autoRetrySyncRef.current = async () => {
-      setSaveError(null);
-      setAutoSaving(true);
-      try {
-        await performSave(true);
-        setLastSaved(new Date());
-        setHasUnsavedChanges(false);
-      } finally {
-        setAutoSaving(false);
-      }
-    };
-  });
+  // Auto-save/sync retry is now handled by useAutoSync hook
 
   const completeInspection = async () => {
     // Strict validation before completion - require ALL equipment to have types
@@ -1722,6 +1659,7 @@ export default function InspectionForm() {
                   <span className="hidden sm:inline">Offline Mode</span>
                 </Badge>
               )}
+              {/* Sync errors are now handled automatically */}
               {saveError && isOnline && (
                 <Button
                   variant="outline"
@@ -1729,16 +1667,15 @@ export default function InspectionForm() {
                   onClick={async () => {
                     setSaveError(null);
                     try {
-                      await triggerSync();
                       await saveProgress();
                       toast({
-                        title: "Sync successful",
-                        description: "Your changes have been synced to the server.",
+                        title: "Save successful",
+                        description: "Your changes have been saved.",
                       });
                     } catch (err) {
-                      console.error('[InspectionForm] Manual sync failed:', err);
+                      console.error('[InspectionForm] Manual save failed:', err);
                       toast({
-                        title: "Sync failed",
+                        title: "Save failed",
                         description: "Please try again or check your connection.",
                         variant: "destructive",
                       });
@@ -1748,7 +1685,7 @@ export default function InspectionForm() {
                   className="gap-1.5 text-xs h-7 bg-orange-50 border-orange-200 text-orange-700 hover:bg-orange-100 dark:bg-orange-950/30 dark:border-orange-800 dark:text-orange-400 dark:hover:bg-orange-900/40"
                 >
                   <RefreshCw className={cn("w-3 h-3", isSyncing && "animate-spin")} />
-                  <span className="hidden sm:inline">Sync Now</span>
+                  <span className="hidden sm:inline">Retry Save</span>
                 </Button>
               )}
               <SyncStatusIndicator />
