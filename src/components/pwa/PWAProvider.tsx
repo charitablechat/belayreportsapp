@@ -2,7 +2,7 @@ import { createContext, ReactNode, Component, ErrorInfo } from 'react';
 import { usePWAInstall } from '@/hooks/usePWAInstall';
 import { usePWAUpdate } from '@/hooks/usePWAUpdate';
 import { useNetworkStatus } from '@/hooks/useNetworkStatus';
-import { useSyncStatus } from '@/hooks/useSyncStatus';
+import { useAutoSync } from '@/hooks/useAutoSync';
 import { useUnsyncedPhotos } from '@/hooks/useUnsyncedPhotos';
 
 // Error Boundary for PWA Provider
@@ -24,8 +24,6 @@ class PWAErrorBoundary extends Component<
     if (import.meta.env.DEV) {
       console.error('[PWA Provider] Error caught by boundary:', error, errorInfo);
     }
-    // In production, consider sending to error reporting service
-    // Example: sendToErrorService(error, errorInfo);
   }
 
   render() {
@@ -49,7 +47,6 @@ class PWAErrorBoundary extends Component<
         isSyncing: false,
         lastSyncTime: null,
         syncError: this.state.error?.message || 'PWA initialization failed',
-        triggerSync: async () => {},
         updateUnsyncedCount: async () => {},
         unsyncedPhotoCount: 0,
         photosByInspection: {},
@@ -87,13 +84,12 @@ export interface PWAContextType {
   downlink: number | null;
   rtt: number | null;
   
-  // Sync state
+  // Sync state (now fully automatic - no manual trigger)
   unsyncedCount: number;
   unsyncedInspections: any[];
   isSyncing: boolean;
   lastSyncTime: Date | null;
   syncError: string | null;
-  triggerSync: () => Promise<void>;
   updateUnsyncedCount: () => Promise<void>;
   
   // Photo sync state
@@ -113,15 +109,15 @@ const PWAProviderContent = ({ children }: PWAProviderProps) => {
   const { isInstallable, isInstalled, isDismissed, promptInstall, dismissPrompt } = usePWAInstall();
   const { needRefresh: needsUpdate, offlineReady, updateServiceWorker } = usePWAUpdate();
   const { isOnline, effectiveType, downlink, rtt } = useNetworkStatus();
+  
+  // Use the new automatic sync hook instead of manual sync
   const { 
     unsyncedCount,
-    unsyncedInspections,
     isSyncing, 
     lastSyncTime, 
-    syncError, 
-    triggerSync,
-    updateUnsyncedCount 
-  } = useSyncStatus();
+    updateUnsyncedCounts 
+  } = useAutoSync();
+  
   const {
     unsyncedPhotoCount,
     photosByInspection,
@@ -152,14 +148,13 @@ const PWAProviderContent = ({ children }: PWAProviderProps) => {
     downlink,
     rtt,
     
-    // Sync state
+    // Sync state (automatic - no manual trigger exposed)
     unsyncedCount,
-    unsyncedInspections,
+    unsyncedInspections: [], // Simplified - detailed list not needed for passive indicator
     isSyncing,
     lastSyncTime,
-    syncError,
-    triggerSync,
-    updateUnsyncedCount,
+    syncError: null, // Errors are handled silently in automatic sync
+    updateUnsyncedCount: updateUnsyncedCounts,
     
     // Photo sync state
     unsyncedPhotoCount,
