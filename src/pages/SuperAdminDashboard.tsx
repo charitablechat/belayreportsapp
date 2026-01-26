@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Building2, Users, FileText, Bell, AlertTriangle, UserPlus, Pencil, Trash2, ClipboardList, ArrowLeft, Merge, Clock, Calendar, Wrench, Loader2, Image, Shield, ShieldOff, GraduationCap, ClipboardCheck, Check, Cloud, CloudOff } from "lucide-react";
+import { Building2, Users, FileText, Bell, AlertTriangle, UserPlus, Pencil, Trash2, ClipboardList, ArrowLeft, Merge, Clock, Calendar, Wrench, Loader2, Image, Shield, ShieldOff, GraduationCap, ClipboardCheck, Check, Cloud, CloudOff, Settings, RotateCcw, UserCog } from "lucide-react";
 import { format } from "date-fns";
 import { useNavigate } from "react-router-dom";
 import { useState } from "react";
@@ -719,49 +719,60 @@ export default function SuperAdminDashboard() {
       {/* Tabs for different sections */}
       <Tabs defaultValue="organizations" className="space-y-4">
         <TabsList className="flex flex-col h-auto w-full items-stretch">
-          <TabsTrigger value="organizations" className="justify-between w-full">
+          <TabsTrigger value="organizations" className="justify-start gap-3 w-full">
+            <Building2 className="h-4 w-4 shrink-0" />
             <span>Organizations</span>
-            <span className="text-xs text-muted-foreground font-normal ml-4">Manage client facilities and companies</span>
+            <span className="text-xs text-muted-foreground font-normal">— Manage client facilities and companies</span>
           </TabsTrigger>
-          <TabsTrigger value="user-management" className="justify-between w-full">
+          <TabsTrigger value="user-management" className="justify-start gap-3 w-full">
+            <Users className="h-4 w-4 shrink-0" />
             <span>User Management</span>
-            <span className="text-xs text-muted-foreground font-normal ml-4">Create, edit, and manage user accounts</span>
+            <span className="text-xs text-muted-foreground font-normal">— Create, edit, and manage user accounts</span>
           </TabsTrigger>
-          <TabsTrigger value="inspections" className="justify-between w-full">
+          <TabsTrigger value="inspections" className="justify-start gap-3 w-full">
+            <ClipboardList className="h-4 w-4 shrink-0" />
             <span>Inspections</span>
-            <span className="text-xs text-muted-foreground font-normal ml-4">View and manage all inspection reports</span>
+            <span className="text-xs text-muted-foreground font-normal">— View and manage all inspection reports</span>
           </TabsTrigger>
-          <TabsTrigger value="trainings" className="justify-between w-full">
+          <TabsTrigger value="trainings" className="justify-start gap-3 w-full">
+            <GraduationCap className="h-4 w-4 shrink-0" />
             <span>Training Reports</span>
-            <span className="text-xs text-muted-foreground font-normal ml-4">View and manage training documentation</span>
+            <span className="text-xs text-muted-foreground font-normal">— View and manage training documentation</span>
           </TabsTrigger>
-          <TabsTrigger value="daily-assessments" className="justify-between w-full">
+          <TabsTrigger value="daily-assessments" className="justify-start gap-3 w-full">
+            <ClipboardCheck className="h-4 w-4 shrink-0" />
             <span>Daily Assessments</span>
-            <span className="text-xs text-muted-foreground font-normal ml-4">View daily operational assessments</span>
+            <span className="text-xs text-muted-foreground font-normal">— View daily operational assessments</span>
           </TabsTrigger>
-          <TabsTrigger value="form-cms" className="justify-between w-full">
+          <TabsTrigger value="form-cms" className="justify-start gap-3 w-full">
+            <Settings className="h-4 w-4 shrink-0" />
             <span>Form CMS</span>
-            <span className="text-xs text-muted-foreground font-normal ml-4">Customize form fields and options</span>
+            <span className="text-xs text-muted-foreground font-normal">— Customize form fields and options</span>
           </TabsTrigger>
-          <TabsTrigger value="notifications" className="justify-between w-full">
+          <TabsTrigger value="notifications" className="justify-start gap-3 w-full">
+            <Bell className="h-4 w-4 shrink-0" />
             <span>Notifications</span>
-            <span className="text-xs text-muted-foreground font-normal ml-4">View notification history and logs</span>
+            <span className="text-xs text-muted-foreground font-normal">— View notification history and logs</span>
           </TabsTrigger>
-          <TabsTrigger value="conflicts" className="justify-between w-full">
+          <TabsTrigger value="conflicts" className="justify-start gap-3 w-full">
+            <AlertTriangle className="h-4 w-4 shrink-0" />
             <span>Conflicts</span>
-            <span className="text-xs text-muted-foreground font-normal ml-4">Resolve data synchronization conflicts</span>
+            <span className="text-xs text-muted-foreground font-normal">— Resolve data synchronization conflicts</span>
           </TabsTrigger>
-          <TabsTrigger value="data-recovery" className="justify-between w-full">
+          <TabsTrigger value="data-recovery" className="justify-start gap-3 w-full">
+            <RotateCcw className="h-4 w-4 shrink-0" />
             <span>Data Recovery</span>
-            <span className="text-xs text-muted-foreground font-normal ml-4">Recover deleted or corrupted data</span>
+            <span className="text-xs text-muted-foreground font-normal">— Recover deleted or corrupted data</span>
           </TabsTrigger>
-          <TabsTrigger value="report-ownership" className="justify-between w-full">
+          <TabsTrigger value="report-ownership" className="justify-start gap-3 w-full">
+            <UserCog className="h-4 w-4 shrink-0" />
             <span>Report Ownership</span>
-            <span className="text-xs text-muted-foreground font-normal ml-4">Transfer report ownership between users</span>
+            <span className="text-xs text-muted-foreground font-normal">— Transfer report ownership between users</span>
           </TabsTrigger>
-          <TabsTrigger value="maintenance" className="justify-between w-full">
+          <TabsTrigger value="maintenance" className="justify-start gap-3 w-full">
+            <Wrench className="h-4 w-4 shrink-0" />
             <span>Maintenance</span>
-            <span className="text-xs text-muted-foreground font-normal ml-4">System maintenance and cleanup tools</span>
+            <span className="text-xs text-muted-foreground font-normal">— System maintenance and cleanup tools</span>
           </TabsTrigger>
         </TabsList>
 
