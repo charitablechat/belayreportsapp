@@ -681,15 +681,6 @@ export default function SuperAdminDashboard() {
         <AdminTabsSection />
 
         <TabsContent value="organizations" className="space-y-4">
-          <div className="flex justify-end mb-4">
-            <Button
-              variant="outline"
-              onClick={() => setIsMergeDialogOpen(true)}
-            >
-              <Merge className="h-4 w-4 mr-2" />
-              Merge Duplicates
-            </Button>
-          </div>
           <div className="rounded-md border">
             <Table>
               <TableHeader>
