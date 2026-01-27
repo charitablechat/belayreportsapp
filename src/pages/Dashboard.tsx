@@ -26,7 +26,7 @@ import { usePWAInstall } from "@/hooks/usePWAInstall";
 import { useSyncProgress } from "@/hooks/useSyncProgress";
 import { NetworkStatusIndicator } from "@/components/pwa/NetworkStatusIndicator";
 import { NetworkQualityIndicator } from "@/components/pwa/NetworkQualityIndicator";
-import { SyncStatusIndicator } from "@/components/pwa/SyncStatusIndicator";
+
 import { ManualUpdateButton } from "@/components/pwa/ManualUpdateButton";
 import { OfflineSimulator } from "@/components/dev/OfflineSimulator";
 import { PushNotificationManager } from "@/components/pwa/PushNotificationManager";
@@ -612,9 +612,6 @@ export default function Dashboard() {
             
             <div className="flex items-center gap-2">
               <NetworkQualityIndicator />
-              <SyncStatusIndicator />
-              
-              {/* Conflicts are now resolved automatically via last-write-wins */}
               
               {isSuperAdmin && (
                 <Badge variant="default" className="bg-warning text-warning-foreground border-warning/50 shadow-lg shadow-warning/20 animate-pulse hidden sm:flex items-center gap-1">

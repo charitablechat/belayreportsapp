@@ -16,7 +16,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import ropeWorksLogo from "@/assets/rope-works-logo.png";
-import { SyncStatusIndicator } from "@/components/pwa/SyncStatusIndicator";
+
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AutoSaveIndicator } from "@/components/AutoSaveIndicator";
 import { Input } from "@/components/ui/input";
@@ -942,7 +942,6 @@ export default function TrainingForm() {
                   <span className="hidden sm:inline">Offline Mode</span>
                 </Badge>
               )}
-              <SyncStatusIndicator />
               <AutoSaveIndicator
                 lastSaved={lastSaved}
                 isSaving={isSaving}
