@@ -1,6 +1,5 @@
 import { useEffect, useCallback } from 'react';
 import { onSyncComplete, isBackgroundSyncSupported, registerPeriodicSync } from '@/lib/background-sync';
-import { toast } from 'sonner';
 import { useSyncStatus } from './useSyncStatus';
 
 /**
@@ -14,20 +13,10 @@ export const useBackgroundSync = () => {
   
   const handleSyncComplete = useCallback((data: any) => {
     if (data.success) {
-      if (data.tag === 'inspection-sync') {
-        toast.success(
-          data.count > 0 
-            ? `${data.count} inspection(s) synced in background` 
-            : 'Inspections synced'
-        );
-      } else if (data.tag === 'photo-sync') {
-        toast.success(
-          data.count > 0 
-            ? `${data.count} photo(s) uploaded in background` 
-            : 'Photos synced'
-        );
+      // Silent sync - no user notifications
+      if (import.meta.env.DEV) {
+        console.log('[Background Sync] Complete:', data.tag, 'count:', data.count);
       }
-      
       // Update sync status to reflect changes
       updateUnsyncedCount();
     }

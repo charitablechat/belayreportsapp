@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Building2, Users, FileText, Bell, AlertTriangle, UserPlus, Pencil, Trash2, ClipboardList, ArrowLeft, Merge, Clock, Calendar, Wrench, Loader2, Image, Shield, ShieldOff, GraduationCap, ClipboardCheck, Check, Cloud, CloudOff, Settings, RotateCcw, UserCog } from "lucide-react";
+import { Building2, Users, FileText, Bell, UserPlus, Pencil, Trash2, ClipboardList, ArrowLeft, Merge, Clock, Calendar, Wrench, Loader2, Image, Shield, ShieldOff, GraduationCap, ClipboardCheck, Check, Settings, RotateCcw, UserCog } from "lucide-react";
 import { format } from "date-fns";
 import { useNavigate } from "react-router-dom";
 import { useState } from "react";
@@ -260,35 +260,6 @@ export default function SuperAdminDashboard() {
     enabled: !loading,
   });
 
-  // Sync conflicts query
-  const { data: conflicts } = useQuery({
-    queryKey: ["admin-conflicts"],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("sync_conflicts")
-        .select("*")
-        .order("created_at", { ascending: false });
-
-      if (error) throw error;
-
-      // Get organization names
-      const { data: orgs } = await supabase
-        .from("organizations")
-        .select("id, name");
-
-      // Combine the data
-      const combined = data?.map(conflict => {
-        const org = orgs?.find(o => o.id === conflict.organization_id);
-        return {
-          ...conflict,
-          organization_name: org?.name || "Unknown",
-        };
-      });
-
-      return combined;
-    },
-    enabled: !loading,
-  });
 
   // Push subscriptions query
   const { data: subscriptions } = useQuery({
@@ -675,19 +646,6 @@ export default function SuperAdminDashboard() {
       {/* Overview Stats - Row 3 */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         <StatCard
-          title="Unresolved Conflicts"
-          value={stats?.unresolvedConflicts || 0}
-          icon={AlertTriangle}
-          hoverContent={{
-            title: "Sync Conflicts",
-            description: "Data conflicts from offline sync that require manual resolution.",
-            details: [
-              { label: "Pending", value: stats?.unresolvedConflicts || 0 },
-            ],
-            tip: stats?.unresolvedConflicts > 0 ? "Resolve these to prevent data loss" : "No conflicts to resolve"
-          }}
-        />
-        <StatCard
           title="Avg Completion Time"
           value={avgCompletionTime ? `${avgCompletionTime.toFixed(1)}h` : "0h"}
           icon={Clock}
@@ -754,11 +712,6 @@ export default function SuperAdminDashboard() {
             <Bell className="h-4 w-4 shrink-0 text-muted-foreground transition-colors group-hover:text-primary group-data-[state=active]:text-primary" />
             <span>Notifications</span>
             <span className="text-xs text-muted-foreground font-normal">— View notification history and logs</span>
-          </TabsTrigger>
-          <TabsTrigger value="conflicts" className="justify-start gap-3 w-full group hover:bg-accent/50 data-[state=active]:bg-accent">
-            <AlertTriangle className="h-4 w-4 shrink-0 text-muted-foreground transition-colors group-hover:text-primary group-data-[state=active]:text-primary" />
-            <span>Conflicts</span>
-            <span className="text-xs text-muted-foreground font-normal">— Resolve data synchronization conflicts</span>
           </TabsTrigger>
           <TabsTrigger value="data-recovery" className="justify-start gap-3 w-full group hover:bg-accent/50 data-[state=active]:bg-accent">
             <RotateCcw className="h-4 w-4 shrink-0 text-muted-foreground transition-colors group-hover:text-primary group-data-[state=active]:text-primary" />
@@ -1002,7 +955,6 @@ export default function SuperAdminDashboard() {
                 <TableHead>Organization</TableHead>
                 <TableHead>Trainer</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead>Sync</TableHead>
                 <TableHead>Start Date</TableHead>
                 <TableHead>End Date</TableHead>
                 <TableHead>Created</TableHead>
@@ -1026,19 +978,6 @@ export default function SuperAdminDashboard() {
                       {training.status}
                     </Badge>
                   </TableCell>
-                  <TableCell>
-                    {training.synced_at ? (
-                      <Badge variant="outline" className="text-green-600 border-green-600">
-                        <Cloud className="h-3 w-3 mr-1" />
-                        Synced
-                      </Badge>
-                    ) : (
-                      <Badge variant="outline" className="text-orange-600 border-orange-600">
-                        <CloudOff className="h-3 w-3 mr-1" />
-                        Pending
-                      </Badge>
-                    )}
-                  </TableCell>
                   <TableCell>{parseLocalDate(training.start_date) ? format(parseLocalDate(training.start_date)!, "PP") : '-'}</TableCell>
                   <TableCell>{parseLocalDate(training.end_date) ? format(parseLocalDate(training.end_date)!, "PP") : '-'}</TableCell>
                   <TableCell>{format(new Date(training.created_at), "PP")}</TableCell>
@@ -1056,7 +995,6 @@ export default function SuperAdminDashboard() {
                 <TableHead>Site</TableHead>
                 <TableHead>Inspector</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead>Sync</TableHead>
                 <TableHead>Assessment Date</TableHead>
                 <TableHead>Created</TableHead>
               </TableRow>
@@ -1079,19 +1017,6 @@ export default function SuperAdminDashboard() {
                     <Badge variant={assessment.status === "completed" ? "default" : "secondary"}>
                       {assessment.status}
                     </Badge>
-                  </TableCell>
-                  <TableCell>
-                    {assessment.synced_at ? (
-                      <Badge variant="outline" className="text-green-600 border-green-600">
-                        <Cloud className="h-3 w-3 mr-1" />
-                        Synced
-                      </Badge>
-                    ) : (
-                      <Badge variant="outline" className="text-orange-600 border-orange-600">
-                        <CloudOff className="h-3 w-3 mr-1" />
-                        Pending
-                      </Badge>
-                    )}
                   </TableCell>
                   <TableCell>{parseLocalDate(assessment.assessment_date) ? format(parseLocalDate(assessment.assessment_date)!, "PP") : '-'}</TableCell>
                   <TableCell>{format(new Date(assessment.created_at), "PP")}</TableCell>
@@ -1134,34 +1059,6 @@ export default function SuperAdminDashboard() {
           </Table>
         </TabsContent>
 
-        <TabsContent value="conflicts" className="space-y-4">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Organization</TableHead>
-                <TableHead>Inspection ID</TableHead>
-                <TableHead>Local Update</TableHead>
-                <TableHead>Remote Update</TableHead>
-                <TableHead>Resolved</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {conflicts?.map((conflict) => (
-                <TableRow key={conflict.id}>
-                  <TableCell>{conflict.organization_name}</TableCell>
-                  <TableCell className="font-mono text-xs">{conflict.inspection_id.slice(0, 8)}...</TableCell>
-                  <TableCell>{format(new Date(conflict.local_updated_at), "PPp")}</TableCell>
-                  <TableCell>{format(new Date(conflict.remote_updated_at), "PPp")}</TableCell>
-                  <TableCell>
-                    <Badge variant={conflict.resolved ? "default" : "destructive"}>
-                      {conflict.resolved ? "Yes" : "No"}
-                    </Badge>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TabsContent>
 
         <TabsContent value="subscriptions" className="space-y-4">
           <Table>
