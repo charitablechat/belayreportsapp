@@ -144,6 +144,20 @@ serve(async (req) => {
     const header = () => createPageHeader(ropeWorksLogo, acctLogo);
     const footer = (pageNum: number) => createPageFooter(pageNum, footerDisclaimerText);
 
+    // Terminal-style section comments renderer
+    const renderSectionComments = (comments: string | null, title: string) => {
+      if (!comments || comments.trim() === '') return '';
+      return `
+        <div class="section-notes">
+          <div class="notes-header">
+            <span class="notes-icon">▶</span>
+            <span class="notes-title">${title}</span>
+          </div>
+          <pre class="notes-content">${comments.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>
+        </div>
+      `;
+    };
+
     const html = `
 <!DOCTYPE html>
 <html lang="en">
@@ -152,6 +166,9 @@ serve(async (req) => {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Daily Course Assessment - ${assessment.site}</title>
   <style>
+    /* Google Fonts - Monospace for terminal aesthetic */
+    @import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&display=swap');
+    
     /* 
      * FIX: Content Clipping Prevention
      * --------------------------------
@@ -452,6 +469,49 @@ serve(async (req) => {
       line-height: 1.5;
     }
 
+    /* Terminal-style section notes */
+    .section-notes {
+      background: #0f172a;
+      border-radius: 6px;
+      padding: 12px;
+      margin-top: 16px;
+      border: 1px solid #334155;
+      font-family: 'Fira Code', 'Monaco', 'Consolas', monospace;
+    }
+
+    .notes-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+
+    .notes-icon {
+      color: #22d3ee;
+      font-size: 12px;
+    }
+
+    .notes-title {
+      color: #94a3b8;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      font-weight: 500;
+    }
+
+    .notes-content {
+      color: #e2e8f0;
+      font-size: 12px;
+      line-height: 1.6;
+      margin: 0;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      padding: 8px;
+      background: #1e293b;
+      border-radius: 4px;
+      border-left: 3px solid #22d3ee;
+    }
+
     /* 
      * PRINT STYLES - Content Flow Fix
      * --------------------------------
@@ -707,6 +767,7 @@ serve(async (req) => {
             </div>
           `).join('')}
         </div>
+        ${renderSectionComments(assessment.systems_comments, 'Systems Notes')}
       </div>
       ` : ''}
 
@@ -726,19 +787,21 @@ serve(async (req) => {
 
   <!-- Page 3: Equipment + Structure Inspections -->
   <div class="page">
-    ${header()}
+    \${header()}
     <div class="page-content">
-      ${renderChecklistItems(equipmentChecks, 'Equipment Inspection')}
-      ${renderChecklistItems(structureChecks, 'Structure Inspection')}
+      \${renderChecklistItems(equipmentChecks, 'Equipment Inspection')}
+      \${renderChecklistItems(structureChecks, 'Structure Inspection')}
+      \${renderSectionComments(assessment.structure_comments, 'Structure Notes')}
     </div>
-    ${footer(3)}
+    \${footer(3)}
   </div>
 
   <!-- Page 4: Environment + Disclaimer -->
   <div class="page">
-    ${header()}
+    \${header()}
     <div class="page-content">
-      ${renderChecklistItems(environmentChecks, 'Environment Inspection')}
+      \${renderChecklistItems(environmentChecks, 'Environment Inspection')}
+      \${renderSectionComments(assessment.environment_comments, 'Environment Notes')}
 
       <div class="disclaimer">
         <div class="disclaimer-title">DISCLAIMER</div>

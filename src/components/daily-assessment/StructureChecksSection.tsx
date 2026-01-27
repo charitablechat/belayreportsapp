@@ -2,6 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { triggerHaptic } from "@/lib/haptics";
+import { SectionComments } from "./SectionComments";
 
 const STRUCTURE_ITEMS = [
   { key: 'wood_poles', label: 'Wood poles plumb and free of damage (woodpecker holes)' },
@@ -16,9 +17,11 @@ const STRUCTURE_ITEMS = [
 interface StructureChecksSectionProps {
   checks: any[];
   onUpdate: (checks: any[]) => void;
+  sectionComments: string;
+  onSectionCommentsChange: (value: string) => void;
 }
 
-export default function StructureChecksSection({ checks, onUpdate }: StructureChecksSectionProps) {
+export default function StructureChecksSection({ checks, onUpdate, sectionComments, onSectionCommentsChange }: StructureChecksSectionProps) {
   const handleToggle = (itemKey: string) => {
     triggerHaptic('light');
     const existingCheck = checks.find(c => c.item_key === itemKey);
@@ -61,6 +64,13 @@ export default function StructureChecksSection({ checks, onUpdate }: StructureCh
             </div>
           );
         })}
+        
+        <SectionComments
+          value={sectionComments}
+          onChange={onSectionCommentsChange}
+          placeholder="Add notes about structural observations, damage, or maintenance needs..."
+          label="Structure Notes"
+        />
       </CardContent>
     </Card>
   );

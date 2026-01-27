@@ -16,6 +16,10 @@ export const dailyAssessmentSchema = z.object({
   updated_at: z.string(),
   synced_at: z.string().optional().nullable(),
   last_opened_at: z.string().optional().nullable(),
+  // Section comments fields
+  environment_comments: z.string().max(5000).optional().nullable(),
+  structure_comments: z.string().max(5000).optional().nullable(),
+  systems_comments: z.string().max(5000).optional().nullable(),
 });
 
 // Beginning of day validation schema
