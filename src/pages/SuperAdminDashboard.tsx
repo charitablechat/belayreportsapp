@@ -678,55 +678,55 @@ export default function SuperAdminDashboard() {
       {/* Tabs for different sections */}
       <Tabs defaultValue="organizations" className="space-y-4">
         <TabsList className="flex flex-col h-auto w-full items-stretch">
-          <TabsTrigger value="organizations" className="justify-start gap-3 w-full group hover:bg-accent/50 data-[state=active]:bg-accent">
+          <TabsTrigger value="organizations" className="justify-start gap-3 w-full overflow-hidden group hover:bg-accent/50 data-[state=active]:bg-accent">
             <Building2 className="h-4 w-4 shrink-0 text-muted-foreground transition-colors group-hover:text-primary group-data-[state=active]:text-primary" />
-            <span>Organizations</span>
-            <span className="text-xs text-muted-foreground font-normal">— Manage client facilities and companies</span>
+            <span className="shrink-0">Organizations</span>
+            <span className="text-xs text-muted-foreground font-normal truncate">— Manage client facilities and companies</span>
           </TabsTrigger>
-          <TabsTrigger value="user-management" className="justify-start gap-3 w-full group hover:bg-accent/50 data-[state=active]:bg-accent">
+          <TabsTrigger value="user-management" className="justify-start gap-3 w-full overflow-hidden group hover:bg-accent/50 data-[state=active]:bg-accent">
             <Users className="h-4 w-4 shrink-0 text-muted-foreground transition-colors group-hover:text-primary group-data-[state=active]:text-primary" />
-            <span>User Management</span>
-            <span className="text-xs text-muted-foreground font-normal">— Create, edit, and manage user accounts</span>
+            <span className="shrink-0">User Management</span>
+            <span className="text-xs text-muted-foreground font-normal truncate">— Create, edit, and manage user accounts</span>
           </TabsTrigger>
-          <TabsTrigger value="inspections" className="justify-start gap-3 w-full group hover:bg-accent/50 data-[state=active]:bg-accent">
+          <TabsTrigger value="inspections" className="justify-start gap-3 w-full overflow-hidden group hover:bg-accent/50 data-[state=active]:bg-accent">
             <ClipboardList className="h-4 w-4 shrink-0 text-muted-foreground transition-colors group-hover:text-primary group-data-[state=active]:text-primary" />
-            <span>Inspections</span>
-            <span className="text-xs text-muted-foreground font-normal">— View and manage all inspection reports</span>
+            <span className="shrink-0">Inspections</span>
+            <span className="text-xs text-muted-foreground font-normal truncate">— View and manage all inspection reports</span>
           </TabsTrigger>
-          <TabsTrigger value="trainings" className="justify-start gap-3 w-full group hover:bg-accent/50 data-[state=active]:bg-accent">
+          <TabsTrigger value="trainings" className="justify-start gap-3 w-full overflow-hidden group hover:bg-accent/50 data-[state=active]:bg-accent">
             <GraduationCap className="h-4 w-4 shrink-0 text-muted-foreground transition-colors group-hover:text-primary group-data-[state=active]:text-primary" />
-            <span>Training Reports</span>
-            <span className="text-xs text-muted-foreground font-normal">— View and manage training documentation</span>
+            <span className="shrink-0">Training Reports</span>
+            <span className="text-xs text-muted-foreground font-normal truncate">— View and manage training documentation</span>
           </TabsTrigger>
-          <TabsTrigger value="daily-assessments" className="justify-start gap-3 w-full group hover:bg-accent/50 data-[state=active]:bg-accent">
+          <TabsTrigger value="daily-assessments" className="justify-start gap-3 w-full overflow-hidden group hover:bg-accent/50 data-[state=active]:bg-accent">
             <ClipboardCheck className="h-4 w-4 shrink-0 text-muted-foreground transition-colors group-hover:text-primary group-data-[state=active]:text-primary" />
-            <span>Daily Assessments</span>
-            <span className="text-xs text-muted-foreground font-normal">— View daily operational assessments</span>
+            <span className="shrink-0">Daily Assessments</span>
+            <span className="text-xs text-muted-foreground font-normal truncate">— View daily operational assessments</span>
           </TabsTrigger>
-          <TabsTrigger value="form-cms" className="justify-start gap-3 w-full group hover:bg-accent/50 data-[state=active]:bg-accent">
+          <TabsTrigger value="form-cms" className="justify-start gap-3 w-full overflow-hidden group hover:bg-accent/50 data-[state=active]:bg-accent">
             <Settings className="h-4 w-4 shrink-0 text-muted-foreground transition-colors group-hover:text-primary group-data-[state=active]:text-primary" />
-            <span>Form CMS</span>
-            <span className="text-xs text-muted-foreground font-normal">— Customize form fields and options</span>
+            <span className="shrink-0">Form CMS</span>
+            <span className="text-xs text-muted-foreground font-normal truncate">— Customize form fields and options</span>
           </TabsTrigger>
-          <TabsTrigger value="notifications" className="justify-start gap-3 w-full group hover:bg-accent/50 data-[state=active]:bg-accent">
+          <TabsTrigger value="notifications" className="justify-start gap-3 w-full overflow-hidden group hover:bg-accent/50 data-[state=active]:bg-accent">
             <Bell className="h-4 w-4 shrink-0 text-muted-foreground transition-colors group-hover:text-primary group-data-[state=active]:text-primary" />
-            <span>Notifications</span>
-            <span className="text-xs text-muted-foreground font-normal">— View notification history and logs</span>
+            <span className="shrink-0">Notifications</span>
+            <span className="text-xs text-muted-foreground font-normal truncate">— View notification history and logs</span>
           </TabsTrigger>
-          <TabsTrigger value="data-recovery" className="justify-start gap-3 w-full group hover:bg-accent/50 data-[state=active]:bg-accent">
+          <TabsTrigger value="data-recovery" className="justify-start gap-3 w-full overflow-hidden group hover:bg-accent/50 data-[state=active]:bg-accent">
             <RotateCcw className="h-4 w-4 shrink-0 text-muted-foreground transition-colors group-hover:text-primary group-data-[state=active]:text-primary" />
-            <span>Data Recovery</span>
-            <span className="text-xs text-muted-foreground font-normal">— Recover deleted or corrupted data</span>
+            <span className="shrink-0">Data Recovery</span>
+            <span className="text-xs text-muted-foreground font-normal truncate">— Recover deleted or corrupted data</span>
           </TabsTrigger>
-          <TabsTrigger value="report-ownership" className="justify-start gap-3 w-full group hover:bg-accent/50 data-[state=active]:bg-accent">
+          <TabsTrigger value="report-ownership" className="justify-start gap-3 w-full overflow-hidden group hover:bg-accent/50 data-[state=active]:bg-accent">
             <UserCog className="h-4 w-4 shrink-0 text-muted-foreground transition-colors group-hover:text-primary group-data-[state=active]:text-primary" />
-            <span>Report Ownership</span>
-            <span className="text-xs text-muted-foreground font-normal">— Transfer report ownership between users</span>
+            <span className="shrink-0">Report Ownership</span>
+            <span className="text-xs text-muted-foreground font-normal truncate">— Transfer report ownership between users</span>
           </TabsTrigger>
-          <TabsTrigger value="maintenance" className="justify-start gap-3 w-full group hover:bg-accent/50 data-[state=active]:bg-accent">
+          <TabsTrigger value="maintenance" className="justify-start gap-3 w-full overflow-hidden group hover:bg-accent/50 data-[state=active]:bg-accent">
             <Wrench className="h-4 w-4 shrink-0 text-muted-foreground transition-colors group-hover:text-primary group-data-[state=active]:text-primary" />
-            <span>Maintenance</span>
-            <span className="text-xs text-muted-foreground font-normal">— System maintenance and cleanup tools</span>
+            <span className="shrink-0">Maintenance</span>
+            <span className="text-xs text-muted-foreground font-normal truncate">— System maintenance and cleanup tools</span>
           </TabsTrigger>
         </TabsList>
 
