@@ -1108,7 +1108,9 @@ export default function DailyAssessmentForm() {
           <TabsContent value="systems" className="space-y-4 mt-4">
             <OperatingSystemsSection 
               systems={operatingSystems} 
-              onUpdate={handleOperatingSystemsUpdate} 
+              onUpdate={handleOperatingSystemsUpdate}
+              sectionComments={assessment?.systems_comments || ''}
+              onSectionCommentsChange={(value) => handleUpdateAssessment('systems_comments', value)}
             />
           </TabsContent>
 
@@ -1122,14 +1124,18 @@ export default function DailyAssessmentForm() {
           <TabsContent value="structure" className="space-y-4 mt-4">
             <StructureChecksSection 
               checks={structureChecks} 
-              onUpdate={handleStructureChecksUpdate} 
+              onUpdate={handleStructureChecksUpdate}
+              sectionComments={assessment?.structure_comments || ''}
+              onSectionCommentsChange={(value) => handleUpdateAssessment('structure_comments', value)}
             />
           </TabsContent>
 
           <TabsContent value="environment" className="space-y-4 mt-4">
             <EnvironmentChecksSection 
               checks={environmentChecks} 
-              onUpdate={handleEnvironmentChecksUpdate} 
+              onUpdate={handleEnvironmentChecksUpdate}
+              sectionComments={assessment?.environment_comments || ''}
+              onSectionCommentsChange={(value) => handleUpdateAssessment('environment_comments', value)}
             />
           </TabsContent>
         </Tabs>

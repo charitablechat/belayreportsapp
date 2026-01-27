@@ -2,6 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { triggerHaptic } from "@/lib/haptics";
+import { SectionComments } from "./SectionComments";
 
 const ENVIRONMENT_ITEMS = [
   { key: 'weather_conditions', label: 'Weather conditions appropriate and in line with Rope Works policy' },
@@ -12,9 +13,11 @@ const ENVIRONMENT_ITEMS = [
 interface EnvironmentChecksSectionProps {
   checks: any[];
   onUpdate: (checks: any[]) => void;
+  sectionComments: string;
+  onSectionCommentsChange: (value: string) => void;
 }
 
-export default function EnvironmentChecksSection({ checks, onUpdate }: EnvironmentChecksSectionProps) {
+export default function EnvironmentChecksSection({ checks, onUpdate, sectionComments, onSectionCommentsChange }: EnvironmentChecksSectionProps) {
   const handleToggle = (itemKey: string) => {
     triggerHaptic('light');
     const existingCheck = checks.find(c => c.item_key === itemKey);
@@ -57,6 +60,13 @@ export default function EnvironmentChecksSection({ checks, onUpdate }: Environme
             </div>
           );
         })}
+        
+        <SectionComments
+          value={sectionComments}
+          onChange={onSectionCommentsChange}
+          placeholder="Add notes about environmental conditions, weather concerns, or other observations..."
+          label="Environment Notes"
+        />
       </CardContent>
     </Card>
   );

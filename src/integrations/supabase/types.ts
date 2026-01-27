@@ -293,6 +293,7 @@ export type Database = {
           created_at: string
           deleted_at: string | null
           deleted_by: string | null
+          environment_comments: string | null
           id: string
           inspector_id: string
           last_opened_at: string | null
@@ -306,7 +307,9 @@ export type Database = {
           retention_until: string | null
           site: string
           status: string
+          structure_comments: string | null
           synced_at: string | null
+          systems_comments: string | null
           trainer_of_record: string | null
           updated_at: string
         }
@@ -315,6 +318,7 @@ export type Database = {
           created_at?: string
           deleted_at?: string | null
           deleted_by?: string | null
+          environment_comments?: string | null
           id?: string
           inspector_id: string
           last_opened_at?: string | null
@@ -328,7 +332,9 @@ export type Database = {
           retention_until?: string | null
           site?: string
           status?: string
+          structure_comments?: string | null
           synced_at?: string | null
+          systems_comments?: string | null
           trainer_of_record?: string | null
           updated_at?: string
         }
@@ -337,6 +343,7 @@ export type Database = {
           created_at?: string
           deleted_at?: string | null
           deleted_by?: string | null
+          environment_comments?: string | null
           id?: string
           inspector_id?: string
           last_opened_at?: string | null
@@ -350,7 +357,9 @@ export type Database = {
           retention_until?: string | null
           site?: string
           status?: string
+          structure_comments?: string | null
           synced_at?: string | null
+          systems_comments?: string | null
           trainer_of_record?: string | null
           updated_at?: string
         }

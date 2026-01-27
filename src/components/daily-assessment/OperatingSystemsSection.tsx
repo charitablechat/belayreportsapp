@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Plus, X } from "lucide-react";
 import { triggerHaptic } from "@/lib/haptics";
+import { SectionComments } from "./SectionComments";
 
 const OPERATING_SYSTEMS = [
   "Spotted/Spotting",
@@ -21,9 +22,11 @@ const OPERATING_SYSTEMS = [
 interface OperatingSystemsSectionProps {
   systems: any[];
   onUpdate: (systems: any[]) => void;
+  sectionComments: string;
+  onSectionCommentsChange: (value: string) => void;
 }
 
-export default function OperatingSystemsSection({ systems, onUpdate }: OperatingSystemsSectionProps) {
+export default function OperatingSystemsSection({ systems, onUpdate, sectionComments, onSectionCommentsChange }: OperatingSystemsSectionProps) {
   const handleToggle = (systemName: string) => {
     triggerHaptic('light');
     const exists = systems.some(s => s.system_name === systemName);
@@ -128,6 +131,13 @@ export default function OperatingSystemsSection({ systems, onUpdate }: Operating
             Add Custom Operating System
           </Button>
         </div>
+        
+        <SectionComments
+          value={sectionComments}
+          onChange={onSectionCommentsChange}
+          placeholder="Add notes about operating systems, specific configurations, or special considerations..."
+          label="Systems Notes"
+        />
       </CardContent>
     </Card>
   );
