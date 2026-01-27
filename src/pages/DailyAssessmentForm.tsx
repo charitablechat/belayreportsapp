@@ -28,7 +28,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import ropeWorksLogo from "@/assets/rope-works-logo.png";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
-import { SyncStatusIndicator } from "@/components/pwa/SyncStatusIndicator";
+
 import DailyAssessmentHeader from "@/components/daily-assessment/DailyAssessmentHeader";
 import BeginningOfDaySection from "@/components/daily-assessment/BeginningOfDaySection";
 import EndOfDaySection from "@/components/daily-assessment/EndOfDaySection";
@@ -987,7 +987,6 @@ export default function DailyAssessmentForm() {
                   <span className="hidden sm:inline">Offline Mode</span>
                 </Badge>
               )}
-              <SyncStatusIndicator />
               <AutoSaveIndicator
                 lastSaved={lastSaved}
                 isSaving={saving}

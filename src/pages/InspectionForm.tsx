@@ -37,7 +37,7 @@ import {
 import { validateInspectionPackage } from "@/lib/validation-schemas";
 import { cn } from "@/lib/utils";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
-import { SyncStatusIndicator } from "@/components/pwa/SyncStatusIndicator";
+
 import { usePWA } from "@/hooks/usePWA";
 import { convertCircleBulletsToHtml } from "@/lib/bullet-converter";
 import { getUserWithCache } from "@/lib/cached-auth";
@@ -1688,7 +1688,6 @@ export default function InspectionForm() {
                   <span className="hidden sm:inline">Retry Save</span>
                 </Button>
               )}
-              <SyncStatusIndicator />
               <AutoSaveIndicator
                 lastSaved={lastSaved}
                 isSaving={autoSaving}
