@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Check, ChevronsUpDown, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -16,6 +16,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { supabase } from "@/integrations/supabase/client";
 
 interface HistoryAutocompleteProps {
   value: string;
@@ -24,6 +25,10 @@ interface HistoryAutocompleteProps {
   storageKey: string;
   placeholder?: string;
   className?: string;
+  /** Enable syncing to global database for cross-report memory */
+  syncToDatabase?: boolean;
+  /** Field type for database storage (e.g., 'equipment_type', 'zipline_name') */
+  fieldType?: string;
 }
 
 export default function HistoryAutocomplete({
@@ -33,10 +38,14 @@ export default function HistoryAutocomplete({
   storageKey,
   placeholder = "Select or type...",
   className,
+  syncToDatabase = false,
+  fieldType,
 }: HistoryAutocompleteProps) {
   const [open, setOpen] = useState(false);
   const [historyOptions, setHistoryOptions] = useState<string[]>([]);
   const [inputValue, setInputValue] = useState("");
+  const hasFetchedFromDb = useRef(false);
+  const lastSavedValue = useRef<string | null>(null);
 
   // Load history from localStorage on mount
   useEffect(() => {
@@ -55,6 +64,52 @@ export default function HistoryAutocomplete({
     
     loadHistory();
   }, [storageKey]);
+
+  // Fetch global history from database on mount
+  useEffect(() => {
+    if (!syncToDatabase || !fieldType || hasFetchedFromDb.current) return;
+    
+    const fetchGlobalHistory = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('global_field_history')
+          .select('value')
+          .eq('field_type', fieldType)
+          .order('usage_count', { ascending: false })
+          .limit(200);
+        
+        if (error) {
+          console.error('Failed to fetch global history:', error);
+          return;
+        }
+        
+        if (data && data.length > 0) {
+          const globalValues = data.map(d => d.value);
+          
+          // Merge with localStorage, deduplicate (case-insensitive)
+          setHistoryOptions(prev => {
+            const combined = [...prev, ...globalValues];
+            const uniqueMap = new Map<string, string>();
+            combined.forEach(val => {
+              const key = val.toLowerCase();
+              if (!uniqueMap.has(key)) {
+                uniqueMap.set(key, val);
+              }
+            });
+            return Array.from(uniqueMap.values()).sort((a, b) => 
+              a.toLowerCase().localeCompare(b.toLowerCase())
+            );
+          });
+        }
+        
+        hasFetchedFromDb.current = true;
+      } catch (err) {
+        console.error('Error fetching global history:', err);
+      }
+    };
+    
+    fetchGlobalHistory();
+  }, [syncToDatabase, fieldType]);
 
   // Listen for storage changes (cross-tab sync)
   useEffect(() => {
@@ -108,8 +163,31 @@ export default function HistoryAutocomplete({
           detail: { storageKey, options: updated } 
         }));
       }
+      
+      // Sync to database if enabled (only once per unique value)
+      if (syncToDatabase && fieldType && trimmed !== lastSavedValue.current) {
+        lastSavedValue.current = trimmed;
+        
+        // Fire and forget - don't block UI
+        supabase
+          .from('global_field_history')
+          .upsert({
+            field_type: fieldType,
+            value: trimmed,
+            usage_count: 1,
+            last_used_at: new Date().toISOString()
+          }, { 
+            onConflict: 'field_type,value',
+            ignoreDuplicates: false 
+          })
+          .then(({ error }) => {
+            if (error) {
+              console.error('Failed to save to global history:', error);
+            }
+          });
+      }
     }
-  }, [value, historyOptions, storageKey]);
+  }, [value, historyOptions, storageKey, syncToDatabase, fieldType]);
 
   // Sorted options for display
   const sortedOptions = [...historyOptions].sort((a, b) =>
@@ -145,6 +223,8 @@ export default function HistoryAutocomplete({
     window.dispatchEvent(new CustomEvent('history-update', { 
       detail: { storageKey, options: updated } 
     }));
+    
+    // Note: We don't delete from the global database - shared history persists
   };
 
   const handleOpenChange = (isOpen: boolean) => {
@@ -154,7 +234,19 @@ export default function HistoryAutocomplete({
       if (saved) {
         try {
           const parsed = JSON.parse(saved);
-          setHistoryOptions(Array.isArray(parsed) ? parsed : []);
+          setHistoryOptions(prev => {
+            const combined = [...prev, ...(Array.isArray(parsed) ? parsed : [])];
+            const uniqueMap = new Map<string, string>();
+            combined.forEach(val => {
+              const key = val.toLowerCase();
+              if (!uniqueMap.has(key)) {
+                uniqueMap.set(key, val);
+              }
+            });
+            return Array.from(uniqueMap.values()).sort((a, b) => 
+              a.toLowerCase().localeCompare(b.toLowerCase())
+            );
+          });
         } catch (e) {
           console.error("Failed to load history", e);
         }

@@ -561,6 +561,33 @@ export type Database = {
         }
         Relationships: []
       }
+      global_field_history: {
+        Row: {
+          created_at: string | null
+          field_type: string
+          id: string
+          last_used_at: string | null
+          usage_count: number | null
+          value: string
+        }
+        Insert: {
+          created_at?: string | null
+          field_type: string
+          id?: string
+          last_used_at?: string | null
+          usage_count?: number | null
+          value: string
+        }
+        Update: {
+          created_at?: string | null
+          field_type?: string
+          id?: string
+          last_used_at?: string | null
+          usage_count?: number | null
+          value?: string
+        }
+        Relationships: []
+      }
       inspection_equipment: {
         Row: {
           comments: string | null

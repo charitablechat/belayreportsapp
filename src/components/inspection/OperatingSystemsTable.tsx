@@ -74,6 +74,8 @@ export default function OperatingSystemsTable({ systems, onUpdate, onImmediateSa
                       onChange={(value) => updateSystem(index, "name", value)}
                       onBlur={onImmediateSave}
                       storageKey="rope-works-operating-system-names"
+                      syncToDatabase={true}
+                      fieldType="operating_system_element"
                       placeholder="Enter or select name"
                       className="border-0 bg-transparent"
                     />
@@ -134,6 +136,8 @@ export default function OperatingSystemsTable({ systems, onUpdate, onImmediateSa
                     onChange={(value) => updateSystem(index, "name", value)}
                     onBlur={onImmediateSave}
                     storageKey="rope-works-operating-system-names"
+                    syncToDatabase={true}
+                    fieldType="operating_system_element"
                     placeholder="Enter or select name"
                   />
                 </div>

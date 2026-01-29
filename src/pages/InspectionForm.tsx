@@ -101,12 +101,12 @@ export default function InspectionForm() {
   const [ziplines, setZiplines] = useState<any[]>([]);
   const [equipment, setEquipment] = useState<any[]>([]);
   const [standards, setStandards] = useState<any[]>([
-    { id: crypto.randomUUID(), standard_name: "Local Written Operations Procedures", has_documentation: false },
-    { id: crypto.randomUUID(), standard_name: "Local Written Emergency Action Plan", has_documentation: false },
-    { id: crypto.randomUUID(), standard_name: "Minimum Annual Training", has_documentation: false },
-    { id: crypto.randomUUID(), standard_name: "Written Pre-Use Inspection in Use", has_documentation: false },
-    { id: crypto.randomUUID(), standard_name: "Inventory Tracking System in Use", has_documentation: false },
-    { id: crypto.randomUUID(), standard_name: "Operational Review Every 5 Years", has_documentation: false },
+    { id: crypto.randomUUID(), standard_name: "Local Written Operations Procedures", has_documentation: null },
+    { id: crypto.randomUUID(), standard_name: "Local Written Emergency Action Plan", has_documentation: null },
+    { id: crypto.randomUUID(), standard_name: "Minimum Annual Training", has_documentation: null },
+    { id: crypto.randomUUID(), standard_name: "Written Pre-Use Inspection in Use", has_documentation: null },
+    { id: crypto.randomUUID(), standard_name: "Inventory Tracking System in Use", has_documentation: null },
+    { id: crypto.randomUUID(), standard_name: "Operational Review Every 5 Years", has_documentation: null },
   ]);
   const [summary, setSummary] = useState({
     id: '',

@@ -19,7 +19,7 @@ const STANDARDS_LIST = [
 ];
 
 export default function StandardsTable({ standards, onUpdate }: StandardsTableProps) {
-  const updateStandard = (index: number, has_documentation: boolean) => {
+  const updateStandard = (index: number, has_documentation: boolean | null) => {
     triggerHaptic('light');
     const updated = [...standards];
     const inspectionId = window.location.pathname.split('/').pop();
@@ -31,6 +31,16 @@ export default function StandardsTable({ standards, onUpdate }: StandardsTablePr
       has_documentation 
     };
     onUpdate(updated);
+  };
+
+  // Handle YES checkbox: toggle between true and null
+  const handleYesChange = (index: number, checked: boolean) => {
+    updateStandard(index, checked ? true : null);
+  };
+
+  // Handle NO checkbox: toggle between false and null
+  const handleNoChange = (index: number, checked: boolean) => {
+    updateStandard(index, checked ? false : null);
   };
 
   return (
@@ -62,7 +72,7 @@ export default function StandardsTable({ standards, onUpdate }: StandardsTablePr
             </thead>
             <tbody>
               {STANDARDS_LIST.map((standard, index) => {
-                const standardData = standards[index] || { has_documentation: false };
+                const standardData = standards[index] || { has_documentation: null };
                 return (
                   <tr key={index} className="hover:bg-muted/50">
                     <td className="border p-3">
@@ -74,13 +84,14 @@ export default function StandardsTable({ standards, onUpdate }: StandardsTablePr
                     <td className="border p-3 text-center">
                       <Checkbox
                         checked={standardData.has_documentation === true}
-                        onCheckedChange={(checked) => updateStandard(index, checked as boolean)}
+                        onCheckedChange={(checked) => handleYesChange(index, checked as boolean)}
                       />
                     </td>
                     <td className="border p-3 text-center">
-                      <span className="text-sm font-medium">
-                        {standardData.has_documentation ? "" : "✓"}
-                      </span>
+                      <Checkbox
+                        checked={standardData.has_documentation === false}
+                        onCheckedChange={(checked) => handleNoChange(index, checked as boolean)}
+                      />
                     </td>
                   </tr>
                 );
@@ -92,7 +103,7 @@ export default function StandardsTable({ standards, onUpdate }: StandardsTablePr
         {/* Mobile card view */}
         <div className="md:hidden space-y-4">
           {STANDARDS_LIST.map((standard, index) => {
-            const standardData = standards[index] || { has_documentation: false };
+            const standardData = standards[index] || { has_documentation: null };
             return (
               <Card key={index} className="p-4">
                 <div className="space-y-3">
@@ -102,18 +113,33 @@ export default function StandardsTable({ standards, onUpdate }: StandardsTablePr
                   </div>
                   
                   <div className="flex items-center justify-between pt-2">
-                    <div className="flex items-center gap-2">
-                      <Checkbox
-                        id={`standard-${index}`}
-                        checked={standardData.has_documentation === true}
-                        onCheckedChange={(checked) => updateStandard(index, checked as boolean)}
-                      />
-                      <Label htmlFor={`standard-${index}`} className="text-sm cursor-pointer">
-                        Documentation available
-                      </Label>
+                    <div className="flex items-center gap-4">
+                      <div className="flex items-center gap-2">
+                        <Checkbox
+                          id={`standard-yes-${index}`}
+                          checked={standardData.has_documentation === true}
+                          onCheckedChange={(checked) => handleYesChange(index, checked as boolean)}
+                        />
+                        <Label htmlFor={`standard-yes-${index}`} className="text-sm cursor-pointer">
+                          Yes
+                        </Label>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Checkbox
+                          id={`standard-no-${index}`}
+                          checked={standardData.has_documentation === false}
+                          onCheckedChange={(checked) => handleNoChange(index, checked as boolean)}
+                        />
+                        <Label htmlFor={`standard-no-${index}`} className="text-sm cursor-pointer">
+                          No
+                        </Label>
+                      </div>
                     </div>
-                    {!standardData.has_documentation && (
+                    {standardData.has_documentation === false && (
                       <Badge variant="destructive" className="text-xs">Missing</Badge>
+                    )}
+                    {standardData.has_documentation === null && (
+                      <Badge variant="outline" className="text-xs">Not Set</Badge>
                     )}
                   </div>
                 </div>

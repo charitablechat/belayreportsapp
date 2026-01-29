@@ -212,6 +212,24 @@ function renderBulletList(items: string[], fallbackHtml: string): string {
   return fallbackHtml;
 }
 
+// Helper to format comments as bullet points for table cells
+function formatCommentsAsBullets(comments: string | null | undefined): string {
+  if (!comments || comments === "—" || comments.trim() === "") return "—";
+  
+  const items = parseTextToList(comments);
+  if (items.length === 0) return "—";
+  
+  if (items.length === 1) {
+    // Single line - return as-is
+    return items[0];
+  }
+  
+  // Multiple lines - render as bullet list
+  return `<ul class="comment-bullets" style="list-style: disc; padding-left: 16px; margin: 0;">
+    ${items.map(item => `<li style="padding: 2px 0; line-height: 1.4;">${item}</li>`).join('')}
+  </ul>`;
+}
+
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -1743,12 +1761,13 @@ serve(async (req) => {
           ${systems
             .map((sys) => {
               const resultData = formatResultCheckbox(sys.result);
+              const formattedComments = formatCommentsAsBullets(sys.comments);
               return `
               <tr>
                 <td><strong>${sys.system_name}</strong></td>
                 <td>${sys.name || "N/A"}</td>
                 <td style="${resultData.cellStyle}">${resultData.html}</td>
-                <td style="font-size: 9pt;">${sys.comments || "—"}</td>
+                <td style="font-size: 9pt;">${formattedComments}</td>
               </tr>
             `;
             })
@@ -1793,6 +1812,7 @@ serve(async (req) => {
                 const cableResultData = formatResultCheckbox(zip.cable_result || "Pass");
                 const brakingResultData = formatResultCheckbox(zip.braking_result || "Pass");
                 const eadResultData = formatResultCheckbox(zip.ead_result || "Pass");
+                const formattedComments = formatCommentsAsBullets(zip.comments);
                 return `
                 <tr>
                   <td><strong>${zip.zipline_name}</strong></td>
@@ -1803,7 +1823,7 @@ serve(async (req) => {
                   <td style="${brakingResultData.cellStyle}">${brakingResultData.html}</td>
                   <td style="text-align: center;">${zip.ead_system || "N/A"}</td>
                   <td style="${eadResultData.cellStyle}">${eadResultData.html}</td>
-                  <td style="font-size: 9pt;">${zip.comments || "—"}</td>
+                  <td style="font-size: 9pt;">${formattedComments}</td>
                 </tr>
               `;
               })
@@ -1862,12 +1882,13 @@ serve(async (req) => {
           ${systems
             .map((sys) => {
               const resultData = formatResultCheckbox(sys.result);
+              const formattedComments = formatCommentsAsBullets(sys.comments);
               return `
               <tr>
                 <td><strong>${sys.system_name}</strong></td>
                 <td>${sys.name || "N/A"}</td>
                 <td style="${resultData.cellStyle}">${resultData.html}</td>
-                <td style="font-size: 9pt;">${sys.comments || "—"}</td>
+                <td style="font-size: 9pt;">${formattedComments}</td>
               </tr>
             `;
             })
@@ -1939,6 +1960,7 @@ serve(async (req) => {
               const cableResultData = formatResultCheckbox(zip.cable_result || "Pass");
               const brakingResultData = formatResultCheckbox(zip.braking_result || "Pass");
               const eadResultData = formatResultCheckbox(zip.ead_result || "Pass");
+              const formattedComments = formatCommentsAsBullets(zip.comments);
               return `
               <tr>
                 <td><strong>${zip.zipline_name}</strong></td>
@@ -1949,7 +1971,7 @@ serve(async (req) => {
                 <td style="${brakingResultData.cellStyle}">${brakingResultData.html}</td>
                 <td style="text-align: center;">${zip.ead_system || "N/A"}</td>
                 <td style="${eadResultData.cellStyle}">${eadResultData.html}</td>
-                <td style="font-size: 9pt;">${zip.comments || "—"}</td>
+                <td style="font-size: 9pt;">${formattedComments}</td>
               </tr>
             `;
             })
@@ -2036,13 +2058,14 @@ serve(async (req) => {
                 ${categoryEquipment
                   .map((eq) => {
                     const resultData = formatResultCheckbox(eq.result);
+                    const formattedComments = formatCommentsAsBullets(eq.comments);
                     return `
                     <tr>
                       <td>${eq.equipment_type}</td>
                       <td style="text-align: center;">${eq.quantity || "N/A"}</td>
                       <td style="text-align: center;">${eq.production_year || "N/A"}</td>
                       <td style="${resultData.cellStyle}">${resultData.html}</td>
-                      <td style="font-size: 9pt;">${eq.comments || "—"}</td>
+                      <td style="font-size: 9pt;">${formattedComments}</td>
                     </tr>
                   `;
                   })
@@ -2081,8 +2104,8 @@ serve(async (req) => {
                 (std) => `
               <tr>
                 <td><strong>${std.standard_name}</strong></td>
-                <td style="text-align: center; font-size: 12pt;">${std.has_documentation ? "☑" : "☐"}</td>
-                <td style="text-align: center; font-size: 12pt;">${!std.has_documentation ? "☑" : "☐"}</td>
+                <td style="text-align: center; font-size: 12pt;">${std.has_documentation === true ? "☑" : "☐"}</td>
+                <td style="text-align: center; font-size: 12pt;">${std.has_documentation === false ? "☑" : "☐"}</td>
                 <td style="font-size: 9pt;">${std.comments || "—"}</td>
               </tr>
             `,
@@ -2165,13 +2188,14 @@ serve(async (req) => {
               ${categoryEquipment
                 .map((eq) => {
                   const resultData = formatResultCheckbox(eq.result);
+                  const formattedComments = formatCommentsAsBullets(eq.comments);
                   return `
                   <tr>
                     <td>${eq.equipment_type}</td>
                     <td style="text-align: center;">${eq.quantity || "N/A"}</td>
                     <td style="text-align: center;">${eq.production_year || "N/A"}</td>
                     <td style="${resultData.cellStyle}">${resultData.html}</td>
-                    <td style="font-size: 9pt;">${eq.comments || "—"}</td>
+                    <td style="font-size: 9pt;">${formattedComments}</td>
                   </tr>
                 `;
                 })
@@ -2238,8 +2262,8 @@ serve(async (req) => {
               (std) => `
             <tr>
               <td><strong>${std.standard_name}</strong></td>
-              <td style="text-align: center; font-size: 12pt;">${std.has_documentation ? "☑" : "☐"}</td>
-              <td style="text-align: center; font-size: 12pt;">${!std.has_documentation ? "☑" : "☐"}</td>
+              <td style="text-align: center; font-size: 12pt;">${std.has_documentation === true ? "☑" : "☐"}</td>
+              <td style="text-align: center; font-size: 12pt;">${std.has_documentation === false ? "☑" : "☐"}</td>
               <td style="font-size: 9pt;">${std.comments || "—"}</td>
             </tr>
           `,
