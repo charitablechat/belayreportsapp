@@ -57,7 +57,6 @@ import { Check } from "lucide-react";
 import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
 import { UnsavedChangesDialog } from "@/components/UnsavedChangesDialog";
 import { useSaveShortcut } from "@/hooks/useKeyboardShortcuts";
-import { useEmptyReportCleanup } from "@/hooks/useEmptyReportCleanup";
 import { useReportEditPermission } from "@/hooks/useReportEditPermission";
 
 export default function InspectionForm() {
@@ -155,30 +154,6 @@ export default function InspectionForm() {
     hasUnsavedChanges,
     message: "You have unsaved changes to this inspection. Are you sure you want to leave?",
   });
-
-  // Empty report cleanup
-  const { cleanupEmptyReport } = useEmptyReportCleanup({
-    type: 'inspection',
-    id,
-    status: inspection?.status,
-    data: inspection,
-    relatedData: {
-      systems,
-      ziplines,
-      equipment,
-      standards,
-      summary,
-    }
-  });
-
-  // Cleanup empty reports on unmount
-  useEffect(() => {
-    return () => {
-      if (inspection?.status === 'draft') {
-        cleanupEmptyReport();
-      }
-    };
-  }, [inspection?.status, cleanupEmptyReport]);
 
   // Auto-retry on network reconnect is now handled by useAutoSync hook
   // This component only needs to handle local save retries

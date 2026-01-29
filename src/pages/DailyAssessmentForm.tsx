@@ -49,7 +49,6 @@ import { useReportSync } from "@/hooks/useReportSync";
 import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
 import { UnsavedChangesDialog } from "@/components/UnsavedChangesDialog";
 import { useSaveShortcut } from "@/hooks/useKeyboardShortcuts";
-import { useEmptyReportCleanup } from "@/hooks/useEmptyReportCleanup";
 import { useReportEditPermission } from "@/hooks/useReportEditPermission";
 
 export default function DailyAssessmentForm() {
@@ -73,8 +72,6 @@ export default function DailyAssessmentForm() {
   const [showSubmitDialog, setShowSubmitDialog] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   
-  // Track if user has interacted with the form - prevents cleanup of non-empty assessments
-  const hasUserInteractedRef = useRef(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [generating, setGenerating] = useState(false);
   const [assessment, setAssessment] = useState<any>(null);
@@ -119,32 +116,6 @@ export default function DailyAssessmentForm() {
     hasUnsavedChanges,
     message: "You have unsaved changes to this assessment. Are you sure you want to leave?",
   });
-
-  // Empty report cleanup - uses refs to avoid stale closure issues
-  const { cleanupEmptyReport } = useEmptyReportCleanup({
-    type: 'daily_assessment',
-    id,
-    status: assessment?.status,
-    data: assessment,
-    relatedData: {
-      beginningOfDay,
-      endOfDay,
-      operatingSystems,
-      equipmentChecks,
-      structureChecks,
-      environmentChecks,
-    },
-    hasUserInteracted: hasUserInteractedRef.current,
-  });
-
-  // Cleanup empty reports on unmount
-  useEffect(() => {
-    return () => {
-      if (assessment?.status === 'draft') {
-        cleanupEmptyReport();
-      }
-    };
-  }, [assessment?.status, cleanupEmptyReport]);
 
   // Auto-retry on network reconnect is now handled by useAutoSync hook
 
@@ -338,9 +309,6 @@ export default function DailyAssessmentForm() {
   };
 
   const handleUpdateAssessment = async (field: string, value: any) => {
-    // Mark that user has interacted - prevents cleanup deletion
-    hasUserInteractedRef.current = true;
-    
     const updatedAssessment = { ...assessment, [field]: value, updated_at: new Date().toISOString() };
     setAssessment(updatedAssessment);
     setHasUnsavedChanges(true);
@@ -588,39 +556,33 @@ export default function DailyAssessmentForm() {
 
   // Auto-save/sync retry is now handled by useAutoSync hook
 
-  // Wrapper handlers that mark user interaction to prevent cleanup deletion
+  // Wrapper handlers for data section updates
   const handleBeginningOfDayUpdate = useCallback((items: any[]) => {
-    hasUserInteractedRef.current = true;
     setBeginningOfDay(items);
     setHasUnsavedChanges(true);
   }, []);
 
   const handleEndOfDayUpdate = useCallback((items: any[]) => {
-    hasUserInteractedRef.current = true;
     setEndOfDay(items);
     setHasUnsavedChanges(true);
   }, []);
 
   const handleOperatingSystemsUpdate = useCallback((items: any[]) => {
-    hasUserInteractedRef.current = true;
     setOperatingSystems(items);
     setHasUnsavedChanges(true);
   }, []);
 
   const handleEquipmentChecksUpdate = useCallback((items: any[]) => {
-    hasUserInteractedRef.current = true;
     setEquipmentChecks(items);
     setHasUnsavedChanges(true);
   }, []);
 
   const handleStructureChecksUpdate = useCallback((items: any[]) => {
-    hasUserInteractedRef.current = true;
     setStructureChecks(items);
     setHasUnsavedChanges(true);
   }, []);
 
   const handleEnvironmentChecksUpdate = useCallback((items: any[]) => {
-    hasUserInteractedRef.current = true;
     setEnvironmentChecks(items);
     setHasUnsavedChanges(true);
   }, []);
