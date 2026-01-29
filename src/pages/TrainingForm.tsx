@@ -582,24 +582,55 @@ export default function TrainingForm() {
 
   // Auto-save/sync retry is now handled by useAutoSync hook
 
-  // Setup auto-save
+  // Debounce timer for 3-second auto-save after field changes
+  const saveDebounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Debounced auto-save on data changes (3-second debounce) - immediate persistence
+  useEffect(() => {
+    if (isLoading || !training) return;
+    
+    // Mark as having unsaved changes
+    setHasUnsavedChanges(true);
+    
+    // Clear existing debounce timer
+    if (saveDebounceTimerRef.current) {
+      clearTimeout(saveDebounceTimerRef.current);
+    }
+    
+    // Set new debounce timer - 3 seconds after last change
+    saveDebounceTimerRef.current = setTimeout(() => {
+      if (!isSaving) {
+        console.log('[Training AutoSave] Debounced save triggered');
+        saveTraining();
+      }
+    }, 3000);
+    
+    return () => {
+      if (saveDebounceTimerRef.current) {
+        clearTimeout(saveDebounceTimerRef.current);
+      }
+    };
+  }, [deliveryApproaches, operatingSystems, immediateAttention, verifiableItems, systemsInPlace, summary]);
+
+  // Backup auto-save interval (every 30 seconds) - fallback only
   useEffect(() => {
     if (autoSaveTimer.current) {
       clearTimeout(autoSaveTimer.current);
     }
 
-    autoSaveTimer.current = setTimeout(() => {
-      if (isOnline && training) {
+    autoSaveTimer.current = setInterval(() => {
+      if (hasUnsavedChanges && !isSaving && !isLoading && training) {
+        console.log('[Training AutoSave] Interval save triggered');
         saveTraining();
       }
-    }, 30000); // Auto-save every 30 seconds
+    }, 30000);
 
     return () => {
       if (autoSaveTimer.current) {
-        clearTimeout(autoSaveTimer.current);
+        clearInterval(autoSaveTimer.current);
       }
     };
-  }, [training, deliveryApproaches, operatingSystems, immediateAttention, verifiableItems, systemsInPlace, summary, isOnline, saveTraining]);
+  }, [hasUnsavedChanges, isSaving, isLoading, training]);
 
   const handleGeneratePDF = async () => {
     if (!id) return;
