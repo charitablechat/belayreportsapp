@@ -761,7 +761,7 @@ export default function InspectionForm() {
   const performSave = async (silent: boolean = false) => {
     try {
       // Verify user is authenticated before saving
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getUserWithCache();
       if (!user) {
         throw new Error('User not authenticated');
       }

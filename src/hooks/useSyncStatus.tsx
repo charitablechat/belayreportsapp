@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { getUnsyncedInspections } from '@/lib/offline-storage';
 import { syncAllInspectionsAtomic } from '@/lib/atomic-sync-manager';
 import { useNetworkStatus } from './useNetworkStatus';
-import { supabase } from '@/integrations/supabase/client';
+import { getUserWithCache } from '@/lib/cached-auth';
 
 export interface SyncStatus {
   unsyncedCount: number;
@@ -30,7 +30,7 @@ export const useSyncStatus = () => {
   const updateUnsyncedCount = useCallback(async () => {
     try {
       // Get current user to filter inspections
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getUserWithCache();
       if (!user) {
         console.error('[Sync Status] No authenticated user');
         return;

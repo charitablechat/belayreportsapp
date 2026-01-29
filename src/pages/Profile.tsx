@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { getUserWithCache } from "@/lib/cached-auth";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -47,9 +48,8 @@ export default function Profile() {
 
   const loadProfile = async () => {
     try {
-      const { data: { user: authUser }, error: userError } = await supabase.auth.getUser();
+      const authUser = await getUserWithCache();
       
-      if (userError) throw userError;
       if (!authUser) {
         navigate("/");
         return;

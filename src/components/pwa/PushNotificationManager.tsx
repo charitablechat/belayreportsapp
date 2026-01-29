@@ -6,6 +6,7 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { supabase } from '@/integrations/supabase/client';
+import { getUserWithCache } from '@/lib/cached-auth';
 import { toast } from 'sonner';
 
 export const PushNotificationManager = () => {
@@ -28,7 +29,7 @@ export const PushNotificationManager = () => {
 
   const loadPreferences = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getUserWithCache();
       if (!user) return;
 
       // Store the auth email
@@ -64,7 +65,7 @@ export const PushNotificationManager = () => {
 
   const updatePreference = async (key: keyof typeof preferences, value: boolean) => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getUserWithCache();
       if (!user) return;
 
       setPreferences(prev => ({ ...prev, [key]: value }));
@@ -88,7 +89,7 @@ export const PushNotificationManager = () => {
 
   const updateEmailPreference = async (key: keyof typeof emailPreferences, value: boolean) => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getUserWithCache();
       if (!user) return;
 
       setEmailPreferences(prev => ({ ...prev, [key]: value }));

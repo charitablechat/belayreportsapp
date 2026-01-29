@@ -30,7 +30,7 @@ export default function NewTraining() {
   useEffect(() => {
     const fetchUserProfile = async () => {
       try {
-        const { data: { user } } = await supabase.auth.getUser();
+        const user = await getUserWithCache();
         if (user) {
           const { data: profile } = await supabase
             .from('profiles')

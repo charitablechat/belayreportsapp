@@ -1,5 +1,6 @@
 import { useEffect, useState, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { getUserWithCache } from "@/lib/cached-auth";
 
 interface UseReportEditPermissionProps {
   inspectorId: string | undefined | null;
@@ -43,7 +44,7 @@ export function useReportEditPermission({
     const checkPermissions = async () => {
       try {
         // Get current user
-        const { data: { user } } = await supabase.auth.getUser();
+        const user = await getUserWithCache();
         setCurrentUserId(user?.id ?? null);
 
         if (user) {

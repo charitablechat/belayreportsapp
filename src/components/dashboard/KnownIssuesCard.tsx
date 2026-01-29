@@ -17,6 +17,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { RichTextEditor } from '@/components/ui/rich-text-editor';
 import { supabase } from '@/integrations/supabase/client';
+import { getUserWithCache } from '@/lib/cached-auth';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { convertToBulletList } from '@/lib/html-content-cleaner';
@@ -70,7 +71,7 @@ export const KnownIssuesCard = ({ isSuperAdmin }: KnownIssuesCardProps) => {
 
     setSaving(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getUserWithCache();
       
       const { error } = await supabase
         .from('app_announcements')
