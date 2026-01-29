@@ -51,7 +51,6 @@ import { UnsavedChangesDialog } from "@/components/UnsavedChangesDialog";
 import { useSaveShortcut } from "@/hooks/useKeyboardShortcuts";
 import { useEmptyReportCleanup } from "@/hooks/useEmptyReportCleanup";
 import { useReportEditPermission } from "@/hooks/useReportEditPermission";
-import { ReadOnlyBanner } from "@/components/ReadOnlyBanner";
 
 export default function DailyAssessmentForm() {
   const { id } = useParams();
@@ -1070,12 +1069,6 @@ export default function DailyAssessmentForm() {
       </header>
       
       <div className="container mx-auto px-4 py-4 lg:py-8 max-w-5xl">
-
-      {/* Read-only mode banner for Super Admins viewing others' reports */}
-      {isReadOnly && (
-        <ReadOnlyBanner reason={readOnlyReason} isSuperAdmin={isSuperAdmin} />
-      )}
-
       <div className="space-y-6">
         <DailyAssessmentHeader assessment={assessment} onUpdate={isReadOnly ? () => {} : handleUpdateAssessment} isReadOnly={isReadOnly} />
 

@@ -59,7 +59,6 @@ import { UnsavedChangesDialog } from "@/components/UnsavedChangesDialog";
 import { useSaveShortcut } from "@/hooks/useKeyboardShortcuts";
 import { useEmptyReportCleanup } from "@/hooks/useEmptyReportCleanup";
 import { useReportEditPermission } from "@/hooks/useReportEditPermission";
-import { ReadOnlyBanner } from "@/components/ReadOnlyBanner";
 
 export default function InspectionForm() {
   const { id } = useParams();
@@ -1827,12 +1826,7 @@ export default function InspectionForm() {
           </Alert>
         )}
 
-        {/* Read-only mode banner for Super Admins viewing others' reports */}
-        {isReadOnly && (
-          <ReadOnlyBanner reason={readOnlyReason} isSuperAdmin={isSuperAdmin} />
-        )}
-
-        <InspectionHeader 
+        <InspectionHeader
           inspection={inspection}
           userProfile={userProfile}
           onUpdate={isReadOnly ? () => {} : handleHeaderUpdate} 

@@ -52,7 +52,6 @@ import { UnsavedChangesDialog } from "@/components/UnsavedChangesDialog";
 import { useSaveShortcut } from "@/hooks/useKeyboardShortcuts";
 import { useEmptyReportCleanup } from "@/hooks/useEmptyReportCleanup";
 import { useReportEditPermission } from "@/hooks/useReportEditPermission";
-import { ReadOnlyBanner } from "@/components/ReadOnlyBanner";
 
 export default function TrainingForm() {
   const { id } = useParams();
@@ -1026,11 +1025,6 @@ export default function TrainingForm() {
 
       {/* Main Content */}
       <div className="container mx-auto px-4 py-8">
-        {/* Read-only mode banner for Super Admins viewing others' reports */}
-        {isReadOnly && (
-          <ReadOnlyBanner reason={readOnlyReason} isSuperAdmin={isSuperAdmin} />
-        )}
-
         {/* Swipe back indicator for mobile */}
         {isMobile && isFirstTab && (
           <SwipeBackIndicator 
