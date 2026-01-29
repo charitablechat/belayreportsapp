@@ -308,6 +308,12 @@ serve(async (req) => {
     li strong {
       color: #1e293b;
     }
+    em {
+      font-style: italic;
+      font-weight: 500;
+      color: rgba(30, 41, 59, 0.95);
+      letter-spacing: 0.01em;
+    }
     li .description {
       color: #64748b;
       font-size: 14px;

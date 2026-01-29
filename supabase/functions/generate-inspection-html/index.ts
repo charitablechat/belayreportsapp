@@ -694,6 +694,13 @@ serve(async (req) => {
       margin-bottom: 0;
     }
 
+    em {
+      font-style: italic;
+      font-weight: 500;
+      color: rgba(0, 0, 0, 0.9);
+      letter-spacing: 0.01em;
+    }
+
     table {
       width: 100%;
       border-collapse: collapse;
