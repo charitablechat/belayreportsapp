@@ -7,6 +7,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import ResultSelect from "@/components/ResultSelect";
 import HistoryAutocomplete from "@/components/HistoryAutocomplete";
 import { Plus } from "lucide-react";
+import { AnimatedTableRow, AnimatedListItem } from "@/components/ui/list-item-animation";
+import { useState, useEffect, useRef } from "react";
 
 interface ZiplinesTableProps {
   ziplines: any[];
@@ -15,6 +17,28 @@ interface ZiplinesTableProps {
 }
 
 export default function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: ZiplinesTableProps) {
+  const [newItemIds, setNewItemIds] = useState<Set<string>>(new Set());
+  const prevZiplinesLengthRef = useRef(ziplines.length);
+
+  // Track newly added items for animation
+  useEffect(() => {
+    if (ziplines.length > prevZiplinesLengthRef.current) {
+      const latestZipline = ziplines[ziplines.length - 1];
+      if (latestZipline?.id) {
+        setNewItemIds(prev => new Set(prev).add(latestZipline.id));
+        // Clear the "new" status after animation completes
+        setTimeout(() => {
+          setNewItemIds(prev => {
+            const next = new Set(prev);
+            next.delete(latestZipline.id);
+            return next;
+          });
+        }, 1500);
+      }
+    }
+    prevZiplinesLengthRef.current = ziplines.length;
+  }, [ziplines.length]);
+
   const addZipline = () => {
     onUpdate([
       ...ziplines,
@@ -82,7 +106,12 @@ export default function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: Z
             </thead>
             <tbody>
               {ziplines.map((zipline, index) => (
-                <tr key={index} className="hover:bg-muted/50">
+                <AnimatedTableRow 
+                  key={zipline.id || index} 
+                  itemKey={zipline.id || `zipline-${index}`}
+                  isNew={newItemIds.has(zipline.id)}
+                  className="hover:bg-muted/50"
+                >
                   <td className="border p-1">
                     <HistoryAutocomplete
                       value={zipline.zipline_name}
@@ -204,7 +233,7 @@ export default function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: Z
                       className="border-0 bg-transparent"
                     />
                   </td>
-                </tr>
+                </AnimatedTableRow>
               ))}
             </tbody>
           </table>
@@ -213,6 +242,11 @@ export default function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: Z
         {/* Mobile/Tablet card view */}
         <div className="md:hidden space-y-4">
           {ziplines.map((zipline, index) => (
+            <AnimatedListItem 
+              key={zipline.id || index}
+              itemKey={zipline.id || `mobile-zipline-${index}`}
+              isNew={newItemIds.has(zipline.id)}
+            >
             <Card key={index} className="p-4">
               <div className="space-y-3">
                 <div>
@@ -364,6 +398,7 @@ export default function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: Z
                 </div>
               </div>
             </Card>
+            </AnimatedListItem>
           ))}
         </div>
 
