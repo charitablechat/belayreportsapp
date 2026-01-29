@@ -28,6 +28,7 @@ import { NetworkStatusIndicator } from "@/components/pwa/NetworkStatusIndicator"
 import { NetworkQualityIndicator } from "@/components/pwa/NetworkQualityIndicator";
 
 import { ManualUpdateButton } from "@/components/pwa/ManualUpdateButton";
+import { ForceSyncButton } from "@/components/pwa/ForceSyncButton";
 import { OfflineSimulator } from "@/components/dev/OfflineSimulator";
 import { PushNotificationManager } from "@/components/pwa/PushNotificationManager";
 import { useConflicts } from "@/hooks/useConflicts";
@@ -685,6 +686,10 @@ export default function Dashboard() {
                   <div className="w-full px-2 py-1.5">
                     <ManualUpdateButton />
                   </div>
+                </DropdownMenuItem>
+                
+                <DropdownMenuItem asChild>
+                  <ForceSyncButton variant="menu-item" />
                 </DropdownMenuItem>
                 
                 <DropdownMenuItem onClick={() => setContactSheetOpen(true)}>

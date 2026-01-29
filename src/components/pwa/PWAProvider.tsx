@@ -48,6 +48,7 @@ class PWAErrorBoundary extends Component<
         lastSyncTime: null,
         syncError: this.state.error?.message || 'PWA initialization failed',
         updateUnsyncedCount: async () => {},
+        forceSync: async () => {},
         unsyncedPhotoCount: 0,
         photosByInspection: {},
         updatePhotoCount: async () => {},
@@ -84,13 +85,14 @@ export interface PWAContextType {
   downlink: number | null;
   rtt: number | null;
   
-  // Sync state (now fully automatic - no manual trigger)
+  // Sync state (automatic with manual force sync option)
   unsyncedCount: number;
   unsyncedInspections: any[];
   isSyncing: boolean;
   lastSyncTime: Date | null;
   syncError: string | null;
   updateUnsyncedCount: () => Promise<void>;
+  forceSync: () => Promise<void>;
   
   // Photo sync state
   unsyncedPhotoCount: number;
@@ -110,12 +112,13 @@ const PWAProviderContent = ({ children }: PWAProviderProps) => {
   const { needRefresh: needsUpdate, offlineReady, updateServiceWorker } = usePWAUpdate();
   const { isOnline, effectiveType, downlink, rtt } = useNetworkStatus();
   
-  // Use the new automatic sync hook instead of manual sync
+  // Use the new automatic sync hook with manual force sync option
   const { 
     unsyncedCount,
     isSyncing, 
     lastSyncTime, 
-    updateUnsyncedCounts 
+    updateUnsyncedCounts,
+    performSync
   } = useAutoSync();
   
   const {
@@ -127,6 +130,11 @@ const PWAProviderContent = ({ children }: PWAProviderProps) => {
   // Wrap updateServiceWorker to match the interface
   const updateAndReload = async () => {
     await updateServiceWorker(true);
+  };
+
+  // Force sync function for manual trigger
+  const forceSync = async () => {
+    await performSync(false); // Pass false for non-silent mode (will show errors if any)
   };
 
   const value: PWAContextType = {
@@ -148,13 +156,14 @@ const PWAProviderContent = ({ children }: PWAProviderProps) => {
     downlink,
     rtt,
     
-    // Sync state (automatic - no manual trigger exposed)
+    // Sync state (automatic with manual force sync option)
     unsyncedCount,
     unsyncedInspections: [], // Simplified - detailed list not needed for passive indicator
     isSyncing,
     lastSyncTime,
     syncError: null, // Errors are handled silently in automatic sync
     updateUnsyncedCount: updateUnsyncedCounts,
+    forceSync,
     
     // Photo sync state
     unsyncedPhotoCount,

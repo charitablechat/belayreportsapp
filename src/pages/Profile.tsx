@@ -6,14 +6,18 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { ArrowLeft, Camera, Check, Loader2, Lock, User, X } from "lucide-react";
+import { ArrowLeft, Camera, Check, Loader2, Lock, User, X, RefreshCw } from "lucide-react";
 import ropeWorksLogo from "@/assets/rope-works-logo.png";
 import { triggerHaptic } from "@/lib/haptics";
 import { useToast } from "@/hooks/use-toast";
+import { ForceSyncButton } from "@/components/pwa/ForceSyncButton";
+import { usePWA } from "@/hooks/usePWA";
+import { format } from "date-fns";
 
 export default function Profile() {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { lastSyncTime, unsyncedCount, isOnline } = usePWA();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -492,6 +496,55 @@ export default function Profile() {
                 </Button>
               </div>
             </form>
+          </CardContent>
+        </Card>
+
+        {/* Data Sync Section */}
+        <Card className="mt-6">
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <RefreshCw className="h-5 w-5 text-muted-foreground" />
+              <CardTitle>Data Sync</CardTitle>
+            </div>
+            <CardDescription>
+              Manually synchronize your data with the server
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* Sync Status */}
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-4 rounded-lg bg-muted/50">
+              <div className="space-y-1">
+                <p className="text-sm font-medium">Sync Status</p>
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  {isOnline ? (
+                    <>
+                      <span className="w-2 h-2 rounded-full bg-green-500" />
+                      <span>Online</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="w-2 h-2 rounded-full bg-destructive" />
+                      <span>Offline</span>
+                    </>
+                  )}
+                  {unsyncedCount > 0 && (
+                    <span className="text-warning">
+                      • {unsyncedCount} item{unsyncedCount > 1 ? 's' : ''} pending
+                    </span>
+                  )}
+                </div>
+                {lastSyncTime && (
+                  <p className="text-xs text-muted-foreground">
+                    Last synced: {format(lastSyncTime, "PPp")}
+                  </p>
+                )}
+              </div>
+              <ForceSyncButton variant="default" />
+            </div>
+            
+            <p className="text-xs text-muted-foreground">
+              Your data syncs automatically in the background. Use the button above to manually trigger a sync if you believe your data is out of date.
+            </p>
           </CardContent>
         </Card>
       </main>
