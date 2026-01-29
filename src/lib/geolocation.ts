@@ -47,16 +47,29 @@ export async function getCurrentLocation(): Promise<Location> {
 }
 
 export async function reverseGeocode(latitude: number, longitude: number): Promise<string> {
+  // Validate input ranges to prevent injection and API abuse
+  if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90) {
+    throw new Error('Invalid latitude: must be between -90 and 90');
+  }
+  if (!Number.isFinite(longitude) || longitude < -180 || longitude > 180) {
+    throw new Error('Invalid longitude: must be between -180 and 180');
+  }
+
   try {
-    const response = await fetch(
-      `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=16&addressdetails=1`,
-      {
-        headers: {
-          'Accept': 'application/json',
-          'User-Agent': 'RopeWorksInspection/1.0'
-        }
+    // Use URL constructor with searchParams for safe encoding
+    const url = new URL('https://nominatim.openstreetmap.org/reverse');
+    url.searchParams.set('format', 'json');
+    url.searchParams.set('lat', latitude.toString());
+    url.searchParams.set('lon', longitude.toString());
+    url.searchParams.set('zoom', '16');
+    url.searchParams.set('addressdetails', '1');
+
+    const response = await fetch(url.toString(), {
+      headers: {
+        'Accept': 'application/json',
+        'User-Agent': 'RopeWorksInspection/1.0'
       }
-    );
+    });
 
     if (!response.ok) {
       throw new Error('Failed to reverse geocode location');
