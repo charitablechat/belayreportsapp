@@ -7,6 +7,8 @@ import ResultSelect from "@/components/ResultSelect";
 import HistoryAutocomplete from "@/components/HistoryAutocomplete";
 import { Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { AnimatedTableRow, AnimatedListItem } from "@/components/ui/list-item-animation";
+import { useState, useEffect, useRef } from "react";
 
 interface EquipmentTableProps {
   category: string;
@@ -18,6 +20,27 @@ interface EquipmentTableProps {
 
 export default function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediateSave }: EquipmentTableProps) {
   const categoryEquipment = equipment.filter((item) => item.equipment_category === category);
+  const [newItemIds, setNewItemIds] = useState<Set<string>>(new Set());
+  const prevEquipmentLengthRef = useRef(categoryEquipment.length);
+
+  // Track newly added items for animation
+  useEffect(() => {
+    if (categoryEquipment.length > prevEquipmentLengthRef.current) {
+      const latestItem = categoryEquipment[categoryEquipment.length - 1];
+      if (latestItem?.id) {
+        setNewItemIds(prev => new Set(prev).add(latestItem.id));
+        // Clear the "new" status after animation completes
+        setTimeout(() => {
+          setNewItemIds(prev => {
+            const next = new Set(prev);
+            next.delete(latestItem.id);
+            return next;
+          });
+        }, 1500);
+      }
+    }
+    prevEquipmentLengthRef.current = categoryEquipment.length;
+  }, [categoryEquipment.length]);
 
   const addEquipment = () => {
     onUpdate([
@@ -68,7 +91,12 @@ export default function EquipmentTable({ category, displayName, equipment, onUpd
             </thead>
             <tbody>
               {categoryEquipment.map((item, index) => (
-                <tr key={index} className="hover:bg-muted/50">
+                <AnimatedTableRow 
+                  key={item.id || index} 
+                  itemKey={item.id || `equipment-${index}`}
+                  isNew={newItemIds.has(item.id)}
+                  className="hover:bg-muted/50"
+                >
                   <td className="border p-2">
                     <HistoryAutocomplete
                       value={item.equipment_type}
@@ -123,7 +151,7 @@ export default function EquipmentTable({ category, displayName, equipment, onUpd
                       className="border-0 bg-transparent"
                     />
                   </td>
-                </tr>
+                </AnimatedTableRow>
               ))}
             </tbody>
           </table>
@@ -132,6 +160,11 @@ export default function EquipmentTable({ category, displayName, equipment, onUpd
         {/* Mobile card view */}
         <div className="md:hidden space-y-4">
           {categoryEquipment.map((item, index) => (
+            <AnimatedListItem 
+              key={item.id || index}
+              itemKey={item.id || `mobile-equipment-${index}`}
+              isNew={newItemIds.has(item.id)}
+            >
             <Card key={index} className="p-4">
               <div className="space-y-3">
                 <div>
@@ -197,6 +230,7 @@ export default function EquipmentTable({ category, displayName, equipment, onUpd
                 </div>
               </div>
             </Card>
+            </AnimatedListItem>
           ))}
         </div>
       </CardContent>

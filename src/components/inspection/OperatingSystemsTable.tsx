@@ -6,7 +6,8 @@ import ResultSelect from "@/components/ResultSelect";
 import SystemTypeSelect from "@/components/SystemTypeSelect";
 import HistoryAutocomplete from "@/components/HistoryAutocomplete";
 import { Plus, Trash2 } from "lucide-react";
-
+import { AnimatedTableRow, AnimatedListItem } from "@/components/ui/list-item-animation";
+import { useState, useEffect, useRef } from "react";
 interface OperatingSystemsTableProps {
   systems: any[];
   onUpdate: (systems: any[]) => void;
@@ -14,6 +15,28 @@ interface OperatingSystemsTableProps {
 }
 
 export default function OperatingSystemsTable({ systems, onUpdate, onImmediateSave }: OperatingSystemsTableProps) {
+  const [newItemIds, setNewItemIds] = useState<Set<string>>(new Set());
+  const prevSystemsLengthRef = useRef(systems.length);
+
+  // Track newly added items for animation
+  useEffect(() => {
+    if (systems.length > prevSystemsLengthRef.current) {
+      const latestSystem = systems[systems.length - 1];
+      if (latestSystem?.id) {
+        setNewItemIds(prev => new Set(prev).add(latestSystem.id));
+        // Clear the "new" status after animation completes
+        setTimeout(() => {
+          setNewItemIds(prev => {
+            const next = new Set(prev);
+            next.delete(latestSystem.id);
+            return next;
+          });
+        }, 1500);
+      }
+    }
+    prevSystemsLengthRef.current = systems.length;
+  }, [systems.length]);
+
   const addSystem = () => {
     onUpdate([
       ...systems,
@@ -67,7 +90,12 @@ export default function OperatingSystemsTable({ systems, onUpdate, onImmediateSa
             </thead>
             <tbody>
               {systems.map((system, index) => (
-                <tr key={system.id || index} className="hover:bg-muted/50">
+                <AnimatedTableRow 
+                  key={system.id || index} 
+                  itemKey={system.id || `system-${index}`}
+                  isNew={newItemIds.has(system.id)}
+                  className="hover:bg-muted/50"
+                >
                   <td className="border p-2">
                     <HistoryAutocomplete
                       value={system.name || ""}
@@ -110,7 +138,7 @@ export default function OperatingSystemsTable({ systems, onUpdate, onImmediateSa
                       <Trash2 className="h-4 w-4" />
                     </Button>
                   </td>
-                </tr>
+                </AnimatedTableRow>
               ))}
             </tbody>
           </table>
@@ -119,6 +147,11 @@ export default function OperatingSystemsTable({ systems, onUpdate, onImmediateSa
         {/* Mobile card view */}
         <div className="md:hidden space-y-4">
           {systems.map((system, index) => (
+            <AnimatedListItem 
+              key={system.id || index}
+              itemKey={system.id || `mobile-system-${index}`}
+              isNew={newItemIds.has(system.id)}
+            >
             <Card key={system.id || index} className="p-4 relative">
               <Button
                 variant="ghost"
@@ -168,6 +201,7 @@ export default function OperatingSystemsTable({ systems, onUpdate, onImmediateSa
                 </div>
               </div>
             </Card>
+            </AnimatedListItem>
           ))}
         </div>
         
