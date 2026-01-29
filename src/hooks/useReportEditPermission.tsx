@@ -1,0 +1,133 @@
+import { useEffect, useState, useMemo } from "react";
+import { supabase } from "@/integrations/supabase/client";
+
+interface UseReportEditPermissionProps {
+  inspectorId: string | undefined | null;
+  reportType: 'inspection' | 'training' | 'daily_assessment';
+}
+
+interface ReportEditPermission {
+  /** Whether the current user can edit this report */
+  canEdit: boolean;
+  /** Whether the report is in read-only mode (Super Admin viewing someone else's report) */
+  isReadOnly: boolean;
+  /** Whether the current user is the report owner */
+  isOwner: boolean;
+  /** Whether the current user is a super admin */
+  isSuperAdmin: boolean;
+  /** Loading state while checking permissions */
+  isLoading: boolean;
+  /** Reason for read-only mode (for UI display) */
+  readOnlyReason: string | null;
+}
+
+/**
+ * Hook to determine if the current user can edit a report.
+ * 
+ * Rules:
+ * - Report owners (inspector_id === current user) can always edit
+ * - Super Admins can VIEW all reports but CANNOT edit them
+ * - The inspector_id field is immutable once set
+ * 
+ * This ensures data integrity and accountability for all reports.
+ */
+export function useReportEditPermission({ 
+  inspectorId, 
+  reportType 
+}: UseReportEditPermissionProps): ReportEditPermission {
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const checkPermissions = async () => {
+      try {
+        // Get current user
+        const { data: { user } } = await supabase.auth.getUser();
+        setCurrentUserId(user?.id ?? null);
+
+        if (user) {
+          // Check super admin status using RPC
+          const { data: superAdminStatus, error } = await supabase.rpc('is_super_admin');
+          if (!error) {
+            setIsSuperAdmin(!!superAdminStatus);
+          }
+        }
+      } catch (error) {
+        console.error('[useReportEditPermission] Error checking permissions:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    checkPermissions();
+
+    // Listen for auth state changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (_event, session) => {
+        setCurrentUserId(session?.user?.id ?? null);
+        if (session?.user) {
+          const { data: superAdminStatus } = await supabase.rpc('is_super_admin');
+          setIsSuperAdmin(!!superAdminStatus);
+        } else {
+          setIsSuperAdmin(false);
+        }
+      }
+    );
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const permission = useMemo<ReportEditPermission>(() => {
+    // Still loading - default to read-only for safety
+    if (isLoading || !inspectorId) {
+      return {
+        canEdit: false,
+        isReadOnly: true,
+        isOwner: false,
+        isSuperAdmin,
+        isLoading,
+        readOnlyReason: isLoading ? 'Checking permissions...' : 'Report owner not determined'
+      };
+    }
+
+    const isOwner = currentUserId === inspectorId;
+
+    // Only owners can edit - Super Admins are view-only
+    if (isOwner) {
+      return {
+        canEdit: true,
+        isReadOnly: false,
+        isOwner: true,
+        isSuperAdmin,
+        isLoading: false,
+        readOnlyReason: null
+      };
+    }
+
+    // Super Admin viewing someone else's report - read-only
+    if (isSuperAdmin) {
+      return {
+        canEdit: false,
+        isReadOnly: true,
+        isOwner: false,
+        isSuperAdmin: true,
+        isLoading: false,
+        readOnlyReason: 'Super Admins have view-only access to other users\' reports'
+      };
+    }
+
+    // Non-owner, non-super-admin - should not have access via RLS
+    // but if they somehow do, they cannot edit
+    return {
+      canEdit: false,
+      isReadOnly: true,
+      isOwner: false,
+      isSuperAdmin: false,
+      isLoading: false,
+      readOnlyReason: 'You do not have permission to edit this report'
+    };
+  }, [currentUserId, inspectorId, isSuperAdmin, isLoading]);
+
+  return permission;
+}

@@ -50,6 +50,8 @@ import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
 import { UnsavedChangesDialog } from "@/components/UnsavedChangesDialog";
 import { useSaveShortcut } from "@/hooks/useKeyboardShortcuts";
 import { useEmptyReportCleanup } from "@/hooks/useEmptyReportCleanup";
+import { useReportEditPermission } from "@/hooks/useReportEditPermission";
+import { ReadOnlyBanner } from "@/components/ReadOnlyBanner";
 
 export default function DailyAssessmentForm() {
   const { id } = useParams();
@@ -58,6 +60,13 @@ export default function DailyAssessmentForm() {
   const { isOnline } = useNetworkStatus();
   const isMobileView = useIsMobile();
   const { syncReport } = useReportSync(id, 'daily_assessment');
+  
+  // Check edit permissions - Super Admins are view-only, only owners can edit
+  const [inspectorId, setInspectorId] = useState<string | null>(null);
+  const { canEdit, isReadOnly, isSuperAdmin, readOnlyReason } = useReportEditPermission({
+    inspectorId,
+    reportType: 'daily_assessment'
+  });
   
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -223,6 +232,7 @@ export default function DailyAssessmentForm() {
       
       if (offlineAssessment) {
         setAssessment(offlineAssessment);
+        setInspectorId(offlineAssessment.inspector_id);
         
         // Load related data from offline storage
         const [bodData, eodData, osData, eqData, stData, envData] = await Promise.all([
@@ -269,6 +279,7 @@ export default function DailyAssessmentForm() {
         
         if (assessmentData) {
           setAssessment(assessmentData);
+          setInspectorId(assessmentData.inspector_id);
 
           // Load all related data
           const [bodData, eodData, osData, eqData, stData, envData] = await Promise.all([
@@ -996,6 +1007,8 @@ export default function DailyAssessmentForm() {
             </div>
             
             <div className="flex items-center gap-2">
+              {!isReadOnly && (
+              <>
               <Button 
                 variant="outline"
                 size={isMobileView ? "default" : "sm"} 
@@ -1026,6 +1039,8 @@ export default function DailyAssessmentForm() {
                   </>
                 )}
               </Button>
+              </>
+              )}
               {assessment?.status === 'completed' && (
                 <Button 
                   variant="outline" 
@@ -1050,8 +1065,13 @@ export default function DailyAssessmentForm() {
       
       <div className="container mx-auto px-4 py-4 lg:py-8 max-w-5xl">
 
+      {/* Read-only mode banner for Super Admins viewing others' reports */}
+      {isReadOnly && (
+        <ReadOnlyBanner reason={readOnlyReason} isSuperAdmin={isSuperAdmin} />
+      )}
+
       <div className="space-y-6">
-        <DailyAssessmentHeader assessment={assessment} onUpdate={handleUpdateAssessment} />
+        <DailyAssessmentHeader assessment={assessment} onUpdate={isReadOnly ? () => {} : handleUpdateAssessment} isReadOnly={isReadOnly} />
 
         {/* Swipe back indicator for mobile */}
         {isMobileView && isFirstTab && (

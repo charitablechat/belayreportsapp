@@ -10,9 +10,10 @@ interface InspectionHeaderProps {
   userProfile: any;
   onUpdate: (field: string, value: string) => void;
   onImmediateSave?: () => void;
+  isReadOnly?: boolean;
 }
 
-export default function InspectionHeader({ inspection, userProfile, onUpdate, onImmediateSave }: InspectionHeaderProps) {
+export default function InspectionHeader({ inspection, userProfile, onUpdate, onImmediateSave, isReadOnly = false }: InspectionHeaderProps) {
   const inspectorName = userProfile?.first_name && userProfile?.last_name
     ? `${userProfile.first_name} ${userProfile.last_name}`
     : 'Current User';
@@ -28,6 +29,7 @@ export default function InspectionHeader({ inspection, userProfile, onUpdate, on
             onBlur={onImmediateSave}
             className="min-h-[100px]"
             placeholder={`Enter ${label.toLowerCase()}...`}
+            disabled={isReadOnly}
           />
         ) : (
           <VoiceInput
@@ -41,6 +43,7 @@ export default function InspectionHeader({ inspection, userProfile, onUpdate, on
               }
             }}
             placeholder={`Enter ${label.toLowerCase()}...`}
+            disabled={isReadOnly}
           />
         )}
       </div>
@@ -75,6 +78,7 @@ export default function InspectionHeader({ inspection, userProfile, onUpdate, on
                     onUpdate("organization", value);
                     onImmediateSave?.();
                   }}
+                  disabled={isReadOnly}
                 />
               </div>
               {renderField("Location", "location", inspection?.location)}
@@ -88,6 +92,7 @@ export default function InspectionHeader({ inspection, userProfile, onUpdate, on
                   }}
                   fieldType="inspector_name"
                   placeholder="Select or enter inspector..."
+                  disabled={isReadOnly}
                 />
               </div>
             </div>
@@ -104,6 +109,7 @@ export default function InspectionHeader({ inspection, userProfile, onUpdate, on
                   }}
                   fieldType="onsite_contact"
                   placeholder="Select or enter contact..."
+                  disabled={isReadOnly}
                 />
               </div>
               {renderField("Prev. Inspection Date", "previous_inspection_date", inspection?.previous_inspection_date, "date")}

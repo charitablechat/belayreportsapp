@@ -13,9 +13,10 @@ import { parseLocalDate } from "@/lib/date-utils";
 interface DailyAssessmentHeaderProps {
   assessment: any;
   onUpdate: (field: string, value: any) => void;
+  isReadOnly?: boolean;
 }
 
-export default function DailyAssessmentHeader({ assessment, onUpdate }: DailyAssessmentHeaderProps) {
+export default function DailyAssessmentHeader({ assessment, onUpdate, isReadOnly = false }: DailyAssessmentHeaderProps) {
   return (
     <Card>
       <CardContent className="pt-6 space-y-4">
@@ -30,6 +31,7 @@ export default function DailyAssessmentHeader({ assessment, onUpdate }: DailyAss
                     "w-full justify-start text-left font-normal",
                     !assessment.assessment_date && "text-muted-foreground"
                   )}
+                  disabled={isReadOnly}
                 >
                   <CalendarIcon className="mr-2 h-4 w-4" />
                   {assessment.assessment_date ? (
@@ -39,6 +41,7 @@ export default function DailyAssessmentHeader({ assessment, onUpdate }: DailyAss
                   )}
                 </Button>
               </PopoverTrigger>
+              {!isReadOnly && (
               <PopoverContent className="w-auto p-0">
                 <Calendar
                   mode="single"
@@ -48,6 +51,7 @@ export default function DailyAssessmentHeader({ assessment, onUpdate }: DailyAss
                   className="pointer-events-auto"
                 />
               </PopoverContent>
+              )}
             </Popover>
           </div>
 
@@ -56,6 +60,7 @@ export default function DailyAssessmentHeader({ assessment, onUpdate }: DailyAss
             <OrganizationAutocomplete
               value={assessment.site}
               onChange={(value) => onUpdate("site", value)}
+              disabled={isReadOnly}
             />
           </div>
 
@@ -66,6 +71,7 @@ export default function DailyAssessmentHeader({ assessment, onUpdate }: DailyAss
               onChange={(value) => onUpdate("trainer_of_record", value)}
               fieldType="trainer_name"
               placeholder="Select or enter trainer name..."
+              disabled={isReadOnly}
             />
           </div>
         </div>

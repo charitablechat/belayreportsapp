@@ -14,6 +14,7 @@ import { DatabaseAutocomplete } from "@/components/DatabaseAutocomplete";
 interface TrainingHeaderProps {
   training: any;
   onUpdate: (field: string, value: any) => void;
+  isReadOnly?: boolean;
 }
 
 // Parse date string as local time to avoid timezone shifting
@@ -25,7 +26,7 @@ const parseLocalDate = (dateStr: string | null | undefined) => {
   return new Date(year, month - 1, day);
 };
 
-export default function TrainingHeader({ training, onUpdate }: TrainingHeaderProps) {
+export default function TrainingHeader({ training, onUpdate, isReadOnly = false }: TrainingHeaderProps) {
   return (
     <Card>
       <CardHeader>
@@ -37,6 +38,7 @@ export default function TrainingHeader({ training, onUpdate }: TrainingHeaderPro
           <OrganizationAutocomplete
             value={training.organization || ''}
             onChange={(value) => onUpdate('organization', value)}
+            disabled={isReadOnly}
           />
         </div>
 
@@ -51,11 +53,13 @@ export default function TrainingHeader({ training, onUpdate }: TrainingHeaderPro
                     "w-full justify-start text-left font-normal",
                     !training.start_date && "text-muted-foreground"
                   )}
+                  disabled={isReadOnly}
                 >
                   <CalendarIcon className="mr-2 h-4 w-4" />
                   {training.start_date ? format(parseLocalDate(training.start_date)!, "PPP") : "Pick a date"}
                 </Button>
               </PopoverTrigger>
+              {!isReadOnly && (
               <PopoverContent className="w-auto p-0">
                 <Calendar
                   mode="single"
@@ -65,6 +69,7 @@ export default function TrainingHeader({ training, onUpdate }: TrainingHeaderPro
                   className="pointer-events-auto"
                 />
               </PopoverContent>
+              )}
             </Popover>
           </div>
 
@@ -78,11 +83,13 @@ export default function TrainingHeader({ training, onUpdate }: TrainingHeaderPro
                     "w-full justify-start text-left font-normal",
                     !training.end_date && "text-muted-foreground"
                   )}
+                  disabled={isReadOnly}
                 >
                   <CalendarIcon className="mr-2 h-4 w-4" />
                   {training.end_date ? format(parseLocalDate(training.end_date)!, "PPP") : "Pick a date"}
                 </Button>
               </PopoverTrigger>
+              {!isReadOnly && (
               <PopoverContent className="w-auto p-0">
                 <Calendar
                   mode="single"
@@ -92,6 +99,7 @@ export default function TrainingHeader({ training, onUpdate }: TrainingHeaderPro
                   className="pointer-events-auto"
                 />
               </PopoverContent>
+              )}
             </Popover>
           </div>
         </div>
@@ -103,6 +111,7 @@ export default function TrainingHeader({ training, onUpdate }: TrainingHeaderPro
             onChange={(value) => onUpdate('trainer_of_record', value)}
             fieldType="trainer_name"
             placeholder="Select or enter trainer name..."
+            disabled={isReadOnly}
           />
         </div>
 
@@ -114,6 +123,7 @@ export default function TrainingHeader({ training, onUpdate }: TrainingHeaderPro
             onChange={(e) => onUpdate('trainee_names', e.target.value)}
             placeholder="Enter trainee names (one per line, voice extracts names only)"
             rows={4}
+            disabled={isReadOnly}
           />
         </div>
 
