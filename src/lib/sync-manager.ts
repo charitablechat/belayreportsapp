@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { getUserWithCache } from "@/lib/cached-auth";
 import { 
   getUnsyncedInspections, 
   saveInspectionOffline, 
@@ -49,7 +50,7 @@ export async function syncInspections() {
         }
 
         // Ensure inspector_id matches current user
-        const { data: { user } } = await supabase.auth.getUser();
+        const user = await getUserWithCache();
         if (!user) {
           console.error('[Sync Manager] User not authenticated, skipping operation');
           continue;
@@ -86,7 +87,7 @@ export async function syncInspections() {
     }
 
     // 2. Sync unsynced inspections (filter by current user)
-    const { data: { user: currentUser } } = await supabase.auth.getUser();
+    const currentUser = await getUserWithCache();
     const unsynced = await getUnsyncedInspections(currentUser?.id);
     
     if (import.meta.env.DEV) {
@@ -96,7 +97,7 @@ export async function syncInspections() {
     for (const inspection of unsynced) {
       try {
         // Ensure inspector_id matches current user
-        const { data: { user } } = await supabase.auth.getUser();
+        const user = await getUserWithCache();
         if (!user) {
           console.error('[Sync Manager] User not authenticated, skipping sync');
           continue;
@@ -237,7 +238,7 @@ export async function syncPhotos() {
 
     for (const photo of unuploadedPhotos) {
       try {
-        const { data: { user } } = await supabase.auth.getUser();
+        const user = await getUserWithCache();
         if (!user) throw new Error("Not authenticated");
 
         const fileExt = photo.fileName.split('.').pop();
@@ -319,7 +320,7 @@ export async function syncDailyAssessments() {
           continue;
         }
 
-        const { data: { user } } = await supabase.auth.getUser();
+        const user = await getUserWithCache();
         if (!user) {
           console.error('[Daily Assessment Sync] User not authenticated, skipping operation');
           continue;
@@ -363,7 +364,7 @@ export async function syncDailyAssessments() {
     }
 
     // Phase 2: Add user ID filter to prevent cross-user sync
-    const { data: { user: syncUser } } = await supabase.auth.getUser();
+    const syncUser = await getUserWithCache();
     const unsynced = await getUnsyncedDailyAssessments(syncUser?.id);
     
     if (import.meta.env.DEV) {
@@ -383,7 +384,7 @@ export async function syncDailyAssessments() {
           continue;
         }
         
-        const { data: { user } } = await supabase.auth.getUser();
+        const user = await getUserWithCache();
         if (!user) {
           console.error('[Daily Assessment Sync] User not authenticated, skipping sync');
           continue;
@@ -455,7 +456,7 @@ export async function syncTrainings() {
           continue;
         }
 
-        const { data: { user } } = await supabase.auth.getUser();
+        const user = await getUserWithCache();
         if (!user) {
           console.error('[Training Sync] User not authenticated, skipping operation');
           continue;
@@ -504,7 +505,7 @@ export async function syncTrainings() {
     
     for (const training of unsynced) {
       try {
-        const { data: { user } } = await supabase.auth.getUser();
+        const user = await getUserWithCache();
         if (!user) {
           console.error('[Training Sync] User not authenticated, skipping sync');
           continue;

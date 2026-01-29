@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { getUserWithCache } from '@/lib/cached-auth';
 
 interface Profile {
   id: string;
@@ -16,7 +17,7 @@ export function useUserProfile() {
   useEffect(() => {
     const fetchProfile = async () => {
       try {
-        const { data: { user } } = await supabase.auth.getUser();
+        const user = await getUserWithCache();
         
         if (!user) {
           setLoading(false);

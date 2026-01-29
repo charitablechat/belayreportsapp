@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Camera, Upload, CloudOff } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { getUserWithCache } from "@/lib/cached-auth";
 import { savePhotoOffline } from "@/lib/offline-storage";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { triggerHaptic } from "@/lib/haptics";
@@ -34,7 +35,7 @@ export default function PhotoCapture({ inspectionId, section, onPhotoAdded }: Ph
     setUploading(true);
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getUserWithCache();
       if (!user) throw new Error("Not authenticated");
 
       for (const file of Array.from(files)) {

@@ -27,6 +27,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { supabase } from "@/integrations/supabase/client";
+import { getUserWithCache } from "@/lib/cached-auth";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
@@ -75,7 +76,7 @@ export function DatabaseAutocomplete({
   const { data: historyItems = [], isLoading } = useQuery({
     queryKey: ["field-history", fieldType],
     queryFn: async () => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getUserWithCache();
       if (!user) return [];
 
       const { data, error } = await supabase
@@ -106,7 +107,7 @@ export function DatabaseAutocomplete({
   // Mutation to save/update history
   const saveMutation = useMutation({
     mutationFn: async (newValue: string) => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getUserWithCache();
       if (!user) throw new Error("Not authenticated");
 
       const trimmedValue = newValue.trim();

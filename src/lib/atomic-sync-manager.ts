@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { getUserWithCache } from "@/lib/cached-auth";
 import { 
   getUnsyncedInspections,
   saveInspectionOffline,
@@ -47,7 +48,7 @@ export async function syncInspectionAtomic(inspectionId: string) {
     }
     
     // Verify current user matches inspector_id
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = await getUserWithCache();
     if (!user) {
       throw new Error("User not authenticated");
     }
@@ -321,7 +322,7 @@ export async function syncAllInspectionsAtomic() {
   }
   
   // Get current user to filter inspections
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getUserWithCache();
   if (!user) {
     throw new Error("User not authenticated");
   }
@@ -469,7 +470,7 @@ export async function syncTrainingAtomic(trainingId: string) {
     }
     
     // Verify current user matches inspector_id
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = await getUserWithCache();
     if (!user) {
       throw new Error("User not authenticated");
     }
@@ -714,7 +715,7 @@ export async function syncAllTrainingsAtomic() {
   }
   
   // Get current user to filter trainings
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getUserWithCache();
   if (!user) {
     throw new Error("User not authenticated");
   }
@@ -826,7 +827,7 @@ export async function syncDailyAssessmentAtomic(assessmentId: string) {
     }
     
     // Verify current user matches inspector_id
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = await getUserWithCache();
     if (!user) {
       throw new Error("User not authenticated");
     }
@@ -1063,7 +1064,7 @@ export async function syncAllDailyAssessmentsAtomic() {
   }
   
   // Get current user to filter assessments
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getUserWithCache();
   if (!user) {
     throw new Error("User not authenticated");
   }

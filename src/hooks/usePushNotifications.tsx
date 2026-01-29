@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { getUserWithCache } from '@/lib/cached-auth';
 import { toast } from 'sonner';
 
 export interface PushNotificationState {
@@ -115,7 +116,7 @@ export const usePushNotifications = (): PushNotificationState => {
       }
 
       // Get current user
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getUserWithCache();
       if (!user) {
         throw new Error('User not authenticated');
       }
@@ -159,7 +160,7 @@ export const usePushNotifications = (): PushNotificationState => {
         await subscription.unsubscribe();
 
         // Remove from database
-        const { data: { user } } = await supabase.auth.getUser();
+        const user = await getUserWithCache();
         if (user) {
           const subscriptionData = subscription.toJSON();
           await supabase

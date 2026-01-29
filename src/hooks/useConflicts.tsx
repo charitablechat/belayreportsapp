@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { getUserWithCache } from '@/lib/cached-auth';
 import { useEffect } from 'react';
 
 export interface SyncConflict {
@@ -30,7 +31,7 @@ export const useConflicts = () => {
   const { data: conflicts = [], isLoading, refetch } = useQuery({
     queryKey: ['sync-conflicts'],
     queryFn: async () => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getUserWithCache();
       if (!user) throw new Error('Not authenticated');
 
       const { data, error } = await supabase
