@@ -1,83 +1,73 @@
 
-# Plan: Append New Items to Bottom of Report Lists
+# Plan: Enhance Italic Text Visibility in Rich Text Editors
 
 ## Overview
-This is a simple, targeted fix. The goal is to ensure all newly created items in report forms (Systems, Ziplines, Equipment, etc.) are appended to the **bottom** of their respective lists for consistency across all reports.
+Add visual prominence to italicized text in the comment editors across all report forms by enhancing the existing CSS styling for the ProseMirror `<em>` element.
 
 ## Current State Analysis
 
-After reviewing all "add item" patterns across the codebase:
+| Report Form | Component | Editor Type | Has Italic Button |
+|-------------|-----------|-------------|-------------------|
+| **Inspection** | `SummarySection.tsx` | `VoiceRichTextEditor` | ✓ Yes |
+| **Inspection** | `OperatingSystemsTable.tsx` | `VoiceRichTextEditor` | ✓ Yes |
+| **Inspection** | `EquipmentTable.tsx` | `RichTextEditor` | ✓ Yes |
+| **Inspection** | `ZiplinesTable.tsx` | `RichTextEditor` | ✓ Yes |
+| **Training** | `TrainingSummarySection.tsx` | `VoiceRichTextEditor` | ✓ Yes |
+| **Daily Assessment** | `SectionComments.tsx` | Plain `Textarea` | ✗ No |
 
-| Component | Current Behavior | Status |
-|-----------|------------------|--------|
-| `OperatingSystemsTable.tsx` (Inspection) | **Prepends to TOP** | Needs fix |
-| `ZiplinesTable.tsx` (Inspection) | Appends to bottom | Correct |
-| `EquipmentTable.tsx` (Inspection) | Appends to bottom | Correct |
-| `OperatingSystemsSection.tsx` (Training) | Appends to bottom | Correct |
-| `VerifiableItemsSection.tsx` (Training) | Appends to bottom | Correct |
-| `EquipmentChecksSection.tsx` (Daily Assessment) | Appends to bottom | Correct |
-
-**Only one file needs modification**: `OperatingSystemsTable.tsx`
+**Note:** Daily Assessment forms use plain `Textarea` components without formatting buttons, so this change does not apply there.
 
 ---
 
-## Technical Change
+## Technical Implementation
 
-### File: `src/components/inspection/OperatingSystemsTable.tsx`
+### File to Modify: `src/index.css`
 
-**Current code (lines 17-27):**
-```typescript
-const addSystem = () => {
-  onUpdate([
-    { 
-      id: `temp-${crypto.randomUUID()}`,
-      inspection_id: window.location.pathname.split('/').pop(),
-      system_name: "", 
-      result: "pass", 
-      comments: "" 
-    },
-    ...systems  // <-- Current: new item BEFORE existing
-  ]);
-};
+**Current styling (lines 142-144):**
+```css
+.ProseMirror em {
+  font-style: italic;
+}
 ```
 
-**Updated code:**
-```typescript
-const addSystem = () => {
-  onUpdate([
-    ...systems,  // <-- Fixed: existing items BEFORE new item
-    { 
-      id: `temp-${crypto.randomUUID()}`,
-      inspection_id: window.location.pathname.split('/').pop(),
-      system_name: "", 
-      result: "pass", 
-      comments: "" 
-    }
-  ]);
-};
+**Enhanced styling:**
+```css
+.ProseMirror em {
+  font-style: italic;
+  font-weight: 500;
+  color: hsl(var(--foreground) / 0.95);
+  letter-spacing: 0.01em;
+}
 ```
+
+### Style Breakdown
+
+| Property | Value | Purpose |
+|----------|-------|---------|
+| `font-style: italic` | Existing | Standard italic appearance |
+| `font-weight: 500` | New | Subtle semi-bold weight for prominence |
+| `color` | `hsl(var(--foreground) / 0.95)` | Slightly darker than standard text |
+| `letter-spacing: 0.01em` | New | Subtle spacing for readability |
 
 ---
 
-## Impact on Existing Functionality
+## Why This Works
 
-### Auto-Save Mechanism
-This change **does not affect** the 3-second debounce auto-save pattern:
-- The `onUpdate` callback still triggers the same state update flow
-- The debounced save logic in the parent `InspectionForm` remains unchanged
-- Field-level changes still persist correctly
+1. **Single source of truth**: All `RichTextEditor` and `VoiceRichTextEditor` components render TipTap/ProseMirror, which uses `.ProseMirror em` for italics
+2. **Pure CSS change**: No JavaScript or data structure modifications
+3. **Respects data preservation**: The underlying HTML (`<em>` tags) remains unchanged - only visual presentation is enhanced
+4. **Consistent across all reports**: The same CSS applies globally
 
-### Deletion Confirmation
-This change **does not affect** user-initiated deletions:
-- The `deleteSystem` function (lines 36-42) remains unchanged
-- Users can still delete items via the trash icon
-- Confirmation dialogs are handled at the parent component level
+---
 
-### Data Persistence
-The append operation respects the **Immediate, Irreversible Persistence** policy:
-- New items are assigned a temporary UUID on creation
-- The auto-save mechanism picks up the state change
-- The backend sync validates through existing RLS policies
+## Impact Assessment
+
+| Concern | Status |
+|---------|--------|
+| Data preservation | ✓ No change - `<em>` tags still saved as-is |
+| Auto-save mechanism | ✓ No interference - purely visual |
+| Report export (HTML/PDF) | ✓ No impact - export functions handle HTML separately |
+| Dark mode | ✓ Uses CSS variables, works in both themes |
 
 ---
 
@@ -85,7 +75,7 @@ The append operation respects the **Immediate, Irreversible Persistence** policy
 
 | Category | Detail |
 |----------|--------|
-| Files Changed | 1 (`OperatingSystemsTable.tsx`) |
-| Lines Changed | ~4 lines (reordering spread operator) |
-| Risk Level | Very Low |
-| Testing | Add a new system and verify it appears at bottom of list |
+| Files Changed | 1 (`src/index.css`) |
+| Lines Changed | 3 lines added to existing rule |
+| Risk Level | Very Low (CSS only) |
+| Testing | Apply italic formatting in any comment field and verify visual prominence |
