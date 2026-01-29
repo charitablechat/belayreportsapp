@@ -8,10 +8,12 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { X, Cloud, CloudOff, Loader2 } from "lucide-react";
 import { triggerHaptic } from "@/lib/haptics";
+import PhotoCaptionInput from "./PhotoCaptionInput";
 
 interface PhotoGalleryProps {
   inspectionId: string;
   section: string;
+  readOnly?: boolean;
 }
 
 interface Photo {
@@ -19,9 +21,10 @@ interface Photo {
   photoUrl: string;
   blob?: Blob;
   uploaded: boolean;
+  caption: string | null;
 }
 
-export default function PhotoGallery({ inspectionId, section }: PhotoGalleryProps) {
+export default function PhotoGallery({ inspectionId, section, readOnly = false }: PhotoGalleryProps) {
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [loading, setLoading] = useState(true);
   const { isOnline } = useNetworkStatus();
@@ -61,6 +64,7 @@ export default function PhotoGallery({ inspectionId, section }: PhotoGalleryProp
             photoUrl: objectUrl,
             blob: p.blob,
             uploaded: p.uploaded,
+            caption: null, // Offline photos don't have captions until synced
           };
         });
 
@@ -100,6 +104,7 @@ export default function PhotoGallery({ inspectionId, section }: PhotoGalleryProp
                   id: photo.id,
                   photoUrl: signedUrlData.signedUrl,
                   uploaded: true,
+                  caption: photo.caption,
                 };
               }
             }
@@ -119,6 +124,7 @@ export default function PhotoGallery({ inspectionId, section }: PhotoGalleryProp
                   id: photo.id,
                   photoUrl: signedUrlData.signedUrl,
                   uploaded: true,
+                  caption: photo.caption,
                 };
               }
               
@@ -141,6 +147,7 @@ export default function PhotoGallery({ inspectionId, section }: PhotoGalleryProp
               id: photo.id,
               photoUrl: signedUrlData.signedUrl,
               uploaded: true,
+              caption: photo.caption,
             };
           })
         ).then(photos => photos.filter(photo => photo !== null) as Photo[]);
@@ -198,34 +205,57 @@ export default function PhotoGallery({ inspectionId, section }: PhotoGalleryProp
   return (
     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
       {photos.map((photo) => (
-        <Card key={photo.id} className="relative group overflow-hidden">
-          <img
-            src={photo.photoUrl}
-            alt="Inspection photo"
-            className="w-full h-48 object-cover"
-          />
-          <div className="absolute top-2 right-2 flex gap-2">
-            {!photo.uploaded && (
-              <Badge variant="secondary" className="gap-1">
-                <CloudOff className="w-3 h-3" />
-                Pending
-              </Badge>
-            )}
-            {photo.uploaded && (
-              <Badge variant="default" className="gap-1">
-                <Cloud className="w-3 h-3" />
-                Synced
-              </Badge>
+        <Card key={photo.id} className="relative group overflow-hidden flex flex-col">
+          <div className="relative">
+            <img
+              src={photo.photoUrl}
+              alt={photo.caption || "Inspection photo"}
+              className="w-full h-48 object-cover"
+            />
+            <div className="absolute top-2 right-2 flex gap-2">
+              {!photo.uploaded && (
+                <Badge variant="secondary" className="gap-1">
+                  <CloudOff className="w-3 h-3" />
+                  Pending
+                </Badge>
+              )}
+              {photo.uploaded && (
+                <Badge variant="default" className="gap-1">
+                  <Cloud className="w-3 h-3" />
+                  Synced
+                </Badge>
+              )}
+            </div>
+            {!readOnly && (
+              <Button
+                variant="destructive"
+                size="icon"
+                className="absolute bottom-2 right-2 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity"
+                onClick={() => handleDelete(photo)}
+              >
+                <X className="w-4 h-4" />
+              </Button>
             )}
           </div>
-          <Button
-            variant="destructive"
-            size="icon"
-            className="absolute bottom-2 right-2 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity"
-            onClick={() => handleDelete(photo)}
-          >
-            <X className="w-4 h-4" />
-          </Button>
+          {/* Caption input - only show for uploaded photos */}
+          {photo.uploaded && (
+            <div className="p-2 border-t border-border">
+              <PhotoCaptionInput
+                photoId={photo.id}
+                initialCaption={photo.caption}
+                tableName="inspection_photos"
+                disabled={readOnly}
+              />
+            </div>
+          )}
+          {/* Show placeholder for offline photos */}
+          {!photo.uploaded && (
+            <div className="p-2 border-t border-border">
+              <p className="text-xs text-muted-foreground italic">
+                Caption available after sync
+              </p>
+            </div>
+          )}
         </Card>
       ))}
     </div>
