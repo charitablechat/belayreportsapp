@@ -419,6 +419,13 @@ serve(async (req) => {
       font-size: 13px;
     }
 
+    em {
+      font-style: italic;
+      font-weight: 500;
+      color: rgba(30, 41, 59, 0.95);
+      letter-spacing: 0.01em;
+    }
+
     .item-comments {
       font-size: 12px;
       color: #64748b;
