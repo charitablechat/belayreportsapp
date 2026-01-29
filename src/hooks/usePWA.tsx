@@ -1,11 +1,41 @@
 import { useContext } from 'react';
-import { PWAContext } from '@/components/pwa/PWAProvider';
+import { PWAContext, PWAContextType } from '@/components/pwa/PWAProvider';
 
-export const usePWA = () => {
+// Safe defaults when context is unavailable (during error recovery or init)
+const fallbackContext: PWAContextType = {
+  isInstallable: false,
+  isInstalled: false,
+  isDismissed: false,
+  promptInstall: async () => {},
+  dismissPrompt: () => {},
+  needsUpdate: false,
+  offlineReady: false,
+  updateAndReload: async () => {},
+  isOnline: typeof navigator !== 'undefined' ? navigator.onLine : true,
+  effectiveType: null,
+  downlink: null,
+  rtt: null,
+  unsyncedCount: 0,
+  unsyncedInspections: [],
+  isSyncing: false,
+  lastSyncTime: null,
+  syncError: null,
+  updateUnsyncedCount: async () => {},
+  forceSync: async () => {},
+  unsyncedPhotoCount: 0,
+  photosByInspection: {},
+  updatePhotoCount: async () => {},
+};
+
+export const usePWA = (): PWAContextType => {
   const context = useContext(PWAContext);
   
+  // Return safe defaults if context unavailable (graceful degradation)
   if (!context) {
-    throw new Error('usePWA must be used within PWAProvider');
+    if (import.meta.env.DEV) {
+      console.warn('[usePWA] Context unavailable, using fallback defaults');
+    }
+    return fallbackContext;
   }
   
   return context;
