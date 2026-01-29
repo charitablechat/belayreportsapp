@@ -89,6 +89,8 @@ export default function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: Z
                       onChange={(value) => updateZipline(index, "zipline_name", value)}
                       onBlur={onImmediateSave}
                       storageKey="rope-works-zipline-names"
+                      syncToDatabase={true}
+                      fieldType="zipline_name"
                       placeholder="Name"
                       className="border-0 bg-transparent h-8 text-xs"
                     />
@@ -220,6 +222,8 @@ export default function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: Z
                     onChange={(value) => updateZipline(index, "zipline_name", value)}
                     onBlur={onImmediateSave}
                     storageKey="rope-works-zipline-names"
+                    syncToDatabase={true}
+                    fieldType="zipline_name"
                     placeholder="Enter or select name"
                   />
                 </div>

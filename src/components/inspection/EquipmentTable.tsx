@@ -75,6 +75,8 @@ export default function EquipmentTable({ category, displayName, equipment, onUpd
                       onChange={(value) => updateEquipment(item, "equipment_type", value)}
                       onBlur={onImmediateSave}
                       storageKey="rope-works-equipment-types"
+                      syncToDatabase={true}
+                      fieldType="equipment_type"
                       placeholder="Enter or select type"
                       className={cn(
                         "border-0 bg-transparent",
@@ -139,6 +141,8 @@ export default function EquipmentTable({ category, displayName, equipment, onUpd
                     onChange={(value) => updateEquipment(item, "equipment_type", value)}
                     onBlur={onImmediateSave}
                     storageKey="rope-works-equipment-types"
+                    syncToDatabase={true}
+                    fieldType="equipment_type"
                     placeholder="Enter or select type"
                     className={cn(
                       !item.equipment_type || item.equipment_type.trim() === ""

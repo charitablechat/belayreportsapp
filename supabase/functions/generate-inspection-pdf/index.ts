@@ -107,6 +107,27 @@ serve(async (req) => {
       return text.trim();
     };
 
+    // Format comments as bullet points for PDF
+    const formatCommentsForPdf = (comments: string | null): string => {
+      if (!comments) return '-';
+      const text = stripHtml(comments);
+      if (!text || text === '-') return '-';
+      
+      // Split by newlines
+      const lines = text.split(/\n/).map(l => l.trim()).filter(Boolean);
+      
+      if (lines.length <= 1) {
+        return text;
+      }
+      
+      // Format as bullet list
+      return lines.map(line => {
+        // Remove existing bullet characters
+        const cleaned = line.replace(/^[\-•●○◦▪▸►]\s*/, '').replace(/^\d+[.)]\s*/, '').trim();
+        return `• ${cleaned}`;
+      }).join('\n');
+    };
+
     const inspectorName = `${inspectorProfile?.first_name || ''} ${inspectorProfile?.last_name || ''}`.trim() || 'Inspector';
 
     console.log('Creating PDF document with jsPDF...');
@@ -277,7 +298,7 @@ serve(async (req) => {
         body: systems.map(sys => [
           stripHtml(sys.system_name || sys.name) || 'N/A',
           sys.result || 'N/A',
-          stripHtml(sys.comments) || '-'
+          formatCommentsForPdf(sys.comments)
         ]),
         styles: { fontSize: 9, cellPadding: 3, textColor: [0, 0, 0] },
         headStyles: { fillColor: [30, 64, 175], textColor: [255, 255, 255], fontStyle: 'bold' },
@@ -328,7 +349,7 @@ serve(async (req) => {
           stripHtml(zip.braking_system) || 'N/A',
           stripHtml(zip.ead_system) || 'N/A',
           zip.result || 'N/A',
-          stripHtml(zip.comments) || '-'
+          formatCommentsForPdf(zip.comments)
         ]),
         styles: { fontSize: 8, cellPadding: 2, textColor: [0, 0, 0] },
         headStyles: { fillColor: [30, 64, 175], textColor: [255, 255, 255], fontStyle: 'bold' },
@@ -398,7 +419,7 @@ serve(async (req) => {
             eq.quantity?.toString() || 'N/A',
             eq.production_year?.toString() || 'N/A',
             eq.result || 'N/A',
-            stripHtml(eq.comments) || '-'
+            formatCommentsForPdf(eq.comments)
           ]),
           styles: { fontSize: 9, cellPadding: 2, textColor: [0, 0, 0] },
           headStyles: { fillColor: [30, 64, 175], textColor: [255, 255, 255], fontStyle: 'bold' },
@@ -447,7 +468,7 @@ serve(async (req) => {
         head: [['Standard', 'Documentation', 'Comments']],
         body: standards.map(std => [
           stripHtml(std.standard_name) || 'N/A',
-          std.has_documentation ? 'Yes' : 'No',
+          std.has_documentation === true ? 'Yes' : (std.has_documentation === false ? 'No' : '-'),
           stripHtml(std.comments) || '-'
         ]),
         styles: { fontSize: 9, cellPadding: 3, textColor: [0, 0, 0] },
