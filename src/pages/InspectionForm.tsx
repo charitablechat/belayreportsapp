@@ -284,17 +284,6 @@ export default function InspectionForm() {
     const fetchUser = async () => {
       const user = await getUserWithCache();
       setCurrentUser(user);
-      
-      // Fetch user profile if online
-      if (user && navigator.onLine) {
-        const { data: profile } = await (supabase as any)
-          .from("profiles")
-          .select("*")
-          .eq("id", user.id)
-          .maybeSingle();
-        
-        setUserProfile(profile);
-      }
     };
     
     fetchUser();
@@ -308,6 +297,23 @@ export default function InspectionForm() {
     
     return () => subscription.unsubscribe();
   }, [id]);
+
+  // Fetch inspector profile (the report owner, not current user)
+  useEffect(() => {
+    const fetchInspectorProfile = async () => {
+      if (!inspectorId || !navigator.onLine) return;
+      
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", inspectorId)
+        .maybeSingle();
+      
+      setUserProfile(profile);
+    };
+    
+    fetchInspectorProfile();
+  }, [inspectorId]);
 
   // Auto-populate ACCT# from user profile
   useEffect(() => {

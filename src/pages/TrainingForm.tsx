@@ -153,23 +153,29 @@ export default function TrainingForm() {
 
   // Auto-retry on network reconnect is now handled by useAutoSync hook
 
-  // Fetch current user and profile
+  // Fetch current user
   useEffect(() => {
     const fetchUser = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       setCurrentUser(user);
-      
-      if (user) {
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('avatar_url, first_name, last_name')
-          .eq('id', user.id)
-          .single();
-        setUserProfile(profile);
-      }
     };
     fetchUser();
   }, []);
+
+  // Fetch inspector profile (the report owner, not current user)
+  useEffect(() => {
+    const fetchInspectorProfile = async () => {
+      if (!inspectorId) return;
+      
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('avatar_url, first_name, last_name')
+        .eq('id', inspectorId)
+        .single();
+      setUserProfile(profile);
+    };
+    fetchInspectorProfile();
+  }, [inspectorId]);
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
