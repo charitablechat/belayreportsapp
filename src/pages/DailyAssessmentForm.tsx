@@ -174,13 +174,13 @@ export default function DailyAssessmentForm() {
       clearTimeout(autoSaveTimerRef.current);
     }
     
-    // Set new debounce timer - 3 seconds after last change
+    // Set new debounce timer - 1.5 seconds after last change (optimized for near-instant feel)
     autoSaveTimerRef.current = setTimeout(() => {
       if (!saving) {
         console.log('[DailyAssessment AutoSave] Debounced save triggered');
         handleSaveProgress();
       }
-    }, 3000);
+    }, 1500);
     
     return () => {
       if (autoSaveTimerRef.current) {
@@ -385,27 +385,21 @@ export default function DailyAssessmentForm() {
         offlineStorage = null;
       }
       
-      // Save related data offline with timeout protection (non-blocking)
+      // Save related data offline (fire-and-forget for UI responsiveness)
       if (offlineStorage) {
         console.log('[Save] Saving to offline storage...');
-        try {
-          await withTimeout(
-            Promise.all([
-              offlineStorage.saveAssessmentDataOffline('beginning_of_day', id!, beginningOfDay),
-              offlineStorage.saveAssessmentDataOffline('end_of_day', id!, endOfDay),
-              offlineStorage.saveAssessmentDataOffline('operating_systems', id!, operatingSystems),
-              offlineStorage.saveAssessmentDataOffline('equipment_checks', id!, equipmentChecks),
-              offlineStorage.saveAssessmentDataOffline('structure_checks', id!, structureChecks),
-              offlineStorage.saveAssessmentDataOffline('environment_checks', id!, environmentChecks),
-            ]),
-            5000,
-            'Offline storage save'
-          );
+        Promise.all([
+          offlineStorage.saveAssessmentDataOffline('beginning_of_day', id!, beginningOfDay),
+          offlineStorage.saveAssessmentDataOffline('end_of_day', id!, endOfDay),
+          offlineStorage.saveAssessmentDataOffline('operating_systems', id!, operatingSystems),
+          offlineStorage.saveAssessmentDataOffline('equipment_checks', id!, equipmentChecks),
+          offlineStorage.saveAssessmentDataOffline('structure_checks', id!, structureChecks),
+          offlineStorage.saveAssessmentDataOffline('environment_checks', id!, environmentChecks),
+        ]).then(() => {
           console.log('[Save] Offline storage completed');
-        } catch (offlineError) {
-          console.warn('[Save] Offline storage failed or timed out:', offlineError);
-          // Continue with online save - don't block
-        }
+        }).catch((offlineError) => {
+          console.warn('[Save] Offline storage failed:', offlineError);
+        });
       }
 
       // Save assessment without changing status

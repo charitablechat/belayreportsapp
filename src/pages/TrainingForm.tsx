@@ -364,25 +364,20 @@ export default function TrainingForm() {
         updated_at: new Date().toISOString(),
       };
 
-      // Save offline first with timeout protection
-      try {
-        await Promise.race([
-          Promise.all([
-            saveTrainingOffline(updatedTraining),
-            saveTrainingDataOffline('delivery_approaches', id, deliveryApproaches),
-            saveTrainingDataOffline('operating_systems', id, operatingSystems),
-            saveTrainingDataOffline('immediate_attention', id, immediateAttention),
-            saveTrainingDataOffline('verifiable_items', id, verifiableItems),
-            saveTrainingDataOffline('systems_in_place', id, systemsInPlace),
-            summary && saveTrainingDataOffline('summary', id, summary)
-          ]),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('Offline save timeout')), 5000))
-        ]);
+      // Save offline (fire-and-forget for UI responsiveness)
+      Promise.all([
+        saveTrainingOffline(updatedTraining),
+        saveTrainingDataOffline('delivery_approaches', id, deliveryApproaches),
+        saveTrainingDataOffline('operating_systems', id, operatingSystems),
+        saveTrainingDataOffline('immediate_attention', id, immediateAttention),
+        saveTrainingDataOffline('verifiable_items', id, verifiableItems),
+        saveTrainingDataOffline('systems_in_place', id, systemsInPlace),
+        summary && saveTrainingDataOffline('summary', id, summary)
+      ]).then(() => {
         console.log('[Training Save] Offline storage completed');
-      } catch (offlineError) {
-        console.warn('[Training Save] Offline storage failed or timed out:', offlineError);
-        // Continue with online save
-      }
+      }).catch((offlineError) => {
+        console.warn('[Training Save] Offline storage failed:', offlineError);
+      });
 
       // If online, try to sync to Supabase
       if (isOnline) {
@@ -399,132 +394,74 @@ export default function TrainingForm() {
 
           if (trainingError) throw trainingError;
 
-          // Use upsert for all related tables to prevent data loss
-          // This is safer than delete+insert as it's atomic
-          const upsertPromises = [];
+          // OPTIMIZED: Pre-generate UUIDs and run ALL operations in parallel
+          // Prepare all data with proper IDs upfront
+          const prepareItems = <T extends { id?: string }>(items: T[], foreignKey: string) => 
+            items.map(item => ({
+              ...item,
+              id: item.id?.startsWith('temp-') ? crypto.randomUUID() : (item.id || crypto.randomUUID()),
+              [foreignKey]: id
+            }));
+
+          const preparedApproaches = prepareItems(deliveryApproaches, 'training_id');
+          const preparedSystems = prepareItems(operatingSystems, 'training_id');
+          const preparedAttention = prepareItems(immediateAttention, 'training_id');
+          const preparedVerifiable = prepareItems(verifiableItems, 'training_id');
+          const preparedSystemsPlace = prepareItems(systemsInPlace, 'training_id');
+
+          // Execute all upserts in parallel (single batch operation)
+          const parallelOps: Promise<void>[] = [];
           
-          if (deliveryApproaches.length > 0) {
-            // Delete approaches not in current list, then upsert
-            const approachIds = deliveryApproaches.filter(a => a.id && !a.id.startsWith('temp-')).map(a => a.id);
-            if (approachIds.length > 0) {
-              await supabase.from('training_delivery_approaches').delete().eq('training_id', id).not('id', 'in', `(${approachIds.join(',')})`);
-            } else {
-              await supabase.from('training_delivery_approaches').delete().eq('training_id', id);
-            }
-            upsertPromises.push(
-              supabase.from('training_delivery_approaches').upsert(
-                deliveryApproaches.map(a => ({ 
-                  ...a, 
-                  training_id: id,
-                  id: a.id?.startsWith('temp-') ? undefined : a.id 
-                }))
-              )
+          // Helper to convert PromiseLike to proper Promise
+          const dbOp = async (operation: PromiseLike<{ error: any }>) => {
+            const { error } = await operation;
+            if (error) throw error;
+          };
+
+          if (preparedApproaches.length > 0) {
+            parallelOps.push(
+              dbOp(supabase.from('training_delivery_approaches').upsert(preparedApproaches, { onConflict: 'id' }))
             );
-          } else {
-            await supabase.from('training_delivery_approaches').delete().eq('training_id', id);
           }
 
-          if (operatingSystems.length > 0) {
-            const systemIds = operatingSystems.filter(s => s.id && !s.id.startsWith('temp-')).map(s => s.id);
-            if (systemIds.length > 0) {
-              await supabase.from('training_operating_systems').delete().eq('training_id', id).not('id', 'in', `(${systemIds.join(',')})`);
-            } else {
-              await supabase.from('training_operating_systems').delete().eq('training_id', id);
-            }
-            upsertPromises.push(
-              supabase.from('training_operating_systems').upsert(
-                operatingSystems.map(s => ({ 
-                  ...s, 
-                  training_id: id,
-                  id: s.id?.startsWith('temp-') ? undefined : s.id 
-                }))
-              )
+          if (preparedSystems.length > 0) {
+            parallelOps.push(
+              dbOp(supabase.from('training_operating_systems').upsert(preparedSystems, { onConflict: 'id' }))
             );
-          } else {
-            await supabase.from('training_operating_systems').delete().eq('training_id', id);
           }
 
-          if (immediateAttention.length > 0) {
-            const attentionIds = immediateAttention.filter(i => i.id && !i.id.startsWith('temp-')).map(i => i.id);
-            if (attentionIds.length > 0) {
-              await supabase.from('training_immediate_attention').delete().eq('training_id', id).not('id', 'in', `(${attentionIds.join(',')})`);
-            } else {
-              await supabase.from('training_immediate_attention').delete().eq('training_id', id);
-            }
-            upsertPromises.push(
-              supabase.from('training_immediate_attention').upsert(
-                immediateAttention.map(i => ({ 
-                  ...i, 
-                  training_id: id,
-                  id: i.id?.startsWith('temp-') ? undefined : i.id 
-                }))
-              )
+          if (preparedAttention.length > 0) {
+            parallelOps.push(
+              dbOp(supabase.from('training_immediate_attention').upsert(preparedAttention, { onConflict: 'id' }))
             );
-          } else {
-            await supabase.from('training_immediate_attention').delete().eq('training_id', id);
           }
 
-          if (verifiableItems.length > 0) {
-            const verifiableIds = verifiableItems.filter(v => v.id && !v.id.startsWith('temp-')).map(v => v.id);
-            if (verifiableIds.length > 0) {
-              await supabase.from('training_verifiable_items').delete().eq('training_id', id).not('id', 'in', `(${verifiableIds.join(',')})`);
-            } else {
-              await supabase.from('training_verifiable_items').delete().eq('training_id', id);
-            }
-            upsertPromises.push(
-              supabase.from('training_verifiable_items').upsert(
-                verifiableItems.map(v => ({ 
-                  ...v, 
-                  training_id: id,
-                  id: v.id?.startsWith('temp-') ? undefined : v.id 
-                }))
-              )
+          if (preparedVerifiable.length > 0) {
+            parallelOps.push(
+              dbOp(supabase.from('training_verifiable_items').upsert(preparedVerifiable, { onConflict: 'id' }))
             );
-          } else {
-            await supabase.from('training_verifiable_items').delete().eq('training_id', id);
           }
 
-          if (systemsInPlace.length > 0) {
-            const placeIds = systemsInPlace.filter(s => s.id && !s.id.startsWith('temp-')).map(s => s.id);
-            if (placeIds.length > 0) {
-              await supabase.from('training_systems_in_place').delete().eq('training_id', id).not('id', 'in', `(${placeIds.join(',')})`);
-            } else {
-              await supabase.from('training_systems_in_place').delete().eq('training_id', id);
-            }
-            upsertPromises.push(
-              supabase.from('training_systems_in_place').upsert(
-                systemsInPlace.map(s => ({ 
-                  ...s, 
-                  training_id: id,
-                  id: s.id?.startsWith('temp-') ? undefined : s.id 
-                }))
-              )
+          if (preparedSystemsPlace.length > 0) {
+            parallelOps.push(
+              dbOp(supabase.from('training_systems_in_place').upsert(preparedSystemsPlace, { onConflict: 'id' }))
             );
-          } else {
-            await supabase.from('training_systems_in_place').delete().eq('training_id', id);
           }
 
-          await Promise.all(upsertPromises);
-
-          // Update or insert summary
+          // Summary - use upsert for atomic operation
           if (summary) {
-            const { data: existingSummary } = await supabase
-              .from('training_summary')
-              .select('id')
-              .eq('training_id', id)
-              .single();
-
-            if (existingSummary) {
-              await supabase
-                .from('training_summary')
-                .update(summary)
-                .eq('training_id', id);
-            } else {
-              await supabase
-                .from('training_summary')
-                .insert({ ...summary, training_id: id });
-            }
+            const preparedSummary = {
+              ...summary,
+              id: summary.id || crypto.randomUUID(),
+              training_id: id
+            };
+            parallelOps.push(
+              dbOp(supabase.from('training_summary').upsert(preparedSummary, { onConflict: 'training_id' }))
+            );
           }
+
+          // Execute all in parallel
+          await Promise.all(parallelOps);
 
           await saveTrainingOffline({
             ...updatedTraining,
@@ -570,13 +507,13 @@ export default function TrainingForm() {
       clearTimeout(saveDebounceTimerRef.current);
     }
     
-    // Set new debounce timer - 3 seconds after last change
+    // Set new debounce timer - 1.5 seconds after last change (optimized for near-instant feel)
     saveDebounceTimerRef.current = setTimeout(() => {
       if (!isSaving) {
         console.log('[Training AutoSave] Debounced save triggered');
         saveTraining();
       }
-    }, 3000);
+    }, 1500);
     
     return () => {
       if (saveDebounceTimerRef.current) {

@@ -306,10 +306,10 @@ export default function InspectionForm() {
         clearTimeout(saveDebounceTimerRef.current);
       }
       
-      // Set new debounce timer for 3 seconds
+      // Set new debounce timer for 1.5 seconds (optimized for near-instant feel)
       saveDebounceTimerRef.current = setTimeout(() => {
         autoSaveProgress();
-      }, 3000);
+      }, 1500);
     }
   }, [systems, ziplines, equipment, standards, summary]);
 
@@ -850,27 +850,21 @@ export default function InspectionForm() {
         ]);
       };
 
-      // Save to offline storage with timeout protection
-      try {
-        await withTimeout(
-          Promise.all([
-            saveInspectionOffline(inspectionToSave),
-            saveRelatedDataOffline('systems', id!, validSystems),
-            saveRelatedDataOffline('ziplines', id!, validZiplines),
-            saveRelatedDataOffline('equipment', id!, validEquipment),
-            saveRelatedDataOffline('standards', id!, standards),
-            saveRelatedDataOffline('summary', id!, [summary]),
-          ]),
-          5000,
-          'Offline storage save'
-        );
-        setInspection(inspectionToSave);
+      // Save to offline storage (fire-and-forget for UI responsiveness)
+      // Offline storage is for fault tolerance, not blocking the critical path
+      setInspection(inspectionToSave);
+      Promise.all([
+        saveInspectionOffline(inspectionToSave),
+        saveRelatedDataOffline('systems', id!, validSystems),
+        saveRelatedDataOffline('ziplines', id!, validZiplines),
+        saveRelatedDataOffline('equipment', id!, validEquipment),
+        saveRelatedDataOffline('standards', id!, standards),
+        saveRelatedDataOffline('summary', id!, [summary]),
+      ]).then(() => {
         console.log('[InspectionForm Save] Offline storage completed');
-      } catch (offlineError) {
-        console.warn('[InspectionForm Save] Offline storage failed or timed out:', offlineError);
-        // Continue with online save - don't block
-        setInspection(inspectionToSave);
-      }
+      }).catch((offlineError) => {
+        console.warn('[InspectionForm Save] Offline storage failed:', offlineError);
+      });
 
       if (import.meta.env.DEV) {
         console.log('[InspectionForm] Saved all data to offline storage');
@@ -903,170 +897,112 @@ export default function InspectionForm() {
               throw inspectionError;
             }
             
-            // Batch upsert systems - separate new items from existing
+            // OPTIMIZED: Parallelize all independent database operations
+            // Pre-generate UUIDs for new items to avoid .select() roundtrips
             const existingSystems = validSystems.filter(s => s.id && !s.id.startsWith('temp-'));
-            const newSystems = validSystems.filter(s => !s.id || s.id.startsWith('temp-'));
+            const newSystems = validSystems.filter(s => !s.id || s.id.startsWith('temp-')).map(s => ({
+              ...s,
+              id: crypto.randomUUID(), // Pre-generate UUID
+              inspection_id: id
+            }));
             
-            if (existingSystems.length > 0) {
-              const { error: systemsError } = await supabase
-                .from("inspection_systems")
-                .upsert(existingSystems.map(s => ({ ...s, inspection_id: id })), { onConflict: 'id' });
-              if (systemsError) {
-                console.error('[InspectionForm Sync] Failed to upsert systems:', systemsError);
-                throw systemsError;
-              }
-            }
-            
-            if (newSystems.length > 0) {
-              const { data: insertedSystems, error: newSystemsError } = await supabase
-                .from("inspection_systems")
-                .insert(newSystems.map(s => {
-                  const { id: tempId, ...systemData } = s;
-                  return { ...systemData, inspection_id: id };
-                }))
-                .select();
-              
-              if (newSystemsError) {
-                console.error('[InspectionForm Sync] Failed to insert new systems:', newSystemsError);
-                throw newSystemsError;
-              }
-              
-              // Update local state with new IDs
-              if (insertedSystems) {
-                setSystems(prev => {
-                  const updated = [...prev];
-                  newSystems.forEach((oldSystem, index) => {
-                    const newId = insertedSystems[index]?.id;
-                    if (newId) {
-                      const foundIndex = updated.findIndex(s => s.id === oldSystem.id);
-                      if (foundIndex !== -1) {
-                        updated[foundIndex] = { ...updated[foundIndex], id: newId };
-                      }
-                    }
-                  });
-                  return updated;
-                });
-              }
-            }
-
-            // Batch upsert ziplines - separate new items from existing
             const existingZiplines = validZiplines.filter(z => z.id && !z.id.startsWith('temp-'));
-            const newZiplines = validZiplines.filter(z => !z.id || z.id.startsWith('temp-'));
+            const newZiplines = validZiplines.filter(z => !z.id || z.id.startsWith('temp-')).map(z => ({
+              ...z,
+              id: crypto.randomUUID(),
+              inspection_id: id
+            }));
             
-            if (existingZiplines.length > 0) {
-              const { error: ziplinesError } = await supabase
-                .from("inspection_ziplines")
-                .upsert(existingZiplines.map(z => ({ ...z, inspection_id: id })), { onConflict: 'id' });
-              if (ziplinesError) {
-                console.error('[InspectionForm Sync] Failed to upsert ziplines:', ziplinesError);
-                throw ziplinesError;
-              }
-            }
-            
-            if (newZiplines.length > 0) {
-              const { data: insertedZiplines, error: newZiplinesError } = await supabase
-                .from("inspection_ziplines")
-                .insert(newZiplines.map(z => {
-                  const { id: tempId, ...ziplineData } = z;
-                  return { ...ziplineData, inspection_id: id };
-                }))
-                .select();
-              
-              if (newZiplinesError) {
-                console.error('[InspectionForm Sync] Failed to insert new ziplines:', newZiplinesError);
-                throw newZiplinesError;
-              }
-              
-              if (insertedZiplines) {
-                setZiplines(prev => {
-                  const updated = [...prev];
-                  newZiplines.forEach((oldZipline, index) => {
-                    const newId = insertedZiplines[index]?.id;
-                    if (newId) {
-                      const foundIndex = updated.findIndex(z => z.id === oldZipline.id);
-                      if (foundIndex !== -1) {
-                        updated[foundIndex] = { ...updated[foundIndex], id: newId };
-                      }
-                    }
-                  });
-                  return updated;
-                });
-              }
-            }
-
-            // Batch upsert equipment - separate new items from existing
             const existingEquipment = validEquipment.filter(e => e.id && !e.id.startsWith('temp-'));
-            const newEquipment = validEquipment.filter(e => !e.id || e.id.startsWith('temp-'));
+            const newEquipment = validEquipment.filter(e => !e.id || e.id.startsWith('temp-')).map(e => ({
+              ...e,
+              id: crypto.randomUUID(),
+              inspection_id: id
+            }));
             
-            if (existingEquipment.length > 0) {
-              const { error: equipmentError } = await supabase
-                .from("inspection_equipment")
-                .upsert(existingEquipment.map(e => ({ ...e, inspection_id: id })), { onConflict: 'id' });
-              if (equipmentError) {
-                console.error('[InspectionForm Sync] Failed to upsert equipment:', equipmentError);
-                throw equipmentError;
-              }
-            }
+            // Prepare standards with proper IDs for upsert
+            const standardsWithIds = standards.map(s => ({
+              ...s,
+              id: s.id || crypto.randomUUID(),
+              inspection_id: id
+            }));
             
-            if (newEquipment.length > 0) {
-              const { data: insertedEquipment, error: newEquipmentError } = await supabase
-                .from("inspection_equipment")
-                .insert(newEquipment.map(e => {
-                  const { id: tempId, ...equipmentData } = e;
-                  return { ...equipmentData, inspection_id: id };
-                }))
-                .select();
-              
-              if (newEquipmentError) {
-                console.error('[InspectionForm Sync] Failed to insert new equipment:', newEquipmentError);
-                throw newEquipmentError;
-              }
-              
-              if (insertedEquipment) {
-                setEquipment(prev => {
-                  const updated = [...prev];
-                  newEquipment.forEach((oldEquip, index) => {
-                    const newId = insertedEquipment[index]?.id;
-                    if (newId) {
-                      const foundIndex = updated.findIndex(e => e.id === oldEquip.id);
-                      if (foundIndex !== -1) {
-                        updated[foundIndex] = { ...updated[foundIndex], id: newId };
-                      }
-                    }
-                  });
-                  return updated;
-                });
-              }
-            }
-
-            // Upsert standards - delete old then insert new
-            await supabase.from("inspection_standards").delete().eq("inspection_id", id);
-            const standardsToInsert = standards.map(s => {
-              const { id: stdId, ...standardData } = s;
-              return { ...standardData, inspection_id: id };
-            });
-            const { error: standardsError } = await supabase
-              .from("inspection_standards")
-              .insert(standardsToInsert);
-            if (standardsError) {
-              console.error('[InspectionForm Sync] Failed to save standards:', standardsError);
-              throw standardsError;
-            }
-
-            // Save or update summary
+            // Prepare summary
             const sanitizeSummary = (sum: any) => ({
               ...sum,
               next_inspection_date: sum.next_inspection_date === "" ? null : sum.next_inspection_date
             });
 
-            const { error: summaryError } = await supabase
-              .from("inspection_summary")
-              .upsert(sanitizeSummary({ ...summary, inspection_id: id }), { onConflict: 'inspection_id' });
+            // Execute ALL operations in parallel for maximum speed
+            const parallelOperations: Promise<void>[] = [];
             
-            if (summaryError) {
-              console.error('[InspectionForm Sync] Failed to save summary:', summaryError);
-              throw summaryError;
+            // Helper to convert PromiseLike to proper Promise
+            const dbOp = async (operation: PromiseLike<{ error: any }>) => {
+              const { error } = await operation;
+              if (error) throw error;
+            };
+            
+            // Systems operations
+            if (existingSystems.length > 0) {
+              parallelOperations.push(
+                dbOp(supabase.from("inspection_systems").upsert(existingSystems.map(s => ({ ...s, inspection_id: id })), { onConflict: 'id' }))
+              );
             }
+            if (newSystems.length > 0) {
+              parallelOperations.push(
+                dbOp(supabase.from("inspection_systems").insert(newSystems))
+              );
+              // Update local state immediately with pre-generated IDs
+              setSystems(prev => {
+                const existingIds = new Set(prev.filter(s => s.id && !s.id.startsWith('temp-')).map(s => s.id));
+                return [...prev.filter(s => existingIds.has(s.id)), ...newSystems];
+              });
+            }
+            
+            // Ziplines operations
+            if (existingZiplines.length > 0) {
+              parallelOperations.push(
+                dbOp(supabase.from("inspection_ziplines").upsert(existingZiplines.map(z => ({ ...z, inspection_id: id })), { onConflict: 'id' }))
+              );
+            }
+            if (newZiplines.length > 0) {
+              parallelOperations.push(
+                dbOp(supabase.from("inspection_ziplines").insert(newZiplines))
+              );
+              setZiplines(prev => {
+                const existingIds = new Set(prev.filter(z => z.id && !z.id.startsWith('temp-')).map(z => z.id));
+                return [...prev.filter(z => existingIds.has(z.id)), ...newZiplines];
+              });
+            }
+            
+            // Equipment operations
+            if (existingEquipment.length > 0) {
+              parallelOperations.push(
+                dbOp(supabase.from("inspection_equipment").upsert(existingEquipment.map(e => ({ ...e, inspection_id: id })), { onConflict: 'id' }))
+              );
+            }
+            if (newEquipment.length > 0) {
+              parallelOperations.push(
+                dbOp(supabase.from("inspection_equipment").insert(newEquipment))
+              );
+              setEquipment(prev => {
+                const existingIds = new Set(prev.filter(e => e.id && !e.id.startsWith('temp-')).map(e => e.id));
+                return [...prev.filter(e => existingIds.has(e.id)), ...newEquipment];
+              });
+            }
+            
+            // Standards - use upsert instead of delete+insert for atomicity
+            parallelOperations.push(
+              dbOp(supabase.from("inspection_standards").upsert(standardsWithIds, { onConflict: 'id', ignoreDuplicates: false }))
+            );
+            
+            // Summary
+            parallelOperations.push(
+              dbOp(supabase.from("inspection_summary").upsert(sanitizeSummary({ ...summary, inspection_id: id }), { onConflict: 'inspection_id' }))
+            );
+
+            // Execute all in parallel
+            await Promise.all(parallelOperations);
 
             // Mark as synced
             await saveInspectionOffline({
