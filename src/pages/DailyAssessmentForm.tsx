@@ -189,18 +189,23 @@ export default function DailyAssessmentForm() {
     loadAssessment();
   }, [id]);
 
-  // Debounced auto-save on data changes (3-second debounce)
+  // Debounced auto-save on data changes (3-second debounce) - immediate persistence
+  // Watches ALL data sections: Beginning/End of Day, Operating Systems, Equipment/Structure/Environment Checks
+  // Also watches assessment-level fields like section comments
   useEffect(() => {
     if (loading || !assessment) return;
+    
+    // Mark as having unsaved changes
+    setHasUnsavedChanges(true);
     
     // Clear existing debounce timer
     if (autoSaveTimerRef.current) {
       clearTimeout(autoSaveTimerRef.current);
     }
     
-    // Set new debounce timer
+    // Set new debounce timer - 3 seconds after last change
     autoSaveTimerRef.current = setTimeout(() => {
-      if (hasUnsavedChanges && !saving) {
+      if (!saving) {
         console.log('[DailyAssessment AutoSave] Debounced save triggered');
         handleSaveProgress();
       }
@@ -211,7 +216,7 @@ export default function DailyAssessmentForm() {
         clearTimeout(autoSaveTimerRef.current);
       }
     };
-  }, [beginningOfDay, endOfDay, operatingSystems, equipmentChecks, structureChecks, environmentChecks]);
+  }, [beginningOfDay, endOfDay, operatingSystems, equipmentChecks, structureChecks, environmentChecks, assessment?.structure_comments, assessment?.environment_comments, assessment?.systems_comments]);
 
   // Backup auto-save interval (every 10 seconds)
   useEffect(() => {
