@@ -10,7 +10,29 @@ export interface CachedUser {
 let cachedUser: CachedUser | null = null;
 let cacheTimestamp: number = 0;
 let pendingUserPromise: Promise<CachedUser | null> | null = null;
+let authListenerInitialized = false;
 const CACHE_TTL = 60000; // 1 minute cache
+
+/**
+ * Initialize auth state change listener (called lazily on first use)
+ */
+function initAuthListener() {
+  if (authListenerInitialized) return;
+  authListenerInitialized = true;
+  
+  try {
+    supabase.auth.onAuthStateChange((event) => {
+      if (event === 'SIGNED_OUT') {
+        invalidateUserCache();
+      }
+    });
+  } catch (error) {
+    // Silently handle if auth listener fails to initialize
+    if (import.meta.env.DEV) {
+      console.warn('[CachedAuth] Failed to initialize auth listener:', error);
+    }
+  }
+}
 
 /**
  * Gets the current user with session-level caching.
@@ -18,6 +40,9 @@ const CACHE_TTL = 60000; // 1 minute cache
  * Falls back to localStorage when offline.
  */
 export async function getUserWithCache(): Promise<CachedUser | null> {
+  // Initialize auth listener on first use
+  initAuthListener();
+  
   const now = Date.now();
   
   // Return cached user if still valid
@@ -109,10 +134,3 @@ export function hasCachedSession(): boolean {
  * Used in UI components that need synchronous access to cached user
  */
 export const getCachedUser = getCachedUserFromStorage;
-
-// Listen for auth state changes to invalidate cache
-supabase.auth.onAuthStateChange((event) => {
-  if (event === 'SIGNED_OUT') {
-    invalidateUserCache();
-  }
-});
