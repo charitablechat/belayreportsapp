@@ -1845,16 +1845,19 @@ export default function InspectionForm() {
             
             <div className="mt-8 border-t pt-6">
               <h3 className="text-lg font-semibold mb-4">Photos - Systems & Ziplines</h3>
-              <PhotoCapture
-                inspectionId={id!}
-                section="systems"
-                onPhotoAdded={() => setPhotoRefreshKey(prev => prev + 1)}
-              />
+              {!isReadOnly && (
+                <PhotoCapture
+                  inspectionId={id!}
+                  section="systems"
+                  onPhotoAdded={() => setPhotoRefreshKey(prev => prev + 1)}
+                />
+              )}
               <div className="mt-4">
                 <PhotoGallery
                   key={`systems-${photoRefreshKey}`}
                   inspectionId={id!}
                   section="systems"
+                  readOnly={isReadOnly}
                 />
               </div>
             </div>
@@ -1917,16 +1920,19 @@ export default function InspectionForm() {
             
             <div className="mt-8 border-t pt-6">
               <h3 className="text-lg font-semibold mb-4">Photos - Equipment</h3>
-              <PhotoCapture
-                inspectionId={id!}
-                section="equipment"
-                onPhotoAdded={() => setPhotoRefreshKey(prev => prev + 1)}
-              />
+              {!isReadOnly && (
+                <PhotoCapture
+                  inspectionId={id!}
+                  section="equipment"
+                  onPhotoAdded={() => setPhotoRefreshKey(prev => prev + 1)}
+                />
+              )}
               <div className="mt-4">
                 <PhotoGallery
                   key={`equipment-${photoRefreshKey}`}
                   inspectionId={id!}
                   section="equipment"
+                  readOnly={isReadOnly}
                 />
               </div>
             </div>
@@ -1937,16 +1943,19 @@ export default function InspectionForm() {
             
             <div className="mt-8 border-t pt-6">
               <h3 className="text-lg font-semibold mb-4">Photos - Standards</h3>
-              <PhotoCapture
-                inspectionId={id!}
-                section="standards"
-                onPhotoAdded={() => setPhotoRefreshKey(prev => prev + 1)}
-              />
+              {!isReadOnly && (
+                <PhotoCapture
+                  inspectionId={id!}
+                  section="standards"
+                  onPhotoAdded={() => setPhotoRefreshKey(prev => prev + 1)}
+                />
+              )}
               <div className="mt-4">
                 <PhotoGallery
                   key={`standards-${photoRefreshKey}`}
                   inspectionId={id!}
                   section="standards"
+                  readOnly={isReadOnly}
                 />
               </div>
             </div>
@@ -1962,16 +1971,19 @@ export default function InspectionForm() {
             
             <div className="mt-8 border-t pt-6">
               <h3 className="text-lg font-semibold mb-4">Photos - Summary</h3>
-              <PhotoCapture
-                inspectionId={id!}
-                section="summary"
-                onPhotoAdded={() => setPhotoRefreshKey(prev => prev + 1)}
-              />
+              {!isReadOnly && (
+                <PhotoCapture
+                  inspectionId={id!}
+                  section="summary"
+                  onPhotoAdded={() => setPhotoRefreshKey(prev => prev + 1)}
+                />
+              )}
               <div className="mt-4">
                 <PhotoGallery
                   key={`summary-${photoRefreshKey}`}
                   inspectionId={id!}
                   section="summary"
+                  readOnly={isReadOnly}
                 />
               </div>
             </div>
