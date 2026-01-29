@@ -1668,6 +1668,10 @@ export type Database = {
         Args: { p_schema_name?: string; p_table_name: string }
         Returns: string
       }
+      can_edit_report: {
+        Args: { report_inspector_id: string }
+        Returns: boolean
+      }
       check_data_loss: {
         Args: {
           p_records_before: number
@@ -1751,6 +1755,10 @@ export type Database = {
         Returns: boolean
       }
       internal_get_webhook_secret: { Args: never; Returns: string }
+      is_report_owner: {
+        Args: { report_inspector_id: string }
+        Returns: boolean
+      }
       is_super_admin: { Args: never; Returns: boolean }
       merge_organizations: {
         Args: {

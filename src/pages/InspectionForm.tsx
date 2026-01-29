@@ -58,6 +58,8 @@ import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
 import { UnsavedChangesDialog } from "@/components/UnsavedChangesDialog";
 import { useSaveShortcut } from "@/hooks/useKeyboardShortcuts";
 import { useEmptyReportCleanup } from "@/hooks/useEmptyReportCleanup";
+import { useReportEditPermission } from "@/hooks/useReportEditPermission";
+import { ReadOnlyBanner } from "@/components/ReadOnlyBanner";
 
 export default function InspectionForm() {
   const { id } = useParams();
@@ -66,6 +68,13 @@ export default function InspectionForm() {
   const { isSyncing } = usePWA();
   const isMobileView = useIsMobile();
   const { syncReport } = useReportSync(id, 'inspection');
+  
+  // Check edit permissions - Super Admins are view-only, only owners can edit
+  const [inspectorId, setInspectorId] = useState<string | null>(null);
+  const { canEdit, isReadOnly, isSuperAdmin, readOnlyReason } = useReportEditPermission({
+    inspectorId,
+    reportType: 'inspection'
+  });
   
   // Enable keyboard avoidance for mobile
   useKeyboardAvoidance();
@@ -577,6 +586,7 @@ export default function InspectionForm() {
       
       if (offlineData) {
         setInspection(offlineData);
+        setInspectorId(offlineData.inspector_id);
         
         if (import.meta.env.DEV) {
           console.log('[InspectionForm] Loaded inspection from offline storage');
@@ -672,6 +682,7 @@ export default function InspectionForm() {
         
         if (data) {
           setInspection(data);
+          setInspectorId(data.inspector_id);
           await saveInspectionOffline(data);
           
           if (import.meta.env.DEV) {
@@ -1698,6 +1709,7 @@ export default function InspectionForm() {
             </div>
             
             <div className="flex items-center gap-2">
+              {!isReadOnly && (
               <Button 
                 variant="outline" 
                 size={isMobileView ? "default" : "sm"} 
@@ -1707,6 +1719,8 @@ export default function InspectionForm() {
                 <Save className={isMobileView ? "w-5 h-5 mr-1.5" : "w-4 h-4 mr-2"} />
                 {isMobileView ? (saving ? "..." : "Save") : (saving ? "Saving..." : isOnline ? "Save Progress" : "Save Locally")}
               </Button>
+              )}
+              {!isReadOnly && (
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -1727,6 +1741,7 @@ export default function InspectionForm() {
                   )}
                 </Tooltip>
               </TooltipProvider>
+              )}
               {inspection?.status === 'completed' && (
                 <>
                   {/* PDF Button - Hidden but code preserved for future use
@@ -1806,11 +1821,17 @@ export default function InspectionForm() {
           </Alert>
         )}
 
+        {/* Read-only mode banner for Super Admins viewing others' reports */}
+        {isReadOnly && (
+          <ReadOnlyBanner reason={readOnlyReason} isSuperAdmin={isSuperAdmin} />
+        )}
+
         <InspectionHeader 
           inspection={inspection}
           userProfile={userProfile}
-          onUpdate={handleHeaderUpdate} 
-          onImmediateSave={triggerImmediateSave} 
+          onUpdate={isReadOnly ? () => {} : handleHeaderUpdate} 
+          onImmediateSave={isReadOnly ? undefined : triggerImmediateSave}
+          isReadOnly={isReadOnly}
         />
 
         {/* Swipe back indicator for mobile */}

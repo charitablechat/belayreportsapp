@@ -51,6 +51,8 @@ import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
 import { UnsavedChangesDialog } from "@/components/UnsavedChangesDialog";
 import { useSaveShortcut } from "@/hooks/useKeyboardShortcuts";
 import { useEmptyReportCleanup } from "@/hooks/useEmptyReportCleanup";
+import { useReportEditPermission } from "@/hooks/useReportEditPermission";
+import { ReadOnlyBanner } from "@/components/ReadOnlyBanner";
 
 export default function TrainingForm() {
   const { id } = useParams();
@@ -58,6 +60,13 @@ export default function TrainingForm() {
   const { isOnline } = useNetworkStatus();
   const isMobile = useIsMobile();
   const { syncReport } = useReportSync(id, 'training');
+  
+  // Check edit permissions - Super Admins are view-only, only owners can edit
+  const [inspectorId, setInspectorId] = useState<string | null>(null);
+  const { canEdit, isReadOnly, isSuperAdmin, readOnlyReason } = useReportEditPermission({
+    inspectorId,
+    reportType: 'training'
+  });
   
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -243,6 +252,7 @@ export default function TrainingForm() {
 
         if (offlineTraining) {
           setTraining(offlineTraining);
+          setInspectorId(offlineTraining.inspector_id);
           setDeliveryApproaches(delivery_approaches || []);
           setOperatingSystems(operating_systems || []);
           setImmediateAttention(immediate_attention || []);
@@ -279,6 +289,7 @@ export default function TrainingForm() {
           
           if (trainingData) {
             setTraining(trainingData);
+            setInspectorId(trainingData.inspector_id);
             await saveTrainingOffline(trainingData);
 
             // Load all related data
@@ -951,6 +962,8 @@ export default function TrainingForm() {
             </div>
             
             <div className="flex items-center gap-2">
+              {!isReadOnly && (
+              <>
               <Button 
                 variant="outline" 
                 size={isMobile ? "default" : "sm"} 
@@ -981,6 +994,8 @@ export default function TrainingForm() {
                   </>
                 )}
               </Button>
+              </>
+              )}
               {training?.status === 'completed' && (
                 <Button
                   variant="outline"
@@ -1005,6 +1020,11 @@ export default function TrainingForm() {
 
       {/* Main Content */}
       <div className="container mx-auto px-4 py-8">
+        {/* Read-only mode banner for Super Admins viewing others' reports */}
+        {isReadOnly && (
+          <ReadOnlyBanner reason={readOnlyReason} isSuperAdmin={isSuperAdmin} />
+        )}
+
         {/* Swipe back indicator for mobile */}
         {isMobile && isFirstTab && (
           <SwipeBackIndicator 
@@ -1044,7 +1064,7 @@ export default function TrainingForm() {
           </div>
 
           <TabsContent value="info" className="space-y-6">
-            <TrainingHeader training={training} onUpdate={updateTrainingField} />
+            <TrainingHeader training={training} onUpdate={isReadOnly ? () => {} : updateTrainingField} isReadOnly={isReadOnly} />
           </TabsContent>
 
           <TabsContent value="delivery" className="space-y-6">
