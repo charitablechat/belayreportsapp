@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { syncAllInspectionsAtomic, syncAllTrainingsAtomic, syncAllDailyAssessmentsAtomic } from '@/lib/atomic-sync-manager';
 import { syncPhotos } from '@/lib/sync-manager';
 import { getUnsyncedInspections, getUnsyncedTrainings, getUnsyncedDailyAssessments } from '@/lib/offline-storage';
+import { getUserWithCache } from '@/lib/cached-auth';
 import { useQueryClient } from '@tanstack/react-query';
 import { isMobile, isIOS } from '@/lib/mobile-detection';
 
@@ -10,6 +11,7 @@ import { isMobile, isIOS } from '@/lib/mobile-detection';
 const DEBOUNCE_DELAY = 3000; // 3 seconds after local changes
 const PERIODIC_SYNC_INTERVAL = 30000; // 30 seconds fallback polling
 const MIN_SYNC_INTERVAL = 5000; // Minimum 5 seconds between syncs
+const INITIAL_SYNC_DELAY = 2000; // 2 seconds delay for initial sync to not block UI
 
 export interface AutoSyncState {
   isSyncing: boolean;
@@ -118,11 +120,11 @@ export const useAutoSync = () => {
   }, [queryClient]);
   
   /**
-   * Update unsynced counts from IndexedDB
+   * Update unsynced counts from IndexedDB - uses cached auth
    */
   const updateUnsyncedCounts = useCallback(async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getUserWithCache();
       if (!user) return;
       
       const [inspections, trainings, assessments] = await Promise.all([
@@ -211,13 +213,14 @@ export const useAutoSync = () => {
       });
     }
     
-    // Initial sync on mount
-    if (navigator.onLine) {
-      performSync(true);
-    }
-    
-    // Update unsynced counts on mount
-    updateUnsyncedCounts();
+    // PERFORMANCE: Defer initial sync to not block UI render
+    // Dashboard data loads from Supabase directly, sync is for reconciliation
+    const initialSyncTimer = setTimeout(() => {
+      if (navigator.onLine) {
+        performSync(true);
+      }
+      updateUnsyncedCounts();
+    }, INITIAL_SYNC_DELAY);
     
     // Event listeners
     window.addEventListener('online', handleOnline);
@@ -273,6 +276,7 @@ export const useAutoSync = () => {
     
     return () => {
       // Cleanup
+      clearTimeout(initialSyncTimer);
       window.removeEventListener('online', handleOnline);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       

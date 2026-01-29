@@ -113,7 +113,7 @@ export default function Dashboard() {
     isRefreshing: isSyncing,
   });
   
-  // Check if user is super admin
+  // Check if user is super admin - uses cached auth to avoid duplicate network calls
   const { data: isSuperAdmin } = useQuery({
     queryKey: ["is-super-admin"],
     queryFn: async () => {
@@ -123,7 +123,8 @@ export default function Dashboard() {
         return cached === 'true';
       }
 
-      const { data: { user } } = await supabase.auth.getUser();
+      // Use cached auth instead of direct supabase.auth.getUser()
+      const user = await getUserWithCache();
       if (!user) return false;
 
       const { data: roles } = await supabase
@@ -147,11 +148,15 @@ export default function Dashboard() {
     const loadAllData = async () => {
       setLoading(true);
       
-      // Batch all data loading operations
+      // PERFORMANCE: Fetch user once, then pass to all loaders
+      const user = await getUserWithCache();
+      const userId = user?.id;
+      
+      // Batch all data loading operations with shared userId
       await Promise.all([
-        loadInspections(),
-        loadTrainingReports(),
-        loadDailyAssessments()
+        loadInspections(userId),
+        loadTrainingReports(userId),
+        loadDailyAssessments(userId)
       ]);
       
       setLoading(false);
@@ -209,11 +214,10 @@ export default function Dashboard() {
     };
   }, []);
 
-  const loadInspections = async () => {
+  const loadInspections = async (cachedUserId?: string) => {
     try {
-      // Get current user for filtering offline data
-      const user = await getUserWithCache();
-      const userId = user?.id;
+      // Use passed userId or fetch from cache
+      const userId = cachedUserId || (await getUserWithCache())?.id;
       
       // Load from offline storage first (filtered by current user for privacy)
       const offlineInspections = await getOfflineInspections(userId);
@@ -242,10 +246,9 @@ export default function Dashboard() {
         if (data) {
           setInspections(data);
           
-          // Save to offline storage to cache inspector profiles
-          for (const inspection of data) {
-            await saveInspectionOffline(inspection);
-          }
+          // PERFORMANCE: Batch save to offline storage in parallel
+          Promise.all(data.map(inspection => saveInspectionOffline(inspection)))
+            .catch(err => console.error('[Dashboard] Error batch saving inspections:', err));
           
           if (import.meta.env.DEV) {
             console.log('[Dashboard] Loaded from Supabase:', data.length);
@@ -257,11 +260,10 @@ export default function Dashboard() {
     }
   };
 
-  const loadTrainingReports = async () => {
+  const loadTrainingReports = async (cachedUserId?: string) => {
     try {
-      // Get current user for filtering offline data
-      const user = await getUserWithCache();
-      const userId = user?.id;
+      // Use passed userId or fetch from cache
+      const userId = cachedUserId || (await getUserWithCache())?.id;
       
       // Load from offline storage first (filtered by current user for privacy)
       const offlineTrainings = await getOfflineTrainings(userId);
@@ -289,10 +291,9 @@ export default function Dashboard() {
         if (data) {
           setTrainings(data);
           
-          // Save to offline storage for offline access
-          for (const training of data) {
-            await saveTrainingOffline(training);
-          }
+          // PERFORMANCE: Batch save to offline storage in parallel
+          Promise.all(data.map(training => saveTrainingOffline(training)))
+            .catch(err => console.error('[Dashboard] Error batch saving trainings:', err));
           
           if (import.meta.env.DEV) {
             console.log('[Dashboard] Loaded training reports from Supabase:', data.length);
@@ -304,11 +305,10 @@ export default function Dashboard() {
     }
   };
 
-  const loadDailyAssessments = async () => {
+  const loadDailyAssessments = async (cachedUserId?: string) => {
     try {
-      // Get current user for filtering offline data
-      const user = await getUserWithCache();
-      const userId = user?.id;
+      // Use passed userId or fetch from cache
+      const userId = cachedUserId || (await getUserWithCache())?.id;
       
       // Load from offline storage first (filtered by current user for privacy)
       const offlineAssessments = await getOfflineDailyAssessments(userId);
@@ -336,10 +336,9 @@ export default function Dashboard() {
         if (data) {
           setDailyAssessments(data);
           
-          // Save to offline storage
-          for (const assessment of data) {
-            await saveDailyAssessmentOffline(assessment);
-          }
+          // PERFORMANCE: Batch save to offline storage in parallel
+          Promise.all(data.map(assessment => saveDailyAssessmentOffline(assessment)))
+            .catch(err => console.error('[Dashboard] Error batch saving assessments:', err));
           
           if (import.meta.env.DEV) {
             console.log('[Dashboard] Loaded daily assessments from Supabase:', data.length);
