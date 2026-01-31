@@ -352,12 +352,12 @@ export default function TrainingForm() {
     saveInProgressRef.current = true;
     setIsSaving(true);
 
-    // Safety timeout - ensure saving state is cleared after max 30 seconds
+    // Safety timeout - ensure saving state is cleared after max 8 seconds (reduced from 30)
     const safetyTimeout = setTimeout(() => {
       console.warn('[Training Save] Safety timeout reached, forcing save state reset');
       setIsSaving(false);
       saveInProgressRef.current = false;
-    }, 30000);
+    }, 8000);
 
     try {
       const updatedTraining = {
@@ -670,6 +670,13 @@ export default function TrainingForm() {
     if (!training || !id) return;
 
     setIsSaving(true);
+    
+    // Safety timeout - NEVER get stuck in saving state
+    const safetyTimeout = setTimeout(() => {
+      console.warn('[Training Complete] Safety timeout reached, forcing save state reset');
+      setIsSaving(false);
+    }, 10000); // 10 seconds for completion (involves more operations)
+    
     try {
       const wasAlreadyCompleted = training?.status === 'completed';
       const completedTraining = {
@@ -798,6 +805,7 @@ export default function TrainingForm() {
     } catch (error) {
       console.error('Error completing training:', error);
     } finally {
+      clearTimeout(safetyTimeout);
       setIsSaving(false);
     }
   }, [training, id, deliveryApproaches, operatingSystems, immediateAttention, verifiableItems, systemsInPlace, summary, isOnline]);

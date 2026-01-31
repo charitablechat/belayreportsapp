@@ -27,56 +27,59 @@ export default function PhotoCaptionInput({
   const [isSaving, setIsSaving] = useState(false);
   const { isOnline } = useNetworkStatus();
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastSavedValueRef = useRef(initialCaption || "");
 
-  // Sync with initial caption if it changes externally
+  // Update caption when initialCaption changes (e.g., on photo reload)
   useEffect(() => {
-    if (initialCaption !== null && initialCaption !== lastSavedValueRef.current) {
-      setCaption(initialCaption);
-      lastSavedValueRef.current = initialCaption;
+    if (initialCaption !== undefined && initialCaption !== caption) {
+      setCaption(initialCaption || "");
     }
   }, [initialCaption]);
 
-  // Cleanup timer on unmount
+  // Cleanup timeouts on unmount
   useEffect(() => {
     return () => {
-      if (debounceTimerRef.current) {
-        clearTimeout(debounceTimerRef.current);
-      }
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     };
   }, []);
 
-  const saveCaption = useCallback(async (value: string) => {
-    // Only save if online and value has changed
+  const saveCaption = useCallback(async (newCaption: string) => {
     if (!isOnline) {
-      if (import.meta.env.DEV) {
-        console.log('[PhotoCaptionInput] Offline - caption will be saved when online');
-      }
+      console.log("[PhotoCaptionInput] Offline, caption will sync later");
       return;
     }
 
-    if (value === lastSavedValueRef.current) {
-      return;
-    }
-
+    // Optimistic UI - don't wait for DB
     setIsSaving(true);
+    
+    // Safety timeout - NEVER get stuck in saving state (max 5 seconds)
+    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    saveTimeoutRef.current = setTimeout(() => {
+      console.warn("[PhotoCaptionInput] Save timeout reached, resetting state");
+      setIsSaving(false);
+    }, 5000);
+
     try {
       const { error } = await supabase
         .from(tableName)
-        .update({ caption: value || null })
+        .update({ caption: newCaption })
         .eq("id", photoId);
 
-      if (error) {
-        console.error("[PhotoCaptionInput] Failed to save caption:", error);
+      if (!error) {
+        lastSavedValueRef.current = newCaption;
       } else {
-        lastSavedValueRef.current = value;
-        if (import.meta.env.DEV) {
-          console.log("[PhotoCaptionInput] Caption saved:", value);
-        }
+        console.error("[PhotoCaptionInput] Error saving caption:", error);
       }
     } catch (err) {
       console.error("[PhotoCaptionInput] Error saving caption:", err);
     } finally {
+      // Clear safety timeout and reset state
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+        saveTimeoutRef.current = null;
+      }
       setIsSaving(false);
     }
   }, [isOnline, photoId, tableName]);
