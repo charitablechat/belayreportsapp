@@ -478,21 +478,24 @@ serve(async (req) => {
       display: none !important;
     }
 
+    /* 
+     * Page structure - NO FIXED HEIGHTS, NO OVERFLOW HIDDEN
+     * Content flows naturally and browser handles pagination
+     */
     .page {
       display: flex;
       flex-direction: column;
-      min-height: 9in; /* Slightly smaller to ensure content fits with margins */
-      max-height: 9.5in; /* Strict max to prevent overflow */
+      min-height: auto;
       padding: 0.25in;
       page-break-after: always;
       page-break-inside: avoid;
-      overflow: hidden;
       box-sizing: border-box;
+      /* CRITICAL: No max-height, no overflow:hidden - allows photos to render fully */
     }
     
     .page-content {
       flex: 1;
-      overflow: hidden;
+      /* No overflow:hidden - content must flow naturally */
     }
 
     .page:last-child {
@@ -966,24 +969,25 @@ serve(async (req) => {
         padding: 0 !important;
       }
 
-      /* Page structure for print - each page is self-contained */
+      /* 
+       * PRINT: Page structure - content flows naturally
+       * Browser handles pagination automatically
+       */
       .page {
-        display: flex !important;
-        flex-direction: column !important;
-        min-height: 9in !important;
-        height: 9.5in !important;
-        max-height: 9.5in !important;
+        display: block !important;
+        min-height: auto !important;
+        height: auto !important;
+        max-height: none !important;
         padding: 0.2in !important;
         margin: 0 !important;
         box-sizing: border-box !important;
         page-break-after: always !important;
-        page-break-inside: avoid !important;
-        overflow: hidden !important;
+        page-break-inside: auto !important;
+        overflow: visible !important;
       }
 
       .page-content {
         display: block !important;
-        flex: 1 !important;
         overflow: visible !important;
       }
       
@@ -1401,22 +1405,25 @@ serve(async (req) => {
       h2 { font-size: 11pt; }
     }
 
-    /* Photo Gallery Styles */
+    /* Photo Gallery Styles - allow natural flow across pages */
     .photo-gallery {
       display: grid;
       grid-template-columns: repeat(2, 1fr);
       gap: 15px;
       margin: 15px 0;
+      overflow: visible;
     }
 
     .photo-item {
       page-break-inside: avoid;
       break-inside: avoid;
+      overflow: visible;
     }
 
     .inspection-photo {
       width: 100%;
-      max-height: 250px;
+      height: auto;
+      max-width: 100%;
       object-fit: contain;
       border: 1px solid #ccc;
       border-radius: 4px;
@@ -1443,10 +1450,12 @@ serve(async (req) => {
       .photo-gallery {
         grid-template-columns: repeat(2, 1fr);
         gap: 12px;
+        overflow: visible !important;
       }
 
       .inspection-photo {
-        max-height: 220px;
+        height: auto !important;
+        max-height: none !important;
         display: block !important;
         visibility: visible !important;
         opacity: 1 !important;
@@ -1457,6 +1466,7 @@ serve(async (req) => {
       .photo-item {
         page-break-inside: avoid;
         break-inside: avoid;
+        overflow: visible !important;
       }
     }
   </style>
