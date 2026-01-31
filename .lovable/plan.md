@@ -1,352 +1,281 @@
 
-# Universal Prepend Rule for Report List Items
+
+# Photo Gallery Drag-and-Drop Reordering Implementation
 
 ## Overview
 
-This plan implements a universal rule where all newly created items are placed at the **beginning (index 0)** of their corresponding report lists across all report types: Inspection, Training, and Daily Assessment.
+This plan implements a touch-first drag-and-drop feature for reorganizing photos within the PhotoGallery component. The implementation leverages the existing `@dnd-kit` library (already installed and used in the admin CMS) to provide a polished, accessible, and mobile-optimized experience.
 
 ---
 
 ## Current State Analysis
 
-### Current Behavior (Append to End)
-All components currently use the pattern:
-```typescript
-onUpdate([...existingItems, { id: crypto.randomUUID(), ...newItemData }]);
-```
+### Existing Infrastructure
+- **@dnd-kit/core**, **@dnd-kit/sortable**, and **@dnd-kit/utilities** are already installed
+- Existing drag patterns in `DraggableField.tsx`, `DraggableSection.tsx`, and `FormCMSManager.tsx` provide proven patterns
+- Haptic feedback utilities exist in `src/lib/haptics.ts`
+- PhotoGallery currently displays photos in a CSS grid without ordering capability
 
-This places new items at the **end** of the array.
-
-### Animation Tracking Issue
-The animation system currently detects new items by checking the **last item** in the array:
-```typescript
-const latestItem = items[items.length - 1];
-```
-
-This must be updated to check the **first item** when using prepend logic.
+### Database Gap
+The `inspection_photos` table currently lacks a `display_order` column to persist the order of photos. A migration is required.
 
 ---
 
-## Files Requiring Changes
+## Implementation Strategy
 
-### Inspection Report Components (3 files)
+### Phase 1: Database Schema Update
 
-| File | Function | Lines Affected |
-|------|----------|----------------|
-| `src/components/inspection/OperatingSystemsTable.tsx` | `addSystem()` | 40-50, 22-38 |
-| `src/components/inspection/ZiplinesTable.tsx` | `addZipline()` | 42-62, 24-40 |
-| `src/components/inspection/EquipmentTable.tsx` | `addEquipment()` | 45-59, 27-43 |
+Add `display_order` column to `inspection_photos` table:
 
-### Training Report Components (5 files)
+```sql
+ALTER TABLE public.inspection_photos
+ADD COLUMN display_order integer DEFAULT 0;
 
-| File | Function | Lines Affected |
-|------|----------|----------------|
-| `src/components/training/OperatingSystemsSection.tsx` | `handleToggle()`, `handleAddOther()` | 41, 60 |
-| `src/components/training/DeliveryApproachSection.tsx` | `handleToggle()` | 21 |
-| `src/components/training/ImmediateAttentionSection.tsx` | `handleToggle()` | 23 |
-| `src/components/training/SystemsInPlaceSection.tsx` | `handleToggle()` | 24 |
-| `src/components/training/VerifiableItemsSection.tsx` | `handleToggle()`, `handleSystemToggle()` | 33, 46 |
-
-### Daily Assessment Components (5 files)
-
-| File | Function | Lines Affected |
-|------|----------|----------------|
-| `src/components/daily-assessment/OperatingSystemsSection.tsx` | `handleToggle()`, `handleAddOther()` | 38, 48 |
-| `src/components/daily-assessment/StructureChecksSection.tsx` | `handleToggle()` | 37 |
-| `src/components/daily-assessment/EquipmentChecksSection.tsx` | `handleToggle()` | 34 |
-| `src/components/daily-assessment/EnvironmentChecksSection.tsx` | `handleToggle()` | 33 |
-| `src/components/daily-assessment/BeginningOfDaySection.tsx` | `handleToggle()`, `handleCommentChange()` | 35, 55 |
-| `src/components/daily-assessment/EndOfDaySection.tsx` | `handleToggle()`, `handleCommentChange()` | 34, 54 |
-
----
-
-## Implementation Details
-
-### Pattern Change: Append to Prepend
-
-**Before (Append):**
-```typescript
-onUpdate([...existingItems, newItem]);
+-- Add index for efficient ordering queries
+CREATE INDEX idx_inspection_photos_order 
+ON public.inspection_photos(inspection_id, photo_section, display_order);
 ```
 
-**After (Prepend):**
-```typescript
-onUpdate([newItem, ...existingItems]);
+### Phase 2: Create DraggablePhotoItem Component
+
+A new component wrapping individual photo cards with sortable functionality:
+
+```text
+src/components/DraggablePhotoItem.tsx
 ```
 
-### Animation Tracking Update
+**Key Features:**
+- Uses `useSortable` hook from @dnd-kit/sortable
+- Visual feedback during drag (opacity, shadow, scale)
+- Touch-optimized drag handle
+- Smooth CSS transitions using `CSS.Transform.toString(transform)`
 
-For components with explicit "new item" animations (Inspection tables), update detection logic:
+### Phase 3: Update PhotoGallery Component
 
-**Before:**
+Transform the gallery to support sortable photo ordering:
+
+**New Imports:**
 ```typescript
-useEffect(() => {
-  if (items.length > prevLengthRef.current) {
-    const latestItem = items[items.length - 1]; // Last item
-    if (latestItem?.id) {
-      setNewItemIds(prev => new Set(prev).add(latestItem.id));
-      // ... animation timeout
-    }
-  }
-  prevLengthRef.current = items.length;
-}, [items.length]);
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  TouchSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+  DragStartEvent,
+  DragOverlay,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  rectSortingStrategy,
+} from "@dnd-kit/sortable";
 ```
 
-**After:**
+**Sensor Configuration:**
 ```typescript
-useEffect(() => {
-  if (items.length > prevLengthRef.current) {
-    const latestItem = items[0]; // First item (prepended)
-    if (latestItem?.id) {
-      setNewItemIds(prev => new Set(prev).add(latestItem.id));
-      // ... animation timeout
-    }
-  }
-  prevLengthRef.current = items.length;
-}, [items.length]);
+// Touch-first sensor setup for mobile
+const sensors = useSensors(
+  useSensor(TouchSensor, {
+    activationConstraint: {
+      delay: 200,        // Prevent accidental drags
+      tolerance: 5,       // Minimum movement before drag starts
+    },
+  }),
+  useSensor(PointerSensor, {
+    activationConstraint: {
+      distance: 8,        // Mouse drag threshold
+    },
+  }),
+  useSensor(KeyboardSensor)
+);
 ```
 
 ---
 
-## Technical Specifications
+## Visual Feedback Requirements
 
-### Inspection Components - Detailed Changes
+### 1. Dynamic Shifting (Requirement: Surrounding items shift dynamically)
 
-#### 1. OperatingSystemsTable.tsx
+**Implementation:**
+- Use `rectSortingStrategy` from @dnd-kit for grid layouts
+- CSS transitions applied via `CSS.Transform.toString(transform)` + `transition` property
+- Items smoothly animate to new positions as dragged item moves
 
 ```typescript
-// Line 24: Change from items[items.length - 1] to items[0]
-const latestSystem = systems[0];
-
-// Lines 40-50: Change spread order
-const addSystem = () => {
-  onUpdate([
-    { 
-      id: `temp-${crypto.randomUUID()}`,
-      inspection_id: window.location.pathname.split('/').pop(),
-      system_name: "", 
-      result: "pass", 
-      comments: "" 
-    },
-    ...systems  // Existing items after new item
-  ]);
+const style = {
+  transform: CSS.Transform.toString(transform),
+  transition: transition || 'transform 200ms ease',
 };
 ```
 
-#### 2. ZiplinesTable.tsx
+### 2. Visual Distinction (Requirement: Dragged item is visually distinct)
+
+**Implementation:**
+- **Opacity reduction**: Dragged item becomes semi-transparent (0.5)
+- **Elevation**: Box shadow added via `DragOverlay`
+- **Scale**: Slight enlargement (1.05x) on the overlay
 
 ```typescript
-// Line 26: Change from ziplines[ziplines.length - 1] to ziplines[0]
-const latestZipline = ziplines[0];
-
-// Lines 42-62: Change spread order
-const addZipline = () => {
-  onUpdate([
-    {
-      id: `temp-${crypto.randomUUID()}`,
-      // ... all fields
-    },
-    ...ziplines
-  ]);
+// Dragged item in original position
+const style = {
+  opacity: isDragging ? 0.4 : 1,
+  transform: CSS.Transform.toString(transform),
+  transition,
 };
+
+// DragOverlay for the "floating" copy
+<DragOverlay>
+  {activePhoto && (
+    <div className="shadow-2xl scale-105 rotate-2 rounded-lg overflow-hidden">
+      <img src={activePhoto.photoUrl} className="w-full h-48 object-cover" />
+    </div>
+  )}
+</DragOverlay>
 ```
 
-#### 3. EquipmentTable.tsx
+### 3. Placeholder Indication (Requirement: Clear drop target indication)
+
+**Implementation:**
+- Gap opens between items showing where photo will land
+- Border highlight on adjacent items during hover
+- Optional dotted placeholder box
+
+```css
+/* When an item would be inserted, adjacent items show visual gap */
+.sortable-item-over {
+  border: 2px dashed hsl(var(--primary));
+  opacity: 0.8;
+}
+```
+
+---
+
+## Haptic Feedback Integration
+
+Leveraging existing `triggerHaptic()` function:
+
+| Event | Haptic Type | Description |
+|-------|-------------|-------------|
+| Drag Start | `'selection'` | Light tap when photo picked up |
+| Drag Over | `'light'` | Subtle feedback when crossing boundaries |
+| Drop Complete | `'success'` | Confirmation pattern on successful reorder |
+| Drop Cancel | `'error'` | Error pattern if reorder fails |
+
+---
+
+## Files to Create/Modify
+
+### New File: `src/components/DraggablePhotoItem.tsx`
+
+```text
+Purpose: Sortable wrapper for individual photo cards
+Dependencies: @dnd-kit/sortable, existing Card component
+
+Structure:
+- useSortable hook integration
+- Touch-optimized drag handle (GripVertical icon)
+- Visual state styling (isDragging, isOver)
+- Delegated children rendering
+```
+
+### Modified File: `src/components/PhotoGallery.tsx`
+
+| Change | Description |
+|--------|-------------|
+| Add imports | DndContext, SortableContext, sensors, arrayMove |
+| Add state | `activeId` for tracking currently dragged photo |
+| Wrap grid | SortableContext with `rectSortingStrategy` |
+| Replace Card | DraggablePhotoItem wrapper |
+| Add handlers | `handleDragStart`, `handleDragEnd`, `handleDragCancel` |
+| Add DragOverlay | Floating preview of dragged photo |
+| Add persist function | `updatePhotoOrder()` to save to database |
+
+### Modified File: `src/lib/offline-storage.ts`
+
+Add support for photo ordering in IndexedDB:
 
 ```typescript
-// Line 29: Change from categoryEquipment[categoryEquipment.length - 1] to categoryEquipment[0]
-const latestItem = categoryEquipment[0];
-
-// Lines 45-59: Change spread order
-const addEquipment = () => {
-  onUpdate([
-    {
-      id: `temp-${crypto.randomUUID()}`,
-      // ... all fields
-    },
-    ...equipment
-  ]);
-};
+export async function updatePhotoOrder(
+  inspectionId: string, 
+  photoIds: string[]
+): Promise<void> {
+  // Update display_order for each photo in IndexedDB
+}
 ```
 
-### Training Components - Detailed Changes
+---
 
-#### 4. OperatingSystemsSection.tsx (Training)
+## Drag-and-Drop Flow Diagram
 
-```typescript
-// Line 41: Prepend pattern
-onUpdate([{
-  id: crypto.randomUUID(),
-  system_name: systemName,
-  other_description: null,
-  created_at: new Date().toISOString()
-}, ...systems]);
-
-// Line 60: Prepend pattern for "Other"
-onUpdate([newEntry, ...systems]);
+```text
++------------------+     +-------------------+     +------------------+
+|   User touches   | --> |  TouchSensor      | --> |  DndContext      |
+|   photo card     |     |  activates after  |     |  onDragStart     |
+|                  |     |  200ms delay      |     |                  |
++------------------+     +-------------------+     +------------------+
+                                                           |
+                                                           v
++------------------+     +-------------------+     +------------------+
+|  DragOverlay     | <-- |  Active photo     | <-- |  triggerHaptic   |
+|  shows floating  |     |  becomes ghost    |     |  ('selection')   |
+|  preview         |     |  (opacity: 0.4)   |     |                  |
++------------------+     +-------------------+     +------------------+
+                                                           |
+                                                           v
++------------------+     +-------------------+     +------------------+
+|  Other photos    | <-- |  rectSorting      | <-- |  User drags      |
+|  shift smoothly  |     |  Strategy         |     |  photo around    |
+|  to show gap     |     |  animates items   |     |                  |
++------------------+     +-------------------+     +------------------+
+                                                           |
+                                                           v
++------------------+     +-------------------+     +------------------+
+|  arrayMove       | --> |  Update local     | --> |  Persist to DB   |
+|  reorders array  |     |  photos state     |     |  (if online) or  |
+|                  |     |                   |     |  IndexedDB       |
++------------------+     +-------------------+     +------------------+
 ```
 
-#### 5. DeliveryApproachSection.tsx
+---
 
-```typescript
-// Line 21: Prepend pattern
-onUpdate([{
-  id: crypto.randomUUID(),
-  approach,
-  created_at: new Date().toISOString()
-}, ...approaches]);
-```
+## Accessibility Considerations
 
-#### 6. ImmediateAttentionSection.tsx
+| Feature | Implementation |
+|---------|----------------|
+| Keyboard navigation | KeyboardSensor with arrow key support |
+| Screen reader | Announcements via `announcements` prop on DndContext |
+| Focus management | Auto-focus drag handle after drop |
+| ARIA labels | `aria-grabbed`, `aria-dropeffect` on items |
 
-```typescript
-// Line 23: Prepend pattern
-onUpdate([{
-  id: crypto.randomUUID(),
-  item,
-  created_at: new Date().toISOString()
-}, ...items]);
-```
+---
 
-#### 7. SystemsInPlaceSection.tsx
+## Offline Support
 
-```typescript
-// Line 24: Prepend pattern
-onUpdate([{
-  id: crypto.randomUUID(),
-  system_item: item,
-  created_at: new Date().toISOString()
-}, ...items]);
-```
+The implementation must work seamlessly offline:
 
-#### 8. VerifiableItemsSection.tsx
-
-```typescript
-// Line 33: Prepend pattern for verifiable items
-onUpdate([{
-  id: crypto.randomUUID(),
-  item,
-  created_at: new Date().toISOString()
-}, ...items]);
-
-// Line 46: Prepend pattern for systems in place
-onUpdateSystemsInPlace([{
-  id: crypto.randomUUID(),
-  system_item: systemItem,
-  created_at: new Date().toISOString()
-}, ...systemsInPlace]);
-```
-
-### Daily Assessment Components - Detailed Changes
-
-#### 9. OperatingSystemsSection.tsx (Daily Assessment)
-
-```typescript
-// Line 38: Prepend pattern
-onUpdate([{ 
-  id: crypto.randomUUID(),
-  system_name: systemName 
-}, ...systems]);
-
-// Line 48: Prepend pattern for "Other"
-onUpdate([{ 
-  id: crypto.randomUUID(),
-  system_name: 'Other', 
-  other_description: '' 
-}, ...systems]);
-```
-
-#### 10. StructureChecksSection.tsx
-
-```typescript
-// Line 37: Prepend pattern
-onUpdate([{ 
-  id: crypto.randomUUID(),
-  item_key: itemKey, 
-  is_checked: true 
-}, ...checks]);
-```
-
-#### 11. EquipmentChecksSection.tsx
-
-```typescript
-// Line 34: Prepend pattern
-onUpdate([{ 
-  id: crypto.randomUUID(),
-  item_key: itemKey, 
-  is_checked: true 
-}, ...checks]);
-```
-
-#### 12. EnvironmentChecksSection.tsx
-
-```typescript
-// Line 33: Prepend pattern
-onUpdate([{ 
-  id: crypto.randomUUID(),
-  item_key: itemKey, 
-  is_checked: true 
-}, ...checks]);
-```
-
-#### 13. BeginningOfDaySection.tsx
-
-```typescript
-// Line 35: Prepend pattern for toggle
-onUpdate([{ 
-  id: crypto.randomUUID(),
-  item_key: itemKey, 
-  is_complete: true, 
-  comments: '' 
-}, ...items]);
-
-// Line 55: Prepend pattern for comment creation
-onUpdate([{ 
-  id: crypto.randomUUID(),
-  item_key: itemKey, 
-  is_complete: false, 
-  comments 
-}, ...items]);
-```
-
-#### 14. EndOfDaySection.tsx
-
-```typescript
-// Line 34: Prepend pattern for toggle
-onUpdate([{ 
-  id: crypto.randomUUID(),
-  item_key: itemKey, 
-  is_complete: true, 
-  comments: '' 
-}, ...items]);
-
-// Line 54: Prepend pattern for comment creation
-onUpdate([{ 
-  id: crypto.randomUUID(),
-  item_key: itemKey, 
-  is_complete: false, 
-  comments 
-}, ...items]);
-```
+1. **Local State**: Reordering updates local `photos` state immediately
+2. **IndexedDB**: Order persisted to IndexedDB photo records
+3. **Background Sync**: When online, sync display_order to database
+4. **Conflict Resolution**: Last-write-wins for order conflicts
 
 ---
 
 ## Summary
 
-| Report Type | Files | Changes |
-|-------------|-------|---------|
-| Inspection | 3 | Prepend logic + Animation tracking |
-| Training | 5 | Prepend logic only |
-| Daily Assessment | 6 | Prepend logic only |
-| **Total** | **14** | **~20 code locations** |
+| Component | Action |
+|-----------|--------|
+| Database | Add `display_order` column to `inspection_photos` |
+| DraggablePhotoItem.tsx | **Create** - Sortable photo card wrapper |
+| PhotoGallery.tsx | **Modify** - Add DndContext + SortableContext |
+| offline-storage.ts | **Modify** - Add photo order sync support |
+| Haptics | **Utilize** - Existing functions for touch feedback |
 
----
+**Total Estimated Changes:**
+- 1 database migration
+- 1 new component file (~80 lines)
+- 2 modified files (~100 lines changes each)
 
-## Testing Verification
-
-After implementation:
-
-1. **Inspection Form**: Add a new Operating System, Zipline, or Equipment item and verify it appears at the top with highlight animation
-2. **Training Form**: Toggle a checkbox ON for any section and verify the item is tracked at the beginning
-3. **Daily Assessment**: Add a custom operating system or toggle a checkbox and verify prepend behavior
-4. **Data Integrity**: Ensure existing items remain in their relative order after prepending new items
