@@ -1,115 +1,153 @@
 
 
-# Plan: Add N/A and Unknown Options to Previous Inspection Date Field
+# Plan: Document Data Recovery Procedures
 
 ## Overview
-Modify the "Previous Inspection Date" input in `NewInspection.tsx` to support three selection modes:
-1. **Date Picker** - Standard calendar selection for known dates
-2. **N/A** - For courses that have never been inspected
-3. **Unknown** - For courses where the inspection date exists but is unrecorded
+Create a comprehensive `DATA_RECOVERY_GUIDE.md` documentation file that consolidates all recovery procedures for end users and administrators. This addresses audit recommendation #6 by providing clear, actionable documentation for every data recovery scenario.
 
-## Technical Approach
+---
 
-### Storage Strategy
-The database field `previous_inspection_date` is already `string | null`. We'll store:
-- **Date**: `"2024-01-15"` (ISO date string)
-- **N/A**: `"N/A"` (literal string)
-- **Unknown**: `"Unknown"` (literal string)
-- **Not Set**: `null` or `""`
+## Current Recovery Systems Analysis
 
-### UI Design
-Replace the simple date input with a hybrid control that shows:
-- A styled button/trigger that displays the current selection
-- A popover containing:
-  - Two quick-select buttons for "N/A" and "Unknown"
-  - A divider
-  - A full calendar for date selection
+### Existing Recovery Mechanisms (Already Implemented)
 
-```
-┌─────────────────────────────────────────────┐
-│  📅  Select previous inspection date...   ▼ │
-└─────────────────────────────────────────────┘
-          │
-          ▼ (on click, popover opens)
-┌─────────────────────────────────────────────┐
-│  ┌─────────────────┐ ┌────────────────────┐ │
-│  │      N/A        │ │     Unknown        │ │
-│  │ Never inspected │ │  Date not recorded │ │
-│  └─────────────────┘ └────────────────────┘ │
-│  ─────────────────────────────────────────  │
-│           [    January 2026    ]            │
-│  Su  Mo  Tu  We  Th  Fr  Sa                 │
-│  ...calendar grid...                        │
-└─────────────────────────────────────────────┘
-```
+| System | Location | Purpose |
+|--------|----------|---------|
+| **Soft Delete (60-day retention)** | `useSoftDelete.tsx` | Records are marked as deleted but retained for 60 days before permanent removal |
+| **Deleted Records Recovery UI** | `DeletedRecordsRecovery.tsx` | Super Admin UI for viewing/restoring soft-deleted records |
+| **Local Data Recovery Tool** | `DataRecoveryTool.tsx` | Admin tool to view/sync IndexedDB data stuck on a device |
+| **Database RPC Functions** | `restore_deleted_record`, `restore_from_backup` | Database-level restore capabilities |
+| **Migration Audit System** | `SAFE_MIGRATION_PRACTICES.md` | Tracks schema changes with backup tables |
+
+### Gap Analysis
+- No single document explaining these systems to end users
+- No step-by-step troubleshooting for common scenarios
+- No clear escalation path when self-service fails
+- Recovery procedures scattered across multiple files
 
 ---
 
 ## Implementation Steps
 
-### Step 1: Create New Component
-Create `src/components/PreviousInspectionDatePicker.tsx`
+### Step 1: Create DATA_RECOVERY_GUIDE.md
 
-```typescript
-interface PreviousInspectionDatePickerProps {
-  value: string | null | undefined;
-  onChange: (value: string) => void;
-  disabled?: boolean;
-}
+A new Markdown file in the project root that covers:
+
+1. **End User Recovery** - What users can do themselves
+2. **Admin Recovery** - What admins/super admins can access
+3. **Developer Recovery** - Database-level procedures
+4. **Emergency Escalation** - When to contact support
+
+### Proposed Document Structure
+
+```markdown
+# Data Recovery Guide
+
+## Quick Reference
+
+| Scenario | Recovery Method | Access Level |
+|----------|----------------|--------------|
+| Accidentally deleted a report | Deleted Records Recovery | Super Admin |
+| Data not syncing from device | Local Data Recovery Tool | Super Admin |
+| Data disappeared after save | Check IndexedDB + Force Sync | User |
+| Lost data after browser clear | Contact Admin for DB restore | Super Admin |
+
+## Section 1: End User Self-Service
+
+### Scenario: My data didn't save
+1. Check the network indicator
+2. Use the Force Sync button (Profile > Settings)
+3. If offline, data is stored locally and will sync when online
+
+### Scenario: Report shows as unsynced
+1. Wait for automatic sync (every 30 seconds when online)
+2. Manually trigger sync from Profile menu
+3. Check console for sync errors
+
+## Section 2: Admin Recovery (Super Admin Access)
+
+### Deleted Records Recovery
+**Location**: Super Admin Dashboard > Admin Tab > Deleted Records
+
+**Capabilities**:
+- View all soft-deleted records (60-day retention)
+- Restore individual records with one click
+- Permanently delete expired records
+- Batch cleanup of expired records
+
+**Steps to Restore**:
+1. Navigate to Super Admin Dashboard
+2. Click Admin tab
+3. Find "Deleted Records Recovery" section
+4. Locate the record in the table
+5. Click the restore (rotate) icon
+6. Confirm restoration
+
+### Local Data Recovery Tool
+**Location**: Super Admin Dashboard > Admin Tab > Data Recovery
+
+**Use Cases**:
+- User's device has unsynced data
+- User cleared browser cache
+- Need to force-push local data to database
+
+**Steps**:
+1. Access the affected device/browser
+2. Navigate to Super Admin Dashboard
+3. Click Admin tab > Data Recovery
+4. Review unsynced records (marked in red)
+5. Click Upload icon to sync individual records
+6. Or delete local copies if they're duplicates
+
+## Section 3: Database-Level Recovery (Developer)
+
+### Restore a Single Deleted Record
+
+**Requirements**: Database access via Supabase SQL Editor
+
+```sql
+SELECT restore_deleted_record(
+  '[record_uuid]',
+  '[table_name]'  -- inspections, trainings, or daily_assessments
+);
 ```
 
-**Component Features:**
-- Accepts and returns string values: date string, "N/A", "Unknown", or empty
-- Uses Popover + Calendar from existing shadcn components
-- Displays appropriate icon and text based on current selection:
-  - Calendar icon + formatted date for dates
-  - Ban icon + "N/A - Never inspected" for N/A
-  - HelpCircle icon + "Unknown" for Unknown
-  - Calendar icon + placeholder for empty
+### Restore from Migration Backup
 
-### Step 2: Update NewInspection.tsx
-Replace the current date input (lines 321-328) with the new component:
-
-**Before:**
-```tsx
-<Input
-  id="previous_inspection_date"
-  type="date"
-  value={formData.previous_inspection_date || ""}
-  onChange={(e) => setFormData(prev => ({ ...prev, previous_inspection_date: e.target.value || "" }))}
-/>
+```sql
+SELECT restore_from_backup(
+  '[backup_table_name]',
+  '[original_table_name]'
+);
 ```
 
-**After:**
-```tsx
-<PreviousInspectionDatePicker
-  value={formData.previous_inspection_date}
-  onChange={(value) => setFormData(prev => ({ ...prev, previous_inspection_date: value }))}
-  disabled={loading}
-/>
-```
+### Point-in-Time Recovery
+See SAFE_MIGRATION_PRACTICES.md for full procedures.
 
-### Step 3: Update InspectionHeader.tsx
-Apply the same component to the existing inspection form (line 115) for consistency when editing:
+## Section 4: Prevention & Best Practices
 
-**Before:**
-```tsx
-{renderField("Prev. Inspection Date", "previous_inspection_date", inspection?.previous_inspection_date, "date")}
-```
+### Auto-Save Architecture
+- All changes are saved locally to IndexedDB within 1.5 seconds
+- Remote sync occurs automatically in background
+- 8-second timeout prevents UI freezes
+- Data persists even if network fails mid-save
 
-**After:**
-```tsx
-<div>
-  <Label className="text-sm text-muted-foreground">Prev. Inspection Date</Label>
-  <PreviousInspectionDatePicker
-    value={inspection?.previous_inspection_date}
-    onChange={(value) => {
-      onUpdate("previous_inspection_date", value);
-      onImmediateSave?.();
-    }}
-    disabled={isReadOnly}
-  />
-</div>
+### Sync Verification
+- Check "Last Synced" indicator in Profile menu
+- Unsynced count shown in network indicator
+- Force Sync available as manual override
+
+## Section 5: Emergency Escalation
+
+If self-service recovery fails:
+1. Document the record ID (if known)
+2. Note the approximate time of data entry
+3. Check if the user was online or offline
+4. Contact system administrator with above details
+5. Admin can check:
+   - Soft-deleted records (60-day window)
+   - Local device IndexedDB
+   - Database audit logs
 ```
 
 ---
@@ -118,174 +156,24 @@ Apply the same component to the existing inspection form (line 115) for consiste
 
 | File | Action | Description |
 |------|--------|-------------|
-| `src/components/PreviousInspectionDatePicker.tsx` | **Create** | New hybrid date picker component |
-| `src/pages/NewInspection.tsx` | **Modify** | Replace date input with new component (lines 321-328) |
-| `src/components/inspection/InspectionHeader.tsx` | **Modify** | Replace date field with new component (line 115) |
-
----
-
-## Component Implementation Details
-
-### PreviousInspectionDatePicker.tsx
-
-```typescript
-import { useState } from "react";
-import { format } from "date-fns";
-import { CalendarIcon, Ban, HelpCircle, X } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
-import { Calendar } from "@/components/ui/calendar";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { parseLocalDate } from "@/lib/date-utils";
-
-// Special values stored in database
-const SPECIAL_VALUES = {
-  NA: "N/A",
-  UNKNOWN: "Unknown",
-} as const;
-
-interface Props {
-  value: string | null | undefined;
-  onChange: (value: string) => void;
-  disabled?: boolean;
-}
-
-export function PreviousInspectionDatePicker({ value, onChange, disabled }: Props) {
-  const [open, setOpen] = useState(false);
-
-  // Determine what type of value we have
-  const isNA = value === SPECIAL_VALUES.NA;
-  const isUnknown = value === SPECIAL_VALUES.UNKNOWN;
-  const isDate = value && !isNA && !isUnknown;
-  const parsedDate = isDate ? parseLocalDate(value) : undefined;
-
-  const handleSelect = (selection: string) => {
-    onChange(selection);
-    setOpen(false);
-  };
-
-  const handleDateSelect = (date: Date | undefined) => {
-    if (date) {
-      // Format as YYYY-MM-DD for database storage
-      const formatted = format(date, "yyyy-MM-dd");
-      onChange(formatted);
-      setOpen(false);
-    }
-  };
-
-  const handleClear = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    onChange("");
-  };
-
-  // Determine display text and icon
-  const getDisplayContent = () => {
-    if (isNA) {
-      return { icon: Ban, text: "N/A - Never inspected", className: "text-muted-foreground" };
-    }
-    if (isUnknown) {
-      return { icon: HelpCircle, text: "Unknown", className: "text-muted-foreground" };
-    }
-    if (parsedDate) {
-      return { icon: CalendarIcon, text: format(parsedDate, "PPP"), className: "" };
-    }
-    return { icon: CalendarIcon, text: "Select date...", className: "text-muted-foreground" };
-  };
-
-  const display = getDisplayContent();
-  const Icon = display.icon;
-
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button
-          variant="outline"
-          disabled={disabled}
-          className={cn(
-            "w-full justify-start text-left font-normal",
-            display.className
-          )}
-        >
-          <Icon className="mr-2 h-4 w-4" />
-          <span className="flex-1">{display.text}</span>
-          {value && !disabled && (
-            <X 
-              className="h-4 w-4 opacity-50 hover:opacity-100" 
-              onClick={handleClear}
-            />
-          )}
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-auto p-0" align="start">
-        {/* Quick select options */}
-        <div className="p-3 space-y-2">
-          <div className="grid grid-cols-2 gap-2">
-            <Button
-              variant={isNA ? "default" : "outline"}
-              size="sm"
-              className="justify-start"
-              onClick={() => handleSelect(SPECIAL_VALUES.NA)}
-            >
-              <Ban className="mr-2 h-4 w-4" />
-              <div className="text-left">
-                <div className="font-medium">N/A</div>
-                <div className="text-xs opacity-70">Never inspected</div>
-              </div>
-            </Button>
-            <Button
-              variant={isUnknown ? "default" : "outline"}
-              size="sm"
-              className="justify-start"
-              onClick={() => handleSelect(SPECIAL_VALUES.UNKNOWN)}
-            >
-              <HelpCircle className="mr-2 h-4 w-4" />
-              <div className="text-left">
-                <div className="font-medium">Unknown</div>
-                <div className="text-xs opacity-70">Date not recorded</div>
-              </div>
-            </Button>
-          </div>
-          <div className="relative">
-            <div className="absolute inset-0 flex items-center">
-              <span className="w-full border-t" />
-            </div>
-            <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-popover px-2 text-muted-foreground">or select date</span>
-            </div>
-          </div>
-        </div>
-        <Calendar
-          mode="single"
-          selected={parsedDate}
-          onSelect={handleDateSelect}
-          initialFocus
-          className="pointer-events-auto"
-        />
-      </PopoverContent>
-    </Popover>
-  );
-}
-```
-
----
-
-## Visual Summary
-
-| Selection | Display | Stored Value |
-|-----------|---------|--------------|
-| Empty | "Select date..." with calendar icon | `""` or `null` |
-| N/A | "N/A - Never inspected" with ban icon | `"N/A"` |
-| Unknown | "Unknown" with help icon | `"Unknown"` |
-| Date | "January 15, 2024" with calendar icon | `"2024-01-15"` |
+| `DATA_RECOVERY_GUIDE.md` | **Create** | Comprehensive user-facing recovery documentation |
 
 ---
 
 ## Testing Checklist
-- Create new inspection with no previous date selected
-- Create new inspection with N/A selected
-- Create new inspection with Unknown selected  
-- Create new inspection with a specific date selected
-- Clear a selected value using the X button
-- Verify the value persists after saving and reloading
-- Test on mobile devices for proper popover positioning
+
+After implementation, verify:
+- [ ] All referenced UI paths are accurate
+- [ ] SQL commands work in database console
+- [ ] Links between documents work correctly
+- [ ] Recovery scenarios cover all identified gaps
+
+---
+
+## Technical Notes
+
+- This is purely a documentation task - no code changes required
+- The guide references existing functionality that has been audited and confirmed working
+- Document follows the existing Markdown conventions in `SAFE_MIGRATION_PRACTICES.md` and `TESTING_GUIDE.md`
+- Recovery procedures are currently functional but undocumented, creating support burden
 
