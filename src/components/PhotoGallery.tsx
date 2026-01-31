@@ -50,17 +50,17 @@ export default function PhotoGallery({ inspectionId, section, readOnly = false }
   const { isOnline } = useNetworkStatus();
   const objectUrlsRef = useRef<string[]>([]);
 
-  // Touch-first sensor configuration for mobile
+  // Desktop-first sensor configuration with mobile support
   const sensors = useSensors(
-    useSensor(TouchSensor, {
-      activationConstraint: {
-        delay: 200,        // Prevent accidental drags
-        tolerance: 5,       // Minimum movement before drag starts
-      },
-    }),
     useSensor(PointerSensor, {
       activationConstraint: {
-        distance: 8,        // Mouse drag threshold
+        distance: 5,  // Reduced from 8 for more responsive desktop dragging
+      },
+    }),
+    useSensor(TouchSensor, {
+      activationConstraint: {
+        delay: 150,   // Reduced from 200ms for quicker mobile activation
+        tolerance: 8, // Increased for better touch detection
       },
     }),
     useSensor(KeyboardSensor)
@@ -211,12 +211,14 @@ export default function PhotoGallery({ inspectionId, section, readOnly = false }
   };
 
   const handleDragStart = (event: DragStartEvent) => {
+    console.log('[PhotoGallery] Drag started:', event.active.id);
     setActiveId(event.active.id as string);
     triggerHaptic('selection');
   };
 
   const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
+    console.log('[PhotoGallery] Drag ended:', { active: active.id, over: over?.id });
     
     if (over && active.id !== over.id) {
       setPhotos((items) => {
