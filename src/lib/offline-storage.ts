@@ -242,9 +242,13 @@ async function ensureStorage(): Promise<void> {
   await withTimeout(storagePromise, 2000, undefined);
 }
 
+// Track if DB has been successfully opened (skip health check after first success)
+let dbConnectionVerified = false;
+
 /**
  * Wrapper for IndexedDB operations with error boundary and timeout protection
  * Prevents any single IndexedDB operation from blocking the app
+ * OPTIMIZED: Skips redundant health checks after first successful DB connection
  */
 async function withIndexedDBErrorBoundary<T>(
   operation: () => Promise<T>,
@@ -254,13 +258,18 @@ async function withIndexedDBErrorBoundary<T>(
   const OPERATION_TIMEOUT = 5000; // 5 second timeout for any IndexedDB operation
   
   try {
-    // Wrap the entire operation (including health check) with a timeout
+    // Wrap the entire operation with a timeout
     const result = await withTimeout(
       (async () => {
-        const isHealthy = await checkIndexedDBHealth();
-        if (!isHealthy) {
-          console.warn(`[Offline Storage] IndexedDB unhealthy, returning fallback for ${operationName}`);
-          return fallbackValue;
+        // Only run health check if we haven't verified the connection yet
+        if (!dbConnectionVerified) {
+          const isHealthy = await checkIndexedDBHealth();
+          if (!isHealthy) {
+            console.warn(`[Offline Storage] IndexedDB unhealthy, returning fallback for ${operationName}`);
+            return fallbackValue;
+          }
+          // Mark as verified after successful health check
+          dbConnectionVerified = true;
         }
         return await operation();
       })(),
@@ -271,6 +280,8 @@ async function withIndexedDBErrorBoundary<T>(
     return result;
   } catch (error) {
     console.error(`[Offline Storage] Error in ${operationName}:`, error);
+    // Reset verification on error so next operation re-checks
+    dbConnectionVerified = false;
     return fallbackValue;
   }
 }
@@ -741,23 +752,28 @@ export async function saveRelatedDataOffline(
       const db = await getDB();
       const storeName = storeNameMap[type];
       
-      // Get existing data directly to avoid nested error boundary calls
-      const existingIndex = db.transaction(storeName).store.index('by-inspection');
-      const existingData = await existingIndex.getAll(inspectionId);
+      // Use a SINGLE read-write transaction for atomic batch operations
+      const tx = db.transaction(storeName, 'readwrite');
+      const store = tx.store;
+      const index = store.index('by-inspection');
       
-      for (const item of existingData) {
-        await db.delete(storeName, item.id);
-      }
+      // Get existing data within the transaction
+      const existingData = await index.getAll(inspectionId);
       
-      for (const item of data) {
+      // Batch all operations within the same transaction (no await between operations)
+      const deletePromises = existingData.map(item => store.delete(item.id));
+      const putPromises = data.map(item => {
         const dataWithInspectionId = {
           ...item,
           inspection_id: inspectionId,
-          // Use crypto.randomUUID() for proper UUID generation instead of composite IDs
           id: ensureValidUUID(item.id),
         };
-        await db.put(storeName, dataWithInspectionId);
-      }
+        return store.put(dataWithInspectionId);
+      });
+      
+      // Execute all operations in parallel, then wait for transaction to complete
+      await Promise.all([...deletePromises, ...putPromises]);
+      await tx.done;
       
       if (import.meta.env.DEV) {
         console.log(`[Offline Storage] Saved ${type}:`, data.length, 'items');
@@ -793,13 +809,17 @@ export async function clearRelatedDataOffline(
       const db = await getDB();
       const storeName = storeNameMap[type];
       
-      // Get existing data directly to avoid nested error boundary calls
-      const existingIndex = db.transaction(storeName).store.index('by-inspection');
-      const existingData = await existingIndex.getAll(inspectionId);
+      // Use a SINGLE read-write transaction for atomic batch delete
+      const tx = db.transaction(storeName, 'readwrite');
+      const store = tx.store;
+      const index = store.index('by-inspection');
       
-      for (const item of existingData) {
-        await db.delete(storeName, item.id);
-      }
+      const existingData = await index.getAll(inspectionId);
+      
+      // Batch all deletes within the same transaction
+      const deletePromises = existingData.map(item => store.delete(item.id));
+      await Promise.all(deletePromises);
+      await tx.done;
       
       if (import.meta.env.DEV) {
         console.log(`[Offline Storage] Cleared ${type} for inspection:`, inspectionId);
