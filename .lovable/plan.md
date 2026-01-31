@@ -1,281 +1,150 @@
 
 
-# Photo Gallery Drag-and-Drop Reordering Implementation
+# Fix: Photo Gallery Drag-and-Drop Not Working
 
-## Overview
+## Issue Identified
 
-This plan implements a touch-first drag-and-drop feature for reorganizing photos within the PhotoGallery component. The implementation leverages the existing `@dnd-kit` library (already installed and used in the admin CMS) to provide a polished, accessible, and mobile-optimized experience.
+The drag-and-drop functionality for photos is being disabled due to a **race condition** in the permission checking system:
 
----
+1. When the Inspection Form loads, `inspectorId` is initially `null`
+2. The `useReportEditPermission` hook returns `isReadOnly: true` when `inspectorId` is null or while still loading
+3. This `isReadOnly` value is passed to `PhotoGallery` → `DraggablePhotoItem` as `disabled={true}`
+4. Even after `inspectorId` is populated from offline/online data, the super admin check is still async
+5. **Result**: The drag handle is disabled during the critical window when photos are already rendered
 
-## Current State Analysis
-
-### Existing Infrastructure
-- **@dnd-kit/core**, **@dnd-kit/sortable**, and **@dnd-kit/utilities** are already installed
-- Existing drag patterns in `DraggableField.tsx`, `DraggableSection.tsx`, and `FormCMSManager.tsx` provide proven patterns
-- Haptic feedback utilities exist in `src/lib/haptics.ts`
-- PhotoGallery currently displays photos in a CSS grid without ordering capability
-
-### Database Gap
-The `inspection_photos` table currently lacks a `display_order` column to persist the order of photos. A migration is required.
-
----
-
-## Implementation Strategy
-
-### Phase 1: Database Schema Update
-
-Add `display_order` column to `inspection_photos` table:
-
-```sql
-ALTER TABLE public.inspection_photos
-ADD COLUMN display_order integer DEFAULT 0;
-
--- Add index for efficient ordering queries
-CREATE INDEX idx_inspection_photos_order 
-ON public.inspection_photos(inspection_id, photo_section, display_order);
-```
-
-### Phase 2: Create DraggablePhotoItem Component
-
-A new component wrapping individual photo cards with sortable functionality:
-
-```text
-src/components/DraggablePhotoItem.tsx
-```
-
-**Key Features:**
-- Uses `useSortable` hook from @dnd-kit/sortable
-- Visual feedback during drag (opacity, shadow, scale)
-- Touch-optimized drag handle
-- Smooth CSS transitions using `CSS.Transform.toString(transform)`
-
-### Phase 3: Update PhotoGallery Component
-
-Transform the gallery to support sortable photo ordering:
-
-**New Imports:**
-```typescript
-import {
-  DndContext,
-  closestCenter,
-  KeyboardSensor,
-  PointerSensor,
-  TouchSensor,
-  useSensor,
-  useSensors,
-  DragEndEvent,
-  DragStartEvent,
-  DragOverlay,
-} from "@dnd-kit/core";
-import {
-  arrayMove,
-  SortableContext,
-  rectSortingStrategy,
-} from "@dnd-kit/sortable";
-```
-
-**Sensor Configuration:**
-```typescript
-// Touch-first sensor setup for mobile
-const sensors = useSensors(
-  useSensor(TouchSensor, {
-    activationConstraint: {
-      delay: 200,        // Prevent accidental drags
-      tolerance: 5,       // Minimum movement before drag starts
-    },
-  }),
-  useSensor(PointerSensor, {
-    activationConstraint: {
-      distance: 8,        // Mouse drag threshold
-    },
-  }),
-  useSensor(KeyboardSensor)
-);
-```
-
----
-
-## Visual Feedback Requirements
-
-### 1. Dynamic Shifting (Requirement: Surrounding items shift dynamically)
-
-**Implementation:**
-- Use `rectSortingStrategy` from @dnd-kit for grid layouts
-- CSS transitions applied via `CSS.Transform.toString(transform)` + `transition` property
-- Items smoothly animate to new positions as dragged item moves
+### Evidence from Code
 
 ```typescript
-const style = {
-  transform: CSS.Transform.toString(transform),
-  transition: transition || 'transform 200ms ease',
-};
-```
-
-### 2. Visual Distinction (Requirement: Dragged item is visually distinct)
-
-**Implementation:**
-- **Opacity reduction**: Dragged item becomes semi-transparent (0.5)
-- **Elevation**: Box shadow added via `DragOverlay`
-- **Scale**: Slight enlargement (1.05x) on the overlay
-
-```typescript
-// Dragged item in original position
-const style = {
-  opacity: isDragging ? 0.4 : 1,
-  transform: CSS.Transform.toString(transform),
-  transition,
-};
-
-// DragOverlay for the "floating" copy
-<DragOverlay>
-  {activePhoto && (
-    <div className="shadow-2xl scale-105 rotate-2 rounded-lg overflow-hidden">
-      <img src={activePhoto.photoUrl} className="w-full h-48 object-cover" />
-    </div>
-  )}
-</DragOverlay>
-```
-
-### 3. Placeholder Indication (Requirement: Clear drop target indication)
-
-**Implementation:**
-- Gap opens between items showing where photo will land
-- Border highlight on adjacent items during hover
-- Optional dotted placeholder box
-
-```css
-/* When an item would be inserted, adjacent items show visual gap */
-.sortable-item-over {
-  border: 2px dashed hsl(var(--primary));
-  opacity: 0.8;
+// src/hooks/useReportEditPermission.tsx (lines 84-92)
+if (isLoading || !inspectorId) {
+  return {
+    canEdit: false,
+    isReadOnly: true,  // ← Always read-only while loading!
+    isOwner: false,
+    // ...
+  };
 }
 ```
 
----
-
-## Haptic Feedback Integration
-
-Leveraging existing `triggerHaptic()` function:
-
-| Event | Haptic Type | Description |
-|-------|-------------|-------------|
-| Drag Start | `'selection'` | Light tap when photo picked up |
-| Drag Over | `'light'` | Subtle feedback when crossing boundaries |
-| Drop Complete | `'success'` | Confirmation pattern on successful reorder |
-| Drop Cancel | `'error'` | Error pattern if reorder fails |
+The photos load quickly from IndexedDB, but the permission check involves:
+1. Waiting for `getUserWithCache()` 
+2. Making an RPC call to `is_super_admin`
+3. Setting state asynchronously
 
 ---
 
-## Files to Create/Modify
+## Solution
 
-### New File: `src/components/DraggablePhotoItem.tsx`
+Update the `useReportEditPermission` hook to **assume edit capability for the report owner during the loading state**. This is safe because:
 
-```text
-Purpose: Sortable wrapper for individual photo cards
-Dependencies: @dnd-kit/sortable, existing Card component
+- If the current user is NOT the owner, RLS policies already prevent data modification
+- We can detect likely ownership by comparing the user ID with `inspectorId` early
+- The worst case is briefly showing drag handles that don't function (better than hiding functionality from legitimate owners)
 
-Structure:
-- useSortable hook integration
-- Touch-optimized drag handle (GripVertical icon)
-- Visual state styling (isDragging, isOver)
-- Delegated children rendering
-```
+### Changes
 
-### Modified File: `src/components/PhotoGallery.tsx`
+#### File: `src/hooks/useReportEditPermission.tsx`
 
-| Change | Description |
-|--------|-------------|
-| Add imports | DndContext, SortableContext, sensors, arrayMove |
-| Add state | `activeId` for tracking currently dragged photo |
-| Wrap grid | SortableContext with `rectSortingStrategy` |
-| Replace Card | DraggablePhotoItem wrapper |
-| Add handlers | `handleDragStart`, `handleDragEnd`, `handleDragCancel` |
-| Add DragOverlay | Floating preview of dragged photo |
-| Add persist function | `updatePhotoOrder()` to save to database |
-
-### Modified File: `src/lib/offline-storage.ts`
-
-Add support for photo ordering in IndexedDB:
-
+**Current Logic** (Problematic):
 ```typescript
-export async function updatePhotoOrder(
-  inspectionId: string, 
-  photoIds: string[]
-): Promise<void> {
-  // Update display_order for each photo in IndexedDB
+// Default to read-only while loading
+if (isLoading || !inspectorId) {
+  return { isReadOnly: true, canEdit: false, ... };
 }
 ```
 
+**New Logic** (Fix):
+```typescript
+// If we have both inspectorId and currentUserId, we can determine ownership immediately
+// without waiting for the super admin check to complete
+if (inspectorId && currentUserId) {
+  const isOwner = currentUserId === inspectorId;
+  if (isOwner) {
+    // Owner can always edit - don't need to wait for super admin check
+    return {
+      canEdit: true,
+      isReadOnly: false,
+      isOwner: true,
+      isSuperAdmin,  // May still be loading, but irrelevant for owners
+      isLoading: false,
+      readOnlyReason: null
+    };
+  }
+}
+
+// Only default to read-only if we truly don't know ownership yet
+if (isLoading && !currentUserId) {
+  return { isReadOnly: true, ... };
+}
+```
+
+This change allows report owners to interact with drag-and-drop immediately once:
+1. The `inspectorId` is loaded from the inspection data
+2. The `currentUserId` is retrieved from the cached auth
+
+Both of these operations complete quickly (typically <100ms from cache), well before photos finish rendering.
+
 ---
 
-## Drag-and-Drop Flow Diagram
+## Technical Details
+
+### Modified File
+
+| File | Change |
+|------|--------|
+| `src/hooks/useReportEditPermission.tsx` | Optimize loading state to enable editing for owners immediately |
+
+### Updated Permission Logic Flow
 
 ```text
-+------------------+     +-------------------+     +------------------+
-|   User touches   | --> |  TouchSensor      | --> |  DndContext      |
-|   photo card     |     |  activates after  |     |  onDragStart     |
-|                  |     |  200ms delay      |     |                  |
-+------------------+     +-------------------+     +------------------+
-                                                           |
-                                                           v
-+------------------+     +-------------------+     +------------------+
-|  DragOverlay     | <-- |  Active photo     | <-- |  triggerHaptic   |
-|  shows floating  |     |  becomes ghost    |     |  ('selection')   |
-|  preview         |     |  (opacity: 0.4)   |     |                  |
-+------------------+     +-------------------+     +------------------+
-                                                           |
-                                                           v
-+------------------+     +-------------------+     +------------------+
-|  Other photos    | <-- |  rectSorting      | <-- |  User drags      |
-|  shift smoothly  |     |  Strategy         |     |  photo around    |
-|  to show gap     |     |  animates items   |     |                  |
-+------------------+     +-------------------+     +------------------+
-                                                           |
-                                                           v
-+------------------+     +-------------------+     +------------------+
-|  arrayMove       | --> |  Update local     | --> |  Persist to DB   |
-|  reorders array  |     |  photos state     |     |  (if online) or  |
-|                  |     |                   |     |  IndexedDB       |
-+------------------+     +-------------------+     +------------------+
+┌─────────────────────────────────────────────────────────────┐
+│                    Permission Check Flow                     │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  ┌─────────────────┐                                        │
+│  │ inspectorId &&  │──YES──► Owner can edit immediately!    │
+│  │ currentUserId   │         (No need to wait for SA check) │
+│  │ && match?       │                                        │
+│  └────────┬────────┘                                        │
+│           │ NO                                               │
+│           ▼                                                  │
+│  ┌─────────────────┐                                        │
+│  │ Still loading   │──YES──► isReadOnly: true (safe default)│
+│  │ user/inspector? │                                        │
+│  └────────┬────────┘                                        │
+│           │ NO (loaded)                                      │
+│           ▼                                                  │
+│  ┌─────────────────┐                                        │
+│  │ Is Super Admin? │──YES──► isReadOnly: true (view only)   │
+│  └────────┬────────┘                                        │
+│           │ NO                                               │
+│           ▼                                                  │
+│       Not owner + Not SA = No access (RLS enforced)          │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Accessibility Considerations
+## Expected Outcome
 
-| Feature | Implementation |
-|---------|----------------|
-| Keyboard navigation | KeyboardSensor with arrow key support |
-| Screen reader | Announcements via `announcements` prop on DndContext |
-| Focus management | Auto-focus drag handle after drop |
-| ARIA labels | `aria-grabbed`, `aria-dropeffect` on items |
+After this fix:
 
----
-
-## Offline Support
-
-The implementation must work seamlessly offline:
-
-1. **Local State**: Reordering updates local `photos` state immediately
-2. **IndexedDB**: Order persisted to IndexedDB photo records
-3. **Background Sync**: When online, sync display_order to database
-4. **Conflict Resolution**: Last-write-wins for order conflicts
+1. Report owners will be able to drag and drop photos immediately upon page load
+2. Super Admins will still see the gallery in read-only mode (no drag handles)
+3. The loading state no longer blocks legitimate owner interactions
+4. No security implications - RLS policies still enforce server-side restrictions
 
 ---
 
-## Summary
+## Testing Verification
 
-| Component | Action |
-|-----------|--------|
-| Database | Add `display_order` column to `inspection_photos` |
-| DraggablePhotoItem.tsx | **Create** - Sortable photo card wrapper |
-| PhotoGallery.tsx | **Modify** - Add DndContext + SortableContext |
-| offline-storage.ts | **Modify** - Add photo order sync support |
-| Haptics | **Utilize** - Existing functions for touch feedback |
+After implementation, verify:
 
-**Total Estimated Changes:**
-- 1 database migration
-- 1 new component file (~80 lines)
-- 2 modified files (~100 lines changes each)
+1. Open an inspection report you own
+2. Scroll to the Photos section
+3. Touch and hold the grip handle (mobile) or click and drag (desktop)
+4. Confirm photos can be reordered with smooth animations
+5. Confirm the new order persists after page reload
+6. Test as Super Admin viewing another user's report - drag handles should NOT appear
 
