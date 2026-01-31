@@ -252,24 +252,34 @@ export default function PhotoGallery({ inspectionId, section, readOnly = false }
 
   const persistPhotoOrder = async (orderedPhotos: Photo[]) => {
     try {
-      // Save to IndexedDB for offline support
+      // Save to IndexedDB for offline support (non-blocking)
       const photoIds = orderedPhotos.map(p => p.id);
-      await updatePhotoDisplayOrder(inspectionId, section, photoIds);
+      updatePhotoDisplayOrder(inspectionId, section, photoIds).catch(e =>
+        console.warn('[PhotoGallery] Non-critical: failed to update IndexedDB order', e)
+      );
       
-      // If online, sync to database
+      // If online, sync to database with parallel updates (fire-and-forget for speed)
       if (isOnline) {
         const updates = orderedPhotos
-          .filter(p => p.uploaded) // Only update uploaded photos
+          .filter(p => p.uploaded)
           .map((photo, index) => ({
             id: photo.id,
             display_order: index,
           }));
         
-        for (const update of updates) {
-          await supabase
-            .from('inspection_photos')
-            .update({ display_order: update.display_order })
-            .eq('id', update.id);
+        if (updates.length > 0) {
+          // Execute all updates in parallel (not sequential) for max speed
+          // This is ~N times faster than sequential awaits
+          Promise.all(
+            updates.map(update =>
+              supabase
+                .from('inspection_photos')
+                .update({ display_order: update.display_order })
+                .eq('id', update.id)
+            )
+          ).catch(error => {
+            console.error('[PhotoGallery] Failed to batch update order:', error);
+          });
         }
       }
     } catch (error) {
