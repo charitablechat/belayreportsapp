@@ -18,11 +18,11 @@ export default function DeliveryApproachSection({ approaches, onUpdate }: Delive
   const handleToggle = (approach: string, checked: boolean) => {
     triggerHaptic('light');
     if (checked) {
-      onUpdate([...approaches, {
+      onUpdate([{
         id: crypto.randomUUID(),
         approach,
         created_at: new Date().toISOString()
-      }]);
+      }, ...approaches]);
     } else {
       onUpdate(approaches.filter(a => a.approach !== approach));
     }

@@ -21,11 +21,11 @@ export default function SystemsInPlaceSection({ items, onUpdate }: SystemsInPlac
   const handleToggle = (item: string, checked: boolean) => {
     triggerHaptic('light');
     if (checked) {
-      onUpdate([...items, {
+      onUpdate([{
         id: crypto.randomUUID(),
         system_item: item,
         created_at: new Date().toISOString()
-      }]);
+      }, ...items]);
     } else {
       onUpdate(items.filter(i => i.system_item !== item));
     }

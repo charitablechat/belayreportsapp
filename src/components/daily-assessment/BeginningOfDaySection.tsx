@@ -32,12 +32,12 @@ export default function BeginningOfDaySection({ items, onUpdate }: BeginningOfDa
       ));
     } else {
       // Generate stable ID immediately when creating new item
-      onUpdate([...items, { 
+      onUpdate([{ 
         id: crypto.randomUUID(),
         item_key: itemKey, 
         is_complete: true, 
         comments: '' 
-      }]);
+      }, ...items]);
     }
   };
 
@@ -52,12 +52,12 @@ export default function BeginningOfDaySection({ items, onUpdate }: BeginningOfDa
       ));
     } else {
       // Generate stable ID immediately when creating new item
-      onUpdate([...items, { 
+      onUpdate([{ 
         id: crypto.randomUUID(),
         item_key: itemKey, 
         is_complete: false, 
         comments 
-      }]);
+      }, ...items]);
     }
   };
 

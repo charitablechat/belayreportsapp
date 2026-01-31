@@ -35,21 +35,21 @@ export default function OperatingSystemsSection({ systems, onUpdate, sectionComm
       onUpdate(systems.filter(s => s.system_name !== systemName));
     } else {
       // Generate stable ID immediately when creating new item
-      onUpdate([...systems, { 
+      onUpdate([{ 
         id: crypto.randomUUID(),
         system_name: systemName 
-      }]);
+      }, ...systems]);
     }
   };
 
   const handleAddOther = () => {
     triggerHaptic('light');
     // Generate stable ID immediately when creating new item
-    onUpdate([...systems, { 
+    onUpdate([{ 
       id: crypto.randomUUID(),
       system_name: 'Other', 
       other_description: '' 
-    }]);
+    }, ...systems]);
   };
 
   const handleUpdateOther = (index: number, description: string) => {

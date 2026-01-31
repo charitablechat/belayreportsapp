@@ -20,11 +20,11 @@ export default function ImmediateAttentionSection({ items, onUpdate }: Immediate
   const handleToggle = (item: string, checked: boolean) => {
     triggerHaptic('light');
     if (checked) {
-      onUpdate([...items, {
+      onUpdate([{
         id: crypto.randomUUID(),
         item,
         created_at: new Date().toISOString()
-      }]);
+      }, ...items]);
     } else {
       onUpdate(items.filter(i => i.item !== item));
     }

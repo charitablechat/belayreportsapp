@@ -31,11 +31,11 @@ export default function EquipmentChecksSection({ checks, onUpdate }: EquipmentCh
       ));
     } else {
       // Generate stable ID immediately when creating new item
-      onUpdate([...checks, { 
+      onUpdate([{ 
         id: crypto.randomUUID(),
         item_key: itemKey, 
         is_checked: true 
-      }]);
+      }, ...checks]);
     }
   };
 

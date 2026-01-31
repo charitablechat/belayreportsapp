@@ -26,7 +26,7 @@ export default function EquipmentTable({ category, displayName, equipment, onUpd
   // Track newly added items for animation
   useEffect(() => {
     if (categoryEquipment.length > prevEquipmentLengthRef.current) {
-      const latestItem = categoryEquipment[categoryEquipment.length - 1];
+      const latestItem = categoryEquipment[0];
       if (latestItem?.id) {
         setNewItemIds(prev => new Set(prev).add(latestItem.id));
         // Clear the "new" status after animation completes
@@ -44,7 +44,6 @@ export default function EquipmentTable({ category, displayName, equipment, onUpd
 
   const addEquipment = () => {
     onUpdate([
-      ...equipment,
       {
         id: `temp-${crypto.randomUUID()}`,
         inspection_id: window.location.pathname.split('/').pop(),
@@ -55,6 +54,7 @@ export default function EquipmentTable({ category, displayName, equipment, onUpd
         result: "pass",
         comments: "",
       },
+      ...equipment,
     ]);
   };
 
