@@ -792,46 +792,73 @@ export default function DailyAssessmentForm() {
 
   const handleGenerateReport = async () => {
     setGenerating(true);
+    
+    // Safety timeout - NEVER get stuck in generating state (10 seconds max)
+    const GENERATION_TIMEOUT = 10000;
+    const safetyTimeoutHandle = setTimeout(() => {
+      console.error('[Report Generation] Safety timeout reached after 10 seconds - force resetting state');
+      setGenerating(false);
+      toast.error("Report generation timed out. Please check your connection and try again.");
+    }, GENERATION_TIMEOUT);
+    
     try {
-      // Force save any pending changes before generating
+      // Force save any pending changes before generating (with timeout)
       if (hasUnsavedChanges) {
         console.log('[Report] Saving pending changes before generating report...');
         toast.info("Saving changes before generating report...");
-        await handleSaveProgress();
-        // Wait for data to be committed
+        try {
+          await Promise.race([
+            handleSaveProgress(),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Save timeout')), 3000))
+          ]);
+        } catch (saveError) {
+          console.warn('[Report] Pre-save timed out, proceeding anyway:', saveError);
+        }
+        // Short wait for data to be committed
         await new Promise(resolve => setTimeout(resolve, 500));
       }
 
-      // Verify data was saved correctly
+      // Verify data was saved correctly (with timeout)
       if (navigator.onLine) {
         console.log('[Report] Verifying data was saved...');
-        const verified = await verifyDataSaved();
-        
-        if (!verified) {
-          console.warn('[Report] Data verification failed, retrying save...');
-          toast.info("Syncing data, please wait...");
-          await handleSaveProgress();
-          await new Promise(resolve => setTimeout(resolve, 1000));
+        try {
+          const verified = await Promise.race([
+            verifyDataSaved(),
+            new Promise<boolean>(resolve => setTimeout(() => resolve(false), 2000))
+          ]);
           
-          const retryVerified = await verifyDataSaved();
-          if (!retryVerified) {
-            console.warn('[Report] Second verification failed, proceeding anyway');
+          if (!verified) {
+            console.warn('[Report] Data verification failed or timed out, proceeding anyway');
             toast.warning("Some items may not appear in the report if not yet synced.");
           }
+        } catch (verifyError) {
+          console.warn('[Report] Verification error:', verifyError);
         }
       }
 
       console.log('[Report] Generating report...');
-      const { data, error } = await supabase.functions.invoke('generate-daily-assessment-html', {
+      
+      // Wrap the edge function call in a Promise.race with timeout
+      const generatePromise = supabase.functions.invoke('generate-daily-assessment-html', {
         body: { assessmentId: id },
       });
+      
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => {
+          reject(new Error('TIMEOUT: Report generation took too long'));
+        }, GENERATION_TIMEOUT - 2000); // 2 seconds before safety timeout (to account for pre-save time)
+      });
+      
+      const { data, error } = await Promise.race([generatePromise, timeoutPromise]);
 
       if (error) throw error;
 
       const html = data.html;
       
-      // Auto-sync report to database for "latest report" functionality
-      await syncReport(html);
+      // Auto-sync report to database for "latest report" functionality (non-blocking)
+      syncReport(html).catch(syncErr => {
+        console.warn('[Report] Failed to sync report to database:', syncErr);
+      });
       
       const filename = `daily-assessment-${assessment?.site || 'report'}-${new Date().toISOString().split('T')[0]}.html`;
       const title = `Daily Assessment - ${assessment?.site || 'Report'}`;
@@ -844,10 +871,15 @@ export default function DailyAssessmentForm() {
         setReportHtml(html);
         setViewerOpen(true);
       }
-    } catch (error) {
-      console.error('Error generating report:', error);
-      toast.error("Failed to generate report");
+    } catch (error: any) {
+      console.error('[Report Generation] Error:', error.message || error);
+      
+      // Only show error toast if not already shown by safety timeout
+      if (!error.message?.includes('TIMEOUT')) {
+        toast.error("Failed to generate report: " + (error.message || "Please try again."));
+      }
     } finally {
+      clearTimeout(safetyTimeoutHandle);
       setGenerating(false);
     }
   };
