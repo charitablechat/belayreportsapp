@@ -2,149 +2,177 @@
 
 # Fix: Photo Gallery Drag-and-Drop Not Working
 
-## Issue Identified
+## Problem Analysis
 
-The drag-and-drop functionality for photos is being disabled due to a **race condition** in the permission checking system:
+After thorough investigation, I identified **two distinct issues** preventing drag-and-drop from working:
 
-1. When the Inspection Form loads, `inspectorId` is initially `null`
-2. The `useReportEditPermission` hook returns `isReadOnly: true` when `inspectorId` is null or while still loading
-3. This `isReadOnly` value is passed to `PhotoGallery` → `DraggablePhotoItem` as `disabled={true}`
-4. Even after `inspectorId` is populated from offline/online data, the super admin check is still async
-5. **Result**: The drag handle is disabled during the critical window when photos are already rendered
+### Issue 1: Sensor Order and Configuration (Primary Issue)
 
-### Evidence from Code
+The current sensor configuration in `PhotoGallery.tsx`:
 
 ```typescript
-// src/hooks/useReportEditPermission.tsx (lines 84-92)
-if (isLoading || !inspectorId) {
-  return {
-    canEdit: false,
-    isReadOnly: true,  // ← Always read-only while loading!
-    isOwner: false,
-    // ...
-  };
-}
+const sensors = useSensors(
+  useSensor(TouchSensor, {
+    activationConstraint: {
+      delay: 200,        // Requires 200ms hold before drag
+      tolerance: 5,
+    },
+  }),
+  useSensor(PointerSensor, {
+    activationConstraint: {
+      distance: 8,       // Requires 8px movement
+    },
+  }),
+  useSensor(KeyboardSensor)
+);
 ```
 
-The photos load quickly from IndexedDB, but the permission check involves:
-1. Waiting for `getUserWithCache()` 
-2. Making an RPC call to `is_super_admin`
-3. Setting state asynchronously
+**Problems identified:**
+1. The `TouchSensor` with `delay: 200` requires users to hold for 200ms before drag activates - this feels unresponsive
+2. The sensor configuration differs from the working admin components which use `PointerSensor` without touch-specific delays
+3. On desktop Chrome, the PointerSensor should work, but the 8px distance threshold may conflict with how events propagate through the nested Card/Image structure
+
+### Issue 2: Missing `MouseSensor` for Desktop Browser Compatibility
+
+The admin CMS components that work correctly use:
+```typescript
+const sensors = useSensors(
+  useSensor(PointerSensor),
+  useSensor(KeyboardSensor, {
+    coordinateGetter: sortableKeyboardCoordinates,
+  })
+);
+```
+
+Key difference: No `TouchSensor` with delays, and simpler configuration.
+
+---
+
+## Root Cause Summary
+
+| Factor | Current State | Expected State |
+|--------|---------------|----------------|
+| Touch Sensor | 200ms delay required | Should be optional or lower |
+| Pointer Sensor | 8px distance threshold | Should work, but may conflict |
+| Working Pattern | Not matching admin components | Should match proven pattern |
+| Desktop Support | Relies on PointerSensor | Should work consistently |
 
 ---
 
 ## Solution
 
-Update the `useReportEditPermission` hook to **assume edit capability for the report owner during the loading state**. This is safe because:
+Simplify the sensor configuration to match the working pattern from admin components, while maintaining mobile support:
 
-- If the current user is NOT the owner, RLS policies already prevent data modification
-- We can detect likely ownership by comparing the user ID with `inspectorId` early
-- The worst case is briefly showing drag handles that don't function (better than hiding functionality from legitimate owners)
+### Changes to `PhotoGallery.tsx`
 
-### Changes
-
-#### File: `src/hooks/useReportEditPermission.tsx`
-
-**Current Logic** (Problematic):
+**Before:**
 ```typescript
-// Default to read-only while loading
-if (isLoading || !inspectorId) {
-  return { isReadOnly: true, canEdit: false, ... };
-}
+const sensors = useSensors(
+  useSensor(TouchSensor, {
+    activationConstraint: {
+      delay: 200,
+      tolerance: 5,
+    },
+  }),
+  useSensor(PointerSensor, {
+    activationConstraint: {
+      distance: 8,
+    },
+  }),
+  useSensor(KeyboardSensor)
+);
 ```
 
-**New Logic** (Fix):
+**After:**
 ```typescript
-// If we have both inspectorId and currentUserId, we can determine ownership immediately
-// without waiting for the super admin check to complete
-if (inspectorId && currentUserId) {
-  const isOwner = currentUserId === inspectorId;
-  if (isOwner) {
-    // Owner can always edit - don't need to wait for super admin check
-    return {
-      canEdit: true,
-      isReadOnly: false,
-      isOwner: true,
-      isSuperAdmin,  // May still be loading, but irrelevant for owners
-      isLoading: false,
-      readOnlyReason: null
-    };
-  }
-}
-
-// Only default to read-only if we truly don't know ownership yet
-if (isLoading && !currentUserId) {
-  return { isReadOnly: true, ... };
-}
+const sensors = useSensors(
+  useSensor(PointerSensor, {
+    activationConstraint: {
+      distance: 5,  // Reduced from 8 for more responsive feel
+    },
+  }),
+  useSensor(TouchSensor, {
+    activationConstraint: {
+      delay: 150,     // Reduced from 200ms for quicker activation
+      tolerance: 8,   // Increased for better touch detection
+    },
+  }),
+  useSensor(KeyboardSensor)
+);
 ```
 
-This change allows report owners to interact with drag-and-drop immediately once:
-1. The `inspectorId` is loaded from the inspection data
-2. The `currentUserId` is retrieved from the cached auth
+### Key Changes:
+1. **Reorder sensors**: Put `PointerSensor` first for desktop priority
+2. **Reduce distance threshold**: 8px → 5px for more responsive desktop dragging
+3. **Reduce touch delay**: 200ms → 150ms for faster mobile activation
+4. **Increase touch tolerance**: 5px → 8px to prevent accidental drag cancellation
 
-Both of these operations complete quickly (typically <100ms from cache), well before photos finish rendering.
+---
+
+## Additional Debug Enhancement
+
+Add console logging to confirm drag events are firing:
+
+```typescript
+const handleDragStart = (event: DragStartEvent) => {
+  console.log('[PhotoGallery] Drag started:', event.active.id);
+  setActiveId(event.active.id as string);
+  triggerHaptic('selection');
+};
+
+const handleDragEnd = async (event: DragEndEvent) => {
+  console.log('[PhotoGallery] Drag ended:', { 
+    active: event.active.id, 
+    over: event.over?.id 
+  });
+  // ... rest of handler
+};
+```
+
+---
+
+## Files to Modify
+
+| File | Change |
+|------|--------|
+| `src/components/PhotoGallery.tsx` | Update sensor configuration and add debug logging |
 
 ---
 
 ## Technical Details
 
-### Modified File
+### Why PointerSensor First?
 
-| File | Change |
-|------|--------|
-| `src/hooks/useReportEditPermission.tsx` | Optimize loading state to enable editing for owners immediately |
+The `PointerSensor` handles both mouse and touch events via the Pointer Events API, which is well-supported in modern browsers. Putting it first ensures:
+- Desktop users get immediate response
+- Touch events are still handled when PointerSensor doesn't activate
 
-### Updated Permission Logic Flow
+### Why Reduce Thresholds?
 
-```text
-┌─────────────────────────────────────────────────────────────┐
-│                    Permission Check Flow                     │
-├─────────────────────────────────────────────────────────────┤
-│                                                              │
-│  ┌─────────────────┐                                        │
-│  │ inspectorId &&  │──YES──► Owner can edit immediately!    │
-│  │ currentUserId   │         (No need to wait for SA check) │
-│  │ && match?       │                                        │
-│  └────────┬────────┘                                        │
-│           │ NO                                               │
-│           ▼                                                  │
-│  ┌─────────────────┐                                        │
-│  │ Still loading   │──YES──► isReadOnly: true (safe default)│
-│  │ user/inspector? │                                        │
-│  └────────┬────────┘                                        │
-│           │ NO (loaded)                                      │
-│           ▼                                                  │
-│  ┌─────────────────┐                                        │
-│  │ Is Super Admin? │──YES──► isReadOnly: true (view only)   │
-│  └────────┬────────┘                                        │
-│           │ NO                                               │
-│           ▼                                                  │
-│       Not owner + Not SA = No access (RLS enforced)          │
-│                                                              │
-└─────────────────────────────────────────────────────────────┘
-```
+- **Distance 8px → 5px**: Smaller threshold = faster recognition that user wants to drag
+- **Delay 200ms → 150ms**: Reduces perceived lag on mobile while still preventing accidental drags
+- **Tolerance 5px → 8px**: Allows slight finger movement during the delay period without canceling
 
 ---
 
 ## Expected Outcome
 
-After this fix:
-
-1. Report owners will be able to drag and drop photos immediately upon page load
-2. Super Admins will still see the gallery in read-only mode (no drag handles)
-3. The loading state no longer blocks legitimate owner interactions
-4. No security implications - RLS policies still enforce server-side restrictions
+After implementation:
+1. Desktop users can drag photos immediately after moving 5px
+2. Mobile users can drag after holding for 150ms
+3. Console logs will confirm drag events are firing
+4. Photos will reorder with smooth animations
+5. Order will persist to database and IndexedDB
 
 ---
 
-## Testing Verification
+## Testing Checklist
 
-After implementation, verify:
-
-1. Open an inspection report you own
-2. Scroll to the Photos section
-3. Touch and hold the grip handle (mobile) or click and drag (desktop)
-4. Confirm photos can be reordered with smooth animations
-5. Confirm the new order persists after page reload
-6. Test as Super Admin viewing another user's report - drag handles should NOT appear
+- [ ] Open an inspection report you own
+- [ ] Click and drag the grip handle icon on any photo
+- [ ] Verify the photo lifts and other photos shift to show drop position
+- [ ] Drop the photo in a new position
+- [ ] Verify the new order persists after page reload
+- [ ] Test on mobile device with touch gestures
+- [ ] Check console for drag event logs
 
