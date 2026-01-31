@@ -788,63 +788,83 @@ export async function clearRelatedDataOffline(
 
 // Daily Assessment functions
 export async function saveDailyAssessmentOffline(assessment: any) {
-  try {
-    const db = await getDB();
-    await db.put('daily_assessments', assessment);
-    
-    if (import.meta.env.DEV) {
-      console.log('[Offline Storage] Saved daily assessment:', assessment.id);
-    }
-  } catch (error: any) {
-    console.error('[Offline Storage] Failed to save daily assessment:', error);
-    
-    if (error.name === 'QuotaExceededError') {
-      throw new Error('Storage quota exceeded. Please sync and clear old data.');
-    }
-    
-    throw error;
-  }
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      await db.put('daily_assessments', assessment);
+      
+      if (import.meta.env.DEV) {
+        console.log('[Offline Storage] Saved daily assessment:', assessment.id);
+      }
+    },
+    undefined,
+    'saveDailyAssessmentOffline'
+  );
 }
 
 export async function getOfflineDailyAssessments(userId?: string) {
-  const db = await getDB();
-  const allAssessments = await db.getAll('daily_assessments');
-  
-  // Filter by user ID if provided (for privacy on shared devices)
-  if (userId) {
-    return allAssessments.filter(a => a.inspector_id === userId);
-  }
-  
-  return allAssessments;
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      const allAssessments = await db.getAll('daily_assessments');
+      
+      // Filter by user ID if provided (for privacy on shared devices)
+      if (userId) {
+        return allAssessments.filter(a => a.inspector_id === userId);
+      }
+      
+      return allAssessments;
+    },
+    [],
+    'getOfflineDailyAssessments'
+  );
 }
 
 export async function getOfflineDailyAssessment(id: string) {
-  const db = await getDB();
-  return await db.get('daily_assessments', id);
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      return await db.get('daily_assessments', id);
+    },
+    null,
+    'getOfflineDailyAssessment'
+  );
 }
 
 export async function deleteOfflineDailyAssessment(id: string) {
-  const db = await getDB();
-  await db.delete('daily_assessments', id);
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      await db.delete('daily_assessments', id);
+    },
+    undefined,
+    'deleteOfflineDailyAssessment'
+  );
 }
 
 export async function getUnsyncedDailyAssessments(userId?: string) {
-  const db = await getDB();
-  const allAssessments = await db.getAll('daily_assessments');
-  let unsynced = allAssessments.filter(a => !a.synced_at || a.updated_at > a.synced_at);
-  
-  if (userId) {
-    unsynced = unsynced.filter(a => a.inspector_id === userId);
-  }
-  
-  if (import.meta.env.DEV) {
-    console.log('[Offline Storage] Unsynced daily assessments:', {
-      total: unsynced.length,
-      userId: userId ? userId.substring(0, 8) + '...' : 'all',
-    });
-  }
-  
-  return unsynced;
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      const allAssessments = await db.getAll('daily_assessments');
+      let unsynced = allAssessments.filter(a => !a.synced_at || a.updated_at > a.synced_at);
+      
+      if (userId) {
+        unsynced = unsynced.filter(a => a.inspector_id === userId);
+      }
+      
+      if (import.meta.env.DEV) {
+        console.log('[Offline Storage] Unsynced daily assessments:', {
+          total: unsynced.length,
+          userId: userId ? userId.substring(0, 8) + '...' : 'all',
+        });
+      }
+      
+      return unsynced;
+    },
+    [],
+    'getUnsyncedDailyAssessments'
+  );
 }
 
 export async function queueAssessmentOperation(type: 'create' | 'update' | 'delete', assessmentId: string, data: any) {
@@ -975,63 +995,83 @@ export async function clearAssessmentDataOffline(
 
 // Training functions
 export async function saveTrainingOffline(training: any) {
-  try {
-    const db = await getDB();
-    await db.put('trainings', training);
-    
-    if (import.meta.env.DEV) {
-      console.log('[Offline Storage] Saved training:', training.id);
-    }
-  } catch (error: any) {
-    console.error('[Offline Storage] Failed to save training:', error);
-    
-    if (error.name === 'QuotaExceededError') {
-      throw new Error('Storage quota exceeded. Please sync and clear old data.');
-    }
-    
-    throw error;
-  }
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      await db.put('trainings', training);
+      
+      if (import.meta.env.DEV) {
+        console.log('[Offline Storage] Saved training:', training.id);
+      }
+    },
+    undefined,
+    'saveTrainingOffline'
+  );
 }
 
 export async function getOfflineTrainings(userId?: string) {
-  const db = await getDB();
-  const allTrainings = await db.getAll('trainings');
-  
-  // Filter by user ID if provided (for privacy on shared devices)
-  if (userId) {
-    return allTrainings.filter(t => t.inspector_id === userId);
-  }
-  
-  return allTrainings;
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      const allTrainings = await db.getAll('trainings');
+      
+      // Filter by user ID if provided (for privacy on shared devices)
+      if (userId) {
+        return allTrainings.filter(t => t.inspector_id === userId);
+      }
+      
+      return allTrainings;
+    },
+    [],
+    'getOfflineTrainings'
+  );
 }
 
 export async function getOfflineTraining(id: string) {
-  const db = await getDB();
-  return await db.get('trainings', id);
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      return await db.get('trainings', id);
+    },
+    null,
+    'getOfflineTraining'
+  );
 }
 
 export async function deleteOfflineTraining(id: string) {
-  const db = await getDB();
-  await db.delete('trainings', id);
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      await db.delete('trainings', id);
+    },
+    undefined,
+    'deleteOfflineTraining'
+  );
 }
 
 export async function getUnsyncedTrainings(userId?: string) {
-  const db = await getDB();
-  const allTrainings = await db.getAll('trainings');
-  let unsynced = allTrainings.filter(t => !t.synced_at || t.updated_at > t.synced_at);
-  
-  if (userId) {
-    unsynced = unsynced.filter(t => t.inspector_id === userId);
-  }
-  
-  if (import.meta.env.DEV) {
-    console.log('[Offline Storage] Unsynced trainings:', {
-      total: unsynced.length,
-      userId: userId ? userId.substring(0, 8) + '...' : 'all',
-    });
-  }
-  
-  return unsynced;
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      const allTrainings = await db.getAll('trainings');
+      let unsynced = allTrainings.filter(t => !t.synced_at || t.updated_at > t.synced_at);
+      
+      if (userId) {
+        unsynced = unsynced.filter(t => t.inspector_id === userId);
+      }
+      
+      if (import.meta.env.DEV) {
+        console.log('[Offline Storage] Unsynced trainings:', {
+          total: unsynced.length,
+          userId: userId ? userId.substring(0, 8) + '...' : 'all',
+        });
+      }
+      
+      return unsynced;
+    },
+    [],
+    'getUnsyncedTrainings'
+  );
 }
 
 export async function queueTrainingOperation(type: 'create' | 'update' | 'delete', trainingId: string, data: any) {
