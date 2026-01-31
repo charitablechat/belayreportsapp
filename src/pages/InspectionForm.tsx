@@ -561,8 +561,26 @@ export default function InspectionForm() {
 
   const loadInspection = async () => {
     try {
-      // Load inspection header from offline first
-      const offlineData = await getOfflineInspection(id!);
+      // Helper to wrap offline operations with a timeout to prevent hanging
+      const withOfflineTimeout = async <T,>(
+        operation: Promise<T>,
+        fallback: T,
+        timeoutMs: number = 3000
+      ): Promise<T> => {
+        return Promise.race([
+          operation,
+          new Promise<T>((resolve) => setTimeout(() => {
+            console.warn('[InspectionForm] Offline operation timed out, proceeding with fallback');
+            resolve(fallback);
+          }, timeoutMs))
+        ]);
+      };
+
+      // Load inspection header from offline first (with timeout protection)
+      const offlineData = await withOfflineTimeout(
+        getOfflineInspection(id!),
+        null
+      );
       
       if (offlineData) {
         setInspection(offlineData);
@@ -573,20 +591,24 @@ export default function InspectionForm() {
         }
       }
 
-      // Load all related data from offline storage first
+      // Load all related data from offline storage first (with timeout protection)
       const [
         offlineSystems,
         offlineZiplines,
         offlineEquipment,
         offlineStandards,
         offlineSummary
-      ] = await Promise.all([
-        getRelatedDataOffline('systems', id!),
-        getRelatedDataOffline('ziplines', id!),
-        getRelatedDataOffline('equipment', id!),
-        getRelatedDataOffline('standards', id!),
-        getRelatedDataOffline('summary', id!)
-      ]);
+      ] = await withOfflineTimeout(
+        Promise.all([
+          getRelatedDataOffline('systems', id!),
+          getRelatedDataOffline('ziplines', id!),
+          getRelatedDataOffline('equipment', id!),
+          getRelatedDataOffline('standards', id!),
+          getRelatedDataOffline('summary', id!)
+        ]),
+        [[], [], [], [], []],
+        3000
+      );
 
       if (offlineSystems.length > 0) {
         const normalizedSystems = offlineSystems.map(item => ({
