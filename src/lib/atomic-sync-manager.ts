@@ -313,6 +313,7 @@ export async function syncInspectionAtomic(inspectionId: string) {
  */
 export async function syncAllInspectionsAtomic() {
   const capabilities = getMobileCapabilities();
+  const ITEM_SYNC_TIMEOUT = 15000; // 15 seconds per item max
   
   if (!navigator.onLine) {
     if (import.meta.env.DEV) {
@@ -321,14 +322,37 @@ export async function syncAllInspectionsAtomic() {
     return;
   }
   
-  // Get current user to filter inspections
-  const user = await getUserWithCache();
-  if (!user) {
-    throw new Error("User not authenticated");
+  // Get current user to filter inspections (with timeout protection)
+  let user;
+  try {
+    user = await Promise.race([
+      getUserWithCache(),
+      new Promise<null>((_, reject) => setTimeout(() => reject(new Error('Auth timeout')), 5000))
+    ]);
+  } catch (e) {
+    console.warn('[Atomic Sync] Auth timed out, skipping sync');
+    return { total: 0, success: 0, failed: 0, errors: [] };
   }
   
-  // Only get unsynced inspections for the current user
-  const unsynced = await getUnsyncedInspections(user.id);
+  if (!user) {
+    console.warn('[Atomic Sync] No user, skipping sync');
+    return { total: 0, success: 0, failed: 0, errors: [] };
+  }
+  
+  // Only get unsynced inspections for the current user (with timeout)
+  let unsynced: any[];
+  try {
+    unsynced = await Promise.race([
+      getUnsyncedInspections(user.id),
+      new Promise<any[]>((resolve) => setTimeout(() => {
+        console.warn('[Atomic Sync] IndexedDB timeout getting unsynced inspections');
+        resolve([]);
+      }, 5000))
+    ]);
+  } catch (e) {
+    console.warn('[Atomic Sync] Failed to get unsynced inspections:', e);
+    return { total: 0, success: 0, failed: 0, errors: [] };
+  }
   
   if (import.meta.env.DEV) {
     console.log('[Atomic Sync] Starting sync for all unsynced inspections', {
@@ -353,7 +377,7 @@ export async function syncAllInspectionsAtomic() {
   const errors: Array<{ id: string; error: string }> = [];
   
   // Mobile devices get retry logic
-  const maxRetries = capabilities.isMobile ? 3 : 1;
+  const maxRetries = capabilities.isMobile ? 2 : 1; // Reduced retries for faster recovery
   
   for (let i = 0; i < unsynced.length; i++) {
     const inspection = unsynced[i];
@@ -371,7 +395,11 @@ export async function syncAllInspectionsAtomic() {
       });
       
       try {
-        await syncInspectionAtomic(inspection.id);
+        // Per-item timeout to prevent single item from blocking entire sync
+        await Promise.race([
+          syncInspectionAtomic(inspection.id),
+          new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Item sync timeout')), ITEM_SYNC_TIMEOUT))
+        ]);
         successCount++;
         synced = true;
         
@@ -382,8 +410,8 @@ export async function syncAllInspectionsAtomic() {
         retryCount++;
         
         if (retryCount < maxRetries) {
-          // Exponential backoff for retries
-          const delay = Math.min(1000 * Math.pow(2, retryCount - 1), 5000);
+          // Reduced backoff for faster iteration
+          const delay = Math.min(500 * retryCount, 2000);
           if (import.meta.env.DEV) {
             console.log(`[Atomic Sync] Retry ${retryCount}/${maxRetries} for ${inspection.id} after ${delay}ms`);
           }
@@ -706,22 +734,46 @@ export async function syncTrainingAtomic(trainingId: string) {
  */
 export async function syncAllTrainingsAtomic() {
   const capabilities = getMobileCapabilities();
+  const ITEM_SYNC_TIMEOUT = 15000; // 15 seconds per item max
   
   if (!navigator.onLine) {
     if (import.meta.env.DEV) {
       console.log('[Atomic Sync] Offline - skipping training sync');
     }
-    return;
+    return { total: 0, success: 0, failed: 0, errors: [] };
   }
   
-  // Get current user to filter trainings
-  const user = await getUserWithCache();
+  // Get current user with timeout protection
+  let user;
+  try {
+    user = await Promise.race([
+      getUserWithCache(),
+      new Promise<null>((_, reject) => setTimeout(() => reject(new Error('Auth timeout')), 5000))
+    ]);
+  } catch (e) {
+    console.warn('[Atomic Sync] Auth timed out for trainings, skipping');
+    return { total: 0, success: 0, failed: 0, errors: [] };
+  }
+  
   if (!user) {
-    throw new Error("User not authenticated");
+    console.warn('[Atomic Sync] No user for training sync');
+    return { total: 0, success: 0, failed: 0, errors: [] };
   }
   
-  // Only get unsynced trainings for the current user
-  const unsynced = await getUnsyncedTrainings(user.id);
+  // Get unsynced trainings with timeout
+  let unsynced: any[];
+  try {
+    unsynced = await Promise.race([
+      getUnsyncedTrainings(user.id),
+      new Promise<any[]>((resolve) => setTimeout(() => {
+        console.warn('[Atomic Sync] IndexedDB timeout getting unsynced trainings');
+        resolve([]);
+      }, 5000))
+    ]);
+  } catch (e) {
+    console.warn('[Atomic Sync] Failed to get unsynced trainings:', e);
+    return { total: 0, success: 0, failed: 0, errors: [] };
+  }
   
   if (unsynced.length === 0) {
     if (import.meta.env.DEV) {
@@ -750,8 +802,8 @@ export async function syncAllTrainingsAtomic() {
   let failCount = 0;
   const errors: Array<{ id: string; error: string }> = [];
   
-  // Mobile devices get retry logic
-  const maxRetries = capabilities.isMobile ? 3 : 1;
+  // Reduced retries for faster recovery
+  const maxRetries = capabilities.isMobile ? 2 : 1;
   
   for (let i = 0; i < unsynced.length; i++) {
     const training = unsynced[i];
@@ -769,7 +821,11 @@ export async function syncAllTrainingsAtomic() {
       });
       
       try {
-        await syncTrainingAtomic(training.id);
+        // Per-item timeout
+        await Promise.race([
+          syncTrainingAtomic(training.id),
+          new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Item sync timeout')), ITEM_SYNC_TIMEOUT))
+        ]);
         successCount++;
         synced = true;
         
@@ -780,8 +836,7 @@ export async function syncAllTrainingsAtomic() {
         retryCount++;
         
         if (retryCount < maxRetries) {
-          // Exponential backoff for retries
-          const delay = Math.min(1000 * Math.pow(2, retryCount - 1), 5000);
+          const delay = Math.min(500 * retryCount, 2000);
           if (import.meta.env.DEV) {
             console.log(`[Atomic Sync] Retry ${retryCount}/${maxRetries} for training ${training.id} after ${delay}ms`);
           }
@@ -1055,22 +1110,46 @@ export async function syncDailyAssessmentAtomic(assessmentId: string) {
  */
 export async function syncAllDailyAssessmentsAtomic() {
   const capabilities = getMobileCapabilities();
+  const ITEM_SYNC_TIMEOUT = 15000; // 15 seconds per item max
   
   if (!navigator.onLine) {
     if (import.meta.env.DEV) {
       console.log('[Atomic Sync] Offline - skipping daily assessment sync');
     }
-    return;
+    return { total: 0, success: 0, failed: 0, errors: [] };
   }
   
-  // Get current user to filter assessments
-  const user = await getUserWithCache();
+  // Get current user with timeout protection
+  let user;
+  try {
+    user = await Promise.race([
+      getUserWithCache(),
+      new Promise<null>((_, reject) => setTimeout(() => reject(new Error('Auth timeout')), 5000))
+    ]);
+  } catch (e) {
+    console.warn('[Atomic Sync] Auth timed out for assessments, skipping');
+    return { total: 0, success: 0, failed: 0, errors: [] };
+  }
+  
   if (!user) {
-    throw new Error("User not authenticated");
+    console.warn('[Atomic Sync] No user for assessment sync');
+    return { total: 0, success: 0, failed: 0, errors: [] };
   }
   
-  // Only get unsynced assessments for the current user
-  const unsynced = await getUnsyncedDailyAssessments(user.id);
+  // Get unsynced assessments with timeout
+  let unsynced: any[];
+  try {
+    unsynced = await Promise.race([
+      getUnsyncedDailyAssessments(user.id),
+      new Promise<any[]>((resolve) => setTimeout(() => {
+        console.warn('[Atomic Sync] IndexedDB timeout getting unsynced assessments');
+        resolve([]);
+      }, 5000))
+    ]);
+  } catch (e) {
+    console.warn('[Atomic Sync] Failed to get unsynced assessments:', e);
+    return { total: 0, success: 0, failed: 0, errors: [] };
+  }
   
   if (unsynced.length === 0) {
     if (import.meta.env.DEV) {
@@ -1099,8 +1178,8 @@ export async function syncAllDailyAssessmentsAtomic() {
   let failCount = 0;
   const errors: Array<{ id: string; error: string }> = [];
   
-  // Mobile devices get retry logic
-  const maxRetries = capabilities.isMobile ? 3 : 1;
+  // Reduced retries for faster recovery
+  const maxRetries = capabilities.isMobile ? 2 : 1;
   
   for (let i = 0; i < unsynced.length; i++) {
     const assessment = unsynced[i];
@@ -1118,7 +1197,11 @@ export async function syncAllDailyAssessmentsAtomic() {
       });
       
       try {
-        await syncDailyAssessmentAtomic(assessment.id);
+        // Per-item timeout
+        await Promise.race([
+          syncDailyAssessmentAtomic(assessment.id),
+          new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Item sync timeout')), ITEM_SYNC_TIMEOUT))
+        ]);
         successCount++;
         synced = true;
         
@@ -1129,8 +1212,7 @@ export async function syncAllDailyAssessmentsAtomic() {
         retryCount++;
         
         if (retryCount < maxRetries) {
-          // Exponential backoff for retries
-          const delay = Math.min(1000 * Math.pow(2, retryCount - 1), 5000);
+          const delay = Math.min(500 * retryCount, 2000);
           if (import.meta.env.DEV) {
             console.log(`[Atomic Sync] Retry ${retryCount}/${maxRetries} for assessment ${assessment.id} after ${delay}ms`);
           }
