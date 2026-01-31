@@ -736,54 +736,78 @@ export async function saveRelatedDataOffline(
   inspectionId: string,
   data: any[]
 ) {
-  const db = await getDB();
-  const storeName = storeNameMap[type];
-  
-  const existingData = await getRelatedDataOffline(type, inspectionId);
-  for (const item of existingData) {
-    await db.delete(storeName, item.id);
-  }
-  
-  for (const item of data) {
-    const dataWithInspectionId = {
-      ...item,
-      inspection_id: inspectionId,
-      // Use crypto.randomUUID() for proper UUID generation instead of composite IDs
-      id: ensureValidUUID(item.id),
-    };
-    await db.put(storeName, dataWithInspectionId);
-  }
-  
-  if (import.meta.env.DEV) {
-    console.log(`[Offline Storage] Saved ${type}:`, data.length, 'items');
-  }
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      const storeName = storeNameMap[type];
+      
+      // Get existing data directly to avoid nested error boundary calls
+      const existingIndex = db.transaction(storeName).store.index('by-inspection');
+      const existingData = await existingIndex.getAll(inspectionId);
+      
+      for (const item of existingData) {
+        await db.delete(storeName, item.id);
+      }
+      
+      for (const item of data) {
+        const dataWithInspectionId = {
+          ...item,
+          inspection_id: inspectionId,
+          // Use crypto.randomUUID() for proper UUID generation instead of composite IDs
+          id: ensureValidUUID(item.id),
+        };
+        await db.put(storeName, dataWithInspectionId);
+      }
+      
+      if (import.meta.env.DEV) {
+        console.log(`[Offline Storage] Saved ${type}:`, data.length, 'items');
+      }
+    },
+    undefined,
+    `saveRelatedDataOffline:${type}`
+  );
 }
 
 export async function getRelatedDataOffline(
   type: RelatedDataType,
   inspectionId: string
 ): Promise<any[]> {
-  const db = await getDB();
-  const storeName = storeNameMap[type];
-  const index = db.transaction(storeName).store.index('by-inspection');
-  return await index.getAll(inspectionId);
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      const storeName = storeNameMap[type];
+      const index = db.transaction(storeName).store.index('by-inspection');
+      return await index.getAll(inspectionId);
+    },
+    [],
+    `getRelatedDataOffline:${type}`
+  );
 }
 
 export async function clearRelatedDataOffline(
   type: RelatedDataType,
   inspectionId: string
 ) {
-  const db = await getDB();
-  const storeName = storeNameMap[type];
-  const existingData = await getRelatedDataOffline(type, inspectionId);
-  
-  for (const item of existingData) {
-    await db.delete(storeName, item.id);
-  }
-  
-  if (import.meta.env.DEV) {
-    console.log(`[Offline Storage] Cleared ${type} for inspection:`, inspectionId);
-  }
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      const storeName = storeNameMap[type];
+      
+      // Get existing data directly to avoid nested error boundary calls
+      const existingIndex = db.transaction(storeName).store.index('by-inspection');
+      const existingData = await existingIndex.getAll(inspectionId);
+      
+      for (const item of existingData) {
+        await db.delete(storeName, item.id);
+      }
+      
+      if (import.meta.env.DEV) {
+        console.log(`[Offline Storage] Cleared ${type} for inspection:`, inspectionId);
+      }
+    },
+    undefined,
+    `clearRelatedDataOffline:${type}`
+  );
 }
 
 // Daily Assessment functions

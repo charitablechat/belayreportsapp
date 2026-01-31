@@ -685,14 +685,17 @@ export default function InspectionForm() {
         if (data) {
           setInspection(data);
           setInspectorId(data.inspector_id);
-          await saveInspectionOffline(data);
+          // Non-blocking cache update - don't await to prevent loading freeze
+          saveInspectionOffline(data).catch(e => 
+            console.warn('[InspectionForm] Non-critical: failed to cache inspection', e)
+          );
           
           if (import.meta.env.DEV) {
             console.log('[InspectionForm] Updated inspection from Supabase');
           }
         }
 
-        // Fetch and cache all related data
+        // Fetch and cache all related data - cache operations are non-blocking
         const { data: systemsData } = await supabase
           .from("inspection_systems")
           .select("*")
@@ -703,7 +706,10 @@ export default function InspectionForm() {
             result: normalizeResultValue(item.result)
           }));
           setSystems(normalizedSystems);
-          await saveRelatedDataOffline('systems', id!, normalizedSystems);
+          // Non-blocking cache update
+          saveRelatedDataOffline('systems', id!, normalizedSystems).catch(e =>
+            console.warn('[InspectionForm] Non-critical: failed to cache systems', e)
+          );
         }
 
         const { data: ziplinesData } = await supabase
@@ -719,7 +725,10 @@ export default function InspectionForm() {
             ead_result: normalizeResultValue(item.ead_result)
           }));
           setZiplines(normalizedZiplines);
-          await saveRelatedDataOffline('ziplines', id!, normalizedZiplines);
+          // Non-blocking cache update
+          saveRelatedDataOffline('ziplines', id!, normalizedZiplines).catch(e =>
+            console.warn('[InspectionForm] Non-critical: failed to cache ziplines', e)
+          );
         }
 
         const { data: equipmentData } = await supabase
@@ -732,7 +741,10 @@ export default function InspectionForm() {
             result: normalizeResultValue(item.result)
           }));
           setEquipment(normalizedEquipment);
-          await saveRelatedDataOffline('equipment', id!, normalizedEquipment);
+          // Non-blocking cache update
+          saveRelatedDataOffline('equipment', id!, normalizedEquipment).catch(e =>
+            console.warn('[InspectionForm] Non-critical: failed to cache equipment', e)
+          );
         }
 
         const { data: standardsData } = await supabase
@@ -741,7 +753,10 @@ export default function InspectionForm() {
           .eq("inspection_id", id);
         if (standardsData && standardsData.length > 0) {
           setStandards(standardsData);
-          await saveRelatedDataOffline('standards', id!, standardsData);
+          // Non-blocking cache update
+          saveRelatedDataOffline('standards', id!, standardsData).catch(e =>
+            console.warn('[InspectionForm] Non-critical: failed to cache standards', e)
+          );
         }
 
         const { data: summaryData } = await supabase
@@ -751,7 +766,10 @@ export default function InspectionForm() {
           .maybeSingle();
         if (summaryData) {
           setSummary(summaryData);
-          await saveRelatedDataOffline('summary', id!, [summaryData]);
+          // Non-blocking cache update
+          saveRelatedDataOffline('summary', id!, [summaryData]).catch(e =>
+            console.warn('[InspectionForm] Non-critical: failed to cache summary', e)
+          );
         }
 
         if (import.meta.env.DEV) {
