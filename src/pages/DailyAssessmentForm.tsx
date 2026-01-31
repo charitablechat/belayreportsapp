@@ -366,12 +366,12 @@ export default function DailyAssessmentForm() {
     saveInProgressRef.current = true;
     setSaving(true);
     
-    // Safety timeout - ensure saving state is cleared after max 30 seconds
+    // Safety timeout - ensure saving state is cleared after max 8 seconds (reduced from 30)
     const safetyTimeout = setTimeout(() => {
       console.warn('[Save] Safety timeout reached, forcing save state reset');
       setSaving(false);
       saveInProgressRef.current = false;
-    }, 30000);
+    }, 8000);
     
     try {
       // Import offline storage module - wrap in try-catch to handle import failures

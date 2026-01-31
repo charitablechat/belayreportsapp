@@ -65,6 +65,13 @@ export const DeveloperNotesCard = ({ isSuperAdmin }: DeveloperNotesCardProps) =>
     if (!announcement) return;
 
     setSaving(true);
+    
+    // Safety timeout - NEVER get stuck in saving state
+    const safetyTimeout = setTimeout(() => {
+      console.warn('[DeveloperNotesCard] Safety timeout reached, forcing save state reset');
+      setSaving(false);
+    }, 8000);
+    
     try {
       const user = await getUserWithCache();
       
@@ -90,6 +97,7 @@ export const DeveloperNotesCard = ({ isSuperAdmin }: DeveloperNotesCardProps) =>
       console.error('Error saving developer notes:', error);
       toast.error('Failed to save changes');
     } finally {
+      clearTimeout(safetyTimeout);
       setSaving(false);
     }
   };

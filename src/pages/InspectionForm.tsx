@@ -1146,12 +1146,12 @@ export default function InspectionForm() {
     setSaving(true);
     setSaveError(null);
 
-    // Safety timeout - ensure saving state is cleared after max 30 seconds
+    // Safety timeout - ensure saving state is cleared after max 8 seconds (reduced from 30)
     const safetyTimeout = setTimeout(() => {
       console.warn('[InspectionForm] Safety timeout reached, forcing save state reset');
       setSaving(false);
       saveInProgressRef.current = false;
-    }, 30000);
+    }, 8000);
 
     try {
       await performSave(false); // Show warnings on manual save

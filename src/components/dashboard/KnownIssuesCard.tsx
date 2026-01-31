@@ -70,6 +70,13 @@ export const KnownIssuesCard = ({ isSuperAdmin }: KnownIssuesCardProps) => {
     if (!announcement) return;
 
     setSaving(true);
+    
+    // Safety timeout - NEVER get stuck in saving state
+    const safetyTimeout = setTimeout(() => {
+      console.warn('[KnownIssuesCard] Safety timeout reached, forcing save state reset');
+      setSaving(false);
+    }, 8000);
+    
     try {
       const user = await getUserWithCache();
       
@@ -95,6 +102,7 @@ export const KnownIssuesCard = ({ isSuperAdmin }: KnownIssuesCardProps) => {
       console.error('Error saving announcement:', error);
       toast.error('Failed to save changes');
     } finally {
+      clearTimeout(safetyTimeout);
       setSaving(false);
     }
   };
