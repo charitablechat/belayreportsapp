@@ -12,6 +12,22 @@ const DEBOUNCE_DELAY = 3000; // 3 seconds after local changes
 const PERIODIC_SYNC_INTERVAL = 30000; // 30 seconds fallback polling
 const MIN_SYNC_INTERVAL = 5000; // Minimum 5 seconds between syncs
 const INITIAL_SYNC_DELAY = 2000; // 2 seconds delay for initial sync to not block UI
+const SYNC_TIMEOUT = 30000; // 30 second timeout for sync operations to prevent deadlocks
+
+/**
+ * Helper to wrap promises with a timeout
+ */
+function withSyncTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T | null> {
+  return Promise.race([
+    promise,
+    new Promise<null>((resolve) => {
+      setTimeout(() => {
+        console.warn('[AutoSync] Sync operation timed out after', timeoutMs, 'ms');
+        resolve(null);
+      }, timeoutMs);
+    })
+  ]);
+}
 
 export interface AutoSyncState {
   isSyncing: boolean;
@@ -85,13 +101,17 @@ export const useAutoSync = () => {
         console.log('[AutoSync] Starting sync...');
       }
       
-      // Sync all data types in parallel
-      await Promise.all([
-        syncAllInspectionsAtomic(),
-        syncAllTrainingsAtomic(),
-        syncAllDailyAssessmentsAtomic(),
-        syncPhotos(),
-      ]);
+      // Sync all data types in parallel with timeout protection
+      // This prevents sync from hanging forever if one operation stalls
+      await withSyncTimeout(
+        Promise.all([
+          syncAllInspectionsAtomic().catch(e => console.error('[AutoSync] Inspections sync failed:', e)),
+          syncAllTrainingsAtomic().catch(e => console.error('[AutoSync] Trainings sync failed:', e)),
+          syncAllDailyAssessmentsAtomic().catch(e => console.error('[AutoSync] Assessments sync failed:', e)),
+          syncPhotos().catch(e => console.error('[AutoSync] Photos sync failed:', e)),
+        ]),
+        SYNC_TIMEOUT
+      );
       
       // Update state
       setState(prev => ({
