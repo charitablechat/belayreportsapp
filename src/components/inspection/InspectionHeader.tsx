@@ -4,6 +4,7 @@ import { VoiceInput } from "@/components/ui/voice-input";
 import { VoiceTextarea } from "@/components/ui/voice-textarea";
 import { OrganizationAutocomplete } from "@/components/OrganizationAutocomplete";
 import { DatabaseAutocomplete } from "@/components/DatabaseAutocomplete";
+import { PreviousInspectionDatePicker } from "@/components/PreviousInspectionDatePicker";
 
 interface InspectionHeaderProps {
   inspection: any;
@@ -112,7 +113,17 @@ export default function InspectionHeader({ inspection, userProfile, onUpdate, on
                   disabled={isReadOnly}
                 />
               </div>
-              {renderField("Prev. Inspection Date", "previous_inspection_date", inspection?.previous_inspection_date, "date")}
+              <div>
+                <Label className="text-sm text-muted-foreground">Prev. Inspection Date</Label>
+                <PreviousInspectionDatePicker
+                  value={inspection?.previous_inspection_date}
+                  onChange={(value) => {
+                    onUpdate("previous_inspection_date", value);
+                    onImmediateSave?.();
+                  }}
+                  disabled={isReadOnly}
+                />
+              </div>
             </div>
           </div>
 

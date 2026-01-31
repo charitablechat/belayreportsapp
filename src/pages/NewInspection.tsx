@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ArrowLeft, MapPin, CloudOff, Info, X, Loader2 } from "lucide-react";
+import { PreviousInspectionDatePicker } from "@/components/PreviousInspectionDatePicker";
 import ropeWorksLogo from "@/assets/rope-works-logo.png";
 import { saveInspectionOffline, queueOperation } from "@/lib/offline-storage";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
@@ -320,11 +321,10 @@ export default function NewInspection() {
 
                 <div className="space-y-2">
                   <Label htmlFor="previous_inspection_date">Previous Inspection Date</Label>
-                  <Input
-                    id="previous_inspection_date"
-                    type="date"
-                    value={formData.previous_inspection_date || ""}
-                    onChange={(e) => setFormData(prev => ({ ...prev, previous_inspection_date: e.target.value || "" }))}
+                  <PreviousInspectionDatePicker
+                    value={formData.previous_inspection_date}
+                    onChange={(value) => setFormData(prev => ({ ...prev, previous_inspection_date: value }))}
+                    disabled={loading}
                   />
                 </div>
               </div>
