@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { getOfflinePhotos, savePhotoOffline } from "@/lib/offline-storage";
+import { getOfflinePhotos, updatePhotoDisplayOrder } from "@/lib/offline-storage";
 import { cachePhotoFromRemote, validateCachedPhoto } from "@/lib/photo-cache";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { Card } from "@/components/ui/card";
@@ -9,6 +9,24 @@ import { Button } from "@/components/ui/button";
 import { X, Cloud, CloudOff, Loader2 } from "lucide-react";
 import { triggerHaptic } from "@/lib/haptics";
 import PhotoCaptionInput from "./PhotoCaptionInput";
+import { DraggablePhotoItem } from "./DraggablePhotoItem";
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  TouchSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+  DragStartEvent,
+  DragOverlay,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  rectSortingStrategy,
+} from "@dnd-kit/sortable";
 
 interface PhotoGalleryProps {
   inspectionId: string;
@@ -22,13 +40,31 @@ interface Photo {
   blob?: Blob;
   uploaded: boolean;
   caption: string | null;
+  display_order: number;
 }
 
 export default function PhotoGallery({ inspectionId, section, readOnly = false }: PhotoGalleryProps) {
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [loading, setLoading] = useState(true);
+  const [activeId, setActiveId] = useState<string | null>(null);
   const { isOnline } = useNetworkStatus();
   const objectUrlsRef = useRef<string[]>([]);
+
+  // Touch-first sensor configuration for mobile
+  const sensors = useSensors(
+    useSensor(TouchSensor, {
+      activationConstraint: {
+        delay: 200,        // Prevent accidental drags
+        tolerance: 5,       // Minimum movement before drag starts
+      },
+    }),
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,        // Mouse drag threshold
+      },
+    }),
+    useSensor(KeyboardSensor)
+  );
 
   useEffect(() => {
     loadPhotos();
@@ -56,7 +92,7 @@ export default function PhotoGallery({ inspectionId, section, readOnly = false }
       const offlinePhotos = await getOfflinePhotos(inspectionId);
       const offlinePhotosList: Photo[] = offlinePhotos
         .filter(p => p.section === section)
-        .map(p => {
+        .map((p, index) => {
           const objectUrl = URL.createObjectURL(p.blob);
           objectUrlsRef.current.push(objectUrl);
           return {
@@ -65,6 +101,7 @@ export default function PhotoGallery({ inspectionId, section, readOnly = false }
             blob: p.blob,
             uploaded: p.uploaded,
             caption: null, // Offline photos don't have captions until synced
+            display_order: p.display_order ?? index,
           };
         });
 
@@ -74,12 +111,13 @@ export default function PhotoGallery({ inspectionId, section, readOnly = false }
           .from('inspection_photos')
           .select('*')
           .eq('inspection_id', inspectionId)
-          .eq('photo_section', section);
+          .eq('photo_section', section)
+          .order('display_order', { ascending: true });
 
         if (error) throw error;
 
         const supabasePhotos: Photo[] = await Promise.all(
-          (data || []).map(async (photo) => {
+          (data || []).map(async (photo, index) => {
             // Get signed URL with 1 hour expiration for security
             const { data: signedUrlData, error: urlError } = await supabase.storage
               .from('inspection-photos')
@@ -105,6 +143,7 @@ export default function PhotoGallery({ inspectionId, section, readOnly = false }
                   photoUrl: signedUrlData.signedUrl,
                   uploaded: true,
                   caption: photo.caption,
+                  display_order: photo.display_order ?? index,
                 };
               }
             }
@@ -125,6 +164,7 @@ export default function PhotoGallery({ inspectionId, section, readOnly = false }
                   photoUrl: signedUrlData.signedUrl,
                   uploaded: true,
                   caption: photo.caption,
+                  display_order: photo.display_order ?? index,
                 };
               }
               
@@ -148,21 +188,90 @@ export default function PhotoGallery({ inspectionId, section, readOnly = false }
               photoUrl: signedUrlData.signedUrl,
               uploaded: true,
               caption: photo.caption,
+              display_order: photo.display_order ?? index,
             };
           })
         ).then(photos => photos.filter(photo => photo !== null) as Photo[]);
 
-        // Merge offline (pending upload) and online photos
+        // Merge offline (pending upload) and online photos, sorted by display_order
         const pendingPhotos = offlinePhotosList.filter(p => !p.uploaded);
-        setPhotos([...pendingPhotos, ...supabasePhotos]);
+        const mergedPhotos = [...pendingPhotos, ...supabasePhotos].sort(
+          (a, b) => a.display_order - b.display_order
+        );
+        setPhotos(mergedPhotos);
       } else {
-        // Offline: show only cached photos
-        setPhotos(offlinePhotosList);
+        // Offline: show only cached photos sorted by display_order
+        setPhotos(offlinePhotosList.sort((a, b) => a.display_order - b.display_order));
       }
     } catch (error) {
       console.error('[PhotoGallery] Failed to load photos:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDragStart = (event: DragStartEvent) => {
+    setActiveId(event.active.id as string);
+    triggerHaptic('selection');
+  };
+
+  const handleDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event;
+    
+    if (over && active.id !== over.id) {
+      setPhotos((items) => {
+        const oldIndex = items.findIndex((item) => item.id === active.id);
+        const newIndex = items.findIndex((item) => item.id === over.id);
+        const newOrder = arrayMove(items, oldIndex, newIndex);
+        
+        // Update display_order for all items
+        const updatedOrder = newOrder.map((photo, index) => ({
+          ...photo,
+          display_order: index,
+        }));
+        
+        // Persist to database and IndexedDB
+        persistPhotoOrder(updatedOrder);
+        
+        return updatedOrder;
+      });
+      triggerHaptic('success');
+    } else {
+      triggerHaptic('light');
+    }
+    
+    setActiveId(null);
+  };
+
+  const handleDragCancel = () => {
+    setActiveId(null);
+    triggerHaptic('error');
+  };
+
+  const persistPhotoOrder = async (orderedPhotos: Photo[]) => {
+    try {
+      // Save to IndexedDB for offline support
+      const photoIds = orderedPhotos.map(p => p.id);
+      await updatePhotoDisplayOrder(inspectionId, section, photoIds);
+      
+      // If online, sync to database
+      if (isOnline) {
+        const updates = orderedPhotos
+          .filter(p => p.uploaded) // Only update uploaded photos
+          .map((photo, index) => ({
+            id: photo.id,
+            display_order: index,
+          }));
+        
+        for (const update of updates) {
+          await supabase
+            .from('inspection_photos')
+            .update({ display_order: update.display_order })
+            .eq('id', update.id);
+        }
+      }
+    } catch (error) {
+      console.error('[PhotoGallery] Failed to persist photo order:', error);
     }
   };
 
@@ -186,6 +295,8 @@ export default function PhotoGallery({ inspectionId, section, readOnly = false }
     }
   };
 
+  const activePhoto = activeId ? photos.find(p => p.id === activeId) : null;
+
   if (loading) {
     return (
       <div className="flex items-center justify-center p-8">
@@ -203,61 +314,86 @@ export default function PhotoGallery({ inspectionId, section, readOnly = false }
   }
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-      {photos.map((photo) => (
-        <Card key={photo.id} className="relative group overflow-hidden flex flex-col">
-          <div className="relative">
-            <img
-              src={photo.photoUrl}
-              alt={photo.caption || "Inspection photo"}
-              className="w-full h-48 object-cover"
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+      onDragCancel={handleDragCancel}
+    >
+      <SortableContext items={photos.map(p => p.id)} strategy={rectSortingStrategy}>
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+          {photos.map((photo) => (
+            <DraggablePhotoItem key={photo.id} id={photo.id} disabled={readOnly}>
+              <Card className="relative group overflow-hidden flex flex-col">
+                <div className="relative">
+                  <img
+                    src={photo.photoUrl}
+                    alt={photo.caption || "Inspection photo"}
+                    className="w-full h-48 object-cover"
+                  />
+                  <div className="absolute top-2 right-2 flex gap-2">
+                    {!photo.uploaded && (
+                      <Badge variant="secondary" className="gap-1">
+                        <CloudOff className="w-3 h-3" />
+                        Pending
+                      </Badge>
+                    )}
+                    {photo.uploaded && (
+                      <Badge variant="default" className="gap-1">
+                        <Cloud className="w-3 h-3" />
+                        Synced
+                      </Badge>
+                    )}
+                  </div>
+                  {!readOnly && (
+                    <Button
+                      variant="destructive"
+                      size="icon"
+                      className="absolute bottom-2 right-2 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity"
+                      onClick={() => handleDelete(photo)}
+                    >
+                      <X className="w-4 h-4" />
+                    </Button>
+                  )}
+                </div>
+                {/* Caption input - only show for uploaded photos */}
+                {photo.uploaded && (
+                  <div className="p-2 border-t border-border">
+                    <PhotoCaptionInput
+                      photoId={photo.id}
+                      initialCaption={photo.caption}
+                      tableName="inspection_photos"
+                      disabled={readOnly}
+                    />
+                  </div>
+                )}
+                {/* Show placeholder for offline photos */}
+                {!photo.uploaded && (
+                  <div className="p-2 border-t border-border">
+                    <p className="text-xs text-muted-foreground italic">
+                      Caption available after sync
+                    </p>
+                  </div>
+                )}
+              </Card>
+            </DraggablePhotoItem>
+          ))}
+        </div>
+      </SortableContext>
+      
+      {/* Drag Overlay - Floating preview of dragged photo */}
+      <DragOverlay>
+        {activePhoto && (
+          <div className="shadow-2xl scale-105 rotate-2 rounded-lg overflow-hidden bg-background">
+            <img 
+              src={activePhoto.photoUrl} 
+              alt={activePhoto.caption || "Dragging photo"}
+              className="w-48 h-48 object-cover" 
             />
-            <div className="absolute top-2 right-2 flex gap-2">
-              {!photo.uploaded && (
-                <Badge variant="secondary" className="gap-1">
-                  <CloudOff className="w-3 h-3" />
-                  Pending
-                </Badge>
-              )}
-              {photo.uploaded && (
-                <Badge variant="default" className="gap-1">
-                  <Cloud className="w-3 h-3" />
-                  Synced
-                </Badge>
-              )}
-            </div>
-            {!readOnly && (
-              <Button
-                variant="destructive"
-                size="icon"
-                className="absolute bottom-2 right-2 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity"
-                onClick={() => handleDelete(photo)}
-              >
-                <X className="w-4 h-4" />
-              </Button>
-            )}
           </div>
-          {/* Caption input - only show for uploaded photos */}
-          {photo.uploaded && (
-            <div className="p-2 border-t border-border">
-              <PhotoCaptionInput
-                photoId={photo.id}
-                initialCaption={photo.caption}
-                tableName="inspection_photos"
-                disabled={readOnly}
-              />
-            </div>
-          )}
-          {/* Show placeholder for offline photos */}
-          {!photo.uploaded && (
-            <div className="p-2 border-t border-border">
-              <p className="text-xs text-muted-foreground italic">
-                Caption available after sync
-              </p>
-            </div>
-          )}
-        </Card>
-      ))}
-    </div>
+        )}
+      </DragOverlay>
+    </DndContext>
   );
 }

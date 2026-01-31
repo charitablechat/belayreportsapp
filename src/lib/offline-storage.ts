@@ -47,6 +47,7 @@ interface InspectionDB extends DBSchema {
       photoUrl?: string;
       cachedAt?: number; // Timestamp when photo was cached from remote
       lastValidated?: number; // Last time cache was validated
+      display_order?: number; // Order for drag-and-drop reordering
     };
     indexes: { 'by-inspection': string; 'by-uploaded': number };
   };
@@ -602,6 +603,49 @@ export async function deleteOfflinePhoto(id: string) {
   if (import.meta.env.DEV) {
     console.log('[Offline Storage] Deleted photo:', id);
   }
+}
+
+/**
+ * Update the display order of photos in IndexedDB for drag-and-drop reordering
+ * @param inspectionId - The inspection ID
+ * @param section - The photo section
+ * @param photoIds - Array of photo IDs in the new order
+ */
+export async function updatePhotoDisplayOrder(
+  inspectionId: string,
+  section: string,
+  photoIds: string[]
+): Promise<void> {
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      const tx = db.transaction('photos', 'readwrite');
+      const store = tx.objectStore('photos');
+      
+      // Update each photo's display_order
+      await Promise.all(
+        photoIds.map(async (id, index) => {
+          const photo = await store.get(id);
+          if (photo && photo.inspectionId === inspectionId && photo.section === section) {
+            photo.display_order = index;
+            await store.put(photo);
+          }
+        })
+      );
+      
+      await tx.done;
+      
+      if (import.meta.env.DEV) {
+        console.log('[Offline Storage] Updated photo display order:', {
+          inspectionId,
+          section,
+          count: photoIds.length,
+        });
+      }
+    },
+    undefined,
+    'updatePhotoDisplayOrder'
+  );
 }
 
 type RelatedDataType = 'systems' | 'ziplines' | 'equipment' | 'standards' | 'summary';

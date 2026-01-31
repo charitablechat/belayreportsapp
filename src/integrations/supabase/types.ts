@@ -636,6 +636,7 @@ export type Database = {
         Row: {
           caption: string | null
           created_at: string | null
+          display_order: number | null
           id: string
           inspection_id: string
           photo_section: string | null
@@ -644,6 +645,7 @@ export type Database = {
         Insert: {
           caption?: string | null
           created_at?: string | null
+          display_order?: number | null
           id?: string
           inspection_id: string
           photo_section?: string | null
@@ -652,6 +654,7 @@ export type Database = {
         Update: {
           caption?: string | null
           created_at?: string | null
+          display_order?: number | null
           id?: string
           inspection_id?: string
           photo_section?: string | null
