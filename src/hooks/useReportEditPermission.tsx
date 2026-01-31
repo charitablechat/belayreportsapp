@@ -80,19 +80,32 @@ export function useReportEditPermission({
   }, []);
 
   const permission = useMemo<ReportEditPermission>(() => {
-    // Still loading - default to read-only for safety
-    if (isLoading || !inspectorId) {
+    const isOwner = currentUserId === inspectorId;
+    
+    // Fast path: If we can determine ownership, enable editing immediately for owners
+    // This avoids blocking on the super admin check which is only needed for non-owners
+    if (inspectorId && currentUserId && isOwner) {
+      return {
+        canEdit: true,
+        isReadOnly: false,
+        isOwner: true,
+        isSuperAdmin, // May still be loading, but irrelevant for owners
+        isLoading: false,
+        readOnlyReason: null
+      };
+    }
+
+    // Still loading user identity - default to read-only for safety
+    if (isLoading || !currentUserId || !inspectorId) {
       return {
         canEdit: false,
         isReadOnly: true,
         isOwner: false,
         isSuperAdmin,
-        isLoading,
+        isLoading: isLoading || !currentUserId,
         readOnlyReason: isLoading ? 'Checking permissions...' : 'Report owner not determined'
       };
     }
-
-    const isOwner = currentUserId === inspectorId;
 
     // Only owners can edit - Super Admins are view-only
     if (isOwner) {
