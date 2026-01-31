@@ -967,54 +967,78 @@ export async function saveAssessmentDataOffline(
   assessmentId: string,
   data: any[]
 ) {
-  const db = await getDB();
-  const storeName = assessmentStoreNameMap[type];
-  
-  const existingData = await getAssessmentDataOffline(type, assessmentId);
-  for (const item of existingData) {
-    await db.delete(storeName, item.id);
-  }
-  
-  for (const item of data) {
-    const dataWithAssessmentId = {
-      ...item,
-      assessment_id: assessmentId,
-      // Use crypto.randomUUID() for proper UUID generation instead of composite IDs
-      id: ensureValidUUID(item.id),
-    };
-    await db.put(storeName, dataWithAssessmentId);
-  }
-  
-  if (import.meta.env.DEV) {
-    console.log(`[Offline Storage] Saved assessment ${type}:`, data.length, 'items');
-  }
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      const storeName = assessmentStoreNameMap[type];
+      
+      // Get existing data directly to avoid nested error boundary calls
+      const existingIndex = db.transaction(storeName).store.index('by-assessment');
+      const existingData = await existingIndex.getAll(assessmentId);
+      
+      for (const item of existingData) {
+        await db.delete(storeName, item.id);
+      }
+      
+      for (const item of data) {
+        const dataWithAssessmentId = {
+          ...item,
+          assessment_id: assessmentId,
+          // Use crypto.randomUUID() for proper UUID generation instead of composite IDs
+          id: ensureValidUUID(item.id),
+        };
+        await db.put(storeName, dataWithAssessmentId);
+      }
+      
+      if (import.meta.env.DEV) {
+        console.log(`[Offline Storage] Saved assessment ${type}:`, data.length, 'items');
+      }
+    },
+    undefined,
+    `saveAssessmentDataOffline:${type}`
+  );
 }
 
 export async function getAssessmentDataOffline(
   type: AssessmentDataType,
   assessmentId: string
 ): Promise<any[]> {
-  const db = await getDB();
-  const storeName = assessmentStoreNameMap[type];
-  const index = db.transaction(storeName).store.index('by-assessment');
-  return await index.getAll(assessmentId);
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      const storeName = assessmentStoreNameMap[type];
+      const index = db.transaction(storeName).store.index('by-assessment');
+      return await index.getAll(assessmentId);
+    },
+    [],
+    `getAssessmentDataOffline:${type}`
+  );
 }
 
 export async function clearAssessmentDataOffline(
   type: AssessmentDataType,
   assessmentId: string
 ) {
-  const db = await getDB();
-  const storeName = assessmentStoreNameMap[type];
-  const existingData = await getAssessmentDataOffline(type, assessmentId);
-  
-  for (const item of existingData) {
-    await db.delete(storeName, item.id);
-  }
-  
-  if (import.meta.env.DEV) {
-    console.log(`[Offline Storage] Cleared ${type} for assessment:`, assessmentId);
-  }
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      const storeName = assessmentStoreNameMap[type];
+      
+      // Get existing data directly to avoid nested error boundary calls
+      const existingIndex = db.transaction(storeName).store.index('by-assessment');
+      const existingData = await existingIndex.getAll(assessmentId);
+      
+      for (const item of existingData) {
+        await db.delete(storeName, item.id);
+      }
+      
+      if (import.meta.env.DEV) {
+        console.log(`[Offline Storage] Cleared ${type} for assessment:`, assessmentId);
+      }
+    },
+    undefined,
+    `clearAssessmentDataOffline:${type}`
+  );
 }
 
 // Training functions
@@ -1174,54 +1198,78 @@ export async function saveTrainingDataOffline(
   trainingId: string,
   data: any[] | any
 ) {
-  const db = await getDB();
-  const storeName = trainingStoreNameMap[type];
-  
-  const existingData = await getTrainingDataOffline(type, trainingId);
-  for (const item of existingData) {
-    await db.delete(storeName, item.id);
-  }
-  
-  const items = Array.isArray(data) ? data : [data];
-  for (const item of items) {
-    const dataWithTrainingId = {
-      ...item,
-      training_id: trainingId,
-      // Use crypto.randomUUID() for proper UUID generation instead of composite IDs
-      // This fixes the "Invalid uuid" validation error during sync
-      id: ensureValidUUID(item.id),
-    };
-    await db.put(storeName, dataWithTrainingId);
-  }
-  
-  if (import.meta.env.DEV) {
-    console.log(`[Offline Storage] Saved training ${type}:`, items.length, 'items');
-  }
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      const storeName = trainingStoreNameMap[type];
+      
+      // Get existing data directly to avoid nested error boundary calls
+      const existingIndex = db.transaction(storeName).store.index('by-training');
+      const existingData = await existingIndex.getAll(trainingId);
+      
+      for (const item of existingData) {
+        await db.delete(storeName, item.id);
+      }
+      
+      const items = Array.isArray(data) ? data : [data];
+      for (const item of items) {
+        const dataWithTrainingId = {
+          ...item,
+          training_id: trainingId,
+          // Use crypto.randomUUID() for proper UUID generation instead of composite IDs
+          // This fixes the "Invalid uuid" validation error during sync
+          id: ensureValidUUID(item.id),
+        };
+        await db.put(storeName, dataWithTrainingId);
+      }
+      
+      if (import.meta.env.DEV) {
+        console.log(`[Offline Storage] Saved training ${type}:`, items.length, 'items');
+      }
+    },
+    undefined,
+    `saveTrainingDataOffline:${type}`
+  );
 }
 
 export async function getTrainingDataOffline(
   type: TrainingDataType,
   trainingId: string
 ): Promise<any[]> {
-  const db = await getDB();
-  const storeName = trainingStoreNameMap[type];
-  const index = db.transaction(storeName).store.index('by-training');
-  return await index.getAll(trainingId);
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      const storeName = trainingStoreNameMap[type];
+      const index = db.transaction(storeName).store.index('by-training');
+      return await index.getAll(trainingId);
+    },
+    [],
+    `getTrainingDataOffline:${type}`
+  );
 }
 
 export async function clearTrainingDataOffline(
   type: TrainingDataType,
   trainingId: string
 ) {
-  const db = await getDB();
-  const storeName = trainingStoreNameMap[type];
-  const existingData = await getTrainingDataOffline(type, trainingId);
-  
-  for (const item of existingData) {
-    await db.delete(storeName, item.id);
-  }
-  
-  if (import.meta.env.DEV) {
-    console.log(`[Offline Storage] Cleared ${type} for training:`, trainingId);
-  }
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      const storeName = trainingStoreNameMap[type];
+      
+      // Get existing data directly to avoid nested error boundary calls
+      const existingIndex = db.transaction(storeName).store.index('by-training');
+      const existingData = await existingIndex.getAll(trainingId);
+      
+      for (const item of existingData) {
+        await db.delete(storeName, item.id);
+      }
+      
+      if (import.meta.env.DEV) {
+        console.log(`[Offline Storage] Cleared ${type} for training:`, trainingId);
+      }
+    },
+    undefined,
+    `clearTrainingDataOffline:${type}`
+  );
 }

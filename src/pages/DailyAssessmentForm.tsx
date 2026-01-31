@@ -280,17 +280,21 @@ export default function DailyAssessmentForm() {
           setStructureChecks(stData.data || []);
           setEnvironmentChecks(envData.data || []);
           
-          // Save to offline storage
+          // Non-blocking cache updates - don't await to prevent loading freeze
           const { saveDailyAssessmentOffline, saveAssessmentDataOffline } = await import('@/lib/offline-storage');
-          await saveDailyAssessmentOffline(assessmentData);
-          await Promise.all([
+          saveDailyAssessmentOffline(assessmentData).catch(e =>
+            console.warn('[DailyAssessmentForm] Non-critical: failed to cache assessment', e)
+          );
+          Promise.all([
             saveAssessmentDataOffline('beginning_of_day', id!, bodData.data || []),
             saveAssessmentDataOffline('end_of_day', id!, eodData.data || []),
             saveAssessmentDataOffline('operating_systems', id!, osData.data || []),
             saveAssessmentDataOffline('equipment_checks', id!, eqData.data || []),
             saveAssessmentDataOffline('structure_checks', id!, stData.data || []),
             saveAssessmentDataOffline('environment_checks', id!, envData.data || []),
-          ]);
+          ]).catch(e =>
+            console.warn('[DailyAssessmentForm] Non-critical: failed to cache related data', e)
+          );
         }
       } else if (!offlineAssessment) {
         // Offline and no cached data

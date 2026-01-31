@@ -269,7 +269,10 @@ export default function TrainingForm() {
           if (trainingData) {
             setTraining(trainingData);
             setInspectorId(trainingData.inspector_id);
-            await saveTrainingOffline(trainingData);
+            // Non-blocking cache update - don't await to prevent loading freeze
+            saveTrainingOffline(trainingData).catch(e =>
+              console.warn('[TrainingForm] Non-critical: failed to cache training', e)
+            );
 
             // Load all related data
             const [
@@ -299,15 +302,17 @@ export default function TrainingForm() {
               training_id: id 
             });
 
-            // Save related data offline
-            await Promise.all([
+            // Non-blocking cache updates for related data
+            Promise.all([
               saveTrainingDataOffline('delivery_approaches', id, approachData || []),
               saveTrainingDataOffline('operating_systems', id, systemData || []),
               saveTrainingDataOffline('immediate_attention', id, attentionData || []),
               saveTrainingDataOffline('verifiable_items', id, verifiableData || []),
               saveTrainingDataOffline('systems_in_place', id, systemsPlaceData || []),
               summaryResult && saveTrainingDataOffline('summary', id, summaryResult)
-            ]);
+            ]).catch(e =>
+              console.warn('[TrainingForm] Non-critical: failed to cache related data', e)
+            );
           }
         } else if (!offlineTraining) {
           // Offline and no cached data
