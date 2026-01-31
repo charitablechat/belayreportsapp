@@ -1,240 +1,352 @@
 
-# Comprehensive Auth Caching Refactor Plan
+# Universal Prepend Rule for Report List Items
 
-## Executive Summary
+## Overview
 
-The audit identified **23 files** containing **~25+ locations** where `supabase.auth.getUser()` is called directly instead of using the optimized `getUserWithCache()` function. This comprehensive refactoring will achieve **100% adoption** of the cached auth utility to maximize performance gains.
-
----
-
-## Audit Results
-
-### Files Already Using Cached Auth (Compliant)
-| File | Status |
-|------|--------|
-| `src/lib/cached-auth.ts` | Source implementation |
-| `src/pages/Dashboard.tsx` | Already refactored |
-| `src/hooks/useAutoSync.tsx` | Already refactored |
-| `src/hooks/useUnsyncedPhotos.tsx` | Already refactored |
-| `src/pages/NewInspection.tsx` | Already refactored |
-| `src/pages/NewTraining.tsx` | Already refactored |
-| `src/pages/NewDailyAssessment.tsx` | Partially refactored (1 call remains) |
-| `src/pages/InspectionForm.tsx` | Partially refactored (1 call remains) |
-
-### Files Requiring Refactoring
-
-#### High-Impact Files (Multiple Calls)
-
-| File | Direct Calls | Priority |
-|------|--------------|----------|
-| `src/lib/sync-manager.ts` | 10 calls | Critical |
-| `src/lib/atomic-sync-manager.ts` | 6 calls | Critical |
-| `src/pages/TrainingForm.tsx` | 3 calls | High |
-| `src/components/pwa/PushNotificationManager.tsx` | 3 calls | High |
-| `src/components/OrganizationAutocomplete.tsx` | 2 calls | Medium |
-| `src/components/DatabaseAutocomplete.tsx` | 2 calls | Medium |
-
-#### Single-Call Files
-
-| File | Location | Priority |
-|------|----------|----------|
-| `src/hooks/useUserProfile.tsx` | Line 19 | High |
-| `src/hooks/useRequireSuperAdmin.tsx` | Line 13 | High |
-| `src/hooks/useReportEditPermission.tsx` | Line 46 | High |
-| `src/hooks/useConflicts.tsx` | Line 33 | Medium |
-| `src/hooks/usePushNotifications.tsx` | Lines 118, 162 | Medium |
-| `src/pages/Profile.tsx` | Line 50 | Medium |
-| `src/pages/DailyAssessmentForm.tsx` | Line 125 | Medium |
-| `src/pages/NewDailyAssessment.tsx` | Line 35 | Medium |
-| `src/pages/NewInspection.tsx` | Line 41 | Medium |
-| `src/pages/InspectionForm.tsx` | Line 764 | Medium |
-| `src/components/PhotoCapture.tsx` | Line 37 | Medium |
-| `src/components/dashboard/DeveloperNotesCard.tsx` | Line 68 | Low |
-
-#### Special Case: Index.tsx
-`src/pages/Index.tsx` uses `supabase.auth.getSession()` for initial authentication verification. This is **intentional** and should NOT be changed - it needs the full session verification on login flow.
+This plan implements a universal rule where all newly created items are placed at the **beginning (index 0)** of their corresponding report lists across all report types: Inspection, Training, and Daily Assessment.
 
 ---
 
-## Implementation Strategy
+## Current State Analysis
 
-### Phase 1: Update Shared Utilities (Critical Path)
-
-**File: `src/lib/sync-manager.ts`**
-Replace all 10 occurrences with `getUserWithCache()`:
-- Lines 52, 89, 99, 240, 322, 366, 386, 458, 507 - all sync operations
-- Import `getUserWithCache` from cached-auth
-
-**File: `src/lib/atomic-sync-manager.ts`**
-Replace all 6 occurrences:
-- Lines 50, 324, 472, 717, 829, 1066 - all atomic sync operations
-- Import `getUserWithCache` from cached-auth
-
-### Phase 2: Update Hooks
-
-**File: `src/hooks/useUserProfile.tsx`**
+### Current Behavior (Append to End)
+All components currently use the pattern:
 ```typescript
-import { getUserWithCache } from '@/lib/cached-auth';
-// Line 19: Replace supabase.auth.getUser() with getUserWithCache()
+onUpdate([...existingItems, { id: crypto.randomUUID(), ...newItemData }]);
 ```
 
-**File: `src/hooks/useRequireSuperAdmin.tsx`**
+This places new items at the **end** of the array.
+
+### Animation Tracking Issue
+The animation system currently detects new items by checking the **last item** in the array:
 ```typescript
-import { getUserWithCache } from '@/lib/cached-auth';
-// Line 13: Replace supabase.auth.getUser() with getUserWithCache()
+const latestItem = items[items.length - 1];
 ```
 
-**File: `src/hooks/useReportEditPermission.tsx`**
-```typescript
-import { getUserWithCache } from '@/lib/cached-auth';
-// Line 46: Replace supabase.auth.getUser() with getUserWithCache()
-```
-
-**File: `src/hooks/useConflicts.tsx`**
-```typescript
-import { getUserWithCache } from '@/lib/cached-auth';
-// Line 33: Replace supabase.auth.getUser() with getUserWithCache()
-```
-
-**File: `src/hooks/usePushNotifications.tsx`**
-```typescript
-import { getUserWithCache } from '@/lib/cached-auth';
-// Lines 118, 162: Replace supabase.auth.getUser() with getUserWithCache()
-```
-
-### Phase 3: Update Page Components
-
-**File: `src/pages/Profile.tsx`**
-- Line 50: Replace with `getUserWithCache()`
-- Note: The error handling pattern `{ error: userError }` needs adjustment since cached version doesn't return errors the same way
-
-**File: `src/pages/TrainingForm.tsx`**
-- Lines 131, 164: Replace with `getUserWithCache()`
-
-**File: `src/pages/DailyAssessmentForm.tsx`**
-- Line 125: Replace with `getUserWithCache()`
-
-**File: `src/pages/NewDailyAssessment.tsx`**
-- Line 35: Replace with `getUserWithCache()`
-
-**File: `src/pages/NewInspection.tsx`**
-- Line 41: Replace with `getUserWithCache()`
-
-**File: `src/pages/InspectionForm.tsx`**
-- Line 764: Replace with `getUserWithCache()`
-
-### Phase 4: Update UI Components
-
-**File: `src/components/OrganizationAutocomplete.tsx`**
-- Lines 51, 108: Replace with `getUserWithCache()`
-
-**File: `src/components/DatabaseAutocomplete.tsx`**
-- Lines 78, 109: Replace with `getUserWithCache()`
-
-**File: `src/components/PhotoCapture.tsx`**
-- Line 37: Replace with `getUserWithCache()`
-
-**File: `src/components/pwa/PushNotificationManager.tsx`**
-- Lines 31, 67, 91: Replace with `getUserWithCache()`
-
-**File: `src/components/dashboard/DeveloperNotesCard.tsx`**
-- Line 68: Replace with `getUserWithCache()`
+This must be updated to check the **first item** when using prepend logic.
 
 ---
 
-## Code Pattern Changes
+## Files Requiring Changes
 
-### Before (Direct Call)
+### Inspection Report Components (3 files)
+
+| File | Function | Lines Affected |
+|------|----------|----------------|
+| `src/components/inspection/OperatingSystemsTable.tsx` | `addSystem()` | 40-50, 22-38 |
+| `src/components/inspection/ZiplinesTable.tsx` | `addZipline()` | 42-62, 24-40 |
+| `src/components/inspection/EquipmentTable.tsx` | `addEquipment()` | 45-59, 27-43 |
+
+### Training Report Components (5 files)
+
+| File | Function | Lines Affected |
+|------|----------|----------------|
+| `src/components/training/OperatingSystemsSection.tsx` | `handleToggle()`, `handleAddOther()` | 41, 60 |
+| `src/components/training/DeliveryApproachSection.tsx` | `handleToggle()` | 21 |
+| `src/components/training/ImmediateAttentionSection.tsx` | `handleToggle()` | 23 |
+| `src/components/training/SystemsInPlaceSection.tsx` | `handleToggle()` | 24 |
+| `src/components/training/VerifiableItemsSection.tsx` | `handleToggle()`, `handleSystemToggle()` | 33, 46 |
+
+### Daily Assessment Components (5 files)
+
+| File | Function | Lines Affected |
+|------|----------|----------------|
+| `src/components/daily-assessment/OperatingSystemsSection.tsx` | `handleToggle()`, `handleAddOther()` | 38, 48 |
+| `src/components/daily-assessment/StructureChecksSection.tsx` | `handleToggle()` | 37 |
+| `src/components/daily-assessment/EquipmentChecksSection.tsx` | `handleToggle()` | 34 |
+| `src/components/daily-assessment/EnvironmentChecksSection.tsx` | `handleToggle()` | 33 |
+| `src/components/daily-assessment/BeginningOfDaySection.tsx` | `handleToggle()`, `handleCommentChange()` | 35, 55 |
+| `src/components/daily-assessment/EndOfDaySection.tsx` | `handleToggle()`, `handleCommentChange()` | 34, 54 |
+
+---
+
+## Implementation Details
+
+### Pattern Change: Append to Prepend
+
+**Before (Append):**
 ```typescript
-const { data: { user } } = await supabase.auth.getUser();
-if (!user) return;
+onUpdate([...existingItems, newItem]);
 ```
 
-### After (Cached Call)
+**After (Prepend):**
 ```typescript
-import { getUserWithCache } from '@/lib/cached-auth';
-
-const user = await getUserWithCache();
-if (!user) return;
+onUpdate([newItem, ...existingItems]);
 ```
 
-### Special Case: Error Handling
-For locations like `Profile.tsx` that check for errors:
+### Animation Tracking Update
+
+For components with explicit "new item" animations (Inspection tables), update detection logic:
 
 **Before:**
 ```typescript
-const { data: { user: authUser }, error: userError } = await supabase.auth.getUser();
-if (userError) throw userError;
+useEffect(() => {
+  if (items.length > prevLengthRef.current) {
+    const latestItem = items[items.length - 1]; // Last item
+    if (latestItem?.id) {
+      setNewItemIds(prev => new Set(prev).add(latestItem.id));
+      // ... animation timeout
+    }
+  }
+  prevLengthRef.current = items.length;
+}, [items.length]);
 ```
 
 **After:**
 ```typescript
-const authUser = await getUserWithCache();
-if (!authUser) {
-  // Handle missing user - cached version handles errors internally
-  navigate("/");
-  return;
-}
+useEffect(() => {
+  if (items.length > prevLengthRef.current) {
+    const latestItem = items[0]; // First item (prepended)
+    if (latestItem?.id) {
+      setNewItemIds(prev => new Set(prev).add(latestItem.id));
+      // ... animation timeout
+    }
+  }
+  prevLengthRef.current = items.length;
+}, [items.length]);
 ```
 
 ---
 
-## Files NOT to Modify
+## Technical Specifications
 
-| File | Reason |
-|------|--------|
-| `src/pages/Index.tsx` | Login flow requires full session verification |
-| `src/integrations/supabase/client.ts` | Auto-generated, never modify |
-| Auth state change listeners | Intentionally use direct Supabase calls |
+### Inspection Components - Detailed Changes
+
+#### 1. OperatingSystemsTable.tsx
+
+```typescript
+// Line 24: Change from items[items.length - 1] to items[0]
+const latestSystem = systems[0];
+
+// Lines 40-50: Change spread order
+const addSystem = () => {
+  onUpdate([
+    { 
+      id: `temp-${crypto.randomUUID()}`,
+      inspection_id: window.location.pathname.split('/').pop(),
+      system_name: "", 
+      result: "pass", 
+      comments: "" 
+    },
+    ...systems  // Existing items after new item
+  ]);
+};
+```
+
+#### 2. ZiplinesTable.tsx
+
+```typescript
+// Line 26: Change from ziplines[ziplines.length - 1] to ziplines[0]
+const latestZipline = ziplines[0];
+
+// Lines 42-62: Change spread order
+const addZipline = () => {
+  onUpdate([
+    {
+      id: `temp-${crypto.randomUUID()}`,
+      // ... all fields
+    },
+    ...ziplines
+  ]);
+};
+```
+
+#### 3. EquipmentTable.tsx
+
+```typescript
+// Line 29: Change from categoryEquipment[categoryEquipment.length - 1] to categoryEquipment[0]
+const latestItem = categoryEquipment[0];
+
+// Lines 45-59: Change spread order
+const addEquipment = () => {
+  onUpdate([
+    {
+      id: `temp-${crypto.randomUUID()}`,
+      // ... all fields
+    },
+    ...equipment
+  ]);
+};
+```
+
+### Training Components - Detailed Changes
+
+#### 4. OperatingSystemsSection.tsx (Training)
+
+```typescript
+// Line 41: Prepend pattern
+onUpdate([{
+  id: crypto.randomUUID(),
+  system_name: systemName,
+  other_description: null,
+  created_at: new Date().toISOString()
+}, ...systems]);
+
+// Line 60: Prepend pattern for "Other"
+onUpdate([newEntry, ...systems]);
+```
+
+#### 5. DeliveryApproachSection.tsx
+
+```typescript
+// Line 21: Prepend pattern
+onUpdate([{
+  id: crypto.randomUUID(),
+  approach,
+  created_at: new Date().toISOString()
+}, ...approaches]);
+```
+
+#### 6. ImmediateAttentionSection.tsx
+
+```typescript
+// Line 23: Prepend pattern
+onUpdate([{
+  id: crypto.randomUUID(),
+  item,
+  created_at: new Date().toISOString()
+}, ...items]);
+```
+
+#### 7. SystemsInPlaceSection.tsx
+
+```typescript
+// Line 24: Prepend pattern
+onUpdate([{
+  id: crypto.randomUUID(),
+  system_item: item,
+  created_at: new Date().toISOString()
+}, ...items]);
+```
+
+#### 8. VerifiableItemsSection.tsx
+
+```typescript
+// Line 33: Prepend pattern for verifiable items
+onUpdate([{
+  id: crypto.randomUUID(),
+  item,
+  created_at: new Date().toISOString()
+}, ...items]);
+
+// Line 46: Prepend pattern for systems in place
+onUpdateSystemsInPlace([{
+  id: crypto.randomUUID(),
+  system_item: systemItem,
+  created_at: new Date().toISOString()
+}, ...systemsInPlace]);
+```
+
+### Daily Assessment Components - Detailed Changes
+
+#### 9. OperatingSystemsSection.tsx (Daily Assessment)
+
+```typescript
+// Line 38: Prepend pattern
+onUpdate([{ 
+  id: crypto.randomUUID(),
+  system_name: systemName 
+}, ...systems]);
+
+// Line 48: Prepend pattern for "Other"
+onUpdate([{ 
+  id: crypto.randomUUID(),
+  system_name: 'Other', 
+  other_description: '' 
+}, ...systems]);
+```
+
+#### 10. StructureChecksSection.tsx
+
+```typescript
+// Line 37: Prepend pattern
+onUpdate([{ 
+  id: crypto.randomUUID(),
+  item_key: itemKey, 
+  is_checked: true 
+}, ...checks]);
+```
+
+#### 11. EquipmentChecksSection.tsx
+
+```typescript
+// Line 34: Prepend pattern
+onUpdate([{ 
+  id: crypto.randomUUID(),
+  item_key: itemKey, 
+  is_checked: true 
+}, ...checks]);
+```
+
+#### 12. EnvironmentChecksSection.tsx
+
+```typescript
+// Line 33: Prepend pattern
+onUpdate([{ 
+  id: crypto.randomUUID(),
+  item_key: itemKey, 
+  is_checked: true 
+}, ...checks]);
+```
+
+#### 13. BeginningOfDaySection.tsx
+
+```typescript
+// Line 35: Prepend pattern for toggle
+onUpdate([{ 
+  id: crypto.randomUUID(),
+  item_key: itemKey, 
+  is_complete: true, 
+  comments: '' 
+}, ...items]);
+
+// Line 55: Prepend pattern for comment creation
+onUpdate([{ 
+  id: crypto.randomUUID(),
+  item_key: itemKey, 
+  is_complete: false, 
+  comments 
+}, ...items]);
+```
+
+#### 14. EndOfDaySection.tsx
+
+```typescript
+// Line 34: Prepend pattern for toggle
+onUpdate([{ 
+  id: crypto.randomUUID(),
+  item_key: itemKey, 
+  is_complete: true, 
+  comments: '' 
+}, ...items]);
+
+// Line 54: Prepend pattern for comment creation
+onUpdate([{ 
+  id: crypto.randomUUID(),
+  item_key: itemKey, 
+  is_complete: false, 
+  comments 
+}, ...items]);
+```
 
 ---
 
-## Safety Considerations
+## Summary
 
-| Concern | Mitigation |
-|---------|------------|
-| Cache staleness | 60-second TTL ensures freshness |
-| Race conditions | Single-flight pattern prevents duplicate requests |
-| Offline support | Falls back to localStorage cached session |
-| Sign-out handling | Auth listener invalidates cache on SIGNED_OUT event |
-| Error handling | Cached version handles errors internally with fallback |
-
----
-
-## Expected Results
-
-| Metric | Before | After |
-|--------|--------|-------|
-| Direct auth API calls | 25+ per session | 1 (cached) |
-| Auth network latency | ~100-200ms per call | Eliminated (cache hit) |
-| Duplicate concurrent requests | Multiple | Deduplicated |
-| Offline auth support | Inconsistent | Consistent fallback |
+| Report Type | Files | Changes |
+|-------------|-------|---------|
+| Inspection | 3 | Prepend logic + Animation tracking |
+| Training | 5 | Prepend logic only |
+| Daily Assessment | 6 | Prepend logic only |
+| **Total** | **14** | **~20 code locations** |
 
 ---
 
-## Testing Checklist
+## Testing Verification
 
-After implementation, verify:
+After implementation:
 
-1. Dashboard loads quickly with no visible lag
-2. Profile page shows correct user data
-3. Super Admin access still works correctly
-4. Report editing permissions work for owners
-5. Background sync operations complete successfully
-6. Push notification preferences load correctly
-7. Organization/field autocomplete works
-8. Photo capture maintains user context
-9. Sign-out properly clears cached state
-10. Offline mode still allows viewing cached data
-
----
-
-## Total Files to Modify
-
-**18 files** requiring changes:
-- 2 core utilities (sync-manager, atomic-sync-manager)
-- 5 hooks
-- 6 pages
-- 5 UI components
-
-**Estimated auth API calls eliminated: 24+** per dashboard load sequence
+1. **Inspection Form**: Add a new Operating System, Zipline, or Equipment item and verify it appears at the top with highlight animation
+2. **Training Form**: Toggle a checkbox ON for any section and verify the item is tracked at the beginning
+3. **Daily Assessment**: Add a custom operating system or toggle a checkbox and verify prepend behavior
+4. **Data Integrity**: Ensure existing items remain in their relative order after prepending new items
