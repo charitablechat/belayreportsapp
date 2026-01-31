@@ -243,20 +243,32 @@ async function ensureStorage(): Promise<void> {
 }
 
 /**
- * Wrapper for IndexedDB operations with error boundary
+ * Wrapper for IndexedDB operations with error boundary and timeout protection
+ * Prevents any single IndexedDB operation from blocking the app
  */
 async function withIndexedDBErrorBoundary<T>(
   operation: () => Promise<T>,
   fallbackValue: T,
   operationName: string
 ): Promise<T> {
+  const OPERATION_TIMEOUT = 5000; // 5 second timeout for any IndexedDB operation
+  
   try {
-    const isHealthy = await checkIndexedDBHealth();
-    if (!isHealthy) {
-      console.error(`[Offline Storage] IndexedDB unhealthy, returning fallback for ${operationName}`);
-      return fallbackValue;
-    }
-    return await operation();
+    // Wrap the entire operation (including health check) with a timeout
+    const result = await withTimeout(
+      (async () => {
+        const isHealthy = await checkIndexedDBHealth();
+        if (!isHealthy) {
+          console.warn(`[Offline Storage] IndexedDB unhealthy, returning fallback for ${operationName}`);
+          return fallbackValue;
+        }
+        return await operation();
+      })(),
+      OPERATION_TIMEOUT,
+      fallbackValue
+    );
+    
+    return result;
   } catch (error) {
     console.error(`[Offline Storage] Error in ${operationName}:`, error);
     return fallbackValue;
@@ -265,136 +277,155 @@ async function withIndexedDBErrorBoundary<T>(
 
 export async function getDB() {
   if (!dbPromise) {
-    // Ensure storage is available before opening DB
+    // Ensure storage is available before opening DB (non-blocking)
     await ensureStorage();
     
-    dbPromise = openDB<InspectionDB>('rope-works-inspections', 6, {
-      upgrade(db, oldVersion, newVersion, transaction) {
-        let inspectionStore;
-        
-        // Create or get the inspections store
-        if (!db.objectStoreNames.contains('inspections')) {
-          inspectionStore = db.createObjectStore('inspections', {
-            keyPath: 'id',
-          });
-          inspectionStore.createIndex('by-status', 'status');
-          inspectionStore.createIndex('by-synced', 'synced_at');
-        } else {
-          inspectionStore = transaction.objectStore('inspections');
-          // Add new index if it doesn't exist
-          if (!inspectionStore.indexNames.contains('by-synced')) {
+    // Wrap the entire DB opening process in a timeout to prevent hanging
+    const openDBWithTimeout = async () => {
+      return openDB<InspectionDB>('rope-works-inspections', 6, {
+        upgrade(db, oldVersion, newVersion, transaction) {
+          let inspectionStore;
+          
+          // Create or get the inspections store
+          if (!db.objectStoreNames.contains('inspections')) {
+            inspectionStore = db.createObjectStore('inspections', {
+              keyPath: 'id',
+            });
+            inspectionStore.createIndex('by-status', 'status');
             inspectionStore.createIndex('by-synced', 'synced_at');
+          } else {
+            inspectionStore = transaction.objectStore('inspections');
+            // Add new index if it doesn't exist
+            if (!inspectionStore.indexNames.contains('by-synced')) {
+              inspectionStore.createIndex('by-synced', 'synced_at');
+            }
           }
-        }
-        
-        // Create operations store if it doesn't exist
-        if (!db.objectStoreNames.contains('operations')) {
-          db.createObjectStore('operations', { autoIncrement: true });
-        }
-        
-        // Create photos store if it doesn't exist
-        if (!db.objectStoreNames.contains('photos')) {
-          const photoStore = db.createObjectStore('photos', { keyPath: 'id' });
-          photoStore.createIndex('by-inspection', 'inspectionId');
-          photoStore.createIndex('by-uploaded', 'uploaded');
-        }
-        
-        // Create related data stores
-        if (!db.objectStoreNames.contains('inspection_systems')) {
-          const store = db.createObjectStore('inspection_systems', { keyPath: 'id' });
-          store.createIndex('by-inspection', 'inspection_id');
-        }
-        if (!db.objectStoreNames.contains('inspection_ziplines')) {
-          const store = db.createObjectStore('inspection_ziplines', { keyPath: 'id' });
-          store.createIndex('by-inspection', 'inspection_id');
-        }
-        if (!db.objectStoreNames.contains('inspection_equipment')) {
-          const store = db.createObjectStore('inspection_equipment', { keyPath: 'id' });
-          store.createIndex('by-inspection', 'inspection_id');
-        }
-        if (!db.objectStoreNames.contains('inspection_standards')) {
-          const store = db.createObjectStore('inspection_standards', { keyPath: 'id' });
-          store.createIndex('by-inspection', 'inspection_id');
-        }
-        if (!db.objectStoreNames.contains('inspection_summary')) {
-          const store = db.createObjectStore('inspection_summary', { keyPath: 'id' });
-          store.createIndex('by-inspection', 'inspection_id');
-        }
-        
-        // Daily assessments store
-        if (!db.objectStoreNames.contains('daily_assessments')) {
-          const assessmentStore = db.createObjectStore('daily_assessments', { keyPath: 'id' });
-          assessmentStore.createIndex('by-status', 'status');
-          assessmentStore.createIndex('by-synced', 'synced_at');
-        }
-        
-        // Assessment operations store
-        if (!db.objectStoreNames.contains('assessment_operations')) {
-          db.createObjectStore('assessment_operations', { autoIncrement: true });
-        }
-        
-        // Daily assessment related data stores
-        if (!db.objectStoreNames.contains('daily_assessment_beginning_of_day')) {
-          const store = db.createObjectStore('daily_assessment_beginning_of_day', { keyPath: 'id' });
-          store.createIndex('by-assessment', 'assessment_id');
-        }
-        if (!db.objectStoreNames.contains('daily_assessment_end_of_day')) {
-          const store = db.createObjectStore('daily_assessment_end_of_day', { keyPath: 'id' });
-          store.createIndex('by-assessment', 'assessment_id');
-        }
-        if (!db.objectStoreNames.contains('daily_assessment_operating_systems')) {
-          const store = db.createObjectStore('daily_assessment_operating_systems', { keyPath: 'id' });
-          store.createIndex('by-assessment', 'assessment_id');
-        }
-        if (!db.objectStoreNames.contains('daily_assessment_equipment_checks')) {
-          const store = db.createObjectStore('daily_assessment_equipment_checks', { keyPath: 'id' });
-          store.createIndex('by-assessment', 'assessment_id');
-        }
-        if (!db.objectStoreNames.contains('daily_assessment_structure_checks')) {
-          const store = db.createObjectStore('daily_assessment_structure_checks', { keyPath: 'id' });
-          store.createIndex('by-assessment', 'assessment_id');
-        }
-        if (!db.objectStoreNames.contains('daily_assessment_environment_checks')) {
-          const store = db.createObjectStore('daily_assessment_environment_checks', { keyPath: 'id' });
-          store.createIndex('by-assessment', 'assessment_id');
-        }
-        
-        // Training stores
-        if (!db.objectStoreNames.contains('trainings')) {
-          const trainingStore = db.createObjectStore('trainings', { keyPath: 'id' });
-          trainingStore.createIndex('by-status', 'status');
-          trainingStore.createIndex('by-synced', 'synced_at');
-        }
-        
-        if (!db.objectStoreNames.contains('training_operations')) {
-          db.createObjectStore('training_operations', { autoIncrement: true });
-        }
-        
-        if (!db.objectStoreNames.contains('training_delivery_approaches')) {
-          const store = db.createObjectStore('training_delivery_approaches', { keyPath: 'id' });
-          store.createIndex('by-training', 'training_id');
-        }
-        if (!db.objectStoreNames.contains('training_operating_systems')) {
-          const store = db.createObjectStore('training_operating_systems', { keyPath: 'id' });
-          store.createIndex('by-training', 'training_id');
-        }
-        if (!db.objectStoreNames.contains('training_immediate_attention')) {
-          const store = db.createObjectStore('training_immediate_attention', { keyPath: 'id' });
-          store.createIndex('by-training', 'training_id');
-        }
-        if (!db.objectStoreNames.contains('training_verifiable_items')) {
-          const store = db.createObjectStore('training_verifiable_items', { keyPath: 'id' });
-          store.createIndex('by-training', 'training_id');
-        }
-        if (!db.objectStoreNames.contains('training_systems_in_place')) {
-          const store = db.createObjectStore('training_systems_in_place', { keyPath: 'id' });
-          store.createIndex('by-training', 'training_id');
-        }
-        if (!db.objectStoreNames.contains('training_summary')) {
-          const store = db.createObjectStore('training_summary', { keyPath: 'id' });
-          store.createIndex('by-training', 'training_id');
-        }
-      },
+          
+          // Create operations store if it doesn't exist
+          if (!db.objectStoreNames.contains('operations')) {
+            db.createObjectStore('operations', { autoIncrement: true });
+          }
+          
+          // Create photos store if it doesn't exist
+          if (!db.objectStoreNames.contains('photos')) {
+            const photoStore = db.createObjectStore('photos', { keyPath: 'id' });
+            photoStore.createIndex('by-inspection', 'inspectionId');
+            photoStore.createIndex('by-uploaded', 'uploaded');
+          }
+          
+          // Create related data stores
+          if (!db.objectStoreNames.contains('inspection_systems')) {
+            const store = db.createObjectStore('inspection_systems', { keyPath: 'id' });
+            store.createIndex('by-inspection', 'inspection_id');
+          }
+          if (!db.objectStoreNames.contains('inspection_ziplines')) {
+            const store = db.createObjectStore('inspection_ziplines', { keyPath: 'id' });
+            store.createIndex('by-inspection', 'inspection_id');
+          }
+          if (!db.objectStoreNames.contains('inspection_equipment')) {
+            const store = db.createObjectStore('inspection_equipment', { keyPath: 'id' });
+            store.createIndex('by-inspection', 'inspection_id');
+          }
+          if (!db.objectStoreNames.contains('inspection_standards')) {
+            const store = db.createObjectStore('inspection_standards', { keyPath: 'id' });
+            store.createIndex('by-inspection', 'inspection_id');
+          }
+          if (!db.objectStoreNames.contains('inspection_summary')) {
+            const store = db.createObjectStore('inspection_summary', { keyPath: 'id' });
+            store.createIndex('by-inspection', 'inspection_id');
+          }
+          
+          // Daily assessments store
+          if (!db.objectStoreNames.contains('daily_assessments')) {
+            const assessmentStore = db.createObjectStore('daily_assessments', { keyPath: 'id' });
+            assessmentStore.createIndex('by-status', 'status');
+            assessmentStore.createIndex('by-synced', 'synced_at');
+          }
+          
+          // Assessment operations store
+          if (!db.objectStoreNames.contains('assessment_operations')) {
+            db.createObjectStore('assessment_operations', { autoIncrement: true });
+          }
+          
+          // Daily assessment related data stores
+          if (!db.objectStoreNames.contains('daily_assessment_beginning_of_day')) {
+            const store = db.createObjectStore('daily_assessment_beginning_of_day', { keyPath: 'id' });
+            store.createIndex('by-assessment', 'assessment_id');
+          }
+          if (!db.objectStoreNames.contains('daily_assessment_end_of_day')) {
+            const store = db.createObjectStore('daily_assessment_end_of_day', { keyPath: 'id' });
+            store.createIndex('by-assessment', 'assessment_id');
+          }
+          if (!db.objectStoreNames.contains('daily_assessment_operating_systems')) {
+            const store = db.createObjectStore('daily_assessment_operating_systems', { keyPath: 'id' });
+            store.createIndex('by-assessment', 'assessment_id');
+          }
+          if (!db.objectStoreNames.contains('daily_assessment_equipment_checks')) {
+            const store = db.createObjectStore('daily_assessment_equipment_checks', { keyPath: 'id' });
+            store.createIndex('by-assessment', 'assessment_id');
+          }
+          if (!db.objectStoreNames.contains('daily_assessment_structure_checks')) {
+            const store = db.createObjectStore('daily_assessment_structure_checks', { keyPath: 'id' });
+            store.createIndex('by-assessment', 'assessment_id');
+          }
+          if (!db.objectStoreNames.contains('daily_assessment_environment_checks')) {
+            const store = db.createObjectStore('daily_assessment_environment_checks', { keyPath: 'id' });
+            store.createIndex('by-assessment', 'assessment_id');
+          }
+          
+          // Training stores
+          if (!db.objectStoreNames.contains('trainings')) {
+            const trainingStore = db.createObjectStore('trainings', { keyPath: 'id' });
+            trainingStore.createIndex('by-status', 'status');
+            trainingStore.createIndex('by-synced', 'synced_at');
+          }
+          
+          if (!db.objectStoreNames.contains('training_operations')) {
+            db.createObjectStore('training_operations', { autoIncrement: true });
+          }
+          
+          if (!db.objectStoreNames.contains('training_delivery_approaches')) {
+            const store = db.createObjectStore('training_delivery_approaches', { keyPath: 'id' });
+            store.createIndex('by-training', 'training_id');
+          }
+          if (!db.objectStoreNames.contains('training_operating_systems')) {
+            const store = db.createObjectStore('training_operating_systems', { keyPath: 'id' });
+            store.createIndex('by-training', 'training_id');
+          }
+          if (!db.objectStoreNames.contains('training_immediate_attention')) {
+            const store = db.createObjectStore('training_immediate_attention', { keyPath: 'id' });
+            store.createIndex('by-training', 'training_id');
+          }
+          if (!db.objectStoreNames.contains('training_verifiable_items')) {
+            const store = db.createObjectStore('training_verifiable_items', { keyPath: 'id' });
+            store.createIndex('by-training', 'training_id');
+          }
+          if (!db.objectStoreNames.contains('training_systems_in_place')) {
+            const store = db.createObjectStore('training_systems_in_place', { keyPath: 'id' });
+            store.createIndex('by-training', 'training_id');
+          }
+          if (!db.objectStoreNames.contains('training_summary')) {
+            const store = db.createObjectStore('training_summary', { keyPath: 'id' });
+            store.createIndex('by-training', 'training_id');
+          }
+        },
+      });
+    };
+    
+    // Apply 5-second timeout to the entire DB opening process
+    // If IndexedDB hangs, we'll reject and the app can proceed with network-only mode
+    dbPromise = Promise.race([
+      openDBWithTimeout(),
+      new Promise<never>((_, reject) => 
+        setTimeout(() => {
+          console.error('[Offline Storage] IndexedDB open timed out after 5 seconds');
+          reject(new Error('IndexedDB open timed out'));
+        }, 5000)
+      )
+    ]).catch(error => {
+      console.error('[Offline Storage] Failed to open IndexedDB:', error);
+      dbPromise = null; // Reset so next attempt can retry
+      throw error;
     });
   }
   return dbPromise;
