@@ -16,17 +16,27 @@ const SYNC_TIMEOUT = 30000; // 30 second timeout for sync operations to prevent 
 
 /**
  * Helper to wrap promises with a timeout
+ * Returns { result, timedOut } to differentiate between timeout and successful null
  */
-function withSyncTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T | null> {
-  return Promise.race([
-    promise,
-    new Promise<null>((resolve) => {
-      setTimeout(() => {
-        console.warn('[AutoSync] Sync operation timed out after', timeoutMs, 'ms');
-        resolve(null);
-      }, timeoutMs);
-    })
-  ]);
+function withSyncTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number
+): Promise<{ result: T | null; timedOut: boolean }> {
+  let timeoutHandle: NodeJS.Timeout;
+  
+  const timeoutPromise = new Promise<{ result: null; timedOut: true }>((resolve) => {
+    timeoutHandle = setTimeout(() => {
+      console.warn('[AutoSync] Sync operation timed out after', timeoutMs, 'ms');
+      resolve({ result: null, timedOut: true });
+    }, timeoutMs);
+  });
+  
+  const wrappedPromise = promise.then((result) => {
+    clearTimeout(timeoutHandle);
+    return { result, timedOut: false as const };
+  });
+  
+  return Promise.race([wrappedPromise, timeoutPromise]);
 }
 
 export interface AutoSyncState {
@@ -96,43 +106,61 @@ export const useAutoSync = () => {
     syncInProgressRef.current = true;
     setState(prev => ({ ...prev, isSyncing: true }));
     
+    // Safety: Force-reset sync state after timeout regardless of promise resolution
+    const safetyTimeoutHandle = setTimeout(() => {
+      if (syncInProgressRef.current) {
+        console.warn('[AutoSync] Safety timeout - force resetting sync state');
+        syncInProgressRef.current = false;
+        setState(prev => ({ ...prev, isSyncing: false }));
+      }
+    }, SYNC_TIMEOUT + 2000); // 2 seconds after main timeout as final safety
+    
     try {
       if (import.meta.env.DEV) {
         console.log('[AutoSync] Starting sync...');
       }
       
       // Sync all data types in parallel with timeout protection
-      // This prevents sync from hanging forever if one operation stalls
-      await withSyncTimeout(
+      // Each operation has its own catch to prevent one failure from blocking others
+      const syncResult = await withSyncTimeout(
         Promise.all([
-          syncAllInspectionsAtomic().catch(e => console.error('[AutoSync] Inspections sync failed:', e)),
-          syncAllTrainingsAtomic().catch(e => console.error('[AutoSync] Trainings sync failed:', e)),
-          syncAllDailyAssessmentsAtomic().catch(e => console.error('[AutoSync] Assessments sync failed:', e)),
-          syncPhotos().catch(e => console.error('[AutoSync] Photos sync failed:', e)),
+          syncAllInspectionsAtomic().catch(e => { console.error('[AutoSync] Inspections sync failed:', e); return null; }),
+          syncAllTrainingsAtomic().catch(e => { console.error('[AutoSync] Trainings sync failed:', e); return null; }),
+          syncAllDailyAssessmentsAtomic().catch(e => { console.error('[AutoSync] Assessments sync failed:', e); return null; }),
+          syncPhotos().catch(e => { console.error('[AutoSync] Photos sync failed:', e); return null; }),
         ]),
         SYNC_TIMEOUT
       );
       
-      // Update state
+      // Clear safety timeout since we completed normally
+      clearTimeout(safetyTimeoutHandle);
+      
+      if (syncResult.timedOut) {
+        console.warn('[AutoSync] Sync timed out - resetting state');
+      } else if (import.meta.env.DEV) {
+        console.log('[AutoSync] Sync completed successfully');
+      }
+      
+      // Update state - always reset isSyncing
       setState(prev => ({
         ...prev,
         isSyncing: false,
-        lastSyncTime: new Date(),
+        lastSyncTime: syncResult.timedOut ? prev.lastSyncTime : new Date(),
       }));
       
-      // Refresh unsynced counts
-      await updateUnsyncedCounts();
-      
-      // Invalidate queries to refresh UI
-      queryClient.invalidateQueries({ queryKey: ['inspections'] });
-      queryClient.invalidateQueries({ queryKey: ['trainings'] });
-      queryClient.invalidateQueries({ queryKey: ['daily-assessments'] });
-      
-      if (import.meta.env.DEV) {
-        console.log('[AutoSync] Sync completed successfully');
+      // Only do post-sync work if we didn't time out
+      if (!syncResult.timedOut) {
+        // Refresh unsynced counts (non-blocking)
+        updateUnsyncedCounts().catch(() => {});
+        
+        // Invalidate queries to refresh UI
+        queryClient.invalidateQueries({ queryKey: ['inspections'] });
+        queryClient.invalidateQueries({ queryKey: ['trainings'] });
+        queryClient.invalidateQueries({ queryKey: ['daily-assessments'] });
       }
     } catch (error) {
       console.error('[AutoSync] Sync failed:', error);
+      clearTimeout(safetyTimeoutHandle);
       setState(prev => ({ ...prev, isSyncing: false }));
     } finally {
       syncInProgressRef.current = false;
