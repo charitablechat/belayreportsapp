@@ -162,6 +162,16 @@ let healthCheckCache: { isHealthy: boolean; timestamp: number } | null = null;
 const HEALTH_CHECK_TTL = 30000; // 30 seconds
 
 /**
+ * Helper to wrap a promise with a timeout
+ */
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, fallbackValue: T): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((resolve) => setTimeout(() => resolve(fallbackValue), timeoutMs))
+  ]);
+}
+
+/**
  * Check if IndexedDB is available and healthy (with 30s cache)
  */
 export async function checkIndexedDBHealth(): Promise<boolean> {
@@ -177,12 +187,25 @@ export async function checkIndexedDBHealth(): Promise<boolean> {
   }
 
   try {
-    // Try to open a test database
-    const testDb = await openDB('health-check', 1);
-    testDb.close();
+    // Try to open a test database with a 3-second timeout to prevent hangs
+    const healthCheckPromise = (async () => {
+      const testDb = await openDB('health-check', 1);
+      testDb.close();
+      return true;
+    })();
     
-    // Cache the successful result
-    healthCheckCache = { isHealthy: true, timestamp: now };
+    const result = await withTimeout(healthCheckPromise, 3000, false);
+    
+    // Cache the result
+    healthCheckCache = { isHealthy: result, timestamp: now };
+    
+    if (!result) {
+      console.warn('[Offline Storage] IndexedDB health check timed out - proceeding anyway');
+      // Return true anyway to allow loading to continue - we'll handle errors per-operation
+      healthCheckCache = { isHealthy: true, timestamp: now };
+      return true;
+    }
+    
     return true;
   } catch (error) {
     console.error('[Offline Storage] IndexedDB health check failed:', error);
@@ -194,24 +217,29 @@ export async function checkIndexedDBHealth(): Promise<boolean> {
 }
 
 /**
- * Request persistent storage and check quota
+ * Request persistent storage and check quota with timeout protection
  */
 async function ensureStorage(): Promise<void> {
-  // Request persistent storage (important on mobile)
-  const isPersisted = await requestPersistentStorage();
-  
-  if (!isPersisted && !storageWarningShown) {
-    console.warn('[Offline Storage] Persistent storage not granted - data may be cleared by browser');
-    storageWarningShown = true;
-  }
+  // Request persistent storage with timeout (important on mobile, but shouldn't block loading)
+  const storagePromise = (async () => {
+    const isPersisted = await requestPersistentStorage();
+    
+    if (!isPersisted && !storageWarningShown) {
+      console.warn('[Offline Storage] Persistent storage not granted - data may be cleared by browser');
+      storageWarningShown = true;
+    }
 
-  // Check storage quota
-  const quota = await checkStorageQuota();
+    // Check storage quota
+    const quota = await checkStorageQuota();
+    
+    if (quota.percentUsed > 80 && !storageWarningShown) {
+      console.warn('[Offline Storage] Storage almost full:', quota.percentUsed.toFixed(2) + '%');
+      storageWarningShown = true;
+    }
+  })();
   
-  if (quota.percentUsed > 80 && !storageWarningShown) {
-    console.warn('[Offline Storage] Storage almost full:', quota.percentUsed.toFixed(2) + '%');
-    storageWarningShown = true;
-  }
+  // Don't let storage checks block loading - timeout after 2 seconds
+  await withTimeout(storagePromise, 2000, undefined);
 }
 
 /**
