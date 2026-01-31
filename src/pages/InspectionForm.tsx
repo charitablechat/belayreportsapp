@@ -1482,14 +1482,35 @@ export default function InspectionForm() {
     }
 
     setGeneratingHtml(true);
+    
+    // Safety timeout - NEVER get stuck in generating state (10 seconds max)
+    const GENERATION_TIMEOUT = 10000;
+    const safetyTimeoutHandle = setTimeout(() => {
+      console.error('[HTML Generation] Safety timeout reached after 10 seconds - force resetting state');
+      setGeneratingHtml(false);
+      toast({
+        title: "Report generation timed out",
+        description: "Please check your connection and try again.",
+        variant: "destructive",
+      });
+    }, GENERATION_TIMEOUT);
 
     try {
-      const { data, error } = await supabase.functions.invoke(
+      // Wrap the edge function call in a Promise.race with timeout
+      const generatePromise = supabase.functions.invoke(
         'generate-inspection-html',
         {
           body: { inspectionId: id }
         }
       );
+      
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => {
+          reject(new Error('TIMEOUT: Report generation took too long'));
+        }, GENERATION_TIMEOUT - 1000); // 1 second before safety timeout
+      });
+      
+      const { data, error } = await Promise.race([generatePromise, timeoutPromise]);
 
       if (error) {
         throw new Error(error.message || 'Failed to generate HTML');
@@ -1514,8 +1535,18 @@ export default function InspectionForm() {
         console.log('[HTML Generation] Report opened successfully');
       }
     } catch (error: any) {
-      console.error('HTML generation error:', error);
+      console.error('[HTML Generation] Error:', error.message || error);
+      
+      // Only show error toast if not already shown by safety timeout
+      if (!error.message?.includes('TIMEOUT')) {
+        toast({
+          title: "Failed to generate report",
+          description: error.message || "Please try again.",
+          variant: "destructive",
+        });
+      }
     } finally {
+      clearTimeout(safetyTimeoutHandle);
       setGeneratingHtml(false);
     }
   };
