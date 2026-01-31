@@ -38,12 +38,12 @@ export default function OperatingSystemsSection({ systems, onUpdate }: Operating
   const handleToggle = (systemName: string, checked: boolean) => {
     triggerHaptic('light');
     if (checked) {
-      onUpdate([...systems, {
-        id: crypto.randomUUID(),
-        system_name: systemName,
-        other_description: null,
-        created_at: new Date().toISOString()
-      }]);
+    onUpdate([{
+      id: crypto.randomUUID(),
+      system_name: systemName,
+      other_description: null,
+      created_at: new Date().toISOString()
+    }, ...systems]);
     } else {
       onUpdate(systems.filter(s => s.system_name !== systemName));
     }
@@ -57,7 +57,7 @@ export default function OperatingSystemsSection({ systems, onUpdate }: Operating
       other_description: '',
       created_at: new Date().toISOString()
     };
-    onUpdate([...systems, newEntry]);
+    onUpdate([newEntry, ...systems]);
   };
 
   const handleUpdateOther = (id: string, value: string) => {

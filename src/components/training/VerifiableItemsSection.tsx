@@ -30,11 +30,11 @@ export default function VerifiableItemsSection({ items, onUpdate, systemsInPlace
   const handleToggle = (item: string, checked: boolean) => {
     triggerHaptic('light');
     if (checked) {
-      onUpdate([...items, {
+      onUpdate([{
         id: crypto.randomUUID(),
         item,
         created_at: new Date().toISOString()
-      }]);
+      }, ...items]);
     } else {
       onUpdate(items.filter(i => i.item !== item));
     }
@@ -43,11 +43,11 @@ export default function VerifiableItemsSection({ items, onUpdate, systemsInPlace
   const handleSystemToggle = (systemItem: string, checked: boolean) => {
     triggerHaptic('light');
     if (checked) {
-      onUpdateSystemsInPlace([...systemsInPlace, {
+      onUpdateSystemsInPlace([{
         id: crypto.randomUUID(),
         system_item: systemItem,
         created_at: new Date().toISOString()
-      }]);
+      }, ...systemsInPlace]);
     } else {
       onUpdateSystemsInPlace(systemsInPlace.filter(i => i.system_item !== systemItem));
     }

@@ -21,7 +21,7 @@ export default function OperatingSystemsTable({ systems, onUpdate, onImmediateSa
   // Track newly added items for animation
   useEffect(() => {
     if (systems.length > prevSystemsLengthRef.current) {
-      const latestSystem = systems[systems.length - 1];
+      const latestSystem = systems[0];
       if (latestSystem?.id) {
         setNewItemIds(prev => new Set(prev).add(latestSystem.id));
         // Clear the "new" status after animation completes
@@ -39,14 +39,14 @@ export default function OperatingSystemsTable({ systems, onUpdate, onImmediateSa
 
   const addSystem = () => {
     onUpdate([
-      ...systems,
       { 
         id: `temp-${crypto.randomUUID()}`,
         inspection_id: window.location.pathname.split('/').pop(),
         system_name: "", 
         result: "pass", 
         comments: "" 
-      }
+      },
+      ...systems
     ]);
   };
 

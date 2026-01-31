@@ -23,7 +23,7 @@ export default function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: Z
   // Track newly added items for animation
   useEffect(() => {
     if (ziplines.length > prevZiplinesLengthRef.current) {
-      const latestZipline = ziplines[ziplines.length - 1];
+      const latestZipline = ziplines[0];
       if (latestZipline?.id) {
         setNewItemIds(prev => new Set(prev).add(latestZipline.id));
         // Clear the "new" status after animation completes
@@ -41,7 +41,6 @@ export default function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: Z
 
   const addZipline = () => {
     onUpdate([
-      ...ziplines,
       {
         id: `temp-${crypto.randomUUID()}`,
         inspection_id: window.location.pathname.split('/').pop(),
@@ -58,6 +57,7 @@ export default function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: Z
         result: "pass",
         comments: "",
       },
+      ...ziplines,
     ]);
   };
 
