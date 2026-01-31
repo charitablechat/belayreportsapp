@@ -1,178 +1,176 @@
 
+# Fix Plan: Inspection Loading Freeze Issue
 
-# Fix: Photo Gallery Drag-and-Drop Not Working
+## Problem Summary
+The application freezes indefinitely on "Loading inspection..." after page reload. The root cause is that critical IndexedDB functions lack error boundary protection, causing the loading lifecycle to hang when IndexedDB is slow or unavailable.
 
-## Problem Analysis
+## Root Cause Details
 
-After thorough investigation, I identified **two distinct issues** preventing drag-and-drop from working:
+### 1. Missing Error Boundaries
+Three functions in `src/lib/offline-storage.ts` are not wrapped with the `withIndexedDBErrorBoundary` protection:
 
-### Issue 1: Sensor Order and Configuration (Primary Issue)
+| Function | Line | Current State |
+|----------|------|---------------|
+| `getRelatedDataOffline` | 762-770 | Unprotected - can block indefinitely |
+| `saveRelatedDataOffline` | 734-759 | Unprotected - can block indefinitely |
+| `clearRelatedDataOffline` | 772-787 | Unprotected - can block indefinitely |
 
-The current sensor configuration in `PhotoGallery.tsx`:
+### 2. Blocking Save Operations After Network Fetch
+In `InspectionForm.tsx`, after successfully fetching data from the database, the code calls `saveRelatedDataOffline()` to cache the data locally. These calls have no timeout protection:
 
-```typescript
-const sensors = useSensors(
-  useSensor(TouchSensor, {
-    activationConstraint: {
-      delay: 200,        // Requires 200ms hold before drag
-      tolerance: 5,
-    },
-  }),
-  useSensor(PointerSensor, {
-    activationConstraint: {
-      distance: 8,       // Requires 8px movement
-    },
-  }),
-  useSensor(KeyboardSensor)
-);
-```
+- Line 688: `await saveInspectionOffline(data)`
+- Line 706: `await saveRelatedDataOffline('systems', ...)`
+- Line 722: `await saveRelatedDataOffline('ziplines', ...)`
+- Line 735: `await saveRelatedDataOffline('equipment', ...)`
+- Line 744: `await saveRelatedDataOffline('standards', ...)`
+- Line 754: `await saveRelatedDataOffline('summary', ...)`
 
-**Problems identified:**
-1. The `TouchSensor` with `delay: 200` requires users to hold for 200ms before drag activates - this feels unresponsive
-2. The sensor configuration differs from the working admin components which use `PointerSensor` without touch-specific delays
-3. On desktop Chrome, the PointerSensor should work, but the 8px distance threshold may conflict with how events propagate through the nested Card/Image structure
-
-### Issue 2: Missing `MouseSensor` for Desktop Browser Compatibility
-
-The admin CMS components that work correctly use:
-```typescript
-const sensors = useSensors(
-  useSensor(PointerSensor),
-  useSensor(KeyboardSensor, {
-    coordinateGetter: sortableKeyboardCoordinates,
-  })
-);
-```
-
-Key difference: No `TouchSensor` with delays, and simpler configuration.
+When IndexedDB hangs, these operations block forever, preventing `setLoading(false)` from being called.
 
 ---
 
-## Root Cause Summary
+## Implementation Plan
 
-| Factor | Current State | Expected State |
-|--------|---------------|----------------|
-| Touch Sensor | 200ms delay required | Should be optional or lower |
-| Pointer Sensor | 8px distance threshold | Should work, but may conflict |
-| Working Pattern | Not matching admin components | Should match proven pattern |
-| Desktop Support | Relies on PointerSensor | Should work consistently |
+### Step 1: Wrap `getRelatedDataOffline` with Error Boundary
 
----
-
-## Solution
-
-Simplify the sensor configuration to match the working pattern from admin components, while maintaining mobile support:
-
-### Changes to `PhotoGallery.tsx`
-
-**Before:**
 ```typescript
-const sensors = useSensors(
-  useSensor(TouchSensor, {
-    activationConstraint: {
-      delay: 200,
-      tolerance: 5,
+// src/lib/offline-storage.ts (lines 762-770)
+export async function getRelatedDataOffline(
+  type: RelatedDataType,
+  inspectionId: string
+): Promise<any[]> {
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      const storeName = storeNameMap[type];
+      const index = db.transaction(storeName).store.index('by-inspection');
+      return await index.getAll(inspectionId);
     },
-  }),
-  useSensor(PointerSensor, {
-    activationConstraint: {
-      distance: 8,
-    },
-  }),
-  useSensor(KeyboardSensor)
-);
+    [],
+    `getRelatedDataOffline:${type}`
+  );
+}
 ```
 
-**After:**
+### Step 2: Wrap `saveRelatedDataOffline` with Error Boundary
+
 ```typescript
-const sensors = useSensors(
-  useSensor(PointerSensor, {
-    activationConstraint: {
-      distance: 5,  // Reduced from 8 for more responsive feel
+// src/lib/offline-storage.ts (lines 734-759)
+export async function saveRelatedDataOffline(
+  type: RelatedDataType,
+  inspectionId: string,
+  data: any[]
+) {
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      const storeName = storeNameMap[type];
+      
+      const existingData = await getRelatedDataOffline(type, inspectionId);
+      for (const item of existingData) {
+        await db.delete(storeName, item.id);
+      }
+      
+      for (const item of data) {
+        const dataWithInspectionId = {
+          ...item,
+          inspection_id: inspectionId,
+          id: ensureValidUUID(item.id),
+        };
+        await db.put(storeName, dataWithInspectionId);
+      }
+      
+      if (import.meta.env.DEV) {
+        console.log(`[Offline Storage] Saved ${type}:`, data.length, 'items');
+      }
     },
-  }),
-  useSensor(TouchSensor, {
-    activationConstraint: {
-      delay: 150,     // Reduced from 200ms for quicker activation
-      tolerance: 8,   // Increased for better touch detection
-    },
-  }),
-  useSensor(KeyboardSensor)
-);
+    undefined,
+    `saveRelatedDataOffline:${type}`
+  );
+}
 ```
 
-### Key Changes:
-1. **Reorder sensors**: Put `PointerSensor` first for desktop priority
-2. **Reduce distance threshold**: 8px → 5px for more responsive desktop dragging
-3. **Reduce touch delay**: 200ms → 150ms for faster mobile activation
-4. **Increase touch tolerance**: 5px → 8px to prevent accidental drag cancellation
-
----
-
-## Additional Debug Enhancement
-
-Add console logging to confirm drag events are firing:
+### Step 3: Wrap `clearRelatedDataOffline` with Error Boundary
 
 ```typescript
-const handleDragStart = (event: DragStartEvent) => {
-  console.log('[PhotoGallery] Drag started:', event.active.id);
-  setActiveId(event.active.id as string);
-  triggerHaptic('selection');
-};
+// src/lib/offline-storage.ts (lines 772-787)
+export async function clearRelatedDataOffline(
+  type: RelatedDataType,
+  inspectionId: string
+) {
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      const storeName = storeNameMap[type];
+      const existingData = await getRelatedDataOffline(type, inspectionId);
+      
+      for (const item of existingData) {
+        await db.delete(storeName, item.id);
+      }
+      
+      if (import.meta.env.DEV) {
+        console.log(`[Offline Storage] Cleared ${type} for inspection:`, inspectionId);
+      }
+    },
+    undefined,
+    `clearRelatedDataOffline:${type}`
+  );
+}
+```
 
-const handleDragEnd = async (event: DragEndEvent) => {
-  console.log('[PhotoGallery] Drag ended:', { 
-    active: event.active.id, 
-    over: event.over?.id 
-  });
-  // ... rest of handler
-};
+### Step 4: Make Post-Network Cache Operations Non-Blocking
+
+In `InspectionForm.tsx`, wrap the cache save operations to be non-blocking so that a failure to cache locally does not prevent the form from loading:
+
+```typescript
+// After fetching from Supabase, save to offline cache without blocking
+if (data) {
+  setInspection(data);
+  setInspectorId(data.inspector_id);
+  // Non-blocking cache update
+  saveInspectionOffline(data).catch(e => 
+    console.warn('[InspectionForm] Non-critical: failed to cache inspection', e)
+  );
+}
+
+// For related data:
+if (systemsData) {
+  const normalizedSystems = systemsData.map(item => ({...}));
+  setSystems(normalizedSystems);
+  // Non-blocking cache update
+  saveRelatedDataOffline('systems', id!, normalizedSystems).catch(e =>
+    console.warn('[InspectionForm] Non-critical: failed to cache systems', e)
+  );
+}
+// ... repeat pattern for ziplines, equipment, standards, summary
 ```
 
 ---
 
 ## Files to Modify
 
-| File | Change |
-|------|--------|
-| `src/components/PhotoGallery.tsx` | Update sensor configuration and add debug logging |
+1. **`src/lib/offline-storage.ts`**
+   - Wrap `getRelatedDataOffline` with `withIndexedDBErrorBoundary`
+   - Wrap `saveRelatedDataOffline` with `withIndexedDBErrorBoundary`
+   - Wrap `clearRelatedDataOffline` with `withIndexedDBErrorBoundary`
 
----
-
-## Technical Details
-
-### Why PointerSensor First?
-
-The `PointerSensor` handles both mouse and touch events via the Pointer Events API, which is well-supported in modern browsers. Putting it first ensures:
-- Desktop users get immediate response
-- Touch events are still handled when PointerSensor doesn't activate
-
-### Why Reduce Thresholds?
-
-- **Distance 8px → 5px**: Smaller threshold = faster recognition that user wants to drag
-- **Delay 200ms → 150ms**: Reduces perceived lag on mobile while still preventing accidental drags
-- **Tolerance 5px → 8px**: Allows slight finger movement during the delay period without canceling
+2. **`src/pages/InspectionForm.tsx`**
+   - Make all post-network cache operations non-blocking using `.catch()` pattern
 
 ---
 
 ## Expected Outcome
 
-After implementation:
-1. Desktop users can drag photos immediately after moving 5px
-2. Mobile users can drag after holding for 150ms
-3. Console logs will confirm drag events are firing
-4. Photos will reorder with smooth animations
-5. Order will persist to database and IndexedDB
+After these changes:
+- The "Loading inspection..." screen will always resolve within 3-5 seconds maximum
+- IndexedDB failures will be logged but will not block the UI
+- Users will see their data immediately after the network fetch completes
+- Local caching happens in the background without blocking the loading state
 
 ---
 
-## Testing Checklist
+## Technical Notes
 
-- [ ] Open an inspection report you own
-- [ ] Click and drag the grip handle icon on any photo
-- [ ] Verify the photo lifts and other photos shift to show drop position
-- [ ] Drop the photo in a new position
-- [ ] Verify the new order persists after page reload
-- [ ] Test on mobile device with touch gestures
-- [ ] Check console for drag event logs
-
+- The `withIndexedDBErrorBoundary` wrapper already includes a 5-second timeout and returns a fallback value on failure
+- This fix follows the existing architectural pattern established for other offline storage functions
+- No changes to database schema or backend functions required
