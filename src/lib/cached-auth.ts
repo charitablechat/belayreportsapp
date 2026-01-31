@@ -45,19 +45,37 @@ export async function getUserWithCache(): Promise<CachedUser | null> {
   
   const now = Date.now();
   
-  // Return cached user if still valid
+  // 1. FASTEST PATH: Return in-memory cached user if still valid
   if (cachedUser && (now - cacheTimestamp) < CACHE_TTL) {
     return cachedUser;
   }
   
+  // 2. FAST PATH: Try localStorage before ANY network call (sync operation)
+  // This prevents auth timeouts during background sync
+  const storedUser = getCachedUserFromStorage();
+  if (storedUser) {
+    // Update in-memory cache from localStorage (no network needed)
+    cachedUser = storedUser;
+    cacheTimestamp = now;
+    
+    // Background refresh: non-blocking network call to keep cache fresh
+    // Uses setTimeout to ensure it doesn't block the sync caller
+    if (navigator.onLine && !pendingUserPromise) {
+      setTimeout(() => refreshUserInBackground(), 0);
+    }
+    
+    return storedUser;
+  }
+  
+  // 3. SLOW PATH: No cached user, must fetch from network
   // If there's already a pending request, wait for it (single-flight pattern)
   if (pendingUserPromise) {
     return pendingUserPromise;
   }
   
-  // If offline, try localStorage fallback
+  // If offline and no cached user, we can't authenticate
   if (!navigator.onLine) {
-    return getCachedUserFromStorage();
+    return null;
   }
   
   // Create a new request and store the promise
@@ -72,15 +90,43 @@ export async function getUserWithCache(): Promise<CachedUser | null> {
       
       return user;
     } catch (error) {
-      // Supabase call failed, fall through to cached session
       console.error('[CachedAuth] Error fetching user:', error);
-      return getCachedUserFromStorage();
+      return null;
     } finally {
       pendingUserPromise = null;
     }
   })();
   
   return pendingUserPromise;
+}
+
+/**
+ * Background refresh - keeps cache fresh without blocking callers
+ * Uses a separate promise to avoid type conflicts with main flow
+ */
+let backgroundRefreshInProgress = false;
+
+function refreshUserInBackground() {
+  if (backgroundRefreshInProgress || pendingUserPromise) return; // Already refreshing
+  
+  backgroundRefreshInProgress = true;
+  
+  (async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        cachedUser = user;
+        cacheTimestamp = Date.now();
+      }
+    } catch (error) {
+      // Silent fail - we already have a valid cached user
+      if (import.meta.env.DEV) {
+        console.log('[CachedAuth] Background refresh failed (non-critical):', error);
+      }
+    } finally {
+      backgroundRefreshInProgress = false;
+    }
+  })();
 }
 
 /**
