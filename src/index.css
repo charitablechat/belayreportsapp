@@ -677,4 +677,18 @@ button[title="Sync"],
   .mobile-card-with-action {
     @apply p-5 relative;
   }
+  
+  /* Mobile-optimized card content padding */
+  .mobile-card-content {
+    @apply px-3 md:px-6;
+  }
+  
+  .mobile-card-header {
+    @apply px-4 md:px-6;
+  }
+  
+  /* Mobile equipment item (replaces nested Card) */
+  .mobile-item-card {
+    @apply p-4 relative border-l-4 border-l-primary/20 rounded-lg bg-muted/30 border border-border;
+  }
 }
