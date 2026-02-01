@@ -1,174 +1,41 @@
 
-# Plan: Fix Mobile Photo Upload Hang and Global Save Freeze
+# Plan: Fix Mobile Report Loading When IndexedDB Times Out
 
-## Root Cause Analysis
-
-### Primary Issue Identified
-The console logs reveal **"Item sync timeout"** errors occurring across all data types (inspections, trainings, daily assessments). The photo upload hang on mobile triggers a cascade effect that blocks the global auto-sync system.
-
-### Detailed Investigation Findings
-
-| Finding | Evidence | Impact |
-|---------|----------|--------|
-| **Image compression can hang** | `compressImage()` uses `canvas.toBlob()` with no timeout (line 87-145 in image-compression.ts) | Blocks `processFiles()` indefinitely on mobile |
-| **`savePhotoOffline()` awaits quota check** | Line 594-597 awaits `checkStorageQuota()` before IndexedDB write | Can hang if storage API is slow/blocked |
-| **Mutex lock never released on error** | `uploadMutexRef.current = true` at line 105, only reset in `finally` block | If compression promise hangs, mutex stays locked |
-| **Global sync blocks on photo hang** | `useAutoSync` calls `syncPhotos()` in parallel with other syncs | If photos hang, 30-second timeout triggers for ALL syncs |
-| **Auto-sync cascades timeout** | `SYNC_TIMEOUT = 30000` in useAutoSync.tsx line 17 | Single hung operation times out the entire sync batch |
-
-### The Cascade Effect
-
-```text
-User takes photo on mobile
-         │
-         ▼
-compressImage() hangs (no timeout on canvas.toBlob)
-         │
-         ▼
-processFiles() await blocks (line 131-136)
-         │
-         ▼
-uploadMutexRef stays locked (never reaches finally block)
-         │
-         ▼
-UI shows permanent "Saving..." spinner (line 257-260)
-         │
-         ▼
-Meanwhile: useAutoSync periodic sync triggers
-         │
-         ▼
-syncPhotos() iterates over getUnuploadedPhotos() 
-which includes the hung photo
-         │
-         ▼
-SYNC_TIMEOUT (30s) triggers for entire sync batch
-         │
-         ▼
-"Item sync timeout" errors logged
-         │
-         ▼
-All save operations appear frozen (isSyncing stays true)
-```
+## Problem Summary
+On mobile devices, recent reports fail to load because IndexedDB operations are timing out repeatedly, and the current loading logic waits for IndexedDB before attempting Supabase fetches. When IndexedDB hangs, it blocks the entire data loading flow.
 
 ---
 
-## Solution Architecture
+## Root Cause
 
-### Fix 1: Add Timeout to Image Compression
+The Dashboard's `loadInspections` function has a **sequential dependency** bug:
 
-**File**: `src/lib/image-compression.ts`
-
-Wrap the entire compression operation with a timeout. If compression hangs, return the original file.
-
-```typescript
-const COMPRESSION_TIMEOUT = 10000; // 10 seconds max
-
-export const compressImage = async (
-  file: File,
-  options: CompressionOptions = {},
-  attemptCount: number = 0
-): Promise<File> => {
-  // Wrap entire operation with timeout
-  const timeoutPromise = new Promise<File>((resolve) => {
-    setTimeout(() => {
-      console.warn('[Image Compression] Timed out, using original file');
-      resolve(file);
-    }, COMPRESSION_TIMEOUT);
-  });
-
-  try {
-    return await Promise.race([
-      compressImageInternal(file, options, attemptCount),
-      timeoutPromise
-    ]);
-  } catch (error) {
-    console.warn('[Image Compression] Failed, using original:', error);
-    return file;
-  }
-};
+```text
+Current Flow (Broken):
+1. getOfflineInspections() ─── [TIMES OUT after 5-15 seconds] ─── returns []
+2. if (length > 0) ─── false, so setInspections() NOT called
+3. if (navigator.onLine) ─── fetch from Supabase
+4. setInspections(data) ─── finally sets data
 ```
 
-### Fix 2: Non-Blocking Quota Check in savePhotoOffline
+The problem is that when IndexedDB times out (common on mobile Safari after backgrounding), the 5-15 second delay makes the app feel completely broken. The user sees nothing while waiting.
 
-**File**: `src/lib/offline-storage.ts`
+Additionally, the `dbPromise` global in `offline-storage.ts` gets stuck in a "rejecting" cycle where each call creates a new promise that also times out.
 
-The `checkStorageQuota()` call should be fire-and-forget or have a short timeout, not block the IndexedDB write.
+---
 
-```typescript
-// Before (blocking):
-const quota = await checkStorageQuota();
-if (quota.percentUsed > 90) { ... }
+## Solution
 
-// After (non-blocking with timeout):
-const quotaCheck = withTimeout(checkStorageQuota(), 2000, { percentUsed: 0 });
-quotaCheck.then(quota => {
-  if (quota.percentUsed > 90) {
-    console.warn('[Offline Storage] Storage almost full');
-  }
-});
-// Continue with IndexedDB write immediately - don't await quota check
-```
+### Strategy: Parallel Loading with "First Win" Pattern
 
-### Fix 3: Add Safety Timeout to PhotoCapture processFiles
+Instead of loading sequentially (IndexedDB → Supabase), load **both in parallel** and display whichever returns first:
 
-**File**: `src/components/PhotoCapture.tsx`
-
-Wrap the per-file processing with a timeout to prevent infinite hangs.
-
-```typescript
-const FILE_PROCESS_TIMEOUT = 15000; // 15 seconds per file max
-
-for (const file of Array.from(files)) {
-  try {
-    // Wrap entire file processing with timeout
-    await Promise.race([
-      processOneFile(file, user),
-      new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('File processing timeout')), FILE_PROCESS_TIMEOUT)
-      )
-    ]);
-    successCount++;
-  } catch (error) {
-    console.error('[PhotoCapture] File processing failed/timed out:', error);
-    errorCount++;
-    toast.error('Photo processing failed', {
-      description: 'Please try again with a smaller image',
-    });
-  }
-}
-```
-
-### Fix 4: Ensure Mutex Release on Any Failure
-
-**File**: `src/components/PhotoCapture.tsx`
-
-Add an outer try-catch and safety timeout to guarantee mutex release.
-
-```typescript
-const processFiles = async (files: FileList | null) => {
-  if (uploadMutexRef.current || !files?.length) return;
-  
-  uploadMutexRef.current = true;
-  setUploading(true);
-  
-  // Safety timeout - ALWAYS release mutex after 30 seconds regardless
-  const safetyTimeout = setTimeout(() => {
-    if (uploadMutexRef.current) {
-      console.warn('[PhotoCapture] Safety timeout - releasing mutex');
-      uploadMutexRef.current = false;
-      setUploading(false);
-    }
-  }, 30000);
-  
-  try {
-    // ... existing processing logic ...
-  } finally {
-    clearTimeout(safetyTimeout);
-    setUploading(false);
-    uploadMutexRef.current = false;
-    // Clear inputs...
-  }
-};
+```text
+Fixed Flow:
+1. Start getOfflineInspections() ─── [may timeout]
+2. Start fetchFromSupabase() ─── [parallel]
+3. Whichever returns first → setInspections()
+4. Second result → merge/update if newer
 ```
 
 ---
@@ -177,247 +44,156 @@ const processFiles = async (files: FileList | null) => {
 
 | File | Priority | Changes |
 |------|----------|---------|
-| `src/lib/image-compression.ts` | **P0** | Add 10-second timeout wrapper to `compressImage()` |
-| `src/components/PhotoCapture.tsx` | **P0** | Add 30-second safety timeout for mutex, 15-second per-file timeout |
-| `src/lib/offline-storage.ts` | **P1** | Make `checkStorageQuota()` non-blocking in `savePhotoOffline()` |
+| `src/pages/Dashboard.tsx` | **P0** | Restructure loading to run IndexedDB and Supabase in parallel |
+| `src/lib/offline-storage.ts` | **P1** | Add IndexedDB circuit breaker to stop repeated failing attempts |
 
 ---
 
-## Detailed Code Changes
+## Technical Changes
 
-### image-compression.ts
+### Dashboard.tsx - Parallel Loading Pattern
 
+Refactor `loadInspections`, `loadTrainingReports`, and `loadDailyAssessments` to:
+
+1. Start both IndexedDB and Supabase fetches simultaneously
+2. Set state from whichever completes first
+3. If IndexedDB fails silently, proceed with network data only
+4. Use a short timeout (2 seconds) for IndexedDB before preferring network
+
+**Updated loadInspections function:**
 ```typescript
-// Add at top of file
-const COMPRESSION_TIMEOUT = 10000; // 10 seconds
-
-// Rename existing compressImage to compressImageInternal
-const compressImageInternal = async (
-  file: File,
-  options: CompressionOptions = {},
-  attemptCount: number = 0
-): Promise<File> => {
-  // ... existing implementation (lines 27-155) ...
-};
-
-// New wrapper function with timeout protection
-export const compressImage = async (
-  file: File,
-  options: CompressionOptions = {},
-  attemptCount: number = 0
-): Promise<File> => {
-  // Skip compression for very small files (moved here for early exit)
-  if (file.size < 100 * 1024) {
-    return file;
-  }
-
+const loadInspections = async (cachedUserId?: string) => {
   try {
-    // Race between compression and timeout
-    const result = await Promise.race([
-      compressImageInternal(file, options, attemptCount),
-      new Promise<File>((resolve) => {
-        setTimeout(() => {
-          console.warn('[Image Compression] Timed out after', COMPRESSION_TIMEOUT, 'ms - using original file');
-          resolve(file);
-        }, COMPRESSION_TIMEOUT);
-      })
+    const userId = cachedUserId || (await getUserWithCache())?.id;
+    
+    // Start both fetches in parallel
+    const offlinePromise = getOfflineInspections(userId).catch(() => []);
+    
+    let supabasePromise: Promise<any[]> = Promise.resolve([]);
+    if (navigator.onLine) {
+      supabasePromise = supabase
+        .from("inspections")
+        .select(`*, inspector:profiles(...)`)
+        .order("last_opened_at", { ascending: false })
+        .order("created_at", { ascending: false })
+        .then(({ data, error }) => {
+          if (error) throw error;
+          return data || [];
+        });
+    }
+
+    // Race with preference: use offline if fast, otherwise wait for network
+    const offlineWithTimeout = Promise.race([
+      offlinePromise,
+      new Promise<any[]>((resolve) => setTimeout(() => resolve([]), 2000))
     ]);
-    return result;
-  } catch (error) {
-    console.warn('[Image Compression] Failed, returning original:', error);
-    return file;
-  }
-};
-```
-
-### PhotoCapture.tsx
-
-```typescript
-// Add constants at top
-const PROCESS_SAFETY_TIMEOUT = 30000; // 30 seconds max for entire batch
-const PER_FILE_TIMEOUT = 15000; // 15 seconds per file
-
-// Updated processFiles function
-const processFiles = async (files: FileList | null) => {
-  // Prevent concurrent uploads
-  if (uploadMutexRef.current) {
-    console.log('[PhotoCapture] Upload already in progress, ignoring');
-    return;
-  }
-  if (!files || files.length === 0) return;
-
-  uploadMutexRef.current = true;
-  triggerHaptic('light');
-  setUploading(true);
-
-  // SAFETY: Force release mutex after timeout regardless of promise state
-  const safetyTimeout = setTimeout(() => {
-    if (uploadMutexRef.current) {
-      console.warn('[PhotoCapture] Safety timeout reached - force releasing mutex');
-      uploadMutexRef.current = false;
-      setUploading(false);
-      toast.error('Photo processing timed out', {
-        description: 'Please try again with fewer or smaller images',
-      });
-    }
-  }, PROCESS_SAFETY_TIMEOUT);
-
-  let successCount = 0;
-  let errorCount = 0;
-
-  try {
-    const user = await getUserWithCache();
-    if (!user) throw new Error("Not authenticated");
-
-    for (const file of Array.from(files)) {
-      try {
-        // Wrap per-file processing with timeout
-        await Promise.race([
-          (async () => {
-            // Validation
-            const validation = validateFile(file);
-            if (!validation.valid) {
-              toast.error('Invalid file', { description: validation.error });
-              errorCount++;
-              return;
-            }
-
-            // Compression (already has internal timeout now)
-            let processedFile = file;
-            if (file.type.startsWith('image/')) {
-              processedFile = await compressImage(file, {
-                maxWidth: 1920, maxHeight: 1920, quality: 0.85, maxSizeMB: 3,
-              });
-            }
-
-            // LOCAL SAVE (must not hang)
-            const photoId = `${inspectionId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-            await savePhotoOffline({
-              id: photoId, inspectionId, section,
-              blob: processedFile, fileName: processedFile.name, uploaded: false,
-            });
-
-            onPhotoAdded();
-            successCount++;
-
-            // Background sync (fire-and-forget)
-            if (isOnline) {
-              uploadPhotoInBackground(photoId, processedFile, user.id).catch(() => {});
-            }
-          })(),
-          new Promise<void>((_, reject) =>
-            setTimeout(() => reject(new Error('Per-file timeout')), PER_FILE_TIMEOUT)
-          )
-        ]);
-      } catch (fileError: any) {
-        console.warn('[PhotoCapture] File processing failed:', fileError.message);
-        errorCount++;
-        // Continue with other files
-      }
-    }
-
-    // Show feedback based on results
-    if (successCount > 0) {
-      triggerHaptic('success');
-      toast.success(successCount === 1 ? 'Photo saved' : `${successCount} photos saved`, {
-        description: isOnline ? 'Syncing to cloud...' : 'Will sync when online',
-        duration: 2000,
-      });
+    
+    const offlineData = await offlineWithTimeout;
+    if (offlineData.length > 0) {
+      setInspections(offlineData); // Show cached data immediately
     }
     
-    if (errorCount > 0 && successCount === 0) {
-      triggerHaptic('error');
-      toast.error('Failed to process photos', {
-        description: 'Please try again with different images',
-      });
+    // Always try to get fresh data from network
+    if (navigator.onLine) {
+      const networkData = await supabasePromise;
+      if (networkData.length > 0) {
+        setInspections(networkData);
+        // Background save to IndexedDB (fire-and-forget)
+        Promise.all(networkData.map(i => saveInspectionOffline(i))).catch(() => {});
+      }
     }
-  } catch (error: any) {
-    console.error("Photo capture error:", error);
-    triggerHaptic('error');
-    toast.error('Failed to save photo', { description: error.message || 'Please try again' });
-  } finally {
-    clearTimeout(safetyTimeout);
-    setUploading(false);
-    uploadMutexRef.current = false;
-    if (cameraInputRef.current) cameraInputRef.current.value = '';
-    if (uploadInputRef.current) uploadInputRef.current.value = '';
+  } catch (error) {
+    console.error("Error loading inspections:", error);
   }
 };
 ```
 
-### offline-storage.ts (savePhotoOffline)
+### offline-storage.ts - Circuit Breaker for IndexedDB
+
+Add a circuit breaker pattern to stop hammering a failing IndexedDB:
 
 ```typescript
-export async function savePhotoOffline(photo: { ... }) {
-  return withIndexedDBErrorBoundary(
-    async () => {
-      const db = await getDB();
-      
-      // NON-BLOCKING quota check - don't await, just warn if almost full
-      checkStorageQuota().then(quota => {
-        if (quota.percentUsed > 90) {
-          console.warn('[Offline Storage] Storage almost full:', quota.percentUsed.toFixed(1), '%');
-        }
-      }).catch(() => {}); // Ignore quota check failures
+// Track consecutive failures
+let indexedDBFailureCount = 0;
+const CIRCUIT_BREAKER_THRESHOLD = 3;
+const CIRCUIT_BREAKER_RESET_TIME = 60000; // 1 minute
+let circuitBreakerTrippedAt: number | null = null;
 
-      // Proceed with save immediately (don't wait for quota check)
-      await db.put('photos', {
-        ...photo,
-        timestamp: Date.now(),
-        uploaded: photo.uploaded || false,
-      });
+function isCircuitBreakerOpen(): boolean {
+  if (circuitBreakerTrippedAt) {
+    if (Date.now() - circuitBreakerTrippedAt > CIRCUIT_BREAKER_RESET_TIME) {
+      // Reset circuit breaker after cooldown
+      circuitBreakerTrippedAt = null;
+      indexedDBFailureCount = 0;
+      return false;
+    }
+    return true; // Circuit is still open
+  }
+  return false;
+}
 
-      if (import.meta.env.DEV) {
-        console.log('[Offline Storage] Saved photo:', photo.id);
-      }
+function recordIndexedDBFailure(): void {
+  indexedDBFailureCount++;
+  if (indexedDBFailureCount >= CIRCUIT_BREAKER_THRESHOLD) {
+    circuitBreakerTrippedAt = Date.now();
+    console.warn('[Offline Storage] Circuit breaker tripped - IndexedDB disabled for 60s');
+  }
+}
 
-      // Background sync registration (also non-blocking)
-      if (!photo.uploaded) {
-        import('./background-sync').then(({ registerPhotoSync }) => {
-          registerPhotoSync().catch(() => {});
-        }).catch(() => {});
-      }
-    },
-    undefined,
-    'savePhotoOffline'
-  );
+function recordIndexedDBSuccess(): void {
+  indexedDBFailureCount = 0;
+  circuitBreakerTrippedAt = null;
 }
 ```
+
+Then modify `withIndexedDBErrorBoundary` to check the circuit breaker:
+
+```typescript
+async function withIndexedDBErrorBoundary<T>(...): Promise<T> {
+  // If circuit breaker is open, return fallback immediately
+  if (isCircuitBreakerOpen()) {
+    if (import.meta.env.DEV) {
+      console.log('[Offline Storage] Circuit breaker open, returning fallback for', operationName);
+    }
+    return fallbackValue;
+  }
+
+  try {
+    const result = await withTimeout(...);
+    recordIndexedDBSuccess();
+    return result;
+  } catch (error) {
+    recordIndexedDBFailure();
+    return fallbackValue;
+  }
+}
+```
+
+---
+
+## Benefits
+
+| Before | After |
+|--------|-------|
+| User waits 5-15s for IndexedDB timeout | User sees network data in ~1-2s |
+| Repeated IndexedDB failures block app | Circuit breaker prevents repeated failures |
+| IndexedDB must succeed for data to load | Network data shown even if IndexedDB fails |
+| Mobile users see empty dashboard | Mobile users see data from Supabase |
 
 ---
 
 ## Testing Checklist
 
 After implementation:
-- [ ] Take photo on mobile with slow network - should save locally and show success within 3 seconds
-- [ ] Take large photo (>10MB) - should compress or timeout gracefully, never hang
-- [ ] Upload multiple photos rapidly - mutex should release properly
-- [ ] Disconnect network mid-upload - photo should save locally with "Pending" badge
-- [ ] Verify other form fields remain saveable during photo upload
-- [ ] Verify auto-sync doesn't block on hung photos
-- [ ] Test on iOS Safari (WebKit canvas issues)
-- [ ] Test on Android Chrome
-- [ ] Force-kill app during upload, reopen - no stuck state
-
----
-
-## Risk Mitigation
-
-| Risk | Probability | Mitigation |
-|------|-------------|------------|
-| Timeout too aggressive (10s compression) | Low | Can adjust to 15s; 10s should handle 99% of mobile photos |
-| Quota check removal causes storage overflow | Very Low | Still check async and warn user; existing compression limits file sizes |
-| Safety timeout fires during legitimate long upload | Low | 30s is generous; fire-and-forget means upload continues in background |
+- [ ] Open Dashboard on mobile Safari - reports should load within 3 seconds
+- [ ] Test with DevTools throttling IndexedDB - should fallback to network
+- [ ] Verify offline mode still works (loads from IndexedDB when available)
+- [ ] Test circuit breaker: after 3 failures, IndexedDB is bypassed for 60 seconds
+- [ ] Verify background IndexedDB saves don't block UI
+- [ ] Test pull-to-refresh still works
 
 ---
 
 ## Summary
 
-The root cause is a **missing timeout wrapper** around image compression combined with **blocking quota checks** in IndexedDB operations. When `canvas.toBlob()` hangs on mobile (common on iOS Safari with large images), the entire upload pipeline freezes, the mutex is never released, and the global auto-sync system times out trying to process the stuck photo.
-
-The fix implements **defense-in-depth**:
-1. **Per-operation timeouts** (compression, per-file processing)
-2. **Non-blocking ancillary operations** (quota checks, background sync registration)
-3. **Safety net mutex release** (30-second global timeout)
-
-This ensures the UI remains responsive and users always receive feedback, even under adverse network/hardware conditions.
+The fix implements a **parallel-first, network-preferred** loading strategy that ensures mobile users see their reports quickly, even when IndexedDB is misbehaving. The circuit breaker prevents the app from repeatedly timing out on a broken IndexedDB connection, providing a smoother experience on devices with storage issues.
