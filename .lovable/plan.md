@@ -1,204 +1,173 @@
 
-# Investigation & Fix Plan: Mobile Data Sync Notification
+# Plan: Version Display Mechanism
 
-## Executive Summary
-
-A comprehensive investigation of the mobile synchronization system has revealed **two interconnected issues** preventing the mobile application from reflecting the latest data state and notifying users of successful updates.
-
----
-
-## Root Cause Analysis
-
-### Issue 1: Silent Sync Completion (No Success Feedback)
-
-**Location:** `src/hooks/useAutoSync.tsx` (lines 145-166)
-
-After a successful sync operation, the system:
-1. Updates internal state (`lastSyncTime`, `isSyncing`)
-2. Invalidates React Query caches
-3. **Does NOT emit a success notification to the NotificationCenter**
-
-Without this notification:
-- The `StatusIndicator` component has nothing to display
-- Mobile users receive no confirmation that background sync completed
-- The "Data synced" message is never routed to the NotificationCenter
-
-### Issue 2: Dashboard Data Refresh Disconnect
-
-**Location:** `src/pages/Dashboard.tsx` (lines 86-88, 220-286)
-
-The Dashboard component uses direct `useState` for managing report lists:
-```typescript
-const [inspections, setInspections] = useState<any[]>([]);
-const [trainings, setTrainings] = useState<any[]>([]);
-const [dailyAssessments, setDailyAssessments] = useState<any[]>([]);
-```
-
-Meanwhile, `useAutoSync` invalidates React Query keys:
-```typescript
-queryClient.invalidateQueries({ queryKey: ['inspections'] });
-queryClient.invalidateQueries({ queryKey: ['trainings'] });
-queryClient.invalidateQueries({ queryKey: ['daily-assessments'] });
-```
-
-**These two systems are not connected.** React Query invalidation only affects components that use `useQuery` with matching keys. Dashboard's manual state is never refreshed by the background sync.
-
-### Issue 3: IndexedDB Timeouts (Observed but Not Blocking)
-
-Console logs show repeated `[Atomic Sync] IndexedDB timeout getting unsynced inspections` warnings. The circuit breaker pattern is working correctly to prevent these timeouts from blocking the UI, but:
-- Each timeout returns an empty array instead of actual unsynced data
-- This can cause legitimate unsynced changes to be missed during sync cycles
-- The 5-second timeout may be too aggressive for slower mobile devices
+## Overview
+Implement a version badge that displays consistently at the bottom of the Profile page on both desktop and mobile platforms.
 
 ---
 
-## Technical Solution
+## Technical Approach
 
-### Fix 1: Add Success Notification to useAutoSync
+### 1. Expose Version via Vite Config
 
-Emit a notification when sync completes successfully so mobile users see confirmation in the NotificationCenter.
+**File:** `vite.config.ts`
 
-**File:** `src/hooks/useAutoSync.tsx`
+Add a `define` option to expose the `package.json` version as an environment variable accessible via `import.meta.env.APP_VERSION`:
 
-**Change:** After successful sync completion (line ~154), add:
 ```typescript
-// Import at top of file
-import { addSyncNotification } from '@/lib/notification-center';
+export default defineConfig(({ mode }) => ({
+  // ... existing config
+  define: {
+    'import.meta.env.APP_VERSION': JSON.stringify(
+      require('./package.json').version
+    )
+  },
+  // ... rest of config
+}));
+```
 
-// After line 154: lastSyncTime: syncResult.timedOut ? prev.lastSyncTime : new Date(),
-// Add notification for successful sync
-if (!syncResult.timedOut) {
-  addSyncNotification('Data synced successfully');
+### 2. Add TypeScript Type Declaration
+
+**File:** `src/vite-env.d.ts`
+
+Extend the type definition to include the new environment variable:
+
+```typescript
+/// <reference types="vite/client" />
+
+interface ImportMetaEnv {
+  readonly APP_VERSION: string;
+}
+
+interface ImportMeta {
+  readonly env: ImportMetaEnv;
 }
 ```
 
-### Fix 2: Create Sync Completion Event Emitter
+### 3. Create Version Badge Component
 
-Create a simple event system that Dashboard can subscribe to, triggering a data reload after sync completes.
+**File:** `src/components/VersionBadge.tsx` (new file)
 
-**File:** `src/lib/sync-events.ts` (new file)
+A reusable, non-interactive version badge:
 
 ```typescript
-/**
- * Sync Events - Simple event emitter for sync completion
- * Allows Dashboard and other components to react to successful syncs
- */
+import { Badge } from "@/components/ui/badge";
 
-type SyncEventListener = () => void;
-const listeners = new Set<SyncEventListener>();
-
-export function onSyncComplete(listener: SyncEventListener): () => void {
-  listeners.add(listener);
-  return () => listeners.delete(listener);
-}
-
-export function emitSyncComplete(): void {
-  listeners.forEach(listener => listener());
-}
-```
-
-### Fix 3: Integrate Event Emitter into useAutoSync
-
-**File:** `src/hooks/useAutoSync.tsx`
-
-Import and call `emitSyncComplete()` after successful sync:
-```typescript
-import { emitSyncComplete } from '@/lib/sync-events';
-
-// After line 165: queryClient.invalidateQueries({ queryKey: ['daily-assessments'] });
-emitSyncComplete();
-```
-
-### Fix 4: Dashboard Subscribes to Sync Completion
-
-**File:** `src/pages/Dashboard.tsx`
-
-Subscribe to sync completion events and reload data:
-```typescript
-import { onSyncComplete } from '@/lib/sync-events';
-
-// Inside useEffect (around line 160):
-useEffect(() => {
-  // ... existing code ...
+export function VersionBadge() {
+  const version = import.meta.env.APP_VERSION || '0.0.0';
   
-  // Subscribe to sync completion events
-  const unsubscribeSyncComplete = onSyncComplete(async () => {
-    // Reload fresh data from Supabase after sync
-    await Promise.all([
-      loadInspections(),
-      loadTrainingReports(),
-      loadDailyAssessments()
-    ]);
-  });
-  
-  return () => {
-    // ... existing cleanup ...
-    unsubscribeSyncComplete();
-  };
-}, []);
+  return (
+    <div className="flex justify-center py-6">
+      <Badge 
+        variant="outline" 
+        className="text-xs font-mono text-muted-foreground/60 border-muted-foreground/20 px-3 py-1"
+      >
+        v{version}
+      </Badge>
+    </div>
+  );
+}
+```
+
+Key styling choices:
+- `variant="outline"`: Subtle, non-prominent appearance
+- `text-xs font-mono`: Developer-focused monospace font, small size
+- `text-muted-foreground/60`: 60% opacity for extra subtlety
+- `border-muted-foreground/20`: Very faint border
+- `py-6`: Adequate spacing from content above
+
+### 4. Integrate into Profile Page
+
+**File:** `src/pages/Profile.tsx`
+
+Add the version badge at the very bottom of the `<main>` element, after the Data Sync card:
+
+```tsx
+import { VersionBadge } from "@/components/VersionBadge";
+
+// ... existing code ...
+
+        {/* Data Sync Section */}
+        <Card className="mt-6">
+          {/* ... existing Data Sync card content ... */}
+        </Card>
+
+        {/* Version Badge - Bottom of Profile */}
+        <VersionBadge />
+      </main>
+    </div>
+  );
+}
 ```
 
 ---
 
-## Notification Flow (After Fix)
+## Visual Design
 
-```
-Background Sync Completes
-         ↓
-emitSyncComplete() called
-         ↓
-    ┌────┴────┐
-    ↓         ↓
-Dashboard   addSyncNotification()
-  reloads        ↓
-   data    routeToastToNotification()
-             (on mobile)
-                ↓
-         NotificationCenter
-         receives "Data synced"
-                ↓
-         StatusIndicator shows ✓
+```text
+┌─────────────────────────────────────┐
+│          Profile Settings           │
+├─────────────────────────────────────┤
+│  ┌─────────────────────────────┐   │
+│  │   Personal Information      │   │
+│  │   ...                       │   │
+│  └─────────────────────────────┘   │
+│                                     │
+│  ┌─────────────────────────────┐   │
+│  │   Security                  │   │
+│  │   ...                       │   │
+│  └─────────────────────────────┘   │
+│                                     │
+│  ┌─────────────────────────────┐   │
+│  │   Data Sync                 │   │
+│  │   ...                       │   │
+│  └─────────────────────────────┘   │
+│                                     │
+│            ┌─────────┐             │
+│            │ v1.0.0  │             │
+│            └─────────┘             │
+│                                     │
+└─────────────────────────────────────┘
 ```
 
 ---
 
-## Files to Modify
+## Files to Create/Modify
 
-| File | Priority | Changes |
-|------|----------|---------|
-| `src/lib/sync-events.ts` | **P0** | Create new file - simple event emitter for sync completion |
-| `src/hooks/useAutoSync.tsx` | **P0** | Emit sync success notification + sync complete event |
-| `src/pages/Dashboard.tsx` | **P0** | Subscribe to sync events and reload data |
+| File | Action | Purpose |
+|------|--------|---------|
+| `vite.config.ts` | Modify | Add `define` to expose version |
+| `src/vite-env.d.ts` | Modify | Add TypeScript type for APP_VERSION |
+| `src/components/VersionBadge.tsx` | **Create** | Reusable version badge component |
+| `src/pages/Profile.tsx` | Modify | Import and render VersionBadge |
 
 ---
 
-## Success Notification Behavior
+## Platform Behavior
 
-| Platform | Notification Type | Behavior |
-|----------|------------------|----------|
-| Mobile | NotificationCenter | Non-intrusive entry: "Data synced successfully" with sync icon |
-| Mobile | StatusIndicator | Shows green checkmark briefly, then fades |
-| Desktop | Toast | Standard success toast (via existing sonner.tsx routing) |
+| Platform | Rendering | Notes |
+|----------|-----------|-------|
+| Desktop | Centered badge below Data Sync card | Standard layout |
+| Mobile | Same centered position | Respects mobile padding (`px-4`) via container |
+
+The component is intentionally **platform-agnostic**—no conditional rendering needed since the Profile page layout is already responsive.
+
+---
+
+## Alternative Consideration: Footer Placement
+
+If desired, the version could alternatively be placed in a persistent footer across all pages. However, the Profile page placement is:
+- ✅ Non-intrusive (only visible when users actively check their profile)
+- ✅ Consistent with "Settings" patterns in other applications
+- ✅ Does not add visual noise to core workflows (Dashboard, Forms)
 
 ---
 
 ## Testing Checklist
 
 After implementation:
-- [ ] Mobile: "Data synced successfully" appears in NotificationCenter after background sync
-- [ ] Mobile: StatusIndicator briefly shows green check after sync
-- [ ] Mobile: Dashboard refreshes to show latest data after sync completes
-- [ ] Desktop: Toast notification appears after sync
-- [ ] No duplicate notifications (debouncing working)
-- [ ] No screen overlay toasts on mobile
-- [ ] Pull-to-refresh still works independently
-
----
-
-## Additional Observations (For Future Consideration)
-
-1. **IndexedDB Timeout Tuning**: The 5-second timeout for IndexedDB operations may be too aggressive for some mobile devices. Consider increasing to 8-10 seconds or making it device-aware.
-
-2. **React Query Migration**: Long-term, Dashboard could be migrated to use React Query's `useQuery` directly, which would eliminate the need for the sync event pattern and provide automatic cache invalidation.
-
-3. **Realtime Subscription Enhancement**: The realtime subscription in `useAutoSync.handleRemoteChange()` invalidates queries but doesn't reload Dashboard state. The same sync event pattern could be applied there.
+- [ ] Version displays correctly on desktop Profile page
+- [ ] Version displays correctly on mobile Profile page
+- [ ] Badge styling is subtle and non-distracting
+- [ ] Version string matches `package.json` version
+- [ ] No layout overlap with Data Sync card or safe areas on mobile
