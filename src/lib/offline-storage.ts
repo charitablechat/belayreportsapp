@@ -161,6 +161,68 @@ let storageWarningShown = false;
 let healthCheckCache: { isHealthy: boolean; timestamp: number } | null = null;
 const HEALTH_CHECK_TTL = 30000; // 30 seconds
 
+// ============= CIRCUIT BREAKER PATTERN =============
+// Prevents repeated IndexedDB failures from blocking the app
+let indexedDBFailureCount = 0;
+const CIRCUIT_BREAKER_THRESHOLD = 3;
+const CIRCUIT_BREAKER_RESET_TIME = 60000; // 1 minute cooldown
+let circuitBreakerTrippedAt: number | null = null;
+
+/**
+ * Check if circuit breaker is open (IndexedDB disabled temporarily)
+ */
+function isCircuitBreakerOpen(): boolean {
+  if (circuitBreakerTrippedAt) {
+    if (Date.now() - circuitBreakerTrippedAt > CIRCUIT_BREAKER_RESET_TIME) {
+      // Reset circuit breaker after cooldown
+      circuitBreakerTrippedAt = null;
+      indexedDBFailureCount = 0;
+      if (import.meta.env.DEV) {
+        console.log('[Offline Storage] Circuit breaker reset - IndexedDB re-enabled');
+      }
+      return false;
+    }
+    return true; // Circuit is still open
+  }
+  return false;
+}
+
+/**
+ * Record an IndexedDB failure for circuit breaker
+ */
+function recordIndexedDBFailure(): void {
+  indexedDBFailureCount++;
+  if (indexedDBFailureCount >= CIRCUIT_BREAKER_THRESHOLD) {
+    circuitBreakerTrippedAt = Date.now();
+    console.warn('[Offline Storage] Circuit breaker tripped - IndexedDB disabled for 60s after', indexedDBFailureCount, 'failures');
+  }
+}
+
+/**
+ * Record an IndexedDB success - resets failure counter
+ */
+function recordIndexedDBSuccess(): void {
+  if (indexedDBFailureCount > 0) {
+    indexedDBFailureCount = 0;
+    circuitBreakerTrippedAt = null;
+  }
+}
+
+/**
+ * Get circuit breaker status (for debugging/UI)
+ */
+export function getCircuitBreakerStatus(): { open: boolean; failureCount: number; resetIn: number | null } {
+  const open = isCircuitBreakerOpen();
+  return {
+    open,
+    failureCount: indexedDBFailureCount,
+    resetIn: circuitBreakerTrippedAt 
+      ? Math.max(0, CIRCUIT_BREAKER_RESET_TIME - (Date.now() - circuitBreakerTrippedAt))
+      : null,
+  };
+}
+// ============= END CIRCUIT BREAKER =============
+
 /**
  * Helper to wrap a promise with a timeout
  */
@@ -246,15 +308,24 @@ async function ensureStorage(): Promise<void> {
 let dbConnectionVerified = false;
 
 /**
- * Wrapper for IndexedDB operations with error boundary and timeout protection
+ * Wrapper for IndexedDB operations with error boundary, timeout protection, and circuit breaker
  * Prevents any single IndexedDB operation from blocking the app
  * OPTIMIZED: Skips redundant health checks after first successful DB connection
+ * CIRCUIT BREAKER: Fails fast after repeated failures
  */
 async function withIndexedDBErrorBoundary<T>(
   operation: () => Promise<T>,
   fallbackValue: T,
   operationName: string
 ): Promise<T> {
+  // CIRCUIT BREAKER: If open, return fallback immediately without attempting operation
+  if (isCircuitBreakerOpen()) {
+    if (import.meta.env.DEV) {
+      console.log(`[Offline Storage] Circuit breaker open, returning fallback for ${operationName}`);
+    }
+    return fallbackValue;
+  }
+
   const OPERATION_TIMEOUT = 5000; // 5 second timeout for any IndexedDB operation
   
   try {
@@ -266,6 +337,7 @@ async function withIndexedDBErrorBoundary<T>(
           const isHealthy = await checkIndexedDBHealth();
           if (!isHealthy) {
             console.warn(`[Offline Storage] IndexedDB unhealthy, returning fallback for ${operationName}`);
+            recordIndexedDBFailure();
             return fallbackValue;
           }
           // Mark as verified after successful health check
@@ -277,11 +349,21 @@ async function withIndexedDBErrorBoundary<T>(
       fallbackValue
     );
     
+    // If we got the fallback value due to timeout, record as failure
+    // Note: This is a heuristic - we can't perfectly detect timeout vs actual fallback value
+    if (result === fallbackValue && operationName.includes('get')) {
+      // Only record failure for read operations that returned empty
+      // Write operations returning fallback is expected on timeout
+    } else {
+      recordIndexedDBSuccess();
+    }
+    
     return result;
   } catch (error) {
     console.error(`[Offline Storage] Error in ${operationName}:`, error);
     // Reset verification on error so next operation re-checks
     dbConnectionVerified = false;
+    recordIndexedDBFailure();
     return fallbackValue;
   }
 }

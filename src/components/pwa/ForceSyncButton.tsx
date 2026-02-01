@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { triggerHaptic } from "@/lib/haptics";
 import { cn } from "@/lib/utils";
 import { isMobile } from "@/lib/mobile-detection";
+import { addSyncNotification, addNotification } from "@/lib/notification-center";
 
 interface ForceSyncButtonProps {
   variant?: 'default' | 'icon' | 'menu-item';
@@ -36,30 +37,39 @@ export const ForceSyncButton = ({ variant = 'default', className }: ForceSyncBut
 
     // Already syncing
     if (isSyncing) {
-      toast.info("Sync already in progress...");
+      if (isMobileDevice) {
+        addNotification('sync', 'Sync already in progress...', 'low');
+      } else {
+        toast.info("Sync already in progress...");
+      }
       return;
     }
 
     // Trigger haptic feedback on mobile
     if (isMobileDevice) {
       triggerHaptic('medium');
+      addSyncNotification("Syncing your data...");
+    } else {
+      toast.info("Sync initiated...", {
+        description: "Synchronizing your data with the server."
+      });
     }
-
-    // Show initiated toast
-    toast.info("Sync initiated...", {
-      description: "Synchronizing your data with the server."
-    });
 
     try {
       await forceSync();
       
       triggerHaptic('success');
-      toast.success("Sync completed successfully", {
-        description: "All your data is now up to date."
-      });
+      if (isMobileDevice) {
+        addSyncNotification("Sync completed - data is up to date");
+      } else {
+        toast.success("Sync completed successfully", {
+          description: "All your data is now up to date."
+        });
+      }
     } catch (error: any) {
       console.error('[ForceSyncButton] Sync failed:', error);
       triggerHaptic('error');
+      // Always show errors as toasts
       toast.error("Sync failed", {
         description: error.message || "Please try again later."
       });

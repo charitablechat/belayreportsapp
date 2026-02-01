@@ -1,12 +1,29 @@
 import { toast } from "sonner";
-import { CheckCircle, XCircle, AlertTriangle, Info, Loader2 } from "lucide-react";
-import { createElement } from "react";
+import { isMobile } from "./mobile-detection";
+import { 
+  addSyncNotification, 
+  addSaveNotification, 
+  addErrorNotification,
+  addNotification 
+} from "./notification-center";
 
 /**
- * Enhanced toast helpers with consistent styling and icons
+ * Enhanced toast helpers with mobile-aware behavior
+ * On mobile: routes non-critical toasts to notification center
+ * On desktop: shows standard sonner toasts
  */
 
 export function toastSuccess(message: string, description?: string) {
+  if (isMobile()) {
+    // Route to notification center on mobile
+    if (/sync/i.test(message)) {
+      addSyncNotification(message);
+    } else {
+      addSaveNotification(message);
+    }
+    return null;
+  }
+  
   return toast.success(message, {
     description,
     duration: 3000,
@@ -14,6 +31,8 @@ export function toastSuccess(message: string, description?: string) {
 }
 
 export function toastError(message: string, description?: string) {
+  // Errors always show as toast AND go to notification center
+  addErrorNotification(message);
   return toast.error(message, {
     description,
     duration: 5000,
@@ -21,6 +40,11 @@ export function toastError(message: string, description?: string) {
 }
 
 export function toastWarning(message: string, description?: string) {
+  if (isMobile()) {
+    addNotification('info', message, 'medium');
+    return null;
+  }
+  
   return toast.warning(message, {
     description,
     duration: 4000,
@@ -28,6 +52,11 @@ export function toastWarning(message: string, description?: string) {
 }
 
 export function toastInfo(message: string, description?: string) {
+  if (isMobile()) {
+    addNotification('info', message);
+    return null;
+  }
+  
   return toast.info(message, {
     description,
     duration: 3000,
@@ -37,6 +66,7 @@ export function toastInfo(message: string, description?: string) {
 /**
  * Progress toast for long-running operations
  * Returns a function to update or dismiss the toast
+ * Note: Progress toasts always show on mobile (they're transient)
  */
 export function toastProgress(message: string) {
   const toastId = toast.loading(message);
@@ -48,9 +78,13 @@ export function toastProgress(message: string) {
     },
     success: (successMessage: string) => {
       toast.success(successMessage, { id: toastId, duration: 3000 });
+      if (isMobile()) {
+        addSaveNotification(successMessage);
+      }
     },
     error: (errorMessage: string) => {
       toast.error(errorMessage, { id: toastId, duration: 5000 });
+      addErrorNotification(errorMessage);
     },
     dismiss: () => {
       toast.dismiss(toastId);

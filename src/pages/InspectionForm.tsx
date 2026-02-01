@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef } from "react";
 import { toast } from "@/hooks/use-toast";
+import { addSaveNotification, addSyncNotification } from "@/lib/notification-center";
 import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -439,11 +440,16 @@ export default function InspectionForm() {
       summaryRegenerateTimerRef.current = setTimeout(() => {
         handleRegenerateSummary(false); // Silent regeneration
         
-        toast({
-          title: "Summary Auto-Updated",
-          description: "Critical actions and repairs updated from inspection items",
-          duration: 3000,
-        });
+        // Only show toast on desktop; on mobile, route to notification center
+        if (isMobile()) {
+          addSaveNotification("Summary auto-updated from inspection items");
+        } else {
+          toast({
+            title: "Summary Auto-Updated",
+            description: "Critical actions and repairs updated from inspection items",
+            duration: 3000,
+          });
+        }
       }, 800);
     }
     
@@ -1084,12 +1090,16 @@ export default function InspectionForm() {
           await queueOperation('update', id!, saveData);
           console.log('[InspectionForm Sync] Queued for later sync');
           
-          // Show toast for network failures with auto-retry hint
-          toast({
-            title: "Sync queued",
-            description: "Changes saved locally. Will auto-retry when connection improves.",
-            variant: "default",
-          });
+          // Show toast for network failures with auto-retry hint - mobile-aware
+          if (isMobile()) {
+            addSyncNotification("Sync queued: saved locally, will auto-retry");
+          } else {
+            toast({
+              title: "Sync queued",
+              description: "Changes saved locally. Will auto-retry when connection improves.",
+              variant: "default",
+            });
+          }
         }
       } else {
         // Queue operation when offline

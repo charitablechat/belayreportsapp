@@ -31,6 +31,9 @@ import { ManualUpdateButton } from "@/components/pwa/ManualUpdateButton";
 import { ForceSyncButton } from "@/components/pwa/ForceSyncButton";
 import { OfflineSimulator } from "@/components/dev/OfflineSimulator";
 import { PushNotificationManager } from "@/components/pwa/PushNotificationManager";
+import { NotificationCenter } from "@/components/pwa/NotificationCenter";
+import { StatusIndicator } from "@/components/pwa/StatusIndicator";
+import { useNotificationCenter } from "@/hooks/useNotificationCenter";
 import { useConflicts } from "@/hooks/useConflicts";
 import { usePWA } from "@/hooks/usePWA";
 import { usePullToRefresh } from "@/hooks/usePullToRefresh";
@@ -219,40 +222,62 @@ export default function Dashboard() {
       // Use passed userId or fetch from cache
       const userId = cachedUserId || (await getUserWithCache())?.id;
       
-      // Load from offline storage first (filtered by current user for privacy)
-      const offlineInspections = await getOfflineInspections(userId);
+      // PARALLEL LOADING: Start both IndexedDB and Supabase fetches simultaneously
+      // This ensures mobile users see data quickly even if IndexedDB times out
+      const offlinePromise = getOfflineInspections(userId).catch(() => []);
       
-      if (offlineInspections.length > 0) {
-        setInspections(offlineInspections);
-        
+      let supabasePromise: Promise<any[]> = Promise.resolve([]);
+      if (navigator.onLine) {
+        // Wrap in Promise.resolve to get a proper Promise with .catch()
+        supabasePromise = Promise.resolve(
+          supabase
+            .from("inspections")
+            .select(`
+              *,
+              inspector:profiles(first_name, last_name, avatar_url)
+            `)
+            .order("last_opened_at", { ascending: false, nullsFirst: false })
+            .order("created_at", { ascending: false })
+        ).then(({ data, error }) => {
+          if (error) throw error;
+          return data || [];
+        }).catch(err => {
+          console.error('[Dashboard] Supabase fetch error:', err);
+          return [];
+        });
+      }
+
+      // SHORT TIMEOUT for IndexedDB (2 seconds) - prefer network data on mobile
+      const offlineWithTimeout = Promise.race([
+        offlinePromise,
+        new Promise<any[]>((resolve) => setTimeout(() => resolve([]), 2000))
+      ]);
+      
+      // Show offline data immediately if available
+      const offlineData = await offlineWithTimeout;
+      if (offlineData.length > 0) {
+        setInspections(offlineData);
         if (import.meta.env.DEV) {
-          console.log('[Dashboard] Loaded from offline storage:', offlineInspections.length);
+          console.log('[Dashboard] Loaded from offline storage:', offlineData.length);
         }
       }
 
-      // If online, fetch from Supabase and merge
+      // Always try to get fresh data from network (runs in parallel)
       if (navigator.onLine) {
-        const { data, error } = await supabase
-          .from("inspections")
-          .select(`
-            *,
-            inspector:profiles(first_name, last_name, avatar_url)
-          `)
-          .order("last_opened_at", { ascending: false, nullsFirst: false })
-          .order("created_at", { ascending: false });
-
-        if (error) throw error;
-        
-        if (data) {
-          setInspections(data);
+        const networkData = await supabasePromise;
+        if (networkData.length > 0) {
+          setInspections(networkData);
           
-          // PERFORMANCE: Batch save to offline storage in parallel
-          Promise.all(data.map(inspection => saveInspectionOffline(inspection)))
+          // Background save to offline storage (fire-and-forget)
+          Promise.all(networkData.map(inspection => saveInspectionOffline(inspection)))
             .catch(err => console.error('[Dashboard] Error batch saving inspections:', err));
           
           if (import.meta.env.DEV) {
-            console.log('[Dashboard] Loaded from Supabase:', data.length);
+            console.log('[Dashboard] Loaded from Supabase:', networkData.length);
           }
+        } else if (offlineData.length === 0) {
+          // Neither offline nor network has data - set empty explicitly
+          setInspections([]);
         }
       }
     } catch (error: any) {
@@ -265,39 +290,56 @@ export default function Dashboard() {
       // Use passed userId or fetch from cache
       const userId = cachedUserId || (await getUserWithCache())?.id;
       
-      // Load from offline storage first (filtered by current user for privacy)
-      const offlineTrainings = await getOfflineTrainings(userId);
+      // PARALLEL LOADING: Start both fetches simultaneously
+      const offlinePromise = getOfflineTrainings(userId).catch(() => []);
       
-      if (offlineTrainings.length > 0) {
-        setTrainings(offlineTrainings);
-        
+      let supabasePromise: Promise<any[]> = Promise.resolve([]);
+      if (navigator.onLine) {
+        supabasePromise = Promise.resolve(
+          supabase
+            .from("trainings")
+            .select(`
+              *,
+              trainer:profiles(first_name, last_name, avatar_url)
+            `)
+            .order("created_at", { ascending: false })
+        ).then(({ data, error }) => {
+          if (error) throw error;
+          return data || [];
+        }).catch(err => {
+          console.error('[Dashboard] Supabase trainings fetch error:', err);
+          return [];
+        });
+      }
+
+      // SHORT TIMEOUT for IndexedDB (2 seconds)
+      const offlineWithTimeout = Promise.race([
+        offlinePromise,
+        new Promise<any[]>((resolve) => setTimeout(() => resolve([]), 2000))
+      ]);
+      
+      const offlineData = await offlineWithTimeout;
+      if (offlineData.length > 0) {
+        setTrainings(offlineData);
         if (import.meta.env.DEV) {
-          console.log('[Dashboard] Loaded trainings from offline storage:', offlineTrainings.length);
+          console.log('[Dashboard] Loaded trainings from offline storage:', offlineData.length);
         }
       }
 
-      // If online, fetch from Supabase
+      // Always try to get fresh data from network
       if (navigator.onLine) {
-        const { data, error } = await supabase
-          .from("trainings")
-          .select(`
-            *,
-            trainer:profiles(first_name, last_name, avatar_url)
-          `)
-          .order("created_at", { ascending: false });
-
-        if (error) throw error;
-        
-        if (data) {
-          setTrainings(data);
+        const networkData = await supabasePromise;
+        if (networkData.length > 0) {
+          setTrainings(networkData);
           
-          // PERFORMANCE: Batch save to offline storage in parallel
-          Promise.all(data.map(training => saveTrainingOffline(training)))
+          Promise.all(networkData.map(training => saveTrainingOffline(training)))
             .catch(err => console.error('[Dashboard] Error batch saving trainings:', err));
           
           if (import.meta.env.DEV) {
-            console.log('[Dashboard] Loaded training reports from Supabase:', data.length);
+            console.log('[Dashboard] Loaded training reports from Supabase:', networkData.length);
           }
+        } else if (offlineData.length === 0) {
+          setTrainings([]);
         }
       }
     } catch (error: any) {
@@ -310,39 +352,56 @@ export default function Dashboard() {
       // Use passed userId or fetch from cache
       const userId = cachedUserId || (await getUserWithCache())?.id;
       
-      // Load from offline storage first (filtered by current user for privacy)
-      const offlineAssessments = await getOfflineDailyAssessments(userId);
+      // PARALLEL LOADING: Start both fetches simultaneously
+      const offlinePromise = getOfflineDailyAssessments(userId).catch(() => []);
       
-      if (offlineAssessments.length > 0) {
-        setDailyAssessments(offlineAssessments);
-        
+      let supabasePromise: Promise<any[]> = Promise.resolve([]);
+      if (navigator.onLine) {
+        supabasePromise = Promise.resolve(
+          supabase
+            .from("daily_assessments")
+            .select(`
+              *,
+              inspector:profiles(first_name, last_name, avatar_url)
+            `)
+            .order("assessment_date", { ascending: false })
+        ).then(({ data, error }) => {
+          if (error) throw error;
+          return data || [];
+        }).catch(err => {
+          console.error('[Dashboard] Supabase assessments fetch error:', err);
+          return [];
+        });
+      }
+
+      // SHORT TIMEOUT for IndexedDB (2 seconds)
+      const offlineWithTimeout = Promise.race([
+        offlinePromise,
+        new Promise<any[]>((resolve) => setTimeout(() => resolve([]), 2000))
+      ]);
+      
+      const offlineData = await offlineWithTimeout;
+      if (offlineData.length > 0) {
+        setDailyAssessments(offlineData);
         if (import.meta.env.DEV) {
-          console.log('[Dashboard] Loaded daily assessments from offline storage:', offlineAssessments.length);
+          console.log('[Dashboard] Loaded daily assessments from offline storage:', offlineData.length);
         }
       }
 
-      // If online, fetch from Supabase
+      // Always try to get fresh data from network
       if (navigator.onLine) {
-        const { data, error } = await supabase
-          .from("daily_assessments")
-          .select(`
-            *,
-            inspector:profiles(first_name, last_name, avatar_url)
-          `)
-          .order("assessment_date", { ascending: false });
-
-        if (error) throw error;
-        
-        if (data) {
-          setDailyAssessments(data);
+        const networkData = await supabasePromise;
+        if (networkData.length > 0) {
+          setDailyAssessments(networkData);
           
-          // PERFORMANCE: Batch save to offline storage in parallel
-          Promise.all(data.map(assessment => saveDailyAssessmentOffline(assessment)))
+          Promise.all(networkData.map(assessment => saveDailyAssessmentOffline(assessment)))
             .catch(err => console.error('[Dashboard] Error batch saving assessments:', err));
           
           if (import.meta.env.DEV) {
-            console.log('[Dashboard] Loaded daily assessments from Supabase:', data.length);
+            console.log('[Dashboard] Loaded daily assessments from Supabase:', networkData.length);
           }
+        } else if (offlineData.length === 0) {
+          setDailyAssessments([]);
         }
       }
     } catch (error: any) {
@@ -611,6 +670,9 @@ export default function Dashboard() {
             </div>
             
             <div className="flex items-center gap-2">
+              {/* Subtle status indicator for mobile - shows sync/save status */}
+              <StatusIndicator className="md:hidden" />
+              
               <NetworkQualityIndicator />
               
               {isSuperAdmin && (
@@ -662,9 +724,17 @@ export default function Dashboard() {
                   <User className="w-4 h-4 mr-2" />
                   Profile
                 </DropdownMenuItem>
+                <NotificationCenter 
+                  trigger={
+                    <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
+                      <Bell className="w-4 h-4 mr-2" />
+                      Activity Log
+                    </DropdownMenuItem>
+                  }
+                />
                 <DropdownMenuItem onClick={() => setNotificationsDialogOpen(true)}>
                   <Bell className="w-4 h-4 mr-2" />
-                  Notifications
+                  Push Notifications
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => navigate('/capabilities')}>
                   Device Capabilities

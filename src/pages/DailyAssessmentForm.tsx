@@ -45,6 +45,8 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { useSwipeNavigation } from "@/hooks/useSwipeNavigation";
 import { SwipeBackIndicator } from "@/components/SwipeBackIndicator";
 import { toast } from "sonner";
+import { isMobile } from "@/lib/mobile-detection";
+import { addSyncNotification, addSaveNotification, addNotification } from "@/lib/notification-center";
 import { useReportSync } from "@/hooks/useReportSync";
 
 import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
@@ -525,7 +527,11 @@ export default function DailyAssessmentForm() {
               console.warn('[Save] Failed to queue operation:', queueError);
             }
           }
-          toast.warning("Saved locally, will sync when connection improves");
+          if (isMobile()) {
+            addSyncNotification("Saved locally, will sync when connection improves");
+          } else {
+            toast.warning("Saved locally, will sync when connection improves");
+          }
         }
       } else {
         console.log('[Save] Offline - queuing for sync');
@@ -536,7 +542,11 @@ export default function DailyAssessmentForm() {
             console.warn('[Save] Failed to queue operation:', queueError);
           }
         }
-        toast.success("Saved offline");
+        if (isMobile()) {
+          addSaveNotification("Saved offline");
+        } else {
+          toast.success("Saved offline");
+        }
       }
 
       setHasUnsavedChanges(false);
@@ -833,7 +843,11 @@ export default function DailyAssessmentForm() {
           
           if (!verified) {
             console.warn('[Report] Data verification failed or timed out, proceeding anyway');
-            toast.warning("Some items may not appear in the report if not yet synced.");
+            if (isMobile()) {
+              addNotification('info', 'Some items may not appear if not yet synced', 'medium');
+            } else {
+              toast.warning("Some items may not appear in the report if not yet synced.");
+            }
           }
         } catch (verifyError) {
           console.warn('[Report] Verification error:', verifyError);
