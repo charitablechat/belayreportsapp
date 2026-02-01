@@ -46,6 +46,7 @@ import { getUserWithCache } from "@/lib/cached-auth";
 import { FallingHearts } from "@/components/christmas/FallingHearts";
 import { HolidayBanner } from "@/components/christmas/HolidayBanner";
 import { HeartsBorder } from "@/components/christmas/HeartsBorder";
+import { VersionBadge } from "@/components/VersionBadge";
 
 
 import { triggerValentineConfetti } from "@/lib/confetti";
@@ -781,6 +782,12 @@ export default function Dashboard() {
                   <MessageCircle className="w-4 h-4 mr-2" />
                   Contact Developer
                 </DropdownMenuItem>
+                
+                {/* Version Badge - Below Contact Developer */}
+                <div className="px-2 py-1.5">
+                  <VersionBadge compact />
+                </div>
+                
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={handleSignOut} disabled={signingOut}>
                   {signingOut ? (
