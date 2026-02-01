@@ -165,16 +165,16 @@ export default function OperatingSystemsTable({ systems, onUpdate, onImmediateSa
               itemKey={system.id || `mobile-system-${index}`}
               isNew={newItemIds.has(system.id)}
             >
-            <Card key={system.id || index} className="p-4 relative">
+            <Card key={system.id || index} className="p-5 relative border-l-4 border-l-primary/20">
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => setItemToDelete({ index, name: system.name || system.system_name || "this system" })}
-                className="absolute top-2 right-2 h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                className="absolute top-3 right-3 h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
               >
                 <Trash2 className="h-4 w-4" />
               </Button>
-              <div className="space-y-3 pr-8">
+              <div className="space-y-4 pr-12">
                 <div>
                   <Label className="text-xs text-muted-foreground">Element Name</Label>
                   <HistoryAutocomplete
@@ -205,7 +205,7 @@ export default function OperatingSystemsTable({ systems, onUpdate, onImmediateSa
                 </div>
                 
                 <div>
-                  <Label className="text-xs text-muted-foreground">Comments and/or Required Changes</Label>
+                  <Label className="text-xs text-muted-foreground">Comments / Changes</Label>
                   <VoiceRichTextEditor
                     content={system.comments || ""}
                     onChange={(value) => updateSystem(index, "comments", value)}

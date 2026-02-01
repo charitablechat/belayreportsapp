@@ -665,3 +665,16 @@ button[title="Sync"],
 .animate-sparkle-burst {
   animation: sparkle-burst 0.6s ease-out forwards;
 }
+
+/* Mobile layout utilities */
+@layer utilities {
+  /* Prevent text overflow in flex/grid children */
+  .mobile-safe-text {
+    @apply min-w-0 break-words;
+  }
+  
+  /* Standard mobile card with delete button clearance */
+  .mobile-card-with-action {
+    @apply p-5 relative;
+  }
+}

@@ -278,16 +278,16 @@ export default function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: Z
               itemKey={zipline.id || `mobile-zipline-${index}`}
               isNew={newItemIds.has(zipline.id)}
             >
-            <Card key={index} className="p-4 relative">
+            <Card key={index} className="p-5 relative border-l-4 border-l-primary/20">
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => setItemToDelete({ index, name: zipline.zipline_name || "this zipline" })}
-                className="absolute top-2 right-2 h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                className="absolute top-3 right-3 h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
               >
                 <Trash2 className="h-4 w-4" />
               </Button>
-              <div className="space-y-3 pr-8">
+              <div className="space-y-4 pr-12">
                 <div>
                   <Label className="text-xs text-muted-foreground">Line Name</Label>
                   <HistoryAutocomplete
@@ -301,8 +301,8 @@ export default function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: Z
                   />
                 </div>
                 
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="min-w-0">
                     <Label className="text-xs text-muted-foreground">Cable Type</Label>
                     <Select
                       value={zipline.cable_type}
@@ -318,7 +318,7 @@ export default function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: Z
                     </Select>
                   </div>
                   
-                  <div>
+                  <div className="min-w-0">
                     <Label className="text-xs text-muted-foreground">Length (ft)</Label>
                     <Input
                       type="number"
@@ -331,9 +331,9 @@ export default function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: Z
                   </div>
                 </div>
                 
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <Label className="text-xs text-muted-foreground">Unload (lbf)</Label>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="min-w-0">
+                    <Label className="text-xs text-muted-foreground">Unload</Label>
                     <Input
                       type="number"
                       value={zipline.unload_tension || ""}
@@ -344,8 +344,8 @@ export default function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: Z
                     />
                   </div>
                   
-                  <div>
-                    <Label className="text-xs text-muted-foreground">Load (lbf)</Label>
+                  <div className="min-w-0">
+                    <Label className="text-xs text-muted-foreground">Load</Label>
                     <Input
                       type="number"
                       value={zipline.load_tension || ""}
@@ -365,9 +365,9 @@ export default function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: Z
                   />
                 </div>
                 
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <Label className="text-xs text-muted-foreground">Braking System</Label>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="min-w-0">
+                    <Label className="text-xs text-muted-foreground">Braking Sys</Label>
                     <Select
                       value={zipline.braking_system}
                       onValueChange={(value) => updateZipline(index, "braking_system", value)}
@@ -384,8 +384,8 @@ export default function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: Z
                     </Select>
                   </div>
                   
-                  <div>
-                    <Label className="text-xs text-muted-foreground">Braking Result</Label>
+                  <div className="min-w-0">
+                    <Label className="text-xs text-muted-foreground">Brake Result</Label>
                     <ResultSelect
                       value={zipline.braking_result}
                       onChange={(value) => updateZipline(index, "braking_result", value)}
@@ -393,9 +393,9 @@ export default function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: Z
                   </div>
                 </div>
                 
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <Label className="text-xs text-muted-foreground">EAD System</Label>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="min-w-0">
+                    <Label className="text-xs text-muted-foreground">EAD Sys</Label>
                     <Select
                       value={zipline.ead_system}
                       onValueChange={(value) => updateZipline(index, "ead_system", value)}
@@ -410,7 +410,7 @@ export default function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: Z
                     </Select>
                   </div>
                   
-                  <div>
+                  <div className="min-w-0">
                     <Label className="text-xs text-muted-foreground">EAD Result</Label>
                     <ResultSelect
                       value={zipline.ead_result}
@@ -428,7 +428,7 @@ export default function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: Z
                 </div>
                 
                 <div>
-                  <Label className="text-xs text-muted-foreground">Comments and/or Required Changes</Label>
+                  <Label className="text-xs text-muted-foreground">Comments / Changes</Label>
                   <RichTextEditor
                     content={zipline.comments || ""}
                     onChange={(value) => updateZipline(index, "comments", value)}

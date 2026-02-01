@@ -196,16 +196,16 @@ export default function EquipmentTable({ category, displayName, equipment, onUpd
               itemKey={item.id || `mobile-equipment-${index}`}
               isNew={newItemIds.has(item.id)}
             >
-            <Card key={index} className="p-4 relative">
+            <Card key={index} className="p-5 relative border-l-4 border-l-primary/20">
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => setItemToDelete({ item, name: item.equipment_type || "this equipment" })}
-                className="absolute top-2 right-2 h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                className="absolute top-3 right-3 h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
               >
                 <Trash2 className="h-4 w-4" />
               </Button>
-              <div className="space-y-3 pr-8">
+              <div className="space-y-4 pr-12">
                 <div>
                   <Label className="text-xs text-muted-foreground">Type *</Label>
                   <HistoryAutocomplete
@@ -224,7 +224,7 @@ export default function EquipmentTable({ category, displayName, equipment, onUpd
                   />
                 </div>
                 
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-2 gap-4">
                   <div>
                     <Label className="text-xs text-muted-foreground">Production Year</Label>
                     <Input
@@ -260,7 +260,7 @@ export default function EquipmentTable({ category, displayName, equipment, onUpd
                 </div>
                 
                 <div>
-                  <Label className="text-xs text-muted-foreground">Comments and/or Required Changes</Label>
+                  <Label className="text-xs text-muted-foreground">Comments / Changes</Label>
                   <RichTextEditor
                     content={item.comments || ""}
                     onChange={(value) => updateEquipment(item, "comments", value)}
