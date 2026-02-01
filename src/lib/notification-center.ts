@@ -3,7 +3,8 @@
  * Replaces mobile toasts with a centralized notification system
  */
 
-export type NotificationType = 'sync' | 'save' | 'error' | 'info';
+export type NotificationType = 'sync' | 'save' | 'error' | 'info' | 'loading';
+export type ToastType = 'success' | 'error' | 'warning' | 'info' | 'loading';
 export type NotificationPriority = 'low' | 'medium' | 'high';
 
 export interface StatusNotification {
@@ -217,6 +218,41 @@ export function getLatestStatus(): { type: NotificationType; message: string } |
   const recent = notifications.find(n => Date.now() - n.timestamp < 5000);
   if (recent) {
     return { type: recent.type, message: recent.message };
+  }
+  return null;
+}
+
+/**
+ * Route a toast message to the notification center
+ * Maps toast types to notification types with appropriate priority
+ * Used by the mobile-aware toast wrapper to redirect all toasts
+ */
+export function routeToastToNotification(
+  message: string, 
+  type: ToastType
+): void {
+  switch (type) {
+    case 'error':
+      addErrorNotification(message);
+      break;
+    case 'success':
+      // Categorize success messages based on content
+      if (/sync/i.test(message)) {
+        addSyncNotification(message);
+      } else {
+        addSaveNotification(message);
+      }
+      break;
+    case 'warning':
+      addNotification('info', message, 'medium');
+      break;
+    case 'loading':
+      addNotification('sync', message, 'low', 30000); // 30s expiry for loading states
+      break;
+    case 'info':
+    default:
+      addNotification('info', message, 'low');
+      break;
   }
   return null;
 }
