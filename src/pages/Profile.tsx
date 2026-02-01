@@ -14,6 +14,7 @@ import { useToast } from "@/hooks/use-toast";
 import { ForceSyncButton } from "@/components/pwa/ForceSyncButton";
 import { usePWA } from "@/hooks/usePWA";
 import { format } from "date-fns";
+import { VersionBadge } from "@/components/VersionBadge";
 
 export default function Profile() {
   const navigate = useNavigate();
@@ -547,6 +548,9 @@ export default function Profile() {
             </p>
           </CardContent>
         </Card>
+
+        {/* Version Badge - Bottom of Profile */}
+        <VersionBadge />
       </main>
     </div>
   );
