@@ -995,14 +995,28 @@ export default function InspectionForm() {
               );
             }
             if (newSystems.length > 0) {
+              // Build temp ID → new item map for position-preserving replacement
+              const systemTempToNewMap = new Map<string, typeof newSystems[0]>();
+              validSystems.filter(s => !s.id || s.id.startsWith('temp-')).forEach((original, i) => {
+                if (newSystems[i]) {
+                  systemTempToNewMap.set(original.id || '', newSystems[i]);
+                }
+              });
+              
               parallelOperations.push(
                 dbOp(supabase.from("inspection_systems").insert(newSystems))
               );
-              // Update local state immediately with pre-generated IDs
-              setSystems(prev => {
-                const existingIds = new Set(prev.filter(s => s.id && !s.id.startsWith('temp-')).map(s => s.id));
-                return [...prev.filter(s => existingIds.has(s.id)), ...newSystems];
-              });
+              
+              // Replace temp items in-place, preserving position (no reordering)
+              // Deferred to avoid blocking UI during save
+              setTimeout(() => {
+                setSystems(prev => prev.map(s => {
+                  if (s.id && s.id.startsWith('temp-') && systemTempToNewMap.has(s.id)) {
+                    return systemTempToNewMap.get(s.id)!;
+                  }
+                  return s;
+                }));
+              }, 100);
             }
             
             // Ziplines operations
@@ -1012,13 +1026,27 @@ export default function InspectionForm() {
               );
             }
             if (newZiplines.length > 0) {
+              // Build temp ID → new item map for position-preserving replacement
+              const ziplineTempToNewMap = new Map<string, typeof newZiplines[0]>();
+              validZiplines.filter(z => !z.id || z.id.startsWith('temp-')).forEach((original, i) => {
+                if (newZiplines[i]) {
+                  ziplineTempToNewMap.set(original.id || '', newZiplines[i]);
+                }
+              });
+              
               parallelOperations.push(
                 dbOp(supabase.from("inspection_ziplines").insert(newZiplines))
               );
-              setZiplines(prev => {
-                const existingIds = new Set(prev.filter(z => z.id && !z.id.startsWith('temp-')).map(z => z.id));
-                return [...prev.filter(z => existingIds.has(z.id)), ...newZiplines];
-              });
+              
+              // Replace temp items in-place, preserving position (no reordering)
+              setTimeout(() => {
+                setZiplines(prev => prev.map(z => {
+                  if (z.id && z.id.startsWith('temp-') && ziplineTempToNewMap.has(z.id)) {
+                    return ziplineTempToNewMap.get(z.id)!;
+                  }
+                  return z;
+                }));
+              }, 100);
             }
             
             // Equipment operations
@@ -1028,13 +1056,27 @@ export default function InspectionForm() {
               );
             }
             if (newEquipment.length > 0) {
+              // Build temp ID → new item map for position-preserving replacement
+              const equipmentTempToNewMap = new Map<string, typeof newEquipment[0]>();
+              validEquipment.filter(e => !e.id || e.id.startsWith('temp-')).forEach((original, i) => {
+                if (newEquipment[i]) {
+                  equipmentTempToNewMap.set(original.id || '', newEquipment[i]);
+                }
+              });
+              
               parallelOperations.push(
                 dbOp(supabase.from("inspection_equipment").insert(newEquipment))
               );
-              setEquipment(prev => {
-                const existingIds = new Set(prev.filter(e => e.id && !e.id.startsWith('temp-')).map(e => e.id));
-                return [...prev.filter(e => existingIds.has(e.id)), ...newEquipment];
-              });
+              
+              // Replace temp items in-place, preserving position (no reordering)
+              setTimeout(() => {
+                setEquipment(prev => prev.map(e => {
+                  if (e.id && e.id.startsWith('temp-') && equipmentTempToNewMap.has(e.id)) {
+                    return equipmentTempToNewMap.get(e.id)!;
+                  }
+                  return e;
+                }));
+              }, 100);
             }
             
             // Standards - use upsert instead of delete+insert for atomicity
