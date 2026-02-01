@@ -1,391 +1,423 @@
 
-# Plan: Immediate Local Persistence with Background Sync for All Data Including Photos
+# Plan: Fix Mobile Photo Upload Hang and Global Save Freeze
 
-## Overview
-Implement a **local-first architecture** for all user inputs including photos, ensuring data is persisted to IndexedDB immediately upon capture, with UI feedback shown instantly. Background synchronization occurs asynchronously without blocking the user interface.
+## Root Cause Analysis
+
+### Primary Issue Identified
+The console logs reveal **"Item sync timeout"** errors occurring across all data types (inspections, trainings, daily assessments). The photo upload hang on mobile triggers a cascade effect that blocks the global auto-sync system.
+
+### Detailed Investigation Findings
+
+| Finding | Evidence | Impact |
+|---------|----------|--------|
+| **Image compression can hang** | `compressImage()` uses `canvas.toBlob()` with no timeout (line 87-145 in image-compression.ts) | Blocks `processFiles()` indefinitely on mobile |
+| **`savePhotoOffline()` awaits quota check** | Line 594-597 awaits `checkStorageQuota()` before IndexedDB write | Can hang if storage API is slow/blocked |
+| **Mutex lock never released on error** | `uploadMutexRef.current = true` at line 105, only reset in `finally` block | If compression promise hangs, mutex stays locked |
+| **Global sync blocks on photo hang** | `useAutoSync` calls `syncPhotos()` in parallel with other syncs | If photos hang, 30-second timeout triggers for ALL syncs |
+| **Auto-sync cascades timeout** | `SYNC_TIMEOUT = 30000` in useAutoSync.tsx line 17 | Single hung operation times out the entire sync batch |
+
+### The Cascade Effect
+
+```text
+User takes photo on mobile
+         │
+         ▼
+compressImage() hangs (no timeout on canvas.toBlob)
+         │
+         ▼
+processFiles() await blocks (line 131-136)
+         │
+         ▼
+uploadMutexRef stays locked (never reaches finally block)
+         │
+         ▼
+UI shows permanent "Saving..." spinner (line 257-260)
+         │
+         ▼
+Meanwhile: useAutoSync periodic sync triggers
+         │
+         ▼
+syncPhotos() iterates over getUnuploadedPhotos() 
+which includes the hung photo
+         │
+         ▼
+SYNC_TIMEOUT (30s) triggers for entire sync batch
+         │
+         ▼
+"Item sync timeout" errors logged
+         │
+         ▼
+All save operations appear frozen (isSyncing stays true)
+```
 
 ---
 
-## Critical Issue Identified
+## Solution Architecture
 
-### PhotoCapture Component Blocks UI When Online
+### Fix 1: Add Timeout to Image Compression
 
-**Current Behavior** (problematic):
+**File**: `src/lib/image-compression.ts`
+
+Wrap the entire compression operation with a timeout. If compression hangs, return the original file.
+
+```typescript
+const COMPRESSION_TIMEOUT = 10000; // 10 seconds max
+
+export const compressImage = async (
+  file: File,
+  options: CompressionOptions = {},
+  attemptCount: number = 0
+): Promise<File> => {
+  // Wrap entire operation with timeout
+  const timeoutPromise = new Promise<File>((resolve) => {
+    setTimeout(() => {
+      console.warn('[Image Compression] Timed out, using original file');
+      resolve(file);
+    }, COMPRESSION_TIMEOUT);
+  });
+
+  try {
+    return await Promise.race([
+      compressImageInternal(file, options, attemptCount),
+      timeoutPromise
+    ]);
+  } catch (error) {
+    console.warn('[Image Compression] Failed, using original:', error);
+    return file;
+  }
+};
 ```
-User selects photo
-    ↓
-[BLOCKING] If online: Upload to Supabase Storage (5-30+ seconds on slow network)
-    ↓
-[BLOCKING] If online: Insert into inspection_photos table
-    ↓
-Finally: Call onPhotoAdded() to refresh gallery
+
+### Fix 2: Non-Blocking Quota Check in savePhotoOffline
+
+**File**: `src/lib/offline-storage.ts`
+
+The `checkStorageQuota()` call should be fire-and-forget or have a short timeout, not block the IndexedDB write.
+
+```typescript
+// Before (blocking):
+const quota = await checkStorageQuota();
+if (quota.percentUsed > 90) { ... }
+
+// After (non-blocking with timeout):
+const quotaCheck = withTimeout(checkStorageQuota(), 2000, { percentUsed: 0 });
+quotaCheck.then(quota => {
+  if (quota.percentUsed > 90) {
+    console.warn('[Offline Storage] Storage almost full');
+  }
+});
+// Continue with IndexedDB write immediately - don't await quota check
 ```
 
-**Desired Behavior** (local-first):
-```
-User selects photo
-    ↓
-[IMMEDIATE] Save compressed blob to IndexedDB
-    ↓
-[IMMEDIATE] Call onPhotoAdded() to refresh gallery
-    ↓
-[BACKGROUND] Queue for remote sync (fire-and-forget)
-```
-
----
-
-## Current State Analysis
-
-### Already Working Correctly (No Changes Needed)
-
-| Component | Pattern | Status |
-|-----------|---------|--------|
-| `InspectionForm.tsx` | Fire-and-forget IndexedDB + 1.5s debounce | ✅ Correct |
-| `TrainingForm.tsx` | Fire-and-forget IndexedDB + 1.5s debounce | ✅ Correct |
-| `DailyAssessmentForm.tsx` | Fire-and-forget IndexedDB + 1.5s debounce | ✅ Correct |
-| `PhotoGallery.tsx` | Loads from IndexedDB first, merges with remote | ✅ Correct |
-
-### Requires Fix
-
-| Component | Issue | Impact |
-|-----------|-------|--------|
-| `PhotoCapture.tsx` | Awaits network upload when online (lines 72-92) | **P1: Blocks UI for 5-30+ seconds** |
-| `useAutoSync.tsx` | Fixed 30s interval for all devices | Medium: Battery drain on mobile |
-
----
-
-## Implementation Steps
-
-### Step 1: Fix PhotoCapture to Use Local-First Pattern
+### Fix 3: Add Safety Timeout to PhotoCapture processFiles
 
 **File**: `src/components/PhotoCapture.tsx`
 
-**Changes**:
-1. **Always save to IndexedDB first** (regardless of online status)
-2. **Call `onPhotoAdded()` immediately** after local save (instant UI feedback)
-3. **Queue remote sync as fire-and-forget** (non-blocking background operation)
-4. **Show success feedback** based on local save, not network upload
+Wrap the per-file processing with a timeout to prevent infinite hangs.
 
-**New Flow**:
 ```typescript
-const handleFileSelect = async (e) => {
-  // ... existing compression logic ...
-  
-  for (const file of Array.from(files)) {
-    const processedFile = await compressImage(file, {...});
-    
-    // 1. ALWAYS save to IndexedDB FIRST (local-first)
-    const photoId = `${inspectionId}-${Date.now()}-${randomId()}`;
-    await savePhotoOffline({
-      id: photoId,
-      inspectionId,
-      section,
-      blob: processedFile,
-      fileName: processedFile.name,
-      uploaded: false,
-    });
-    
-    // 2. IMMEDIATELY refresh gallery (user sees photo instantly)
-    onPhotoAdded();
-    
-    // 3. Queue background sync (fire-and-forget, non-blocking)
-    if (navigator.onLine) {
-      queuePhotoUpload(photoId, processedFile).catch((error) => {
-        console.warn('[PhotoCapture] Background sync queued:', error);
-        // Photo remains in IndexedDB for next auto-sync
-      });
-    }
-  }
-  
-  triggerHaptic('success'); // Immediate success feedback
-};
+const FILE_PROCESS_TIMEOUT = 15000; // 15 seconds per file max
 
-// Fire-and-forget photo upload (runs in background)
-const queuePhotoUpload = async (photoId: string, file: File) => {
+for (const file of Array.from(files)) {
   try {
-    const user = await getUserWithCache();
-    const fileName = `${user.id}/${inspectionId}/${Date.now()}.${ext}`;
-    
-    // Upload to storage
-    await supabase.storage.from('inspection-photos').upload(fileName, file);
-    
-    // Insert database record
-    await supabase.from('inspection_photos').insert({
-      inspection_id: inspectionId,
-      photo_url: fileName,
-      photo_section: section,
-    });
-    
-    // Mark as uploaded in IndexedDB (success)
-    await markPhotoAsUploaded(photoId, fileName);
+    // Wrap entire file processing with timeout
+    await Promise.race([
+      processOneFile(file, user),
+      new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('File processing timeout')), FILE_PROCESS_TIMEOUT)
+      )
+    ]);
+    successCount++;
   } catch (error) {
-    // Leave in IndexedDB - will be synced by useAutoSync
-    console.warn('[PhotoCapture] Background upload failed, queued for later');
+    console.error('[PhotoCapture] File processing failed/timed out:', error);
+    errorCount++;
+    toast.error('Photo processing failed', {
+      description: 'Please try again with a smaller image',
+    });
+  }
+}
+```
+
+### Fix 4: Ensure Mutex Release on Any Failure
+
+**File**: `src/components/PhotoCapture.tsx`
+
+Add an outer try-catch and safety timeout to guarantee mutex release.
+
+```typescript
+const processFiles = async (files: FileList | null) => {
+  if (uploadMutexRef.current || !files?.length) return;
+  
+  uploadMutexRef.current = true;
+  setUploading(true);
+  
+  // Safety timeout - ALWAYS release mutex after 30 seconds regardless
+  const safetyTimeout = setTimeout(() => {
+    if (uploadMutexRef.current) {
+      console.warn('[PhotoCapture] Safety timeout - releasing mutex');
+      uploadMutexRef.current = false;
+      setUploading(false);
+    }
+  }, 30000);
+  
+  try {
+    // ... existing processing logic ...
+  } finally {
+    clearTimeout(safetyTimeout);
+    setUploading(false);
+    uploadMutexRef.current = false;
+    // Clear inputs...
   }
 };
-```
-
-### Step 2: Add Mobile-Optimized Sync Interval to useAutoSync
-
-**File**: `src/hooks/useAutoSync.tsx`
-
-**Changes**:
-1. Import `useIsMobile` hook
-2. Add `MOBILE_SYNC_INTERVAL = 300000` (5 minutes)
-3. Use computed interval based on viewport
-4. Add dependency to re-initialize on viewport change
-
-**Code Changes**:
-```typescript
-// At top of file
-import { useIsMobile } from '@/hooks/use-mobile';
-
-// Replace constants
-const DESKTOP_SYNC_INTERVAL = 30000; // 30 seconds
-const MOBILE_SYNC_INTERVAL = 300000; // 5 minutes for mobile
-
-// Inside hook
-const isMobileViewport = useIsMobile();
-const syncInterval = isMobileViewport ? MOBILE_SYNC_INTERVAL : DESKTOP_SYNC_INTERVAL;
-
-// In useEffect for periodic sync
-periodicSyncIntervalRef.current = setInterval(() => {
-  if (!document.hidden && navigator.onLine) {
-    performSync(true);
-  }
-}, syncInterval);
-
-// Add syncInterval to dependency array
-```
-
----
-
-## Data Flow Architecture
-
-### Before (Current - Blocking)
-
-```text
-Photo Capture (ONLINE)
-    │
-    ▼
-[BLOCKING] Upload to Supabase Storage (5-30 seconds)
-    │
-    ▼
-[BLOCKING] Insert to inspection_photos table
-    │
-    ▼
-onPhotoAdded() - User finally sees photo
-```
-
-### After (Proposed - Non-Blocking)
-
-```text
-Photo Capture
-    │
-    ▼
-[50ms] Compress image
-    │
-    ▼
-[10ms] Save to IndexedDB (local)
-    │
-    ▼
-[IMMEDIATE] onPhotoAdded() - User sees photo with "Pending" badge
-    │
-    ├─────────────────────────────────────────────────────────┐
-    │                                                         │
-    ▼                                                         ▼
-[UI CONTINUES]                              [BACKGROUND - Fire & Forget]
-User can continue                           Upload to Supabase Storage
-capturing photos                            Insert to database
-                                            Mark as "Synced" in IndexedDB
-                                            Gallery auto-refreshes
 ```
 
 ---
 
 ## Files to Modify
 
-| File | Action | Changes |
-|------|--------|---------|
-| `src/components/PhotoCapture.tsx` | **Modify** | Implement local-first photo save with background sync |
-| `src/hooks/useAutoSync.tsx` | **Modify** | Add mobile-aware sync intervals (5 min vs 30 sec) |
+| File | Priority | Changes |
+|------|----------|---------|
+| `src/lib/image-compression.ts` | **P0** | Add 10-second timeout wrapper to `compressImage()` |
+| `src/components/PhotoCapture.tsx` | **P0** | Add 30-second safety timeout for mutex, 15-second per-file timeout |
+| `src/lib/offline-storage.ts` | **P1** | Make `checkStorageQuota()` non-blocking in `savePhotoOffline()` |
 
 ---
 
 ## Detailed Code Changes
 
-### PhotoCapture.tsx - Complete Rewrite of handleFileSelect
-
-The key changes are:
-1. Remove the `if (isOnline) {...} else {...}` branching
-2. Always save locally first
-3. Always call `onPhotoAdded()` immediately
-4. Fire-and-forget the network upload
+### image-compression.ts
 
 ```typescript
-// Lines 72-108 (current blocking pattern) becomes:
+// Add at top of file
+const COMPRESSION_TIMEOUT = 10000; // 10 seconds
 
-// ALWAYS save to IndexedDB FIRST (local-first architecture)
-const photoId = `${inspectionId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-await savePhotoOffline({
-  id: photoId,
-  inspectionId,
-  section,
-  blob: processedFile,
-  fileName: processedFile.name,
-  uploaded: false,
-});
+// Rename existing compressImage to compressImageInternal
+const compressImageInternal = async (
+  file: File,
+  options: CompressionOptions = {},
+  attemptCount: number = 0
+): Promise<File> => {
+  // ... existing implementation (lines 27-155) ...
+};
 
-if (import.meta.env.DEV) {
-  console.log('[PhotoCapture] Photo saved locally:', photoId);
-}
-
-// If online, attempt background sync (fire-and-forget)
-if (isOnline) {
-  const fileExt = processedFile.name.split('.').pop();
-  const fileName = `${user.id}/${inspectionId}/${Date.now()}.${fileExt}`;
-  
-  // Fire-and-forget - don't await, don't block UI
-  (async () => {
-    try {
-      const { error: uploadError } = await supabase.storage
-        .from('inspection-photos')
-        .upload(fileName, processedFile);
-
-      if (uploadError) throw uploadError;
-
-      const { error: dbError } = await supabase
-        .from('inspection_photos')
-        .insert({
-          inspection_id: inspectionId,
-          photo_url: fileName,
-          photo_section: section,
-        });
-
-      if (dbError) throw dbError;
-
-      // Mark as uploaded in local storage
-      await markPhotoAsUploaded(photoId, fileName);
-      
-      if (import.meta.env.DEV) {
-        console.log('[PhotoCapture] Background sync completed:', photoId);
-      }
-    } catch (error) {
-      console.warn('[PhotoCapture] Background sync failed, will retry later:', error);
-      // Photo remains in IndexedDB with uploaded=false
-      // Will be synced by useAutoSync
-    }
-  })();
-}
-```
-
-### useAutoSync.tsx - Mobile Interval Configuration
-
-```typescript
-// Line 1 - Add import
-import { useIsMobile } from '@/hooks/use-mobile';
-
-// Lines 9-12 - Update constants
-const DEBOUNCE_DELAY = 3000;
-const DESKTOP_SYNC_INTERVAL = 30000; // 30 seconds for desktop
-const MOBILE_SYNC_INTERVAL = 300000; // 5 minutes for mobile viewports
-const MIN_SYNC_INTERVAL = 5000;
-const INITIAL_SYNC_DELAY = 2000;
-const SYNC_TIMEOUT = 30000;
-
-// Line ~55 - Inside hook, add viewport detection
-const isMobileViewport = useIsMobile();
-const syncInterval = isMobileViewport ? MOBILE_SYNC_INTERVAL : DESKTOP_SYNC_INTERVAL;
-
-// Line ~150 - Update periodic sync interval
-periodicSyncIntervalRef.current = setInterval(() => {
-  if (!document.hidden && navigator.onLine) {
-    performSync(true);
+// New wrapper function with timeout protection
+export const compressImage = async (
+  file: File,
+  options: CompressionOptions = {},
+  attemptCount: number = 0
+): Promise<File> => {
+  // Skip compression for very small files (moved here for early exit)
+  if (file.size < 100 * 1024) {
+    return file;
   }
-}, syncInterval);
 
-// Line ~165 - Add syncInterval to logging
-if (import.meta.env.DEV) {
-  console.log('[AutoSync] Initialized with interval:', syncInterval / 1000, 's (mobile:', isMobileViewport, ')');
-}
-
-// Cleanup effect must recreate interval when viewport changes
-// Add syncInterval to dependency array
-}, [performSync, ..., syncInterval]);
+  try {
+    // Race between compression and timeout
+    const result = await Promise.race([
+      compressImageInternal(file, options, attemptCount),
+      new Promise<File>((resolve) => {
+        setTimeout(() => {
+          console.warn('[Image Compression] Timed out after', COMPRESSION_TIMEOUT, 'ms - using original file');
+          resolve(file);
+        }, COMPRESSION_TIMEOUT);
+      })
+    ]);
+    return result;
+  } catch (error) {
+    console.warn('[Image Compression] Failed, returning original:', error);
+    return file;
+  }
+};
 ```
 
----
-
-## UI Feedback Improvements
-
-### Immediate Visual Confirmation
-
-The PhotoGallery already shows:
-- **"Pending" badge** (orange) for `uploaded: false`
-- **"Synced" badge** (green) for `uploaded: true`
-
-This provides instant feedback that the photo is saved locally and will sync when possible.
-
-### Suggested Toast Enhancement (Optional)
+### PhotoCapture.tsx
 
 ```typescript
-// In PhotoCapture after local save:
-toast.success('Photo saved', {
-  description: isOnline ? 'Syncing to cloud...' : 'Will sync when online',
-  duration: 2000,
-});
+// Add constants at top
+const PROCESS_SAFETY_TIMEOUT = 30000; // 30 seconds max for entire batch
+const PER_FILE_TIMEOUT = 15000; // 15 seconds per file
+
+// Updated processFiles function
+const processFiles = async (files: FileList | null) => {
+  // Prevent concurrent uploads
+  if (uploadMutexRef.current) {
+    console.log('[PhotoCapture] Upload already in progress, ignoring');
+    return;
+  }
+  if (!files || files.length === 0) return;
+
+  uploadMutexRef.current = true;
+  triggerHaptic('light');
+  setUploading(true);
+
+  // SAFETY: Force release mutex after timeout regardless of promise state
+  const safetyTimeout = setTimeout(() => {
+    if (uploadMutexRef.current) {
+      console.warn('[PhotoCapture] Safety timeout reached - force releasing mutex');
+      uploadMutexRef.current = false;
+      setUploading(false);
+      toast.error('Photo processing timed out', {
+        description: 'Please try again with fewer or smaller images',
+      });
+    }
+  }, PROCESS_SAFETY_TIMEOUT);
+
+  let successCount = 0;
+  let errorCount = 0;
+
+  try {
+    const user = await getUserWithCache();
+    if (!user) throw new Error("Not authenticated");
+
+    for (const file of Array.from(files)) {
+      try {
+        // Wrap per-file processing with timeout
+        await Promise.race([
+          (async () => {
+            // Validation
+            const validation = validateFile(file);
+            if (!validation.valid) {
+              toast.error('Invalid file', { description: validation.error });
+              errorCount++;
+              return;
+            }
+
+            // Compression (already has internal timeout now)
+            let processedFile = file;
+            if (file.type.startsWith('image/')) {
+              processedFile = await compressImage(file, {
+                maxWidth: 1920, maxHeight: 1920, quality: 0.85, maxSizeMB: 3,
+              });
+            }
+
+            // LOCAL SAVE (must not hang)
+            const photoId = `${inspectionId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+            await savePhotoOffline({
+              id: photoId, inspectionId, section,
+              blob: processedFile, fileName: processedFile.name, uploaded: false,
+            });
+
+            onPhotoAdded();
+            successCount++;
+
+            // Background sync (fire-and-forget)
+            if (isOnline) {
+              uploadPhotoInBackground(photoId, processedFile, user.id).catch(() => {});
+            }
+          })(),
+          new Promise<void>((_, reject) =>
+            setTimeout(() => reject(new Error('Per-file timeout')), PER_FILE_TIMEOUT)
+          )
+        ]);
+      } catch (fileError: any) {
+        console.warn('[PhotoCapture] File processing failed:', fileError.message);
+        errorCount++;
+        // Continue with other files
+      }
+    }
+
+    // Show feedback based on results
+    if (successCount > 0) {
+      triggerHaptic('success');
+      toast.success(successCount === 1 ? 'Photo saved' : `${successCount} photos saved`, {
+        description: isOnline ? 'Syncing to cloud...' : 'Will sync when online',
+        duration: 2000,
+      });
+    }
+    
+    if (errorCount > 0 && successCount === 0) {
+      triggerHaptic('error');
+      toast.error('Failed to process photos', {
+        description: 'Please try again with different images',
+      });
+    }
+  } catch (error: any) {
+    console.error("Photo capture error:", error);
+    triggerHaptic('error');
+    toast.error('Failed to save photo', { description: error.message || 'Please try again' });
+  } finally {
+    clearTimeout(safetyTimeout);
+    setUploading(false);
+    uploadMutexRef.current = false;
+    if (cameraInputRef.current) cameraInputRef.current.value = '';
+    if (uploadInputRef.current) uploadInputRef.current.value = '';
+  }
+};
 ```
 
----
+### offline-storage.ts (savePhotoOffline)
 
-## Error Handling & Resilience
+```typescript
+export async function savePhotoOffline(photo: { ... }) {
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      
+      // NON-BLOCKING quota check - don't await, just warn if almost full
+      checkStorageQuota().then(quota => {
+        if (quota.percentUsed > 90) {
+          console.warn('[Offline Storage] Storage almost full:', quota.percentUsed.toFixed(1), '%');
+        }
+      }).catch(() => {}); // Ignore quota check failures
 
-### Failure Scenarios
+      // Proceed with save immediately (don't wait for quota check)
+      await db.put('photos', {
+        ...photo,
+        timestamp: Date.now(),
+        uploaded: photo.uploaded || false,
+      });
 
-| Scenario | Handling |
-|----------|----------|
-| IndexedDB write fails | Show error toast, don't call onPhotoAdded |
-| Network upload fails | Photo stays in IndexedDB, useAutoSync retries every 5min/30sec |
-| App closes during upload | IndexedDB persists, resumes on next app open |
-| Device goes offline mid-upload | Photo marked as pending, syncs when online |
+      if (import.meta.env.DEV) {
+        console.log('[Offline Storage] Saved photo:', photo.id);
+      }
 
-### Retry Mechanism
-
-The existing `syncPhotos()` function in `sync-manager.ts` already handles retrying unuploaded photos. No changes needed there.
+      // Background sync registration (also non-blocking)
+      if (!photo.uploaded) {
+        import('./background-sync').then(({ registerPhotoSync }) => {
+          registerPhotoSync().catch(() => {});
+        }).catch(() => {});
+      }
+    },
+    undefined,
+    'savePhotoOffline'
+  );
+}
+```
 
 ---
 
 ## Testing Checklist
 
 After implementation:
-- [ ] Take photo on mobile (online) - should appear instantly with "Pending" badge
-- [ ] Verify badge changes to "Synced" after background upload completes
-- [ ] Take photo offline - should appear with "Pending" badge
-- [ ] Go online - verify photo syncs automatically
-- [ ] Test on slow 3G network - UI should remain responsive
-- [ ] Verify 5-minute sync interval on mobile viewport
-- [ ] Verify 30-second sync interval on desktop viewport
-- [ ] Test viewport resize - verify interval changes dynamically
-- [ ] Verify all form fields still auto-save with 1.5s debounce
+- [ ] Take photo on mobile with slow network - should save locally and show success within 3 seconds
+- [ ] Take large photo (>10MB) - should compress or timeout gracefully, never hang
+- [ ] Upload multiple photos rapidly - mutex should release properly
+- [ ] Disconnect network mid-upload - photo should save locally with "Pending" badge
+- [ ] Verify other form fields remain saveable during photo upload
+- [ ] Verify auto-sync doesn't block on hung photos
+- [ ] Test on iOS Safari (WebKit canvas issues)
+- [ ] Test on Android Chrome
+- [ ] Force-kill app during upload, reopen - no stuck state
 
 ---
 
-## Risk Assessment
+## Risk Mitigation
 
 | Risk | Probability | Mitigation |
 |------|-------------|------------|
-| Duplicate photos if retry runs while original is still uploading | Low | Add upload mutex per photo ID |
-| IndexedDB quota exceeded | Low | Already have quota check; photos are compressed |
-| Photo lost if IndexedDB cleared | Very Low | Warn users on storage clear; data recovery guide exists |
-| Mobile battery drain from frequent sync | Addressed | 5-minute interval for mobile reduces wake-ups by 10x |
+| Timeout too aggressive (10s compression) | Low | Can adjust to 15s; 10s should handle 99% of mobile photos |
+| Quota check removal causes storage overflow | Very Low | Still check async and warn user; existing compression limits file sizes |
+| Safety timeout fires during legitimate long upload | Low | 30s is generous; fire-and-forget means upload continues in background |
 
 ---
 
 ## Summary
 
-This implementation ensures:
-1. **Photos are saved locally in <100ms** (IndexedDB write)
-2. **UI updates immediately** (user sees photo with "Pending" badge)
-3. **Background sync is non-blocking** (fire-and-forget pattern)
-4. **Mobile battery is preserved** (5-minute sync interval)
-5. **Existing form data persistence remains unchanged** (already working correctly)
+The root cause is a **missing timeout wrapper** around image compression combined with **blocking quota checks** in IndexedDB operations. When `canvas.toBlob()` hangs on mobile (common on iOS Safari with large images), the entire upload pipeline freezes, the mutex is never released, and the global auto-sync system times out trying to process the stuck photo.
+
+The fix implements **defense-in-depth**:
+1. **Per-operation timeouts** (compression, per-file processing)
+2. **Non-blocking ancillary operations** (quota checks, background sync registration)
+3. **Safety net mutex release** (30-second global timeout)
+
+This ensures the UI remains responsive and users always receive feedback, even under adverse network/hardware conditions.
