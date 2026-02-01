@@ -89,7 +89,7 @@ export default function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: Z
 
   return (
     <Card>
-      <CardHeader>
+      <CardHeader className="px-4 md:px-6">
         <div className="flex items-center justify-between">
           <CardTitle>Ziplines</CardTitle>
           <Button onClick={addZipline} size="sm">
@@ -98,7 +98,7 @@ export default function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: Z
           </Button>
         </div>
       </CardHeader>
-      <CardContent>
+      <CardContent className="px-3 md:px-6">
         <div className="mb-4 space-y-1 text-xs text-muted-foreground">
           <p><strong>Cable Type KEY:</strong> GAC = Galvanized Aircraft Cable, SS = Super Swaged</p>
           <p><strong>Braking System KEY:</strong> ZS = Zip Stop, FB = Friction Break, SB = Spring Bank, G = Gravity</p>
@@ -271,14 +271,14 @@ export default function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: Z
         </div>
         
         {/* Mobile/Tablet card view */}
-        <div className="md:hidden space-y-4">
+        <div className="md:hidden space-y-3">
           {ziplines.map((zipline, index) => (
             <AnimatedListItem 
               key={zipline.id || index}
               itemKey={zipline.id || `mobile-zipline-${index}`}
               isNew={newItemIds.has(zipline.id)}
             >
-            <Card key={index} className="p-5 relative border-l-4 border-l-primary/20">
+            <div className="p-4 relative border-l-4 border-l-primary/20 rounded-lg bg-muted/30 border border-border">
               <Button
                 variant="ghost"
                 size="sm"
@@ -287,7 +287,7 @@ export default function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: Z
               >
                 <Trash2 className="h-4 w-4" />
               </Button>
-              <div className="space-y-4 pr-12">
+              <div className="space-y-3 pr-10">
                 <div>
                   <Label className="text-xs text-muted-foreground">Line Name</Label>
                   <HistoryAutocomplete
@@ -436,7 +436,7 @@ export default function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: Z
                   />
                 </div>
               </div>
-            </Card>
+            </div>
             </AnimatedListItem>
           ))}
         </div>

@@ -87,7 +87,7 @@ export default function EquipmentTable({ category, displayName, equipment, onUpd
 
   return (
     <Card>
-      <CardHeader>
+      <CardHeader className="px-4 md:px-6">
         <div className="flex items-center justify-between">
           <CardTitle className="text-lg">EQUIPMENT - {displayName.toUpperCase()}</CardTitle>
           <Button onClick={addEquipment} size="sm">
@@ -96,7 +96,7 @@ export default function EquipmentTable({ category, displayName, equipment, onUpd
           </Button>
         </div>
       </CardHeader>
-      <CardContent>
+      <CardContent className="px-3 md:px-6">
         {/* Desktop table view */}
         <div className="hidden md:block overflow-x-auto">
           <table className="w-full border-collapse">
@@ -189,14 +189,14 @@ export default function EquipmentTable({ category, displayName, equipment, onUpd
         </div>
         
         {/* Mobile card view */}
-        <div className="md:hidden space-y-4">
+        <div className="md:hidden space-y-3">
           {categoryEquipment.map((item, index) => (
             <AnimatedListItem 
               key={item.id || index}
               itemKey={item.id || `mobile-equipment-${index}`}
               isNew={newItemIds.has(item.id)}
             >
-            <Card key={index} className="p-5 relative border-l-4 border-l-primary/20">
+            <div className="p-4 relative border-l-4 border-l-primary/20 rounded-lg bg-muted/30 border border-border">
               <Button
                 variant="ghost"
                 size="sm"
@@ -205,7 +205,7 @@ export default function EquipmentTable({ category, displayName, equipment, onUpd
               >
                 <Trash2 className="h-4 w-4" />
               </Button>
-              <div className="space-y-4 pr-12">
+              <div className="space-y-3 pr-10">
                 <div>
                   <Label className="text-xs text-muted-foreground">Type *</Label>
                   <HistoryAutocomplete
@@ -268,7 +268,7 @@ export default function EquipmentTable({ category, displayName, equipment, onUpd
                   />
                 </div>
               </div>
-            </Card>
+            </div>
             </AnimatedListItem>
           ))}
         </div>

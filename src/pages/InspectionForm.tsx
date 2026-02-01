@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef } from "react";
 import { toast } from "@/hooks/use-toast";
+import { toast as sonnerToast } from "@/components/ui/sonner";
 import { addSaveNotification, addSyncNotification } from "@/lib/notification-center";
 import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -1169,6 +1170,8 @@ export default function InspectionForm() {
       await performSave(true); // Silent immediate save
       setLastSaved(new Date());
       setHasUnsavedChanges(false);
+      // Non-intrusive success feedback (routes to notification center on mobile)
+      sonnerToast.success("Changes saved");
       if (import.meta.env.DEV) {
         console.log("Immediate save triggered at", new Date().toLocaleTimeString());
       }
