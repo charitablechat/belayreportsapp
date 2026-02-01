@@ -7,6 +7,8 @@ import { getUserWithCache } from '@/lib/cached-auth';
 import { useQueryClient } from '@tanstack/react-query';
 import { isMobile, isIOS } from '@/lib/mobile-detection';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { addSyncNotification } from '@/lib/notification-center';
+import { emitSyncComplete } from '@/lib/sync-events';
 
 // Sync configuration with mobile optimization
 const DEBOUNCE_DELAY = 3000; // 3 seconds after local changes
@@ -163,6 +165,12 @@ export const useAutoSync = () => {
         queryClient.invalidateQueries({ queryKey: ['inspections'] });
         queryClient.invalidateQueries({ queryKey: ['trainings'] });
         queryClient.invalidateQueries({ queryKey: ['daily-assessments'] });
+        
+        // Notify mobile users via NotificationCenter (non-intrusive)
+        addSyncNotification('Data synced successfully');
+        
+        // Emit sync complete event for Dashboard to reload data
+        emitSyncComplete();
       }
     } catch (error) {
       console.error('[AutoSync] Sync failed:', error);

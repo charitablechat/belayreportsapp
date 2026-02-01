@@ -39,6 +39,7 @@ import { usePWA } from "@/hooks/usePWA";
 import { usePullToRefresh } from "@/hooks/usePullToRefresh";
 import { getOfflineInspections, deleteOfflineInspection, queueOperation, saveInspectionOffline, getOfflineTrainings, saveTrainingOffline, getOfflineDailyAssessments, saveDailyAssessmentOffline } from "@/lib/offline-storage";
 import { ContactDeveloperSheet } from "@/components/ContactDeveloperSheet";
+import { onSyncComplete } from "@/lib/sync-events";
 import { InspectionsEmptyState, TrainingsEmptyState, DailyAssessmentsEmptyState } from "@/components/EmptyState";
 import { getUserWithCache } from "@/lib/cached-auth";
 /* Holiday Theme Components */
@@ -210,10 +211,25 @@ export default function Dashboard() {
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
 
+    // Subscribe to sync completion events from useAutoSync
+    // This ensures Dashboard refreshes when background sync completes
+    const unsubscribeSyncComplete = onSyncComplete(async () => {
+      if (import.meta.env.DEV) {
+        console.log('[Dashboard] Sync complete event received - reloading data');
+      }
+      // Reload fresh data after background sync completes
+      await Promise.all([
+        loadInspections(),
+        loadTrainingReports(),
+        loadDailyAssessments()
+      ]);
+    });
+
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
       subscription.unsubscribe();
+      unsubscribeSyncComplete();
     };
   }, []);
 
