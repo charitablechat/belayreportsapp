@@ -3,7 +3,10 @@ import react from "@vitejs/plugin-react-swc";
 import path from "path";
 import { componentTagger } from "lovable-tagger";
 import { pwaConfig } from "./vite-pwa-config";
-import packageJson from "./package.json";
+
+// Version follows vX.Y.Z format where Z increments by 10 on each deployment
+// v2.1.10 - Mobile Auto-Save Item Reordering fix, mobile layout/text wrapping fixes, security review
+const APP_VERSION = "2.1.10";
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
@@ -12,7 +15,7 @@ export default defineConfig(({ mode }) => ({
     port: 8080,
   },
   define: {
-    'import.meta.env.APP_VERSION': JSON.stringify(packageJson.version),
+    'import.meta.env.APP_VERSION': JSON.stringify(APP_VERSION),
   },
   plugins: [
     react(),
