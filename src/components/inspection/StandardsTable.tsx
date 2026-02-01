@@ -112,8 +112,8 @@ export default function StandardsTable({ standards, onUpdate }: StandardsTablePr
                     <p className="text-xs text-muted-foreground mt-1">{standard.reference}</p>
                   </div>
                   
-                  <div className="flex items-center justify-between pt-2">
-                    <div className="flex items-center gap-4">
+                  <div className="flex items-center justify-between pt-2 flex-wrap gap-2">
+                    <div className="flex items-center gap-4 flex-wrap">
                       <div className="flex items-center gap-2">
                         <Checkbox
                           id={`standard-yes-${index}`}
@@ -136,10 +136,10 @@ export default function StandardsTable({ standards, onUpdate }: StandardsTablePr
                       </div>
                     </div>
                     {standardData.has_documentation === false && (
-                      <Badge variant="destructive" className="text-xs">Missing</Badge>
+                      <Badge variant="destructive" className="text-xs shrink-0">Missing</Badge>
                     )}
                     {standardData.has_documentation === null && (
-                      <Badge variant="outline" className="text-xs">Not Set</Badge>
+                      <Badge variant="outline" className="text-xs shrink-0">Not Set</Badge>
                     )}
                   </div>
                 </div>
