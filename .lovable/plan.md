@@ -1,199 +1,210 @@
 
-# Plan: Fix Mobile Report Loading When IndexedDB Times Out
+# Plan: Route ALL Toasts to Notification Center on Mobile
 
-## Problem Summary
-On mobile devices, recent reports fail to load because IndexedDB operations are timing out repeatedly, and the current loading logic waits for IndexedDB before attempting Supabase fetches. When IndexedDB hangs, it blocks the entire data loading flow.
-
----
-
-## Root Cause
-
-The Dashboard's `loadInspections` function has a **sequential dependency** bug:
-
-```text
-Current Flow (Broken):
-1. getOfflineInspections() ─── [TIMES OUT after 5-15 seconds] ─── returns []
-2. if (length > 0) ─── false, so setInspections() NOT called
-3. if (navigator.onLine) ─── fetch from Supabase
-4. setInspections(data) ─── finally sets data
-```
-
-The problem is that when IndexedDB times out (common on mobile Safari after backgrounding), the 5-15 second delay makes the app feel completely broken. The user sees nothing while waiting.
-
-Additionally, the `dbPromise` global in `offline-storage.ts` gets stuck in a "rejecting" cycle where each call creates a new promise that also times out.
+## Objective
+Eliminate ALL toast overlays on mobile devices. Every toast (success, error, warning, info, loading) will be routed to the Notification Center instead of appearing as a visual popup.
 
 ---
 
-## Solution
+## Technical Approach
 
-### Strategy: Parallel Loading with "First Win" Pattern
+### Strategy: Toast Interception at Source
 
-Instead of loading sequentially (IndexedDB → Supabase), load **both in parallel** and display whichever returns first:
-
-```text
-Fixed Flow:
-1. Start getOfflineInspections() ─── [may timeout]
-2. Start fetchFromSupabase() ─── [parallel]
-3. Whichever returns first → setInspections()
-4. Second result → merge/update if newer
-```
+Modify `src/components/ui/sonner.tsx` to export a mobile-aware `toast` object that routes all calls to the notification center on mobile, while maintaining normal desktop behavior.
 
 ---
 
 ## Files to Modify
 
-| File | Priority | Changes |
-|------|----------|---------|
-| `src/pages/Dashboard.tsx` | **P0** | Restructure loading to run IndexedDB and Supabase in parallel |
-| `src/lib/offline-storage.ts` | **P1** | Add IndexedDB circuit breaker to stop repeated failing attempts |
+| File | Changes |
+|------|---------|
+| `src/components/ui/sonner.tsx` | Export mobile-aware toast that routes ALL types to notification center |
+| `src/lib/notification-center.ts` | Add `routeToastToNotification()` helper function |
+| `src/components/ui/mobile-aware-toaster.tsx` | Conditionally hide Toaster on mobile entirely |
 
 ---
 
-## Technical Changes
+## Behavior Matrix
 
-### Dashboard.tsx - Parallel Loading Pattern
+| Toast Type | Desktop | Mobile |
+|------------|---------|--------|
+| `toast.success()` | Shows toast | → Notification Center |
+| `toast.error()` | Shows toast | → Notification Center |
+| `toast.warning()` | Shows toast | → Notification Center |
+| `toast.info()` | Shows toast | → Notification Center |
+| `toast.loading()` | Shows toast | → Notification Center |
+| `toast.promise()` | Shows toast | → Notification Center (loading/success/error states) |
+| `toast.dismiss()` | Dismisses toast | No-op (nothing to dismiss) |
 
-Refactor `loadInspections`, `loadTrainingReports`, and `loadDailyAssessments` to:
+---
 
-1. Start both IndexedDB and Supabase fetches simultaneously
-2. Set state from whichever completes first
-3. If IndexedDB fails silently, proceed with network data only
-4. Use a short timeout (2 seconds) for IndexedDB before preferring network
+## Implementation Details
 
-**Updated loadInspections function:**
+### 1. sonner.tsx - Complete Mobile Interception
+
 ```typescript
-const loadInspections = async (cachedUserId?: string) => {
-  try {
-    const userId = cachedUserId || (await getUserWithCache())?.id;
-    
-    // Start both fetches in parallel
-    const offlinePromise = getOfflineInspections(userId).catch(() => []);
-    
-    let supabasePromise: Promise<any[]> = Promise.resolve([]);
-    if (navigator.onLine) {
-      supabasePromise = supabase
-        .from("inspections")
-        .select(`*, inspector:profiles(...)`)
-        .order("last_opened_at", { ascending: false })
-        .order("created_at", { ascending: false })
-        .then(({ data, error }) => {
-          if (error) throw error;
-          return data || [];
-        });
-    }
+import { Toaster as Sonner, toast as sonnerToast, ExternalToast } from "sonner";
+import { isMobile } from "@/lib/mobile-detection";
+import { routeToastToNotification } from "@/lib/notification-center";
 
-    // Race with preference: use offline if fast, otherwise wait for network
-    const offlineWithTimeout = Promise.race([
-      offlinePromise,
-      new Promise<any[]>((resolve) => setTimeout(() => resolve([]), 2000))
-    ]);
-    
-    const offlineData = await offlineWithTimeout;
-    if (offlineData.length > 0) {
-      setInspections(offlineData); // Show cached data immediately
-    }
-    
-    // Always try to get fresh data from network
-    if (navigator.onLine) {
-      const networkData = await supabasePromise;
-      if (networkData.length > 0) {
-        setInspections(networkData);
-        // Background save to IndexedDB (fire-and-forget)
-        Promise.all(networkData.map(i => saveInspectionOffline(i))).catch(() => {});
+function createMobileAwareToast() {
+  const checkMobile = () => isMobile();
+  
+  return {
+    success: (message: string, data?: ExternalToast) => {
+      if (checkMobile()) {
+        routeToastToNotification(message, 'success');
+        return null;
       }
-    }
-  } catch (error) {
-    console.error("Error loading inspections:", error);
-  }
-};
+      return sonnerToast.success(message, data);
+    },
+    error: (message: string, data?: ExternalToast) => {
+      if (checkMobile()) {
+        routeToastToNotification(message, 'error');
+        return null;
+      }
+      return sonnerToast.error(message, data);
+    },
+    warning: (message: string, data?: ExternalToast) => {
+      if (checkMobile()) {
+        routeToastToNotification(message, 'warning');
+        return null;
+      }
+      return sonnerToast.warning(message, data);
+    },
+    info: (message: string, data?: ExternalToast) => {
+      if (checkMobile()) {
+        routeToastToNotification(message, 'info');
+        return null;
+      }
+      return sonnerToast.info(message, data);
+    },
+    loading: (message: string, data?: ExternalToast) => {
+      if (checkMobile()) {
+        routeToastToNotification(message, 'loading');
+        return null;
+      }
+      return sonnerToast.loading(message, data);
+    },
+    promise: <T,>(promise: Promise<T>, messages: { loading: string; success: string; error: string }) => {
+      if (checkMobile()) {
+        routeToastToNotification(messages.loading, 'loading');
+        promise
+          .then(() => routeToastToNotification(messages.success, 'success'))
+          .catch(() => routeToastToNotification(messages.error, 'error'));
+        return promise;
+      }
+      return sonnerToast.promise(promise, messages);
+    },
+    dismiss: (id?: string | number) => {
+      if (checkMobile()) return; // No-op on mobile
+      return sonnerToast.dismiss(id);
+    },
+    // Default toast call
+    message: (message: string, data?: ExternalToast) => {
+      if (checkMobile()) {
+        routeToastToNotification(message, 'info');
+        return null;
+      }
+      return sonnerToast(message, data);
+    },
+    custom: sonnerToast.custom, // Keep custom for edge cases
+  };
+}
+
+export const toast = createMobileAwareToast();
 ```
 
-### offline-storage.ts - Circuit Breaker for IndexedDB
-
-Add a circuit breaker pattern to stop hammering a failing IndexedDB:
+### 2. notification-center.ts - Add Routing Helper
 
 ```typescript
-// Track consecutive failures
-let indexedDBFailureCount = 0;
-const CIRCUIT_BREAKER_THRESHOLD = 3;
-const CIRCUIT_BREAKER_RESET_TIME = 60000; // 1 minute
-let circuitBreakerTrippedAt: number | null = null;
+export type NotificationType = 'sync' | 'save' | 'error' | 'info' | 'loading';
 
-function isCircuitBreakerOpen(): boolean {
-  if (circuitBreakerTrippedAt) {
-    if (Date.now() - circuitBreakerTrippedAt > CIRCUIT_BREAKER_RESET_TIME) {
-      // Reset circuit breaker after cooldown
-      circuitBreakerTrippedAt = null;
-      indexedDBFailureCount = 0;
-      return false;
-    }
-    return true; // Circuit is still open
+/**
+ * Route a toast message to the notification center
+ * Maps toast types to notification types with appropriate priority
+ */
+export function routeToastToNotification(
+  message: string, 
+  type: 'success' | 'error' | 'warning' | 'info' | 'loading'
+): void {
+  switch (type) {
+    case 'error':
+      addErrorNotification(message);
+      break;
+    case 'success':
+      // Categorize success messages
+      if (/sync/i.test(message)) {
+        addSyncNotification(message);
+      } else {
+        addSaveNotification(message);
+      }
+      break;
+    case 'warning':
+      addNotification('info', message, 'medium');
+      break;
+    case 'loading':
+      addNotification('sync', message, 'low', 30000); // 30s expiry for loading
+      break;
+    case 'info':
+    default:
+      addNotification('info', message, 'low');
+      break;
   }
-  return false;
-}
-
-function recordIndexedDBFailure(): void {
-  indexedDBFailureCount++;
-  if (indexedDBFailureCount >= CIRCUIT_BREAKER_THRESHOLD) {
-    circuitBreakerTrippedAt = Date.now();
-    console.warn('[Offline Storage] Circuit breaker tripped - IndexedDB disabled for 60s');
-  }
-}
-
-function recordIndexedDBSuccess(): void {
-  indexedDBFailureCount = 0;
-  circuitBreakerTrippedAt = null;
 }
 ```
 
-Then modify `withIndexedDBErrorBoundary` to check the circuit breaker:
+### 3. mobile-aware-toaster.tsx - Hide on Mobile
 
 ```typescript
-async function withIndexedDBErrorBoundary<T>(...): Promise<T> {
-  // If circuit breaker is open, return fallback immediately
-  if (isCircuitBreakerOpen()) {
-    if (import.meta.env.DEV) {
-      console.log('[Offline Storage] Circuit breaker open, returning fallback for', operationName);
-    }
-    return fallbackValue;
-  }
+import { isMobile } from '@/lib/mobile-detection';
+import { Toaster as ShadcnToaster } from "@/components/ui/toaster";
+import { Toaster as SonnerToaster } from "@/components/ui/sonner";
 
-  try {
-    const result = await withTimeout(...);
-    recordIndexedDBSuccess();
-    return result;
-  } catch (error) {
-    recordIndexedDBFailure();
-    return fallbackValue;
+export function MobileAwareToaster() {
+  // Don't render Toaster at all on mobile
+  if (isMobile()) {
+    return null;
   }
+  return <ShadcnToaster />;
+}
+
+export function MobileAwareSonner() {
+  // Don't render Sonner at all on mobile
+  if (isMobile()) {
+    return null;
+  }
+  return <SonnerToaster />;
 }
 ```
 
 ---
 
-## Benefits
+## Why This Works
 
-| Before | After |
-|--------|-------|
-| User waits 5-15s for IndexedDB timeout | User sees network data in ~1-2s |
-| Repeated IndexedDB failures block app | Circuit breaker prevents repeated failures |
-| IndexedDB must succeed for data to load | Network data shown even if IndexedDB fails |
-| Mobile users see empty dashboard | Mobile users see data from Supabase |
+1. **Zero refactoring needed**: All 30+ files continue to import `toast` from `sonner` or `@/components/ui/sonner` - the interception happens transparently
+2. **Complete coverage**: Every toast type is caught and routed
+3. **Clean mobile UI**: No toast overlays ever appear on mobile
+4. **Desktop unchanged**: Full toast experience preserved for desktop users
+5. **Notification center becomes the single source**: Users check the notification center for all feedback
+
+---
+
+## User Experience on Mobile
+
+- User performs action (save, sync, error occurs)
+- StatusIndicator in header briefly pulses/updates
+- Badge count increments on profile icon
+- User can tap profile → Activity Log to see all notifications
+- NO visual interruption during data entry
 
 ---
 
 ## Testing Checklist
 
-After implementation:
-- [ ] Open Dashboard on mobile Safari - reports should load within 3 seconds
-- [ ] Test with DevTools throttling IndexedDB - should fallback to network
-- [ ] Verify offline mode still works (loads from IndexedDB when available)
-- [ ] Test circuit breaker: after 3 failures, IndexedDB is bypassed for 60 seconds
-- [ ] Verify background IndexedDB saves don't block UI
-- [ ] Test pull-to-refresh still works
-
----
-
-## Summary
-
-The fix implements a **parallel-first, network-preferred** loading strategy that ensures mobile users see their reports quickly, even when IndexedDB is misbehaving. The circuit breaker prevents the app from repeatedly timing out on a broken IndexedDB connection, providing a smoother experience on devices with storage issues.
+- [ ] Trigger `toast.success()` on mobile → appears in notification center, NO overlay
+- [ ] Trigger `toast.error()` on mobile → appears in notification center, NO overlay  
+- [ ] Trigger `toast.loading()` on mobile → appears in notification center, NO overlay
+- [ ] Test on desktop → all toasts appear normally as overlays
+- [ ] Verify StatusIndicator updates when notifications arrive
+- [ ] Verify Activity Log shows all routed notifications
