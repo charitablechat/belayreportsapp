@@ -1,179 +1,175 @@
 
-
-# Plan: Document Data Recovery Procedures
+# Plan: Add Delete Functionality with Confirmation to Inspection Report Sections
 
 ## Overview
-Create a comprehensive `DATA_RECOVERY_GUIDE.md` documentation file that consolidates all recovery procedures for end users and administrators. This addresses audit recommendation #6 by providing clear, actionable documentation for every data recovery scenario.
+Add delete buttons with confirmation dialogs to **Equipment** and **Ziplines** tables in the Inspection Report. The **Operating Systems** table already has this functionality implemented (without confirmation), which needs to be enhanced with a confirmation dialog.
 
----
+## Current State Analysis
 
-## Current Recovery Systems Analysis
+| Component | Has Delete Button | Has Confirmation Dialog |
+|-----------|------------------|------------------------|
+| `OperatingSystemsTable.tsx` | ✅ Yes (red Trash2 icon) | ❌ No |
+| `EquipmentTable.tsx` | ❌ No | ❌ No |
+| `ZiplinesTable.tsx` | ❌ No | ❌ No |
+| `StandardsTable.tsx` | N/A (fixed list of checkboxes) | N/A |
 
-### Existing Recovery Mechanisms (Already Implemented)
-
-| System | Location | Purpose |
-|--------|----------|---------|
-| **Soft Delete (60-day retention)** | `useSoftDelete.tsx` | Records are marked as deleted but retained for 60 days before permanent removal |
-| **Deleted Records Recovery UI** | `DeletedRecordsRecovery.tsx` | Super Admin UI for viewing/restoring soft-deleted records |
-| **Local Data Recovery Tool** | `DataRecoveryTool.tsx` | Admin tool to view/sync IndexedDB data stuck on a device |
-| **Database RPC Functions** | `restore_deleted_record`, `restore_from_backup` | Database-level restore capabilities |
-| **Migration Audit System** | `SAFE_MIGRATION_PRACTICES.md` | Tracks schema changes with backup tables |
-
-### Gap Analysis
-- No single document explaining these systems to end users
-- No step-by-step troubleshooting for common scenarios
-- No clear escalation path when self-service fails
-- Recovery procedures scattered across multiple files
-
----
+## Visual Specification (from reference image)
+- **Icon**: `Trash2` from lucide-react
+- **Color**: Red/destructive (`text-destructive`)
+- **Position**: Far right of each row in a dedicated column
+- **Size**: Small button (`h-8 w-8 p-0`)
+- **Hover State**: Light red background (`hover:bg-destructive/10`)
 
 ## Implementation Steps
 
-### Step 1: Create DATA_RECOVERY_GUIDE.md
+### Step 1: Update OperatingSystemsTable.tsx
+Add confirmation dialog before deletion (currently deletes immediately):
+- Add state for tracking pending deletion: `const [itemToDelete, setItemToDelete] = useState<{index: number, name: string} | null>(null)`
+- Wrap delete action in confirmation dialog
+- Update delete button to open dialog instead of immediate delete
 
-A new Markdown file in the project root that covers:
+### Step 2: Update EquipmentTable.tsx
+Add delete column and confirmation dialog:
+- Import `Trash2` from lucide-react
+- Import AlertDialog components
+- Add state for pending deletion
+- Add delete column header and button to desktop table view
+- Add delete button to mobile card view (positioned top-right like Operating Systems)
+- Add confirmation dialog at component level
+- Create `deleteEquipment` function to handle removal
 
-1. **End User Recovery** - What users can do themselves
-2. **Admin Recovery** - What admins/super admins can access
-3. **Developer Recovery** - Database-level procedures
-4. **Emergency Escalation** - When to contact support
+### Step 3: Update ZiplinesTable.tsx
+Add delete column and confirmation dialog:
+- Same pattern as EquipmentTable
+- Add narrower delete column (table already has many columns)
+- Position delete button appropriately for mobile view
 
-### Proposed Document Structure
+---
 
-```markdown
-# Data Recovery Guide
+## Technical Details
 
-## Quick Reference
+### Delete Confirmation Dialog Pattern (consistent across all tables)
 
-| Scenario | Recovery Method | Access Level |
-|----------|----------------|--------------|
-| Accidentally deleted a report | Deleted Records Recovery | Super Admin |
-| Data not syncing from device | Local Data Recovery Tool | Super Admin |
-| Data disappeared after save | Check IndexedDB + Force Sync | User |
-| Lost data after browser clear | Contact Admin for DB restore | Super Admin |
+```typescript
+// State
+const [itemToDelete, setItemToDelete] = useState<{index: number, name: string} | null>(null);
 
-## Section 1: End User Self-Service
+// Delete handler
+const handleDeleteConfirm = () => {
+  if (itemToDelete) {
+    const updated = items.filter((_, i) => i !== itemToDelete.index);
+    onUpdate(updated);
+    onImmediateSave?.();
+    setItemToDelete(null);
+  }
+};
 
-### Scenario: My data didn't save
-1. Check the network indicator
-2. Use the Force Sync button (Profile > Settings)
-3. If offline, data is stored locally and will sync when online
-
-### Scenario: Report shows as unsynced
-1. Wait for automatic sync (every 30 seconds when online)
-2. Manually trigger sync from Profile menu
-3. Check console for sync errors
-
-## Section 2: Admin Recovery (Super Admin Access)
-
-### Deleted Records Recovery
-**Location**: Super Admin Dashboard > Admin Tab > Deleted Records
-
-**Capabilities**:
-- View all soft-deleted records (60-day retention)
-- Restore individual records with one click
-- Permanently delete expired records
-- Batch cleanup of expired records
-
-**Steps to Restore**:
-1. Navigate to Super Admin Dashboard
-2. Click Admin tab
-3. Find "Deleted Records Recovery" section
-4. Locate the record in the table
-5. Click the restore (rotate) icon
-6. Confirm restoration
-
-### Local Data Recovery Tool
-**Location**: Super Admin Dashboard > Admin Tab > Data Recovery
-
-**Use Cases**:
-- User's device has unsynced data
-- User cleared browser cache
-- Need to force-push local data to database
-
-**Steps**:
-1. Access the affected device/browser
-2. Navigate to Super Admin Dashboard
-3. Click Admin tab > Data Recovery
-4. Review unsynced records (marked in red)
-5. Click Upload icon to sync individual records
-6. Or delete local copies if they're duplicates
-
-## Section 3: Database-Level Recovery (Developer)
-
-### Restore a Single Deleted Record
-
-**Requirements**: Database access via Supabase SQL Editor
-
-```sql
-SELECT restore_deleted_record(
-  '[record_uuid]',
-  '[table_name]'  -- inspections, trainings, or daily_assessments
-);
+// Dialog JSX
+<AlertDialog open={!!itemToDelete} onOpenChange={(open) => !open && setItemToDelete(null)}>
+  <AlertDialogContent>
+    <AlertDialogHeader>
+      <AlertDialogTitle>Delete [Item Type]</AlertDialogTitle>
+      <AlertDialogDescription>
+        Are you sure you want to delete <strong>{itemToDelete?.name || "this item"}</strong>?
+        This action cannot be undone.
+      </AlertDialogDescription>
+    </AlertDialogHeader>
+    <AlertDialogFooter>
+      <AlertDialogCancel>Cancel</AlertDialogCancel>
+      <AlertDialogAction 
+        onClick={handleDeleteConfirm}
+        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+      >
+        Delete
+      </AlertDialogAction>
+    </AlertDialogFooter>
+  </AlertDialogContent>
+</AlertDialog>
 ```
 
-### Restore from Migration Backup
+### Delete Button Pattern
 
-```sql
-SELECT restore_from_backup(
-  '[backup_table_name]',
-  '[original_table_name]'
-);
-```
+```typescript
+// Desktop table cell
+<td className="border p-2 text-center">
+  <Button
+    variant="ghost"
+    size="sm"
+    onClick={() => setItemToDelete({ index, name: item.name || "this item" })}
+    className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+  >
+    <Trash2 className="h-4 w-4" />
+  </Button>
+</td>
 
-### Point-in-Time Recovery
-See SAFE_MIGRATION_PRACTICES.md for full procedures.
-
-## Section 4: Prevention & Best Practices
-
-### Auto-Save Architecture
-- All changes are saved locally to IndexedDB within 1.5 seconds
-- Remote sync occurs automatically in background
-- 8-second timeout prevents UI freezes
-- Data persists even if network fails mid-save
-
-### Sync Verification
-- Check "Last Synced" indicator in Profile menu
-- Unsynced count shown in network indicator
-- Force Sync available as manual override
-
-## Section 5: Emergency Escalation
-
-If self-service recovery fails:
-1. Document the record ID (if known)
-2. Note the approximate time of data entry
-3. Check if the user was online or offline
-4. Contact system administrator with above details
-5. Admin can check:
-   - Soft-deleted records (60-day window)
-   - Local device IndexedDB
-   - Database audit logs
+// Mobile card (absolute positioned)
+<Button
+  variant="ghost"
+  size="sm"
+  onClick={() => setItemToDelete({ index, name: item.name || "this item" })}
+  className="absolute top-2 right-2 h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+>
+  <Trash2 className="h-4 w-4" />
+</Button>
 ```
 
 ---
 
-## Files to Create/Modify
+## Files to Modify
 
-| File | Action | Description |
-|------|--------|-------------|
-| `DATA_RECOVERY_GUIDE.md` | **Create** | Comprehensive user-facing recovery documentation |
+| File | Action | Changes |
+|------|--------|---------|
+| `src/components/inspection/OperatingSystemsTable.tsx` | Modify | Add AlertDialog confirmation before delete |
+| `src/components/inspection/EquipmentTable.tsx` | Modify | Add delete column, button, and confirmation dialog |
+| `src/components/inspection/ZiplinesTable.tsx` | Modify | Add delete column, button, and confirmation dialog |
+
+---
+
+## Detailed Changes per File
+
+### OperatingSystemsTable.tsx Changes
+1. Import AlertDialog components
+2. Add `itemToDelete` state
+3. Change `deleteSystem(index)` to `setItemToDelete({index, name: system.name})`
+4. Add `handleDeleteConfirm` function
+5. Add AlertDialog JSX before closing `</Card>` tag
+
+### EquipmentTable.tsx Changes
+1. Import: `Trash2` from lucide-react
+2. Import: AlertDialog components from `@/components/ui/alert-dialog`
+3. Add state: `const [itemToDelete, setItemToDelete] = useState<{item: any, name: string} | null>(null)`
+4. Add function: `deleteEquipment(item)` - filters by item reference
+5. Desktop table: Add empty header column (`<th className="border p-3 text-center font-semibold text-sm w-16"></th>`)
+6. Desktop table: Add delete cell at end of each row
+7. Mobile card: Add relative positioning and delete button
+8. Add AlertDialog at end of component
+
+### ZiplinesTable.tsx Changes
+1. Same imports as EquipmentTable
+2. Same state pattern
+3. Add delete function: `deleteZipline(index)`
+4. Desktop table: Add delete column header
+5. Desktop table: Add delete cell
+6. Mobile card: Add delete button (positioned top-right)
+7. Add AlertDialog
+
+---
+
+## Safety & Atomicity
+
+- **Non-destructive until confirmed**: Delete button opens dialog, no data is modified
+- **Atomic update**: Full array is replaced in single `onUpdate()` call
+- **Immediate persistence**: `onImmediateSave?.()` called after confirmed deletion
+- **Consistent with existing patterns**: Uses same AlertDialog pattern as Dashboard deletion
 
 ---
 
 ## Testing Checklist
-
-After implementation, verify:
-- [ ] All referenced UI paths are accurate
-- [ ] SQL commands work in database console
-- [ ] Links between documents work correctly
-- [ ] Recovery scenarios cover all identified gaps
-
----
-
-## Technical Notes
-
-- This is purely a documentation task - no code changes required
-- The guide references existing functionality that has been audited and confirmed working
-- Document follows the existing Markdown conventions in `SAFE_MIGRATION_PRACTICES.md` and `TESTING_GUIDE.md`
-- Recovery procedures are currently functional but undocumented, creating support burden
-
+- [ ] Verify delete icon appears on all Equipment rows (desktop + mobile)
+- [ ] Verify delete icon appears on all Ziplines rows (desktop + mobile)
+- [ ] Verify Operating Systems now shows confirmation dialog
+- [ ] Test canceling deletion - data should remain unchanged
+- [ ] Test confirming deletion - item should be removed
+- [ ] Verify deleted data is persisted (reload page)
+- [ ] Test on mobile devices for proper button positioning
+- [ ] Verify existing functionality (add, edit) still works
