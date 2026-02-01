@@ -19,6 +19,10 @@ interface PhotoCaptureProps {
 const SUPPORTED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'];
 const MAX_FILE_SIZE_MB = 25; // 25MB max before compression
 
+// Timeout constants for preventing UI hangs
+const PROCESS_SAFETY_TIMEOUT = 30000; // 30 seconds max for entire batch
+const PER_FILE_TIMEOUT = 15000; // 15 seconds per file
+
 export default function PhotoCapture({ inspectionId, section, onPhotoAdded }: PhotoCaptureProps) {
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const uploadInputRef = useRef<HTMLInputElement>(null);
@@ -94,6 +98,71 @@ export default function PhotoCapture({ inspectionId, section, onPhotoAdded }: Ph
     }
   };
 
+  /**
+   * Process a single file with timeout protection
+   */
+  const processSingleFile = async (file: File, userId: string): Promise<boolean> => {
+    // Validate file before processing
+    const validation = validateFile(file);
+    if (!validation.valid) {
+      toast.error('Invalid file', {
+        description: validation.error,
+      });
+      return false;
+    }
+
+    // Compress image before save (has internal timeout protection)
+    let processedFile = file;
+    try {
+      if (file.type.startsWith('image/')) {
+        processedFile = await compressImage(file, {
+          maxWidth: 1920,
+          maxHeight: 1920,
+          quality: 0.85,
+          maxSizeMB: 3,
+        });
+        
+        if (import.meta.env.DEV) {
+          const savedKB = ((file.size - processedFile.size) / 1024).toFixed(1);
+          console.log(`[PhotoCapture] Compressed ${file.name}: saved ${savedKB}KB`);
+        }
+      }
+    } catch (compressionError) {
+      const errorMessage = compressionError instanceof Error ? compressionError.message : 'Unknown error';
+      console.warn(`[PhotoCapture] Compression failed for ${file.name}:`, errorMessage);
+      // Continue with original file if compression fails
+    }
+
+    // ===== LOCAL-FIRST ARCHITECTURE =====
+    // ALWAYS save to IndexedDB FIRST (regardless of online status)
+    const photoId = `${inspectionId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    await savePhotoOffline({
+      id: photoId,
+      inspectionId,
+      section,
+      blob: processedFile,
+      fileName: processedFile.name,
+      uploaded: false,
+    });
+    
+    if (import.meta.env.DEV) {
+      console.log('[PhotoCapture] Photo saved locally:', photoId);
+    }
+
+    // IMMEDIATELY refresh gallery (user sees photo with "Pending" badge)
+    onPhotoAdded();
+
+    // If online, attempt background sync (fire-and-forget - NO await)
+    if (isOnline) {
+      // Fire-and-forget: don't await, don't block UI
+      uploadPhotoInBackground(photoId, processedFile, userId).catch(() => {
+        // Already logged inside the function
+      });
+    }
+
+    return true;
+  };
+
   const processFiles = async (files: FileList | null) => {
     // Prevent concurrent uploads (mutex lock)
     if (uploadMutexRef.current) {
@@ -106,6 +175,19 @@ export default function PhotoCapture({ inspectionId, section, onPhotoAdded }: Ph
     triggerHaptic('light');
     setUploading(true);
 
+    // SAFETY: Force release mutex after timeout regardless of promise state
+    // This prevents the UI from getting stuck in "Saving..." state forever
+    const safetyTimeout = setTimeout(() => {
+      if (uploadMutexRef.current) {
+        console.warn('[PhotoCapture] Safety timeout reached - force releasing mutex');
+        uploadMutexRef.current = false;
+        setUploading(false);
+        toast.error('Photo processing timed out', {
+          description: 'Please try again with fewer or smaller images',
+        });
+      }
+    }, PROCESS_SAFETY_TIMEOUT);
+
     let successCount = 0;
     let errorCount = 0;
 
@@ -114,79 +196,30 @@ export default function PhotoCapture({ inspectionId, section, onPhotoAdded }: Ph
       if (!user) throw new Error("Not authenticated");
 
       for (const file of Array.from(files)) {
-        // Validate file before processing
-        const validation = validateFile(file);
-        if (!validation.valid) {
-          toast.error('Invalid file', {
-            description: validation.error,
-          });
-          errorCount++;
-          continue;
-        }
-
-        // Compress image before save (30-50% size reduction typical)
-        let processedFile = file;
         try {
-          if (file.type.startsWith('image/')) {
-            processedFile = await compressImage(file, {
-              maxWidth: 1920,
-              maxHeight: 1920,
-              quality: 0.85,
-              maxSizeMB: 3,
-            });
-            
-            if (import.meta.env.DEV) {
-              const savedKB = ((file.size - processedFile.size) / 1024).toFixed(1);
-              console.log(`[PhotoCapture] Compressed ${file.name}: saved ${savedKB}KB`);
-            }
-          }
-        } catch (compressionError) {
-          const errorMessage = compressionError instanceof Error ? compressionError.message : 'Unknown error';
-          const fileSizeKB = (file.size / 1024).toFixed(1);
-          console.warn(
-            `[PhotoCapture] Compression failed for ${file.name} (${fileSizeKB}KB, ${file.type}):`,
-            errorMessage
-          );
+          // Wrap per-file processing with timeout to prevent individual hangs
+          const success = await Promise.race([
+            processSingleFile(file, user.id),
+            new Promise<boolean>((_, reject) =>
+              setTimeout(() => reject(new Error('Per-file timeout')), PER_FILE_TIMEOUT)
+            )
+          ]);
           
-          if (import.meta.env.DEV) {
-            toast.error(`Photo compression failed: ${errorMessage}. Using original file.`);
+          if (success) {
+            successCount++;
+          } else {
+            errorCount++;
           }
-          // Continue with original file if compression fails
-        }
-
-        // ===== LOCAL-FIRST ARCHITECTURE =====
-        // ALWAYS save to IndexedDB FIRST (regardless of online status)
-        const photoId = `${inspectionId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-        await savePhotoOffline({
-          id: photoId,
-          inspectionId,
-          section,
-          blob: processedFile,
-          fileName: processedFile.name,
-          uploaded: false,
-        });
-        
-        if (import.meta.env.DEV) {
-          console.log('[PhotoCapture] Photo saved locally:', photoId);
-        }
-
-        // IMMEDIATELY refresh gallery (user sees photo with "Pending" badge)
-        onPhotoAdded();
-        successCount++;
-
-        // If online, attempt background sync (fire-and-forget - NO await)
-        if (isOnline) {
-          // Fire-and-forget: don't await, don't block UI
-          uploadPhotoInBackground(photoId, processedFile, user.id).catch(() => {
-            // Already logged inside the function
-          });
+        } catch (fileError: any) {
+          console.warn('[PhotoCapture] File processing failed/timed out:', fileError.message);
+          errorCount++;
+          // Continue with other files - don't let one failure stop the batch
         }
       }
 
-      triggerHaptic('success');
-      
-      // Show immediate success feedback based on LOCAL save
+      // Show feedback based on results
       if (successCount > 0) {
+        triggerHaptic('success');
         toast.success(successCount === 1 ? 'Photo saved' : `${successCount} photos saved`, {
           description: isOnline ? 'Syncing to cloud...' : 'Will sync when online',
           duration: 2000,
@@ -195,6 +228,9 @@ export default function PhotoCapture({ inspectionId, section, onPhotoAdded }: Ph
       
       if (errorCount > 0 && successCount === 0) {
         triggerHaptic('error');
+        toast.error('Failed to process photos', {
+          description: 'Please try again with different images',
+        });
       }
     } catch (error: any) {
       console.error("Photo capture error:", error);
@@ -203,6 +239,7 @@ export default function PhotoCapture({ inspectionId, section, onPhotoAdded }: Ph
         description: error.message || 'Please try again',
       });
     } finally {
+      clearTimeout(safetyTimeout);
       setUploading(false);
       uploadMutexRef.current = false;
       // Clear both inputs

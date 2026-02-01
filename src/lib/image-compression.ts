@@ -17,14 +17,13 @@ const DEFAULT_OPTIONS: CompressionOptions = {
   maxSizeMB: 2,
 };
 
+// Maximum time to wait for compression before falling back to original
+const COMPRESSION_TIMEOUT = 10000; // 10 seconds
+
 /**
- * Compress an image file to reduce its size
- * @param file - The image file to compress
- * @param options - Compression options
- * @param attemptCount - Internal counter to prevent infinite recursion
- * @returns Compressed image as a File object
+ * Internal compression implementation
  */
-export const compressImage = async (
+const compressImageInternal = async (
   file: File,
   options: CompressionOptions = {},
   attemptCount: number = 0
@@ -36,14 +35,6 @@ export const compressImage = async (
   
   if (attemptCount >= MAX_ATTEMPTS) {
     console.warn('[Image Compression] Max compression attempts reached, returning current file');
-    return file;
-  }
-  
-  // Skip compression for very small files (<100KB)
-  if (file.size < 100 * 1024) {
-    if (import.meta.env.DEV) {
-      console.log('[Image Compression] File is small, skipping compression:', file.size);
-    }
     return file;
   }
 
@@ -107,7 +98,7 @@ export const compressImage = async (
               });
               
               try {
-                const furtherCompressed = await compressImage(
+                const furtherCompressed = await compressImageInternal(
                   intermediateFile,
                   { ...opts, quality: lowerQuality },
                   attemptCount + 1
@@ -152,6 +143,43 @@ export const compressImage = async (
 
     reader.readAsDataURL(file);
   });
+};
+
+/**
+ * Compress an image file to reduce its size
+ * Wrapped with timeout protection to prevent hanging on mobile devices
+ * @param file - The image file to compress
+ * @param options - Compression options
+ * @returns Compressed image as a File object, or original if compression times out/fails
+ */
+export const compressImage = async (
+  file: File,
+  options: CompressionOptions = {}
+): Promise<File> => {
+  // Skip compression for very small files (<100KB) - early exit
+  if (file.size < 100 * 1024) {
+    if (import.meta.env.DEV) {
+      console.log('[Image Compression] File is small, skipping compression:', file.size);
+    }
+    return file;
+  }
+
+  try {
+    // Race between compression and timeout
+    const result = await Promise.race([
+      compressImageInternal(file, options, 0),
+      new Promise<File>((resolve) => {
+        setTimeout(() => {
+          console.warn('[Image Compression] Timed out after', COMPRESSION_TIMEOUT, 'ms - using original file');
+          resolve(file);
+        }, COMPRESSION_TIMEOUT);
+      })
+    ]);
+    return result;
+  } catch (error) {
+    console.warn('[Image Compression] Failed, returning original:', error);
+    return file;
+  }
 };
 
 /**

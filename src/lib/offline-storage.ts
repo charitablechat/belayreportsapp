@@ -591,11 +591,17 @@ export async function savePhotoOffline(photo: {
       try {
         const db = await getDB();
         
-        const quota = await checkStorageQuota();
-        if (quota.percentUsed > 90) {
-          throw new Error('Storage almost full. Please sync photos to free up space.');
-        }
+        // NON-BLOCKING quota check - fire-and-forget, don't await
+        // This prevents the save from hanging if storage API is slow
+        checkStorageQuota().then(quota => {
+          if (quota.percentUsed > 90) {
+            console.warn('[Offline Storage] Storage almost full:', quota.percentUsed.toFixed(1), '%');
+          }
+        }).catch(() => {
+          // Ignore quota check failures - don't block the save
+        });
         
+        // Proceed with save immediately (don't wait for quota check)
         await db.put('photos', {
           ...photo,
           timestamp: Date.now(),
@@ -606,9 +612,15 @@ export async function savePhotoOffline(photo: {
           console.log('[Offline Storage] Saved photo:', photo.id);
         }
         
+        // Background sync registration (also non-blocking)
         if (!photo.uploaded) {
-          const { registerPhotoSync } = await import('./background-sync');
-          await registerPhotoSync();
+          import('./background-sync').then(({ registerPhotoSync }) => {
+            registerPhotoSync().catch(() => {
+              // Ignore registration failures
+            });
+          }).catch(() => {
+            // Ignore import failures
+          });
         }
       } catch (error: any) {
         console.error('[Offline Storage] Failed to save photo:', error);
