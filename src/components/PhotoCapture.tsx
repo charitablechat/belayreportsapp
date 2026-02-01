@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Camera, Upload, CloudOff } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { getUserWithCache } from "@/lib/cached-auth";
-import { savePhotoOffline } from "@/lib/offline-storage";
+import { savePhotoOffline, markPhotoAsUploaded } from "@/lib/offline-storage";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { triggerHaptic } from "@/lib/haptics";
 import { compressImage } from "@/lib/image-compression";
@@ -20,6 +20,50 @@ export default function PhotoCapture({ inspectionId, section, onPhotoAdded }: Ph
   const [uploading, setUploading] = useState(false);
   const { isOnline } = useNetworkStatus();
   const uploadMutexRef = useRef(false);
+
+  /**
+   * Fire-and-forget background upload function
+   * Does NOT block UI - runs entirely in background
+   */
+  const uploadPhotoInBackground = async (
+    photoId: string,
+    processedFile: File,
+    userId: string
+  ) => {
+    try {
+      const fileExt = processedFile.name.split('.').pop() || 'jpg';
+      const fileName = `${userId}/${inspectionId}/${Date.now()}.${fileExt}`;
+      
+      // Upload to Supabase storage
+      const { error: uploadError } = await supabase.storage
+        .from('inspection-photos')
+        .upload(fileName, processedFile);
+
+      if (uploadError) throw uploadError;
+
+      // Insert database record
+      const { error: dbError } = await supabase
+        .from('inspection_photos')
+        .insert({
+          inspection_id: inspectionId,
+          photo_url: fileName,
+          photo_section: section,
+        });
+
+      if (dbError) throw dbError;
+
+      // Mark as uploaded in IndexedDB (updates "Pending" to "Synced" badge)
+      await markPhotoAsUploaded(photoId, fileName);
+      
+      if (import.meta.env.DEV) {
+        console.log('[PhotoCapture] Background sync completed:', photoId);
+      }
+    } catch (error) {
+      // Photo remains in IndexedDB with uploaded=false
+      // Will be synced by useAutoSync on next interval
+      console.warn('[PhotoCapture] Background sync failed, queued for later:', error);
+    }
+  };
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     // Prevent concurrent uploads (mutex lock)
@@ -39,7 +83,7 @@ export default function PhotoCapture({ inspectionId, section, onPhotoAdded }: Ph
       if (!user) throw new Error("Not authenticated");
 
       for (const file of Array.from(files)) {
-        // Compress image before upload (30-50% size reduction typical)
+        // Compress image before save (30-50% size reduction typical)
         let processedFile = file;
         try {
           if (file.type.startsWith('image/')) {
@@ -69,50 +113,47 @@ export default function PhotoCapture({ inspectionId, section, onPhotoAdded }: Ph
           // Continue with original file if compression fails
         }
 
+        // ===== LOCAL-FIRST ARCHITECTURE =====
+        // ALWAYS save to IndexedDB FIRST (regardless of online status)
+        const photoId = `${inspectionId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        await savePhotoOffline({
+          id: photoId,
+          inspectionId,
+          section,
+          blob: processedFile,
+          fileName: processedFile.name,
+          uploaded: false,
+        });
+        
+        if (import.meta.env.DEV) {
+          console.log('[PhotoCapture] Photo saved locally:', photoId);
+        }
+
+        // IMMEDIATELY refresh gallery (user sees photo with "Pending" badge)
+        onPhotoAdded();
+
+        // If online, attempt background sync (fire-and-forget - NO await)
         if (isOnline) {
-          // Online: Upload directly to Supabase
-          const fileExt = processedFile.name.split('.').pop();
-          const fileName = `${user.id}/${inspectionId}/${Date.now()}.${fileExt}`;
-          
-          const { error: uploadError } = await supabase.storage
-            .from('inspection-photos')
-            .upload(fileName, processedFile);
-
-          if (uploadError) throw uploadError;
-
-          // Save to database
-          const { error: dbError } = await supabase
-            .from('inspection_photos')
-            .insert({
-              inspection_id: inspectionId,
-              photo_url: fileName,
-              photo_section: section,
-            });
-
-          if (dbError) throw dbError;
-        } else {
-          // Offline: Save to IndexedDB
-          const photoId = `${inspectionId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-          await savePhotoOffline({
-            id: photoId,
-            inspectionId,
-            section,
-            blob: processedFile,
-            fileName: processedFile.name,
-            uploaded: false,
+          // Fire-and-forget: don't await, don't block UI
+          uploadPhotoInBackground(photoId, processedFile, user.id).catch(() => {
+            // Already logged inside the function
           });
-          
-          if (import.meta.env.DEV) {
-            console.log('[PhotoCapture] Saved compressed photo offline:', photoId);
-          }
         }
       }
 
       triggerHaptic('success');
-      onPhotoAdded();
+      
+      // Show immediate success feedback based on LOCAL save
+      toast.success('Photo saved', {
+        description: isOnline ? 'Syncing to cloud...' : 'Will sync when online',
+        duration: 2000,
+      });
     } catch (error: any) {
       console.error("Photo capture error:", error);
       triggerHaptic('error');
+      toast.error('Failed to save photo', {
+        description: error.message || 'Please try again',
+      });
     } finally {
       setUploading(false);
       uploadMutexRef.current = false;
@@ -143,7 +184,7 @@ export default function PhotoCapture({ inspectionId, section, onPhotoAdded }: Ph
         {uploading ? (
           <>
             <Upload className="w-4 h-4 mr-2 animate-spin" />
-            {isOnline ? 'Uploading...' : 'Saving...'}
+            Saving...
           </>
         ) : (
           <>
