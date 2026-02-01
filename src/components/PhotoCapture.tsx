@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Camera, Upload, CloudOff } from "lucide-react";
+import { Camera, Upload, CloudOff, ImagePlus } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { getUserWithCache } from "@/lib/cached-auth";
 import { savePhotoOffline, markPhotoAsUploaded } from "@/lib/offline-storage";
@@ -15,11 +15,40 @@ interface PhotoCaptureProps {
   onPhotoAdded: () => void;
 }
 
+// Supported image types
+const SUPPORTED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'];
+const MAX_FILE_SIZE_MB = 25; // 25MB max before compression
+
 export default function PhotoCapture({ inspectionId, section, onPhotoAdded }: PhotoCaptureProps) {
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const uploadInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const { isOnline } = useNetworkStatus();
   const uploadMutexRef = useRef(false);
+
+  /**
+   * Validate file type and size before processing
+   */
+  const validateFile = (file: File): { valid: boolean; error?: string } => {
+    // Check file type
+    if (!SUPPORTED_TYPES.includes(file.type) && !file.type.startsWith('image/')) {
+      return { 
+        valid: false, 
+        error: `Unsupported file type: ${file.type || 'unknown'}. Please use JPEG, PNG, or WebP.` 
+      };
+    }
+
+    // Check file size (before compression)
+    const fileSizeMB = file.size / (1024 * 1024);
+    if (fileSizeMB > MAX_FILE_SIZE_MB) {
+      return { 
+        valid: false, 
+        error: `File too large (${fileSizeMB.toFixed(1)}MB). Maximum size is ${MAX_FILE_SIZE_MB}MB.` 
+      };
+    }
+
+    return { valid: true };
+  };
 
   /**
    * Fire-and-forget background upload function
@@ -65,24 +94,36 @@ export default function PhotoCapture({ inspectionId, section, onPhotoAdded }: Ph
     }
   };
 
-  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const processFiles = async (files: FileList | null) => {
     // Prevent concurrent uploads (mutex lock)
     if (uploadMutexRef.current) {
       console.log('[PhotoCapture] Upload already in progress, ignoring');
       return;
     }
-    const files = e.target.files;
     if (!files || files.length === 0) return;
 
     uploadMutexRef.current = true;
     triggerHaptic('light');
     setUploading(true);
 
+    let successCount = 0;
+    let errorCount = 0;
+
     try {
       const user = await getUserWithCache();
       if (!user) throw new Error("Not authenticated");
 
       for (const file of Array.from(files)) {
+        // Validate file before processing
+        const validation = validateFile(file);
+        if (!validation.valid) {
+          toast.error('Invalid file', {
+            description: validation.error,
+          });
+          errorCount++;
+          continue;
+        }
+
         // Compress image before save (30-50% size reduction typical)
         let processedFile = file;
         try {
@@ -131,6 +172,7 @@ export default function PhotoCapture({ inspectionId, section, onPhotoAdded }: Ph
 
         // IMMEDIATELY refresh gallery (user sees photo with "Pending" badge)
         onPhotoAdded();
+        successCount++;
 
         // If online, attempt background sync (fire-and-forget - NO await)
         if (isOnline) {
@@ -144,10 +186,16 @@ export default function PhotoCapture({ inspectionId, section, onPhotoAdded }: Ph
       triggerHaptic('success');
       
       // Show immediate success feedback based on LOCAL save
-      toast.success('Photo saved', {
-        description: isOnline ? 'Syncing to cloud...' : 'Will sync when online',
-        duration: 2000,
-      });
+      if (successCount > 0) {
+        toast.success(successCount === 1 ? 'Photo saved' : `${successCount} photos saved`, {
+          description: isOnline ? 'Syncing to cloud...' : 'Will sync when online',
+          duration: 2000,
+        });
+      }
+      
+      if (errorCount > 0 && successCount === 0) {
+        triggerHaptic('error');
+      }
     } catch (error: any) {
       console.error("Photo capture error:", error);
       triggerHaptic('error');
@@ -157,27 +205,52 @@ export default function PhotoCapture({ inspectionId, section, onPhotoAdded }: Ph
     } finally {
       setUploading(false);
       uploadMutexRef.current = false;
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
+      // Clear both inputs
+      if (cameraInputRef.current) {
+        cameraInputRef.current.value = '';
+      }
+      if (uploadInputRef.current) {
+        uploadInputRef.current.value = '';
       }
     }
   };
 
+  const handleCameraCapture = (e: React.ChangeEvent<HTMLInputElement>) => {
+    processFiles(e.target.files);
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    processFiles(e.target.files);
+  };
+
   return (
     <div className="flex gap-2">
+      {/* Camera capture input - uses device camera */}
       <input
-        ref={fileInputRef}
+        ref={cameraInputRef}
         type="file"
         accept="image/*"
         capture="environment"
         multiple
-        onChange={handleFileSelect}
+        onChange={handleCameraCapture}
         className="hidden"
       />
+      
+      {/* Gallery/storage upload input - opens file picker */}
+      <input
+        ref={uploadInputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
+        multiple
+        onChange={handleFileUpload}
+        className="hidden"
+      />
+      
+      {/* Camera capture button */}
       <Button
         type="button"
         variant="outline"
-        onClick={() => fileInputRef.current?.click()}
+        onClick={() => cameraInputRef.current?.click()}
         disabled={uploading}
         className="flex-1"
       >
@@ -190,7 +263,28 @@ export default function PhotoCapture({ inspectionId, section, onPhotoAdded }: Ph
           <>
             {!isOnline && <CloudOff className="w-4 h-4 mr-2" />}
             {isOnline && <Camera className="w-4 h-4 mr-2" />}
-            Add Photo
+            Take Photo
+          </>
+        )}
+      </Button>
+      
+      {/* Upload from device button */}
+      <Button
+        type="button"
+        variant="outline"
+        onClick={() => uploadInputRef.current?.click()}
+        disabled={uploading}
+        className="flex-1"
+      >
+        {uploading ? (
+          <>
+            <Upload className="w-4 h-4 mr-2 animate-spin" />
+            Saving...
+          </>
+        ) : (
+          <>
+            <ImagePlus className="w-4 h-4 mr-2" />
+            Upload
           </>
         )}
       </Button>
