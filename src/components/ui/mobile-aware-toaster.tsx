@@ -1,26 +1,30 @@
 /**
- * Mobile-aware toast wrapper that always renders but filters individual toasts
+ * Mobile-aware toast wrappers that hide toast overlays on mobile devices.
+ * On mobile, all toasts are routed to the Notification Center instead.
  */
 
-import { useEffect } from 'react';
+import { isMobile } from '@/lib/mobile-detection';
 import { Toaster as ShadcnToaster } from "@/components/ui/toaster";
 import { Toaster as SonnerToaster } from "@/components/ui/sonner";
-import { logToastConfig } from '@/lib/mobile-toast-config';
 
 /**
- * Shadcn UI toast wrapper - always renders, filtering happens at toast call level
+ * Shadcn UI toast wrapper - hidden on mobile
  */
 export function MobileAwareToaster() {
-  useEffect(() => {
-    logToastConfig();
-  }, []);
-  
+  // Don't render Toaster at all on mobile - toasts go to notification center
+  if (isMobile()) {
+    return null;
+  }
   return <ShadcnToaster />;
 }
 
 /**
- * Sonner toast wrapper - always renders, filtering happens at toast call level
+ * Sonner toast wrapper - hidden on mobile
  */
 export function MobileAwareSonner() {
+  // Don't render Sonner at all on mobile - toasts go to notification center
+  if (isMobile()) {
+    return null;
+  }
   return <SonnerToaster />;
 }
