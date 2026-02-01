@@ -1,179 +1,204 @@
 
-# Plan: Fix Mobile Equipment Area Padding & Add Success Toast Notification
+# Investigation & Fix Plan: Mobile Data Sync Notification
 
-## Problem Analysis
+## Executive Summary
 
-After a comprehensive audit of the mobile viewport (< 768px) for the Inspection Report's Equipment section, I've identified the following root causes for the remaining padding issues:
-
-### Issue 1: Nested Card Creating Double Borders/Shadows
-In `EquipmentTable.tsx`, the mobile card view has a **Card within a Card** structure:
-- Outer `<Card>` wrapper (line 89) with CardHeader/CardContent which adds `p-6` padding via CardContent
-- Inner `<Card>` for each equipment item (line 199) with `p-5` padding
-
-This creates:
-- Double border/shadow visual confusion
-- Excessive combined padding (CardContent's `p-6` + inner Card's `p-5` = ~44px total on sides)
-- Inconsistent visual depth on mobile
-
-### Issue 2: CardContent Default Padding Too Large for Mobile
-The `CardContent` component applies `p-6 pt-0` (24px horizontal padding) which is excessive on narrow mobile viewports (320-375px), leaving insufficient space for content.
-
-### Issue 3: Missing Mobile-Specific Container Padding Reduction
-The parent container in `InspectionForm.tsx` uses `px-4` (16px) consistently, but when combined with CardContent's `p-6`, the total effective padding is 40px on each side—too much for mobile.
+A comprehensive investigation of the mobile synchronization system has revealed **two interconnected issues** preventing the mobile application from reflecting the latest data state and notifying users of successful updates.
 
 ---
 
-## Solution
+## Root Cause Analysis
 
-### Fix 1: Remove CardContent Padding on Mobile for Equipment Tables
-Override `CardContent` padding on mobile within `EquipmentTable.tsx` to reduce horizontal compression.
+### Issue 1: Silent Sync Completion (No Success Feedback)
 
-### Fix 2: Convert Inner Card to Styled Div
-Replace the inner `<Card>` element with a styled `<div>` to eliminate double shadows/borders while maintaining the visual structure.
+**Location:** `src/hooks/useAutoSync.tsx` (lines 145-166)
 
-### Fix 3: Add Mobile-Responsive Padding Utilities
-Add responsive padding overrides to `index.css` for mobile inspection form cards.
+After a successful sync operation, the system:
+1. Updates internal state (`lastSyncTime`, `isSyncing`)
+2. Invalidates React Query caches
+3. **Does NOT emit a success notification to the NotificationCenter**
 
-### Fix 4: Implement Non-Intrusive Success Toast
-Add a single, subtle success toast that appears on mobile when a save operation completes. This will use the existing mobile-aware toast system which routes to the notification center on mobile.
+Without this notification:
+- The `StatusIndicator` component has nothing to display
+- Mobile users receive no confirmation that background sync completed
+- The "Data synced" message is never routed to the NotificationCenter
+
+### Issue 2: Dashboard Data Refresh Disconnect
+
+**Location:** `src/pages/Dashboard.tsx` (lines 86-88, 220-286)
+
+The Dashboard component uses direct `useState` for managing report lists:
+```typescript
+const [inspections, setInspections] = useState<any[]>([]);
+const [trainings, setTrainings] = useState<any[]>([]);
+const [dailyAssessments, setDailyAssessments] = useState<any[]>([]);
+```
+
+Meanwhile, `useAutoSync` invalidates React Query keys:
+```typescript
+queryClient.invalidateQueries({ queryKey: ['inspections'] });
+queryClient.invalidateQueries({ queryKey: ['trainings'] });
+queryClient.invalidateQueries({ queryKey: ['daily-assessments'] });
+```
+
+**These two systems are not connected.** React Query invalidation only affects components that use `useQuery` with matching keys. Dashboard's manual state is never refreshed by the background sync.
+
+### Issue 3: IndexedDB Timeouts (Observed but Not Blocking)
+
+Console logs show repeated `[Atomic Sync] IndexedDB timeout getting unsynced inspections` warnings. The circuit breaker pattern is working correctly to prevent these timeouts from blocking the UI, but:
+- Each timeout returns an empty array instead of actual unsynced data
+- This can cause legitimate unsynced changes to be missed during sync cycles
+- The 5-second timeout may be too aggressive for slower mobile devices
+
+---
+
+## Technical Solution
+
+### Fix 1: Add Success Notification to useAutoSync
+
+Emit a notification when sync completes successfully so mobile users see confirmation in the NotificationCenter.
+
+**File:** `src/hooks/useAutoSync.tsx`
+
+**Change:** After successful sync completion (line ~154), add:
+```typescript
+// Import at top of file
+import { addSyncNotification } from '@/lib/notification-center';
+
+// After line 154: lastSyncTime: syncResult.timedOut ? prev.lastSyncTime : new Date(),
+// Add notification for successful sync
+if (!syncResult.timedOut) {
+  addSyncNotification('Data synced successfully');
+}
+```
+
+### Fix 2: Create Sync Completion Event Emitter
+
+Create a simple event system that Dashboard can subscribe to, triggering a data reload after sync completes.
+
+**File:** `src/lib/sync-events.ts` (new file)
+
+```typescript
+/**
+ * Sync Events - Simple event emitter for sync completion
+ * Allows Dashboard and other components to react to successful syncs
+ */
+
+type SyncEventListener = () => void;
+const listeners = new Set<SyncEventListener>();
+
+export function onSyncComplete(listener: SyncEventListener): () => void {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+
+export function emitSyncComplete(): void {
+  listeners.forEach(listener => listener());
+}
+```
+
+### Fix 3: Integrate Event Emitter into useAutoSync
+
+**File:** `src/hooks/useAutoSync.tsx`
+
+Import and call `emitSyncComplete()` after successful sync:
+```typescript
+import { emitSyncComplete } from '@/lib/sync-events';
+
+// After line 165: queryClient.invalidateQueries({ queryKey: ['daily-assessments'] });
+emitSyncComplete();
+```
+
+### Fix 4: Dashboard Subscribes to Sync Completion
+
+**File:** `src/pages/Dashboard.tsx`
+
+Subscribe to sync completion events and reload data:
+```typescript
+import { onSyncComplete } from '@/lib/sync-events';
+
+// Inside useEffect (around line 160):
+useEffect(() => {
+  // ... existing code ...
+  
+  // Subscribe to sync completion events
+  const unsubscribeSyncComplete = onSyncComplete(async () => {
+    // Reload fresh data from Supabase after sync
+    await Promise.all([
+      loadInspections(),
+      loadTrainingReports(),
+      loadDailyAssessments()
+    ]);
+  });
+  
+  return () => {
+    // ... existing cleanup ...
+    unsubscribeSyncComplete();
+  };
+}, []);
+```
+
+---
+
+## Notification Flow (After Fix)
+
+```
+Background Sync Completes
+         ↓
+emitSyncComplete() called
+         ↓
+    ┌────┴────┐
+    ↓         ↓
+Dashboard   addSyncNotification()
+  reloads        ↓
+   data    routeToastToNotification()
+             (on mobile)
+                ↓
+         NotificationCenter
+         receives "Data synced"
+                ↓
+         StatusIndicator shows ✓
+```
 
 ---
 
 ## Files to Modify
 
-| File | Changes |
-|------|---------|
-| `src/components/inspection/EquipmentTable.tsx` | Reduce mobile card padding, remove nested Card, add mobile-specific CardContent override |
-| `src/components/inspection/ZiplinesTable.tsx` | Apply same mobile padding fix for consistency |
-| `src/components/inspection/OperatingSystemsTable.tsx` | Apply same mobile padding fix for consistency |
-| `src/index.css` | Add `.mobile-card-content` utility class for reduced padding |
-| `src/pages/InspectionForm.tsx` | Add success toast after successful save operations |
+| File | Priority | Changes |
+|------|----------|---------|
+| `src/lib/sync-events.ts` | **P0** | Create new file - simple event emitter for sync completion |
+| `src/hooks/useAutoSync.tsx` | **P0** | Emit sync success notification + sync complete event |
+| `src/pages/Dashboard.tsx` | **P0** | Subscribe to sync events and reload data |
 
 ---
 
-## Technical Changes
+## Success Notification Behavior
 
-### 1. EquipmentTable.tsx - Mobile Layout Fix
-
-**Current (problematic):**
-```tsx
-<Card>
-  <CardHeader>...</CardHeader>
-  <CardContent>
-    <div className="md:hidden space-y-4">
-      {items.map((item) => (
-        <Card className="p-5 relative border-l-4 border-l-primary/20">
-          ...
-        </Card>
-      ))}
-    </div>
-  </CardContent>
-</Card>
-```
-
-**Fixed:**
-```tsx
-<Card>
-  <CardHeader className="px-4 md:px-6">...</CardHeader>
-  <CardContent className="px-3 md:px-6">
-    <div className="md:hidden space-y-3">
-      {items.map((item) => (
-        <div className="p-4 relative border-l-4 border-l-primary/20 rounded-lg bg-muted/30 border border-border">
-          <div className="space-y-3 pr-10">
-            ...
-          </div>
-        </div>
-      ))}
-    </div>
-  </CardContent>
-</Card>
-```
-
-Key changes:
-- CardHeader: `px-4 md:px-6` (16px on mobile, 24px on desktop)
-- CardContent: `px-3 md:px-6` (12px on mobile, 24px on desktop)
-- Inner element: Convert `<Card>` to styled `<div>` with `p-4` (16px internal padding)
-- Content wrapper: Reduce to `pr-10` (40px right padding for delete button)
-- Vertical spacing: Reduce `space-y-4` to `space-y-3` for tighter mobile layout
-
-### 2. index.css - Mobile Card Content Utility
-
-```css
-@layer utilities {
-  /* Existing utilities... */
-  
-  /* Mobile-optimized card content padding */
-  .mobile-card-content {
-    @apply px-3 md:px-6;
-  }
-  
-  .mobile-card-header {
-    @apply px-4 md:px-6;
-  }
-  
-  /* Mobile equipment item (replaces nested Card) */
-  .mobile-item-card {
-    @apply p-4 relative border-l-4 border-l-primary/20 rounded-lg bg-muted/30 border border-border;
-  }
-}
-```
-
-### 3. InspectionForm.tsx - Add Success Toast
-
-In the `triggerImmediateSave` function (line ~1158), after successful save, add a non-intrusive success notification. Since the codebase already has the mobile-aware toast system that routes to notification center on mobile, we import and use `toast` from `@/components/ui/sonner`:
-
-```tsx
-// After line 1171: setHasUnsavedChanges(false);
-// Add success feedback
-toast.success("Changes saved");
-```
-
-This will:
-- Show a visual toast on desktop
-- Route to the notification center on mobile (non-intrusive)
-
----
-
-## Padding Calculation Summary
-
-**Before (Mobile):**
-| Layer | Padding |
-|-------|---------|
-| Container (px-4) | 16px |
-| CardContent (p-6) | 24px |
-| Inner Card (p-5) | 20px |
-| Content pr-12 | 48px (right only) |
-| **Total horizontal** | **40px each side + 48px right** |
-
-**After (Mobile):**
-| Layer | Padding |
-|-------|---------|
-| Container (px-4) | 16px |
-| CardContent (px-3) | 12px |
-| Item div (p-4) | 16px |
-| Content pr-10 | 40px (right only) |
-| **Total horizontal** | **28px each side + 40px right** |
-
-This saves **12px per side** of horizontal space, giving form fields more room.
-
----
-
-## Benefits
-
-1. **More content space**: 24px additional usable width on mobile
-2. **Cleaner visual hierarchy**: Single shadow/border instead of doubled
-3. **Consistent spacing**: Matches the "Developer-Focused, Highly Functional" aesthetic
-4. **Success feedback**: Non-intrusive toast confirmation when saves complete
-5. **Preserved desktop experience**: Changes only affect mobile viewport
+| Platform | Notification Type | Behavior |
+|----------|------------------|----------|
+| Mobile | NotificationCenter | Non-intrusive entry: "Data synced successfully" with sync icon |
+| Mobile | StatusIndicator | Shows green checkmark briefly, then fades |
+| Desktop | Toast | Standard success toast (via existing sonner.tsx routing) |
 
 ---
 
 ## Testing Checklist
 
 After implementation:
-- [ ] Equipment cards no longer have double borders/shadows on mobile
-- [ ] Form fields have adequate width for input on 320px screens
-- [ ] Delete button no longer overlaps with text content
-- [ ] Success toast appears after save (routes to notification center on mobile)
-- [ ] Desktop layout remains unchanged
-- [ ] All three table components (Equipment, Ziplines, Systems) have consistent padding
+- [ ] Mobile: "Data synced successfully" appears in NotificationCenter after background sync
+- [ ] Mobile: StatusIndicator briefly shows green check after sync
+- [ ] Mobile: Dashboard refreshes to show latest data after sync completes
+- [ ] Desktop: Toast notification appears after sync
+- [ ] No duplicate notifications (debouncing working)
+- [ ] No screen overlay toasts on mobile
+- [ ] Pull-to-refresh still works independently
+
+---
+
+## Additional Observations (For Future Consideration)
+
+1. **IndexedDB Timeout Tuning**: The 5-second timeout for IndexedDB operations may be too aggressive for some mobile devices. Consider increasing to 8-10 seconds or making it device-aware.
+
+2. **React Query Migration**: Long-term, Dashboard could be migrated to use React Query's `useQuery` directly, which would eliminate the need for the sync event pattern and provide automatic cache invalidation.
+
+3. **Realtime Subscription Enhancement**: The realtime subscription in `useAutoSync.handleRemoteChange()` invalidates queries but doesn't reload Dashboard state. The same sync event pattern could be applied there.
