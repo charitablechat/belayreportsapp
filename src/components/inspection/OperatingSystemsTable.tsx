@@ -8,6 +8,17 @@ import HistoryAutocomplete from "@/components/HistoryAutocomplete";
 import { Plus, Trash2 } from "lucide-react";
 import { AnimatedTableRow, AnimatedListItem } from "@/components/ui/list-item-animation";
 import { useState, useEffect, useRef } from "react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+
 interface OperatingSystemsTableProps {
   systems: any[];
   onUpdate: (systems: any[]) => void;
@@ -17,6 +28,7 @@ interface OperatingSystemsTableProps {
 export default function OperatingSystemsTable({ systems, onUpdate, onImmediateSave }: OperatingSystemsTableProps) {
   const [newItemIds, setNewItemIds] = useState<Set<string>>(new Set());
   const prevSystemsLengthRef = useRef(systems.length);
+  const [itemToDelete, setItemToDelete] = useState<{ index: number; name: string } | null>(null);
 
   // Track newly added items for animation
   useEffect(() => {
@@ -56,11 +68,12 @@ export default function OperatingSystemsTable({ systems, onUpdate, onImmediateSa
     onUpdate(updated);
   };
 
-  const deleteSystem = (index: number) => {
-    const updated = systems.filter((_, i) => i !== index);
-    onUpdate(updated);
-    if (onImmediateSave) {
-      onImmediateSave();
+  const handleDeleteConfirm = () => {
+    if (itemToDelete) {
+      const updated = systems.filter((_, i) => i !== itemToDelete.index);
+      onUpdate(updated);
+      onImmediateSave?.();
+      setItemToDelete(null);
     }
   };
 
@@ -132,7 +145,7 @@ export default function OperatingSystemsTable({ systems, onUpdate, onImmediateSa
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => deleteSystem(index)}
+                      onClick={() => setItemToDelete({ index, name: system.name || system.system_name || "this system" })}
                       className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
                     >
                       <Trash2 className="h-4 w-4" />
@@ -156,7 +169,7 @@ export default function OperatingSystemsTable({ systems, onUpdate, onImmediateSa
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => deleteSystem(index)}
+                onClick={() => setItemToDelete({ index, name: system.name || system.system_name || "this system" })}
                 className="absolute top-2 right-2 h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
               >
                 <Trash2 className="h-4 w-4" />
@@ -213,6 +226,27 @@ export default function OperatingSystemsTable({ systems, onUpdate, onImmediateSa
           </p>
         </div>
       </CardContent>
+
+      <AlertDialog open={!!itemToDelete} onOpenChange={(open) => !open && setItemToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Operating System</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete <strong>{itemToDelete?.name || "this system"}</strong>?
+              This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteConfirm}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Card>
   );
 }

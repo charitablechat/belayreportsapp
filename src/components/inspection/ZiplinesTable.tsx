@@ -6,9 +6,19 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import ResultSelect from "@/components/ResultSelect";
 import HistoryAutocomplete from "@/components/HistoryAutocomplete";
-import { Plus } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 import { AnimatedTableRow, AnimatedListItem } from "@/components/ui/list-item-animation";
 import { useState, useEffect, useRef } from "react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 interface ZiplinesTableProps {
   ziplines: any[];
@@ -19,6 +29,7 @@ interface ZiplinesTableProps {
 export default function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: ZiplinesTableProps) {
   const [newItemIds, setNewItemIds] = useState<Set<string>>(new Set());
   const prevZiplinesLengthRef = useRef(ziplines.length);
+  const [itemToDelete, setItemToDelete] = useState<{ index: number; name: string } | null>(null);
 
   // Track newly added items for animation
   useEffect(() => {
@@ -67,6 +78,15 @@ export default function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: Z
     onUpdate(updated);
   };
 
+  const handleDeleteConfirm = () => {
+    if (itemToDelete) {
+      const updated = ziplines.filter((_, i) => i !== itemToDelete.index);
+      onUpdate(updated);
+      onImmediateSave?.();
+      setItemToDelete(null);
+    }
+  };
+
   return (
     <Card>
       <CardHeader>
@@ -102,6 +122,7 @@ export default function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: Z
                 <th className="border p-2 text-left font-semibold text-xs">EAD Result</th>
                 <th className="border p-2 text-left font-semibold text-xs">Overall</th>
                 <th className="border p-2 text-left font-semibold text-xs">Comments and/or Required Changes</th>
+                <th className="border p-2 text-center font-semibold text-xs w-12"></th>
               </tr>
             </thead>
             <tbody>
@@ -233,6 +254,16 @@ export default function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: Z
                       className="border-0 bg-transparent"
                     />
                   </td>
+                  <td className="border p-1 text-center">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setItemToDelete({ index, name: zipline.zipline_name || "this zipline" })}
+                      className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </td>
                 </AnimatedTableRow>
               ))}
             </tbody>
@@ -247,8 +278,16 @@ export default function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: Z
               itemKey={zipline.id || `mobile-zipline-${index}`}
               isNew={newItemIds.has(zipline.id)}
             >
-            <Card key={index} className="p-4">
-              <div className="space-y-3">
+            <Card key={index} className="p-4 relative">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setItemToDelete({ index, name: zipline.zipline_name || "this zipline" })}
+                className="absolute top-2 right-2 h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+              <div className="space-y-3 pr-8">
                 <div>
                   <Label className="text-xs text-muted-foreground">Line Name</Label>
                   <HistoryAutocomplete
@@ -410,6 +449,27 @@ export default function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: Z
           </p>
         </div>
       </CardContent>
+
+      <AlertDialog open={!!itemToDelete} onOpenChange={(open) => !open && setItemToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Zipline</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete <strong>{itemToDelete?.name || "this zipline"}</strong>?
+              This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteConfirm}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Card>
   );
 }

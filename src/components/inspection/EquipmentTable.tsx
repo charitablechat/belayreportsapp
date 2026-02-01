@@ -5,10 +5,20 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import ResultSelect from "@/components/ResultSelect";
 import HistoryAutocomplete from "@/components/HistoryAutocomplete";
-import { Plus } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AnimatedTableRow, AnimatedListItem } from "@/components/ui/list-item-animation";
 import { useState, useEffect, useRef } from "react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 interface EquipmentTableProps {
   category: string;
@@ -22,6 +32,7 @@ export default function EquipmentTable({ category, displayName, equipment, onUpd
   const categoryEquipment = equipment.filter((item) => item.equipment_category === category);
   const [newItemIds, setNewItemIds] = useState<Set<string>>(new Set());
   const prevEquipmentLengthRef = useRef(categoryEquipment.length);
+  const [itemToDelete, setItemToDelete] = useState<{ item: any; name: string } | null>(null);
 
   // Track newly added items for animation
   useEffect(() => {
@@ -65,6 +76,15 @@ export default function EquipmentTable({ category, displayName, equipment, onUpd
     onUpdate(updated);
   };
 
+  const handleDeleteConfirm = () => {
+    if (itemToDelete) {
+      const updated = equipment.filter((eq) => eq !== itemToDelete.item);
+      onUpdate(updated);
+      onImmediateSave?.();
+      setItemToDelete(null);
+    }
+  };
+
   return (
     <Card>
       <CardHeader>
@@ -87,6 +107,7 @@ export default function EquipmentTable({ category, displayName, equipment, onUpd
                 <th className="border p-3 text-left font-semibold text-sm w-24">Quantity</th>
                 <th className="border p-3 text-left font-semibold text-sm w-48">Result</th>
                 <th className="border p-3 text-left font-semibold text-sm">Comments and/or Required Changes</th>
+                <th className="border p-3 text-center font-semibold text-sm w-16"></th>
               </tr>
             </thead>
             <tbody>
@@ -151,6 +172,16 @@ export default function EquipmentTable({ category, displayName, equipment, onUpd
                       className="border-0 bg-transparent"
                     />
                   </td>
+                  <td className="border p-2 text-center">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setItemToDelete({ item, name: item.equipment_type || "this equipment" })}
+                      className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </td>
                 </AnimatedTableRow>
               ))}
             </tbody>
@@ -165,8 +196,16 @@ export default function EquipmentTable({ category, displayName, equipment, onUpd
               itemKey={item.id || `mobile-equipment-${index}`}
               isNew={newItemIds.has(item.id)}
             >
-            <Card key={index} className="p-4">
-              <div className="space-y-3">
+            <Card key={index} className="p-4 relative">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setItemToDelete({ item, name: item.equipment_type || "this equipment" })}
+                className="absolute top-2 right-2 h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+              <div className="space-y-3 pr-8">
                 <div>
                   <Label className="text-xs text-muted-foreground">Type *</Label>
                   <HistoryAutocomplete
@@ -234,6 +273,27 @@ export default function EquipmentTable({ category, displayName, equipment, onUpd
           ))}
         </div>
       </CardContent>
+
+      <AlertDialog open={!!itemToDelete} onOpenChange={(open) => !open && setItemToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Equipment</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete <strong>{itemToDelete?.name || "this equipment"}</strong>?
+              This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteConfirm}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Card>
   );
 }
