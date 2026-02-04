@@ -88,11 +88,14 @@ export default function EquipmentTable({ category, displayName, equipment, onUpd
   return (
     <Card>
       <CardHeader className="px-4 md:px-6">
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-lg">EQUIPMENT - {displayName.toUpperCase()}</CardTitle>
-          <Button onClick={addEquipment} size="sm">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+          <CardTitle className="text-base md:text-lg">
+            EQUIPMENT - {displayName.toUpperCase()}
+          </CardTitle>
+          <Button onClick={addEquipment} size="sm" className="w-full md:w-auto shrink-0">
             <Plus className="w-4 h-4 mr-2" />
-            Add {displayName}
+            <span className="md:hidden">Add</span>
+            <span className="hidden md:inline">Add {displayName}</span>
           </Button>
         </div>
       </CardHeader>

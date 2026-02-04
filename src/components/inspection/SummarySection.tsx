@@ -20,17 +20,18 @@ export default function SummarySection({ summary, onUpdate, onImmediateSave, onR
 
   return (
     <Card>
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
+      <CardHeader className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 space-y-0 pb-4">
         <CardTitle>Report Summary</CardTitle>
         {onRegenerate && (
           <Button
             variant="outline"
             size="sm"
             onClick={onRegenerate}
-            className="gap-2"
+            className="w-full md:w-auto shrink-0 gap-2"
           >
             <RefreshCw className="h-4 w-4" />
-            Regenerate from Inspection
+            <span className="md:hidden">Regenerate</span>
+            <span className="hidden md:inline">Regenerate from Inspection</span>
           </Button>
         )}
       </CardHeader>

@@ -90,9 +90,9 @@ export default function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: Z
   return (
     <Card>
       <CardHeader className="px-4 md:px-6">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
           <CardTitle>Ziplines</CardTitle>
-          <Button onClick={addZipline} size="sm">
+          <Button onClick={addZipline} size="sm" className="w-full md:w-auto shrink-0">
             <Plus className="w-4 h-4 mr-2" />
             Add Zipline
           </Button>
