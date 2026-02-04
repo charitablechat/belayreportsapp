@@ -9,6 +9,7 @@ import { isMobile, isIOS } from '@/lib/mobile-detection';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { addSyncNotification } from '@/lib/notification-center';
 import { emitSyncComplete } from '@/lib/sync-events';
+import { clearPendingSyncs } from '@/lib/background-sync';
 
 // Sync configuration with mobile optimization
 const DEBOUNCE_DELAY = 3000; // 3 seconds after local changes
@@ -171,6 +172,11 @@ export const useAutoSync = () => {
         
         // Emit sync complete event for Dashboard to reload data
         emitSyncComplete();
+        
+        // iOS: Clear pending sync flags after successful sync (fixes N3 - storage accumulation)
+        if (isIOSDevice) {
+          clearPendingSyncs();
+        }
       }
     } catch (error) {
       console.error('[AutoSync] Sync failed:', error);

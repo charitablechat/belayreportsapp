@@ -170,7 +170,8 @@ export const useConflicts = () => {
     if (validConflicts.length > 0 && !autoResolveConflicts.isPending) {
       autoResolveConflicts.mutate(validConflicts);
     }
-  }, [validConflicts.length]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [validConflicts.length, autoResolveConflicts.isPending]);
 
   return {
     conflicts: validConflicts,
