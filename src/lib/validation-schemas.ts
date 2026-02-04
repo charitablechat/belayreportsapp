@@ -67,7 +67,7 @@ export const standardSchema = z.object({
   id: z.string().uuid(),
   inspection_id: z.string().uuid(),
   standard_name: z.string().optional().nullable(),
-  has_documentation: z.boolean(),
+  has_documentation: z.boolean().nullable(), // Allow null for "Not Set" state
   comments: z.string().max(2000).optional().nullable(),
   created_at: z.string().optional().nullable(),
 });

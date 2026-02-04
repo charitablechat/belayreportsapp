@@ -282,17 +282,23 @@ export default function InspectionForm() {
   // Clear save error when background sync completes successfully
   useEffect(() => {
     const unsubscribe = onSyncComplete(() => {
-      // Clear any sync errors since background sync succeeded
-      if (saveError && saveError.includes('sync')) {
-        setSaveError(null);
-        if (import.meta.env.DEV) {
-          console.log('[InspectionForm] Cleared sync error after successful background sync');
+      // Aggressively clear any sync-related errors
+      setSaveError(prev => {
+        if (!prev) return null;
+        // Check multiple patterns that indicate sync errors
+        const isSyncError = /sync|failed|offline|queued|network|locally/i.test(prev);
+        if (isSyncError) {
+          if (import.meta.env.DEV) {
+            console.log('[InspectionForm] Cleared sync error after successful background sync');
+          }
+          return null;
         }
-      }
+        return prev;
+      });
     });
     
     return () => unsubscribe();
-  }, [saveError]);
+  }, []); // Empty dependency array to avoid stale closures
 
   // Fetch inspector profile (the report owner, not current user)
   useEffect(() => {

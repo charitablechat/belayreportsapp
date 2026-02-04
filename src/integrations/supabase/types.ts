@@ -715,7 +715,7 @@ export type Database = {
         Row: {
           comments: string | null
           created_at: string | null
-          has_documentation: boolean
+          has_documentation: boolean | null
           id: string
           inspection_id: string
           standard_name: string
@@ -723,7 +723,7 @@ export type Database = {
         Insert: {
           comments?: string | null
           created_at?: string | null
-          has_documentation: boolean
+          has_documentation?: boolean | null
           id?: string
           inspection_id: string
           standard_name: string
@@ -731,7 +731,7 @@ export type Database = {
         Update: {
           comments?: string | null
           created_at?: string | null
-          has_documentation?: boolean
+          has_documentation?: boolean | null
           id?: string
           inspection_id?: string
           standard_name?: string
