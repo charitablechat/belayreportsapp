@@ -1,22 +1,22 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { ReactNode } from "react";
-import { useIsMobile } from "@/hooks/use-mobile";
 
 interface AnimatedListItemProps {
   children: ReactNode;
   itemKey: string;
   isNew?: boolean;
   className?: string;
+  /** PERFORMANCE: Pass isMobile from parent to avoid hook call per item */
+  isMobile?: boolean;
 }
 
 export function AnimatedListItem({ 
   children, 
   itemKey, 
   isNew = false,
-  className = "" 
+  className = "",
+  isMobile = false
 }: AnimatedListItemProps) {
-  const isMobile = useIsMobile();
-  
   // PERFORMANCE: Skip mount animations on mobile unless item is explicitly new
   const skipInitialAnimation = isMobile && !isNew;
   
@@ -48,16 +48,17 @@ interface AnimatedTableRowProps {
   itemKey: string;
   isNew?: boolean;
   className?: string;
+  /** PERFORMANCE: Pass isMobile from parent to avoid hook call per item */
+  isMobile?: boolean;
 }
 
 export function AnimatedTableRow({ 
   children, 
   itemKey, 
   isNew = false,
-  className = "" 
+  className = "",
+  isMobile = false
 }: AnimatedTableRowProps) {
-  const isMobile = useIsMobile();
-  
   // PERFORMANCE: Skip mount animations on mobile unless item is explicitly new
   const skipInitialAnimation = isMobile && !isNew;
   
