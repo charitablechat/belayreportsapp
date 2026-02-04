@@ -63,3 +63,11 @@ self.addEventListener('notificationclick', (event) => {
 self.addEventListener('notificationclose', (event) => {
   if (isDev) console.log('[Service Worker] Notification closed:', event);
 });
+
+// Handle update messages from the app
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    console.log('[Service Worker] Received SKIP_WAITING, activating new version');
+    self.skipWaiting();
+  }
+});
