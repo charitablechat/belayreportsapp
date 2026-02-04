@@ -1,243 +1,175 @@
 
-# Refactor Notification System: Minimize Distraction with Developer-Focused Notification Center
+# Fix Persistent "Failed to sync online" Error
 
-## Current State Analysis
+## Root Cause Analysis
 
-### Architecture Overview
-The application has a multi-layered notification system:
+The investigation revealed **three distinct issues** causing the sync error to persist:
 
-1. **Sonner Toast Wrapper** (`src/components/ui/sonner.tsx`)
-   - Creates `toast` object that wraps sonner's toast functions
-   - Uses `isCriticalMessage()` to determine if a toast should show on mobile
-   - Routes non-critical mobile toasts to the notification center
+### Issue 1: `has_documentation` NULL Constraint Violation
+The `inspection_standards` table has `has_documentation` column set to `NOT NULL`, but the frontend initializes standards with `null`:
 
-2. **Notification Center Library** (`src/lib/notification-center.ts`)
-   - In-memory store for `StatusNotification` objects
-   - Aggregates notifications with debouncing for sync/save messages
-   - Types: `sync`, `save`, `error`, `info`, `loading`
-   - Priority levels: `low`, `medium`, `high`
+```typescript
+// InspectionForm.tsx lines 107-114
+{ id: crypto.randomUUID(), standard_name: "...", has_documentation: null }
+```
 
-3. **Notification Center Component** (`src/components/pwa/NotificationCenter.tsx`)
-   - Sheet-based UI accessible from Dashboard dropdown menu
-   - Shows notification history with icons and timestamps
+**Database Error:**
+```
+null value in column "has_documentation" of relation "inspection_standards" violates not-null constraint
+```
 
-4. **StatusIndicator** (`src/components/pwa/StatusIndicator.tsx`)
-   - Subtle header indicator for sync/save status on mobile
+### Issue 2: Stale Error State Not Cleared
+The error "Failed to sync online - saved locally" is set when sync fails but may not be properly cleared when:
+- Background sync later succeeds but doesn't trigger the listener in time
+- The component re-renders with stale state
+- A new save operation starts before the error is cleared
 
-### Current Problems
+### Issue 3: RLS Policy Timing (Resolved)
+The previous RLS migration added `WITH CHECK` clauses, which are now in place. However, errors may still occur if:
+- Transactions don't commit the parent inspection before child inserts
+- Network interruption causes partial writes
 
-1. **Desktop shows ALL toasts** - No filtering, every success/info/warning shows as overlay
-2. **"Critical" is too broad** - Currently includes all sync messages, even routine "Data synced successfully"
-3. **isCriticalMessage regex is too inclusive** - Matches `sync|syncing|synced` which catches routine operations
-4. **Toast duration is 60 seconds** - Excessive for routine notifications
-5. **Notification center lacks visual hierarchy** - No clear status badges (INFO, WARNING, SUCCESS, ERROR)
+---
 
 ## Solution Design
 
-### Phase 1: Redefine Criticality Logic
+### Phase 1: Fix has_documentation Default Value
 
-**New Criticality Classification:**
+**Option A: Allow NULL in Database (Recommended)**
+Change the database column to allow NULL values. This matches the UI behavior where standards start as "Not Set" before the user selects Yes/No.
 
-| Critical (Toast) | Non-Critical (Center Only) |
-|------------------|---------------------------|
-| Authentication failures | Routine sync complete |
-| Network disconnection/reconnection | Settings saved |
-| System errors requiring action | Profile updated |
-| PWA update available | Auto-save success |
-| Major transaction failures | Background task complete |
-| First-time user onboarding messages | Minor validation messages |
+```sql
+ALTER TABLE inspection_standards 
+ALTER COLUMN has_documentation DROP NOT NULL;
+```
 
-**Implementation:** Create a centralized `CriticalityConfig` that can be easily modified:
+**Option B: Change Frontend Default (Alternative)**
+Initialize with a boolean default instead of null. But this changes UX - items would show Yes/No before user interaction.
+
+**We'll go with Option A** because the UI already displays "Not Set" badge for null values.
+
+### Phase 2: Sanitize Data Before Sync
+
+Add data sanitization in the atomic sync manager to handle edge cases where null values slip through:
 
 ```typescript
-// New file: src/lib/notification-config.ts
-
-export type CriticalityLevel = 'critical' | 'standard' | 'silent';
-
-export interface NotificationConfig {
-  patterns: {
-    critical: RegExp[];     // Always show as toast
-    silent: RegExp[];       // Never show toast, only center
-    // Everything else = 'standard' (desktop toast, mobile center)
-  };
-  durations: {
-    critical: number;       // 10000ms
-    standard: number;       // 4000ms
-    error: number;          // 8000ms
-  };
-}
-
-export const NOTIFICATION_CONFIG: NotificationConfig = {
-  patterns: {
-    critical: [
-      /error|fail|denied|unauthorized/i,
-      /offline|reconnect|connection lost/i,
-      /update available|new version/i,
-      /session expired|please sign in/i,
-    ],
-    silent: [
-      /saved|settings updated|profile updated/i,
-      /synced successfully$/i,      // Routine sync complete
-      /changes saved/i,
-      /auto-?save/i,
-    ],
-  },
-  durations: {
-    critical: 10000,
-    standard: 4000,
-    error: 8000,
-  },
-};
+// In syncInspectionAtomic() before validation
+const sanitizedStandards = standards.map(s => ({
+  ...s,
+  // Default null has_documentation to false for DB compatibility
+  has_documentation: s.has_documentation ?? false,
+}));
 ```
 
-### Phase 2: Unified Toast Wrapper
+### Phase 3: Improve Error State Clearing
 
-Update `src/components/ui/sonner.tsx` to apply filtering on **all platforms** (not just mobile):
+Enhance the `onSyncComplete` listener to aggressively clear sync-related errors:
 
 ```typescript
-function getCriticalityLevel(message: string, type: ToastType): CriticalityLevel {
-  const { patterns } = NOTIFICATION_CONFIG;
+// InspectionForm.tsx - Improved error clearing
+useEffect(() => {
+  const unsubscribe = onSyncComplete(() => {
+    // Clear any sync-related errors on successful background sync
+    setSaveError(prev => {
+      if (!prev) return null;
+      // Check multiple patterns that indicate sync errors
+      const isSyncError = /sync|failed|offline|queued|network/i.test(prev);
+      return isSyncError ? null : prev;
+    });
+  });
   
-  // Errors are always critical
-  if (type === 'error') return 'critical';
-  
-  // Check critical patterns
-  if (patterns.critical.some(p => p.test(message))) return 'critical';
-  
-  // Check silent patterns
-  if (patterns.silent.some(p => p.test(message))) return 'silent';
-  
-  // Default behavior
-  return 'standard';
-}
-
-// Updated toast wrapper behavior:
-// - 'critical': Always show toast (all platforms)
-// - 'standard': Show toast on desktop, route to center on mobile
-// - 'silent': Route to center only (all platforms)
+  return () => unsubscribe();
+}, []); // Remove saveError dependency to avoid stale closures
 ```
 
-### Phase 3: Developer-Focused Notification Center Redesign
+### Phase 4: Add Auto-Retry After Error Clear
 
-Redesign the `NotificationCenter` component with clear status badges:
-
-```text
-┌────────────────────────────────────────────┐
-│ 🔔 Activity Log                    Clear ▿ │
-├────────────────────────────────────────────┤
-│ ┌────────────────────────────────────────┐ │
-│ │ [ERROR] Sync failed: Network timeout   │ │
-│ │ 2 minutes ago                          │ │
-│ └────────────────────────────────────────┘ │
-│ ┌────────────────────────────────────────┐ │
-│ │ [SUCCESS] Data synced (3 items)        │ │
-│ │ 5 minutes ago                          │ │
-│ └────────────────────────────────────────┘ │
-│ ┌────────────────────────────────────────┐ │
-│ │ [INFO] Settings saved                  │ │
-│ │ 12 minutes ago                         │ │
-│ └────────────────────────────────────────┘ │
-└────────────────────────────────────────────┘
-```
-
-**Visual Badge Styling:**
-
-| Badge     | Background    | Text Color  | Icon        |
-|-----------|---------------|-------------|-------------|
-| ERROR     | `destructive` | White       | AlertCircle |
-| WARNING   | `amber-500`   | White       | AlertTriangle |
-| SUCCESS   | `green-600`   | White       | CheckCircle |
-| INFO      | `muted`       | Foreground  | Info        |
-| SYNC      | `blue-500`    | White       | Cloud       |
-
-### Phase 4: Add Notification Type to Interface
-
-Extend `NotificationType` to include a display category for badges:
+When an error is cleared via background sync, trigger a revalidation to update UI state:
 
 ```typescript
-// Updated notification-center.ts
-export type NotificationCategory = 'ERROR' | 'WARNING' | 'SUCCESS' | 'INFO' | 'SYNC';
-
-export interface StatusNotification {
-  id: string;
-  type: NotificationType;
-  category: NotificationCategory;  // NEW: For badge display
-  message: string;
-  timestamp: number;
-  priority: NotificationPriority;
-  read: boolean;
-  expiresAt?: number;
+// After clearing error, also update lastSaved if inspection exists
+if (inspection?.synced_at) {
+  setLastSaved(new Date(inspection.synced_at));
 }
 ```
+
+---
 
 ## Files to Modify
 
 | File | Changes |
 |------|---------|
-| `src/lib/notification-config.ts` | **NEW** - Centralized criticality configuration |
-| `src/lib/notification-center.ts` | Add `category` to notifications, update routing |
-| `src/components/ui/sonner.tsx` | Apply universal criticality filtering |
-| `src/components/pwa/NotificationCenter.tsx` | Developer-style badges, cleaner UI |
-| `src/hooks/useNotificationCenter.tsx` | Support new category field |
-| `vite.config.ts` | Version bump to v2.2.70 |
+| **Database Migration** | `ALTER TABLE inspection_standards ALTER COLUMN has_documentation DROP NOT NULL` |
+| `src/lib/atomic-sync-manager.ts` | Sanitize standards before sync to handle nulls |
+| `src/pages/InspectionForm.tsx` | Improve error clearing logic with broader pattern matching |
+| `src/lib/validation-schemas.ts` | Update standardSchema to allow nullable `has_documentation` |
+| `vite.config.ts` | Increment to v2.2.71 |
 
-## Technical Implementation Details
+---
 
-### 1. New File: `src/lib/notification-config.ts`
+## Technical Implementation
 
-Creates centralized, easily configurable criticality rules with:
-- Pattern-based matching for critical/silent classification
-- Duration settings per criticality level
-- Export function `classifyMessage(message, type)` returning criticality level
+### 1. Database Migration
 
-### 2. Update: `src/lib/notification-center.ts`
-
-- Add `category: NotificationCategory` to `StatusNotification` interface
-- Update `addNotification()` to derive category from type
-- Add `addNotificationWithCategory()` helper for explicit category assignment
-- Update `routeToastToNotification()` to set appropriate category
-
-### 3. Update: `src/components/ui/sonner.tsx`
-
-- Import `NOTIFICATION_CONFIG` and `classifyMessage()`
-- Replace `isCriticalMessage()` with new criticality classification
-- Apply filtering to desktop too (silent messages → center only)
-- Adjust toast durations based on criticality level
-- Keep `isMobile()` check for standard messages (toast on desktop, center on mobile)
-
-### 4. Update: `src/components/pwa/NotificationCenter.tsx`
-
-- Add `NotificationBadge` component with styled badges
-- Map notification types to categories for display
-- Cleaner typography with monospace timestamps
-- Group notifications by time (Today, Yesterday, Older)
-- Add filter dropdown (All, Errors, Sync, Saves)
-
-### 5. Update: `vite.config.ts`
-
-```typescript
-const APP_VERSION = "2.2.70";
-const BUILD_TIMESTAMP = "02-04-2026 at 12:00 PM CST";
+```sql
+-- Allow NULL for has_documentation to match UI "Not Set" state
+ALTER TABLE inspection_standards 
+ALTER COLUMN has_documentation DROP NOT NULL;
 ```
 
-## Expected Behavior After Implementation
+### 2. Update Validation Schema
 
-| Scenario | Desktop | Mobile |
-|----------|---------|--------|
-| "Failed to sync" (error) | Toast | Toast + Center |
-| "Data synced successfully" | Center only | Center only |
-| "Settings saved" | Center only | Center only |
-| "Network reconnected" | Toast | Toast + Center |
-| "Update available" | Toast | Toast + Center |
-| "Profile updated" | Center only | Center only |
+```typescript
+// validation-schemas.ts line 70
+has_documentation: z.boolean().nullable(), // Allow null for "Not Set" state
+```
+
+### 3. Sanitize in Atomic Sync Manager
+
+```typescript
+// atomic-sync-manager.ts - After transformTempIds
+const sanitizedStandards = standards.map(s => ({
+  ...s,
+  // Ensure inspection_id is set for new standards
+  inspection_id: s.inspection_id || inspectionId,
+}));
+```
+
+### 4. Improve Error Clearing in InspectionForm
+
+```typescript
+// Enhanced sync completion listener
+useEffect(() => {
+  const unsubscribe = onSyncComplete(() => {
+    // Aggressively clear sync-related errors
+    setSaveError(null);
+    
+    // Optionally refresh sync status
+    if (import.meta.env.DEV) {
+      console.log('[InspectionForm] Sync complete - cleared all errors');
+    }
+  });
+  
+  return () => unsubscribe();
+}, []); // Empty dependency array for stable reference
+```
+
+---
 
 ## Testing Checklist
 
-1. Verify critical errors show as toasts on both platforms
-2. Verify routine "saved" messages go to center only
-3. Verify sync success messages go to center only
-4. Verify network status changes show as toasts
-5. Verify notification center displays proper badges
-6. Verify unread count updates correctly
-7. Verify "Mark all read" works
-8. Verify notifications expire after configured time
+1. Create new inspection → verify standards can be saved with "Not Set" state
+2. Edit standards → verify sync succeeds when has_documentation is true/false/null
+3. Simulate network failure → verify error displays
+4. Restore network → verify background sync clears error automatically
+5. Check error banner disappears after successful sync
+6. Verify mobile PWA syncs correctly
+
+---
+
+## Version Update
+
+```typescript
+const APP_VERSION = "2.2.71";
+const BUILD_TIMESTAMP = "02-04-2026 at 12:30 PM CST";
+```
