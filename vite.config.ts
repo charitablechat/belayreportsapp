@@ -5,8 +5,8 @@ import { componentTagger } from "lovable-tagger";
 import { pwaConfig } from "./vite-pwa-config";
 
 // Version follows vX.Y.Z format where Z increments by 10 on each deployment
-// v2.1.60 - Mobile sync fix: extended IndexedDB timeouts (10s) to prevent false empty returns on slow networks
-const APP_VERSION = "2.1.60";
+// v2.1.70 - Mobile performance: parallel data loading, lazy tab rendering, deferred animations
+const APP_VERSION = "2.1.70";
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
