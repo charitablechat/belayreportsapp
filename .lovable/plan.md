@@ -1,219 +1,243 @@
 
-# Fix Mobile Synchronization Failure
+# Refactor Notification System: Minimize Distraction with Developer-Focused Notification Center
 
-## Problem Summary
+## Current State Analysis
 
-Mobile PWA is failing to synchronize data with the central database. The root causes are:
+### Architecture Overview
+The application has a multi-layered notification system:
 
-1. **RLS Policy Missing WITH CHECK** - INSERT operations fail because RLS policies lack explicit WITH CHECK clauses
-2. **IndexedDB Timeout Race Condition** - Outer timeout fires before inner operations complete, returning empty arrays
-3. **False Success Reporting** - Empty array (from timeout) is treated as "nothing to sync" rather than "failed to fetch"
+1. **Sonner Toast Wrapper** (`src/components/ui/sonner.tsx`)
+   - Creates `toast` object that wraps sonner's toast functions
+   - Uses `isCriticalMessage()` to determine if a toast should show on mobile
+   - Routes non-critical mobile toasts to the notification center
 
-## Detailed Analysis
+2. **Notification Center Library** (`src/lib/notification-center.ts`)
+   - In-memory store for `StatusNotification` objects
+   - Aggregates notifications with debouncing for sync/save messages
+   - Types: `sync`, `save`, `error`, `info`, `loading`
+   - Priority levels: `low`, `medium`, `high`
 
-### Root Cause 1: RLS Policy INSERT Failure
+3. **Notification Center Component** (`src/components/pwa/NotificationCenter.tsx`)
+   - Sheet-based UI accessible from Dashboard dropdown menu
+   - Shows notification history with icons and timestamps
 
-**Database Error Logs:**
-```
-ERROR: new row violates row-level security policy for table "inspection_standards"
-ERROR: new row violates row-level security policy for table "inspection_summary"
-```
+4. **StatusIndicator** (`src/components/pwa/StatusIndicator.tsx`)
+   - Subtle header indicator for sync/save status on mobile
 
-**Current Policy Configuration:**
-```sql
--- All 5 related tables have this pattern:
-cmd: ALL
-qual: (EXISTS ( SELECT 1 FROM inspections WHERE inspections.id = [table].inspection_id AND inspections.inspector_id = auth.uid()))
-with_check: <nil>  -- PROBLEM: Missing!
-```
+### Current Problems
 
-**Why This Fails:**
-When `with_check` is NULL for policies with `cmd = ALL`, PostgreSQL uses the `qual` (USING) expression for INSERT verification. The sync operation does:
-1. UPSERT inspection (sets `inspector_id = auth.uid()`)
-2. DELETE existing related rows
-3. INSERT new related rows
+1. **Desktop shows ALL toasts** - No filtering, every success/info/warning shows as overlay
+2. **"Critical" is too broad** - Currently includes all sync messages, even routine "Data synced successfully"
+3. **isCriticalMessage regex is too inclusive** - Matches `sync|syncing|synced` which catches routine operations
+4. **Toast duration is 60 seconds** - Excessive for routine notifications
+5. **Notification center lacks visual hierarchy** - No clear status badges (INFO, WARNING, SUCCESS, ERROR)
 
-The INSERT fails because the RLS check `(EXISTS (SELECT 1 FROM inspections...))` executes before the inspection row is committed/visible, causing the check to fail.
+## Solution Design
 
-**Fix:** Add explicit `WITH CHECK (true)` to all child table policies. Since the parent inspection already enforces ownership, child rows just need insertion permission.
+### Phase 1: Redefine Criticality Logic
 
-### Root Cause 2: IndexedDB Timeout Race Condition
+**New Criticality Classification:**
 
-**Console Logs:**
-```
-[Atomic Sync] IndexedDB timeout getting unsynced inspections
-[Atomic Sync] IndexedDB timeout getting unsynced trainings  
-[Atomic Sync] IndexedDB timeout getting unsynced assessments
-```
+| Critical (Toast) | Non-Critical (Center Only) |
+|------------------|---------------------------|
+| Authentication failures | Routine sync complete |
+| Network disconnection/reconnection | Settings saved |
+| System errors requiring action | Profile updated |
+| PWA update available | Auto-save success |
+| Major transaction failures | Background task complete |
+| First-time user onboarding messages | Minor validation messages |
 
-**Current Code (atomic-sync-manager.ts line 341-347):**
-```typescript
-unsynced = await Promise.race([
-  getUnsyncedInspections(user.id),  // Has internal 5s timeout + 3s health check = 8s
-  new Promise<any[]>((resolve) => setTimeout(() => {
-    console.warn('[Atomic Sync] IndexedDB timeout getting unsynced inspections');
-    resolve([]);  // PROBLEM: Returns empty array on timeout
-  }, 15000))
-]);
-```
-
-**Problem:** The 15s outer timeout fires before the inner operation completes on slow mobile networks, returning `[]`. The sync then proceeds with "0 items to sync" and reports success.
-
-**Fix:** Differentiate between "timeout" and "empty" results. Return a sentinel value or throw on timeout to indicate failure rather than success.
-
-### Root Cause 3: False Success Reporting
-
-When `unsynced = []` (from timeout), the code proceeds:
-```typescript
-// Syncs 0 items "successfully"
-return { total: 0, success: 0, failed: 0, errors: [] };
-```
-
-This shows "Sync completed successfully" toast even though no data was fetched or synced.
-
-## Implementation Plan
-
-### Phase 1: Fix RLS Policies (Database Migration)
-
-Add explicit WITH CHECK clauses to all child table policies:
-
-```sql
--- Drop and recreate policies with explicit WITH CHECK
--- inspection_systems
-DROP POLICY IF EXISTS "Users can manage systems for their inspections" ON inspection_systems;
-CREATE POLICY "Users can manage systems for their inspections" ON inspection_systems
-FOR ALL
-USING (EXISTS (SELECT 1 FROM inspections WHERE inspections.id = inspection_systems.inspection_id AND inspections.inspector_id = auth.uid()))
-WITH CHECK (EXISTS (SELECT 1 FROM inspections WHERE inspections.id = inspection_systems.inspection_id AND inspections.inspector_id = auth.uid()));
-
--- Repeat for: inspection_ziplines, inspection_equipment, inspection_standards, inspection_summary
-```
-
-### Phase 2: Fix Timeout Handling (Code Changes)
-
-**File: `src/lib/atomic-sync-manager.ts`**
-
-Update timeout logic to distinguish failures:
+**Implementation:** Create a centralized `CriticalityConfig` that can be easily modified:
 
 ```typescript
-// Lines 339-351: Replace with proper timeout handling
-let unsynced: any[];
-let fetchFailed = false;
-try {
-  const timeoutPromise = new Promise<never>((_, reject) => 
-    setTimeout(() => reject(new Error('IndexedDB timeout')), 15000)
-  );
+// New file: src/lib/notification-config.ts
+
+export type CriticalityLevel = 'critical' | 'standard' | 'silent';
+
+export interface NotificationConfig {
+  patterns: {
+    critical: RegExp[];     // Always show as toast
+    silent: RegExp[];       // Never show toast, only center
+    // Everything else = 'standard' (desktop toast, mobile center)
+  };
+  durations: {
+    critical: number;       // 10000ms
+    standard: number;       // 4000ms
+    error: number;          // 8000ms
+  };
+}
+
+export const NOTIFICATION_CONFIG: NotificationConfig = {
+  patterns: {
+    critical: [
+      /error|fail|denied|unauthorized/i,
+      /offline|reconnect|connection lost/i,
+      /update available|new version/i,
+      /session expired|please sign in/i,
+    ],
+    silent: [
+      /saved|settings updated|profile updated/i,
+      /synced successfully$/i,      // Routine sync complete
+      /changes saved/i,
+      /auto-?save/i,
+    ],
+  },
+  durations: {
+    critical: 10000,
+    standard: 4000,
+    error: 8000,
+  },
+};
+```
+
+### Phase 2: Unified Toast Wrapper
+
+Update `src/components/ui/sonner.tsx` to apply filtering on **all platforms** (not just mobile):
+
+```typescript
+function getCriticalityLevel(message: string, type: ToastType): CriticalityLevel {
+  const { patterns } = NOTIFICATION_CONFIG;
   
-  unsynced = await Promise.race([
-    getUnsyncedInspections(user.id),
-    timeoutPromise
-  ]);
-} catch (e: any) {
-  if (e.message === 'IndexedDB timeout') {
-    console.warn('[Atomic Sync] IndexedDB timeout - will retry next cycle');
-    fetchFailed = true;
-  } else {
-    console.warn('[Atomic Sync] Failed to get unsynced inspections:', e);
-  }
-  unsynced = [];
-}
-
-// Don't emit success if we failed to fetch data
-if (fetchFailed) {
-  return { total: -1, success: 0, failed: 0, errors: [{ id: 'indexeddb', error: 'Timeout' }] };
-}
-```
-
-Apply same pattern to trainings and daily_assessments functions.
-
-### Phase 3: Update Success Reporting (Code Changes)
-
-**File: `src/hooks/useAutoSync.tsx`**
-
-Only show success toast when data was actually synced:
-
-```typescript
-// Lines 160-178: Update success handling
-if (!syncResult.timedOut) {
-  // Check if any sync actually happened or if all returned -1 (fetch failed)
-  const results = syncResult.result as any[];
-  const allFetchesFailed = results.every(r => r?.total === -1);
-  const anySuccess = results.some(r => r?.success > 0);
+  // Errors are always critical
+  if (type === 'error') return 'critical';
   
-  if (!allFetchesFailed) {
-    // Refresh counts and invalidate queries
-    updateUnsyncedCounts().catch(() => {});
-    queryClient.invalidateQueries({ queryKey: ['inspections'] });
-    // ...etc
-    
-    if (anySuccess) {
-      toast.success('Data synced successfully');
-      addSyncNotification('Data synced successfully');
-    }
-    // Always emit completion event to clear error states
-    emitSyncComplete();
-  } else {
-    console.warn('[AutoSync] All fetches failed - not reporting success');
-  }
+  // Check critical patterns
+  if (patterns.critical.some(p => p.test(message))) return 'critical';
+  
+  // Check silent patterns
+  if (patterns.silent.some(p => p.test(message))) return 'silent';
+  
+  // Default behavior
+  return 'standard';
 }
+
+// Updated toast wrapper behavior:
+// - 'critical': Always show toast (all platforms)
+// - 'standard': Show toast on desktop, route to center on mobile
+// - 'silent': Route to center only (all platforms)
 ```
 
-### Phase 4: Version Update
+### Phase 3: Developer-Focused Notification Center Redesign
 
-**File: `vite.config.ts`**
+Redesign the `NotificationCenter` component with clear status badges:
+
+```text
+┌────────────────────────────────────────────┐
+│ 🔔 Activity Log                    Clear ▿ │
+├────────────────────────────────────────────┤
+│ ┌────────────────────────────────────────┐ │
+│ │ [ERROR] Sync failed: Network timeout   │ │
+│ │ 2 minutes ago                          │ │
+│ └────────────────────────────────────────┘ │
+│ ┌────────────────────────────────────────┐ │
+│ │ [SUCCESS] Data synced (3 items)        │ │
+│ │ 5 minutes ago                          │ │
+│ └────────────────────────────────────────┘ │
+│ ┌────────────────────────────────────────┐ │
+│ │ [INFO] Settings saved                  │ │
+│ │ 12 minutes ago                         │ │
+│ └────────────────────────────────────────┘ │
+└────────────────────────────────────────────┘
+```
+
+**Visual Badge Styling:**
+
+| Badge     | Background    | Text Color  | Icon        |
+|-----------|---------------|-------------|-------------|
+| ERROR     | `destructive` | White       | AlertCircle |
+| WARNING   | `amber-500`   | White       | AlertTriangle |
+| SUCCESS   | `green-600`   | White       | CheckCircle |
+| INFO      | `muted`       | Foreground  | Info        |
+| SYNC      | `blue-500`    | White       | Cloud       |
+
+### Phase 4: Add Notification Type to Interface
+
+Extend `NotificationType` to include a display category for badges:
 
 ```typescript
-const APP_VERSION = "2.2.60";
-const BUILD_TIMESTAMP = "02-04-2026 at 11:00 AM CST";
+// Updated notification-center.ts
+export type NotificationCategory = 'ERROR' | 'WARNING' | 'SUCCESS' | 'INFO' | 'SYNC';
+
+export interface StatusNotification {
+  id: string;
+  type: NotificationType;
+  category: NotificationCategory;  // NEW: For badge display
+  message: string;
+  timestamp: number;
+  priority: NotificationPriority;
+  read: boolean;
+  expiresAt?: number;
+}
 ```
 
 ## Files to Modify
 
 | File | Changes |
 |------|---------|
-| **Database Migration** | Add WITH CHECK to 5 child table RLS policies |
-| `src/lib/atomic-sync-manager.ts` | Fix timeout handling for inspections, trainings, assessments (3 locations) |
-| `src/hooks/useAutoSync.tsx` | Only report success when data actually synced |
-| `vite.config.ts` | Increment to v2.2.60 |
+| `src/lib/notification-config.ts` | **NEW** - Centralized criticality configuration |
+| `src/lib/notification-center.ts` | Add `category` to notifications, update routing |
+| `src/components/ui/sonner.tsx` | Apply universal criticality filtering |
+| `src/components/pwa/NotificationCenter.tsx` | Developer-style badges, cleaner UI |
+| `src/hooks/useNotificationCenter.tsx` | Support new category field |
+| `vite.config.ts` | Version bump to v2.2.70 |
 
-## Expected Outcome
+## Technical Implementation Details
 
-After implementation:
-1. **RLS INSERT works** - Child tables accept inserts when parent inspection exists
-2. **Timeouts distinguished** - Failed fetches don't masquerade as empty results  
-3. **Accurate feedback** - Toast only shows success when data actually synced
-4. **Mobile sync works** - Data reliably persists to central database
+### 1. New File: `src/lib/notification-config.ts`
 
-## Migration SQL Preview
+Creates centralized, easily configurable criticality rules with:
+- Pattern-based matching for critical/silent classification
+- Duration settings per criticality level
+- Export function `classifyMessage(message, type)` returning criticality level
 
-```sql
--- Fix inspection_systems
-DROP POLICY IF EXISTS "Users can manage systems for their inspections" ON inspection_systems;
-CREATE POLICY "Users can manage systems for their inspections" ON inspection_systems
-FOR ALL USING (EXISTS (SELECT 1 FROM inspections WHERE inspections.id = inspection_systems.inspection_id AND inspections.inspector_id = auth.uid()))
-WITH CHECK (EXISTS (SELECT 1 FROM inspections WHERE inspections.id = inspection_systems.inspection_id AND inspections.inspector_id = auth.uid()));
+### 2. Update: `src/lib/notification-center.ts`
 
--- Fix inspection_ziplines  
-DROP POLICY IF EXISTS "Users can manage ziplines for their inspections" ON inspection_ziplines;
-CREATE POLICY "Users can manage ziplines for their inspections" ON inspection_ziplines
-FOR ALL USING (EXISTS (SELECT 1 FROM inspections WHERE inspections.id = inspection_ziplines.inspection_id AND inspections.inspector_id = auth.uid()))
-WITH CHECK (EXISTS (SELECT 1 FROM inspections WHERE inspections.id = inspection_ziplines.inspection_id AND inspections.inspector_id = auth.uid()));
+- Add `category: NotificationCategory` to `StatusNotification` interface
+- Update `addNotification()` to derive category from type
+- Add `addNotificationWithCategory()` helper for explicit category assignment
+- Update `routeToastToNotification()` to set appropriate category
 
--- Fix inspection_equipment
-DROP POLICY IF EXISTS "Users can manage equipment for their inspections" ON inspection_equipment;
-CREATE POLICY "Users can manage equipment for their inspections" ON inspection_equipment
-FOR ALL USING (EXISTS (SELECT 1 FROM inspections WHERE inspections.id = inspection_equipment.inspection_id AND inspections.inspector_id = auth.uid()))
-WITH CHECK (EXISTS (SELECT 1 FROM inspections WHERE inspections.id = inspection_equipment.inspection_id AND inspections.inspector_id = auth.uid()));
+### 3. Update: `src/components/ui/sonner.tsx`
 
--- Fix inspection_standards
-DROP POLICY IF EXISTS "Users can manage standards for their inspections" ON inspection_standards;
-CREATE POLICY "Users can manage standards for their inspections" ON inspection_standards
-FOR ALL USING (EXISTS (SELECT 1 FROM inspections WHERE inspections.id = inspection_standards.inspection_id AND inspections.inspector_id = auth.uid()))
-WITH CHECK (EXISTS (SELECT 1 FROM inspections WHERE inspections.id = inspection_standards.inspection_id AND inspections.inspector_id = auth.uid()));
+- Import `NOTIFICATION_CONFIG` and `classifyMessage()`
+- Replace `isCriticalMessage()` with new criticality classification
+- Apply filtering to desktop too (silent messages → center only)
+- Adjust toast durations based on criticality level
+- Keep `isMobile()` check for standard messages (toast on desktop, center on mobile)
 
--- Fix inspection_summary
-DROP POLICY IF EXISTS "Users can manage summary for their inspections" ON inspection_summary;
-CREATE POLICY "Users can manage summary for their inspections" ON inspection_summary
-FOR ALL USING (EXISTS (SELECT 1 FROM inspections WHERE inspections.id = inspection_summary.inspection_id AND inspections.inspector_id = auth.uid()))
-WITH CHECK (EXISTS (SELECT 1 FROM inspections WHERE inspections.id = inspection_summary.inspection_id AND inspections.inspector_id = auth.uid()));
+### 4. Update: `src/components/pwa/NotificationCenter.tsx`
+
+- Add `NotificationBadge` component with styled badges
+- Map notification types to categories for display
+- Cleaner typography with monospace timestamps
+- Group notifications by time (Today, Yesterday, Older)
+- Add filter dropdown (All, Errors, Sync, Saves)
+
+### 5. Update: `vite.config.ts`
+
+```typescript
+const APP_VERSION = "2.2.70";
+const BUILD_TIMESTAMP = "02-04-2026 at 12:00 PM CST";
 ```
+
+## Expected Behavior After Implementation
+
+| Scenario | Desktop | Mobile |
+|----------|---------|--------|
+| "Failed to sync" (error) | Toast | Toast + Center |
+| "Data synced successfully" | Center only | Center only |
+| "Settings saved" | Center only | Center only |
+| "Network reconnected" | Toast | Toast + Center |
+| "Update available" | Toast | Toast + Center |
+| "Profile updated" | Center only | Center only |
+
+## Testing Checklist
+
+1. Verify critical errors show as toasts on both platforms
+2. Verify routine "saved" messages go to center only
+3. Verify sync success messages go to center only
+4. Verify network status changes show as toasts
+5. Verify notification center displays proper badges
+6. Verify unread count updates correctly
+7. Verify "Mark all read" works
+8. Verify notifications expire after configured time
