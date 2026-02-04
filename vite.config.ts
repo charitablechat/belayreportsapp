@@ -5,8 +5,10 @@ import { componentTagger } from "lovable-tagger";
 import { pwaConfig } from "./vite-pwa-config";
 
 // Version follows vX.Y.Z format where Z increments by 10 on each deployment
-// v2.2.10 - PWA: Added SKIP_WAITING message handler for reliable mobile updates
-const APP_VERSION = "2.2.10";
+// v2.2.20 - Added interactive version info modal with deployment metadata
+const APP_VERSION = "2.2.20";
+const BUILD_DATE = "2024-05-20";
+const BUILD_TIMESTAMP = "2024-05-20T14:30:00Z";
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
@@ -16,6 +18,8 @@ export default defineConfig(({ mode }) => ({
   },
   define: {
     'import.meta.env.APP_VERSION': JSON.stringify(APP_VERSION),
+    'import.meta.env.BUILD_DATE': JSON.stringify(BUILD_DATE),
+    'import.meta.env.BUILD_TIMESTAMP': JSON.stringify(BUILD_TIMESTAMP),
   },
   plugins: [
     react(),

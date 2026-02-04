@@ -2,6 +2,8 @@
 
 interface ImportMetaEnv {
   readonly APP_VERSION: string;
+  readonly BUILD_DATE: string;
+  readonly BUILD_TIMESTAMP: string;
 }
 
 interface ImportMeta {
