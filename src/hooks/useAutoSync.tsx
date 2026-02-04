@@ -160,26 +160,37 @@ export const useAutoSync = () => {
       
       // Only do post-sync work if we didn't time out
       if (!syncResult.timedOut) {
-        // Refresh unsynced counts (non-blocking)
-        updateUnsyncedCounts().catch(() => {});
+        // Check if any sync actually happened or if all returned -1 (fetch failed due to timeout)
+        const results = (syncResult.result as any[]) || [];
+        const allFetchesFailed = results.length > 0 && results.every(r => r?.total === -1);
+        const anySuccess = results.some(r => r?.success > 0);
+        const totalSynced = results.reduce((sum, r) => sum + (r?.success || 0), 0);
         
-        // Invalidate queries to refresh UI
-        queryClient.invalidateQueries({ queryKey: ['inspections'] });
-        queryClient.invalidateQueries({ queryKey: ['trainings'] });
-        queryClient.invalidateQueries({ queryKey: ['daily-assessments'] });
-        
-        // Show visible toast for sync completion (critical message - bypasses mobile filter)
-        toast.success('Data synced successfully');
-        
-        // Also add to notification center for history
-        addSyncNotification('Data synced successfully');
-        
-        // Emit sync complete event for Dashboard to reload data
-        emitSyncComplete();
-        
-        // iOS: Clear pending sync flags after successful sync (fixes N3 - storage accumulation)
-        if (isIOSDevice) {
-          clearPendingSyncs();
+        if (!allFetchesFailed) {
+          // Refresh unsynced counts (non-blocking)
+          updateUnsyncedCounts().catch(() => {});
+          
+          // Invalidate queries to refresh UI
+          queryClient.invalidateQueries({ queryKey: ['inspections'] });
+          queryClient.invalidateQueries({ queryKey: ['trainings'] });
+          queryClient.invalidateQueries({ queryKey: ['daily-assessments'] });
+          
+          // Only show success toast if items were actually synced
+          if (anySuccess) {
+            toast.success(`Data synced successfully (${totalSynced} items)`);
+            addSyncNotification(`Data synced successfully (${totalSynced} items)`);
+          }
+          
+          // Always emit sync complete event for Dashboard to reload data (clears error states)
+          emitSyncComplete();
+          
+          // iOS: Clear pending sync flags after successful sync (fixes N3 - storage accumulation)
+          if (isIOSDevice) {
+            clearPendingSyncs();
+          }
+        } else {
+          // All fetches timed out - don't report success, will retry next cycle
+          console.warn('[AutoSync] All IndexedDB fetches timed out - not reporting success');
         }
       }
     } catch (error: any) {

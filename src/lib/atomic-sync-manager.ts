@@ -337,17 +337,29 @@ export async function syncAllInspectionsAtomic() {
   // The outer timeout here is a safety net for very slow mobile networks
   // Increased to 15s to avoid racing with inner 5s timeout + 3s health check
   let unsynced: any[];
+  let fetchTimedOut = false;
   try {
+    const timeoutPromise = new Promise<never>((_, reject) => 
+      setTimeout(() => reject(new Error('IndexedDB timeout')), 15000)
+    );
+    
     unsynced = await Promise.race([
       getUnsyncedInspections(user.id),
-      new Promise<any[]>((resolve) => setTimeout(() => {
-        console.warn('[Atomic Sync] IndexedDB timeout getting unsynced inspections');
-        resolve([]);
-      }, 15000)) // Increased from 10s to 15s to prevent race condition with inner timeouts
+      timeoutPromise
     ]);
-  } catch (e) {
-    console.warn('[Atomic Sync] Failed to get unsynced inspections:', e);
-    return { total: 0, success: 0, failed: 0, errors: [] };
+  } catch (e: any) {
+    if (e.message === 'IndexedDB timeout') {
+      console.warn('[Atomic Sync] IndexedDB timeout getting unsynced inspections - will retry next cycle');
+      fetchTimedOut = true;
+    } else {
+      console.warn('[Atomic Sync] Failed to get unsynced inspections:', e);
+    }
+    unsynced = [];
+  }
+  
+  // Don't report success if we failed to fetch data (total: -1 signals fetch failure)
+  if (fetchTimedOut) {
+    return { total: -1, success: 0, failed: 0, errors: [{ id: 'indexeddb', error: 'Timeout fetching inspections' }] };
   }
   
   if (import.meta.env.DEV) {
@@ -749,17 +761,29 @@ export async function syncAllTrainingsAtomic() {
   // Get unsynced trainings with extended timeout for mobile networks
   // Increased to 15s to avoid racing with inner 5s timeout + 3s health check
   let unsynced: any[];
+  let fetchTimedOut = false;
   try {
+    const timeoutPromise = new Promise<never>((_, reject) => 
+      setTimeout(() => reject(new Error('IndexedDB timeout')), 15000)
+    );
+    
     unsynced = await Promise.race([
       getUnsyncedTrainings(user.id),
-      new Promise<any[]>((resolve) => setTimeout(() => {
-        console.warn('[Atomic Sync] IndexedDB timeout getting unsynced trainings');
-        resolve([]);
-      }, 15000)) // Increased from 10s to 15s to prevent race condition with inner timeouts
+      timeoutPromise
     ]);
-  } catch (e) {
-    console.warn('[Atomic Sync] Failed to get unsynced trainings:', e);
-    return { total: 0, success: 0, failed: 0, errors: [] };
+  } catch (e: any) {
+    if (e.message === 'IndexedDB timeout') {
+      console.warn('[Atomic Sync] IndexedDB timeout getting unsynced trainings - will retry next cycle');
+      fetchTimedOut = true;
+    } else {
+      console.warn('[Atomic Sync] Failed to get unsynced trainings:', e);
+    }
+    unsynced = [];
+  }
+  
+  // Don't report success if we failed to fetch data (total: -1 signals fetch failure)
+  if (fetchTimedOut) {
+    return { total: -1, success: 0, failed: 0, errors: [{ id: 'indexeddb', error: 'Timeout fetching trainings' }] };
   }
   
   if (unsynced.length === 0) {
@@ -1114,17 +1138,29 @@ export async function syncAllDailyAssessmentsAtomic() {
   // Get unsynced assessments with extended timeout for mobile networks
   // Increased to 15s to avoid racing with inner 5s timeout + 3s health check
   let unsynced: any[];
+  let fetchTimedOut = false;
   try {
+    const timeoutPromise = new Promise<never>((_, reject) => 
+      setTimeout(() => reject(new Error('IndexedDB timeout')), 15000)
+    );
+    
     unsynced = await Promise.race([
       getUnsyncedDailyAssessments(user.id),
-      new Promise<any[]>((resolve) => setTimeout(() => {
-        console.warn('[Atomic Sync] IndexedDB timeout getting unsynced assessments');
-        resolve([]);
-      }, 15000)) // Increased from 10s to 15s to prevent race condition with inner timeouts
+      timeoutPromise
     ]);
-  } catch (e) {
-    console.warn('[Atomic Sync] Failed to get unsynced assessments:', e);
-    return { total: 0, success: 0, failed: 0, errors: [] };
+  } catch (e: any) {
+    if (e.message === 'IndexedDB timeout') {
+      console.warn('[Atomic Sync] IndexedDB timeout getting unsynced assessments - will retry next cycle');
+      fetchTimedOut = true;
+    } else {
+      console.warn('[Atomic Sync] Failed to get unsynced assessments:', e);
+    }
+    unsynced = [];
+  }
+  
+  // Don't report success if we failed to fetch data (total: -1 signals fetch failure)
+  if (fetchTimedOut) {
+    return { total: -1, success: 0, failed: 0, errors: [{ id: 'indexeddb', error: 'Timeout fetching assessments' }] };
   }
   
   if (unsynced.length === 0) {

@@ -5,10 +5,10 @@ import { componentTagger } from "lovable-tagger";
 import { pwaConfig } from "./vite-pwa-config";
 
 // Version follows vX.Y.Z format where Z increments by 10 on each deployment
-// v2.2.50 - Fixed sync status discrepancy on InspectionForm (clear error after background sync)
-const APP_VERSION = "2.2.50";
+// v2.2.60 - Fixed mobile sync: RLS policies WITH CHECK, timeout detection, accurate success reporting
+const APP_VERSION = "2.2.60";
 const BUILD_DATE = "02-04-2026";
-const BUILD_TIMESTAMP = "02-04-2026 at 10:15 AM CST";
+const BUILD_TIMESTAMP = "02-04-2026 at 11:00 AM CST";
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
