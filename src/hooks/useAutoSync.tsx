@@ -10,6 +10,7 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import { addSyncNotification } from '@/lib/notification-center';
 import { emitSyncComplete } from '@/lib/sync-events';
 import { clearPendingSyncs } from '@/lib/background-sync';
+import { toast } from '@/components/ui/sonner';
 
 // Sync configuration with mobile optimization
 const DEBOUNCE_DELAY = 3000; // 3 seconds after local changes
@@ -167,7 +168,10 @@ export const useAutoSync = () => {
         queryClient.invalidateQueries({ queryKey: ['trainings'] });
         queryClient.invalidateQueries({ queryKey: ['daily-assessments'] });
         
-        // Notify mobile users via NotificationCenter (non-intrusive)
+        // Show visible toast for sync completion (critical message - bypasses mobile filter)
+        toast.success('Data synced successfully');
+        
+        // Also add to notification center for history
         addSyncNotification('Data synced successfully');
         
         // Emit sync complete event for Dashboard to reload data
