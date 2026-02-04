@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import ResultSelect from "@/components/ResultSelect";
-import HistoryAutocomplete from "@/components/HistoryAutocomplete";
+import { GlobalAutocomplete } from "@/components/GlobalAutocomplete";
 import { Plus, Trash2 } from "lucide-react";
 import { AnimatedTableRow, AnimatedListItem } from "@/components/ui/list-item-animation";
 import { useState, useEffect, useRef } from "react";
@@ -134,12 +134,10 @@ export default function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: Z
                   className="hover:bg-muted/50"
                 >
                   <td className="border p-1">
-                    <HistoryAutocomplete
+                    <GlobalAutocomplete
                       value={zipline.zipline_name}
                       onChange={(value) => updateZipline(index, "zipline_name", value)}
                       onBlur={onImmediateSave}
-                      storageKey="rope-works-zipline-names"
-                      syncToDatabase={true}
                       fieldType="zipline_name"
                       placeholder="Name"
                       className="border-0 bg-transparent h-8 text-xs"
@@ -290,12 +288,10 @@ export default function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: Z
               <div className="space-y-3 pr-10">
                 <div>
                   <Label className="text-xs text-muted-foreground">Line Name</Label>
-                  <HistoryAutocomplete
+                  <GlobalAutocomplete
                     value={zipline.zipline_name}
                     onChange={(value) => updateZipline(index, "zipline_name", value)}
                     onBlur={onImmediateSave}
-                    storageKey="rope-works-zipline-names"
-                    syncToDatabase={true}
                     fieldType="zipline_name"
                     placeholder="Enter or select name"
                   />

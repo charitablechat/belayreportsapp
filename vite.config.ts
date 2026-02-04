@@ -5,10 +5,10 @@ import { componentTagger } from "lovable-tagger";
 import { pwaConfig } from "./vite-pwa-config";
 
 // Version follows vX.Y.Z format where Z increments by 10 on each deployment
-// v2.2.80 - Complete sync overhaul: disable SW sync, 60s mobile interval, pending state UI
-const APP_VERSION = "2.2.80";
+// v2.2.90 - Unified GlobalAutocomplete: cross-user sharing with strict field scoping
+const APP_VERSION = "2.2.90";
 const BUILD_DATE = "02-04-2026";
-const BUILD_TIMESTAMP = "02-04-2026 at 1:30 PM CST";
+const BUILD_TIMESTAMP = "02-04-2026 at 2:15 PM CST";
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({

@@ -3,7 +3,7 @@ import { Label } from "@/components/ui/label";
 import { VoiceInput } from "@/components/ui/voice-input";
 import { VoiceTextarea } from "@/components/ui/voice-textarea";
 import { OrganizationAutocomplete } from "@/components/OrganizationAutocomplete";
-import { DatabaseAutocomplete } from "@/components/DatabaseAutocomplete";
+import { GlobalAutocomplete } from "@/components/GlobalAutocomplete";
 import { PreviousInspectionDatePicker } from "@/components/PreviousInspectionDatePicker";
 
 interface InspectionHeaderProps {
@@ -85,13 +85,13 @@ export default function InspectionHeader({ inspection, userProfile, onUpdate, on
               {renderField("Location", "location", inspection?.location)}
               <div>
                 <Label className="text-sm text-muted-foreground">Previous Inspector</Label>
-                <DatabaseAutocomplete
+                <GlobalAutocomplete
                   value={inspection?.previous_inspector || ""}
                   onChange={(value) => {
                     onUpdate("previous_inspector", value);
                     onImmediateSave?.();
                   }}
-                  fieldType="inspector_name"
+                  fieldType="previous_inspector"
                   placeholder="Select or enter inspector..."
                   disabled={isReadOnly}
                 />
@@ -102,7 +102,7 @@ export default function InspectionHeader({ inspection, userProfile, onUpdate, on
               {renderField("Inspection Date", "inspection_date", inspection?.inspection_date, "date")}
               <div>
                 <Label className="text-sm text-muted-foreground">Onsite Contact</Label>
-                <DatabaseAutocomplete
+                <GlobalAutocomplete
                   value={inspection?.onsite_contact || ""}
                   onChange={(value) => {
                     onUpdate("onsite_contact", value);
