@@ -1,261 +1,224 @@
 
-# Plan: Mobile Layout & Text Wrapping Fixes (< 768px)
+# Plan: Fix "Loading Inspection" Stuck Screen
 
-## Issue Analysis
+## Problem Analysis
 
-Based on the screenshot and code inspection, the critical mobile layout issue is in the **EquipmentTable.tsx** component's CardHeader where the title and "Add" button compete for horizontal space on narrow screens:
+The loading screen gets stuck because the `loadInspection` function in `InspectionForm.tsx` lacks timeout protection for Supabase database queries. While IndexedDB operations have 3-5 second timeouts (confirmed working from console logs), the Supabase queries can hang indefinitely, preventing the loading state from ever resolving.
 
-**Root Cause (Line 91-97 in EquipmentTable.tsx):**
-```tsx
-<CardHeader className="px-4 md:px-6">
-  <div className="flex items-center justify-between">
-    <CardTitle className="text-lg">EQUIPMENT - {displayName.toUpperCase()}</CardTitle>
-    <Button onClick={addEquipment} size="sm">
-      <Plus className="w-4 h-4 mr-2" />
-      Add {displayName}
-    </Button>
-  </div>
-</CardHeader>
+**Evidence from Console Logs:**
+```
+[Atomic Sync] IndexedDB timeout getting unsynced inspections
+[Atomic Sync] IndexedDB timeout getting unsynced trainings
+[Atomic Sync] IndexedDB timeout getting unsynced assessments
 ```
 
-The `flex justify-between` layout forces both elements side-by-side on ALL screen sizes, causing:
-- Title text wrapping awkwardly across 4+ lines
-- Button text being cut off on the right edge
-- Compressed, "squished" appearance
+The IndexedDB timeout handling works, but the main loading is stuck on unprotected Supabase queries.
 
 ---
 
-## Affected Components (Full Audit)
+## Technical Solution
 
-### Critical Priority (Visible in Screenshot)
-| Component | Issue | Severity |
-|-----------|-------|----------|
-| `EquipmentTable.tsx` | Title + Button side-by-side causing severe text wrapping | **Critical** |
+### 1. Add Safety Timeout to loadInspection Function
 
-### Medium Priority (Same Pattern)
-| Component | Issue | Severity |
-|-----------|-------|----------|
-| `ZiplinesTable.tsx` | Same side-by-side pattern (shorter title so less severe) | Medium |
-| `OperatingSystemsTable.tsx` | Same pattern | Medium |
-| `SummarySection.tsx` | Title + "Regenerate" button side-by-side | Medium |
+**File:** `src/pages/InspectionForm.tsx`
 
-### Low Priority (No Issues Found)
-| Component | Status |
-|-----------|--------|
-| `StandardsTable.tsx` | Title only, no button - ✅ OK |
-| `DeliveryApproachSection.tsx` | Title only - ✅ OK |
-| `OperatingSystemsSection.tsx` (Training) | Title only - ✅ OK |
-| `ImmediateAttentionSection.tsx` | Title only - ✅ OK |
-| `VerifiableItemsSection.tsx` | Title only - ✅ OK |
-| `SystemsInPlaceSection.tsx` | Title only - ✅ OK |
-| `EquipmentChecksSection.tsx` (Daily) | Title only - ✅ OK |
+Wrap the entire loading process with a safety timeout that forces the loading state to resolve:
 
----
+```typescript
+const loadInspection = async () => {
+  // Safety timeout - force loading to complete after 15 seconds max
+  const LOAD_TIMEOUT = 15000;
+  let loadCompleted = false;
+  
+  const safetyTimeout = setTimeout(() => {
+    if (!loadCompleted) {
+      console.error('[InspectionForm] Loading timeout - forcing completion');
+      setLoading(false);
+      toast({
+        title: "Loading timed out",
+        description: "Please check your connection and try again.",
+        variant: "destructive",
+      });
+    }
+  }, LOAD_TIMEOUT);
 
-## Solution Approach
-
-Apply a **mobile-responsive stacked layout** pattern:
-
-**Before (Broken):**
-```
-┌─────────────────────────────────────┐
-│ EQUIPMENT -     │ + Add Connectors  │  ← Competing for space
-│ CONNECTORS      │   (Carabiners...  │
-│ (CARABINERS...  │                   │
-└─────────────────────────────────────┘
+  try {
+    // ... existing loading logic with Supabase query timeouts
+  } finally {
+    loadCompleted = true;
+    clearTimeout(safetyTimeout);
+    setLoading(false);
+  }
+};
 ```
 
-**After (Fixed):**
+### 2. Add Timeout Protection to Individual Supabase Queries
+
+Wrap each Supabase query with `Promise.race` to prevent any single query from blocking:
+
+```typescript
+// Helper function for Supabase query timeouts
+const withQueryTimeout = async <T,>(
+  queryPromise: Promise<T>,
+  timeoutMs: number = 8000,
+  fallback: T
+): Promise<T> => {
+  return Promise.race([
+    queryPromise,
+    new Promise<T>((resolve) => setTimeout(() => {
+      console.warn('[InspectionForm] Query timed out after', timeoutMs, 'ms');
+      resolve(fallback);
+    }, timeoutMs))
+  ]);
+};
+
+// Usage for each query:
+const { data, error } = await withQueryTimeout(
+  supabase.from("inspections").select("...").eq("id", id).maybeSingle(),
+  8000,
+  { data: null, error: null }
+);
 ```
-┌─────────────────────────────────────┐
-│ EQUIPMENT - CONNECTORS              │  ← Full width title
-│ (CARABINERS & QUICKLINKS)           │
-│                                     │
-│ ┌─────────────────────────────────┐ │
-│ │ + Add Connectors                │ │  ← Full width button below
-│ └─────────────────────────────────┘ │
-└─────────────────────────────────────┘
-```
 
----
+### 3. Improve Loading UI with Spinner and Retry Option
 
-## Technical Implementation
-
-### 1. EquipmentTable.tsx (Critical Fix)
-
-**Current (Lines 90-98):**
+**Current (Line 1627-1632):**
 ```tsx
-<CardHeader className="px-4 md:px-6">
-  <div className="flex items-center justify-between">
-    <CardTitle className="text-lg">EQUIPMENT - {displayName.toUpperCase()}</CardTitle>
-    <Button onClick={addEquipment} size="sm">
-      <Plus className="w-4 h-4 mr-2" />
-      Add {displayName}
-    </Button>
-  </div>
-</CardHeader>
+if (loading) {
+  return (
+    <div className="flex min-h-screen items-center justify-center">
+      <p>Loading inspection...</p>
+    </div>
+  );
+}
 ```
 
-**Fixed:**
+**Improved:**
 ```tsx
-<CardHeader className="px-4 md:px-6">
-  <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-    <CardTitle className="text-base md:text-lg">
-      EQUIPMENT - {displayName.toUpperCase()}
-    </CardTitle>
-    <Button onClick={addEquipment} size="sm" className="w-full md:w-auto shrink-0">
-      <Plus className="w-4 h-4 mr-2" />
-      <span className="md:hidden">Add</span>
-      <span className="hidden md:inline">Add {displayName}</span>
-    </Button>
-  </div>
-</CardHeader>
-```
-
-**Key Changes:**
-- `flex-col md:flex-row`: Stack vertically on mobile, horizontal on desktop
-- `gap-3`: Consistent spacing between title and button
-- `text-base md:text-lg`: Slightly smaller title on mobile
-- `w-full md:w-auto`: Full-width button on mobile for better touch targets
-- `shrink-0`: Prevent button from shrinking
-- Shorter button text on mobile: "Add" vs "Add {displayName}"
-
-### 2. ZiplinesTable.tsx (Same Pattern Fix)
-
-**Current (Lines 92-99):**
-```tsx
-<CardHeader className="px-4 md:px-6">
-  <div className="flex items-center justify-between">
-    <CardTitle>Ziplines</CardTitle>
-    <Button onClick={addZipline} size="sm">
-      <Plus className="w-4 h-4 mr-2" />
-      Add Zipline
-    </Button>
-  </div>
-</CardHeader>
-```
-
-**Fixed:**
-```tsx
-<CardHeader className="px-4 md:px-6">
-  <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-    <CardTitle>Ziplines</CardTitle>
-    <Button onClick={addZipline} size="sm" className="w-full md:w-auto shrink-0">
-      <Plus className="w-4 h-4 mr-2" />
-      Add Zipline
-    </Button>
-  </div>
-</CardHeader>
-```
-
-### 3. OperatingSystemsTable.tsx (Same Pattern Fix)
-
-**Current (Lines 82-89):**
-```tsx
-<CardHeader className="px-4 md:px-6">
-  <div className="flex items-center justify-between">
-    <CardTitle>Operating Systems</CardTitle>
-    <Button onClick={addSystem} size="sm">
-      <Plus className="w-4 h-4 mr-2" />
-      Add System
-    </Button>
-  </div>
-</CardHeader>
-```
-
-**Fixed:**
-```tsx
-<CardHeader className="px-4 md:px-6">
-  <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-    <CardTitle>Operating Systems</CardTitle>
-    <Button onClick={addSystem} size="sm" className="w-full md:w-auto shrink-0">
-      <Plus className="w-4 h-4 mr-2" />
-      Add System
-    </Button>
-  </div>
-</CardHeader>
-```
-
-### 4. SummarySection.tsx (Same Pattern Fix)
-
-**Current (Lines 22-35):**
-```tsx
-<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
-  <CardTitle>Report Summary</CardTitle>
-  {onRegenerate && (
-    <Button variant="outline" size="sm" onClick={onRegenerate} className="gap-2">
-      <RefreshCw className="h-4 w-4" />
-      Regenerate from Inspection
-    </Button>
-  )}
-</CardHeader>
-```
-
-**Fixed:**
-```tsx
-<CardHeader className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 space-y-0 pb-4">
-  <CardTitle>Report Summary</CardTitle>
-  {onRegenerate && (
-    <Button variant="outline" size="sm" onClick={onRegenerate} className="w-full md:w-auto shrink-0 gap-2">
-      <RefreshCw className="h-4 w-4" />
-      <span className="md:hidden">Regenerate</span>
-      <span className="hidden md:inline">Regenerate from Inspection</span>
-    </Button>
-  )}
-</CardHeader>
+if (loading) {
+  return (
+    <div className="flex min-h-screen items-center justify-center">
+      <div className="flex flex-col items-center gap-4">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        <p className="text-muted-foreground">Loading inspection...</p>
+        <Button 
+          variant="ghost" 
+          size="sm" 
+          onClick={() => navigate('/dashboard')}
+          className="mt-4"
+        >
+          <ArrowLeft className="w-4 h-4 mr-2" />
+          Back to Dashboard
+        </Button>
+      </div>
+    </div>
+  );
+}
 ```
 
 ---
 
-## Files to Modify
+## Implementation Details
 
-| File | Changes | Priority |
-|------|---------|----------|
-| `src/components/inspection/EquipmentTable.tsx` | Stacked mobile layout, shorter button text | Critical |
-| `src/components/inspection/ZiplinesTable.tsx` | Stacked mobile layout | Medium |
-| `src/components/inspection/OperatingSystemsTable.tsx` | Stacked mobile layout | Medium |
-| `src/components/inspection/SummarySection.tsx` | Stacked mobile layout, shorter button text | Medium |
+### Files to Modify
+
+| File | Changes |
+|------|---------|
+| `src/pages/InspectionForm.tsx` | Add safety timeout, query timeouts, improved loading UI |
+| `vite.config.ts` | Increment version to v2.1.30 |
+
+### Timeout Configuration
+
+| Operation | Timeout | Fallback Behavior |
+|-----------|---------|-------------------|
+| Overall loading | 15 seconds | Force complete, show error toast, allow retry |
+| Individual Supabase query | 8 seconds | Skip query, use offline data if available |
+| IndexedDB operations | 3-5 seconds | Already implemented, return empty fallback |
+
+### Specific Code Changes
+
+**1. Add helper function (after line 508):**
+```typescript
+// Timeout wrapper for Supabase queries
+const withQueryTimeout = async <T,>(
+  queryPromise: Promise<{ data: T | null; error: any }>,
+  timeoutMs: number = 8000
+): Promise<{ data: T | null; error: any }> => {
+  return Promise.race([
+    queryPromise,
+    new Promise<{ data: T | null; error: any }>((resolve) => setTimeout(() => {
+      console.warn('[InspectionForm] Supabase query timed out after', timeoutMs, 'ms');
+      resolve({ data: null, error: new Error('Query timeout') });
+    }, timeoutMs))
+  ]);
+};
+```
+
+**2. Wrap Supabase queries (lines 667-780):**
+- `update({ last_opened_at: now })` - add 5s timeout
+- `select("*").eq("id", id)` - add 8s timeout  
+- `select("*").eq("inspection_id", id)` for systems, ziplines, equipment, standards, summary - add 8s timeout each
+
+**3. Add safety timeout at start of loadInspection:**
+```typescript
+const loadInspection = async () => {
+  const LOAD_TIMEOUT = 15000;
+  let loadCompleted = false;
+  
+  const safetyTimeout = setTimeout(() => {
+    if (!loadCompleted) {
+      console.error('[InspectionForm] Safety timeout triggered');
+      setLoading(false);
+      toast({
+        title: "Loading timed out",
+        description: "The inspection is taking too long to load. Please try again.",
+        variant: "destructive",
+      });
+    }
+  }, LOAD_TIMEOUT);
+  
+  try {
+    // ... existing code
+  } finally {
+    loadCompleted = true;
+    clearTimeout(safetyTimeout);
+    setLoading(false);
+  }
+};
+```
+
+**4. Update loading UI (lines 1627-1633):**
+Add spinner animation and back button for better UX.
 
 ---
 
 ## Version Update
 
-Increment version to `v2.1.20` in `vite.config.ts` to reflect these mobile layout fixes:
-
+Increment to `v2.1.30` in `vite.config.ts`:
 ```typescript
-// v2.1.20 - Mobile CardHeader layout fixes: stacked title/button layout for Equipment, Ziplines, Operating Systems, Summary sections
-const APP_VERSION = "2.1.20";
-```
-
----
-
-## Visual Result (Expected)
-
-**Equipment Section - Mobile (< 768px):**
-```
-┌─────────────────────────────────────┐
-│ EQUIPMENT - CONNECTORS              │
-│ (CARABINERS & QUICKLINKS)           │
-│                                     │
-│ ┌─────────────────────────────────┐ │
-│ │     + Add                       │ │
-│ └─────────────────────────────────┘ │
-└─────────────────────────────────────┘
-```
-
-**Equipment Section - Desktop (≥ 768px):**
-```
-┌──────────────────────────────────────────────────────────────┐
-│ EQUIPMENT - CONNECTORS (CARABINERS & QUICKLINKS)   + Add... │
-└──────────────────────────────────────────────────────────────┘
+// v2.1.30 - Loading timeout protection: safety timeout for inspection loading, Supabase query timeouts, improved loading UI
+const APP_VERSION = "2.1.30";
 ```
 
 ---
 
 ## Testing Checklist
 
-- [ ] Equipment section titles no longer wrap awkwardly on mobile
-- [ ] "Add" buttons are full-width and easily tappable on mobile
-- [ ] Desktop layout remains unchanged (side-by-side)
-- [ ] All four components display correctly at 320px, 375px, 414px widths
-- [ ] Version badge shows v2.1.20 in profile dropdown
+After implementation, verify:
+- [ ] Loading screen shows spinner animation instead of just text
+- [ ] Loading screen includes "Back to Dashboard" button
+- [ ] If network is slow, loading times out after ~15 seconds with error toast
+- [ ] App doesn't get stuck on loading screen indefinitely
+- [ ] Offline data is still used when available
+- [ ] Works correctly on both desktop and mobile
+- [ ] Version badge shows v2.1.30
+
+---
+
+## Risk Assessment
+
+| Risk | Mitigation |
+|------|------------|
+| Timeouts too aggressive | 15s overall + 8s per query is generous; offline fallback prevents data loss |
+| False timeout on slow connections | Offline data displayed first (from IndexedDB), Supabase just updates |
+| User confusion on timeout | Clear error message with retry suggestion |
