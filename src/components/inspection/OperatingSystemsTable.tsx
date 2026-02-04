@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import ResultSelect from "@/components/ResultSelect";
 import SystemTypeSelect from "@/components/SystemTypeSelect";
-import HistoryAutocomplete from "@/components/HistoryAutocomplete";
+import { GlobalAutocomplete } from "@/components/GlobalAutocomplete";
 import { Plus, Trash2 } from "lucide-react";
 import { AnimatedTableRow, AnimatedListItem } from "@/components/ui/list-item-animation";
 import { useState, useEffect, useRef } from "react";
@@ -110,12 +110,10 @@ export default function OperatingSystemsTable({ systems, onUpdate, onImmediateSa
                   className="hover:bg-muted/50"
                 >
                   <td className="border p-2">
-                    <HistoryAutocomplete
+                    <GlobalAutocomplete
                       value={system.name || ""}
                       onChange={(value) => updateSystem(index, "name", value)}
                       onBlur={onImmediateSave}
-                      storageKey="rope-works-operating-system-names"
-                      syncToDatabase={true}
                       fieldType="operating_system_element"
                       placeholder="Enter or select name"
                       className="border-0 bg-transparent"
@@ -177,12 +175,10 @@ export default function OperatingSystemsTable({ systems, onUpdate, onImmediateSa
               <div className="space-y-3 pr-10">
                 <div>
                   <Label className="text-xs text-muted-foreground">Element Name</Label>
-                  <HistoryAutocomplete
+                  <GlobalAutocomplete
                     value={system.name || ""}
                     onChange={(value) => updateSystem(index, "name", value)}
                     onBlur={onImmediateSave}
-                    storageKey="rope-works-operating-system-names"
-                    syncToDatabase={true}
                     fieldType="operating_system_element"
                     placeholder="Enter or select name"
                   />

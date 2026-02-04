@@ -7,7 +7,7 @@ import { CalendarIcon } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { OrganizationAutocomplete } from "@/components/OrganizationAutocomplete";
-import { DatabaseAutocomplete } from "@/components/DatabaseAutocomplete";
+import { GlobalAutocomplete } from "@/components/GlobalAutocomplete";
 import { parseLocalDate } from "@/lib/date-utils";
 
 interface DailyAssessmentHeaderProps {
@@ -66,7 +66,7 @@ export default function DailyAssessmentHeader({ assessment, onUpdate, isReadOnly
 
           <div className="md:col-span-2">
             <Label htmlFor="trainer-of-record">Trainer/Facilitator of Record</Label>
-            <DatabaseAutocomplete
+            <GlobalAutocomplete
               value={assessment.trainer_of_record || ''}
               onChange={(value) => onUpdate("trainer_of_record", value)}
               fieldType="trainer_name"

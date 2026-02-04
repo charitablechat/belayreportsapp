@@ -4,7 +4,7 @@ import { LazyRichTextEditor } from "@/components/ui/lazy-rich-text-editor";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import ResultSelect from "@/components/ResultSelect";
-import HistoryAutocomplete from "@/components/HistoryAutocomplete";
+import { GlobalAutocomplete } from "@/components/GlobalAutocomplete";
 import { Plus, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AnimatedTableRow, AnimatedListItem } from "@/components/ui/list-item-animation";
@@ -143,12 +143,10 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
                   className="hover:bg-muted/50"
                 >
                   <td className="border p-2">
-                    <HistoryAutocomplete
+                    <GlobalAutocomplete
                       value={item.equipment_type}
                       onChange={(value) => updateEquipment(item, "equipment_type", value)}
                       onBlur={onImmediateSave}
-                      storageKey="rope-works-equipment-types"
-                      syncToDatabase={true}
                       fieldType="equipment_type"
                       placeholder="Enter or select type"
                       className={cn(
@@ -233,12 +231,10 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
                 <div className="space-y-3 pr-10">
                   <div>
                     <Label className="text-xs text-muted-foreground">Type *</Label>
-                    <HistoryAutocomplete
+                    <GlobalAutocomplete
                       value={item.equipment_type}
                       onChange={(value) => updateEquipment(item, "equipment_type", value)}
                       onBlur={onImmediateSave}
-                      storageKey="rope-works-equipment-types"
-                      syncToDatabase={true}
                       fieldType="equipment_type"
                       placeholder="Enter or select type"
                       className={cn(
