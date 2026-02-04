@@ -332,7 +332,9 @@ export async function syncAllInspectionsAtomic() {
     return { total: 0, success: 0, failed: 0, errors: [] };
   }
   
-  // Only get unsynced inspections for the current user (with timeout)
+  // Only get unsynced inspections for the current user (with extended timeout for mobile)
+  // Note: getUnsyncedInspections already has internal timeout via withIndexedDBErrorBoundary
+  // The outer timeout here is a safety net for very slow mobile networks (10s vs inner 5s)
   let unsynced: any[];
   try {
     unsynced = await Promise.race([
@@ -340,7 +342,7 @@ export async function syncAllInspectionsAtomic() {
       new Promise<any[]>((resolve) => setTimeout(() => {
         console.warn('[Atomic Sync] IndexedDB timeout getting unsynced inspections');
         resolve([]);
-      }, 5000))
+      }, 10000)) // Extended to 10s to avoid racing with inner 5s timeout
     ]);
   } catch (e) {
     console.warn('[Atomic Sync] Failed to get unsynced inspections:', e);
@@ -743,7 +745,7 @@ export async function syncAllTrainingsAtomic() {
     return { total: 0, success: 0, failed: 0, errors: [] };
   }
   
-  // Get unsynced trainings with timeout
+  // Get unsynced trainings with extended timeout for mobile networks
   let unsynced: any[];
   try {
     unsynced = await Promise.race([
@@ -751,7 +753,7 @@ export async function syncAllTrainingsAtomic() {
       new Promise<any[]>((resolve) => setTimeout(() => {
         console.warn('[Atomic Sync] IndexedDB timeout getting unsynced trainings');
         resolve([]);
-      }, 5000))
+      }, 10000)) // Extended to 10s to avoid racing with inner 5s timeout
     ]);
   } catch (e) {
     console.warn('[Atomic Sync] Failed to get unsynced trainings:', e);
@@ -1107,7 +1109,7 @@ export async function syncAllDailyAssessmentsAtomic() {
     return { total: 0, success: 0, failed: 0, errors: [] };
   }
   
-  // Get unsynced assessments with timeout
+  // Get unsynced assessments with extended timeout for mobile networks
   let unsynced: any[];
   try {
     unsynced = await Promise.race([
@@ -1115,7 +1117,7 @@ export async function syncAllDailyAssessmentsAtomic() {
       new Promise<any[]>((resolve) => setTimeout(() => {
         console.warn('[Atomic Sync] IndexedDB timeout getting unsynced assessments');
         resolve([]);
-      }, 5000))
+      }, 10000)) // Extended to 10s to avoid racing with inner 5s timeout
     ]);
   } catch (e) {
     console.warn('[Atomic Sync] Failed to get unsynced assessments:', e);
