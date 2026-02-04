@@ -5,10 +5,10 @@ import { componentTagger } from "lovable-tagger";
 import { pwaConfig } from "./vite-pwa-config";
 
 // Version follows vX.Y.Z format where Z increments by 10 on each deployment
-// v2.2.40 - Re-enabled critical toast notifications on mobile (sync, updates, errors)
-const APP_VERSION = "2.2.40";
+// v2.2.50 - Fixed sync status discrepancy on InspectionForm (clear error after background sync)
+const APP_VERSION = "2.2.50";
 const BUILD_DATE = "02-04-2026";
-const BUILD_TIMESTAMP = "02-04-2026 at 09:45 AM CST";
+const BUILD_TIMESTAMP = "02-04-2026 at 10:15 AM CST";
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({

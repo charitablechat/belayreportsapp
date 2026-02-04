@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from "react";
 import { toast } from "@/hooks/use-toast";
 import { toast as sonnerToast } from "@/components/ui/sonner";
 import { addSaveNotification, addSyncNotification } from "@/lib/notification-center";
+import { onSyncComplete } from "@/lib/sync-events";
 import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -277,6 +278,21 @@ export default function InspectionForm() {
     
     return () => subscription.unsubscribe();
   }, [id]);
+
+  // Clear save error when background sync completes successfully
+  useEffect(() => {
+    const unsubscribe = onSyncComplete(() => {
+      // Clear any sync errors since background sync succeeded
+      if (saveError && saveError.includes('sync')) {
+        setSaveError(null);
+        if (import.meta.env.DEV) {
+          console.log('[InspectionForm] Cleared sync error after successful background sync');
+        }
+      }
+    });
+    
+    return () => unsubscribe();
+  }, [saveError]);
 
   // Fetch inspector profile (the report owner, not current user)
   useEffect(() => {
