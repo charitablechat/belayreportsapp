@@ -567,6 +567,22 @@ export default function InspectionForm() {
   };
 
   const loadInspection = async () => {
+    // Safety timeout - force loading to complete after 15 seconds max
+    const LOAD_TIMEOUT = 15000;
+    let loadCompleted = false;
+    
+    const safetyTimeout = setTimeout(() => {
+      if (!loadCompleted) {
+        console.error('[InspectionForm] Safety timeout triggered - forcing loading completion');
+        setLoading(false);
+        toast({
+          title: "Loading timed out",
+          description: "The inspection is taking too long to load. Please try again.",
+          variant: "destructive",
+        });
+      }
+    }, LOAD_TIMEOUT);
+
     try {
       // Helper to wrap offline operations with a timeout to prevent hanging
       const withOfflineTimeout = async <T,>(
@@ -581,6 +597,21 @@ export default function InspectionForm() {
             resolve(fallback);
           }, timeoutMs))
         ]);
+      };
+
+      // Helper to wrap Supabase queries with timeout protection
+      // Note: We use Promise.race with the query's .then() to ensure proper Promise conversion
+      const withQueryTimeout = async <T,>(
+        query: PromiseLike<{ data: T | null; error: any }>,
+        timeoutMs: number = 8000
+      ): Promise<{ data: T | null; error: any }> => {
+        const timeoutPromise = new Promise<{ data: T | null; error: any }>((resolve) => 
+          setTimeout(() => {
+            console.warn('[InspectionForm] Supabase query timed out after', timeoutMs, 'ms');
+            resolve({ data: null, error: new Error('Query timeout') });
+          }, timeoutMs)
+        );
+        return Promise.race([Promise.resolve(query), timeoutPromise]);
       };
 
       // Load inspection header from offline first (with timeout protection)
@@ -662,20 +693,26 @@ export default function InspectionForm() {
 
       // If online, fetch from Supabase and update local cache
       if (isOnline) {
-        // Update last_opened_at timestamp
+        // Update last_opened_at timestamp (with 5s timeout)
         const now = new Date().toISOString();
-        await supabase
-          .from("inspections")
-          .update({ last_opened_at: now })
-          .eq("id", id);
+        await withQueryTimeout(
+          supabase
+            .from("inspections")
+            .update({ last_opened_at: now })
+            .eq("id", id),
+          5000
+        );
 
-        const { data, error } = await supabase
-          .from("inspections")
-          .select("*, inspector:profiles!inspections_inspector_id_profiles_fkey(first_name, last_name, avatar_url)")
-          .eq("id", id)
-          .maybeSingle();
+        const { data, error } = await withQueryTimeout(
+          supabase
+            .from("inspections")
+            .select("*, inspector:profiles!inspections_inspector_id_profiles_fkey(first_name, last_name, avatar_url)")
+            .eq("id", id)
+            .maybeSingle(),
+          8000
+        );
 
-        if (error) throw error;
+        if (error && error.message !== 'Query timeout') throw error;
         
         // Handle inspection not found - redirect to dashboard
         if (!data && !offlineData) {
@@ -702,11 +739,14 @@ export default function InspectionForm() {
           }
         }
 
-        // Fetch and cache all related data - cache operations are non-blocking
-        const { data: systemsData } = await supabase
-          .from("inspection_systems")
-          .select("*")
-          .eq("inspection_id", id);
+        // Fetch and cache all related data with timeout protection - cache operations are non-blocking
+        const { data: systemsData } = await withQueryTimeout(
+          supabase
+            .from("inspection_systems")
+            .select("*")
+            .eq("inspection_id", id),
+          8000
+        );
         if (systemsData) {
           const normalizedSystems = systemsData.map(item => ({
             ...item,
@@ -719,10 +759,13 @@ export default function InspectionForm() {
           );
         }
 
-        const { data: ziplinesData } = await supabase
-          .from("inspection_ziplines")
-          .select("*")
-          .eq("inspection_id", id);
+        const { data: ziplinesData } = await withQueryTimeout(
+          supabase
+            .from("inspection_ziplines")
+            .select("*")
+            .eq("inspection_id", id),
+          8000
+        );
         if (ziplinesData) {
           const normalizedZiplines = ziplinesData.map(item => ({
             ...item,
@@ -738,10 +781,13 @@ export default function InspectionForm() {
           );
         }
 
-        const { data: equipmentData } = await supabase
-          .from("inspection_equipment")
-          .select("*")
-          .eq("inspection_id", id);
+        const { data: equipmentData } = await withQueryTimeout(
+          supabase
+            .from("inspection_equipment")
+            .select("*")
+            .eq("inspection_id", id),
+          8000
+        );
         if (equipmentData) {
           const normalizedEquipment = equipmentData.map(item => ({
             ...item,
@@ -754,10 +800,13 @@ export default function InspectionForm() {
           );
         }
 
-        const { data: standardsData } = await supabase
-          .from("inspection_standards")
-          .select("*")
-          .eq("inspection_id", id);
+        const { data: standardsData } = await withQueryTimeout(
+          supabase
+            .from("inspection_standards")
+            .select("*")
+            .eq("inspection_id", id),
+          8000
+        );
         if (standardsData && standardsData.length > 0) {
           setStandards(standardsData);
           // Non-blocking cache update
@@ -766,11 +815,14 @@ export default function InspectionForm() {
           );
         }
 
-        const { data: summaryData } = await supabase
-          .from("inspection_summary")
-          .select("*")
-          .eq("inspection_id", id)
-          .maybeSingle();
+        const { data: summaryData } = await withQueryTimeout(
+          supabase
+            .from("inspection_summary")
+            .select("*")
+            .eq("inspection_id", id)
+            .maybeSingle(),
+          8000
+        );
         if (summaryData) {
           setSummary(summaryData);
           // Non-blocking cache update
@@ -801,6 +853,8 @@ export default function InspectionForm() {
       });
       navigate('/dashboard');
     } finally {
+      loadCompleted = true;
+      clearTimeout(safetyTimeout);
       setLoading(false);
     }
   };
@@ -1627,7 +1681,19 @@ export default function InspectionForm() {
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
-        <p>Loading inspection...</p>
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+          <p className="text-muted-foreground">Loading inspection...</p>
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            onClick={() => navigate('/dashboard')}
+            className="mt-4"
+          >
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Back to Dashboard
+          </Button>
+        </div>
       </div>
     );
   }
