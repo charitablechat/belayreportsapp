@@ -282,9 +282,16 @@ export default function InspectionForm() {
   // Clear save error when background sync completes successfully
   useEffect(() => {
     const unsubscribe = onSyncComplete(() => {
-      // Aggressively clear any sync-related errors
+      // Clear pending_sync and any sync-related errors
       setSaveError(prev => {
         if (!prev) return null;
+        // Clear pending_sync state and any sync-related errors
+        if (prev === 'pending_sync') {
+          if (import.meta.env.DEV) {
+            console.log('[InspectionForm] Cleared pending_sync after successful background sync');
+          }
+          return null;
+        }
         // Check multiple patterns that indicate sync errors
         const isSyncError = /sync|failed|offline|queued|network|locally/i.test(prev);
         if (isSyncError) {
@@ -1224,19 +1231,18 @@ export default function InspectionForm() {
           await syncWithRetry(3); // 3 retries with exponential backoff
         } catch (error: any) {
           console.error('[InspectionForm Sync] Failed after retries:', error);
-          setSaveError('Failed to sync online - saved locally');
+          // Use "Pending sync" instead of error - less alarming, auto-retry handles it
+          setSaveError('pending_sync');
           // Queue for later sync
           await queueOperation('update', id!, saveData);
           console.log('[InspectionForm Sync] Queued for later sync');
           
           // Show toast for network failures with auto-retry hint - mobile-aware
           if (isMobile()) {
-            addSyncNotification("Sync queued: saved locally, will auto-retry");
+            addSyncNotification("Saved locally - will sync when online");
           } else {
-            toast({
-              title: "Sync queued",
-              description: "Changes saved locally. Will auto-retry when connection improves.",
-              variant: "default",
+            sonnerToast.info("Saved locally", {
+              description: "Will sync automatically when connection improves.",
             });
           }
         }
@@ -1820,8 +1826,18 @@ export default function InspectionForm() {
                   <span className="hidden sm:inline">Offline Mode</span>
                 </Badge>
               )}
-              {/* Sync errors are now handled automatically */}
-              {saveError && isOnline && (
+              {/* Pending sync indicator with retry option */}
+              {saveError === 'pending_sync' && isOnline && (
+                <div className="flex items-center gap-1.5">
+                  <Badge variant="secondary" className="gap-1.5 text-xs bg-muted/50">
+                    <CloudOff className="w-3 h-3" />
+                    <span className="hidden sm:inline">Pending sync</span>
+                  </Badge>
+                  <ForceSyncButton variant="icon" className="h-7 w-7" />
+                </div>
+              )}
+              {/* Real errors (not pending_sync) get the retry button */}
+              {saveError && saveError !== 'pending_sync' && isOnline && (
                 <>
                   <Button
                     variant="outline"
@@ -1830,26 +1846,20 @@ export default function InspectionForm() {
                       setSaveError(null);
                       try {
                         await saveProgress();
-                        toast({
-                          title: "Save successful",
-                          description: "Your changes have been saved.",
-                        });
+                        sonnerToast.success("Save successful");
                       } catch (err) {
                         console.error('[InspectionForm] Manual save failed:', err);
-                        toast({
-                          title: "Save failed",
+                        sonnerToast.error("Save failed", {
                           description: "Please try again or check your connection.",
-                          variant: "destructive",
                         });
                       }
                     }}
                     disabled={saving || autoSaving || isSyncing}
-                    className="gap-1.5 text-xs h-7 bg-orange-50 border-orange-200 text-orange-700 hover:bg-orange-100 dark:bg-orange-950/30 dark:border-orange-800 dark:text-orange-400 dark:hover:bg-orange-900/40"
+                    className="gap-1.5 text-xs h-7"
                   >
                     <RefreshCw className={cn("w-3 h-3", isSyncing && "animate-spin")} />
                     <span className="hidden sm:inline">Retry Save</span>
                   </Button>
-                  {/* Force Sync button when save error is present */}
                   <ForceSyncButton variant="icon" className="h-7 w-7" />
                 </>
               )}

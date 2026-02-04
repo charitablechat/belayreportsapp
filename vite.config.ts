@@ -5,10 +5,10 @@ import { componentTagger } from "lovable-tagger";
 import { pwaConfig } from "./vite-pwa-config";
 
 // Version follows vX.Y.Z format where Z increments by 10 on each deployment
-// v2.2.71 - Fix persistent sync error: allow NULL has_documentation, improve error clearing
-const APP_VERSION = "2.2.71";
+// v2.2.80 - Complete sync overhaul: disable SW sync, 60s mobile interval, pending state UI
+const APP_VERSION = "2.2.80";
 const BUILD_DATE = "02-04-2026";
-const BUILD_TIMESTAMP = "02-04-2026 at 1:00 PM CST";
+const BUILD_TIMESTAMP = "02-04-2026 at 1:30 PM CST";
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
