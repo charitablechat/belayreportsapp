@@ -5,8 +5,8 @@ import { componentTagger } from "lovable-tagger";
 import { pwaConfig } from "./vite-pwa-config";
 
 // Version follows vX.Y.Z format where Z increments by 10 on each deployment
-// v2.1.20 - Mobile CardHeader layout fixes: stacked title/button layout for Equipment, Ziplines, Operating Systems, Summary sections
-const APP_VERSION = "2.1.20";
+// v2.1.30 - Loading timeout protection: safety timeout for inspection loading, Supabase query timeouts, improved loading UI
+const APP_VERSION = "2.1.30";
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
