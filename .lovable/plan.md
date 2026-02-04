@@ -1,51 +1,110 @@
 
+# Re-Enable Toast Notifications on Mobile for Sync/Update Visibility
 
-# Fix Version Info Modal Date Format and Timezone
+## Problem Analysis
 
-## Issue Summary
+Based on the codebase review, I've identified why mobile users can't see sync and update notifications:
 
-The current version info modal displays:
-- **Date**: `2024-05-20` (YYYY-MM-DD format with placeholder date)
-- **Timestamp**: `2024-05-20T14:30:00Z` (UTC timezone)
+### Current Architecture (Toast Suppression)
+1. **`MobileAwareToaster` and `MobileAwareSonner`** (in `src/components/ui/mobile-aware-toaster.tsx`) return `null` on mobile devices - completely hiding all toast overlays
+2. **Sonner's toast wrapper** (in `src/components/ui/sonner.tsx`) routes ALL toasts to the notification center on mobile
+3. **The notification center** is only visible via the Profile page Sheet - users must explicitly navigate there to see status updates
+4. **PWA Update notifications** (`UpdateNotification.tsx`) use `toast.success()` from sonner, which gets silently routed to the notification center
 
-The user wants:
-- **Date**: `MM-DD-YYYY` format with today's actual deployment date
-- **Timestamp**: US Central Time instead of UTC
+### Evidence from Logs
+The database logs show successful auth requests from both `rwreports.com` (production) and the preview domain, indicating mobile devices ARE connecting. However, users have no visibility because toast feedback is suppressed.
 
-## Changes Required
+## Solution: Conditional Toast Re-enablement
 
-### File: `vite.config.ts`
+Re-enable toast notifications on mobile for **critical system messages** while keeping the notification center for routine operations. This provides the best of both worlds:
+- **Critical toasts visible on screen**: Sync status, update availability, errors
+- **Routine operations still quiet**: Regular saves, minor info messages
 
-Update the build constants to reflect today's deployment with the correct formats:
+## Implementation Changes
 
-**Before:**
+### File 1: `src/components/ui/mobile-aware-toaster.tsx`
+
+**Current behavior:** Returns `null` on mobile (hides all toasts)
+
+**New behavior:** Always render toasters, let the toast wrapper handle filtering
+
 ```typescript
-const BUILD_DATE = "2024-05-20";
-const BUILD_TIMESTAMP = "2024-05-20T14:30:00Z";
+// BEFORE
+export function MobileAwareSonner() {
+  if (isMobile()) {
+    return null;
+  }
+  return <SonnerToaster />;
+}
+
+// AFTER
+export function MobileAwareSonner() {
+  // Always render - toast filtering happens at the toast() call level
+  return <SonnerToaster />;
+}
 ```
 
-**After:**
+### File 2: `src/components/ui/sonner.tsx`
+
+**Current behavior:** Routes ALL toasts to notification center on mobile
+
+**New behavior:** Only route non-critical messages to notification center; show critical toasts
+
+Add a "critical message" check that allows sync, update, and error toasts to display normally:
+
 ```typescript
-const BUILD_DATE = "02-04-2026";  // MM-DD-YYYY format
-const BUILD_TIMESTAMP = "02-04-2026 at 09:30 AM CST";  // Central Time, human-readable
+function isCriticalMessage(message: string, type: string): boolean {
+  // Always show errors
+  if (type === 'error') return true;
+  
+  // Always show sync status
+  if (/sync|syncing|synced/i.test(message)) return true;
+  
+  // Always show update notifications
+  if (/update|version|new version/i.test(message)) return true;
+  
+  // Always show offline/online status
+  if (/offline|online|connection/i.test(message)) return true;
+  
+  return false;
+}
 ```
 
-### Version Update
+### File 3: `src/hooks/useAutoSync.tsx`
 
-Since this is a deployment change, increment the version:
-- **From:** `v2.2.20`
-- **To:** `v2.2.30`
+**Current behavior:** Calls `addSyncNotification()` silently
 
-## Technical Notes
+**New behavior:** Show toast for sync completion on mobile for visibility
 
-- The date and timestamp are hardcoded in `vite.config.ts` and injected at build time
-- Each deployment should update these values to reflect the actual push time
-- Using "CST" (Central Standard Time) or "CDT" (Central Daylight Time) depending on time of year - February is CST
-- The human-readable timestamp format (`MM-DD-YYYY at HH:MM AM/PM CST`) is clearer for users
+Add explicit toast calls for sync start/complete:
 
-## Files to Modify
+```typescript
+// After successful sync
+toast.success('Data synced successfully');
 
-| File | Changes |
-|------|---------|
-| `vite.config.ts` | Update `BUILD_DATE` to `02-04-2026` format, update `BUILD_TIMESTAMP` to Central Time with readable format, increment `APP_VERSION` to `2.2.30` |
+// On sync start (optional - for visibility)
+// Already have this in console logs, expose to user
+```
 
+### File 4: Update version to `v2.2.40`
+
+Increment version in `vite.config.ts` to track this change.
+
+## Summary of Changes
+
+| File | Change |
+|------|--------|
+| `src/components/ui/mobile-aware-toaster.tsx` | Always render toasters on mobile |
+| `src/components/ui/sonner.tsx` | Add critical message bypass for mobile filtering |
+| `src/hooks/useAutoSync.tsx` | Add visible toast for sync completion |
+| `vite.config.ts` | Update version to v2.2.40 and timestamp |
+
+## Expected Outcome
+
+After these changes, mobile users will see:
+1. **Toast when sync completes**: "Data synced successfully"
+2. **Toast when update is available**: "Update Available" with "Update Now" button
+3. **Toast on errors**: All error messages remain visible
+4. **Toast on network reconnection**: "Network reconnected" feedback
+
+Routine save messages will still route to the notification center to avoid interruption during data entry.
