@@ -1,311 +1,253 @@
 
 
-# Deep Performance Analysis: EquipmentTable.tsx Mobile Latency
+# Version Info Modal Implementation
 
-## Executive Summary
+## Overview
 
-After a line-by-line analysis of `EquipmentTable.tsx` and related components, I've identified **7 critical performance bottlenecks** that combine to cause loading latency exceeding the 2-second target on mobile devices. The primary culprit is the **synchronous instantiation of expensive TipTap editors** for every equipment row, compounded by animation overhead and lack of component memoization.
+Transform the existing `VersionBadge` component into an interactive element that opens a brutalist-styled modal displaying detailed version and deployment information.
 
----
+## Design Specification
 
-## Architecture Overview
+### Brutalist Modal Aesthetic
+- **Background**: Pure black (#000000)
+- **Primary text**: White (#FFFFFF) for version number
+- **Secondary text**: Amber (#F59E0B) for labels and timestamps
+- **Border**: 2px solid white, sharp corners (no border-radius)
+- **No shadows**: Zero elevation effects
+- **Typography**: Monospace font throughout for developer aesthetic
+- **Close button**: Stark 'X' icon in top-right, white on black
 
-```text
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                        InspectionForm.tsx                                   │
-│  ┌─────────────────────────────────────────────────────────────────────┐   │
-│  │  Equipment Tab (lazy loaded via visitedTabs)                        │   │
-│  │  ┌─────────────────────────────────────────────────────────────┐   │   │
-│  │  │  8x EquipmentTable instances (one per category)             │   │   │
-│  │  │  ┌───────────────────────────────────────────────────────┐  │   │   │
-│  │  │  │  Per Item (each row):                                 │  │   │   │
-│  │  │  │  - 1x AnimatedListItem (Framer Motion wrapper)        │  │   │   │
-│  │  │  │  - 1x HistoryAutocomplete (Popover + Command)         │  │   │   │
-│  │  │  │  - 2x Input (Year, Quantity)                          │  │   │   │
-│  │  │  │  - 1x ResultSelect (Radix Select)                     │  │   │   │
-│  │  │  │  - 1x RichTextEditor (TipTap - EXPENSIVE)             │  │   │   │
-│  │  │  │  - 1x Button (Delete)                                 │  │   │   │
-│  │  │  └───────────────────────────────────────────────────────┘  │   │   │
-│  │  └─────────────────────────────────────────────────────────────┘   │   │
-│  └─────────────────────────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────────────────────┘
-
-PROBLEM: With 25 equipment items across 8 categories:
-- 25x TipTap editors initialized synchronously
-- 25x Framer Motion wrappers calculating animations
-- 25x HistoryAutocomplete components with localStorage reads
-- 25x ResultSelect Radix portals prepared
+### Modal Content Layout
+```
+┌─────────────────────────────────────────┐
+│ VERSION INFO                        [X] │
+├─────────────────────────────────────────┤
+│                                         │
+│           v2.2.20                       │
+│                                         │
+│  ─────────────────────────────────────  │
+│                                         │
+│  LAST UPDATE                            │
+│  2024-05-20                             │
+│                                         │
+│  BUILD TIMESTAMP                        │
+│  2024-05-20T14:30:00Z                   │
+│                                         │
+└─────────────────────────────────────────┘
 ```
 
----
+## Technical Implementation
 
-## Bottleneck Analysis
+### Version Constants (vite.config.ts)
 
-### Bottleneck #1: TipTap Editor Instantiation (CRITICAL - ~60% of latency)
-
-**Location:** `src/components/ui/rich-text-editor.tsx` (Lines 21-43)
+Add build metadata alongside the version number:
 
 ```typescript
-const editor = useEditor({
-  extensions: [
-    StarterKit.configure({ ... }),  // Heavy extension loading
-  ],
-  content,
-  onUpdate: ({ editor }) => {
-    onChange(editor.getHTML());  // Serialization on every keystroke
+const APP_VERSION = "2.2.20";
+const BUILD_DATE = "2024-05-20";
+const BUILD_TIMESTAMP = "2024-05-20T14:30:00Z";
+```
+
+These will be exposed via `import.meta.env` for access in the component.
+
+### New Component: VersionInfoModal
+
+Create a dedicated modal component with brutalist styling that:
+1. Uses Radix Dialog primitives for accessibility (keyboard navigation, focus trap)
+2. Overrides default dialog styling with brutalist aesthetic
+3. Dismisses on Escape key (built-in to Radix) and X button click
+
+### Updated VersionBadge Component
+
+Modify to:
+1. Accept tap/click interactions via `onClick` handler
+2. Add `cursor-pointer` and hover state for affordance
+3. Open the VersionInfoModal when activated
+4. Work identically on touch (mobile) and pointer (web) devices
+
+## Files to Create/Modify
+
+| File | Action | Purpose |
+|------|--------|---------|
+| `vite.config.ts` | Modify | Add BUILD_DATE and BUILD_TIMESTAMP constants |
+| `src/vite-env.d.ts` | Modify | Add type declarations for new env variables |
+| `src/components/VersionInfoModal.tsx` | Create | Brutalist modal component |
+| `src/components/VersionBadge.tsx` | Modify | Add click handler and modal trigger |
+
+## Detailed Changes
+
+### 1. vite.config.ts
+
+```typescript
+// Version follows vX.Y.Z format where Z increments by 10 on each deployment
+// v2.2.20 - Added interactive version info modal with deployment metadata
+const APP_VERSION = "2.2.20";
+const BUILD_DATE = "2024-05-20";
+const BUILD_TIMESTAMP = "2024-05-20T14:30:00Z";
+
+export default defineConfig(({ mode }) => ({
+  // ...existing config
+  define: {
+    'import.meta.env.APP_VERSION': JSON.stringify(APP_VERSION),
+    'import.meta.env.BUILD_DATE': JSON.stringify(BUILD_DATE),
+    'import.meta.env.BUILD_TIMESTAMP': JSON.stringify(BUILD_TIMESTAMP),
   },
-  ...
-});
+  // ...
+}));
 ```
 
-**Impact Analysis:**
-- TipTap's `useEditor` hook performs synchronous DOM operations during initialization
-- StarterKit bundle includes: Bold, Italic, Strike, Code, Paragraph, Heading, BulletList, OrderedList, ListItem, Blockquote, CodeBlock, HorizontalRule, HardBreak, History
-- For 25 equipment items = 25 editor instances = ~1200ms initialization time on mobile
-
-**Evidence:** The component returns `null` until editor is ready (line 45-47), but React still runs the hook and waits for hydration.
-
----
-
-### Bottleneck #2: Filter Operation on Every Render (MODERATE)
-
-**Location:** `EquipmentTable.tsx` (Line 32)
+### 2. src/vite-env.d.ts
 
 ```typescript
-const categoryEquipment = equipment.filter((item) => item.equipment_category === category);
+interface ImportMetaEnv {
+  readonly APP_VERSION: string;
+  readonly BUILD_DATE: string;
+  readonly BUILD_TIMESTAMP: string;
+}
 ```
 
-**Impact Analysis:**
-- This filter runs on EVERY render, including parent state updates
-- With 8 equipment categories, this runs 8 times per equipment state change
-- No memoization means filtering large arrays repeatedly
-
-**Fix Required:** Wrap in `useMemo` with `[equipment, category]` dependencies.
-
----
-
-### Bottleneck #3: Animation Wrapper Overhead (MODERATE)
-
-**Location:** `src/components/ui/list-item-animation.tsx` (Lines 12-43)
+### 3. src/components/VersionInfoModal.tsx (NEW)
 
 ```typescript
-export function AnimatedListItem({ children, itemKey, isNew = false, className = "" }) {
-  const isMobile = useIsMobile();  // Hook call per item
-  const skipInitialAnimation = isMobile && !isNew;
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogClose,
+} from "@/components/ui/dialog";
+import { X } from "lucide-react";
+
+interface VersionInfoModalProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}
+
+export function VersionInfoModal({ open, onOpenChange }: VersionInfoModalProps) {
+  const version = import.meta.env.APP_VERSION || '0.0.0';
+  const buildDate = import.meta.env.BUILD_DATE || 'Unknown';
+  const buildTimestamp = import.meta.env.BUILD_TIMESTAMP || 'Unknown';
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent 
+        hideDefaultClose
+        className="bg-black border-2 border-white rounded-none shadow-none max-w-sm"
+      >
+        {/* Custom brutalist close button */}
+        <DialogClose className="absolute right-3 top-3 p-1 border border-white/50 hover:border-white hover:bg-white/10 transition-colors">
+          <X className="h-4 w-4 text-white" />
+          <span className="sr-only">Close</span>
+        </DialogClose>
+
+        <DialogHeader>
+          <DialogTitle className="font-mono text-xs uppercase tracking-widest text-amber-500">
+            Version Info
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-6 py-4">
+          {/* Version Number - Hero Display */}
+          <div className="text-center py-4">
+            <span className="font-mono text-4xl font-bold text-white tracking-tight">
+              v{version}
+            </span>
+          </div>
+
+          <div className="border-t border-white/20" />
+
+          {/* Last Update Date */}
+          <div className="space-y-1">
+            <span className="font-mono text-xs uppercase tracking-widest text-amber-500 block">
+              Last Update
+            </span>
+            <span className="font-mono text-sm text-white block">
+              {buildDate}
+            </span>
+          </div>
+
+          {/* Build Timestamp */}
+          <div className="space-y-1">
+            <span className="font-mono text-xs uppercase tracking-widest text-amber-500 block">
+              Build Timestamp
+            </span>
+            <span className="font-mono text-sm text-white block">
+              {buildTimestamp}
+            </span>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+```
+
+### 4. src/components/VersionBadge.tsx (UPDATE)
+
+```typescript
+import { useState } from "react";
+import { Badge } from "@/components/ui/badge";
+import { VersionInfoModal } from "@/components/VersionInfoModal";
+
+interface VersionBadgeProps {
+  compact?: boolean;
+}
+
+export function VersionBadge({ compact = false }: VersionBadgeProps) {
+  const [modalOpen, setModalOpen] = useState(false);
+  const version = import.meta.env.APP_VERSION || '0.0.0';
   
   return (
-    <motion.div
-      initial={skipInitialAnimation ? false : { opacity: 0, y: -10, scale: 0.98 }}
-      animate={{ opacity: 1, y: 0, scale: 1, backgroundColor: ... }}
-      ...
-    >
-      {children}
-    </motion.div>
-  );
-}
-```
+    <>
+      <div className={compact ? "flex justify-center py-2" : "flex justify-center py-6"}>
+        <Badge 
+          variant="outline" 
+          className="text-xs font-mono text-muted-foreground/60 border-muted-foreground/20 px-3 py-1 cursor-pointer hover:text-muted-foreground hover:border-muted-foreground/40 transition-colors"
+          onClick={() => setModalOpen(true)}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              setModalOpen(true);
+            }
+          }}
+        >
+          v{version}
+        </Badge>
+      </div>
 
-**Impact Analysis:**
-- `useIsMobile()` hook (which uses `matchMedia`) is called for EACH list item
-- Each `motion.div` registers with Framer Motion's animation engine
-- For 25 items = 25 `matchMedia` checks + 25 animation subscriptions
-- The existing optimization (`skipInitialAnimation`) only helps on re-renders, not initial mount
-
----
-
-### Bottleneck #4: HistoryAutocomplete localStorage Reads (MODERATE)
-
-**Location:** `src/components/HistoryAutocomplete.tsx` (Lines 51-66)
-
-```typescript
-useEffect(() => {
-  const loadHistory = () => {
-    const saved = localStorage.getItem(storageKey);
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        setHistoryOptions(Array.isArray(parsed) ? parsed : []);
-      } catch (e) { ... }
-    }
-  };
-  loadHistory();
-}, [storageKey]);
-```
-
-**Impact Analysis:**
-- Each `HistoryAutocomplete` reads from `localStorage` on mount
-- `JSON.parse()` is called for every component instance
-- With 25 items and same `storageKey="rope-works-equipment-types"`, this is 25 identical reads + parses
-
----
-
-### Bottleneck #5: Lack of Component Memoization (MODERATE)
-
-**Search Confirmation:** No `React.memo`, `useMemo`, or `useCallback` found in inspection components.
-
-**Impact Analysis:**
-- When `equipment` state changes, ALL 8 `EquipmentTable` components re-render
-- Each re-render recreates inline callback functions:
-  ```typescript
-  onChange={(value) => updateEquipment(item, "equipment_type", value)}  // New function every render
-  ```
-- Child components receive new props → trigger their own re-renders
-
----
-
-### Bottleneck #6: Inline Function Recreation (MINOR)
-
-**Location:** `EquipmentTable.tsx` (Lines 72-77, 127, 145-146, 166, 173)
-
-```typescript
-const updateEquipment = (item: any, field: string, value: any) => {
-  const updated = equipment.map((eq) =>
-    eq === item ? { ...eq, [field]: value } : eq
-  );
-  onUpdate(updated);
-};
-```
-
-**Impact Analysis:**
-- `updateEquipment` is recreated on every render
-- Passed as new callback to every child component
-- Prevents child memo optimization (if implemented)
-
----
-
-### Bottleneck #7: Unnecessary AlertDialog in Render Tree
-
-**Location:** `EquipmentTable.tsx` (Lines 280-299)
-
-```typescript
-<AlertDialog open={!!itemToDelete} onOpenChange={(open) => !open && setItemToDelete(null)}>
-  <AlertDialogContent>
-    ...
-  </AlertDialogContent>
-</AlertDialog>
-```
-
-**Impact Analysis:**
-- AlertDialog mounts in every `EquipmentTable` instance (8 dialogs total)
-- Radix Dialog internally creates portals and event listeners even when closed
-- Should be lifted to parent or rendered conditionally
-
----
-
-## Quantified Impact Estimate
-
-| Bottleneck | Items Affected | Est. Time (ms) | % of Total |
-|------------|---------------|----------------|------------|
-| TipTap Editor Init | 25 editors | 1200ms | 60% |
-| Filter Operations | 8 tables × many renders | 150ms | 7.5% |
-| Animation Wrappers | 25 items | 200ms | 10% |
-| LocalStorage Reads | 25 reads | 100ms | 5% |
-| Callback Recreation | Cascading | 150ms | 7.5% |
-| Missing Memoization | All components | 150ms | 7.5% |
-| AlertDialog Overhead | 8 dialogs | 50ms | 2.5% |
-| **TOTAL** | - | **~2000ms** | 100% |
-
----
-
-## Proposed Solution: Phased Implementation
-
-### Phase 1: Lazy TipTap Editor (Highest Impact)
-
-Replace synchronous TipTap initialization with a lazy-loaded placeholder that only mounts the editor when the user focuses the field.
-
-```typescript
-// New: LazyRichTextEditor.tsx
-export function LazyRichTextEditor({ content, onChange, placeholder, className }) {
-  const [isFocused, setIsFocused] = useState(false);
-  
-  if (!isFocused) {
-    return (
-      <div 
-        className={cn("min-h-[80px] cursor-text", className)}
-        onClick={() => setIsFocused(true)}
-        dangerouslySetInnerHTML={{ __html: content || `<p class="text-muted-foreground">${placeholder}</p>` }}
+      <VersionInfoModal 
+        open={modalOpen} 
+        onOpenChange={setModalOpen} 
       />
-    );
-  }
-  
-  // Only mount TipTap when focused
-  return <RichTextEditor content={content} onChange={onChange} placeholder={placeholder} className={className} />;
+    </>
+  );
 }
 ```
 
-**Expected Improvement:** 1200ms → 50ms (96% reduction in editor overhead)
+## Platform Compatibility
 
-### Phase 2: Memoize Filter Operation
+### Web (Desktop)
+- Click event triggers modal open
+- Keyboard navigation: Tab to focus, Enter/Space to activate
+- Escape key closes modal
+- X button click closes modal
 
-```typescript
-const categoryEquipment = useMemo(
-  () => equipment.filter((item) => item.equipment_category === category),
-  [equipment, category]
-);
-```
+### Mobile (iOS/Android PWA)
+- Touch/tap event triggers modal open (React normalizes click events)
+- Radix Dialog handles touch interactions automatically
+- Modal backdrop tap-to-dismiss (built into Radix)
 
-### Phase 3: Memoize Callback Functions
+## Accessibility Features
 
-```typescript
-const updateEquipment = useCallback((item: any, field: string, value: any) => {
-  onUpdate(prev => prev.map((eq) =>
-    eq === item ? { ...eq, [field]: value } : eq
-  ));
-}, [onUpdate]);
-```
+- `role="button"` and `tabIndex={0}` for keyboard navigation
+- `onKeyDown` handler for Enter/Space activation
+- Screen reader announces "Close" for the X button
+- Focus trap within modal when open
+- Escape key dismissal
 
-### Phase 4: Lift useIsMobile to Parent
+## Version Increment
 
-Instead of calling `useIsMobile()` in every `AnimatedListItem`, pass the value as a prop from the parent component.
-
-### Phase 5: Shared History Cache
-
-Create a React Context for equipment type history to avoid 25 redundant localStorage reads.
-
-### Phase 6: Conditional AlertDialog Rendering
-
-```typescript
-{itemToDelete && (
-  <AlertDialog open={true} onOpenChange={() => setItemToDelete(null)}>
-    ...
-  </AlertDialog>
-)}
-```
-
----
-
-## Files to Modify
-
-| Priority | File | Changes |
-|----------|------|---------|
-| P0 | `src/components/ui/lazy-rich-text-editor.tsx` | **NEW FILE** - Lazy loading wrapper for TipTap |
-| P0 | `src/components/inspection/EquipmentTable.tsx` | Use LazyRichTextEditor, add useMemo/useCallback, conditional AlertDialog |
-| P1 | `src/components/ui/list-item-animation.tsx` | Accept `isMobile` as prop instead of hook call |
-| P1 | `src/components/HistoryAutocomplete.tsx` | Add shared history context or cache |
-| P2 | `src/components/inspection/OperatingSystemsTable.tsx` | Apply same optimizations |
-| P2 | `src/components/inspection/ZiplinesTable.tsx` | Apply same optimizations |
-
----
-
-## Compatibility with Sync Fixes (v2.1.60+)
-
-The proposed optimizations are **fully compatible** with the synchronization improvements:
-
-1. **Lazy TipTap**: Only affects render performance, not data persistence
-2. **Memoization**: Reduces unnecessary re-renders without changing data flow
-3. **Callback stability**: `onUpdate` and `onImmediateSave` behavior unchanged
-4. **AlertDialog lifting**: Delete confirmation still triggers `onImmediateSave`
-
-The auto-save debounce pattern (1.5s) and IndexedDB writes are unaffected.
-
----
-
-## Testing Recommendations
-
-After implementation:
-1. Measure First Contentful Paint (FCP) on Equipment tab with 25+ items
-2. Profile with React DevTools Profiler to verify reduced re-renders
-3. Test on iOS Safari (strictest JS execution limits)
-4. Verify data persistence still works (edit → blur → check IndexedDB)
-5. Test delete confirmation dialog still functions correctly
+This feature update will increment the version to **v2.2.20** (patch +10 from current v2.2.10).
 
