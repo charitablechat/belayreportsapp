@@ -1,231 +1,324 @@
 
-# Plan: Fix Mobile Inspection Report Loading Performance
+# Data Synchronization Integrity Audit Report
 
 ## Executive Summary
 
-The Mobile Inspection Report view is experiencing significant loading latency, with evidence of "Loading timed out" errors after 15 seconds. Analysis reveals multiple performance bottlenecks in the data loading pipeline and component rendering that combine to exceed the 2-second target load time.
+A line-by-line code audit of the data synchronization layer between mobile (IndexedDB) and central (Supabase) databases has been completed. The current implementation at **v2.1.70** is architecturally sound with robust timeout protection, batch operations, and conflict resolution. However, **5 issues** were identified that could affect production stability.
 
-## Problem Analysis
+## Current Architecture Overview
 
-### Evidence from Session Context
-- The session replay data confirms a "Loading timed out" toast was displayed
-- The timeout occurs at 15 seconds (`LOAD_TIMEOUT = 15000` in `loadInspection()`)
-- This indicates the combination of data fetching and UI initialization exceeds the safety timeout
-
-### Root Cause #1: Sequential Database Queries (Critical)
-**File:** `src/pages/InspectionForm.tsx` (lines 706-832)
-
-When online, the page makes **7 sequential Supabase queries** with individual 8-second timeouts:
-```typescript
-// Each query awaits completion before the next starts
-const { data } = await withQueryTimeout(supabase.from("inspections")..., 8000);
-const { data: systemsData } = await withQueryTimeout(supabase.from("inspection_systems")..., 8000);
-const { data: ziplinesData } = await withQueryTimeout(supabase.from("inspection_ziplines")..., 8000);
-const { data: equipmentData } = await withQueryTimeout(supabase.from("inspection_equipment")..., 8000);
-const { data: standardsData } = await withQueryTimeout(supabase.from("inspection_standards")..., 8000);
-const { data: summaryData } = await withQueryTimeout(supabase.from("inspection_summary")..., 8000);
+```text
+┌─────────────────────────────────────────────────────────────────────┐
+│                    DATA SYNCHRONIZATION FLOW                        │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│  ┌──────────────┐     ┌───────────────┐     ┌──────────────────┐   │
+│  │   Form UI    │────▶│  IndexedDB    │────▶│  Atomic Sync     │   │
+│  │  (Debounced  │     │  (Offline     │     │  Manager         │   │
+│  │   1.5s)      │     │   Storage)    │     │  (Batch + Retry) │   │
+│  └──────────────┘     └───────────────┘     └────────┬─────────┘   │
+│                                                       │             │
+│                     ┌─────────────────────────────────▼──────────┐  │
+│                     │            Supabase (Central DB)           │  │
+│                     │  ┌────────────────────────────────────┐    │  │
+│                     │  │  Transaction Manager (8s/step)    │    │  │
+│                     │  │  - Batch inserts                  │    │  │
+│                     │  │  - Rollback on failure            │    │  │
+│                     │  └────────────────────────────────────┘    │  │
+│                     └────────────────────────────────────────────┘  │
+│                                                                     │
+│  TIMEOUT LAYERS:                                                    │
+│  • Per-step DB operation: 8 seconds                                 │
+│  • Per-item sync: 25 seconds                                        │
+│  • Overall sync: 30 seconds                                         │
+│  • Safety reset: 32 seconds                                         │
+│                                                                     │
+└─────────────────────────────────────────────────────────────────────┘
 ```
 
-**Impact:** On a slow mobile network (e.g., 3G with 500ms RTT per query), these 7 queries take ~3.5 seconds **minimum**. With retries or slow responses, this easily exceeds 8+ seconds.
+---
 
-### Root Cause #2: Heavy RichTextEditor Instantiation
-**Files:** `EquipmentTable.tsx`, `ZiplinesTable.tsx`, `OperatingSystemsTable.tsx`
+## Audit Findings
 
-Each table row instantiates a TipTap RichTextEditor (`RichTextEditor` via `VoiceRichTextEditor`), which:
-1. Creates a full ProseMirror instance with StarterKit extensions
-2. Initializes DOM mutation observers
-3. Loads the speech-to-text hook (even if not used)
+### CRITICAL ISSUES (0)
 
-**Impact:** With 20 equipment items × 8 categories, this creates **160+ RichTextEditor instances** on the Equipment tab, each taking ~50-100ms to initialize.
+No critical issues were found. The core synchronization logic is properly protected with timeout wrappers and error boundaries.
 
-### Root Cause #3: Animation Overhead
-**File:** `src/components/ui/list-item-animation.tsx`
+---
 
-Every table row is wrapped in a `motion.tr` or `motion.div` from Framer Motion, which:
-1. Tracks animation state
-2. Applies CSS transforms on mount
-3. Uses `AnimatePresence` for exit animations
+### MAJOR ISSUES (2)
 
-**Impact:** Initial render triggers 100+ parallel animations, causing jank on mobile GPUs.
+#### Issue M1: Assessment Data Save Uses Sequential Deletes/Inserts Instead of Batch Transaction
 
-### Root Cause #4: HistoryAutocomplete Database Fetches
-**File:** `src/components/HistoryAutocomplete.tsx` (lines 69-112)
+**File:** `src/lib/offline-storage.ts` (lines 1079-1114)  
+**Severity:** Major  
+**Category:** Data Consistency / Performance
 
-Each `HistoryAutocomplete` component fetches up to 200 records from `global_field_history` on mount:
-```typescript
-const { data, error } = await supabase
-  .from('global_field_history')
-  .select('value')
-  .eq('field_type', fieldType)
-  .order('usage_count', { ascending: false })
-  .limit(200);
-```
-
-**Impact:** With multiple equipment types, this triggers 8+ parallel database requests that compete with the main data load.
-
-## Solution: Prioritized Optimizations
-
-### Priority 1: Parallelize Database Queries (High Impact, Low Risk)
-
-**Change:** Wrap all related data queries in `Promise.all()` instead of sequential awaits.
+**Problem:**
+Unlike `saveRelatedDataOffline` for inspections which uses a single read-write transaction with batch operations, `saveAssessmentDataOffline` and `saveTrainingDataOffline` use sequential `db.delete()` and `db.put()` calls:
 
 ```typescript
-// Before: Sequential (7+ seconds on slow networks)
-const { data } = await withQueryTimeout(...);
-const { data: systemsData } = await withQueryTimeout(...);
-// ... 5 more sequential queries
-
-// After: Parallel (max single query time, typically 1-2 seconds)
-const [
-  inspectionResult,
-  systemsResult,
-  ziplinesResult,
-  equipmentResult,
-  standardsResult,
-  summaryResult
-] = await Promise.all([
-  withQueryTimeout(supabase.from("inspections").select(...), 8000),
-  withQueryTimeout(supabase.from("inspection_systems").select(...), 8000),
-  withQueryTimeout(supabase.from("inspection_ziplines").select(...), 8000),
-  withQueryTimeout(supabase.from("inspection_equipment").select(...), 8000),
-  withQueryTimeout(supabase.from("inspection_standards").select(...), 8000),
-  withQueryTimeout(supabase.from("inspection_summary").select(...), 8000)
-]);
-```
-
-**Expected Impact:** Reduces data loading from ~7 seconds to ~1-2 seconds on mobile networks.
-
-### Priority 2: Lazy Load Tab Content (High Impact, Medium Effort)
-
-**Change:** Only render the active tab's content; defer other tabs until selected.
-
-```typescript
-// Current: All tabs render immediately
-<TabsContent value="details">
-  <OperatingSystemsTable {...} />
-  <ZiplinesTable {...} />
-</TabsContent>
-<TabsContent value="equipment">
-  <EquipmentTable category="harnesses" {...} />  // 8 tables rendered
-  <EquipmentTable category="helmets" {...} />
-  // ... 6 more
-</TabsContent>
-
-// Proposed: Track visited tabs, only render first + visited
-const [visitedTabs, setVisitedTabs] = useState(new Set(['details']));
-
-<TabsContent value="equipment">
-  {visitedTabs.has('equipment') && (
-    <>
-      <EquipmentTable category="harnesses" {...} />
-      ...
-    </>
-  )}
-</TabsContent>
-```
-
-**Expected Impact:** Reduces initial render from ~160 RichTextEditors to ~20 (just "details" tab).
-
-### Priority 3: Disable Initial Animations on Mobile (Medium Impact, Low Risk)
-
-**Change:** Skip mount animations on mobile devices; only animate when adding new items.
-
-```typescript
-// In AnimatedListItem and AnimatedTableRow
-export function AnimatedListItem({ isNew = false, ...props }) {
-  const isMobile = useIsMobile();
-  
-  // Skip animations on initial render for mobile
-  const skipInitialAnimation = isMobile && !isNew;
-  
-  return (
-    <motion.div
-      initial={skipInitialAnimation ? false : { opacity: 0, y: -10 }}
-      animate={{ opacity: 1, y: 0 }}
-      ...
-    />
-  );
+// saveAssessmentDataOffline - SEQUENTIAL PATTERN (lines 1093-1104)
+for (const item of existingData) {
+  await db.delete(storeName, item.id); // Sequential deletes
+}
+for (const item of data) {
+  await db.put(storeName, dataWithAssessmentId); // Sequential inserts
 }
 ```
 
-**Expected Impact:** Eliminates 100+ parallel animations, reducing time-to-interactive by ~500ms.
-
-### Priority 4: Debounce HistoryAutocomplete Fetches (Medium Impact, Low Risk)
-
-**Change:** Delay `global_field_history` fetches until component is actually used (on popover open).
+Compare to the optimized inspection pattern:
 
 ```typescript
-// Current: Fetches on mount
-useEffect(() => {
-  if (!syncToDatabase || !fieldType || hasFetchedFromDb.current) return;
-  fetchGlobalHistory(); // Runs immediately on mount
-}, [syncToDatabase, fieldType]);
-
-// Proposed: Fetch on first interaction
-const handleOpenChange = (isOpen: boolean) => {
-  if (isOpen && !hasFetchedFromDb.current) {
-    fetchGlobalHistory(); // Only fetch when user opens dropdown
-  }
-  setOpen(isOpen);
-};
+// saveRelatedDataOffline - BATCH PATTERN (lines 850-870)
+const tx = db.transaction(storeName, 'readwrite');
+const store = tx.store;
+// Batch all operations within the same transaction
+const deletePromises = existingData.map(item => store.delete(item.id));
+const putPromises = data.map(item => store.put(dataWithInspectionId));
+await Promise.all([...deletePromises, ...putPromises]);
+await tx.done;
 ```
 
-**Expected Impact:** Eliminates 8+ competing network requests during initial load.
+**Impact:**
+- On mobile devices with slow storage, this adds latency during auto-save
+- Partial failure risk: if the browser crashes mid-operation, data could be left in an inconsistent state
+- Not atomic: deletes may complete but inserts fail
 
-### Priority 5: Lightweight Comments Component for Desktop Tables (Optional)
+**Recommended Fix:**
+Refactor `saveAssessmentDataOffline` and `saveTrainingDataOffline` to use the same single-transaction batch pattern as `saveRelatedDataOffline`.
 
-**Change:** Replace full RichTextEditor with a simple textarea for table cells, only use rich editor for expanded edit mode.
+---
 
-**Note:** This is a larger change that should be evaluated based on user feedback after the above fixes.
+#### Issue M2: Circuit Breaker Success Detection is Heuristic-Based
 
-## Technical Implementation Details
+**File:** `src/lib/offline-storage.ts` (lines 353-359)  
+**Severity:** Major  
+**Category:** Error Handling Accuracy
 
-### Files to Modify
+**Problem:**
+The circuit breaker's success detection uses a heuristic that cannot distinguish between a genuine empty result and a timeout:
 
-| Priority | File | Change |
-|----------|------|--------|
-| P1 | `src/pages/InspectionForm.tsx` | Parallelize database queries with `Promise.all()` |
-| P2 | `src/pages/InspectionForm.tsx` | Add `visitedTabs` state for lazy tab rendering |
-| P3 | `src/components/ui/list-item-animation.tsx` | Skip animations on mobile initial render |
-| P4 | `src/components/HistoryAutocomplete.tsx` | Defer fetch to popover open |
-| - | `vite.config.ts` | Version bump to v2.1.70 |
+```typescript
+// If we got the fallback value due to timeout, record as failure
+// Note: This is a heuristic - we can't perfectly detect timeout vs actual fallback value
+if (result === fallbackValue && operationName.includes('get')) {
+  // Only record failure for read operations that returned empty
+  // Write operations returning fallback is expected on timeout
+}
+```
+
+**Impact:**
+- If IndexedDB genuinely has no data (new user, empty state), this incorrectly counts as a "failure"
+- After 3 empty-state reads, circuit breaker trips unnecessarily, disabling IndexedDB for 60 seconds
+- Users on new accounts may experience degraded offline functionality
+
+**Recommended Fix:**
+Use a structured result object with explicit timeout flag:
+```typescript
+interface IndexedDBResult<T> {
+  data: T;
+  timedOut: boolean;
+}
+```
+
+---
+
+### MINOR ISSUES (3)
+
+#### Issue N1: Duplicate Error Boundary Wrapper on `deleteOfflineInspection`
+
+**File:** `src/lib/offline-storage.ts` (lines 583-586)  
+**Severity:** Minor  
+**Category:** Code Consistency
+
+**Problem:**
+`deleteOfflineInspection` is the only function that doesn't use `withIndexedDBErrorBoundary`:
+
+```typescript
+export async function deleteOfflineInspection(id: string) {
+  const db = await getDB();
+  await db.delete('inspections', id);
+}
+```
+
+All other similar functions are wrapped:
+```typescript
+export async function deleteOfflineDailyAssessment(id: string) {
+  return withIndexedDBErrorBoundary(async () => { ... });
+}
+```
+
+**Impact:**
+- If IndexedDB fails during delete, the error propagates uncaught
+- Inconsistent error handling across the codebase
+
+**Recommended Fix:**
+Wrap `deleteOfflineInspection` in `withIndexedDBErrorBoundary` for consistency.
+
+---
+
+#### Issue N2: useConflicts Hook Missing Dependency in useEffect
+
+**File:** `src/hooks/useConflicts.tsx` (lines 169-173)  
+**Severity:** Minor  
+**Category:** React Best Practices
+
+**Problem:**
+The auto-resolve useEffect is missing `autoResolveConflicts` in its dependency array:
+
+```typescript
+useEffect(() => {
+  if (validConflicts.length > 0 && !autoResolveConflicts.isPending) {
+    autoResolveConflicts.mutate(validConflicts);
+  }
+}, [validConflicts.length]); // Missing: autoResolveConflicts
+```
+
+**Impact:**
+- React ESLint warning (if enabled)
+- Potential stale closure issues in edge cases
+
+**Recommended Fix:**
+Add `autoResolveConflicts` to the dependency array, or use `autoResolveConflicts.mutate` with stable reference via useCallback.
+
+---
+
+#### Issue N3: iOS Background Sync Fallback Has No Cleanup Mechanism
+
+**File:** `src/lib/background-sync.ts` (lines 30-40)  
+**Severity:** Minor  
+**Category:** Memory / Storage Hygiene
+
+**Problem:**
+iOS uses localStorage to track pending syncs, but `clearPendingSyncs` is only called from a function that checks `isIOS()`:
+
+```typescript
+export function clearPendingSyncs(): void {
+  if (!isIOS()) return; // Early return on non-iOS
+  localStorage.removeItem('pending-inspection-sync');
+  localStorage.removeItem('pending-photo-sync');
+}
+```
+
+There's no code that calls `clearPendingSyncs()` after a successful sync on iOS.
+
+**Impact:**
+- `localStorage` entries persist indefinitely on iOS
+- Not a functional bug, but unnecessary storage accumulation
+
+**Recommended Fix:**
+Call `clearPendingSyncs()` after successful sync completion in `useAutoSync` for iOS devices.
+
+---
+
+## Verified Strengths (No Issues Found)
+
+### Timeout Architecture ✅
+
+The multi-layer timeout system is properly implemented:
+
+| Layer | Timeout | Location |
+|-------|---------|----------|
+| Per-step DB operation | 8 seconds | `transaction-manager.ts:4` |
+| IndexedDB operation | 5 seconds | `offline-storage.ts:329` |
+| Per-item sync | 25 seconds | `atomic-sync-manager.ts:309` |
+| Overall sync | 30 seconds | `useAutoSync.tsx:19` |
+| Safety reset | 32 seconds | `useAutoSync.tsx:124` |
+
+### Circuit Breaker Pattern ✅
+
+Properly prevents repeated IndexedDB failures from blocking the app:
+- Threshold: 3 consecutive failures
+- Cooldown: 60 seconds
+- Automatic reset after cooldown
+
+### Batch Insert Operations ✅
+
+Recently optimized to use batch inserts instead of sequential operations:
+```typescript
+// atomic-sync-manager.ts - batch inserts for all related data
+if (equipment.length > 0) {
+  steps.push({
+    table: 'inspection_equipment',
+    operation: 'insert',
+    data: equipment, // Batch insert all at once
+  });
+}
+```
+
+### Conflict Resolution ✅
+
+Silent "Last Write Wins" strategy is properly implemented:
+- Conflicts auto-resolve within 24 hours
+- Orphaned conflicts are automatically cleaned up
+- No user interaction required
+
+### Auth Caching ✅
+
+`getUserWithCache()` properly implements:
+- In-memory cache with 60-second TTL
+- localStorage fallback for offline scenarios
+- Single-flight pattern to prevent duplicate requests
+- Background refresh to keep cache fresh
+
+### Rollback Mechanism ✅
+
+Transaction manager properly captures rollback data and reverses operations on failure:
+```typescript
+// Captures existing data before delete for potential rollback
+const existingSystems = await fetchRollbackData('inspection_systems', { inspection_id });
+steps.push({
+  operation: 'delete',
+  rollbackData: existingSystems // Used to restore if transaction fails
+});
+```
+
+---
+
+## Summary Table
+
+| ID | Severity | Description | Impact |
+|----|----------|-------------|--------|
+| M1 | Major | Assessment/Training save uses sequential instead of batch transaction | Performance + partial failure risk |
+| M2 | Major | Circuit breaker heuristic cannot distinguish timeout from empty data | Unnecessary IndexedDB disabling |
+| N1 | Minor | `deleteOfflineInspection` missing error boundary wrapper | Uncaught errors possible |
+| N2 | Minor | `useConflicts` useEffect missing dependency | React warning + stale closure |
+| N3 | Minor | iOS background sync localStorage entries never cleared | Storage accumulation |
+
+---
+
+## Recommendations
+
+### Priority 1: Fix Issue M1 (Batch Transactions)
+Refactor `saveAssessmentDataOffline` and `saveTrainingDataOffline` to use single-transaction batch operations matching the pattern in `saveRelatedDataOffline`.
+
+### Priority 2: Fix Issue M2 (Circuit Breaker Accuracy)
+Implement explicit timeout detection using a structured result object instead of comparing against fallback values.
+
+### Priority 3: Address Minor Issues
+- Wrap `deleteOfflineInspection` in error boundary
+- Add missing dependency to `useConflicts` useEffect
+- Call `clearPendingSyncs()` on iOS after successful sync
 
 ### Version Update
-
-The current version is `v2.1.60`. Following the +10 patch increment rule, this fix will update to `v2.1.70`:
-
+If fixes are implemented, increment version to **v2.1.80**:
 ```typescript
-// vite.config.ts
-// v2.1.70 - Mobile performance: parallel data loading, lazy tab rendering, deferred animations
-const APP_VERSION = "2.1.70";
+// v2.1.80 - Sync integrity fixes: batch transactions for assessments/trainings, circuit breaker accuracy
+const APP_VERSION = "2.1.80";
 ```
 
-**Note:** The user request specified updating to `v2.1.30`, but the current version is already `v2.1.60`. To maintain version integrity (versions should only increment), this will be updated to `v2.1.70` instead.
+---
 
-## Performance Projection
+## Technical Verification Checklist
 
-| Metric | Current | After Fixes |
-|--------|---------|-------------|
-| Initial data load | 5-15s (timeout) | 1-2s |
-| Tab render (details) | ~2s | ~500ms |
-| Tab render (equipment) | ~3s (160 editors) | Deferred until clicked |
-| Animation overhead | ~500ms | ~50ms (mobile) |
-| **Total time to interactive** | **8-15s** | **~1.5-2.5s** |
-
-## Testing Recommendations
-
-After implementation:
-1. Test on a throttled mobile network (Chrome DevTools → Network → Slow 3G)
-2. Verify the "details" tab loads within 2 seconds
-3. Switch to "equipment" tab and verify smooth transition
-4. Confirm no "Loading timed out" errors appear
-5. Verify the version badge displays `v2.1.70`
-
-## Impact on Recent Layout Changes
-
-The recent mobile-responsive stacked layout change (`flex-col` on mobile) in the table components was reviewed. This change:
-- Uses standard CSS flexbox (no complex calculations)
-- Does not add DOM elements or change render depth
-- **Did not introduce performance regressions**
-
-The loading latency is caused by the data layer and component initialization, not the layout structure.
+After implementing fixes, verify:
+- [ ] Assessment data saves use single IndexedDB transaction
+- [ ] Training data saves use single IndexedDB transaction  
+- [ ] Circuit breaker only trips on actual timeout/error, not empty data
+- [ ] `deleteOfflineInspection` is wrapped in error boundary
+- [ ] `useConflicts` hook has no React dependency warnings
+- [ ] iOS localStorage entries are cleared after successful sync
+- [ ] No regression in sync performance (test with 20+ equipment items)
+- [ ] Offline → Online transition syncs all data correctly
+- [ ] Version badge shows updated version in Dashboard dropdown
