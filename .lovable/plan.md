@@ -1,175 +1,207 @@
 
-# Fix Persistent "Failed to sync online" Error
+# Plan: Unified Global Shared Autocomplete System
 
-## Root Cause Analysis
+## Overview
 
-The investigation revealed **three distinct issues** causing the sync error to persist:
+This plan consolidates the autocomplete functionality into a single, globally-shared system. Currently, there are two separate components (`DatabaseAutocomplete` and `HistoryAutocomplete`) using two different database tables. We'll migrate to using only `global_field_history` for all autocomplete fields, ensuring cross-user sharing while maintaining strict field-type scoping.
 
-### Issue 1: `has_documentation` NULL Constraint Violation
-The `inspection_standards` table has `has_documentation` column set to `NOT NULL`, but the frontend initializes standards with `null`:
+## Current Architecture
 
-```typescript
-// InspectionForm.tsx lines 107-114
-{ id: crypto.randomUUID(), standard_name: "...", has_documentation: null }
-```
+| Component | Database Table | Sharing Scope |
+|-----------|---------------|---------------|
+| `DatabaseAutocomplete` | `user_field_history` | Per-user only |
+| `HistoryAutocomplete` | `global_field_history` | All users |
 
-**Database Error:**
-```
-null value in column "has_documentation" of relation "inspection_standards" violates not-null constraint
-```
+## Target Architecture
 
-### Issue 2: Stale Error State Not Cleared
-The error "Failed to sync online - saved locally" is set when sync fails but may not be properly cleared when:
-- Background sync later succeeds but doesn't trigger the listener in time
-- The component re-renders with stale state
-- A new save operation starts before the error is cleared
-
-### Issue 3: RLS Policy Timing (Resolved)
-The previous RLS migration added `WITH CHECK` clauses, which are now in place. However, errors may still occur if:
-- Transactions don't commit the parent inspection before child inserts
-- Network interruption causes partial writes
-
----
-
-## Solution Design
-
-### Phase 1: Fix has_documentation Default Value
-
-**Option A: Allow NULL in Database (Recommended)**
-Change the database column to allow NULL values. This matches the UI behavior where standards start as "Not Set" before the user selects Yes/No.
-
-```sql
-ALTER TABLE inspection_standards 
-ALTER COLUMN has_documentation DROP NOT NULL;
-```
-
-**Option B: Change Frontend Default (Alternative)**
-Initialize with a boolean default instead of null. But this changes UX - items would show Yes/No before user interaction.
-
-**We'll go with Option A** because the UI already displays "Not Set" badge for null values.
-
-### Phase 2: Sanitize Data Before Sync
-
-Add data sanitization in the atomic sync manager to handle edge cases where null values slip through:
-
-```typescript
-// In syncInspectionAtomic() before validation
-const sanitizedStandards = standards.map(s => ({
-  ...s,
-  // Default null has_documentation to false for DB compatibility
-  has_documentation: s.has_documentation ?? false,
-}));
-```
-
-### Phase 3: Improve Error State Clearing
-
-Enhance the `onSyncComplete` listener to aggressively clear sync-related errors:
-
-```typescript
-// InspectionForm.tsx - Improved error clearing
-useEffect(() => {
-  const unsubscribe = onSyncComplete(() => {
-    // Clear any sync-related errors on successful background sync
-    setSaveError(prev => {
-      if (!prev) return null;
-      // Check multiple patterns that indicate sync errors
-      const isSyncError = /sync|failed|offline|queued|network/i.test(prev);
-      return isSyncError ? null : prev;
-    });
-  });
-  
-  return () => unsubscribe();
-}, []); // Remove saveError dependency to avoid stale closures
-```
-
-### Phase 4: Add Auto-Retry After Error Clear
-
-When an error is cleared via background sync, trigger a revalidation to update UI state:
-
-```typescript
-// After clearing error, also update lastSaved if inspection exists
-if (inspection?.synced_at) {
-  setLastSaved(new Date(inspection.synced_at));
-}
-```
-
----
-
-## Files to Modify
-
-| File | Changes |
-|------|---------|
-| **Database Migration** | `ALTER TABLE inspection_standards ALTER COLUMN has_documentation DROP NOT NULL` |
-| `src/lib/atomic-sync-manager.ts` | Sanitize standards before sync to handle nulls |
-| `src/pages/InspectionForm.tsx` | Improve error clearing logic with broader pattern matching |
-| `src/lib/validation-schemas.ts` | Update standardSchema to allow nullable `has_documentation` |
-| `vite.config.ts` | Increment to v2.2.71 |
-
----
+| Component | Database Table | Sharing Scope |
+|-----------|---------------|---------------|
+| `GlobalAutocomplete` (unified) | `global_field_history` | All users |
 
 ## Technical Implementation
 
-### 1. Database Migration
+### Phase 1: Extend Global Field History Table
+
+Add missing field types to support all current autocomplete fields:
 
 ```sql
--- Allow NULL for has_documentation to match UI "Not Set" state
-ALTER TABLE inspection_standards 
-ALTER COLUMN has_documentation DROP NOT NULL;
+-- Migrate existing user_field_history entries to global_field_history
+-- for the field types currently using DatabaseAutocomplete:
+-- inspector_name, onsite_contact, trainer_name, organization
+
+INSERT INTO global_field_history (field_type, value, usage_count, last_used_at)
+SELECT DISTINCT field_type, value, MAX(usage_count), MAX(last_used_at)
+FROM user_field_history
+WHERE field_type IN ('inspector_name', 'onsite_contact', 'trainer_name', 'organization')
+GROUP BY field_type, value
+ON CONFLICT (field_type, value) DO UPDATE SET
+  usage_count = GREATEST(global_field_history.usage_count, EXCLUDED.usage_count),
+  last_used_at = GREATEST(global_field_history.last_used_at, EXCLUDED.last_used_at);
 ```
 
-### 2. Update Validation Schema
+### Phase 2: Create Unified GlobalAutocomplete Component
+
+Create a single component that replaces both `DatabaseAutocomplete` and `HistoryAutocomplete`:
+
+**File**: `src/components/GlobalAutocomplete.tsx`
+
+Key features:
+- Uses `global_field_history` table exclusively
+- Strictly scoped by `field_type` parameter (composite key)
+- Lazy-loads suggestions when popover opens (performance optimization)
+- Fire-and-forget upserts to avoid blocking UI
+- Supports edit/delete for super admins only
+- Maintains localStorage as offline fallback
+
+```text
+┌────────────────────────────────────────────┐
+│            GlobalAutocomplete              │
+├────────────────────────────────────────────┤
+│ Props:                                     │
+│   - value: string                          │
+│   - onChange: (value: string) => void      │
+│   - fieldType: GlobalFieldType             │
+│   - placeholder?: string                   │
+│   - disabled?: boolean                     │
+└────────────────────────────────────────────┘
+         │
+         ▼
+┌────────────────────────────────────────────┐
+│        global_field_history table          │
+├────────────────────────────────────────────┤
+│ id | field_type | value | usage_count      │
+├────────────────────────────────────────────┤
+│ Unique constraint: (field_type, value)     │
+│ RLS: Authenticated users can read/write    │
+└────────────────────────────────────────────┘
+```
+
+### Phase 3: Define Comprehensive Field Types
+
+Create a TypeScript type covering all autocomplete fields:
 
 ```typescript
-// validation-schemas.ts line 70
-has_documentation: z.boolean().nullable(), // Allow null for "Not Set" state
+export type GlobalFieldType = 
+  // Header fields (previously DatabaseAutocomplete)
+  | "inspector_name"
+  | "previous_inspector"
+  | "onsite_contact"
+  | "trainer_name"
+  | "organization"
+  // Equipment fields
+  | "equipment_type"
+  // Operating systems
+  | "operating_system_element"
+  | "system_type"
+  // Ziplines
+  | "zipline_name"
+  | "braking_system"
+  | "ead_system"
+  | "cable_type";
 ```
 
-### 3. Sanitize in Atomic Sync Manager
+### Phase 4: Update All Form Components
 
-```typescript
-// atomic-sync-manager.ts - After transformTempIds
-const sanitizedStandards = standards.map(s => ({
-  ...s,
-  // Ensure inspection_id is set for new standards
-  inspection_id: s.inspection_id || inspectionId,
-}));
+Replace component usage across the codebase:
+
+| File | Change |
+|------|--------|
+| `InspectionHeader.tsx` | Replace `DatabaseAutocomplete` with `GlobalAutocomplete` |
+| `DailyAssessmentHeader.tsx` | Replace `DatabaseAutocomplete` with `GlobalAutocomplete` |
+| `EquipmentTable.tsx` | Replace `HistoryAutocomplete` with `GlobalAutocomplete` |
+| `OperatingSystemsTable.tsx` | Replace `HistoryAutocomplete` with `GlobalAutocomplete` |
+| `ZiplinesTable.tsx` | Replace `HistoryAutocomplete` with `GlobalAutocomplete` |
+
+### Phase 5: Ensure Data Integrity
+
+The strict scoping is guaranteed by:
+1. **Database-level**: Unique constraint on `(field_type, value)` ensures no duplicates within a field type
+2. **Query-level**: All queries filter by `field_type`:
+   ```typescript
+   .eq('field_type', fieldType)
+   ```
+3. **Component-level**: Each component instance receives a specific `fieldType` prop that cannot be changed
+
+### Phase 6: Offline Support
+
+Maintain localStorage as a fallback layer:
+- On popover open: Merge localStorage + database results
+- On value selection: Write to both localStorage and database
+- If database write fails: Value remains in localStorage for next sync attempt
+
+## Files to Create/Modify
+
+| File | Action |
+|------|--------|
+| `src/components/GlobalAutocomplete.tsx` | Create new unified component |
+| `src/components/inspection/InspectionHeader.tsx` | Update imports and component usage |
+| `src/components/inspection/EquipmentTable.tsx` | Update imports and component usage |
+| `src/components/inspection/OperatingSystemsTable.tsx` | Update imports and component usage |
+| `src/components/inspection/ZiplinesTable.tsx` | Update imports and component usage |
+| `src/components/daily-assessment/DailyAssessmentHeader.tsx` | Update imports and component usage |
+| `supabase/migrations/[timestamp]_migrate_to_global_autocomplete.sql` | Migrate data from user_field_history |
+| `vite.config.ts` | Version bump to 2.2.82 |
+
+## Database Migration
+
+```sql
+-- 1. Migrate unique entries from user_field_history to global_field_history
+INSERT INTO global_field_history (field_type, value, usage_count, last_used_at)
+SELECT 
+  field_type, 
+  value, 
+  SUM(usage_count) as total_usage,
+  MAX(last_used_at) as last_used
+FROM user_field_history
+WHERE field_type IN ('inspector_name', 'onsite_contact', 'trainer_name')
+GROUP BY field_type, value
+ON CONFLICT (field_type, value) DO UPDATE SET
+  usage_count = global_field_history.usage_count + EXCLUDED.usage_count,
+  last_used_at = GREATEST(global_field_history.last_used_at, EXCLUDED.last_used_at);
+
+-- 2. Add index for common query pattern if not exists
+CREATE INDEX IF NOT EXISTS idx_global_field_history_lookup 
+ON global_field_history(field_type, value);
 ```
 
-### 4. Improve Error Clearing in InspectionForm
+## RLS Policy Verification
 
-```typescript
-// Enhanced sync completion listener
-useEffect(() => {
-  const unsubscribe = onSyncComplete(() => {
-    // Aggressively clear sync-related errors
-    setSaveError(null);
-    
-    // Optionally refresh sync status
-    if (import.meta.env.DEV) {
-      console.log('[InspectionForm] Sync complete - cleared all errors');
-    }
-  });
-  
-  return () => unsubscribe();
-}, []); // Empty dependency array for stable reference
+The existing RLS policies on `global_field_history` are appropriate:
+- ✅ SELECT: All authenticated users can read
+- ✅ INSERT: All authenticated users can insert
+- ✅ UPDATE: All authenticated users can update (for usage_count increments)
+- ⚠️ DELETE: Consider adding super_admin-only delete policy
+
+## Scoping Guarantee
+
+**Example**: User enters "Singing Rock" in the `equipment_type` field
+
+Database entry:
+```json
+{
+  "field_type": "equipment_type",
+  "value": "Singing Rock",
+  "usage_count": 1
+}
 ```
 
----
+When querying for `operating_system_element`:
+```sql
+SELECT value FROM global_field_history
+WHERE field_type = 'operating_system_element'
+-- "Singing Rock" will NOT appear (different field_type)
+```
 
 ## Testing Checklist
 
-1. Create new inspection → verify standards can be saved with "Not Set" state
-2. Edit standards → verify sync succeeds when has_documentation is true/false/null
-3. Simulate network failure → verify error displays
-4. Restore network → verify background sync clears error automatically
-5. Check error banner disappears after successful sync
-6. Verify mobile PWA syncs correctly
-
----
+1. Create inspection → enter new equipment type → verify it appears for all users
+2. Enter value in "Previous Inspector" field → verify it does NOT appear in "Equipment Type"
+3. Verify offline: Go airplane mode → enter values → reconnect → verify sync
+4. Verify cross-report: Value entered in Report A appears as suggestion in Report B
+5. Verify mobile: Autocomplete works smoothly on iOS/Android
 
 ## Version Update
 
 ```typescript
-const APP_VERSION = "2.2.71";
-const BUILD_TIMESTAMP = "02-04-2026 at 12:30 PM CST";
+const APP_VERSION = "2.2.82";
 ```
