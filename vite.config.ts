@@ -5,8 +5,8 @@ import { componentTagger } from "lovable-tagger";
 import { pwaConfig } from "./vite-pwa-config";
 
 // Version follows vX.Y.Z format where Z increments by 10 on each deployment
-// v2.1.90 - Sync reliability: increased IndexedDB timeouts (15s), visible Force Sync button, improved error feedback
-const APP_VERSION = "2.1.90";
+// v2.2.00 - Super Admin badge: robust caching, placeholderData, sync/online invalidation
+const APP_VERSION = "2.2.00";
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { GradientButton } from "@/components/ui/gradient-button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -118,35 +118,59 @@ export default function Dashboard() {
     isRefreshing: isSyncing,
   });
   
-  // Check if user is super admin - uses cached auth to avoid duplicate network calls
-  const { data: isSuperAdmin } = useQuery({
+  const queryClient = useQueryClient();
+  
+  // Check if user is super admin - uses cached auth with robust fallback
+  const { data: isSuperAdmin, isLoading: isSuperAdminLoading } = useQuery({
     queryKey: ["is-super-admin"],
     queryFn: async () => {
-      // Skip check if offline - use cached value
+      // Always check localStorage cache first for immediate UI feedback
+      const cachedValue = localStorage.getItem('cached-super-admin-status');
+      
+      // Skip network check if offline - use cached value
       if (!navigator.onLine) {
-        const cached = localStorage.getItem('cached-super-admin-status');
-        return cached === 'true';
+        return cachedValue === 'true';
       }
 
       // Use cached auth instead of direct supabase.auth.getUser()
       const user = await getUserWithCache();
-      if (!user) return false;
+      if (!user) {
+        localStorage.setItem('cached-super-admin-status', 'false');
+        return false;
+      }
 
-      const { data: roles } = await supabase
-        .from("user_roles")
-        .select("role")
-        .eq("user_id", user.id)
-        .eq("role", "super_admin");
+      try {
+        const { data: roles, error } = await supabase
+          .from("user_roles")
+          .select("role")
+          .eq("user_id", user.id)
+          .eq("role", "super_admin");
 
-      const isAdmin = roles && roles.length > 0;
-      
-      // Cache the result for offline use
-      localStorage.setItem('cached-super-admin-status', isAdmin.toString());
-      
-      return isAdmin;
+        if (error) {
+          console.warn('[Dashboard] Error checking super admin status:', error);
+          // On error, return cached value if available
+          return cachedValue === 'true';
+        }
+
+        const isAdmin = roles && roles.length > 0;
+        
+        // Cache the result for offline use and immediate UI on next load
+        localStorage.setItem('cached-super-admin-status', isAdmin.toString());
+        
+        return isAdmin;
+      } catch (err) {
+        console.warn('[Dashboard] Exception checking super admin status:', err);
+        return cachedValue === 'true';
+      }
     },
-    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
-    retry: false, // Don't retry if offline
+    staleTime: 2 * 60 * 1000, // Cache for 2 minutes (reduced for faster refresh)
+    retry: 2, // Retry twice on failure
+    retryDelay: 1000, // 1 second between retries
+    // Initialize with cached value to prevent flash of missing badge
+    placeholderData: () => {
+      const cached = localStorage.getItem('cached-super-admin-status');
+      return cached === 'true';
+    },
   });
 
   useEffect(() => {
@@ -220,6 +244,8 @@ export default function Dashboard() {
     // Listen for online/offline events
     const handleOnline = () => {
       setIsOnline(true);
+      // Invalidate super admin status to refresh from server
+      queryClient.invalidateQueries({ queryKey: ["is-super-admin"] });
       loadInspections(); // Reload when coming back online
       loadTrainingReports();
       loadDailyAssessments();
@@ -235,6 +261,8 @@ export default function Dashboard() {
       if (import.meta.env.DEV) {
         console.log('[Dashboard] Sync complete event received - reloading data');
       }
+      // Invalidate super admin status on sync (in case user roles were updated)
+      queryClient.invalidateQueries({ queryKey: ["is-super-admin"] });
       // Reload fresh data after background sync completes
       await Promise.all([
         loadInspections(),
