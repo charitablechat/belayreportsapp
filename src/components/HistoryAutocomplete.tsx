@@ -65,51 +65,48 @@ export default function HistoryAutocomplete({
     loadHistory();
   }, [storageKey]);
 
-  // Fetch global history from database on mount
-  useEffect(() => {
+  // PERFORMANCE: Fetch global history from database on-demand (when popover opens)
+  // instead of on mount to avoid competing network requests during initial load
+  const fetchGlobalHistory = async () => {
     if (!syncToDatabase || !fieldType || hasFetchedFromDb.current) return;
     
-    const fetchGlobalHistory = async () => {
-      try {
-        const { data, error } = await supabase
-          .from('global_field_history')
-          .select('value')
-          .eq('field_type', fieldType)
-          .order('usage_count', { ascending: false })
-          .limit(200);
-        
-        if (error) {
-          console.error('Failed to fetch global history:', error);
-          return;
-        }
-        
-        if (data && data.length > 0) {
-          const globalValues = data.map(d => d.value);
-          
-          // Merge with localStorage, deduplicate (case-insensitive)
-          setHistoryOptions(prev => {
-            const combined = [...prev, ...globalValues];
-            const uniqueMap = new Map<string, string>();
-            combined.forEach(val => {
-              const key = val.toLowerCase();
-              if (!uniqueMap.has(key)) {
-                uniqueMap.set(key, val);
-              }
-            });
-            return Array.from(uniqueMap.values()).sort((a, b) => 
-              a.toLowerCase().localeCompare(b.toLowerCase())
-            );
-          });
-        }
-        
-        hasFetchedFromDb.current = true;
-      } catch (err) {
-        console.error('Error fetching global history:', err);
+    try {
+      const { data, error } = await supabase
+        .from('global_field_history')
+        .select('value')
+        .eq('field_type', fieldType)
+        .order('usage_count', { ascending: false })
+        .limit(200);
+      
+      if (error) {
+        console.error('Failed to fetch global history:', error);
+        return;
       }
-    };
-    
-    fetchGlobalHistory();
-  }, [syncToDatabase, fieldType]);
+      
+      if (data && data.length > 0) {
+        const globalValues = data.map(d => d.value);
+        
+        // Merge with localStorage, deduplicate (case-insensitive)
+        setHistoryOptions(prev => {
+          const combined = [...prev, ...globalValues];
+          const uniqueMap = new Map<string, string>();
+          combined.forEach(val => {
+            const key = val.toLowerCase();
+            if (!uniqueMap.has(key)) {
+              uniqueMap.set(key, val);
+            }
+          });
+          return Array.from(uniqueMap.values()).sort((a, b) => 
+            a.toLowerCase().localeCompare(b.toLowerCase())
+          );
+        });
+      }
+      
+      hasFetchedFromDb.current = true;
+    } catch (err) {
+      console.error('Error fetching global history:', err);
+    }
+  };
 
   // Listen for storage changes (cross-tab sync)
   useEffect(() => {
@@ -229,6 +226,11 @@ export default function HistoryAutocomplete({
 
   const handleOpenChange = (isOpen: boolean) => {
     if (isOpen) {
+      // PERFORMANCE: Fetch global history on first open instead of on mount
+      if (!hasFetchedFromDb.current && syncToDatabase && fieldType) {
+        fetchGlobalHistory();
+      }
+      
       // Refresh history from localStorage when opening
       const saved = localStorage.getItem(storageKey);
       if (saved) {

@@ -1,5 +1,6 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { ReactNode } from "react";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 interface AnimatedListItemProps {
   children: ReactNode;
@@ -14,10 +15,15 @@ export function AnimatedListItem({
   isNew = false,
   className = "" 
 }: AnimatedListItemProps) {
+  const isMobile = useIsMobile();
+  
+  // PERFORMANCE: Skip mount animations on mobile unless item is explicitly new
+  const skipInitialAnimation = isMobile && !isNew;
+  
   return (
     <motion.div
       key={itemKey}
-      initial={{ opacity: 0, y: -10, scale: 0.98 }}
+      initial={skipInitialAnimation ? false : { opacity: 0, y: -10, scale: 0.98 }}
       animate={{ 
         opacity: 1, 
         y: 0, 
@@ -26,7 +32,7 @@ export function AnimatedListItem({
       }}
       exit={{ opacity: 0, y: 10, scale: 0.98 }}
       transition={{ 
-        duration: 0.3,
+        duration: skipInitialAnimation ? 0 : 0.3,
         ease: "easeOut",
         backgroundColor: { duration: 1.5, ease: "easeOut" }
       }}
@@ -50,17 +56,22 @@ export function AnimatedTableRow({
   isNew = false,
   className = "" 
 }: AnimatedTableRowProps) {
+  const isMobile = useIsMobile();
+  
+  // PERFORMANCE: Skip mount animations on mobile unless item is explicitly new
+  const skipInitialAnimation = isMobile && !isNew;
+  
   return (
     <motion.tr
       key={itemKey}
-      initial={{ opacity: 0, backgroundColor: "hsl(var(--primary) / 0.2)" }}
+      initial={skipInitialAnimation ? false : { opacity: 0, backgroundColor: "hsl(var(--primary) / 0.2)" }}
       animate={{ 
         opacity: 1,
         backgroundColor: "transparent"
       }}
       transition={{ 
-        opacity: { duration: 0.2 },
-        backgroundColor: { duration: 1.2, ease: "easeOut" }
+        opacity: { duration: skipInitialAnimation ? 0 : 0.2 },
+        backgroundColor: { duration: skipInitialAnimation ? 0 : 1.2, ease: "easeOut" }
       }}
       className={className}
     >

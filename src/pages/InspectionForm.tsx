@@ -130,6 +130,9 @@ export default function InspectionForm() {
   const [currentTab, setCurrentTab] = useState("details");
   const tabOrder = ["details", "equipment", "standards", "summary"];
   
+  // Track visited tabs for lazy rendering (performance optimization)
+  const [visitedTabs, setVisitedTabs] = useState<Set<string>>(new Set(['details']));
+  
   // Swipe navigation for mobile (swipe right on first tab navigates back)
   const isFirstTab = currentTab === tabOrder[0];
   const { containerRef: swipeContainerRef, swipeState } = useSwipeNavigation({
@@ -703,15 +706,62 @@ export default function InspectionForm() {
           5000
         );
 
-        const { data, error } = await withQueryTimeout(
-          supabase
-            .from("inspections")
-            .select("*, inspector:profiles!inspections_inspector_id_profiles_fkey(first_name, last_name, avatar_url)")
-            .eq("id", id)
-            .maybeSingle(),
-          8000
-        );
+        // PERFORMANCE: Parallel data loading - all queries run simultaneously
+        const [
+          inspectionResult,
+          systemsResult,
+          ziplinesResult,
+          equipmentResult,
+          standardsResult,
+          summaryResult
+        ] = await Promise.all([
+          withQueryTimeout(
+            supabase
+              .from("inspections")
+              .select("*, inspector:profiles!inspections_inspector_id_profiles_fkey(first_name, last_name, avatar_url)")
+              .eq("id", id)
+              .maybeSingle(),
+            8000
+          ),
+          withQueryTimeout(
+            supabase
+              .from("inspection_systems")
+              .select("*")
+              .eq("inspection_id", id),
+            8000
+          ),
+          withQueryTimeout(
+            supabase
+              .from("inspection_ziplines")
+              .select("*")
+              .eq("inspection_id", id),
+            8000
+          ),
+          withQueryTimeout(
+            supabase
+              .from("inspection_equipment")
+              .select("*")
+              .eq("inspection_id", id),
+            8000
+          ),
+          withQueryTimeout(
+            supabase
+              .from("inspection_standards")
+              .select("*")
+              .eq("inspection_id", id),
+            8000
+          ),
+          withQueryTimeout(
+            supabase
+              .from("inspection_summary")
+              .select("*")
+              .eq("inspection_id", id)
+              .maybeSingle(),
+            8000
+          )
+        ]);
 
+        const { data, error } = inspectionResult;
         if (error && error.message !== 'Query timeout') throw error;
         
         // Handle inspection not found - redirect to dashboard
@@ -739,14 +789,8 @@ export default function InspectionForm() {
           }
         }
 
-        // Fetch and cache all related data with timeout protection - cache operations are non-blocking
-        const { data: systemsData } = await withQueryTimeout(
-          supabase
-            .from("inspection_systems")
-            .select("*")
-            .eq("inspection_id", id),
-          8000
-        );
+        // Process all fetched related data
+        const { data: systemsData } = systemsResult;
         if (systemsData) {
           const normalizedSystems = systemsData.map(item => ({
             ...item,
@@ -759,13 +803,7 @@ export default function InspectionForm() {
           );
         }
 
-        const { data: ziplinesData } = await withQueryTimeout(
-          supabase
-            .from("inspection_ziplines")
-            .select("*")
-            .eq("inspection_id", id),
-          8000
-        );
+        const { data: ziplinesData } = ziplinesResult;
         if (ziplinesData) {
           const normalizedZiplines = ziplinesData.map(item => ({
             ...item,
@@ -781,13 +819,7 @@ export default function InspectionForm() {
           );
         }
 
-        const { data: equipmentData } = await withQueryTimeout(
-          supabase
-            .from("inspection_equipment")
-            .select("*")
-            .eq("inspection_id", id),
-          8000
-        );
+        const { data: equipmentData } = equipmentResult;
         if (equipmentData) {
           const normalizedEquipment = equipmentData.map(item => ({
             ...item,
@@ -800,13 +832,7 @@ export default function InspectionForm() {
           );
         }
 
-        const { data: standardsData } = await withQueryTimeout(
-          supabase
-            .from("inspection_standards")
-            .select("*")
-            .eq("inspection_id", id),
-          8000
-        );
+        const { data: standardsData } = standardsResult;
         if (standardsData && standardsData.length > 0) {
           setStandards(standardsData);
           // Non-blocking cache update
@@ -815,14 +841,7 @@ export default function InspectionForm() {
           );
         }
 
-        const { data: summaryData } = await withQueryTimeout(
-          supabase
-            .from("inspection_summary")
-            .select("*")
-            .eq("inspection_id", id)
-            .maybeSingle(),
-          8000
-        );
+        const { data: summaryData } = summaryResult;
         if (summaryData) {
           setSummary(summaryData);
           // Non-blocking cache update
@@ -832,7 +851,7 @@ export default function InspectionForm() {
         }
 
         if (import.meta.env.DEV) {
-          console.log('[InspectionForm] Synced and cached all data from Supabase');
+          console.log('[InspectionForm] Synced and cached all data from Supabase (parallel)');
         }
       } else if (!offlineData) {
         // Offline and no cached data
@@ -1945,7 +1964,11 @@ export default function InspectionForm() {
           />
         )}
 
-        <Tabs value={currentTab} onValueChange={setCurrentTab} className="space-y-6 mt-6">
+        <Tabs value={currentTab} onValueChange={(tab) => {
+          setCurrentTab(tab);
+          // Mark tab as visited for lazy rendering
+          setVisitedTabs(prev => new Set([...prev, tab]));
+        }} className="space-y-6 mt-6">
           <div ref={swipeContainerRef}>
             <TabsList className="grid grid-cols-2 lg:grid-cols-4 w-full gap-1 lg:gap-0 h-auto p-1.5 lg:p-1">
               <TabsTrigger value="details" className="text-xs lg:text-sm py-2 flex flex-col lg:flex-row items-center gap-1 lg:gap-1.5">
@@ -1992,78 +2015,83 @@ export default function InspectionForm() {
           </TabsContent>
 
           <TabsContent value="equipment" className="space-y-6">
-            <EquipmentTable
-              category="harnesses"
-              displayName="Harnesses"
-              equipment={equipment}
-              onUpdate={setEquipment}
-              onImmediateSave={triggerImmediateSave}
-            />
-            <EquipmentTable
-              category="helmets"
-              displayName="Helmets"
-              equipment={equipment}
-              onUpdate={setEquipment}
-              onImmediateSave={triggerImmediateSave}
-            />
-            <EquipmentTable
-              category="lanyards"
-              displayName="Lanyards"
-              equipment={equipment}
-              onUpdate={setEquipment}
-              onImmediateSave={triggerImmediateSave}
-            />
-            <EquipmentTable
-              category="connectors"
-              displayName="Connectors (Carabiners & Quicklinks)"
-              equipment={equipment}
-              onUpdate={setEquipment}
-              onImmediateSave={triggerImmediateSave}
-            />
-            <EquipmentTable
-              category="rope"
-              displayName="Kernmantle Rope"
-              equipment={equipment}
-              onUpdate={setEquipment}
-              onImmediateSave={triggerImmediateSave}
-            />
-            <EquipmentTable
-              category="belay"
-              displayName="Belay/Descent Device"
-              equipment={equipment}
-              onUpdate={setEquipment}
-            />
-            <EquipmentTable
-              category="trolleys"
-              displayName="Trolleys and Pulleys"
-              equipment={equipment}
-              onUpdate={setEquipment}
-            />
-            <EquipmentTable
-              category="other"
-              displayName="Other Equipment"
-              equipment={equipment}
-              onUpdate={setEquipment}
-            />
-            
-            <div className="mt-8 border-t pt-6">
-              <h3 className="text-lg font-semibold mb-4">Photos - Equipment</h3>
-              {!isReadOnly && (
-                <PhotoCapture
-                  inspectionId={id!}
-                  section="equipment"
-                  onPhotoAdded={() => setPhotoRefreshKey(prev => prev + 1)}
+            {/* PERFORMANCE: Lazy load - only render when tab has been visited */}
+            {visitedTabs.has('equipment') && (
+              <>
+                <EquipmentTable
+                  category="harnesses"
+                  displayName="Harnesses"
+                  equipment={equipment}
+                  onUpdate={setEquipment}
+                  onImmediateSave={triggerImmediateSave}
                 />
-              )}
-              <div className="mt-4">
-                <PhotoGallery
-                  key={`equipment-${photoRefreshKey}`}
-                  inspectionId={id!}
-                  section="equipment"
-                  readOnly={isReadOnly}
+                <EquipmentTable
+                  category="helmets"
+                  displayName="Helmets"
+                  equipment={equipment}
+                  onUpdate={setEquipment}
+                  onImmediateSave={triggerImmediateSave}
                 />
-              </div>
-            </div>
+                <EquipmentTable
+                  category="lanyards"
+                  displayName="Lanyards"
+                  equipment={equipment}
+                  onUpdate={setEquipment}
+                  onImmediateSave={triggerImmediateSave}
+                />
+                <EquipmentTable
+                  category="connectors"
+                  displayName="Connectors (Carabiners & Quicklinks)"
+                  equipment={equipment}
+                  onUpdate={setEquipment}
+                  onImmediateSave={triggerImmediateSave}
+                />
+                <EquipmentTable
+                  category="rope"
+                  displayName="Kernmantle Rope"
+                  equipment={equipment}
+                  onUpdate={setEquipment}
+                  onImmediateSave={triggerImmediateSave}
+                />
+                <EquipmentTable
+                  category="belay"
+                  displayName="Belay/Descent Device"
+                  equipment={equipment}
+                  onUpdate={setEquipment}
+                />
+                <EquipmentTable
+                  category="trolleys"
+                  displayName="Trolleys and Pulleys"
+                  equipment={equipment}
+                  onUpdate={setEquipment}
+                />
+                <EquipmentTable
+                  category="other"
+                  displayName="Other Equipment"
+                  equipment={equipment}
+                  onUpdate={setEquipment}
+                />
+                
+                <div className="mt-8 border-t pt-6">
+                  <h3 className="text-lg font-semibold mb-4">Photos - Equipment</h3>
+                  {!isReadOnly && (
+                    <PhotoCapture
+                      inspectionId={id!}
+                      section="equipment"
+                      onPhotoAdded={() => setPhotoRefreshKey(prev => prev + 1)}
+                    />
+                  )}
+                  <div className="mt-4">
+                    <PhotoGallery
+                      key={`equipment-${photoRefreshKey}`}
+                      inspectionId={id!}
+                      section="equipment"
+                      readOnly={isReadOnly}
+                    />
+                  </div>
+                </div>
+              </>
+            )}
           </TabsContent>
 
           <TabsContent value="standards" className="space-y-4">
