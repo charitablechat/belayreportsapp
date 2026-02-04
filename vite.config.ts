@@ -5,8 +5,8 @@ import { componentTagger } from "lovable-tagger";
 import { pwaConfig } from "./vite-pwa-config";
 
 // Version follows vX.Y.Z format where Z increments by 10 on each deployment
-// v2.1.10 - Mobile Auto-Save Item Reordering fix, mobile layout/text wrapping fixes, security review
-const APP_VERSION = "2.1.10";
+// v2.1.20 - Mobile CardHeader layout fixes: stacked title/button layout for Equipment, Ziplines, Operating Systems, Summary sections
+const APP_VERSION = "2.1.20";
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
