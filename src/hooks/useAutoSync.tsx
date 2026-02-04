@@ -178,10 +178,17 @@ export const useAutoSync = () => {
           clearPendingSyncs();
         }
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('[AutoSync] Sync failed:', error);
       clearTimeout(safetyTimeoutHandle);
       setState(prev => ({ ...prev, isSyncing: false }));
+      
+      // Show explicit error toast for sync failures (bypass mobile notification center for visibility)
+      // Import toast from 'sonner' at the top (already imported via addSyncNotification usage)
+      if (isMobileDevice) {
+        addSyncNotification(`Sync failed: ${error?.message || 'will retry automatically'}`);
+      }
+      // Desktop toast is not needed here since errors are usually transient and auto-retry handles them
     } finally {
       syncInProgressRef.current = false;
     }
