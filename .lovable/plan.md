@@ -1,119 +1,94 @@
 
-# Plan: Fix "Loading Inspection" Stuck Screen
+# Plan: Fix Mobile-to-Database Sync Failures
 
 ## Problem Analysis
 
-The loading screen gets stuck because the `loadInspection` function in `InspectionForm.tsx` lacks timeout protection for Supabase database queries. While IndexedDB operations have 3-5 second timeouts (confirmed working from console logs), the Supabase queries can hang indefinitely, preventing the loading state from ever resolving.
+Based on the console logs and code review, mobile devices are experiencing sync failures with the following evidence:
 
-**Evidence from Console Logs:**
 ```
 [Atomic Sync] IndexedDB timeout getting unsynced inspections
 [Atomic Sync] IndexedDB timeout getting unsynced trainings
 [Atomic Sync] IndexedDB timeout getting unsynced assessments
+[Atomic Sync] Failed to sync daily assessment after retries: Item sync timeout
 ```
 
-The IndexedDB timeout handling works, but the main loading is stuck on unprotected Supabase queries.
+**Root Causes Identified:**
+
+1. **Transaction Manager Executes Steps Sequentially**: The `executeTransaction` function processes database steps one-by-one (lines 30-72 in `transaction-manager.ts`). For inspections with many equipment items/systems, this creates dozens of sequential INSERT operations, each awaiting completion before the next starts.
+
+2. **15-Second Per-Item Timeout Is Insufficient**: With sequential writes, an inspection with 20+ equipment items can easily exceed the 15-second `ITEM_SYNC_TIMEOUT` even on good connections.
+
+3. **No Timeout Protection on Individual Transaction Steps**: Each Supabase insert in `executeTransaction` has no timeout, so a single slow insert blocks the entire transaction indefinitely.
+
+4. **Rollback Data Fetching Adds Latency**: Before deletes, the system fetches all existing data for potential rollback (5 parallel fetches), adding network latency before actual sync begins.
 
 ---
 
-## Technical Solution
+## Solution: Batch Inserts + Step Timeouts
 
-### 1. Add Safety Timeout to loadInspection Function
+### 1. Modify Transaction Manager to Batch Related Data Inserts
 
-**File:** `src/pages/InspectionForm.tsx`
+**File:** `src/lib/transaction-manager.ts`
 
-Wrap the entire loading process with a safety timeout that forces the loading state to resolve:
+Instead of creating individual insert steps for each equipment/system/standard item, batch them into single bulk INSERT operations:
 
 ```typescript
-const loadInspection = async () => {
-  // Safety timeout - force loading to complete after 15 seconds max
-  const LOAD_TIMEOUT = 15000;
-  let loadCompleted = false;
-  
-  const safetyTimeout = setTimeout(() => {
-    if (!loadCompleted) {
-      console.error('[InspectionForm] Loading timeout - forcing completion');
-      setLoading(false);
-      toast({
-        title: "Loading timed out",
-        description: "Please check your connection and try again.",
-        variant: "destructive",
-      });
-    }
-  }, LOAD_TIMEOUT);
+// Current: Individual inserts (slow)
+equipment.forEach(item => {
+  steps.push({ table: 'inspection_equipment', operation: 'insert', data: item });
+});
 
-  try {
-    // ... existing loading logic with Supabase query timeouts
-  } finally {
-    loadCompleted = true;
-    clearTimeout(safetyTimeout);
-    setLoading(false);
-  }
-};
+// Fixed: Single batch insert (fast)
+if (equipment.length > 0) {
+  steps.push({ table: 'inspection_equipment', operation: 'insert', data: equipment });
+}
 ```
 
-### 2. Add Timeout Protection to Individual Supabase Queries
+### 2. Add Per-Step Timeout in Transaction Manager
 
-Wrap each Supabase query with `Promise.race` to prevent any single query from blocking:
+**File:** `src/lib/transaction-manager.ts`
+
+Wrap each transaction step with a timeout to prevent any single database operation from blocking:
 
 ```typescript
-// Helper function for Supabase query timeouts
-const withQueryTimeout = async <T,>(
-  queryPromise: Promise<T>,
-  timeoutMs: number = 8000,
-  fallback: T
-): Promise<T> => {
+const STEP_TIMEOUT = 5000; // 5 seconds per step
+
+const stepWithTimeout = async (operation: Promise<any>) => {
   return Promise.race([
-    queryPromise,
-    new Promise<T>((resolve) => setTimeout(() => {
-      console.warn('[InspectionForm] Query timed out after', timeoutMs, 'ms');
-      resolve(fallback);
-    }, timeoutMs))
+    operation,
+    new Promise((_, reject) => setTimeout(() => reject(new Error('Step timeout')), STEP_TIMEOUT))
   ]);
 };
-
-// Usage for each query:
-const { data, error } = await withQueryTimeout(
-  supabase.from("inspections").select("...").eq("id", id).maybeSingle(),
-  8000,
-  { data: null, error: null }
-);
 ```
 
-### 3. Improve Loading UI with Spinner and Retry Option
+### 3. Batch Insert Steps in Atomic Sync Manager
 
-**Current (Line 1627-1632):**
-```tsx
-if (loading) {
-  return (
-    <div className="flex min-h-screen items-center justify-center">
-      <p>Loading inspection...</p>
-    </div>
-  );
+**File:** `src/lib/atomic-sync-manager.ts`
+
+Modify `syncInspectionAtomic`, `syncTrainingAtomic`, and `syncDailyAssessmentAtomic` to batch their inserts:
+
+```typescript
+// Current (creates N steps for N items):
+if (systems.length > 0) {
+  systems.forEach(system => {
+    steps.push({ table: 'inspection_systems', operation: 'insert', data: system });
+  });
+}
+
+// Fixed (creates 1 step for N items):
+if (systems.length > 0) {
+  steps.push({ table: 'inspection_systems', operation: 'insert', data: systems });
 }
 ```
 
-**Improved:**
-```tsx
-if (loading) {
-  return (
-    <div className="flex min-h-screen items-center justify-center">
-      <div className="flex flex-col items-center gap-4">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-        <p className="text-muted-foreground">Loading inspection...</p>
-        <Button 
-          variant="ghost" 
-          size="sm" 
-          onClick={() => navigate('/dashboard')}
-          className="mt-4"
-        >
-          <ArrowLeft className="w-4 h-4 mr-2" />
-          Back to Dashboard
-        </Button>
-      </div>
-    </div>
-  );
-}
+### 4. Extend Per-Item Sync Timeout
+
+**File:** `src/lib/atomic-sync-manager.ts`
+
+Increase `ITEM_SYNC_TIMEOUT` from 15 seconds to 25 seconds to accommodate network variability on mobile:
+
+```typescript
+const ITEM_SYNC_TIMEOUT = 25000; // 25 seconds per item max (up from 15s)
 ```
 
 ---
@@ -124,80 +99,109 @@ if (loading) {
 
 | File | Changes |
 |------|---------|
-| `src/pages/InspectionForm.tsx` | Add safety timeout, query timeouts, improved loading UI |
-| `vite.config.ts` | Increment version to v2.1.30 |
+| `src/lib/transaction-manager.ts` | Add step timeout protection, handle batch inserts |
+| `src/lib/atomic-sync-manager.ts` | Batch insert steps, extend timeout |
+| `vite.config.ts` | Increment version to v2.1.50 |
 
-### Timeout Configuration
+### Transaction Manager Changes
 
-| Operation | Timeout | Fallback Behavior |
-|-----------|---------|-------------------|
-| Overall loading | 15 seconds | Force complete, show error toast, allow retry |
-| Individual Supabase query | 8 seconds | Skip query, use offline data if available |
-| IndexedDB operations | 3-5 seconds | Already implemented, return empty fallback |
-
-### Specific Code Changes
-
-**1. Add helper function (after line 508):**
+**Add step timeout helper (after line 1):**
 ```typescript
-// Timeout wrapper for Supabase queries
-const withQueryTimeout = async <T,>(
-  queryPromise: Promise<{ data: T | null; error: any }>,
-  timeoutMs: number = 8000
-): Promise<{ data: T | null; error: any }> => {
+const STEP_TIMEOUT = 5000; // 5 seconds per individual step
+
+function withStepTimeout<T>(promise: Promise<T>, stepName: string): Promise<T> {
   return Promise.race([
-    queryPromise,
-    new Promise<{ data: T | null; error: any }>((resolve) => setTimeout(() => {
-      console.warn('[InspectionForm] Supabase query timed out after', timeoutMs, 'ms');
-      resolve({ data: null, error: new Error('Query timeout') });
-    }, timeoutMs))
+    promise,
+    new Promise<T>((_, reject) => setTimeout(() => {
+      reject(new Error(`Step timeout: ${stepName}`));
+    }, STEP_TIMEOUT))
   ]);
-};
+}
 ```
 
-**2. Wrap Supabase queries (lines 667-780):**
-- `update({ last_opened_at: now })` - add 5s timeout
-- `select("*").eq("id", id)` - add 8s timeout  
-- `select("*").eq("inspection_id", id)` for systems, ziplines, equipment, standards, summary - add 8s timeout each
-
-**3. Add safety timeout at start of loadInspection:**
+**Modify insert operation to handle arrays (line 41):**
 ```typescript
-const loadInspection = async () => {
-  const LOAD_TIMEOUT = 15000;
-  let loadCompleted = false;
-  
-  const safetyTimeout = setTimeout(() => {
-    if (!loadCompleted) {
-      console.error('[InspectionForm] Safety timeout triggered');
-      setLoading(false);
-      toast({
-        title: "Loading timed out",
-        description: "The inspection is taking too long to load. Please try again.",
-        variant: "destructive",
-      });
-    }
-  }, LOAD_TIMEOUT);
-  
-  try {
-    // ... existing code
-  } finally {
-    loadCompleted = true;
-    clearTimeout(safetyTimeout);
-    setLoading(false);
-  }
-};
+case 'insert':
+  // Support both single item and batch insert
+  result = await withStepTimeout(
+    (supabase as any).from(step.table).insert(step.data),
+    `insert:${step.table}`
+  );
+  break;
 ```
 
-**4. Update loading UI (lines 1627-1633):**
-Add spinner animation and back button for better UX.
+### Atomic Sync Manager Changes
+
+**Convert individual inserts to batch inserts for inspections (lines 227-280):**
+```typescript
+// Batch all related data inserts
+if (systems.length > 0) {
+  steps.push({ table: 'inspection_systems', operation: 'insert', data: systems });
+}
+if (ziplines.length > 0) {
+  steps.push({ table: 'inspection_ziplines', operation: 'insert', data: ziplines });
+}
+if (equipment.length > 0) {
+  steps.push({ table: 'inspection_equipment', operation: 'insert', data: equipment });
+}
+if (standards.length > 0) {
+  steps.push({ table: 'inspection_standards', operation: 'insert', data: standards });
+}
+if (summary) {
+  steps.push({ table: 'inspection_summary', operation: 'insert', data: [sanitizedSummary] });
+}
+```
+
+Same pattern applied to:
+- `syncTrainingAtomic` (lines 615-670)
+- `syncDailyAssessmentAtomic` (lines 1014-1073)
+
+---
+
+## VersionBadge Verification
+
+**Status:** ✅ Correctly Implemented
+
+The `VersionBadge` component is correctly placed in the Dashboard's user dropdown menu:
+
+**Location:** `src/pages/Dashboard.tsx`, lines 833-836
+```tsx
+<DropdownMenuItem onClick={() => setContactSheetOpen(true)}>
+  <MessageCircle className="w-4 h-4 mr-2" />
+  Contact Developer
+</DropdownMenuItem>
+
+{/* Version Badge - Below Contact Developer */}
+<div className="px-2 py-1.5">
+  <VersionBadge compact />
+</div>
+
+<DropdownMenuSeparator />
+```
+
+- Position: ✅ Below "Contact Developer"
+- Position: ✅ Above the separator
+- Compact prop: ✅ Applied (`compact`)
+- Version source: ✅ Uses `APP_VERSION` from `vite.config.ts` (currently `v2.1.40`)
+
+---
+
+## Performance Impact
+
+| Before | After |
+|--------|-------|
+| 20 equipment items = 20 sequential INSERTs | 20 equipment items = 1 batch INSERT |
+| ~20+ seconds for large inspections | ~3-5 seconds for large inspections |
+| Frequent timeout failures on mobile | Reliable sync under 25s timeout |
 
 ---
 
 ## Version Update
 
-Increment to `v2.1.30` in `vite.config.ts`:
+Increment to `v2.1.50` in `vite.config.ts`:
 ```typescript
-// v2.1.30 - Loading timeout protection: safety timeout for inspection loading, Supabase query timeouts, improved loading UI
-const APP_VERSION = "2.1.30";
+// v2.1.50 - Mobile sync fix: batch inserts for faster sync, step-level timeouts, extended per-item timeout
+const APP_VERSION = "2.1.50";
 ```
 
 ---
@@ -205,20 +209,9 @@ const APP_VERSION = "2.1.30";
 ## Testing Checklist
 
 After implementation, verify:
-- [ ] Loading screen shows spinner animation instead of just text
-- [ ] Loading screen includes "Back to Dashboard" button
-- [ ] If network is slow, loading times out after ~15 seconds with error toast
-- [ ] App doesn't get stuck on loading screen indefinitely
-- [ ] Offline data is still used when available
-- [ ] Works correctly on both desktop and mobile
-- [ ] Version badge shows v2.1.30
-
----
-
-## Risk Assessment
-
-| Risk | Mitigation |
-|------|------------|
-| Timeouts too aggressive | 15s overall + 8s per query is generous; offline fallback prevents data loss |
-| False timeout on slow connections | Offline data displayed first (from IndexedDB), Supabase just updates |
-| User confusion on timeout | Clear error message with retry suggestion |
+- [ ] Mobile devices sync inspections with many equipment items without timeout
+- [ ] Daily assessments sync correctly on mobile
+- [ ] Training reports sync correctly on mobile
+- [ ] Dashboard shows synced data on web after mobile edit
+- [ ] Version badge shows v2.1.50 in dropdown menu
+- [ ] No regression in desktop sync performance
