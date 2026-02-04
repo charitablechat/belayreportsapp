@@ -83,15 +83,25 @@ export const usePWAUpdate = (): PWAUpdateStatus => {
 
   const updateServiceWorker = async (reloadPage = true) => {
     if (registration?.waiting) {
-      if (import.meta.env.DEV) {
-        console.log('[PWA Update] Activating new service worker');
-      }
+      console.log('[PWA Update] Activating new service worker');
+      
       // Tell the waiting service worker to skip waiting
       registration.waiting.postMessage({ type: 'SKIP_WAITING' });
       
+      // Retry after a short delay if controller doesn't change
+      setTimeout(() => {
+        if (registration?.waiting) {
+          console.log('[PWA Update] Retrying SKIP_WAITING');
+          registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+        }
+      }, 1000);
+      
       if (reloadPage) {
-        window.location.reload();
+        // Small delay to allow SW activation before reload
+        setTimeout(() => window.location.reload(), 500);
       }
+    } else {
+      console.log('[PWA Update] No waiting service worker found');
     }
   };
 
