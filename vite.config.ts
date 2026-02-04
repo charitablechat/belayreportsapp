@@ -5,10 +5,10 @@ import { componentTagger } from "lovable-tagger";
 import { pwaConfig } from "./vite-pwa-config";
 
 // Version follows vX.Y.Z format where Z increments by 10 on each deployment
-// v2.2.20 - Added interactive version info modal with deployment metadata
-const APP_VERSION = "2.2.20";
-const BUILD_DATE = "2024-05-20";
-const BUILD_TIMESTAMP = "2024-05-20T14:30:00Z";
+// v2.2.30 - Fixed version modal date format (MM-DD-YYYY) and Central Time
+const APP_VERSION = "2.2.30";
+const BUILD_DATE = "02-04-2026";
+const BUILD_TIMESTAMP = "02-04-2026 at 09:30 AM CST";
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
