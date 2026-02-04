@@ -175,6 +175,15 @@ export const useAutoSync = () => {
           queryClient.invalidateQueries({ queryKey: ['trainings'] });
           queryClient.invalidateQueries({ queryKey: ['daily-assessments'] });
           
+          // Mobile: Log sync success to console for debugging without toast spam
+          if (isMobileDevice) {
+            console.log('[AutoSync] Mobile sync complete:', {
+              timestamp: new Date().toISOString(),
+              itemsSynced: totalSynced,
+              results: results.map(r => ({ success: r?.success || 0, failed: r?.failed || 0 })),
+            });
+          }
+          
           // Only show success toast if items were actually synced
           if (anySuccess) {
             toast.success(`Data synced successfully (${totalSynced} items)`);
