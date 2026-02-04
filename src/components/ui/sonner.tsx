@@ -6,43 +6,63 @@ import { routeToastToNotification } from "@/lib/notification-center";
 type ToasterProps = React.ComponentProps<typeof Sonner>;
 
 /**
- * Create a mobile-aware toast wrapper that routes ALL toasts to
- * the notification center on mobile devices, eliminating screen overlays.
+ * Check if a message is critical and should always show as a toast on mobile.
+ * Critical messages include: sync status, update notifications, errors, and network status.
+ */
+function isCriticalMessage(message: string, type: string): boolean {
+  // Always show errors
+  if (type === 'error') return true;
+  
+  // Always show sync status
+  if (/sync|syncing|synced/i.test(message)) return true;
+  
+  // Always show update notifications
+  if (/update|version|new version/i.test(message)) return true;
+  
+  // Always show offline/online status
+  if (/offline|online|connection|reconnect/i.test(message)) return true;
+  
+  return false;
+}
+
+/**
+ * Create a mobile-aware toast wrapper that routes non-critical toasts to
+ * the notification center on mobile devices, while showing critical toasts.
  */
 function createMobileAwareToast() {
   const checkMobile = () => isMobile();
   
   return {
     success: (message: string, data?: ExternalToast) => {
-      if (checkMobile()) {
+      if (checkMobile() && !isCriticalMessage(message, 'success')) {
         routeToastToNotification(message, 'success');
         return null;
       }
       return sonnerToast.success(message, data);
     },
     error: (message: string, data?: ExternalToast) => {
+      // Errors always show as toast (critical) AND go to notification center
       if (checkMobile()) {
         routeToastToNotification(message, 'error');
-        return null;
       }
       return sonnerToast.error(message, data);
     },
     warning: (message: string, data?: ExternalToast) => {
-      if (checkMobile()) {
+      if (checkMobile() && !isCriticalMessage(message, 'warning')) {
         routeToastToNotification(message, 'warning');
         return null;
       }
       return sonnerToast.warning(message, data);
     },
     info: (message: string, data?: ExternalToast) => {
-      if (checkMobile()) {
+      if (checkMobile() && !isCriticalMessage(message, 'info')) {
         routeToastToNotification(message, 'info');
         return null;
       }
       return sonnerToast.info(message, data);
     },
     loading: (message: string, data?: ExternalToast) => {
-      if (checkMobile()) {
+      if (checkMobile() && !isCriticalMessage(message, 'loading')) {
         routeToastToNotification(message, 'loading');
         return null;
       }
@@ -52,7 +72,10 @@ function createMobileAwareToast() {
       promise: Promise<T>, 
       messages: { loading: string; success: string | ((data: T) => string); error: string | ((error: unknown) => string) }
     ) => {
-      if (checkMobile()) {
+      // For promises, check if any of the messages are critical
+      const isCritical = isCriticalMessage(messages.loading, 'loading');
+      
+      if (checkMobile() && !isCritical) {
         routeToastToNotification(messages.loading, 'loading');
         promise
           .then((data) => {
@@ -72,12 +95,11 @@ function createMobileAwareToast() {
       return sonnerToast.promise(promise, messages);
     },
     dismiss: (id?: string | number) => {
-      if (checkMobile()) return; // No-op on mobile
       return sonnerToast.dismiss(id);
     },
     // Default toast call (when using toast("message"))
     message: (message: string, data?: ExternalToast) => {
-      if (checkMobile()) {
+      if (checkMobile() && !isCriticalMessage(message, 'info')) {
         routeToastToNotification(message, 'info');
         return null;
       }

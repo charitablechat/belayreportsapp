@@ -19,12 +19,9 @@ export function MobileAwareToaster() {
 }
 
 /**
- * Sonner toast wrapper - hidden on mobile
+ * Sonner toast wrapper - always render, filtering happens at toast() level
  */
 export function MobileAwareSonner() {
-  // Don't render Sonner at all on mobile - toasts go to notification center
-  if (isMobile()) {
-    return null;
-  }
+  // Always render - critical toasts bypass mobile filtering at the toast() call level
   return <SonnerToaster />;
 }
