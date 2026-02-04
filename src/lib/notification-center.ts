@@ -1,20 +1,22 @@
 /**
  * Notification Center - Aggregated, non-intrusive status tracking
- * Replaces mobile toasts with a centralized notification system
+ * Routes non-critical notifications to a centralized display
  */
 
 export type NotificationType = 'sync' | 'save' | 'error' | 'info' | 'loading';
 export type ToastType = 'success' | 'error' | 'warning' | 'info' | 'loading';
 export type NotificationPriority = 'low' | 'medium' | 'high';
+export type NotificationCategory = 'ERROR' | 'WARNING' | 'SUCCESS' | 'INFO' | 'SYNC';
 
 export interface StatusNotification {
   id: string;
   type: NotificationType;
+  category: NotificationCategory;
   message: string;
   timestamp: number;
   priority: NotificationPriority;
   read: boolean;
-  expiresAt?: number; // Auto-dismiss after this timestamp
+  expiresAt?: number;
 }
 
 // In-memory store for notifications
@@ -30,6 +32,20 @@ const DEFAULT_EXPIRY_MS = 5 * 60 * 1000; // 5 minutes
  */
 function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+}
+
+/**
+ * Derive category from notification type
+ */
+function deriveCategory(type: NotificationType): NotificationCategory {
+  switch (type) {
+    case 'error': return 'ERROR';
+    case 'sync': return 'SYNC';
+    case 'save': return 'SUCCESS';
+    case 'loading': return 'INFO';
+    case 'info':
+    default: return 'INFO';
+  }
 }
 
 /**
@@ -62,6 +78,7 @@ export function addNotification(
   const notification: StatusNotification = {
     id,
     type,
+    category: deriveCategory(type),
     message,
     timestamp: now,
     priority,
@@ -75,6 +92,37 @@ export function addNotification(
   // Clean up expired notifications
   cleanupExpired();
   
+  notifyListeners();
+  
+  return id;
+}
+
+/**
+ * Add a notification with explicit category
+ */
+export function addNotificationWithCategory(
+  type: NotificationType,
+  category: NotificationCategory,
+  message: string,
+  priority: NotificationPriority = 'low',
+  expiryMs: number = DEFAULT_EXPIRY_MS
+): string {
+  const id = generateId();
+  const now = Date.now();
+  
+  const notification: StatusNotification = {
+    id,
+    type,
+    category,
+    message,
+    timestamp: now,
+    priority,
+    read: false,
+    expiresAt: now + expiryMs,
+  };
+  
+  notifications = [notification, ...notifications].slice(0, MAX_NOTIFICATIONS);
+  cleanupExpired();
   notifyListeners();
   
   return id;
@@ -134,7 +182,14 @@ export function addSaveNotification(message: string): void {
  * Add an error notification (always shown immediately)
  */
 export function addErrorNotification(message: string): void {
-  addNotification('error', message, 'high', 10 * 60 * 1000); // 10 min expiry for errors
+  addNotificationWithCategory('error', 'ERROR', message, 'high', 10 * 60 * 1000);
+}
+
+/**
+ * Add a warning notification
+ */
+export function addWarningNotification(message: string): void {
+  addNotificationWithCategory('info', 'WARNING', message, 'medium', 5 * 60 * 1000);
 }
 
 /**
@@ -224,8 +279,7 @@ export function getLatestStatus(): { type: NotificationType; message: string } |
 
 /**
  * Route a toast message to the notification center
- * Maps toast types to notification types with appropriate priority
- * Used by the mobile-aware toast wrapper to redirect all toasts
+ * Maps toast types to notification types with appropriate priority and category
  */
 export function routeToastToNotification(
   message: string, 
@@ -235,6 +289,9 @@ export function routeToastToNotification(
     case 'error':
       addErrorNotification(message);
       break;
+    case 'warning':
+      addWarningNotification(message);
+      break;
     case 'success':
       // Categorize success messages based on content
       if (/sync/i.test(message)) {
@@ -243,16 +300,12 @@ export function routeToastToNotification(
         addSaveNotification(message);
       }
       break;
-    case 'warning':
-      addNotification('info', message, 'medium');
-      break;
     case 'loading':
-      addNotification('sync', message, 'low', 30000); // 30s expiry for loading states
+      addNotificationWithCategory('sync', 'SYNC', message, 'low', 30000);
       break;
     case 'info':
     default:
-      addNotification('info', message, 'low');
+      addNotificationWithCategory('info', 'INFO', message, 'low');
       break;
   }
-  return null;
 }
