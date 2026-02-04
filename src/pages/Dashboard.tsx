@@ -739,6 +739,9 @@ export default function Dashboard() {
               
               <NetworkQualityIndicator />
               
+              {/* Visible Force Sync button for quick access */}
+              <ForceSyncButton variant="icon" className="h-8 w-8" />
+              
               {isSuperAdmin && (
                 <Badge variant="default" className="bg-warning text-warning-foreground border-warning/50 shadow-lg shadow-warning/20 animate-pulse hidden sm:flex items-center gap-1">
                   <Shield className="w-3 h-3" />

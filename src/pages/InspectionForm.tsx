@@ -41,6 +41,7 @@ import { cn } from "@/lib/utils";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 
 import { usePWA } from "@/hooks/usePWA";
+import { ForceSyncButton } from "@/components/pwa/ForceSyncButton";
 import { convertCircleBulletsToHtml } from "@/lib/bullet-converter";
 import { getUserWithCache } from "@/lib/cached-auth";
 import { HtmlReportViewer } from "@/components/HtmlReportViewer";
@@ -1799,32 +1800,36 @@ export default function InspectionForm() {
               )}
               {/* Sync errors are now handled automatically */}
               {saveError && isOnline && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={async () => {
-                    setSaveError(null);
-                    try {
-                      await saveProgress();
-                      toast({
-                        title: "Save successful",
-                        description: "Your changes have been saved.",
-                      });
-                    } catch (err) {
-                      console.error('[InspectionForm] Manual save failed:', err);
-                      toast({
-                        title: "Save failed",
-                        description: "Please try again or check your connection.",
-                        variant: "destructive",
-                      });
-                    }
-                  }}
-                  disabled={saving || autoSaving || isSyncing}
-                  className="gap-1.5 text-xs h-7 bg-orange-50 border-orange-200 text-orange-700 hover:bg-orange-100 dark:bg-orange-950/30 dark:border-orange-800 dark:text-orange-400 dark:hover:bg-orange-900/40"
-                >
-                  <RefreshCw className={cn("w-3 h-3", isSyncing && "animate-spin")} />
-                  <span className="hidden sm:inline">Retry Save</span>
-                </Button>
+                <>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={async () => {
+                      setSaveError(null);
+                      try {
+                        await saveProgress();
+                        toast({
+                          title: "Save successful",
+                          description: "Your changes have been saved.",
+                        });
+                      } catch (err) {
+                        console.error('[InspectionForm] Manual save failed:', err);
+                        toast({
+                          title: "Save failed",
+                          description: "Please try again or check your connection.",
+                          variant: "destructive",
+                        });
+                      }
+                    }}
+                    disabled={saving || autoSaving || isSyncing}
+                    className="gap-1.5 text-xs h-7 bg-orange-50 border-orange-200 text-orange-700 hover:bg-orange-100 dark:bg-orange-950/30 dark:border-orange-800 dark:text-orange-400 dark:hover:bg-orange-900/40"
+                  >
+                    <RefreshCw className={cn("w-3 h-3", isSyncing && "animate-spin")} />
+                    <span className="hidden sm:inline">Retry Save</span>
+                  </Button>
+                  {/* Force Sync button when save error is present */}
+                  <ForceSyncButton variant="icon" className="h-7 w-7" />
+                </>
               )}
               <AutoSaveIndicator
                 lastSaved={lastSaved}
