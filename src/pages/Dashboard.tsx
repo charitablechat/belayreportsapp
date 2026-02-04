@@ -157,14 +157,31 @@ export default function Dashboard() {
       const user = await getUserWithCache();
       const userId = user?.id;
       
-      // Batch all data loading operations with shared userId
-      await Promise.all([
-        loadInspections(userId),
-        loadTrainingReports(userId),
-        loadDailyAssessments(userId)
-      ]);
+      // Safety timeout to prevent skeleton loading state from getting stuck
+      // If data loads from offline storage, we want to show it immediately
+      const LOAD_TIMEOUT = 8000;
+      let loadCompleted = false;
       
-      setLoading(false);
+      const safetyTimeout = setTimeout(() => {
+        if (!loadCompleted) {
+          console.warn('[Dashboard] Loading safety timeout - forcing loading state to false');
+          setLoading(false);
+        }
+      }, LOAD_TIMEOUT);
+      
+      try {
+        // Batch all data loading operations with shared userId
+        // Each function sets state independently, so data appears as it loads
+        await Promise.all([
+          loadInspections(userId),
+          loadTrainingReports(userId),
+          loadDailyAssessments(userId)
+        ]);
+      } finally {
+        loadCompleted = true;
+        clearTimeout(safetyTimeout);
+        setLoading(false);
+      }
     };
     
     loadAllData();
@@ -234,6 +251,21 @@ export default function Dashboard() {
     };
   }, []);
 
+  // Helper function to add timeout to network queries
+  const withNetworkTimeout = async <T,>(
+    promise: Promise<T>,
+    timeoutMs: number = 6000,
+    fallback: T
+  ): Promise<T> => {
+    return Promise.race([
+      promise,
+      new Promise<T>((resolve) => setTimeout(() => {
+        console.warn('[Dashboard] Network query timed out after', timeoutMs, 'ms');
+        resolve(fallback);
+      }, timeoutMs))
+    ]);
+  };
+
   const loadInspections = async (cachedUserId?: string) => {
     try {
       // Use passed userId or fetch from cache
@@ -246,22 +278,27 @@ export default function Dashboard() {
       let supabasePromise: Promise<any[]> = Promise.resolve([]);
       if (navigator.onLine) {
         // Wrap in Promise.resolve to get a proper Promise with .catch()
-        supabasePromise = Promise.resolve(
-          supabase
-            .from("inspections")
-            .select(`
-              *,
-              inspector:profiles(first_name, last_name, avatar_url)
-            `)
-            .order("last_opened_at", { ascending: false, nullsFirst: false })
-            .order("created_at", { ascending: false })
-        ).then(({ data, error }) => {
-          if (error) throw error;
-          return data || [];
-        }).catch(err => {
-          console.error('[Dashboard] Supabase fetch error:', err);
-          return [];
-        });
+        // Add 6-second timeout to prevent hanging
+        supabasePromise = withNetworkTimeout(
+          Promise.resolve(
+            supabase
+              .from("inspections")
+              .select(`
+                *,
+                inspector:profiles(first_name, last_name, avatar_url)
+              `)
+              .order("last_opened_at", { ascending: false, nullsFirst: false })
+              .order("created_at", { ascending: false })
+          ).then(({ data, error }) => {
+            if (error) throw error;
+            return data || [];
+          }).catch(err => {
+            console.error('[Dashboard] Supabase fetch error:', err);
+            return [];
+          }),
+          6000,
+          []
+        );
       }
 
       // SHORT TIMEOUT for IndexedDB (2 seconds) - prefer network data on mobile
@@ -312,21 +349,26 @@ export default function Dashboard() {
       
       let supabasePromise: Promise<any[]> = Promise.resolve([]);
       if (navigator.onLine) {
-        supabasePromise = Promise.resolve(
-          supabase
-            .from("trainings")
-            .select(`
-              *,
-              trainer:profiles(first_name, last_name, avatar_url)
-            `)
-            .order("created_at", { ascending: false })
-        ).then(({ data, error }) => {
-          if (error) throw error;
-          return data || [];
-        }).catch(err => {
-          console.error('[Dashboard] Supabase trainings fetch error:', err);
-          return [];
-        });
+        // Add 6-second timeout to prevent hanging
+        supabasePromise = withNetworkTimeout(
+          Promise.resolve(
+            supabase
+              .from("trainings")
+              .select(`
+                *,
+                trainer:profiles(first_name, last_name, avatar_url)
+              `)
+              .order("created_at", { ascending: false })
+          ).then(({ data, error }) => {
+            if (error) throw error;
+            return data || [];
+          }).catch(err => {
+            console.error('[Dashboard] Supabase trainings fetch error:', err);
+            return [];
+          }),
+          6000,
+          []
+        );
       }
 
       // SHORT TIMEOUT for IndexedDB (2 seconds)
@@ -374,21 +416,26 @@ export default function Dashboard() {
       
       let supabasePromise: Promise<any[]> = Promise.resolve([]);
       if (navigator.onLine) {
-        supabasePromise = Promise.resolve(
-          supabase
-            .from("daily_assessments")
-            .select(`
-              *,
-              inspector:profiles(first_name, last_name, avatar_url)
-            `)
-            .order("assessment_date", { ascending: false })
-        ).then(({ data, error }) => {
-          if (error) throw error;
-          return data || [];
-        }).catch(err => {
-          console.error('[Dashboard] Supabase assessments fetch error:', err);
-          return [];
-        });
+        // Add 6-second timeout to prevent hanging
+        supabasePromise = withNetworkTimeout(
+          Promise.resolve(
+            supabase
+              .from("daily_assessments")
+              .select(`
+                *,
+                inspector:profiles(first_name, last_name, avatar_url)
+              `)
+              .order("assessment_date", { ascending: false })
+          ).then(({ data, error }) => {
+            if (error) throw error;
+            return data || [];
+          }).catch(err => {
+            console.error('[Dashboard] Supabase assessments fetch error:', err);
+            return [];
+          }),
+          6000,
+          []
+        );
       }
 
       // SHORT TIMEOUT for IndexedDB (2 seconds)
