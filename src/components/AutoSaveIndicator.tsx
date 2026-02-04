@@ -1,4 +1,4 @@
-import { CheckCircle, Loader2, AlertCircle, Clock, RefreshCw } from "lucide-react";
+import { CheckCircle, Loader2, AlertCircle, Clock, RefreshCw, CloudOff } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 
@@ -35,6 +35,18 @@ export function AutoSaveIndicator({
     return format(date, "h:mm:ss a");
   };
 
+  // Special handling for "pending_sync" - show non-alarming state
+  if (error === 'pending_sync') {
+    return (
+      <div className={cn("flex items-center gap-1.5 text-xs text-muted-foreground", className)}>
+        <CloudOff className="w-3 h-3" />
+        <span className="hidden sm:inline">Saved locally • will sync</span>
+        <span className="sm:hidden">Pending</span>
+      </div>
+    );
+  }
+
+  // Regular error state (for validation errors, etc.)
   if (error) {
     return (
       <div className={cn("flex items-center gap-1.5 text-xs text-destructive", className)}>
