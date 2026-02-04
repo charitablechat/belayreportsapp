@@ -5,8 +5,8 @@ import { componentTagger } from "lovable-tagger";
 import { pwaConfig } from "./vite-pwa-config";
 
 // Version follows vX.Y.Z format where Z increments by 10 on each deployment
-// v2.1.40 - Dashboard loading fix: safety timeout prevents skeleton loaders from getting stuck, network query timeouts for all data fetches
-const APP_VERSION = "2.1.40";
+// v2.1.50 - Mobile sync fix: batch DB inserts for faster sync, per-step timeouts, extended per-item timeout (25s)
+const APP_VERSION = "2.1.50";
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({

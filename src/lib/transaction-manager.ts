@@ -1,5 +1,20 @@
 import { supabase } from "@/integrations/supabase/client";
 
+// Timeout for individual database steps to prevent hanging on slow connections
+const STEP_TIMEOUT = 8000; // 8 seconds per step (generous but not infinite)
+
+/**
+ * Wrap a promise with a timeout to prevent individual steps from blocking
+ */
+function withStepTimeout<T>(promise: Promise<T>, stepName: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => 
+      setTimeout(() => reject(new Error(`Step timeout: ${stepName}`)), STEP_TIMEOUT)
+    )
+  ]);
+}
+
 export interface TransactionStep {
   table: string;
   operation: 'insert' | 'update' | 'upsert' | 'delete';
@@ -19,6 +34,7 @@ export interface TransactionResult {
 /**
  * Execute multiple database operations as a transaction
  * If any step fails, attempts to rollback all completed steps
+ * Supports batch inserts (arrays) for better performance on mobile
  */
 export async function executeTransaction(
   steps: TransactionStep[]
@@ -31,32 +47,40 @@ export async function executeTransaction(
       const step = steps[i];
       
       if (import.meta.env.DEV) {
-        console.log(`[Transaction] Executing step ${i + 1}/${steps.length}:`, step.table, step.operation);
+        const itemCount = Array.isArray(step.data) ? step.data.length : 1;
+        console.log(`[Transaction] Executing step ${i + 1}/${steps.length}:`, step.table, step.operation, `(${itemCount} items)`);
       }
       
       let result;
       
       switch (step.operation) {
         case 'insert':
-          result = await (supabase as any).from(step.table).insert(step.data);
+          // Support both single item and batch insert (arrays)
+          result = await withStepTimeout(
+            (supabase as any).from(step.table).insert(step.data),
+            `insert:${step.table}`
+          );
           break;
           
         case 'update':
-          result = await (supabase as any)
-            .from(step.table)
-            .update(step.data)
-            .match(step.filter);
+          result = await withStepTimeout(
+            (supabase as any).from(step.table).update(step.data).match(step.filter),
+            `update:${step.table}`
+          );
           break;
           
         case 'upsert':
-          result = await (supabase as any).from(step.table).upsert(step.data);
+          result = await withStepTimeout(
+            (supabase as any).from(step.table).upsert(step.data),
+            `upsert:${step.table}`
+          );
           break;
           
         case 'delete':
-          result = await (supabase as any)
-            .from(step.table)
-            .delete()
-            .match(step.filter);
+          result = await withStepTimeout(
+            (supabase as any).from(step.table).delete().match(step.filter),
+            `delete:${step.table}`
+          );
           break;
       }
       

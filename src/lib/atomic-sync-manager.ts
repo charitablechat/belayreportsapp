@@ -224,44 +224,37 @@ export async function syncInspectionAtomic(inspectionId: string) {
       );
     }
     
-    // Step 3: Insert all related data
+    // Step 3: Insert all related data as BATCH operations (much faster on mobile)
+    // Instead of N individual inserts, use single bulk insert per table
     if (systems.length > 0) {
-      systems.forEach(system => {
-        steps.push({
-          table: 'inspection_systems',
-          operation: 'insert',
-          data: system,
-        });
+      steps.push({
+        table: 'inspection_systems',
+        operation: 'insert',
+        data: systems, // Batch insert all at once
       });
     }
     
     if (ziplines.length > 0) {
-      ziplines.forEach(zipline => {
-        steps.push({
-          table: 'inspection_ziplines',
-          operation: 'insert',
-          data: zipline,
-        });
+      steps.push({
+        table: 'inspection_ziplines',
+        operation: 'insert',
+        data: ziplines, // Batch insert all at once
       });
     }
     
     if (equipment.length > 0) {
-      equipment.forEach(item => {
-        steps.push({
-          table: 'inspection_equipment',
-          operation: 'insert',
-          data: item,
-        });
+      steps.push({
+        table: 'inspection_equipment',
+        operation: 'insert',
+        data: equipment, // Batch insert all at once
       });
     }
     
     if (standards.length > 0) {
-      standards.forEach(standard => {
-        steps.push({
-          table: 'inspection_standards',
-          operation: 'insert',
-          data: standard,
-        });
+      steps.push({
+        table: 'inspection_standards',
+        operation: 'insert',
+        data: standards, // Batch insert all at once
       });
     }
     
@@ -275,7 +268,7 @@ export async function syncInspectionAtomic(inspectionId: string) {
       steps.push({
         table: 'inspection_summary',
         operation: 'insert',
-        data: sanitizedSummary,
+        data: [sanitizedSummary], // Wrap in array for consistency
       });
     }
     
@@ -313,7 +306,7 @@ export async function syncInspectionAtomic(inspectionId: string) {
  */
 export async function syncAllInspectionsAtomic() {
   const capabilities = getMobileCapabilities();
-  const ITEM_SYNC_TIMEOUT = 15000; // 15 seconds per item max
+  const ITEM_SYNC_TIMEOUT = 25000; // 25 seconds per item max (increased for mobile networks)
   
   if (!navigator.onLine) {
     if (import.meta.env.DEV) {
@@ -631,54 +624,44 @@ export async function syncTrainingAtomic(trainingId: string) {
       );
     }
     
-    // Step 3: Insert all related data
+    // Step 3: Insert all related data as BATCH operations (much faster on mobile)
     if (delivery_approaches.length > 0) {
-      delivery_approaches.forEach(approach => {
-        steps.push({
-          table: 'training_delivery_approaches',
-          operation: 'insert',
-          data: approach,
-        });
+      steps.push({
+        table: 'training_delivery_approaches',
+        operation: 'insert',
+        data: delivery_approaches, // Batch insert all at once
       });
     }
     
     if (operating_systems.length > 0) {
-      operating_systems.forEach(system => {
-        steps.push({
-          table: 'training_operating_systems',
-          operation: 'insert',
-          data: system,
-        });
+      steps.push({
+        table: 'training_operating_systems',
+        operation: 'insert',
+        data: operating_systems, // Batch insert all at once
       });
     }
     
     if (immediate_attention.length > 0) {
-      immediate_attention.forEach(item => {
-        steps.push({
-          table: 'training_immediate_attention',
-          operation: 'insert',
-          data: item,
-        });
+      steps.push({
+        table: 'training_immediate_attention',
+        operation: 'insert',
+        data: immediate_attention, // Batch insert all at once
       });
     }
     
     if (verifiable_items.length > 0) {
-      verifiable_items.forEach(item => {
-        steps.push({
-          table: 'training_verifiable_items',
-          operation: 'insert',
-          data: item,
-        });
+      steps.push({
+        table: 'training_verifiable_items',
+        operation: 'insert',
+        data: verifiable_items, // Batch insert all at once
       });
     }
     
     if (systems_in_place.length > 0) {
-      systems_in_place.forEach(item => {
-        steps.push({
-          table: 'training_systems_in_place',
-          operation: 'insert',
-          data: item,
-        });
+      steps.push({
+        table: 'training_systems_in_place',
+        operation: 'insert',
+        data: systems_in_place, // Batch insert all at once
       });
     }
     
@@ -692,7 +675,7 @@ export async function syncTrainingAtomic(trainingId: string) {
       steps.push({
         table: 'training_summary',
         operation: 'insert',
-        data: sanitizedSummary,
+        data: [sanitizedSummary], // Wrap in array for consistency
       });
     }
     
@@ -734,7 +717,7 @@ export async function syncTrainingAtomic(trainingId: string) {
  */
 export async function syncAllTrainingsAtomic() {
   const capabilities = getMobileCapabilities();
-  const ITEM_SYNC_TIMEOUT = 15000; // 15 seconds per item max
+  const ITEM_SYNC_TIMEOUT = 25000; // 25 seconds per item max (increased for mobile networks)
   
   if (!navigator.onLine) {
     if (import.meta.env.DEV) {
@@ -1011,64 +994,52 @@ export async function syncDailyAssessmentAtomic(assessmentId: string) {
       );
     }
     
-    // Step 3: Insert all related data
+    // Step 3: Insert all related data as BATCH operations (much faster on mobile)
     if (beginning_of_day.length > 0) {
-      beginning_of_day.forEach(item => {
-        steps.push({
-          table: 'daily_assessment_beginning_of_day',
-          operation: 'insert',
-          data: item,
-        });
+      steps.push({
+        table: 'daily_assessment_beginning_of_day',
+        operation: 'insert',
+        data: beginning_of_day, // Batch insert all at once
       });
     }
     
     if (end_of_day.length > 0) {
-      end_of_day.forEach(item => {
-        steps.push({
-          table: 'daily_assessment_end_of_day',
-          operation: 'insert',
-          data: item,
-        });
+      steps.push({
+        table: 'daily_assessment_end_of_day',
+        operation: 'insert',
+        data: end_of_day, // Batch insert all at once
       });
     }
     
     if (operating_systems.length > 0) {
-      operating_systems.forEach(system => {
-        steps.push({
-          table: 'daily_assessment_operating_systems',
-          operation: 'insert',
-          data: system,
-        });
+      steps.push({
+        table: 'daily_assessment_operating_systems',
+        operation: 'insert',
+        data: operating_systems, // Batch insert all at once
       });
     }
     
     if (equipment_checks.length > 0) {
-      equipment_checks.forEach(check => {
-        steps.push({
-          table: 'daily_assessment_equipment_checks',
-          operation: 'insert',
-          data: check,
-        });
+      steps.push({
+        table: 'daily_assessment_equipment_checks',
+        operation: 'insert',
+        data: equipment_checks, // Batch insert all at once
       });
     }
     
     if (structure_checks.length > 0) {
-      structure_checks.forEach(check => {
-        steps.push({
-          table: 'daily_assessment_structure_checks',
-          operation: 'insert',
-          data: check,
-        });
+      steps.push({
+        table: 'daily_assessment_structure_checks',
+        operation: 'insert',
+        data: structure_checks, // Batch insert all at once
       });
     }
     
     if (environment_checks.length > 0) {
-      environment_checks.forEach(check => {
-        steps.push({
-          table: 'daily_assessment_environment_checks',
-          operation: 'insert',
-          data: check,
-        });
+      steps.push({
+        table: 'daily_assessment_environment_checks',
+        operation: 'insert',
+        data: environment_checks, // Batch insert all at once
       });
     }
     
@@ -1110,7 +1081,7 @@ export async function syncDailyAssessmentAtomic(assessmentId: string) {
  */
 export async function syncAllDailyAssessmentsAtomic() {
   const capabilities = getMobileCapabilities();
-  const ITEM_SYNC_TIMEOUT = 15000; // 15 seconds per item max
+  const ITEM_SYNC_TIMEOUT = 25000; // 25 seconds per item max (increased for mobile networks)
   
   if (!navigator.onLine) {
     if (import.meta.env.DEV) {
