@@ -17,8 +17,116 @@ const DEFAULT_OPTIONS: CompressionOptions = {
   maxSizeMB: 2,
 };
 
-// Maximum time to wait for compression before falling back to original
-const COMPRESSION_TIMEOUT = 10000; // 10 seconds
+// Timeout constants - reduced for faster mobile feedback
+const COMPRESSION_TIMEOUT = 8000; // 8 seconds max for entire compression
+const IMAGE_LOAD_TIMEOUT = 4000; // 4 seconds max to load/decode image
+const BLOB_CREATION_TIMEOUT = 3000; // 3 seconds max for canvas.toBlob
+
+// Formats that cannot be reliably processed with canvas on mobile browsers
+const PROBLEMATIC_FORMATS = ['image/heic', 'image/heif'];
+
+/**
+ * Check if file format can be processed by canvas
+ * HEIC/HEIF files cause hangs on iOS and some Android browsers
+ */
+function canProcessWithCanvas(file: File): boolean {
+  const fileType = file.type.toLowerCase();
+  if (PROBLEMATIC_FORMATS.includes(fileType)) {
+    return false;
+  }
+  // Also check file extension as fallback (type can be empty on some devices)
+  const extension = file.name.toLowerCase().split('.').pop();
+  if (extension === 'heic' || extension === 'heif') {
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Load image with timeout using createImageBitmap (faster) or Image element fallback
+ * createImageBitmap is more robust on mobile and doesn't require FileReader
+ */
+async function loadImageWithTimeout(
+  file: File,
+  timeoutMs: number
+): Promise<{ source: ImageBitmap | HTMLImageElement; cleanup: () => void }> {
+  // Prefer createImageBitmap - faster and more robust on mobile
+  if (typeof createImageBitmap === 'function') {
+    const bitmapPromise = createImageBitmap(file);
+    const result = await Promise.race([
+      bitmapPromise.then(bitmap => ({ bitmap, timedOut: false })),
+      new Promise<{ bitmap: null; timedOut: true }>((resolve) =>
+        setTimeout(() => resolve({ bitmap: null, timedOut: true }), timeoutMs)
+      )
+    ]);
+    
+    if (result.timedOut || !result.bitmap) {
+      throw new Error('Image load timeout');
+    }
+    
+    return {
+      source: result.bitmap,
+      cleanup: () => result.bitmap.close()
+    };
+  }
+
+  // Fallback to Image element with object URL (faster than base64 DataURL)
+  return new Promise((resolve, reject) => {
+    const objectUrl = URL.createObjectURL(file);
+    const img = new Image();
+    
+    const timeoutId = setTimeout(() => {
+      URL.revokeObjectURL(objectUrl);
+      reject(new Error('Image load timeout'));
+    }, timeoutMs);
+
+    img.onload = () => {
+      clearTimeout(timeoutId);
+      resolve({
+        source: img,
+        cleanup: () => URL.revokeObjectURL(objectUrl)
+      });
+    };
+
+    img.onerror = () => {
+      clearTimeout(timeoutId);
+      URL.revokeObjectURL(objectUrl);
+      reject(new Error('Failed to load image'));
+    };
+
+    img.src = objectUrl;
+  });
+}
+
+/**
+ * Create blob with timeout protection
+ * ALWAYS outputs JPEG for maximum browser compatibility (avoids HEIC/WebP issues)
+ */
+async function createBlobWithTimeout(
+  canvas: HTMLCanvasElement,
+  quality: number,
+  timeoutMs: number
+): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    const timeoutId = setTimeout(() => {
+      reject(new Error('Blob creation timeout'));
+    }, timeoutMs);
+
+    // Force JPEG output - universal browser support, avoids MIME type failures
+    canvas.toBlob(
+      (blob) => {
+        clearTimeout(timeoutId);
+        if (blob) {
+          resolve(blob);
+        } else {
+          reject(new Error('Failed to create blob'));
+        }
+      },
+      'image/jpeg',
+      quality
+    );
+  });
+}
 
 /**
  * Internal compression implementation
@@ -28,121 +136,113 @@ const compressImageInternal = async (
   options: CompressionOptions = {},
   attemptCount: number = 0
 ): Promise<File> => {
+  // Early exit: Skip compression for formats that cause hangs
+  if (!canProcessWithCanvas(file)) {
+    if (import.meta.env.DEV) {
+      console.warn('[Image Compression] Skipping compression for unsupported format:', file.type || file.name);
+    }
+    return file; // Return original - browser handles display conversion
+  }
+
   const opts = { ...DEFAULT_OPTIONS, ...options };
-  
-  // Max 3 attempts to prevent infinite recursion
-  const MAX_ATTEMPTS = 3;
-  
+  const MAX_ATTEMPTS = 2; // Reduced from 3 to prevent memory exhaustion on mobile
+
   if (attemptCount >= MAX_ATTEMPTS) {
     console.warn('[Image Compression] Max compression attempts reached, returning current file');
     return file;
   }
 
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    const reader = new FileReader();
+  let imageData: { source: ImageBitmap | HTMLImageElement; cleanup: () => void } | null = null;
 
-    reader.onload = (e) => {
-      img.src = e.target?.result as string;
-    };
+  try {
+    // Load image with timeout (uses createImageBitmap when available)
+    imageData = await loadImageWithTimeout(file, IMAGE_LOAD_TIMEOUT);
+    const { source, cleanup } = imageData;
 
-    reader.onerror = reject;
+    // Get dimensions from source
+    const width = source instanceof ImageBitmap ? source.width : source.naturalWidth;
+    const height = source instanceof ImageBitmap ? source.height : source.naturalHeight;
 
-    img.onload = () => {
-      try {
-        const canvas = document.createElement('canvas');
-        let { width, height } = img;
+    // Calculate scaled dimensions maintaining aspect ratio
+    let newWidth = width;
+    let newHeight = height;
 
-        // Calculate new dimensions while maintaining aspect ratio
-        if (width > (opts.maxWidth || Infinity) || height > (opts.maxHeight || Infinity)) {
-          const ratio = Math.min(
-            (opts.maxWidth || Infinity) / width,
-            (opts.maxHeight || Infinity) / height
-          );
-          width = Math.floor(width * ratio);
-          height = Math.floor(height * ratio);
-        }
+    if (width > (opts.maxWidth || Infinity) || height > (opts.maxHeight || Infinity)) {
+      const ratio = Math.min(
+        (opts.maxWidth || Infinity) / width,
+        (opts.maxHeight || Infinity) / height
+      );
+      newWidth = Math.floor(width * ratio);
+      newHeight = Math.floor(height * ratio);
+    }
 
-        canvas.width = width;
-        canvas.height = height;
+    // Create canvas and draw
+    const canvas = document.createElement('canvas');
+    canvas.width = newWidth;
+    canvas.height = newHeight;
 
-        const ctx = canvas.getContext('2d');
-        if (!ctx) {
-          reject(new Error('Failed to get canvas context'));
-          return;
-        }
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      cleanup();
+      throw new Error('Failed to get canvas context');
+    }
 
-        // Draw and compress
-        ctx.drawImage(img, 0, 0, width, height);
+    ctx.drawImage(source, 0, 0, newWidth, newHeight);
+    
+    // Clean up image source immediately after drawing
+    cleanup();
+    imageData = null;
 
-        canvas.toBlob(
-          async (blob) => {
-            if (!blob) {
-              reject(new Error('Failed to compress image'));
-              return;
-            }
+    // Create blob with timeout - ALWAYS outputs JPEG
+    const blob = await createBlobWithTimeout(canvas, opts.quality || 0.85, BLOB_CREATION_TIMEOUT);
 
-            // Check if compressed size is within limits
-            const sizeMB = blob.size / (1024 * 1024);
-            if (opts.maxSizeMB && sizeMB > opts.maxSizeMB && (opts.quality || 0.8) > 0.1) {
-              // If still too large, try with lower quality
-              const lowerQuality = Math.max(0.1, (opts.quality || 0.8) - 0.1);
-              if (import.meta.env.DEV) {
-                console.log(`[Image Compression] Size ${sizeMB.toFixed(2)}MB exceeds limit, retrying with quality ${lowerQuality} (attempt ${attemptCount + 1}/${MAX_ATTEMPTS})`);
-              }
-              
-              // Create File from compressed blob and recursively compress
-              const intermediateFile = new File([blob], file.name, {
-                type: 'image/jpeg',
-                lastModified: Date.now(),
-              });
-              
-              try {
-                const furtherCompressed = await compressImageInternal(
-                  intermediateFile,
-                  { ...opts, quality: lowerQuality },
-                  attemptCount + 1
-                );
-                resolve(furtherCompressed);
-              } catch (error) {
-                reject(error);
-              }
-              return;
-            }
-
-            // Create new file with compressed data
-            const compressedFile = new File([blob], file.name, {
-              type: file.type || 'image/jpeg',
-              lastModified: Date.now(),
-            });
-
-            const originalSizeMB = file.size / (1024 * 1024);
-            const compressionRatio = ((1 - blob.size / file.size) * 100).toFixed(1);
-
-            if (import.meta.env.DEV) {
-              console.log('[Image Compression] Success:', {
-                original: `${originalSizeMB.toFixed(2)}MB`,
-                compressed: `${sizeMB.toFixed(2)}MB`,
-                saved: `${compressionRatio}%`,
-                dimensions: `${width}x${height}`,
-                attempts: attemptCount + 1,
-              });
-            }
-
-            resolve(compressedFile);
-          },
-          file.type || 'image/jpeg',
-          opts.quality
-        );
-      } catch (error) {
-        reject(error);
+    // Check size and retry with lower quality if needed
+    const sizeMB = blob.size / (1024 * 1024);
+    if (opts.maxSizeMB && sizeMB > opts.maxSizeMB && (opts.quality || 0.85) > 0.3) {
+      const lowerQuality = Math.max(0.3, (opts.quality || 0.85) - 0.2);
+      
+      if (import.meta.env.DEV) {
+        console.log(`[Image Compression] Size ${sizeMB.toFixed(2)}MB exceeds limit, retrying with quality ${lowerQuality}`);
       }
-    };
 
-    img.onerror = () => reject(new Error('Failed to load image'));
+      // Create intermediate file and recursively compress
+      const intermediateFile = new File(
+        [blob],
+        file.name.replace(/\.[^.]+$/, '.jpg'),
+        { type: 'image/jpeg', lastModified: Date.now() }
+      );
 
-    reader.readAsDataURL(file);
-  });
+      return compressImageInternal(intermediateFile, { ...opts, quality: lowerQuality }, attemptCount + 1);
+    }
+
+    // Create final compressed file with .jpg extension
+    const compressedFile = new File(
+      [blob],
+      file.name.replace(/\.[^.]+$/, '.jpg'),
+      { type: 'image/jpeg', lastModified: Date.now() }
+    );
+
+    if (import.meta.env.DEV) {
+      const originalSizeMB = file.size / (1024 * 1024);
+      const compressionRatio = ((1 - blob.size / file.size) * 100).toFixed(1);
+      console.log('[Image Compression] Success:', {
+        original: `${originalSizeMB.toFixed(2)}MB`,
+        compressed: `${sizeMB.toFixed(2)}MB`,
+        saved: `${compressionRatio}%`,
+        dimensions: `${newWidth}x${newHeight}`,
+        attempts: attemptCount + 1,
+      });
+    }
+
+    return compressedFile;
+  } catch (error) {
+    // Clean up on error
+    if (imageData) {
+      imageData.cleanup();
+    }
+    console.warn('[Image Compression] Compression failed, returning original:', error);
+    return file;
+  }
 };
 
 /**

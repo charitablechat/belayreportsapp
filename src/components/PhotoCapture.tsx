@@ -20,8 +20,8 @@ const SUPPORTED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 
 const MAX_FILE_SIZE_MB = 25; // 25MB max before compression
 
 // Timeout constants for preventing UI hangs
-const PROCESS_SAFETY_TIMEOUT = 30000; // 30 seconds max for entire batch
-const PER_FILE_TIMEOUT = 15000; // 15 seconds per file
+const PROCESS_SAFETY_TIMEOUT = 20000; // 20 seconds max for entire batch (reduced for faster feedback)
+const PER_FILE_TIMEOUT = 10000; // 10 seconds per file (reduced from 15s)
 
 export default function PhotoCapture({ inspectionId, section, onPhotoAdded }: PhotoCaptureProps) {
   const cameraInputRef = useRef<HTMLInputElement>(null);
