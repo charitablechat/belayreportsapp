@@ -1753,6 +1753,7 @@ export type Database = {
           deleted_by: string
           is_deleted: boolean
           record_exists: boolean
+          synced_at: string
           updated_at: string
         }[]
       }

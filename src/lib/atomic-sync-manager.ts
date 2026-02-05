@@ -47,6 +47,7 @@ interface RecordStatus {
   deleted_at: string | null;
   deleted_by: string | null;
   updated_at: string | null;
+  synced_at: string | null;
 }
 
 /**
@@ -257,16 +258,19 @@ export async function syncInspectionAtomic(inspectionId: string) {
     // Exclude joined 'inspector' object - only inspector_id column exists in DB
     const { inspector, ...inspectionWithoutJoin } = inspection as any;
     
-    // For rollback, use recordStatus if available, otherwise null
-    const rollbackData = recordStatus?.record_exists ? { updated_at: recordStatus.updated_at } : null;
+    // For rollback, capture both synced_at and updated_at for proper state restoration
+    const rollbackData = recordStatus?.record_exists 
+      ? { synced_at: recordStatus.synced_at, updated_at: recordStatus.updated_at } 
+      : null;
     
-    // Step 1: Upsert inspection
+    // Step 1: Upsert inspection WITHOUT setting synced_at (defer to final step)
+    // This ensures synced_at is only set after ALL related data is committed
     steps.push({
       table: 'inspections',
       operation: 'upsert',
       data: {
         ...inspectionWithoutJoin,
-        synced_at: new Date().toISOString(),
+        // DO NOT set synced_at here - it will be set in the final step
       },
       rollbackData,
     });
@@ -345,6 +349,15 @@ export async function syncInspectionAtomic(inspectionId: string) {
         data: [sanitizedSummary], // Wrap in array for consistency
       });
     }
+    
+    // FINAL STEP: Set synced_at ONLY after all related data is successfully inserted
+    // This is the atomic guarantee - synced_at only updates when everything commits
+    steps.push({
+      table: 'inspections',
+      operation: 'update',
+      data: { synced_at: new Date().toISOString() },
+      filter: { id: inspectionId },
+    });
     
     // 5. Execute transaction
     const result = await executeTransaction(steps);
@@ -692,16 +705,19 @@ export async function syncTrainingAtomic(trainingId: string) {
     // Exclude joined objects - only column fields exist in DB
     const { inspector, trainer, ...trainingWithoutJoin } = training as any;
     
-    // For rollback, use recordStatus if available, otherwise null
-    const rollbackData = recordStatus?.record_exists ? { updated_at: recordStatus.updated_at } : null;
+    // For rollback, capture both synced_at and updated_at for proper state restoration
+    const rollbackData = recordStatus?.record_exists 
+      ? { synced_at: recordStatus.synced_at, updated_at: recordStatus.updated_at } 
+      : null;
     
-    // Step 1: Upsert training
+    // Step 1: Upsert training WITHOUT setting synced_at (defer to final step)
+    // This ensures synced_at is only set after ALL related data is committed
     steps.push({
       table: 'trainings',
       operation: 'upsert',
       data: {
         ...trainingWithoutJoin,
-        synced_at: new Date().toISOString(),
+        // DO NOT set synced_at here - it will be set in the final step
       },
       rollbackData,
     });
@@ -790,6 +806,15 @@ export async function syncTrainingAtomic(trainingId: string) {
         data: [sanitizedSummary], // Wrap in array for consistency
       });
     }
+    
+    // FINAL STEP: Set synced_at ONLY after all related data is successfully inserted
+    // This is the atomic guarantee - synced_at only updates when everything commits
+    steps.push({
+      table: 'trainings',
+      operation: 'update',
+      data: { synced_at: new Date().toISOString() },
+      filter: { id: trainingId },
+    });
     
     // 5. Execute transaction
     const result = await executeTransaction(steps);
@@ -1098,16 +1123,19 @@ export async function syncDailyAssessmentAtomic(assessmentId: string) {
     // Exclude joined objects - only column fields exist in DB
     const { inspector, ...assessmentWithoutJoin } = assessment as any;
     
-    // For rollback, use recordStatus if available, otherwise null
-    const rollbackData = recordStatus?.record_exists ? { updated_at: recordStatus.updated_at } : null;
+    // For rollback, capture both synced_at and updated_at for proper state restoration
+    const rollbackData = recordStatus?.record_exists 
+      ? { synced_at: recordStatus.synced_at, updated_at: recordStatus.updated_at } 
+      : null;
     
-    // Step 1: Upsert assessment
+    // Step 1: Upsert assessment WITHOUT setting synced_at (defer to final step)
+    // This ensures synced_at is only set after ALL related data is committed
     steps.push({
       table: 'daily_assessments',
       operation: 'upsert',
       data: {
         ...assessmentWithoutJoin,
-        synced_at: new Date().toISOString(),
+        // DO NOT set synced_at here - it will be set in the final step
       },
       rollbackData,
     });
@@ -1190,6 +1218,15 @@ export async function syncDailyAssessmentAtomic(assessmentId: string) {
         data: environment_checks, // Batch insert all at once
       });
     }
+    
+    // FINAL STEP: Set synced_at ONLY after all related data is successfully inserted
+    // This is the atomic guarantee - synced_at only updates when everything commits
+    steps.push({
+      table: 'daily_assessments',
+      operation: 'update',
+      data: { synced_at: new Date().toISOString() },
+      filter: { id: assessmentId },
+    });
     
     // 5. Execute transaction
     const result = await executeTransaction(steps);
