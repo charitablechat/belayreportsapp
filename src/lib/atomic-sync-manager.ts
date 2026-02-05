@@ -111,12 +111,35 @@ export async function syncInspectionAtomic(inspectionId: string) {
       console.log('[Atomic Sync] Validation passed for:', inspectionId);
     }
     
-    // 3. Check for conflicts
+    // 3. Check for remote record status (including soft-deleted records)
     const { data: remoteInspection } = await supabase
       .from("inspections")
-      .select("updated_at")
+      .select("updated_at, deleted_at, deleted_by")
       .eq("id", inspectionId)
       .maybeSingle();
+    
+    // SAFEGUARD: Check if remote record was soft-deleted by someone else
+    // This prevents sync failures when a Super Admin deleted a record that still exists locally
+    if (remoteInspection?.deleted_at) {
+      console.warn('[Atomic Sync] Remote record was soft-deleted - cleaning up local copy:', inspectionId);
+      
+      // Mark the local record as deleted to match remote state
+      // This prevents repeated sync attempts for orphaned local data
+      try {
+        const { deleteOfflineInspection } = await import('./offline-storage');
+        await deleteOfflineInspection(inspectionId);
+        console.log('[Atomic Sync] Cleaned up orphaned local inspection:', inspectionId);
+      } catch (cleanupError) {
+        console.error('[Atomic Sync] Failed to clean up orphaned local data:', cleanupError);
+      }
+      
+      return { 
+        success: false, 
+        skipped: true, 
+        reason: 'remote_deleted',
+        message: 'This record was deleted by an administrator. Local copy has been cleaned up.'
+      };
+    }
     
     if (remoteInspection) {
       const remoteUpdated = new Date(remoteInspection.updated_at).getTime();
@@ -577,12 +600,32 @@ export async function syncTrainingAtomic(trainingId: string) {
       });
     }
     
-    // 3. Check for conflicts
+    // 3. Check for remote record status (including soft-deleted records)
     const { data: remoteTraining } = await supabase
       .from("trainings")
-      .select("updated_at")
+      .select("updated_at, deleted_at, deleted_by")
       .eq("id", trainingId)
       .maybeSingle();
+    
+    // SAFEGUARD: Check if remote record was soft-deleted by someone else
+    if (remoteTraining?.deleted_at) {
+      console.warn('[Atomic Sync] Remote training was soft-deleted - cleaning up local copy:', trainingId);
+      
+      try {
+        const { deleteOfflineTraining } = await import('./offline-storage');
+        await deleteOfflineTraining(trainingId);
+        console.log('[Atomic Sync] Cleaned up orphaned local training:', trainingId);
+      } catch (cleanupError) {
+        console.error('[Atomic Sync] Failed to clean up orphaned local training:', cleanupError);
+      }
+      
+      return { 
+        success: false, 
+        skipped: true, 
+        reason: 'remote_deleted',
+        message: 'This training was deleted by an administrator. Local copy has been cleaned up.'
+      };
+    }
     
     if (remoteTraining) {
       const remoteUpdated = new Date(remoteTraining.updated_at).getTime();
@@ -962,12 +1005,32 @@ export async function syncDailyAssessmentAtomic(assessmentId: string) {
       });
     }
     
-    // 3. Check for conflicts
+    // 3. Check for remote record status (including soft-deleted records)
     const { data: remoteAssessment } = await supabase
       .from("daily_assessments")
-      .select("updated_at")
+      .select("updated_at, deleted_at, deleted_by")
       .eq("id", assessmentId)
       .maybeSingle();
+    
+    // SAFEGUARD: Check if remote record was soft-deleted by someone else
+    if (remoteAssessment?.deleted_at) {
+      console.warn('[Atomic Sync] Remote assessment was soft-deleted - cleaning up local copy:', assessmentId);
+      
+      try {
+        const { deleteOfflineDailyAssessment } = await import('./offline-storage');
+        await deleteOfflineDailyAssessment(assessmentId);
+        console.log('[Atomic Sync] Cleaned up orphaned local assessment:', assessmentId);
+      } catch (cleanupError) {
+        console.error('[Atomic Sync] Failed to clean up orphaned local assessment:', cleanupError);
+      }
+      
+      return { 
+        success: false, 
+        skipped: true, 
+        reason: 'remote_deleted',
+        message: 'This assessment was deleted by an administrator. Local copy has been cleaned up.'
+      };
+    }
     
     if (remoteAssessment) {
       const remoteUpdated = new Date(remoteAssessment.updated_at).getTime();
