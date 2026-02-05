@@ -4,11 +4,14 @@ import path from "path";
 import { componentTagger } from "lovable-tagger";
 import { pwaConfig } from "./vite-pwa-config";
 
-// Version follows vX.Y.Z format where Z increments by 10 on each deployment
- // v2.3.4 - Fix Super Admin Dashboard visibility with explicit FK hints
-   const APP_VERSION = "2.3.4";
+// Version follows non-standard vX.Y.Z rollover scheme:
+// - PATCH resets to .1 when reaching .10 (e.g., v2.3.9 → v2.4.1)
+// - MINOR resets to .1 when reaching .10 (e.g., v2.9.9 → v3.1.1)
+// See src/lib/version-calculator.ts for implementation
+// v2.3.5 - Add unit tests for version-calculator, fix vite.config comment
+   const APP_VERSION = "2.3.5";
    const BUILD_DATE = "02-05-2026";
-   const BUILD_TIMESTAMP = "02-05-2026 at 7:00 PM CST";
+   const BUILD_TIMESTAMP = "02-05-2026 at 8:00 PM CST";
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
