@@ -85,6 +85,7 @@ export default function TrainingForm() {
   const [reportHtml, setReportHtml] = useState<string>('');
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [userProfile, setUserProfile] = useState<any>(null);
+  const [modifiedByProfile, setModifiedByProfile] = useState<any>(null);
   const [signingOut, setSigningOut] = useState(false);
   
   // Tab navigation state
@@ -143,6 +144,28 @@ export default function TrainingForm() {
     };
     fetchInspectorProfile();
   }, [inspectorId]);
+
+  // Fetch modified-by profile (who last modified the report, if different from owner)
+  useEffect(() => {
+    const fetchModifiedByProfile = async () => {
+      if (!training?.last_modified_by || !navigator.onLine) return;
+      // Only fetch if modifier is different from the owner
+      if (training.last_modified_by === training.inspector_id) {
+        setModifiedByProfile(null);
+        return;
+      }
+      
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('first_name, last_name')
+        .eq('id', training.last_modified_by)
+        .maybeSingle();
+      
+      setModifiedByProfile(profile);
+    };
+    
+    fetchModifiedByProfile();
+  }, [training?.last_modified_by, training?.inspector_id]);
 
   const handleSignOut = async () => {
     setSigningOut(true);
@@ -363,6 +386,10 @@ export default function TrainingForm() {
       const updatedTraining = {
         ...training,
         updated_at: new Date().toISOString(),
+        // Track who modified the report if current user is not the owner
+        ...(currentUser?.id && currentUser.id !== training.inspector_id 
+          ? { last_modified_by: currentUser.id } 
+          : {}),
       };
 
       // Save offline (fire-and-forget for UI responsiveness)
@@ -1022,7 +1049,13 @@ export default function TrainingForm() {
           </div>
 
           <TabsContent value="info" className="space-y-6">
-            <TrainingHeader training={training} onUpdate={isReadOnly ? () => {} : updateTrainingField} isReadOnly={isReadOnly} />
+            <TrainingHeader 
+              training={training} 
+              onUpdate={isReadOnly ? () => {} : updateTrainingField} 
+              isReadOnly={isReadOnly}
+              userProfile={userProfile}
+              modifiedByProfile={modifiedByProfile}
+            />
           </TabsContent>
 
           <TabsContent value="delivery" className="space-y-6">

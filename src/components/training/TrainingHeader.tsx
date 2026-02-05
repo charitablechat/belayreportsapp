@@ -15,6 +15,8 @@ interface TrainingHeaderProps {
   training: any;
   onUpdate: (field: string, value: any) => void;
   isReadOnly?: boolean;
+  userProfile?: { first_name?: string; last_name?: string } | null;
+  modifiedByProfile?: { first_name?: string; last_name?: string } | null;
 }
 
 // Parse date string as local time to avoid timezone shifting
@@ -26,7 +28,17 @@ const parseLocalDate = (dateStr: string | null | undefined) => {
   return new Date(year, month - 1, day);
 };
 
-export default function TrainingHeader({ training, onUpdate, isReadOnly = false }: TrainingHeaderProps) {
+export default function TrainingHeader({ training, onUpdate, isReadOnly = false, userProfile, modifiedByProfile }: TrainingHeaderProps) {
+  // Build trainer name from the original owner's profile
+  const trainerName = userProfile?.first_name && userProfile?.last_name
+    ? `${userProfile.first_name} ${userProfile.last_name}`
+    : null;
+  
+  // Build modified by name if different from owner
+  const modifiedByName = modifiedByProfile?.first_name && modifiedByProfile?.last_name
+    ? `${modifiedByProfile.first_name} ${modifiedByProfile.last_name}`
+    : null;
+
   return (
     <Card>
       <CardHeader>
@@ -114,6 +126,18 @@ export default function TrainingHeader({ training, onUpdate, isReadOnly = false 
             disabled={isReadOnly}
           />
         </div>
+        
+        {/* Show "Report modified by" when a Super Admin has edited this report */}
+        {modifiedByName && (
+          <div className="space-y-2">
+            <Label className="text-sm text-muted-foreground">Report modified by</Label>
+            <VoiceNameInput
+              value={modifiedByName}
+              disabled
+              className="bg-muted/50 cursor-not-allowed"
+            />
+          </div>
+        )}
 
         <div className="space-y-2">
           <Label htmlFor="trainee_names">Trainee Name(s)</Label>
