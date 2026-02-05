@@ -5,10 +5,10 @@ import { componentTagger } from "lovable-tagger";
 import { pwaConfig } from "./vite-pwa-config";
 
 // Version follows vX.Y.Z format where Z increments by 10 on each deployment
-  // v2.2.96 - Fix Previous Inspection Date column type to support N/A and Unknown values
-  const APP_VERSION = "2.2.96";
+  // v2.2.97 - Fix mobile report viewer text overlap and clipping
+  const APP_VERSION = "2.2.97";
   const BUILD_DATE = "02-05-2026";
-  const BUILD_TIMESTAMP = "02-05-2026 at 1:00 PM CST";
+  const BUILD_TIMESTAMP = "02-05-2026 at 2:00 PM CST";
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
