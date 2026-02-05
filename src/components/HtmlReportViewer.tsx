@@ -52,15 +52,177 @@ export function HtmlReportViewer({
     }
   };
 
-  // Add mobile base styles to ensure viewport consistency
+  // Comprehensive mobile styles to ensure viewport consistency and prevent overlap/clipping
   const mobileBaseStyles = `
     <style>
+      /* Base reset */
       html, body {
         max-width: 100vw !important;
         overflow-x: hidden !important;
       }
       * {
         box-sizing: border-box !important;
+      }
+      
+      /* Mobile viewport fixes (< 600px) - Minimal Brutalism style */
+      @media screen and (max-width: 600px) {
+        /* Global overflow prevention */
+        html, body, .page, .page-content {
+          max-width: 100vw !important;
+          overflow-x: hidden !important;
+          overflow-wrap: break-word !important;
+          word-wrap: break-word !important;
+        }
+        
+        /* Header: Stack vertically to prevent overlap */
+        .page-header {
+          flex-direction: column !important;
+          align-items: center !important;
+          gap: 8px !important;
+          padding-bottom: 10px !important;
+          min-height: auto !important;
+          max-height: none !important;
+        }
+        
+        .header-left, .header-right, .header-center {
+          position: static !important;
+          transform: none !important;
+          text-align: center !important;
+          width: 100% !important;
+        }
+        
+        .header-title {
+          max-width: 100% !important;
+          font-size: 8pt !important;
+          white-space: normal !important;
+        }
+        
+        /* Table-based header logos - stack on mobile */
+        .header-logo-table {
+          table-layout: auto !important;
+        }
+        
+        .header-logo-table tr {
+          display: flex !important;
+          flex-direction: column !important;
+          align-items: center !important;
+          gap: 8px !important;
+        }
+        
+        .header-cell-left, .header-cell-right {
+          display: block !important;
+          width: 100% !important;
+          text-align: center !important;
+          padding: 4px 0 !important;
+        }
+        
+        /* Info grid: Single column with clear separation */
+        .info-grid {
+          display: block !important;
+        }
+        
+        .info-cell, .info-item {
+          display: block !important;
+          margin-bottom: 12px !important;
+          border-bottom: 1px solid #e5e7eb !important;
+          padding-bottom: 8px !important;
+        }
+        
+        .info-label {
+          display: block !important;
+          white-space: normal !important;
+          margin-bottom: 4px !important;
+          font-weight: 700 !important;
+        }
+        
+        .info-value {
+          display: block !important;
+          word-break: break-word !important;
+          border-bottom: none !important;
+        }
+        
+        /* Tables: Prevent content overlap */
+        table {
+          font-size: 8pt !important;
+          table-layout: auto !important;
+          width: 100% !important;
+        }
+        
+        th, td {
+          padding: 4px 6px !important;
+          word-break: break-word !important;
+          overflow-wrap: break-word !important;
+          white-space: normal !important;
+          max-width: none !important;
+        }
+        
+        .result-checkbox {
+          white-space: normal !important;
+          font-size: 7pt !important;
+          line-height: 1.3 !important;
+        }
+        
+        /* Footer: Full width, no clipping */
+        .page-footer {
+          margin-top: 16px !important;
+        }
+        
+        .disclaimer, .footer-disclaimer {
+          max-width: 100% !important;
+          font-size: 7pt !important;
+          padding: 0 4px !important;
+          text-align: center !important;
+        }
+        
+        /* Typography: Prevent clipping */
+        h1 { 
+          font-size: 16pt !important; 
+          word-break: break-word !important;
+          line-height: 1.3 !important;
+        }
+        h2 { 
+          font-size: 12pt !important; 
+          padding: 6px 8px !important;
+          word-break: break-word !important;
+        }
+        h3 { 
+          font-size: 10pt !important;
+          word-break: break-word !important;
+        }
+        
+        /* Text containers */
+        .text-block, .text-content, .key-section, .critical-box, .standards-box {
+          word-break: break-word !important;
+          overflow-wrap: break-word !important;
+          padding: 8px !important;
+        }
+        
+        /* Bullet lists */
+        .bullet-list, .summary-list, ul {
+          padding-left: 16px !important;
+          margin-left: 0 !important;
+        }
+        
+        .bullet-list li, .summary-list li, ul li {
+          word-break: break-word !important;
+          font-size: 9pt !important;
+          line-height: 1.4 !important;
+        }
+        
+        /* Photo gallery: Single column */
+        .photo-gallery {
+          grid-template-columns: 1fr !important;
+          gap: 12px !important;
+        }
+        
+        .photo-item {
+          width: 100% !important;
+        }
+        
+        /* Systems/checklist grids */
+        .systems-grid {
+          grid-template-columns: 1fr !important;
+        }
       }
     </style>
   `;

@@ -548,6 +548,63 @@ serve(async (req) => {
       .page-title { font-size: 18px; }
       .section-title { font-size: 12px; }
     }
+
+    /* Enhanced mobile viewport (< 600px) - Prevent overlap/clipping */
+    @media screen and (max-width: 600px) {
+      /* Header: Stack to prevent overlap */
+      .page-header {
+        flex-direction: column !important;
+        align-items: center !important;
+        gap: 8px !important;
+        padding-bottom: 10px !important;
+      }
+      
+      .header-left, .header-right {
+        position: static !important;
+        text-align: center !important;
+        width: 100% !important;
+      }
+      
+      /* Info grid: Single column, clear separation */
+      .info-item {
+        display: block !important;
+        margin-bottom: 12px !important;
+        border-bottom: 1px solid #e5e7eb !important;
+        padding-bottom: 8px !important;
+      }
+      
+      .info-label {
+        display: block !important;
+        white-space: normal !important;
+        margin-bottom: 4px !important;
+      }
+      
+      .info-value {
+        display: block !important;
+        word-break: break-word !important;
+      }
+      
+      /* Text containers: Prevent clipping */
+      .text-content, .standards-box {
+        word-break: break-word !important;
+        overflow-wrap: break-word !important;
+        padding: 8px !important;
+      }
+      
+      /* Lists: Readable sizing */
+      li {
+        word-break: break-word !important;
+        font-size: 9pt !important;
+        line-height: 1.4 !important;
+      }
+      
+      /* Footer: Full width */
+      .footer-disclaimer {
+        max-width: 100% !important;
+        padding: 0 4px !important;
+        text-align: center !important;
+      }
+    }
   </style>
 </head>
 <body>
