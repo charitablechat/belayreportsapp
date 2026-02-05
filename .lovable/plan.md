@@ -1,199 +1,148 @@
 
-# Plan: Fix Mobile PWA Sync Failure - Session Validation (v2.2.101)
 
-## Problem Summary
+# Plan: Enable Super Admin Edit Access for All Reports (v2.3.2)
 
-Mobile PWA users are experiencing sync failures where new inspection records created on mobile don't appear on the web version. The database logs show RLS policy violations, indicating the JWT token used for database operations is invalid or expired.
+## Summary
 
-## Root Cause
+This plan enables Super Admins to edit all reports (Inspections, Trainings, Daily Assessments), not just view them. Currently, Super Admins have view-only access when viewing reports created by other users. This change will allow full edit capabilities while maintaining data accountability through audit logging.
 
-The sync manager uses `getUserWithCache()` which returns a cached user from localStorage. However, this does NOT guarantee the Supabase client has a valid JWT token. When the JWT expires:
+## Current State Analysis
 
-1. `getUserWithCache()` returns the cached user (check passes)
-2. `inspection.inspector_id === user.id` check passes
-3. Supabase client makes request with expired/invalid JWT
-4. RLS check fails because `auth.uid()` returns NULL
-5. Error: "new row violates row-level security policy"
+### Frontend (UI Layer)
+The `useReportEditPermission` hook currently returns `canEdit: false` for Super Admins viewing other users' reports:
 
-```text
-Flow Diagram:
-
-+-------------------+     +------------------+     +-------------------+
-| getUserWithCache()|---->| Returns cached   |---->| inspector_id      |
-| (localStorage)    |     | user from storage|     | check PASSES      |
-+-------------------+     +------------------+     +-------------------+
-                                                           |
-                                                           v
-+-------------------+     +------------------+     +-------------------+
-| Supabase.upsert() |---->| Uses JWT from    |---->| JWT expired?      |
-| (database call)   |     | client session   |     | auth.uid() = NULL |
-+-------------------+     +------------------+     +-------------------+
-                                                           |
-                                                           v
-                                                  +-------------------+
-                                                  | RLS FAILS!        |
-                                                  | "violates policy" |
-                                                  +-------------------+
+```typescript
+// Current behavior (lines 122-131)
+if (isSuperAdmin) {
+  return {
+    canEdit: false,        // ← Blocks editing
+    isReadOnly: true,      // ← Disables all inputs
+    readOnlyReason: 'Super Admins have view-only access...'
+  };
+}
 ```
 
-## Solution
+### Backend (Database Layer)
+Super Admin UPDATE policies **already exist** for all main tables:
+- `inspections` - "Super admins can update all inspections"
+- `trainings` - "Super admins can update all trainings"  
+- `daily_assessments` - "Super admins can update all daily assessments"
+- All training child tables have `ALL` policies for Super Admins
 
-Add session validation BEFORE database operations in the atomic sync manager. If the session is invalid, refresh it before proceeding.
+**Missing policies** for inspection child tables:
+- `inspection_systems`
+- `inspection_ziplines`
+- `inspection_equipment`
+- `inspection_standards`
+- `inspection_summary`
+- `inspection_photos`
+
+**Missing policies** for daily assessment child tables:
+- `daily_assessment_beginning_of_day`
+- `daily_assessment_end_of_day`
+- `daily_assessment_environment_checks`
+- `daily_assessment_equipment_checks`
+- `daily_assessment_operating_systems`
+- `daily_assessment_structure_checks`
+
+---
+
+## Implementation Plan
+
+### Step 1: Update Permission Hook
+
+**File:** `src/hooks/useReportEditPermission.tsx`
+
+**Change:** Modify the Super Admin case to return `canEdit: true` and `isReadOnly: false`
+
+```typescript
+// AFTER - Super Admin viewing someone else's report - full edit access
+if (isSuperAdmin) {
+  return {
+    canEdit: true,         // ← Enable editing
+    isReadOnly: false,     // ← Enable all inputs
+    isOwner: false,
+    isSuperAdmin: true,
+    isLoading: false,
+    readOnlyReason: null   // ← No restriction message
+  };
+}
+```
+
+**Documentation Update:** Update the JSDoc comment to reflect the new policy
+
+---
+
+### Step 2: Add Missing Database RLS Policies
+
+**Tables Requiring UPDATE Policies for Super Admins:**
+
+| Table | Policy Name |
+|-------|-------------|
+| `inspection_systems` | Super admins can update all inspection systems |
+| `inspection_ziplines` | Super admins can update all inspection ziplines |
+| `inspection_equipment` | Super admins can update all inspection equipment |
+| `inspection_standards` | Super admins can update all inspection standards |
+| `inspection_summary` | Super admins can update all inspection summaries |
+| `inspection_photos` | Super admins can update all inspection photos |
+| `daily_assessment_beginning_of_day` | Super admins can update all beginning of day checks |
+| `daily_assessment_end_of_day` | Super admins can update all end of day checks |
+| `daily_assessment_environment_checks` | Super admins can update all environment checks |
+| `daily_assessment_equipment_checks` | Super admins can update all equipment checks |
+| `daily_assessment_operating_systems` | Super admins can update all operating systems |
+| `daily_assessment_structure_checks` | Super admins can update all structure checks |
+
+**SQL Migration:**
+
+```sql
+-- Super Admin UPDATE policies for inspection child tables
+CREATE POLICY "Super admins can update all inspection systems"
+  ON inspection_systems FOR UPDATE
+  USING (is_super_admin())
+  WITH CHECK (is_super_admin());
+
+CREATE POLICY "Super admins can update all inspection ziplines"
+  ON inspection_ziplines FOR UPDATE
+  USING (is_super_admin())
+  WITH CHECK (is_super_admin());
+
+-- (Similar for all other tables...)
+```
+
+---
+
+### Step 3: Version Bump
+
+**File:** `vite.config.ts`
+
+Update version to **v2.3.2** with changelog comment.
+
+---
 
 ## Files to Modify
 
 | File | Action | Description |
 |------|--------|-------------|
-| `src/lib/cached-auth.ts` | **Add function** | Add `ensureValidSession()` that validates and refreshes JWT if needed |
-| `src/lib/atomic-sync-manager.ts` | **Modify** | Call `ensureValidSession()` before any database operations |
-| `vite.config.ts` | **Modify** | Version bump to 2.2.101 |
+| `src/hooks/useReportEditPermission.tsx` | **Modify** | Change Super Admin logic to allow editing |
+| `vite.config.ts` | **Modify** | Version bump to 2.3.2 |
+| Database | **Migration** | Add 12 UPDATE policies for child tables |
 
 ---
 
-## Implementation Details
+## Security Considerations
 
-### 1. Add Session Validation Function (cached-auth.ts)
-
-Add a new function that ensures the Supabase client has a valid session before making database calls:
-
-```typescript
-/**
- * Ensures the Supabase client has a valid session before database operations.
- * This is critical for sync operations that rely on RLS policies.
- * 
- * Unlike getUserWithCache() which reads from localStorage, this actually
- * validates the session with the Supabase client and refreshes if needed.
- * 
- * @returns The current user if session is valid, null otherwise
- */
-export async function ensureValidSession(): Promise<CachedUser | null> {
-  try {
-    // First, try to get the current session
-    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-    
-    if (sessionError) {
-      console.error('[CachedAuth] Session error:', sessionError);
-      return null;
-    }
-    
-    // If no session, user needs to log in
-    if (!session) {
-      console.warn('[CachedAuth] No active session');
-      return null;
-    }
-    
-    // Check if token needs refresh (within 60 seconds of expiry)
-    const expiresAt = session.expires_at || 0;
-    const now = Math.floor(Date.now() / 1000);
-    const needsRefresh = expiresAt - now < 60;
-    
-    if (needsRefresh) {
-      console.log('[CachedAuth] Session expiring soon, refreshing...');
-      const { data: { session: refreshedSession }, error: refreshError } = 
-        await supabase.auth.refreshSession();
-      
-      if (refreshError || !refreshedSession) {
-        console.error('[CachedAuth] Failed to refresh session:', refreshError);
-        return null;
-      }
-      
-      // Update cache with refreshed user
-      cachedUser = refreshedSession.user;
-      cacheTimestamp = Date.now();
-      return refreshedSession.user;
-    }
-    
-    // Session is valid - update cache and return user
-    cachedUser = session.user;
-    cacheTimestamp = Date.now();
-    return session.user;
-    
-  } catch (error) {
-    console.error('[CachedAuth] Error validating session:', error);
-    return null;
-  }
-}
-```
-
-### 2. Update Atomic Sync Manager
-
-Modify `syncInspectionAtomic()` to validate the session before any database operations:
-
-```typescript
-// At the start of syncInspectionAtomic(), after the offline check:
-
-// CRITICAL: Ensure we have a valid JWT before any database operations
-// This prevents RLS failures due to expired tokens
-const validUser = await ensureValidSession();
-if (!validUser) {
-  console.error('[Atomic Sync] No valid session - sync aborted');
-  return { success: false, skipped: true, reason: 'invalid_session' };
-}
-
-// Use the validated user instead of cached user for ownership check
-if (inspection.inspector_id !== validUser.id) {
-  // ... existing ownership mismatch handling
-}
-```
-
-Similarly update:
-- `syncTrainingAtomic()`
-- `syncDailyAssessmentAtomic()`
-- `syncAllInspectionsAtomic()` (before the loop)
-- `syncAllTrainingsAtomic()` (before the loop)  
-- `syncAllDailyAssessmentsAtomic()` (before the loop)
-
-### 3. Version Bump
-
-Update version to **2.2.101** in `vite.config.ts`.
-
----
-
-## Technical Details
-
-### Why This Happens on Mobile More Often
-
-1. **Background sync timing**: Mobile devices often have longer intervals between syncs
-2. **App suspension**: iOS/Android suspend apps, sessions can expire while suspended
-3. **Network transitions**: Moving between WiFi/cellular can cause session state issues
-4. **PWA lifecycle**: Service workers and background sync have different session handling
-
-### Session Expiry Flow
-
-```text
-T=0:    User logs in, JWT valid for 1 hour
-T=45m:  User creates inspection offline
-T=50m:  App goes to background (iOS suspends)
-T=65m:  User returns, triggers sync
-        - getUserWithCache() returns cached user (from localStorage)
-        - JWT in Supabase client is EXPIRED
-        - Database call fails with RLS error
-```
-
-### After Fix
-
-```text
-T=65m:  User returns, triggers sync
-        - ensureValidSession() checks JWT expiry
-        - Detects JWT expired, calls refreshSession()
-        - Gets new valid JWT
-        - Database call succeeds
-```
+1. **Audit Trail**: The `inspector_id` field remains immutable via database trigger (`prevent_inspector_id_change`), preserving original authorship
+2. **Accountability**: `updated_at` timestamps will show when Super Admins modify records
+3. **No Ownership Transfer**: Super Admins can edit content but cannot change who "owns" the report
 
 ---
 
 ## Testing Checklist
 
-1. **Normal sync flow** - Create inspection on mobile, verify appears on web
-2. **Expired session** - Wait 5+ minutes, sync should auto-refresh token
-3. **Offline creation** - Create offline, come online, verify sync works
-4. **Session refresh** - Verify refresh token flow works correctly
-5. **Error handling** - If refresh fails, verify proper error message shown
+1. **Super Admin Editing Own Report** - Should work (unchanged)
+2. **Super Admin Editing Another User's Report** - Should now work (previously blocked)
+3. **Regular User Editing Own Report** - Should work (unchanged)
+4. **Regular User Editing Another User's Report** - Should be blocked by RLS (unchanged)
+5. **Inspector ID Immutability** - Verify the trigger still prevents ownership changes
+6. **All Form Inputs** - Verify date pickers, text fields, selects, and photo uploads are enabled
 
----
-
-## Rollback Plan
-
-If issues arise, the change is isolated to session validation. Rollback by:
-1. Removing `ensureValidSession()` calls in atomic-sync-manager.ts
-2. Reverting to using `getUserWithCache()` directly
