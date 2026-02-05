@@ -8,15 +8,6 @@ import { ArrowLeft, Save, FileText, Loader2, WifiOff, Check, Sunrise, Sunset, Se
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { AutoSaveIndicator } from "@/components/AutoSaveIndicator";
-import { UserAvatar } from "@/components/ui/user-avatar";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -44,6 +35,7 @@ import { triggerHaptic } from "@/lib/haptics";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useSwipeNavigation } from "@/hooks/useSwipeNavigation";
 import { SwipeBackIndicator } from "@/components/SwipeBackIndicator";
+import { UserProfileDropdown } from "@/components/UserProfileDropdown";
 import { toast } from "sonner";
 import { isMobile } from "@/lib/mobile-detection";
 import { addSyncNotification, addSaveNotification, addNotification } from "@/lib/notification-center";
@@ -88,11 +80,12 @@ export default function DailyAssessmentForm() {
   const [reportHtml, setReportHtml] = useState<string>('');
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [userProfile, setUserProfile] = useState<any>(null);
+  const [signingOut, setSigningOut] = useState(false);
   
   // Tab navigation state
   const [currentTab, setCurrentTab] = useState("beginning");
   const tabOrder = ["beginning", "end", "systems", "equipment", "structure", "environment"];
-  
+
   // Swipe navigation for mobile (swipe right on first tab navigates back)
   const isFirstTab = currentTab === tabOrder[0];
   const { containerRef: swipeContainerRef, swipeState } = useSwipeNavigation({
@@ -147,6 +140,7 @@ export default function DailyAssessmentForm() {
   }, [inspectorId]);
 
   const handleSignOut = async () => {
+    setSigningOut(true);
     await supabase.auth.signOut();
     navigate("/");
   };
@@ -974,36 +968,13 @@ export default function DailyAssessmentForm() {
               <img src={ropeWorksLogo} alt="Rope Works" className="h-8 sm:h-10 w-auto object-contain" />
             </div>
             
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="rounded-full">
-                  <UserAvatar 
-                    userEmail={currentUser?.email ?? null}
-                    avatarUrl={userProfile?.avatar_url ?? null}
-                  />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56">
-                <DropdownMenuLabel>
-                  <div className="flex flex-col space-y-1">
-                    <p className="text-sm font-medium">Account</p>
-                    <p className="text-xs text-muted-foreground truncate">
-                      {currentUser?.email || 'user@example.com'}
-                    </p>
-                  </div>
-                </DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => navigate('/profile')}>
-                  <User className="w-4 h-4 mr-2" />
-                  Profile
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={handleSignOut}>
-                  <LogOut className="w-4 h-4 mr-2" />
-                  Sign Out
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <UserProfileDropdown
+              currentUser={currentUser}
+              userProfile={userProfile}
+              isSuperAdmin={isSuperAdmin}
+              onSignOut={handleSignOut}
+              signingOut={signingOut}
+            />
           </div>
           
           {/* Bottom row - Status indicators and action buttons */}
