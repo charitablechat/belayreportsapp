@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { getUserWithCache } from "@/lib/cached-auth";
+import { getUserWithCache, getSuperAdminStatusWithCache } from "@/lib/cached-auth";
 
 interface UseReportEditPermissionProps {
   inspectorId: string | undefined | null;
@@ -49,11 +49,9 @@ export function useReportEditPermission({
         setCurrentUserId(user?.id ?? null);
 
         if (user) {
-          // Check super admin status using RPC
-          const { data: superAdminStatus, error } = await supabase.rpc('is_super_admin');
-          if (!error) {
-            setIsSuperAdmin(!!superAdminStatus);
-          }
+          // Use cached super admin status for performance
+          const superAdminStatus = await getSuperAdminStatusWithCache();
+          setIsSuperAdmin(superAdminStatus);
         }
       } catch (error) {
         console.error('[useReportEditPermission] Error checking permissions:', error);
@@ -69,8 +67,8 @@ export function useReportEditPermission({
       async (_event, session) => {
         setCurrentUserId(session?.user?.id ?? null);
         if (session?.user) {
-          const { data: superAdminStatus } = await supabase.rpc('is_super_admin');
-          setIsSuperAdmin(!!superAdminStatus);
+          const superAdminStatus = await getSuperAdminStatusWithCache();
+          setIsSuperAdmin(superAdminStatus);
         } else {
           setIsSuperAdmin(false);
         }

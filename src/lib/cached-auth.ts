@@ -12,6 +12,12 @@ let cacheTimestamp: number = 0;
 let pendingUserPromise: Promise<CachedUser | null> | null = null;
 let authListenerInitialized = false;
 const CACHE_TTL = 60000; // 1 minute cache
+
+// Super admin status cache - reduces redundant RPC calls
+let cachedSuperAdminStatus: boolean | null = null;
+let superAdminCacheTimestamp: number = 0;
+let pendingSuperAdminPromise: Promise<boolean> | null = null;
+const SUPER_ADMIN_CACHE_TTL = 120000; // 2 minutes
 const SESSION_REFRESH_BUFFER = 60; // Refresh if within 60 seconds of expiry
 
 /**
@@ -137,6 +143,64 @@ export function invalidateUserCache() {
   cachedUser = null;
   cacheTimestamp = 0;
   pendingUserPromise = null;
+  // Also invalidate super admin cache on user cache invalidation
+  invalidateSuperAdminCache();
+}
+
+/**
+ * Gets the super admin status with session-level caching.
+ * Uses a single-flight pattern to deduplicate concurrent requests.
+ * Falls back to localStorage when offline.
+ */
+export async function getSuperAdminStatusWithCache(): Promise<boolean> {
+  const now = Date.now();
+  
+  // Return cached value if still valid
+  if (cachedSuperAdminStatus !== null && (now - superAdminCacheTimestamp) < SUPER_ADMIN_CACHE_TTL) {
+    return cachedSuperAdminStatus;
+  }
+  
+  // Single-flight pattern - dedupe concurrent requests
+  if (pendingSuperAdminPromise) {
+    return pendingSuperAdminPromise;
+  }
+  
+  // Check localStorage for offline fallback
+  const localCached = localStorage.getItem('cached-super-admin-status');
+  if (!navigator.onLine && localCached !== null) {
+    return localCached === 'true';
+  }
+  
+  pendingSuperAdminPromise = (async () => {
+    try {
+      const { data, error } = await supabase.rpc('is_super_admin');
+      if (error) throw error;
+      
+      const status = !!data;
+      cachedSuperAdminStatus = status;
+      superAdminCacheTimestamp = Date.now();
+      localStorage.setItem('cached-super-admin-status', status.toString());
+      
+      return status;
+    } catch (error) {
+      console.warn('[CachedAuth] Error checking super admin status:', error);
+      // Return cached localStorage value on error
+      return localCached === 'true';
+    } finally {
+      pendingSuperAdminPromise = null;
+    }
+  })();
+  
+  return pendingSuperAdminPromise;
+}
+
+/**
+ * Invalidates the super admin status cache - call this on role changes or sign-out
+ */
+export function invalidateSuperAdminCache() {
+  cachedSuperAdminStatus = null;
+  superAdminCacheTimestamp = 0;
+  pendingSuperAdminPromise = null;
 }
 
 /**

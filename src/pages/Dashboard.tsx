@@ -36,7 +36,7 @@ import { getOfflineInspections, deleteOfflineInspection, queueOperation, saveIns
 import { ContactDeveloperSheet } from "@/components/ContactDeveloperSheet";
 import { onSyncComplete } from "@/lib/sync-events";
 import { InspectionsEmptyState, TrainingsEmptyState, DailyAssessmentsEmptyState } from "@/components/EmptyState";
-import { getUserWithCache } from "@/lib/cached-auth";
+import { getUserWithCache, getSuperAdminStatusWithCache, invalidateSuperAdminCache } from "@/lib/cached-auth";
 /* Holiday Theme Components */
 import { FallingHearts } from "@/components/christmas/FallingHearts";
 import { HolidayBanner } from "@/components/christmas/HolidayBanner";
@@ -166,6 +166,13 @@ export default function Dashboard() {
       const user = await getUserWithCache();
       const userId = user?.id;
       
+      // Get super admin status once using cached function (for offline storage bypass)
+      // This uses single-flight pattern to dedupe concurrent requests
+      let superAdminStatus = false;
+      if (user) {
+        superAdminStatus = await getSuperAdminStatusWithCache();
+      }
+      
       // Safety timeout to prevent skeleton loading state from getting stuck
       // If data loads from offline storage, we want to show it immediately
       const LOAD_TIMEOUT = 8000;
@@ -179,12 +186,12 @@ export default function Dashboard() {
       }, LOAD_TIMEOUT);
       
       try {
-        // Batch all data loading operations with shared userId
+        // Batch all data loading operations with shared userId and superAdminStatus
         // Each function sets state independently, so data appears as it loads
         await Promise.all([
-          loadInspections(userId),
-          loadTrainingReports(userId),
-          loadDailyAssessments(userId)
+          loadInspections(userId, superAdminStatus),
+          loadTrainingReports(userId, superAdminStatus),
+          loadDailyAssessments(userId, superAdminStatus)
         ]);
       } finally {
         loadCompleted = true;
@@ -227,13 +234,16 @@ export default function Dashboard() {
     );
 
     // Listen for online/offline events
-    const handleOnline = () => {
+    const handleOnline = async () => {
       setIsOnline(true);
       // Invalidate super admin status to refresh from server
+      invalidateSuperAdminCache();
       queryClient.invalidateQueries({ queryKey: ["is-super-admin"] });
-      loadInspections(); // Reload when coming back online
-      loadTrainingReports();
-      loadDailyAssessments();
+      // Get fresh super admin status
+      const superAdminStatus = await getSuperAdminStatusWithCache();
+      loadInspections(undefined, superAdminStatus); // Reload when coming back online
+      loadTrainingReports(undefined, superAdminStatus);
+      loadDailyAssessments(undefined, superAdminStatus);
     };
     const handleOffline = () => setIsOnline(false);
 
@@ -247,12 +257,15 @@ export default function Dashboard() {
         console.log('[Dashboard] Sync complete event received - reloading data');
       }
       // Invalidate super admin status on sync (in case user roles were updated)
+      invalidateSuperAdminCache();
       queryClient.invalidateQueries({ queryKey: ["is-super-admin"] });
+      // Get fresh super admin status and reload with it
+      const superAdminStatus = await getSuperAdminStatusWithCache();
       // Reload fresh data after background sync completes
       await Promise.all([
-        loadInspections(),
-        loadTrainingReports(),
-        loadDailyAssessments()
+        loadInspections(undefined, superAdminStatus),
+        loadTrainingReports(undefined, superAdminStatus),
+        loadDailyAssessments(undefined, superAdminStatus)
       ]);
     });
 
@@ -279,14 +292,17 @@ export default function Dashboard() {
     ]);
   };
 
-  const loadInspections = async (cachedUserId?: string) => {
+  const loadInspections = async (cachedUserId?: string, cachedIsSuperAdmin?: boolean) => {
     try {
       // Use passed userId or fetch from cache
       const userId = cachedUserId || (await getUserWithCache())?.id;
       
+      // Get super admin status if not passed (for backward compatibility)
+      const isSuperAdmin = cachedIsSuperAdmin ?? await getSuperAdminStatusWithCache();
+      
       // PARALLEL LOADING: Start both IndexedDB and Supabase fetches simultaneously
       // This ensures mobile users see data quickly even if IndexedDB times out
-      const offlinePromise = getOfflineInspections(userId).catch(() => []);
+      const offlinePromise = getOfflineInspections(userId, isSuperAdmin).catch(() => []);
       
       let supabasePromise: Promise<any[]> = Promise.resolve([]);
       if (navigator.onLine) {
@@ -352,13 +368,16 @@ export default function Dashboard() {
     }
   };
 
-  const loadTrainingReports = async (cachedUserId?: string) => {
+  const loadTrainingReports = async (cachedUserId?: string, cachedIsSuperAdmin?: boolean) => {
     try {
       // Use passed userId or fetch from cache
       const userId = cachedUserId || (await getUserWithCache())?.id;
       
+      // Get super admin status if not passed (for backward compatibility)
+      const isSuperAdmin = cachedIsSuperAdmin ?? await getSuperAdminStatusWithCache();
+      
       // PARALLEL LOADING: Start both fetches simultaneously
-      const offlinePromise = getOfflineTrainings(userId).catch(() => []);
+      const offlinePromise = getOfflineTrainings(userId, isSuperAdmin).catch(() => []);
       
       let supabasePromise: Promise<any[]> = Promise.resolve([]);
       if (navigator.onLine) {
@@ -419,13 +438,16 @@ export default function Dashboard() {
     }
   };
 
-  const loadDailyAssessments = async (cachedUserId?: string) => {
+  const loadDailyAssessments = async (cachedUserId?: string, cachedIsSuperAdmin?: boolean) => {
     try {
       // Use passed userId or fetch from cache
       const userId = cachedUserId || (await getUserWithCache())?.id;
       
+      // Get super admin status if not passed (for backward compatibility)
+      const isSuperAdmin = cachedIsSuperAdmin ?? await getSuperAdminStatusWithCache();
+      
       // PARALLEL LOADING: Start both fetches simultaneously
-      const offlinePromise = getOfflineDailyAssessments(userId).catch(() => []);
+      const offlinePromise = getOfflineDailyAssessments(userId, isSuperAdmin).catch(() => []);
       
       let supabasePromise: Promise<any[]> = Promise.resolve([]);
       if (navigator.onLine) {
