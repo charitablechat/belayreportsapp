@@ -100,7 +100,21 @@ export const useAutoSync = () => {
       if (import.meta.env.DEV) {
         console.log('[AutoSync] Sync already in progress - skipping');
       }
-      return;
+      // Return a promise that resolves when current sync completes
+      // This prevents callers from thinking sync is done immediately
+      return new Promise<void>((resolve) => {
+        const checkInterval = setInterval(() => {
+          if (!syncInProgressRef.current) {
+            clearInterval(checkInterval);
+            resolve();
+          }
+        }, 500);
+        // Safety: resolve after 35s regardless
+        setTimeout(() => {
+          clearInterval(checkInterval);
+          resolve();
+        }, 35000);
+      });
     }
     
     // Debounce protection
@@ -205,7 +219,6 @@ export const useAutoSync = () => {
     } catch (error: any) {
       console.error('[AutoSync] Sync failed:', error);
       clearTimeout(safetyTimeoutHandle);
-      setState(prev => ({ ...prev, isSyncing: false }));
       
       // Show explicit error toast for sync failures (bypass mobile notification center for visibility)
       // Import toast from 'sonner' at the top (already imported via addSyncNotification usage)
@@ -215,8 +228,10 @@ export const useAutoSync = () => {
       // Desktop toast is not needed here since errors are usually transient and auto-retry handles them
     } finally {
       syncInProgressRef.current = false;
+      // CRITICAL: Always reset isSyncing state in finally block to prevent stuck spinner
+      setState(prev => ({ ...prev, isSyncing: false }));
     }
-  }, [queryClient]);
+  }, [queryClient, isMobileDevice, isIOSDevice]);
   
   /**
    * Update unsynced counts from IndexedDB - uses cached auth
