@@ -87,7 +87,12 @@ serve(async (req) => {
     // Helper functions
     const formatDate = (dateStr: string | null) => {
       if (!dateStr) return 'N/A';
+     // Pass through special values without parsing
+     const SPECIAL_DATE_VALUES = ["N/A", "Unknown"];
+     if (SPECIAL_DATE_VALUES.includes(dateStr)) return dateStr;
       const date = new Date(dateStr);
+     // If invalid date, return original string
+     if (isNaN(date.getTime())) return dateStr;
       return date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
     };
 
