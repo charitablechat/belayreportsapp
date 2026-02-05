@@ -9,14 +9,27 @@ import { cn } from "@/lib/utils";
 import { OrganizationAutocomplete } from "@/components/OrganizationAutocomplete";
 import { GlobalAutocomplete } from "@/components/GlobalAutocomplete";
 import { parseLocalDate } from "@/lib/date-utils";
+import { Input } from "@/components/ui/input";
 
 interface DailyAssessmentHeaderProps {
   assessment: any;
   onUpdate: (field: string, value: any) => void;
   isReadOnly?: boolean;
+  userProfile?: { first_name?: string; last_name?: string } | null;
+  modifiedByProfile?: { first_name?: string; last_name?: string } | null;
 }
 
-export default function DailyAssessmentHeader({ assessment, onUpdate, isReadOnly = false }: DailyAssessmentHeaderProps) {
+export default function DailyAssessmentHeader({ assessment, onUpdate, isReadOnly = false, userProfile, modifiedByProfile }: DailyAssessmentHeaderProps) {
+  // Build trainer name from the original owner's profile
+  const trainerName = userProfile?.first_name && userProfile?.last_name
+    ? `${userProfile.first_name} ${userProfile.last_name}`
+    : null;
+  
+  // Build modified by name if different from owner
+  const modifiedByName = modifiedByProfile?.first_name && modifiedByProfile?.last_name
+    ? `${modifiedByProfile.first_name} ${modifiedByProfile.last_name}`
+    : null;
+
   return (
     <Card>
       <CardContent className="pt-6 space-y-4">
@@ -74,6 +87,18 @@ export default function DailyAssessmentHeader({ assessment, onUpdate, isReadOnly
               disabled={isReadOnly}
             />
           </div>
+          
+          {/* Show "Report modified by" when a Super Admin has edited this report */}
+          {modifiedByName && (
+            <div className="md:col-span-2">
+              <Label className="text-sm text-muted-foreground">Report modified by</Label>
+              <Input
+                value={modifiedByName}
+                disabled
+                className="bg-muted/50 cursor-not-allowed"
+              />
+            </div>
+          )}
         </div>
       </CardContent>
     </Card>

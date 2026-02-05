@@ -9,15 +9,21 @@ import { PreviousInspectionDatePicker } from "@/components/PreviousInspectionDat
 interface InspectionHeaderProps {
   inspection: any;
   userProfile: any;
+  modifiedByProfile?: { first_name?: string; last_name?: string } | null;
   onUpdate: (field: string, value: string) => void;
   onImmediateSave?: () => void;
   isReadOnly?: boolean;
 }
 
-export default function InspectionHeader({ inspection, userProfile, onUpdate, onImmediateSave, isReadOnly = false }: InspectionHeaderProps) {
+export default function InspectionHeader({ inspection, userProfile, modifiedByProfile, onUpdate, onImmediateSave, isReadOnly = false }: InspectionHeaderProps) {
   const inspectorName = userProfile?.first_name && userProfile?.last_name
     ? `${userProfile.first_name} ${userProfile.last_name}`
     : 'Current User';
+  
+  // Build modified by name if different from inspector
+  const modifiedByName = modifiedByProfile?.first_name && modifiedByProfile?.last_name
+    ? `${modifiedByProfile.first_name} ${modifiedByProfile.last_name}`
+    : null;
 
   const renderField = (label: string, field: string, value: string, type: string = "text", isTextarea: boolean = false) => {
     return (
@@ -71,6 +77,17 @@ export default function InspectionHeader({ inspection, userProfile, onUpdate, on
                   className="bg-muted/50 cursor-not-allowed"
                 />
               </div>
+              {/* Show "Report modified by" when a Super Admin has edited this report */}
+              {modifiedByName && (
+                <div>
+                  <Label className="text-sm text-muted-foreground">Report modified by</Label>
+                  <VoiceInput
+                    value={modifiedByName}
+                    disabled
+                    className="bg-muted/50 cursor-not-allowed"
+                  />
+                </div>
+              )}
               <div>
                 <Label className="text-sm text-muted-foreground">Facility Name</Label>
                 <OrganizationAutocomplete

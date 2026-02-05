@@ -97,6 +97,7 @@ export default function InspectionForm() {
   const [systems, setSystems] = useState<any[]>([]);
   const [ziplines, setZiplines] = useState<any[]>([]);
   const [equipment, setEquipment] = useState<any[]>([]);
+  const [modifiedByProfile, setModifiedByProfile] = useState<any>(null);
   const [standards, setStandards] = useState<any[]>([
     { id: crypto.randomUUID(), standard_name: "Local Written Operations Procedures", has_documentation: null },
     { id: crypto.randomUUID(), standard_name: "Local Written Emergency Action Plan", has_documentation: null },
@@ -323,6 +324,28 @@ export default function InspectionForm() {
     
     fetchInspectorProfile();
   }, [inspectorId]);
+
+  // Fetch modified-by profile (who last modified the report, if different from owner)
+  useEffect(() => {
+    const fetchModifiedByProfile = async () => {
+      if (!inspection?.last_modified_by || !navigator.onLine) return;
+      // Only fetch if modifier is different from the owner
+      if (inspection.last_modified_by === inspection.inspector_id) {
+        setModifiedByProfile(null);
+        return;
+      }
+      
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("first_name, last_name")
+        .eq("id", inspection.last_modified_by)
+        .maybeSingle();
+      
+      setModifiedByProfile(profile);
+    };
+    
+    fetchModifiedByProfile();
+  }, [inspection?.last_modified_by, inspection?.inspector_id]);
 
   // Auto-populate ACCT# from user profile
   useEffect(() => {
@@ -915,6 +938,10 @@ export default function InspectionForm() {
       const inspectionToSave = {
         ...inspection,
         updated_at: new Date().toISOString(),
+        // Track who modified the report if current user is not the owner
+        ...(currentUser?.id && currentUser.id !== inspection.inspector_id 
+          ? { last_modified_by: currentUser.id } 
+          : {}),
       };
       
       // Validate before saving
@@ -1959,6 +1986,7 @@ export default function InspectionForm() {
         <InspectionHeader
           inspection={inspection}
           userProfile={userProfile}
+          modifiedByProfile={modifiedByProfile}
           onUpdate={isReadOnly ? () => {} : handleHeaderUpdate} 
           onImmediateSave={isReadOnly ? undefined : triggerImmediateSave}
           isReadOnly={isReadOnly}

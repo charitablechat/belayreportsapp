@@ -80,6 +80,7 @@ export default function DailyAssessmentForm() {
   const [reportHtml, setReportHtml] = useState<string>('');
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [userProfile, setUserProfile] = useState<any>(null);
+  const [modifiedByProfile, setModifiedByProfile] = useState<any>(null);
   const [signingOut, setSigningOut] = useState(false);
   
   // Tab navigation state
@@ -138,6 +139,28 @@ export default function DailyAssessmentForm() {
     };
     fetchInspectorProfile();
   }, [inspectorId]);
+
+  // Fetch modified-by profile (who last modified the report, if different from owner)
+  useEffect(() => {
+    const fetchModifiedByProfile = async () => {
+      if (!assessment?.last_modified_by || !navigator.onLine) return;
+      // Only fetch if modifier is different from the owner
+      if (assessment.last_modified_by === assessment.inspector_id) {
+        setModifiedByProfile(null);
+        return;
+      }
+      
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('first_name, last_name')
+        .eq('id', assessment.last_modified_by)
+        .maybeSingle();
+      
+      setModifiedByProfile(profile);
+    };
+    
+    fetchModifiedByProfile();
+  }, [assessment?.last_modified_by, assessment?.inspector_id]);
 
   const handleSignOut = async () => {
     setSigningOut(true);
@@ -404,7 +427,14 @@ export default function DailyAssessmentForm() {
       }
 
       // Save assessment without changing status
-      const updatedAssessment = { ...assessment, updated_at: new Date().toISOString() };
+      const updatedAssessment = { 
+        ...assessment, 
+        updated_at: new Date().toISOString(),
+        // Track who modified the report if current user is not the owner
+        ...(currentUser?.id && currentUser.id !== assessment.inspector_id 
+          ? { last_modified_by: currentUser.id } 
+          : {}),
+      };
       
       if (offlineStorage) {
         try {
@@ -1053,7 +1083,13 @@ export default function DailyAssessmentForm() {
       
       <div className="container mx-auto px-4 py-4 lg:py-8 max-w-5xl">
       <div className="space-y-6">
-        <DailyAssessmentHeader assessment={assessment} onUpdate={isReadOnly ? () => {} : handleUpdateAssessment} isReadOnly={isReadOnly} />
+        <DailyAssessmentHeader 
+          assessment={assessment} 
+          onUpdate={isReadOnly ? () => {} : handleUpdateAssessment} 
+          isReadOnly={isReadOnly}
+          userProfile={userProfile}
+          modifiedByProfile={modifiedByProfile}
+        />
 
         {/* Swipe back indicator for mobile */}
         {isMobileView && isFirstTab && (

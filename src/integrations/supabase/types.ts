@@ -296,6 +296,7 @@ export type Database = {
           environment_comments: string | null
           id: string
           inspector_id: string
+          last_modified_by: string | null
           last_opened_at: string | null
           latest_report_generated_at: string | null
           latest_report_html: string | null
@@ -321,6 +322,7 @@ export type Database = {
           environment_comments?: string | null
           id?: string
           inspector_id: string
+          last_modified_by?: string | null
           last_opened_at?: string | null
           latest_report_generated_at?: string | null
           latest_report_html?: string | null
@@ -346,6 +348,7 @@ export type Database = {
           environment_comments?: string | null
           id?: string
           inspector_id?: string
+          last_modified_by?: string | null
           last_opened_at?: string | null
           latest_report_generated_at?: string | null
           latest_report_html?: string | null
@@ -367,6 +370,13 @@ export type Database = {
           {
             foreignKeyName: "daily_assessments_inspector_id_profiles_fkey"
             columns: ["inspector_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "daily_assessments_last_modified_by_fkey"
+            columns: ["last_modified_by"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
@@ -894,6 +904,7 @@ export type Database = {
           id: string
           inspection_date: string
           inspector_id: string
+          last_modified_by: string | null
           last_opened_at: string | null
           latest_report_generated_at: string | null
           latest_report_html: string | null
@@ -921,6 +932,7 @@ export type Database = {
           id?: string
           inspection_date?: string
           inspector_id: string
+          last_modified_by?: string | null
           last_opened_at?: string | null
           latest_report_generated_at?: string | null
           latest_report_html?: string | null
@@ -948,6 +960,7 @@ export type Database = {
           id?: string
           inspection_date?: string
           inspector_id?: string
+          last_modified_by?: string | null
           last_opened_at?: string | null
           latest_report_generated_at?: string | null
           latest_report_html?: string | null
@@ -970,6 +983,13 @@ export type Database = {
           {
             foreignKeyName: "inspections_inspector_id_profiles_fkey"
             columns: ["inspector_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inspections_last_modified_by_fkey"
+            columns: ["last_modified_by"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
@@ -1524,6 +1544,7 @@ export type Database = {
           end_date: string
           id: string
           inspector_id: string
+          last_modified_by: string | null
           last_opened_at: string | null
           latest_report_generated_at: string | null
           latest_report_html: string | null
@@ -1547,6 +1568,7 @@ export type Database = {
           end_date?: string
           id?: string
           inspector_id: string
+          last_modified_by?: string | null
           last_opened_at?: string | null
           latest_report_generated_at?: string | null
           latest_report_html?: string | null
@@ -1570,6 +1592,7 @@ export type Database = {
           end_date?: string
           id?: string
           inspector_id?: string
+          last_modified_by?: string | null
           last_opened_at?: string | null
           latest_report_generated_at?: string | null
           latest_report_html?: string | null
@@ -1590,6 +1613,13 @@ export type Database = {
           {
             foreignKeyName: "trainings_inspector_id_profiles_fkey"
             columns: ["inspector_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "trainings_last_modified_by_fkey"
+            columns: ["last_modified_by"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
