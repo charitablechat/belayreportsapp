@@ -20,7 +20,13 @@ import { getCachedProfile } from "./profile-cache";
 const MAX_RETRIES = 3;
 const RETRY_DELAY = 1000; // Start with 1 second
 
+/**
+ * @deprecated Use syncAllInspectionsAtomic from atomic-sync-manager.ts instead
+ * This function does not handle soft-deleted records correctly for regular users
+ * due to RLS policies blocking SELECT on deleted records.
+ */
 export async function syncInspections() {
+  console.warn('[Sync Manager] DEPRECATED: syncInspections() does not handle soft-deleted records correctly. Use syncAllInspectionsAtomic() instead.');
   if (!navigator.onLine) {
     if (import.meta.env.DEV) {
       console.log('[Sync Manager] Offline - skipping sync');
@@ -284,7 +290,12 @@ export async function syncPhotos() {
 }
 
 // Daily Assessment sync
+/**
+ * @deprecated Use syncAllDailyAssessmentsAtomic from atomic-sync-manager.ts instead
+ * This function does not handle soft-deleted records correctly for regular users.
+ */
 export async function syncDailyAssessments() {
+  console.warn('[Sync Manager] DEPRECATED: syncDailyAssessments() does not handle soft-deleted records correctly. Use syncAllDailyAssessmentsAtomic() instead.');
   if (!navigator.onLine) {
     if (import.meta.env.DEV) {
       console.log('[Daily Assessment Sync] Offline - skipping sync');
@@ -426,7 +437,12 @@ export async function syncDailyAssessments() {
 }
 
 // Training sync
+/**
+ * @deprecated Use syncAllTrainingsAtomic from atomic-sync-manager.ts instead
+ * This function does not handle soft-deleted records correctly for regular users.
+ */
 export async function syncTrainings() {
+  console.warn('[Sync Manager] DEPRECATED: syncTrainings() does not handle soft-deleted records correctly. Use syncAllTrainingsAtomic() instead.');
   if (!navigator.onLine) {
     if (import.meta.env.DEV) {
       console.log('[Training Sync] Offline - skipping sync');

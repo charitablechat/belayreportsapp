@@ -1746,6 +1746,16 @@ export type Database = {
           records_before: number
         }[]
       }
+      check_record_status: {
+        Args: { p_record_id: string; p_table_name: string }
+        Returns: {
+          deleted_at: string
+          deleted_by: string
+          is_deleted: boolean
+          record_exists: boolean
+          updated_at: string
+        }[]
+      }
       cleanup_expired_deleted_records: {
         Args: never
         Returns: {

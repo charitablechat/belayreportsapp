@@ -31,6 +31,55 @@ import {
 import { syncProgressEmitter } from "@/hooks/useSyncProgress";
 import { getMobileCapabilities } from "./mobile-detection";
 import { getCachedProfile } from "./profile-cache";
+import {
+  deleteOfflineInspection,
+  deleteOfflineTraining,
+  deleteOfflineDailyAssessment,
+} from "./offline-storage";
+
+/**
+ * Interface for record status returned by check_record_status RPC
+ * Used to bypass RLS and check if a record was soft-deleted
+ */
+interface RecordStatus {
+  record_exists: boolean;
+  is_deleted: boolean;
+  deleted_at: string | null;
+  deleted_by: string | null;
+  updated_at: string | null;
+}
+
+/**
+ * Check remote record status using RLS-bypassing RPC function
+ * This allows detecting soft-deleted records that regular users can't see via normal SELECT
+ * 
+ * @param tableName - The table to check ('inspections' | 'trainings' | 'daily_assessments')
+ * @param recordId - The UUID of the record to check
+ * @returns RecordStatus or null if record doesn't exist or error occurred
+ */
+async function checkRemoteRecordStatus(
+  tableName: 'inspections' | 'trainings' | 'daily_assessments',
+  recordId: string
+): Promise<RecordStatus | null> {
+  try {
+    const { data, error } = await supabase
+      .rpc('check_record_status', {
+        p_table_name: tableName,
+        p_record_id: recordId
+      })
+      .maybeSingle();
+    
+    if (error) {
+      console.error('[Atomic Sync] Error checking record status:', error);
+      return null;
+    }
+    
+    return data as RecordStatus | null;
+  } catch (e) {
+    console.error('[Atomic Sync] Exception checking record status:', e);
+    return null;
+  }
+}
 
 /**
  * Sync inspection with all related data atomically
@@ -111,22 +160,18 @@ export async function syncInspectionAtomic(inspectionId: string) {
       console.log('[Atomic Sync] Validation passed for:', inspectionId);
     }
     
-    // 3. Check for remote record status (including soft-deleted records)
-    const { data: remoteInspection } = await supabase
-      .from("inspections")
-      .select("updated_at, deleted_at, deleted_by")
-      .eq("id", inspectionId)
-      .maybeSingle();
+    // 3. Check for remote record status using RLS-bypassing RPC
+    // This allows detecting soft-deleted records that regular users can't see via normal SELECT
+    const recordStatus = await checkRemoteRecordStatus('inspections', inspectionId);
     
     // SAFEGUARD: Check if remote record was soft-deleted by someone else
-    // This prevents sync failures when a Super Admin deleted a record that still exists locally
-    if (remoteInspection?.deleted_at) {
+    // This works for ALL users (regular and super admin) by bypassing RLS
+    if (recordStatus?.record_exists && recordStatus?.is_deleted) {
       console.warn('[Atomic Sync] Remote record was soft-deleted - cleaning up local copy:', inspectionId);
       
       // Mark the local record as deleted to match remote state
       // This prevents repeated sync attempts for orphaned local data
       try {
-        const { deleteOfflineInspection } = await import('./offline-storage');
         await deleteOfflineInspection(inspectionId);
         console.log('[Atomic Sync] Cleaned up orphaned local inspection:', inspectionId);
       } catch (cleanupError) {
@@ -141,8 +186,9 @@ export async function syncInspectionAtomic(inspectionId: string) {
       };
     }
     
-    if (remoteInspection) {
-      const remoteUpdated = new Date(remoteInspection.updated_at).getTime();
+    // Use recordStatus for conflict detection if available
+    if (recordStatus?.record_exists && !recordStatus?.is_deleted) {
+      const remoteUpdated = new Date(recordStatus.updated_at!).getTime();
       const localUpdated = new Date(inspection.updated_at).getTime();
       const timeDiff = Math.abs(remoteUpdated - localUpdated);
       
@@ -186,7 +232,7 @@ export async function syncInspectionAtomic(inspectionId: string) {
               inspection_id: inspectionId,
               organization_id: organizationId,
               local_updated_at: inspection.updated_at,
-              remote_updated_at: remoteInspection.updated_at,
+              remote_updated_at: recordStatus.updated_at!,
               resolved: false,
             });
             
@@ -211,6 +257,9 @@ export async function syncInspectionAtomic(inspectionId: string) {
     // Exclude joined 'inspector' object - only inspector_id column exists in DB
     const { inspector, ...inspectionWithoutJoin } = inspection as any;
     
+    // For rollback, use recordStatus if available, otherwise null
+    const rollbackData = recordStatus?.record_exists ? { updated_at: recordStatus.updated_at } : null;
+    
     // Step 1: Upsert inspection
     steps.push({
       table: 'inspections',
@@ -219,12 +268,12 @@ export async function syncInspectionAtomic(inspectionId: string) {
         ...inspectionWithoutJoin,
         synced_at: new Date().toISOString(),
       },
-      rollbackData: remoteInspection || null,
+      rollbackData,
     });
     
     // Step 2: Delete existing related data (to handle deletions)
     // Capture existing data for rollback safety before deletion
-    if (remoteInspection) {
+    if (recordStatus?.record_exists && !recordStatus?.is_deleted) {
       // Fetch existing related data for rollback
       const [
         existingSystems,
@@ -600,19 +649,16 @@ export async function syncTrainingAtomic(trainingId: string) {
       });
     }
     
-    // 3. Check for remote record status (including soft-deleted records)
-    const { data: remoteTraining } = await supabase
-      .from("trainings")
-      .select("updated_at, deleted_at, deleted_by")
-      .eq("id", trainingId)
-      .maybeSingle();
+    // 3. Check for remote record status using RLS-bypassing RPC
+    // This allows detecting soft-deleted records that regular users can't see via normal SELECT
+    const recordStatus = await checkRemoteRecordStatus('trainings', trainingId);
     
     // SAFEGUARD: Check if remote record was soft-deleted by someone else
-    if (remoteTraining?.deleted_at) {
+    // This works for ALL users (regular and super admin) by bypassing RLS
+    if (recordStatus?.record_exists && recordStatus?.is_deleted) {
       console.warn('[Atomic Sync] Remote training was soft-deleted - cleaning up local copy:', trainingId);
       
       try {
-        const { deleteOfflineTraining } = await import('./offline-storage');
         await deleteOfflineTraining(trainingId);
         console.log('[Atomic Sync] Cleaned up orphaned local training:', trainingId);
       } catch (cleanupError) {
@@ -627,8 +673,9 @@ export async function syncTrainingAtomic(trainingId: string) {
       };
     }
     
-    if (remoteTraining) {
-      const remoteUpdated = new Date(remoteTraining.updated_at).getTime();
+    // Use recordStatus for conflict detection if available
+    if (recordStatus?.record_exists && !recordStatus?.is_deleted) {
+      const remoteUpdated = new Date(recordStatus.updated_at!).getTime();
       const localUpdated = new Date(training.updated_at).getTime();
       const timeDiff = Math.abs(remoteUpdated - localUpdated);
       
@@ -645,6 +692,9 @@ export async function syncTrainingAtomic(trainingId: string) {
     // Exclude joined objects - only column fields exist in DB
     const { inspector, trainer, ...trainingWithoutJoin } = training as any;
     
+    // For rollback, use recordStatus if available, otherwise null
+    const rollbackData = recordStatus?.record_exists ? { updated_at: recordStatus.updated_at } : null;
+    
     // Step 1: Upsert training
     steps.push({
       table: 'trainings',
@@ -653,12 +703,12 @@ export async function syncTrainingAtomic(trainingId: string) {
         ...trainingWithoutJoin,
         synced_at: new Date().toISOString(),
       },
-      rollbackData: remoteTraining || null,
+      rollbackData,
     });
     
     // Step 2: Delete existing related data (to handle deletions)
     // Capture existing data for rollback safety before deletion
-    if (remoteTraining) {
+    if (recordStatus?.record_exists && !recordStatus?.is_deleted) {
       // Fetch existing related data for rollback
       const [
         existingApproaches,
@@ -1005,19 +1055,16 @@ export async function syncDailyAssessmentAtomic(assessmentId: string) {
       });
     }
     
-    // 3. Check for remote record status (including soft-deleted records)
-    const { data: remoteAssessment } = await supabase
-      .from("daily_assessments")
-      .select("updated_at, deleted_at, deleted_by")
-      .eq("id", assessmentId)
-      .maybeSingle();
+    // 3. Check for remote record status using RLS-bypassing RPC
+    // This allows detecting soft-deleted records that regular users can't see via normal SELECT
+    const recordStatus = await checkRemoteRecordStatus('daily_assessments', assessmentId);
     
     // SAFEGUARD: Check if remote record was soft-deleted by someone else
-    if (remoteAssessment?.deleted_at) {
+    // This works for ALL users (regular and super admin) by bypassing RLS
+    if (recordStatus?.record_exists && recordStatus?.is_deleted) {
       console.warn('[Atomic Sync] Remote assessment was soft-deleted - cleaning up local copy:', assessmentId);
       
       try {
-        const { deleteOfflineDailyAssessment } = await import('./offline-storage');
         await deleteOfflineDailyAssessment(assessmentId);
         console.log('[Atomic Sync] Cleaned up orphaned local assessment:', assessmentId);
       } catch (cleanupError) {
@@ -1032,8 +1079,9 @@ export async function syncDailyAssessmentAtomic(assessmentId: string) {
       };
     }
     
-    if (remoteAssessment) {
-      const remoteUpdated = new Date(remoteAssessment.updated_at).getTime();
+    // Use recordStatus for conflict detection if available
+    if (recordStatus?.record_exists && !recordStatus?.is_deleted) {
+      const remoteUpdated = new Date(recordStatus.updated_at!).getTime();
       const localUpdated = new Date(assessment.updated_at).getTime();
       const timeDiff = Math.abs(remoteUpdated - localUpdated);
       
@@ -1050,6 +1098,9 @@ export async function syncDailyAssessmentAtomic(assessmentId: string) {
     // Exclude joined objects - only column fields exist in DB
     const { inspector, ...assessmentWithoutJoin } = assessment as any;
     
+    // For rollback, use recordStatus if available, otherwise null
+    const rollbackData = recordStatus?.record_exists ? { updated_at: recordStatus.updated_at } : null;
+    
     // Step 1: Upsert assessment
     steps.push({
       table: 'daily_assessments',
@@ -1058,12 +1109,12 @@ export async function syncDailyAssessmentAtomic(assessmentId: string) {
         ...assessmentWithoutJoin,
         synced_at: new Date().toISOString(),
       },
-      rollbackData: remoteAssessment || null,
+      rollbackData,
     });
     
     // Step 2: Delete existing related data (to handle deletions)
     // Capture existing data for rollback safety before deletion
-    if (remoteAssessment) {
+    if (recordStatus?.record_exists && !recordStatus?.is_deleted) {
       // Fetch existing related data for rollback
       const [
         existingBeginning,
