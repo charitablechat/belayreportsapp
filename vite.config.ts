@@ -5,10 +5,10 @@ import { componentTagger } from "lovable-tagger";
 import { pwaConfig } from "./vite-pwa-config";
 
 // Version follows vX.Y.Z format where Z increments by 10 on each deployment
- // v2.3.1 - Reset version following rollover scheme (2.2.9 → 2.3.1)
-   const APP_VERSION = "2.3.1";
+ // v2.3.2 - Enable Super Admin edit access for all reports
+   const APP_VERSION = "2.3.2";
    const BUILD_DATE = "02-05-2026";
-   const BUILD_TIMESTAMP = "02-05-2026 at 5:30 PM CST";
+   const BUILD_TIMESTAMP = "02-05-2026 at 5:45 PM CST";
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({

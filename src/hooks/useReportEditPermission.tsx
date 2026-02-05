@@ -27,10 +27,11 @@ interface ReportEditPermission {
  * 
  * Rules:
  * - Report owners (inspector_id === current user) can always edit
- * - Super Admins can VIEW all reports but CANNOT edit them
+ * - Super Admins can VIEW and EDIT all reports
  * - The inspector_id field is immutable once set
  * 
- * This ensures data integrity and accountability for all reports.
+ * Data integrity is preserved through the immutable inspector_id field
+ * and updated_at timestamps for audit trails.
  */
 export function useReportEditPermission({ 
   inspectorId, 
@@ -120,14 +121,15 @@ export function useReportEditPermission({
     }
 
     // Super Admin viewing someone else's report - read-only
+    // Super Admin viewing someone else's report - full edit access
     if (isSuperAdmin) {
       return {
-        canEdit: false,
-        isReadOnly: true,
+        canEdit: true,
+        isReadOnly: false,
         isOwner: false,
         isSuperAdmin: true,
         isLoading: false,
-        readOnlyReason: 'Super Admins have view-only access to other users\' reports'
+        readOnlyReason: null
       };
     }
 
