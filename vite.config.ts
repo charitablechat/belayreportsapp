@@ -5,10 +5,10 @@ import { componentTagger } from "lovable-tagger";
 import { pwaConfig } from "./vite-pwa-config";
 
 // Version follows vX.Y.Z format where Z increments by 10 on each deployment
-  // v2.2.98 - Unify profile dropdown menu across all pages
-  const APP_VERSION = "2.2.98";
+  // v2.2.99 - Fix mobile image upload spinner hang (iOS HEIC + Android optimization)
+  const APP_VERSION = "2.2.99";
   const BUILD_DATE = "02-05-2026";
-  const BUILD_TIMESTAMP = "02-05-2026 at 3:00 PM CST";
+  const BUILD_TIMESTAMP = "02-05-2026 at 3:30 PM CST";
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
