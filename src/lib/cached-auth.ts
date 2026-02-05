@@ -12,6 +12,7 @@ let cacheTimestamp: number = 0;
 let pendingUserPromise: Promise<CachedUser | null> | null = null;
 let authListenerInitialized = false;
 const CACHE_TTL = 60000; // 1 minute cache
+const SESSION_REFRESH_BUFFER = 60; // Refresh if within 60 seconds of expiry
 
 /**
  * Initialize auth state change listener (called lazily on first use)
@@ -180,3 +181,74 @@ export function hasCachedSession(): boolean {
  * Used in UI components that need synchronous access to cached user
  */
 export const getCachedUser = getCachedUserFromStorage;
+
+/**
+ * Ensures the Supabase client has a valid session before database operations.
+ * This is critical for sync operations that rely on RLS policies.
+ * 
+ * Unlike getUserWithCache() which reads from localStorage, this actually
+ * validates the session with the Supabase client and refreshes if needed.
+ * 
+ * @returns The current user if session is valid, null otherwise
+ */
+export async function ensureValidSession(): Promise<CachedUser | null> {
+  // Initialize auth listener on first use
+  initAuthListener();
+  
+  try {
+    // First, try to get the current session from Supabase client
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+    
+    if (sessionError) {
+      console.error('[CachedAuth] Session error:', sessionError);
+      return null;
+    }
+    
+    // If no session, user needs to log in
+    if (!session) {
+      console.warn('[CachedAuth] No active session for sync');
+      return null;
+    }
+    
+    // Check if token needs refresh (within buffer of expiry)
+    const expiresAt = session.expires_at || 0;
+    const now = Math.floor(Date.now() / 1000);
+    const needsRefresh = expiresAt - now < SESSION_REFRESH_BUFFER;
+    
+    if (needsRefresh) {
+      if (import.meta.env.DEV) {
+        console.log('[CachedAuth] Session expiring soon, refreshing...', {
+          expiresIn: expiresAt - now,
+          buffer: SESSION_REFRESH_BUFFER
+        });
+      }
+      
+      const { data: { session: refreshedSession }, error: refreshError } = 
+        await supabase.auth.refreshSession();
+      
+      if (refreshError || !refreshedSession) {
+        console.error('[CachedAuth] Failed to refresh session:', refreshError);
+        return null;
+      }
+      
+      // Update in-memory cache with refreshed user
+      cachedUser = refreshedSession.user;
+      cacheTimestamp = Date.now();
+      
+      if (import.meta.env.DEV) {
+        console.log('[CachedAuth] Session refreshed successfully');
+      }
+      
+      return refreshedSession.user;
+    }
+    
+    // Session is valid - update cache and return user
+    cachedUser = session.user;
+    cacheTimestamp = Date.now();
+    return session.user;
+    
+  } catch (error) {
+    console.error('[CachedAuth] Error validating session:', error);
+    return null;
+  }
+}
