@@ -546,11 +546,16 @@ export async function saveInspectionOffline(inspection: any) {
   );
 }
 
-export async function getOfflineInspections(userId?: string) {
+export async function getOfflineInspections(userId?: string, isSuperAdmin?: boolean) {
   return withIndexedDBErrorBoundary(
     async () => {
       const db = await getDB();
       const allInspections = await db.getAll('inspections');
+      
+      // Super admins see all reports - bypass user filtering
+      if (isSuperAdmin) {
+        return allInspections;
+      }
       
       // Filter by user ID if provided (for privacy on shared devices)
       if (userId) {
@@ -945,11 +950,16 @@ export async function saveDailyAssessmentOffline(assessment: any) {
   );
 }
 
-export async function getOfflineDailyAssessments(userId?: string) {
+export async function getOfflineDailyAssessments(userId?: string, isSuperAdmin?: boolean) {
   return withIndexedDBErrorBoundary(
     async () => {
       const db = await getDB();
       const allAssessments = await db.getAll('daily_assessments');
+      
+      // Super admins see all reports - bypass user filtering
+      if (isSuperAdmin) {
+        return allAssessments;
+      }
       
       // Filter by user ID if provided (for privacy on shared devices)
       if (userId) {
@@ -1187,11 +1197,16 @@ export async function saveTrainingOffline(training: any) {
   );
 }
 
-export async function getOfflineTrainings(userId?: string) {
+export async function getOfflineTrainings(userId?: string, isSuperAdmin?: boolean) {
   return withIndexedDBErrorBoundary(
     async () => {
       const db = await getDB();
       const allTrainings = await db.getAll('trainings');
+      
+      // Super admins see all reports - bypass user filtering
+      if (isSuperAdmin) {
+        return allTrainings;
+      }
       
       // Filter by user ID if provided (for privacy on shared devices)
       if (userId) {
