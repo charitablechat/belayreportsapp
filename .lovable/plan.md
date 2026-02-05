@@ -1,121 +1,63 @@
 
-
-# Plan: Enable Super Admin Edit Access for All Reports (v2.3.2)
+# Plan: Add "Report Modified By" Indicator for Super Admin Edits (v2.3.3)
 
 ## Summary
 
-This plan enables Super Admins to edit all reports (Inspections, Trainings, Daily Assessments), not just view them. Currently, Super Admins have view-only access when viewing reports created by other users. This change will allow full edit capabilities while maintaining data accountability through audit logging.
+When a Super Admin edits a completed report created by another user, a new field will appear below the "Inspector" field showing "Report modified by [Super Admin Name]". This provides accountability and transparency about who has made changes to finalized reports.
 
-## Current State Analysis
+## Current State
 
-### Frontend (UI Layer)
-The `useReportEditPermission` hook currently returns `canEdit: false` for Super Admins viewing other users' reports:
+- Inspector field shows the original report creator's name (fetched from `profiles` via `inspector_id`)
+- No tracking of who last modified a report
+- Super Admins can now edit all reports (as of v2.3.2)
 
-```typescript
-// Current behavior (lines 122-131)
-if (isSuperAdmin) {
-  return {
-    canEdit: false,        // ← Blocks editing
-    isReadOnly: true,      // ← Disables all inputs
-    readOnlyReason: 'Super Admins have view-only access...'
-  };
-}
+## Implementation Approach
+
+### Database Changes
+
+Add a `last_modified_by` column to all three report tables to track who last made changes:
+
+| Table | New Column | Type | Description |
+|-------|-----------|------|-------------|
+| `inspections` | `last_modified_by` | UUID (nullable) | References `profiles.id` |
+| `trainings` | `last_modified_by` | UUID (nullable) | References `profiles.id` |
+| `daily_assessments` | `last_modified_by` | UUID (nullable) | References `profiles.id` |
+
+The column will:
+- Be NULL for reports never modified by someone other than the owner
+- Be set to the current user's ID when a Super Admin saves changes
+- Only be set when `last_modified_by` differs from `inspector_id` (owner edits don't need tracking)
+
+### Frontend Changes
+
+**1. Update InspectionHeader Component**
+
+Add a new prop `modifiedByProfile` and conditionally render the "Report modified by" field:
+
+```text
++------------------------------------------+
+|  Inspector                               |
+|  [John Smith (disabled)]                 |
+|                                          |
+|  Report modified by                      | ← NEW (only shows if modified)
+|  [Admin User (disabled)]                 |
++------------------------------------------+
 ```
 
-### Backend (Database Layer)
-Super Admin UPDATE policies **already exist** for all main tables:
-- `inspections` - "Super admins can update all inspections"
-- `trainings` - "Super admins can update all trainings"  
-- `daily_assessments` - "Super admins can update all daily assessments"
-- All training child tables have `ALL` policies for Super Admins
+**2. Update TrainingHeader Component**
 
-**Missing policies** for inspection child tables:
-- `inspection_systems`
-- `inspection_ziplines`
-- `inspection_equipment`
-- `inspection_standards`
-- `inspection_summary`
-- `inspection_photos`
+Add "Report modified by" field below the "Trainer(s) of Record" section when applicable.
 
-**Missing policies** for daily assessment child tables:
-- `daily_assessment_beginning_of_day`
-- `daily_assessment_end_of_day`
-- `daily_assessment_environment_checks`
-- `daily_assessment_equipment_checks`
-- `daily_assessment_operating_systems`
-- `daily_assessment_structure_checks`
+**3. Update DailyAssessmentHeader Component**
 
----
+Add "Report modified by" field below the "Trainer/Facilitator of Record" field when applicable.
 
-## Implementation Plan
+**4. Fetch Modified-By Profile in Form Pages**
 
-### Step 1: Update Permission Hook
-
-**File:** `src/hooks/useReportEditPermission.tsx`
-
-**Change:** Modify the Super Admin case to return `canEdit: true` and `isReadOnly: false`
-
-```typescript
-// AFTER - Super Admin viewing someone else's report - full edit access
-if (isSuperAdmin) {
-  return {
-    canEdit: true,         // ← Enable editing
-    isReadOnly: false,     // ← Enable all inputs
-    isOwner: false,
-    isSuperAdmin: true,
-    isLoading: false,
-    readOnlyReason: null   // ← No restriction message
-  };
-}
-```
-
-**Documentation Update:** Update the JSDoc comment to reflect the new policy
-
----
-
-### Step 2: Add Missing Database RLS Policies
-
-**Tables Requiring UPDATE Policies for Super Admins:**
-
-| Table | Policy Name |
-|-------|-------------|
-| `inspection_systems` | Super admins can update all inspection systems |
-| `inspection_ziplines` | Super admins can update all inspection ziplines |
-| `inspection_equipment` | Super admins can update all inspection equipment |
-| `inspection_standards` | Super admins can update all inspection standards |
-| `inspection_summary` | Super admins can update all inspection summaries |
-| `inspection_photos` | Super admins can update all inspection photos |
-| `daily_assessment_beginning_of_day` | Super admins can update all beginning of day checks |
-| `daily_assessment_end_of_day` | Super admins can update all end of day checks |
-| `daily_assessment_environment_checks` | Super admins can update all environment checks |
-| `daily_assessment_equipment_checks` | Super admins can update all equipment checks |
-| `daily_assessment_operating_systems` | Super admins can update all operating systems |
-| `daily_assessment_structure_checks` | Super admins can update all structure checks |
-
-**SQL Migration:**
-
-```sql
--- Super Admin UPDATE policies for inspection child tables
-CREATE POLICY "Super admins can update all inspection systems"
-  ON inspection_systems FOR UPDATE
-  USING (is_super_admin())
-  WITH CHECK (is_super_admin());
-
-CREATE POLICY "Super admins can update all inspection ziplines"
-  ON inspection_ziplines FOR UPDATE
-  USING (is_super_admin())
-  WITH CHECK (is_super_admin());
-
--- (Similar for all other tables...)
-```
-
----
-
-### Step 3: Version Bump
-
-**File:** `vite.config.ts`
-
-Update version to **v2.3.2** with changelog comment.
+Update InspectionForm, TrainingForm, and DailyAssessmentForm to:
+- Fetch the `last_modified_by` profile when loading the report
+- Pass it to the header component
+- Update `last_modified_by` when saving (only if current user is not the owner)
 
 ---
 
@@ -123,26 +65,82 @@ Update version to **v2.3.2** with changelog comment.
 
 | File | Action | Description |
 |------|--------|-------------|
-| `src/hooks/useReportEditPermission.tsx` | **Modify** | Change Super Admin logic to allow editing |
-| `vite.config.ts` | **Modify** | Version bump to 2.3.2 |
-| Database | **Migration** | Add 12 UPDATE policies for child tables |
+| Database | **Migration** | Add `last_modified_by` column to 3 tables |
+| `src/components/inspection/InspectionHeader.tsx` | **Modify** | Add modified-by display field |
+| `src/components/training/TrainingHeader.tsx` | **Modify** | Add modified-by display field |
+| `src/components/daily-assessment/DailyAssessmentHeader.tsx` | **Modify** | Add modified-by display field |
+| `src/pages/InspectionForm.tsx` | **Modify** | Fetch and pass modified-by profile, update on save |
+| `src/pages/TrainingForm.tsx` | **Modify** | Fetch and pass modified-by profile, update on save |
+| `src/pages/DailyAssessmentForm.tsx` | **Modify** | Fetch and pass modified-by profile, update on save |
+| `vite.config.ts` | **Modify** | Version bump to 2.3.3 |
 
 ---
 
-## Security Considerations
+## Database Migration SQL
 
-1. **Audit Trail**: The `inspector_id` field remains immutable via database trigger (`prevent_inspector_id_change`), preserving original authorship
-2. **Accountability**: `updated_at` timestamps will show when Super Admins modify records
-3. **No Ownership Transfer**: Super Admins can edit content but cannot change who "owns" the report
+```sql
+-- Add last_modified_by column to inspections
+ALTER TABLE inspections 
+ADD COLUMN last_modified_by UUID REFERENCES profiles(id);
+
+-- Add last_modified_by column to trainings
+ALTER TABLE trainings 
+ADD COLUMN last_modified_by UUID REFERENCES profiles(id);
+
+-- Add last_modified_by column to daily_assessments
+ALTER TABLE daily_assessments 
+ADD COLUMN last_modified_by UUID REFERENCES profiles(id);
+```
+
+---
+
+## UI Behavior Logic
+
+The "Report modified by" field will **only appear** when:
+1. `last_modified_by` is NOT NULL, AND
+2. `last_modified_by` differs from `inspector_id`
+
+This means:
+- Owner edits their own report → Field does NOT appear
+- Super Admin edits another user's report → Field APPEARS with Super Admin's name
+- Super Admin edits their own report → Field does NOT appear
+
+---
+
+## Save Logic (Pseudo-code)
+
+```typescript
+// When saving a report
+const handleSave = async () => {
+  const currentUserId = await getUserWithCache()?.id;
+  const isOwner = currentUserId === report.inspector_id;
+  
+  const updateData = {
+    ...reportChanges,
+    updated_at: new Date().toISOString(),
+    // Only set last_modified_by if editor is NOT the owner
+    ...(isOwner ? {} : { last_modified_by: currentUserId })
+  };
+  
+  await supabase.from('inspections').update(updateData).eq('id', reportId);
+};
+```
+
+---
+
+## Visual Design
+
+The new field will use the same styling as the existing Inspector field:
+- Label: "Report modified by" (text-sm text-muted-foreground)
+- Input: Disabled VoiceInput with bg-muted/50 styling
+- Positioned directly below the Inspector field
 
 ---
 
 ## Testing Checklist
 
-1. **Super Admin Editing Own Report** - Should work (unchanged)
-2. **Super Admin Editing Another User's Report** - Should now work (previously blocked)
-3. **Regular User Editing Own Report** - Should work (unchanged)
-4. **Regular User Editing Another User's Report** - Should be blocked by RLS (unchanged)
-5. **Inspector ID Immutability** - Verify the trigger still prevents ownership changes
-6. **All Form Inputs** - Verify date pickers, text fields, selects, and photo uploads are enabled
-
+1. Owner edits own report → "Report modified by" does NOT appear
+2. Super Admin edits other's report → "Report modified by" appears with their name
+3. Multiple Super Admin edits → Shows most recent modifier's name
+4. Field is read-only and cannot be changed by users
+5. Works correctly for all three report types (Inspection, Training, Daily Assessment)
