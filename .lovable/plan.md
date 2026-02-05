@@ -1,119 +1,217 @@
 
-# Plan: Fix Complete Button Touch Handler on Mobile (v2.2.94)
+# Plan: Fix Previous Inspection Date Validation for Special Values (v2.2.95)
 
-## Problem Analysis
+## Problem Summary
 
-After thorough investigation, I've identified the **root cause** of the Complete button tap failure on iOS and Android:
+The **'Last Known Inspection Date'** field set to 'Unknown' or 'N/A' is blocking report progression due to:
 
-### Issue Location
-**InspectionForm.tsx** (lines 1887-1907) - The Complete button is wrapped in:
+1. **Missing user feedback** - The `completeInspection` function silently returns when validation fails without showing any toast message
+2. **Edge function date parsing** - The `formatDate` functions in report generation attempt to parse "N/A" and "Unknown" as dates, resulting in "Invalid Date"
+3. **Client utility gap** - The `parseLocalDate` utility doesn't handle special values gracefully
+
+## Root Cause Analysis
+
+### Finding 1: Silent Validation Failure
+In `InspectionForm.tsx` (lines 1377-1386), when validation fails:
+```typescript
+if (!validation.success) {
+  const firstError = formatValidationError(validation.errors[0]); // Error formatted
+  const totalErrors = validation.errors.length;
+  // ... only console.error in DEV mode
+  return;  // ← Silently returns without showing any toast!
+}
 ```
-TooltipProvider > Tooltip > TooltipTrigger asChild > span > Button
+
+### Finding 2: Edge Function Date Parsing
+Both `generate-inspection-html` and `generate-inspection-pdf` use:
+```typescript
+const formatDate = (dateStr: string | null) => {
+  if (!dateStr) return "N/A";
+  return new Date(dateStr).toLocaleDateString(...); // ← "N/A" becomes "Invalid Date"
+};
 ```
 
-### Why This Fails on Mobile
-
-1. **Radix UI Tooltip + `asChild` + `<span>` wrapper**: The `TooltipTrigger asChild` passes event handlers to its child. When a `<span>` is used as an intermediary wrapper (which is done to allow the button to be disabled while still showing tooltip), it creates a layer that intercepts touch events on mobile devices.
-
-2. **Touch Event Propagation**: Mobile browsers handle touch events differently than mouse events. The `<span>` element with tooltip-attached handlers captures the `touchstart`/`touchend` events but doesn't properly forward them to the nested `<Button>`.
-
-3. **Comparison**: `TrainingForm` and `DailyAssessmentForm` do NOT use this Tooltip wrapper pattern - their Complete buttons work correctly:
-   - **TrainingForm** (line 973): `<Button onClick={completeTraining} ...>` - No tooltip wrapper
-   - **DailyAssessmentForm** (line 1044): `<Button onClick={() => setShowSubmitDialog(true)} ...>` - No tooltip wrapper
-
-### Observed Behavior
-- **Desktop**: Click events work fine through the span wrapper
-- **Mobile iOS/Android**: Touch events fail to trigger `onClick` handler
-- **Other buttons**: Save, Generate Report work because they don't have this wrapper pattern
+### Finding 3: Client Utility
+`parseLocalDate` in `date-utils.ts`:
+```typescript
+export const parseLocalDate = (dateStr: string | null | undefined) => {
+  if (!dateStr) return undefined;
+  const dateOnly = dateStr.split('T')[0];
+  const [year, month, day] = dateOnly.split('-').map(Number); // "N/A" → [NaN]
+  return new Date(year, month - 1, day); // Invalid Date
+};
+```
 
 ## Solution
 
-Remove the `TooltipTrigger asChild` + `<span>` wrapper pattern from the Complete button in InspectionForm. Use the same direct button approach as TrainingForm and DailyAssessmentForm.
+### Fix 1: Add toast feedback for validation failures
 
-**Before (broken):**
-```tsx
-<TooltipProvider>
-  <Tooltip>
-    <TooltipTrigger asChild>
-      <span>  {/* ← This span blocks touch events on mobile */}
-        <Button onClick={completeInspection} disabled={...}>
-          Complete
-        </Button>
-      </span>
-    </TooltipTrigger>
-    {!isOnline && <TooltipContent>Must be online...</TooltipContent>}
-  </Tooltip>
-</TooltipProvider>
+Add a toast message when `completeInspection` validation fails so users understand why completion isn't proceeding.
+
+```typescript
+if (!validation.success) {
+  const firstError = formatValidationError(validation.errors[0]);
+  
+  toast({
+    title: "Cannot complete inspection",
+    description: firstError,
+    variant: "destructive",
+  });
+  
+  if (import.meta.env.DEV) {
+    console.error('[InspectionForm] Cannot complete - validation errors:', 
+      validation.errors.map(formatValidationError));
+  }
+  return;
+}
 ```
 
-**After (fixed):**
-```tsx
-<Button 
-  onClick={completeInspection} 
-  disabled={saving || autoSaving || !isOnline}
-  title={!isOnline ? "Must be online to complete inspection" : undefined}
->
-  Complete
-</Button>
+### Fix 2: Handle special values in edge function `formatDate`
+
+Update both edge functions to recognize "N/A" and "Unknown" as special values:
+
+```typescript
+const SPECIAL_DATE_VALUES = ["N/A", "Unknown"];
+
+const formatDate = (dateStr: string | null) => {
+  if (!dateStr) return "N/A";
+  // Pass through special values as-is
+  if (SPECIAL_DATE_VALUES.includes(dateStr)) return dateStr;
+  // Validate it's a parseable date
+  const date = new Date(dateStr);
+  if (isNaN(date.getTime())) return dateStr; // Return original if invalid
+  return date.toLocaleDateString("en-US", {
+    timeZone: "America/Chicago",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+};
+```
+
+### Fix 3: Handle special values in client `parseLocalDate`
+
+Add guard for special values in the utility:
+
+```typescript
+const SPECIAL_DATE_VALUES = ["N/A", "Unknown"];
+
+export const parseLocalDate = (dateStr: string | null | undefined): Date | undefined => {
+  if (!dateStr) return undefined;
+  // Don't try to parse special values
+  if (SPECIAL_DATE_VALUES.includes(dateStr)) return undefined;
+  
+  const dateOnly = dateStr.split('T')[0];
+  const [year, month, day] = dateOnly.split('-').map(Number);
+  
+  // Validate parsed components
+  if (isNaN(year) || isNaN(month) || isNaN(day)) return undefined;
+  
+  return new Date(year, month - 1, day);
+};
 ```
 
 ## Files to Modify
 
 | File | Action | Description |
 |------|--------|-------------|
-| `src/pages/InspectionForm.tsx` | Modify | Remove Tooltip wrapper from Complete button, use `title` attribute for accessibility |
-| `vite.config.ts` | Modify | Version bump to 2.2.94 |
+| `src/pages/InspectionForm.tsx` | Modify | Add toast for validation failure in `completeInspection` |
+| `src/lib/date-utils.ts` | Modify | Handle special date values in `parseLocalDate` |
+| `supabase/functions/generate-inspection-html/index.ts` | Modify | Handle special values in `formatDate` |
+| `supabase/functions/generate-inspection-pdf/index.ts` | Modify | Handle special values in `formatDate` |
+| `vite.config.ts` | Modify | Version bump to 2.2.95 |
 
 ## Implementation Details
 
-### InspectionForm.tsx Changes
+### InspectionForm.tsx Changes (around line 1377)
 
-Replace lines 1887-1907 (the Complete button with Tooltip wrapper):
-
-```tsx
-{!isReadOnly && (
-  <Button 
-    size={isMobileView ? "default" : "sm"} 
-    onClick={completeInspection} 
-    disabled={saving || autoSaving || !isOnline}
-    className={isMobileView ? "min-w-[100px] h-10 text-sm font-medium" : ""}
-    title={!isOnline ? "Must be online to complete inspection" : undefined}
-  >
-    <CheckCircle className={isMobileView ? "w-5 h-5 mr-1.5" : "w-4 h-4"} />
-    <span className={isMobileView ? "inline" : "hidden md:inline md:ml-2"}>Complete</span>
-  </Button>
-)}
+```typescript
+if (!validation.success) {
+  const firstError = formatValidationError(validation.errors[0]);
+  const totalErrors = validation.errors.length;
+  
+  // Show user feedback for validation failure
+  toast({
+    title: "Cannot complete inspection",
+    description: totalErrors > 1 
+      ? `${firstError} (+${totalErrors - 1} more issue${totalErrors > 2 ? 's' : ''})`
+      : firstError,
+    variant: "destructive",
+  });
+  
+  if (import.meta.env.DEV) {
+    console.error('[InspectionForm] Cannot complete - validation errors:', 
+      validation.errors.map(formatValidationError));
+  }
+  return;
+}
 ```
 
-### Key Changes
+### date-utils.ts Changes
 
-1. **Remove Tooltip wrapper**: Eliminates the touch event interception issue
-2. **Add `title` attribute**: Provides hover tooltip on desktop for offline message (native HTML attribute works on all platforms)
-3. **Maintain disabled logic**: `disabled={saving || autoSaving || !isOnline}` still prevents taps when conditions aren't met
-4. **Consistent with other forms**: Now matches TrainingForm and DailyAssessmentForm patterns
+```typescript
+// Special values that should not be parsed as dates
+const SPECIAL_DATE_VALUES = ["N/A", "Unknown"];
 
-## Technical Notes
+export const parseLocalDate = (dateStr: string | null | undefined): Date | undefined => {
+  if (!dateStr) return undefined;
+  
+  // Don't attempt to parse special marker values
+  if (SPECIAL_DATE_VALUES.includes(dateStr)) return undefined;
+  
+  // Handle dates that might already include time component
+  const dateOnly = dateStr.split('T')[0];
+  const [year, month, day] = dateOnly.split('-').map(Number);
+  
+  // Validate parsed components are valid numbers
+  if (isNaN(year) || isNaN(month) || isNaN(day)) return undefined;
+  
+  return new Date(year, month - 1, day);
+};
+```
 
-### Why the `<span>` wrapper was originally added
-The `<span>` wrapper is a common pattern to allow tooltips on disabled buttons (since disabled buttons don't fire mouse events). However, this causes touch event issues on mobile.
+### Edge Function Changes
 
-### Alternative approaches considered
-1. **Use `pointer-events: auto` on the button** - Doesn't solve the root touch propagation issue
-2. **Add touch event handlers explicitly** - Adds complexity for no gain
-3. **Use Radix tooltip differently** - The simplest fix is to remove it entirely since mobile users don't benefit from hover tooltips anyway
+Both `generate-inspection-html/index.ts` and `generate-inspection-pdf/index.ts`:
 
-### Data Integrity Guarantee
-This change only affects the UI event handling. The underlying:
-- `completeInspection()` function remains unchanged
-- IndexedDB persistence (fire-and-forget pattern) remains intact
-- Supabase sync logic remains intact
-- Valentine confetti + haptic feedback on completion remains intact
+```typescript
+// Special date values that should be displayed as-is
+const SPECIAL_DATE_VALUES = ["N/A", "Unknown"];
+
+const formatDate = (dateStr: string | null) => {
+  if (!dateStr) return "N/A";
+  
+  // Pass through special values without parsing
+  if (SPECIAL_DATE_VALUES.includes(dateStr)) return dateStr;
+  
+  // Attempt to parse as date
+  const date = new Date(dateStr);
+  
+  // If invalid date, return original string
+  if (isNaN(date.getTime())) return dateStr;
+  
+  return date.toLocaleDateString("en-US", {
+    timeZone: "America/Chicago",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+};
+```
+
+## Data Integrity
+
+These changes:
+- Do **NOT** modify the validation schema - "N/A" and "Unknown" remain valid string values
+- Do **NOT** affect IndexedDB persistence - the values are stored and retrieved as-is
+- Do **NOT** change database constraints - the column remains a text field
+- **ONLY** improve display handling and user feedback
 
 ## Testing Checklist
 
-1. **iOS Safari PWA**: Tap Complete button → Should trigger completion
-2. **Android Chrome PWA**: Tap Complete button → Should trigger completion
-3. **Desktop browser**: Click Complete button → Should work as before
-4. **Offline state**: Complete button should be disabled and show title on hover
-5. **Status update**: After completion, report card should show "Completed" badge + watermark
-6. **Generate Report button**: Should appear after successful completion
+1. Create new inspection → Set Previous Inspection Date to "N/A" → Click Complete → Verify completion succeeds
+2. Create new inspection → Set Previous Inspection Date to "Unknown" → Click Complete → Verify completion succeeds
+3. Create inspection with invalid required fields → Click Complete → Verify toast error message appears
+4. Generate HTML report with "N/A" previous date → Verify "N/A" displays correctly (not "Invalid Date")
+5. Generate PDF report with "Unknown" previous date → Verify "Unknown" displays correctly
+6. Verify regular date selection still works correctly (calendar date parses and displays properly)
