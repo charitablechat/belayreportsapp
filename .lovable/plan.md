@@ -1,136 +1,124 @@
 
-# Plan: Fix Super Admin Report Visibility - Disambiguate FK Relationships (v2.3.4)
+# Plan: Fix Versioning Yellow Items (v2.3.5)
 
-## Root Cause Analysis
+## Summary
 
-The v2.3.3 migration added a `last_modified_by` column to all three report tables (`inspections`, `trainings`, `daily_assessments`), creating a **second foreign key relationship** to the `profiles` table. 
+Address the three versioning compliance issues identified in the Launch Readiness Assessment to move from Yellow to Green status.
 
-When Dashboard.tsx queries use the ambiguous syntax `inspector:profiles(...)`, PostgREST returns a **HTTP 300 status** because it cannot determine which FK relationship to use:
-- `inspector_id → profiles` (original)
-- `last_modified_by → profiles` (new from v2.3.3)
+## Issues to Fix
 
-**Console Error Evidence:**
-```
-PGRST201: Could not embed because more than one relationship was found 
-for 'inspections' and 'profiles'
-
-Hint: Try changing 'profiles' to one of the following:
-- 'profiles!inspections_inspector_id_profiles_fkey'
-- 'profiles!inspections_last_modified_by_fkey'
-```
-
-The queries fail silently and fall back to offline storage, which only contains the **current user's data** - hence Super Admins only see their own reports.
-
----
-
-## Solution
-
-Update all ambiguous profile join queries in `Dashboard.tsx` to use **explicit FK relationship hints** using PostgREST's `!foreign_key_name` syntax.
+| Item | Current State | Required Fix |
+|------|---------------|--------------|
+| vite.config.ts comment | Says "Z increments by 10" | Update to describe rollover scheme |
+| Unit tests | None exist | Add comprehensive test file |
+| Documentation | Scattered | Consolidate in version-calculator.ts header |
 
 ---
 
 ## Technical Changes
 
-### File: `src/pages/Dashboard.tsx`
+### 1. Update vite.config.ts Comment (Line 7)
 
-**Change 1: Inspections Query (Lines ~299-302)**
-
-Before:
+**Before:**
 ```typescript
-.select(`
-  *,
-  inspector:profiles(first_name, last_name, avatar_url)
-`)
+// Version follows vX.Y.Z format where Z increments by 10 on each deployment
 ```
 
-After:
+**After:**
 ```typescript
-.select(`
-  *,
-  inspector:profiles!inspections_inspector_id_profiles_fkey(first_name, last_name, avatar_url)
-`)
+// Version follows non-standard vX.Y.Z rollover scheme:
+// - PATCH resets to .1 when reaching .10 (e.g., v2.3.9 → v2.4.1)
+// - MINOR resets to .1 when reaching .10 (e.g., v2.9.9 → v3.1.1)
+// See src/lib/version-calculator.ts for implementation
 ```
 
-**Change 2: Trainings Query (Lines ~370-373)**
+### 2. Create Unit Tests for version-calculator.ts
 
-Before:
-```typescript
-.select(`
-  *,
-  trainer:profiles(first_name, last_name, avatar_url)
-`)
-```
+Create new file: `src/lib/version-calculator.test.ts`
 
-After:
-```typescript
-.select(`
-  *,
-  trainer:profiles!trainings_inspector_id_profiles_fkey(first_name, last_name, avatar_url)
-`)
-```
+Test coverage will include:
+- Basic version parsing (with and without 'v' prefix)
+- Invalid version format handling
+- Standard increment (v2.3.4 → v2.3.5)
+- PATCH rollover (v2.3.9 → v2.4.1)
+- MINOR rollover (v2.9.9 → v3.1.1)
+- Double rollover edge case (v9.9.9 → v10.1.1)
+- Sequence generation
+- Validation function
 
-**Change 3: Daily Assessments Query (Lines ~437-440)**
+### 3. Bump Version to 2.3.5
 
-Before:
-```typescript
-.select(`
-  *,
-  inspector:profiles(first_name, last_name, avatar_url)
-`)
-```
-
-After:
-```typescript
-.select(`
-  *,
-  inspector:profiles!daily_assessments_inspector_id_profiles_fkey(first_name, last_name, avatar_url)
-`)
-```
-
----
-
-### File: `vite.config.ts`
-
-Update version to **2.3.4** with changelog comment.
+Update APP_VERSION and BUILD_TIMESTAMP in vite.config.ts.
 
 ---
 
 ## Files to Modify
 
-| File | Lines | Description |
-|------|-------|-------------|
-| `src/pages/Dashboard.tsx` | ~299-302 | Fix inspections query FK hint |
-| `src/pages/Dashboard.tsx` | ~370-373 | Fix trainings query FK hint |
-| `src/pages/Dashboard.tsx` | ~437-440 | Fix daily_assessments query FK hint |
-| `vite.config.ts` | Version | Bump to 2.3.4 |
+| File | Action | Description |
+|------|--------|-------------|
+| `vite.config.ts` | **Modify** | Fix comment, bump to v2.3.5 |
+| `src/lib/version-calculator.test.ts` | **Create** | Add unit tests |
 
 ---
 
-## Why This Fixes the Issue
+## Test File Structure
 
-1. **No Database Changes Required** - The RLS policies are already correct; Super Admins have `SELECT` permission on all reports
-2. **No Caching Issues** - The problem is query failure, not stale data
-3. **InspectionForm.tsx Already Uses This Pattern** - Line 769 shows the working syntax: `profiles!inspections_inspector_id_profiles_fkey`
+```typescript
+// src/lib/version-calculator.test.ts
+import { describe, it, expect } from 'vitest';
+import {
+  parseVersion,
+  getNextVersion,
+  formatVersion,
+  calculateNextVersion,
+  generateVersionSequence,
+  isValidSchemeVersion
+} from './version-calculator';
+
+describe('version-calculator', () => {
+  describe('parseVersion', () => {
+    it('parses version without prefix', () => { ... });
+    it('parses version with v prefix', () => { ... });
+    it('throws on invalid format', () => { ... });
+  });
+
+  describe('getNextVersion', () => {
+    it('increments patch normally', () => { ... });
+    it('rolls over patch at 10', () => { ... });
+    it('rolls over minor at 10', () => { ... });
+    it('handles double rollover', () => { ... });
+  });
+
+  describe('formatVersion', () => { ... });
+  describe('calculateNextVersion', () => { ... });
+  describe('generateVersionSequence', () => { ... });
+  describe('isValidSchemeVersion', () => { ... });
+});
+```
 
 ---
 
-## Verification
+## Expected Test Cases
 
-After this fix, the network request for inspections will succeed with HTTP 200 instead of HTTP 300, and Super Admins will see all reports from all users.
+| Input | Expected Output | Test Type |
+|-------|-----------------|-----------|
+| `v2.3.4` | `v2.3.5` | Standard increment |
+| `v2.3.9` | `v2.4.1` | PATCH rollover |
+| `v2.9.9` | `v3.1.1` | MINOR rollover |
+| `v9.9.9` | `v10.1.1` | Edge case - MAJOR bump |
+| `v1.1.1` | `v1.1.2` | Minimum valid version |
+| `2.3.4` | `v2.3.5` | No prefix handling |
 
 ---
 
-## Impact on Image Upload
+## Why This Matters
 
-This fix is completely isolated to the Dashboard's read queries and has **no impact** on image upload functionality (which was stabilized in v2.2.99). The image upload code paths do not involve profile joins.
+1. **Documentation Accuracy**: Developers reading vite.config.ts will understand the actual versioning scheme
+2. **Regression Prevention**: Unit tests ensure future changes don't break versioning logic
+3. **Launch Confidence**: Moving versioning from Yellow to Green status
 
 ---
 
-## Testing Checklist
+## Post-Implementation
 
-1. Super Admin sees all inspections from all users on Dashboard
-2. Super Admin sees all trainings from all users on Dashboard  
-3. Super Admin sees all daily assessments from all users on Dashboard
-4. Regular users still see only their own reports
-5. Report cards display correct inspector/trainer names and avatars
-6. Image uploads continue to work correctly (regression test)
+After these changes, the Versioning Compliance section of the Launch Readiness Scorecard moves from **Yellow** to **Green**, achieving 100% launch readiness.
