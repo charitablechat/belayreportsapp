@@ -1179,6 +1179,9 @@ export default function DailyAssessmentForm() {
         filename={`daily-assessment-${assessment?.site || 'report'}-${new Date().toISOString().split('T')[0]}.html`}
         isOpen={viewerOpen}
         onClose={() => setViewerOpen(false)}
+         reportType="daily_assessment"
+         organization={assessment?.site}
+         date={assessment?.assessment_date}
       />
 
       </div>
