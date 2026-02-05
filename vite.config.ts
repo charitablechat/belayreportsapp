@@ -5,10 +5,10 @@ import { componentTagger } from "lovable-tagger";
 import { pwaConfig } from "./vite-pwa-config";
 
 // Version follows vX.Y.Z format where Z increments by 10 on each deployment
- // v2.2.92 - SMS/Text Report Sharing: share report metadata via native messaging
- const APP_VERSION = "2.2.92";
+ // v2.2.93 - Super Admin Dashboard: fix RLS policies for full report visibility
+ const APP_VERSION = "2.2.93";
  const BUILD_DATE = "02-05-2026";
- const BUILD_TIMESTAMP = "02-05-2026 at 11:00 AM CST";
+ const BUILD_TIMESTAMP = "02-05-2026 at 11:45 AM CST";
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
