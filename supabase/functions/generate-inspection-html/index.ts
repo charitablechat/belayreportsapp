@@ -332,7 +332,14 @@ serve(async (req) => {
     // Format dates in Central Time (CST/CDT)
     const formatDate = (dateStr: string | null) => {
       if (!dateStr) return "N/A";
-      return new Date(dateStr).toLocaleDateString("en-US", {
+     // Pass through special values without parsing
+     const SPECIAL_DATE_VALUES = ["N/A", "Unknown"];
+     if (SPECIAL_DATE_VALUES.includes(dateStr)) return dateStr;
+     // Attempt to parse as date
+     const date = new Date(dateStr);
+     // If invalid date, return original string
+     if (isNaN(date.getTime())) return dateStr;
+     return date.toLocaleDateString("en-US", {
         timeZone: "America/Chicago",
         year: "numeric",
         month: "long",

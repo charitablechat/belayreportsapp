@@ -5,10 +5,10 @@ import { componentTagger } from "lovable-tagger";
 import { pwaConfig } from "./vite-pwa-config";
 
 // Version follows vX.Y.Z format where Z increments by 10 on each deployment
- // v2.2.94 - Fix Complete button touch handler on mobile (iOS/Android)
- const APP_VERSION = "2.2.94";
+ // v2.2.95 - Fix Previous Inspection Date validation for special values (N/A, Unknown)
+ const APP_VERSION = "2.2.95";
  const BUILD_DATE = "02-05-2026";
- const BUILD_TIMESTAMP = "02-05-2026 at 12:15 PM CST";
+ const BUILD_TIMESTAMP = "02-05-2026 at 12:45 PM CST";
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({

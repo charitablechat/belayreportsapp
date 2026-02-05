@@ -1379,6 +1379,15 @@ export default function InspectionForm() {
       const firstError = formatValidationError(validation.errors[0]);
       const totalErrors = validation.errors.length;
       
+     // Show user feedback for validation failure
+     toast({
+       title: "Cannot complete inspection",
+       description: totalErrors > 1 
+         ? `${firstError} (+${totalErrors - 1} more issue${totalErrors > 2 ? 's' : ''})`
+         : firstError,
+       variant: "destructive",
+     });
+     
       if (import.meta.env.DEV) {
         console.error('[InspectionForm] Cannot complete - validation errors:', 
           validation.errors.map(formatValidationError));
