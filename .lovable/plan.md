@@ -1,146 +1,136 @@
 
-# Plan: Add "Report Modified By" Indicator for Super Admin Edits (v2.3.3)
+# Plan: Fix Super Admin Report Visibility - Disambiguate FK Relationships (v2.3.4)
 
-## Summary
+## Root Cause Analysis
 
-When a Super Admin edits a completed report created by another user, a new field will appear below the "Inspector" field showing "Report modified by [Super Admin Name]". This provides accountability and transparency about who has made changes to finalized reports.
+The v2.3.3 migration added a `last_modified_by` column to all three report tables (`inspections`, `trainings`, `daily_assessments`), creating a **second foreign key relationship** to the `profiles` table. 
 
-## Current State
+When Dashboard.tsx queries use the ambiguous syntax `inspector:profiles(...)`, PostgREST returns a **HTTP 300 status** because it cannot determine which FK relationship to use:
+- `inspector_id → profiles` (original)
+- `last_modified_by → profiles` (new from v2.3.3)
 
-- Inspector field shows the original report creator's name (fetched from `profiles` via `inspector_id`)
-- No tracking of who last modified a report
-- Super Admins can now edit all reports (as of v2.3.2)
+**Console Error Evidence:**
+```
+PGRST201: Could not embed because more than one relationship was found 
+for 'inspections' and 'profiles'
 
-## Implementation Approach
-
-### Database Changes
-
-Add a `last_modified_by` column to all three report tables to track who last made changes:
-
-| Table | New Column | Type | Description |
-|-------|-----------|------|-------------|
-| `inspections` | `last_modified_by` | UUID (nullable) | References `profiles.id` |
-| `trainings` | `last_modified_by` | UUID (nullable) | References `profiles.id` |
-| `daily_assessments` | `last_modified_by` | UUID (nullable) | References `profiles.id` |
-
-The column will:
-- Be NULL for reports never modified by someone other than the owner
-- Be set to the current user's ID when a Super Admin saves changes
-- Only be set when `last_modified_by` differs from `inspector_id` (owner edits don't need tracking)
-
-### Frontend Changes
-
-**1. Update InspectionHeader Component**
-
-Add a new prop `modifiedByProfile` and conditionally render the "Report modified by" field:
-
-```text
-+------------------------------------------+
-|  Inspector                               |
-|  [John Smith (disabled)]                 |
-|                                          |
-|  Report modified by                      | ← NEW (only shows if modified)
-|  [Admin User (disabled)]                 |
-+------------------------------------------+
+Hint: Try changing 'profiles' to one of the following:
+- 'profiles!inspections_inspector_id_profiles_fkey'
+- 'profiles!inspections_last_modified_by_fkey'
 ```
 
-**2. Update TrainingHeader Component**
+The queries fail silently and fall back to offline storage, which only contains the **current user's data** - hence Super Admins only see their own reports.
 
-Add "Report modified by" field below the "Trainer(s) of Record" section when applicable.
+---
 
-**3. Update DailyAssessmentHeader Component**
+## Solution
 
-Add "Report modified by" field below the "Trainer/Facilitator of Record" field when applicable.
+Update all ambiguous profile join queries in `Dashboard.tsx` to use **explicit FK relationship hints** using PostgREST's `!foreign_key_name` syntax.
 
-**4. Fetch Modified-By Profile in Form Pages**
+---
 
-Update InspectionForm, TrainingForm, and DailyAssessmentForm to:
-- Fetch the `last_modified_by` profile when loading the report
-- Pass it to the header component
-- Update `last_modified_by` when saving (only if current user is not the owner)
+## Technical Changes
+
+### File: `src/pages/Dashboard.tsx`
+
+**Change 1: Inspections Query (Lines ~299-302)**
+
+Before:
+```typescript
+.select(`
+  *,
+  inspector:profiles(first_name, last_name, avatar_url)
+`)
+```
+
+After:
+```typescript
+.select(`
+  *,
+  inspector:profiles!inspections_inspector_id_profiles_fkey(first_name, last_name, avatar_url)
+`)
+```
+
+**Change 2: Trainings Query (Lines ~370-373)**
+
+Before:
+```typescript
+.select(`
+  *,
+  trainer:profiles(first_name, last_name, avatar_url)
+`)
+```
+
+After:
+```typescript
+.select(`
+  *,
+  trainer:profiles!trainings_inspector_id_profiles_fkey(first_name, last_name, avatar_url)
+`)
+```
+
+**Change 3: Daily Assessments Query (Lines ~437-440)**
+
+Before:
+```typescript
+.select(`
+  *,
+  inspector:profiles(first_name, last_name, avatar_url)
+`)
+```
+
+After:
+```typescript
+.select(`
+  *,
+  inspector:profiles!daily_assessments_inspector_id_profiles_fkey(first_name, last_name, avatar_url)
+`)
+```
+
+---
+
+### File: `vite.config.ts`
+
+Update version to **2.3.4** with changelog comment.
 
 ---
 
 ## Files to Modify
 
-| File | Action | Description |
-|------|--------|-------------|
-| Database | **Migration** | Add `last_modified_by` column to 3 tables |
-| `src/components/inspection/InspectionHeader.tsx` | **Modify** | Add modified-by display field |
-| `src/components/training/TrainingHeader.tsx` | **Modify** | Add modified-by display field |
-| `src/components/daily-assessment/DailyAssessmentHeader.tsx` | **Modify** | Add modified-by display field |
-| `src/pages/InspectionForm.tsx` | **Modify** | Fetch and pass modified-by profile, update on save |
-| `src/pages/TrainingForm.tsx` | **Modify** | Fetch and pass modified-by profile, update on save |
-| `src/pages/DailyAssessmentForm.tsx` | **Modify** | Fetch and pass modified-by profile, update on save |
-| `vite.config.ts` | **Modify** | Version bump to 2.3.3 |
+| File | Lines | Description |
+|------|-------|-------------|
+| `src/pages/Dashboard.tsx` | ~299-302 | Fix inspections query FK hint |
+| `src/pages/Dashboard.tsx` | ~370-373 | Fix trainings query FK hint |
+| `src/pages/Dashboard.tsx` | ~437-440 | Fix daily_assessments query FK hint |
+| `vite.config.ts` | Version | Bump to 2.3.4 |
 
 ---
 
-## Database Migration SQL
+## Why This Fixes the Issue
 
-```sql
--- Add last_modified_by column to inspections
-ALTER TABLE inspections 
-ADD COLUMN last_modified_by UUID REFERENCES profiles(id);
-
--- Add last_modified_by column to trainings
-ALTER TABLE trainings 
-ADD COLUMN last_modified_by UUID REFERENCES profiles(id);
-
--- Add last_modified_by column to daily_assessments
-ALTER TABLE daily_assessments 
-ADD COLUMN last_modified_by UUID REFERENCES profiles(id);
-```
+1. **No Database Changes Required** - The RLS policies are already correct; Super Admins have `SELECT` permission on all reports
+2. **No Caching Issues** - The problem is query failure, not stale data
+3. **InspectionForm.tsx Already Uses This Pattern** - Line 769 shows the working syntax: `profiles!inspections_inspector_id_profiles_fkey`
 
 ---
 
-## UI Behavior Logic
+## Verification
 
-The "Report modified by" field will **only appear** when:
-1. `last_modified_by` is NOT NULL, AND
-2. `last_modified_by` differs from `inspector_id`
-
-This means:
-- Owner edits their own report → Field does NOT appear
-- Super Admin edits another user's report → Field APPEARS with Super Admin's name
-- Super Admin edits their own report → Field does NOT appear
+After this fix, the network request for inspections will succeed with HTTP 200 instead of HTTP 300, and Super Admins will see all reports from all users.
 
 ---
 
-## Save Logic (Pseudo-code)
+## Impact on Image Upload
 
-```typescript
-// When saving a report
-const handleSave = async () => {
-  const currentUserId = await getUserWithCache()?.id;
-  const isOwner = currentUserId === report.inspector_id;
-  
-  const updateData = {
-    ...reportChanges,
-    updated_at: new Date().toISOString(),
-    // Only set last_modified_by if editor is NOT the owner
-    ...(isOwner ? {} : { last_modified_by: currentUserId })
-  };
-  
-  await supabase.from('inspections').update(updateData).eq('id', reportId);
-};
-```
-
----
-
-## Visual Design
-
-The new field will use the same styling as the existing Inspector field:
-- Label: "Report modified by" (text-sm text-muted-foreground)
-- Input: Disabled VoiceInput with bg-muted/50 styling
-- Positioned directly below the Inspector field
+This fix is completely isolated to the Dashboard's read queries and has **no impact** on image upload functionality (which was stabilized in v2.2.99). The image upload code paths do not involve profile joins.
 
 ---
 
 ## Testing Checklist
 
-1. Owner edits own report → "Report modified by" does NOT appear
-2. Super Admin edits other's report → "Report modified by" appears with their name
-3. Multiple Super Admin edits → Shows most recent modifier's name
-4. Field is read-only and cannot be changed by users
-5. Works correctly for all three report types (Inspection, Training, Daily Assessment)
+1. Super Admin sees all inspections from all users on Dashboard
+2. Super Admin sees all trainings from all users on Dashboard  
+3. Super Admin sees all daily assessments from all users on Dashboard
+4. Regular users still see only their own reports
+5. Report cards display correct inspector/trainer names and avatars
+6. Image uploads continue to work correctly (regression test)
