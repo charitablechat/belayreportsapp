@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+ import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -24,6 +24,7 @@ export default function NewInspection() {
   const { isOnline } = useNetworkStatus();
   const [loading, setLoading] = useState(false);
   const [locationLoading, setLocationLoading] = useState(false);
+   const isSubmitting = useRef(false);
   const [formData, setFormData] = useState({
     organization: "",
     location: "",
@@ -111,6 +112,13 @@ export default function NewInspection() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+     
+     // Prevent double submission
+     if (isSubmitting.current || loading) {
+       return;
+     }
+     
+     isSubmitting.current = true;
     triggerHaptic('medium');
     setLoading(true);
 
@@ -199,8 +207,14 @@ export default function NewInspection() {
     } catch (error: any) {
       console.error("Error creating inspection:", error);
       triggerHaptic('error');
+       
+       // Show error toast to user
+       toast.error("Failed to create inspection", {
+         description: error.message || "Please try again"
+       });
     } finally {
       setLoading(false);
+       isSubmitting.current = false;
     }
   };
 
@@ -350,8 +364,15 @@ export default function NewInspection() {
               )}
 
               <div className="flex gap-4">
-                <Button type="submit" disabled={loading} className="flex-1">
-                  {loading ? "Creating..." : isOnline ? "Create Inspection" : "Create Locally"}
+                 <Button type="submit" disabled={loading} className="flex-1">
+                   {loading ? (
+                     <>
+                       <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                       Creating...
+                     </>
+                   ) : (
+                     isOnline ? "Create Inspection" : "Create Locally"
+                   )}
                 </Button>
                 <Button
                   type="button"
