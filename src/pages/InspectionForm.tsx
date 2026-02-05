@@ -1885,26 +1885,16 @@ export default function InspectionForm() {
               </Button>
               )}
               {!isReadOnly && (
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span>
-                      <Button 
-                        size={isMobileView ? "default" : "sm"} 
-                        onClick={completeInspection} 
-                        disabled={saving || autoSaving || !isOnline}
-                        className={isMobileView ? "min-w-[100px] h-10 text-sm font-medium" : ""}
-                      >
-                        <CheckCircle className={isMobileView ? "w-5 h-5 mr-1.5" : "w-4 h-4"} />
-                        <span className={isMobileView ? "inline" : "hidden md:inline md:ml-2"}>Complete</span>
-                      </Button>
-                    </span>
-                  </TooltipTrigger>
-                  {!isOnline && (
-                    <TooltipContent>Must be online to complete inspection</TooltipContent>
-                  )}
-                </Tooltip>
-              </TooltipProvider>
+                <Button 
+                  size={isMobileView ? "default" : "sm"} 
+                  onClick={completeInspection} 
+                  disabled={saving || autoSaving || !isOnline}
+                  className={isMobileView ? "min-w-[100px] h-10 text-sm font-medium" : ""}
+                  title={!isOnline ? "Must be online to complete inspection" : undefined}
+                >
+                  <CheckCircle className={isMobileView ? "w-5 h-5 mr-1.5" : "w-4 h-4"} />
+                  <span className={isMobileView ? "inline" : "hidden md:inline md:ml-2"}>Complete</span>
+                </Button>
               )}
               {inspection?.status === 'completed' && (
                 <>
