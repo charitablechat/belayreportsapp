@@ -4,10 +4,10 @@
  */
 
  import { useEffect, useState } from 'react';
- import { X, Download, Share2, Mail } from 'lucide-react';
+ import { X, Download, Share2, Mail, MessageSquare } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
-import { downloadHtmlReport, shareHtmlReport, canShareHtml } from '@/lib/html-report-viewer';
+import { downloadHtmlReport, shareHtmlReport, canShareHtml, generateSmsLink, canShareViaSms } from '@/lib/html-report-viewer';
  import { EmailReportDialog } from './EmailReportDialog';
  import { useNetworkStatus } from '@/hooks/useNetworkStatus';
 
@@ -34,11 +34,23 @@ export function HtmlReportViewer({
    date,
 }: HtmlReportViewerProps) {
   const canShare = canShareHtml();
+  const canSms = canShareViaSms();
    const { isOnline } = useNetworkStatus();
    const [emailDialogOpen, setEmailDialogOpen] = useState(false);
  
    // Only show email button if reportType is provided (for backward compatibility)
    const canEmail = Boolean(reportType) && isOnline;
+  
+  // Generate SMS link if we have report metadata
+  const smsLink = reportType && organization && date 
+    ? generateSmsLink(reportType, organization, date)
+    : null;
+
+  const handleSms = () => {
+    if (smsLink) {
+      window.open(smsLink, '_self');
+    }
+  };
 
   // Add mobile base styles to ensure viewport consistency
   const mobileBaseStyles = `
@@ -104,6 +116,19 @@ export function HtmlReportViewer({
                  >
                    <Mail className="h-4 w-4" />
                    <span className="hidden sm:inline">Email</span>
+                 </Button>
+               )}
+               
+               {canSms && smsLink && (
+                 <Button
+                   variant="outline"
+                   size="sm"
+                   onClick={handleSms}
+                   className="gap-2 border-2 border-foreground hover:bg-foreground hover:text-background transition-colors duration-100"
+                   title="Share via Text"
+                 >
+                   <MessageSquare className="h-4 w-4" />
+                   <span className="hidden sm:inline">Text</span>
                  </Button>
                )}
                
