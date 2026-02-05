@@ -22,18 +22,13 @@ import acctLogo from "@/assets/acct-accredited-vendor.png";
 import dashboardBackgroundVideo from "@/assets/dashboard-background.mp4";
 import { triggerHaptic } from "@/lib/haptics";
 
-import { usePWAInstall } from "@/hooks/usePWAInstall";
 import { useSyncProgress } from "@/hooks/useSyncProgress";
 import { NetworkStatusIndicator } from "@/components/pwa/NetworkStatusIndicator";
 import { NetworkQualityIndicator } from "@/components/pwa/NetworkQualityIndicator";
 
-import { ManualUpdateButton } from "@/components/pwa/ManualUpdateButton";
 import { ForceSyncButton } from "@/components/pwa/ForceSyncButton";
 import { OfflineSimulator } from "@/components/dev/OfflineSimulator";
-import { PushNotificationManager } from "@/components/pwa/PushNotificationManager";
-import { NotificationCenter } from "@/components/pwa/NotificationCenter";
 import { StatusIndicator } from "@/components/pwa/StatusIndicator";
-import { useNotificationCenter } from "@/hooks/useNotificationCenter";
 import { useConflicts } from "@/hooks/useConflicts";
 import { usePWA } from "@/hooks/usePWA";
 import { usePullToRefresh } from "@/hooks/usePullToRefresh";
@@ -46,7 +41,7 @@ import { getUserWithCache } from "@/lib/cached-auth";
 import { FallingHearts } from "@/components/christmas/FallingHearts";
 import { HolidayBanner } from "@/components/christmas/HolidayBanner";
 import { HeartsBorder } from "@/components/christmas/HeartsBorder";
-import { VersionBadge } from "@/components/VersionBadge";
+import { UserProfileDropdown } from "@/components/UserProfileDropdown";
 
 
 import { triggerValentineConfetti } from "@/lib/confetti";
@@ -60,13 +55,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -94,13 +82,10 @@ export default function Dashboard() {
   const [inspectionToDelete, setInspectionToDelete] = useState<any>(null);
   const [reportToDelete, setReportToDelete] = useState<any>(null);
   const [activeReportTab, setActiveReportTab] = useState("inspections");
-  const [notificationsDialogOpen, setNotificationsDialogOpen] = useState(false);
-  const [contactSheetOpen, setContactSheetOpen] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [userProfile, setUserProfile] = useState<any>(null);
   const [inspectorFilter, setInspectorFilter] = useState<string>("all");
-  const { isInstallable, isInstalled, promptInstall } = usePWAInstall();
   // Silent auto-resolution of conflicts via last-write-wins
   useConflicts();
   const { photosByInspection, isSyncing } = usePWA();
@@ -778,105 +763,13 @@ export default function Dashboard() {
               )}
             </div>
             
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="rounded-full">
-              <UserAvatar 
-                userEmail={currentUser?.email ?? null}
-                avatarUrl={userProfile?.avatar_url ?? null}
-                isSuperAdmin={isSuperAdmin}
-              />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56">
-                <DropdownMenuLabel>
-                  <div className="flex flex-col space-y-1">
-                    <div className="flex items-center justify-between">
-                      <p className="text-sm font-medium">Account</p>
-                      {isSuperAdmin && (
-                        <Badge variant="default" className="bg-warning text-warning-foreground border-warning/50 shadow-md shadow-warning/20 animate-pulse text-xs flex items-center gap-1">
-                          <Shield className="w-3 h-3" />
-                          Admin
-                        </Badge>
-                      )}
-                    </div>
-                    <p className="text-xs text-muted-foreground truncate">
-                      {currentUser?.email || 'user@example.com'}
-                    </p>
-                  </div>
-                </DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                {isSuperAdmin && (
-                  <>
-                    <DropdownMenuItem onClick={() => navigate('/admin')}>
-                      <Settings className="w-4 h-4 mr-2" />
-                      Admin Dashboard
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                  </>
-                )}
-                <DropdownMenuItem onClick={() => navigate('/profile')}>
-                  <User className="w-4 h-4 mr-2" />
-                  Profile
-                </DropdownMenuItem>
-                <NotificationCenter 
-                  trigger={
-                    <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
-                      <Bell className="w-4 h-4 mr-2" />
-                      Activity Log
-                    </DropdownMenuItem>
-                  }
-                />
-                <DropdownMenuItem onClick={() => setNotificationsDialogOpen(true)}>
-                  <Bell className="w-4 h-4 mr-2" />
-                  Push Notifications
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => navigate('/capabilities')}>
-                  Device Capabilities
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => navigate('/install')}>
-                  <FileText className="w-4 h-4 mr-2" />
-                  Install Instructions
-                </DropdownMenuItem>
-                
-                {isInstallable && !isInstalled && (
-                  <DropdownMenuItem onClick={promptInstall}>
-                    <Download className="w-4 h-4 mr-2" />
-                    Install App
-                  </DropdownMenuItem>
-                )}
-                
-                <DropdownMenuItem asChild>
-                  <div className="w-full px-2 py-1.5">
-                    <ManualUpdateButton />
-                  </div>
-                </DropdownMenuItem>
-                
-                <DropdownMenuItem asChild>
-                  <ForceSyncButton variant="menu-item" />
-                </DropdownMenuItem>
-                
-                <DropdownMenuItem onClick={() => setContactSheetOpen(true)}>
-                  <MessageCircle className="w-4 h-4 mr-2" />
-                  Contact Developer
-                </DropdownMenuItem>
-                
-                {/* Version Badge - Below Contact Developer */}
-                <div className="px-2 py-1.5">
-                  <VersionBadge compact />
-                </div>
-                
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={handleSignOut} disabled={signingOut}>
-                  {signingOut ? (
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  ) : (
-                    <LogOut className="w-4 h-4 mr-2" />
-                  )}
-                  {signingOut ? "Signing out..." : "Sign Out"}
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <UserProfileDropdown
+              currentUser={currentUser}
+              userProfile={userProfile}
+              isSuperAdmin={isSuperAdmin}
+              onSignOut={handleSignOut}
+              signingOut={signingOut}
+            />
           </div>
         </div>
       </header>
@@ -1219,24 +1112,6 @@ export default function Dashboard() {
         </AlertDialogContent>
       </AlertDialog>
 
-      <Dialog open={notificationsDialogOpen} onOpenChange={setNotificationsDialogOpen}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Notification Settings</DialogTitle>
-            <DialogDescription>
-              Manage your push notification preferences for inspections and sync updates
-            </DialogDescription>
-          </DialogHeader>
-          <PushNotificationManager />
-        </DialogContent>
-      </Dialog>
-
-      
-      <ContactDeveloperSheet 
-        open={contactSheetOpen} 
-        onOpenChange={setContactSheetOpen}
-      />
-      
       {/* Development Tools */}
       <OfflineSimulator />
       </div>

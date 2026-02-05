@@ -11,16 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { ArrowLeft, Save, CheckCircle, Loader2, WifiOff, CloudOff, LogOut, User, FileText, Settings, Package, ClipboardList, FileCheck, RefreshCw } from "lucide-react";
-import { UserAvatar } from "@/components/ui/user-avatar";
 import { AutoSaveIndicator } from "@/components/AutoSaveIndicator";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import ropeWorksLogo from "@/assets/rope-works-logo.png";
 import InspectionHeader from "@/components/inspection/InspectionHeader";
 import OperatingSystemsTable from "@/components/inspection/OperatingSystemsTable";
@@ -56,6 +47,7 @@ import { triggerHaptic } from "@/lib/haptics";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useSwipeNavigation } from "@/hooks/useSwipeNavigation";
 import { SwipeBackIndicator } from "@/components/SwipeBackIndicator";
+import { UserProfileDropdown } from "@/components/UserProfileDropdown";
 
 import { Check } from "lucide-react";
 import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
@@ -98,6 +90,7 @@ export default function InspectionForm() {
   const autoRetryingRef = useRef(false);
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [userProfile, setUserProfile] = useState<any>(null);
+  const [signingOut, setSigningOut] = useState(false);
   const [htmlViewerOpen, setHtmlViewerOpen] = useState(false);
   const [reportHtml, setReportHtml] = useState<string>('');
   const [inspection, setInspection] = useState<any>(null);
@@ -167,6 +160,13 @@ export default function InspectionForm() {
 
   const saveRef = useRef<(() => void) | null>(null);
   useSaveShortcut(() => saveRef.current?.(), hasUnsavedChanges && !saving);
+
+  const handleSignOut = async () => {
+    setSigningOut(true);
+    await supabase.auth.signOut();
+    navigate("/");
+  };
+
   const generateSummaryFromInspection = () => {
     const criticalActions: string[] = [];
     const repairsPerformed: string[] = [];
@@ -538,11 +538,6 @@ export default function InspectionForm() {
   const normalizeResultValue = (value: string | null | undefined): string => {
     if (!value) return 'pass';
     return value.toLowerCase();
-  };
-
-  const handleSignOut = async () => {
-    await supabase.auth.signOut();
-    navigate("/");
   };
 
   const formatTime = (date: Date) => {
@@ -1794,36 +1789,13 @@ export default function InspectionForm() {
               <img src={ropeWorksLogo} alt="Rope Works" className="h-8 sm:h-10 w-auto object-contain" />
             </div>
             
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="rounded-full">
-                  <UserAvatar 
-                    userEmail={currentUser?.email ?? null}
-                    avatarUrl={userProfile?.avatar_url ?? null}
-                  />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56">
-                <DropdownMenuLabel>
-                  <div className="flex flex-col space-y-1">
-                    <p className="text-sm font-medium">Account</p>
-                    <p className="text-xs text-muted-foreground truncate">
-                      {currentUser?.email || 'user@example.com'}
-                    </p>
-                  </div>
-                </DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => navigate('/profile')}>
-                  <User className="w-4 h-4 mr-2" />
-                  Profile
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={handleSignOut}>
-                  <LogOut className="w-4 h-4 mr-2" />
-                  Sign Out
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <UserProfileDropdown
+              currentUser={currentUser}
+              userProfile={userProfile}
+              isSuperAdmin={isSuperAdmin}
+              onSignOut={handleSignOut}
+              signingOut={signingOut}
+            />
           </div>
           
           {/* Bottom row - Status indicators and action buttons */}
