@@ -35,3 +35,6 @@ verify_jwt = true
 
 [functions.migrate-field-history]
 verify_jwt = true
+ 
+ [functions.send-report-email]
+ verify_jwt = true
