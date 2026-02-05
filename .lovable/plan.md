@@ -1,180 +1,199 @@
 
-
-# Plan: Unify Profile Dropdown Menu Across All Pages (v2.2.98)
-
-## ✅ IMPLEMENTED - v2.2.98
-
-The unified `UserProfileDropdown` component has been created and integrated into all pages.
+# Plan: Fix Mobile PWA Sync Failure - Session Validation (v2.2.101)
 
 ## Problem Summary
 
-The profile dropdown menu currently shows different options depending on which page the user is on:
+Mobile PWA users are experiencing sync failures where new inspection records created on mobile don't appear on the web version. The database logs show RLS policy violations, indicating the JWT token used for database operations is invalid or expired.
 
-| Page | Menu Items |
-|------|-----------|
-| **Dashboard** | Admin Dashboard, Profile, Activity Log, Push Notifications, Device Capabilities, Install Instructions, Install App, Check for Updates, Force Sync Now, Contact Developer, Version Badge, Sign Out |
-| **InspectionForm** | Profile, Sign Out |
-| **TrainingForm** | Profile, Sign Out |
-| **DailyAssessmentForm** | Profile, Sign Out |
+## Root Cause
 
-**User Expectation**: All actions should be available from the profile dropdown on every page where the profile icon appears.
+The sync manager uses `getUserWithCache()` which returns a cached user from localStorage. However, this does NOT guarantee the Supabase client has a valid JWT token. When the JWT expires:
 
----
+1. `getUserWithCache()` returns the cached user (check passes)
+2. `inspection.inspector_id === user.id` check passes
+3. Supabase client makes request with expired/invalid JWT
+4. RLS check fails because `auth.uid()` returns NULL
+5. Error: "new row violates row-level security policy"
+
+```text
+Flow Diagram:
+
++-------------------+     +------------------+     +-------------------+
+| getUserWithCache()|---->| Returns cached   |---->| inspector_id      |
+| (localStorage)    |     | user from storage|     | check PASSES      |
++-------------------+     +------------------+     +-------------------+
+                                                           |
+                                                           v
++-------------------+     +------------------+     +-------------------+
+| Supabase.upsert() |---->| Uses JWT from    |---->| JWT expired?      |
+| (database call)   |     | client session   |     | auth.uid() = NULL |
++-------------------+     +------------------+     +-------------------+
+                                                           |
+                                                           v
+                                                  +-------------------+
+                                                  | RLS FAILS!        |
+                                                  | "violates policy" |
+                                                  +-------------------+
+```
 
 ## Solution
 
-Create a **shared `UserProfileDropdown` component** that contains all profile menu items, then replace the inline dropdown code in each page with this component.
+Add session validation BEFORE database operations in the atomic sync manager. If the session is invalid, refresh it before proceeding.
 
----
-
-## Files to Create/Modify
+## Files to Modify
 
 | File | Action | Description |
 |------|--------|-------------|
-| `src/components/UserProfileDropdown.tsx` | **Create** | New shared component containing all profile menu items |
-| `src/pages/Dashboard.tsx` | **Modify** | Replace inline dropdown with shared component |
-| `src/pages/InspectionForm.tsx` | **Modify** | Replace minimal dropdown with shared component |
-| `src/pages/TrainingForm.tsx` | **Modify** | Replace minimal dropdown with shared component |
-| `src/pages/DailyAssessmentForm.tsx` | **Modify** | Replace minimal dropdown with shared component |
-| `vite.config.ts` | **Modify** | Version bump to 2.2.98 |
+| `src/lib/cached-auth.ts` | **Add function** | Add `ensureValidSession()` that validates and refreshes JWT if needed |
+| `src/lib/atomic-sync-manager.ts` | **Modify** | Call `ensureValidSession()` before any database operations |
+| `vite.config.ts` | **Modify** | Version bump to 2.2.101 |
 
 ---
 
 ## Implementation Details
 
-### 1. Create UserProfileDropdown Component
+### 1. Add Session Validation Function (cached-auth.ts)
 
-A new component that encapsulates all profile dropdown functionality:
+Add a new function that ensures the Supabase client has a valid session before making database calls:
 
 ```typescript
-// src/components/UserProfileDropdown.tsx
-interface UserProfileDropdownProps {
-  currentUser: { email?: string } | null;
-  userProfile: { avatar_url?: string } | null;
-  isSuperAdmin?: boolean;
-  onSignOut: () => void;
-  signingOut?: boolean;
+/**
+ * Ensures the Supabase client has a valid session before database operations.
+ * This is critical for sync operations that rely on RLS policies.
+ * 
+ * Unlike getUserWithCache() which reads from localStorage, this actually
+ * validates the session with the Supabase client and refreshes if needed.
+ * 
+ * @returns The current user if session is valid, null otherwise
+ */
+export async function ensureValidSession(): Promise<CachedUser | null> {
+  try {
+    // First, try to get the current session
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+    
+    if (sessionError) {
+      console.error('[CachedAuth] Session error:', sessionError);
+      return null;
+    }
+    
+    // If no session, user needs to log in
+    if (!session) {
+      console.warn('[CachedAuth] No active session');
+      return null;
+    }
+    
+    // Check if token needs refresh (within 60 seconds of expiry)
+    const expiresAt = session.expires_at || 0;
+    const now = Math.floor(Date.now() / 1000);
+    const needsRefresh = expiresAt - now < 60;
+    
+    if (needsRefresh) {
+      console.log('[CachedAuth] Session expiring soon, refreshing...');
+      const { data: { session: refreshedSession }, error: refreshError } = 
+        await supabase.auth.refreshSession();
+      
+      if (refreshError || !refreshedSession) {
+        console.error('[CachedAuth] Failed to refresh session:', refreshError);
+        return null;
+      }
+      
+      // Update cache with refreshed user
+      cachedUser = refreshedSession.user;
+      cacheTimestamp = Date.now();
+      return refreshedSession.user;
+    }
+    
+    // Session is valid - update cache and return user
+    cachedUser = session.user;
+    cacheTimestamp = Date.now();
+    return session.user;
+    
+  } catch (error) {
+    console.error('[CachedAuth] Error validating session:', error);
+    return null;
+  }
 }
 ```
 
-**Features included:**
-- Account header with email and Super Admin badge (if applicable)
-- Admin Dashboard link (Super Admins only)
-- Profile navigation
-- Activity Log (NotificationCenter)
-- Push Notifications dialog trigger
-- Device Capabilities navigation
-- Install Instructions navigation
-- Install App button (if installable and not installed)
-- Check for Updates (ManualUpdateButton)
-- Force Sync Now
-- Contact Developer
-- Version Badge
-- Sign Out
+### 2. Update Atomic Sync Manager
 
-**State Management:**
-- The component will accept callbacks and state from the parent
-- Internal state for dialogs (Push Notifications, Contact Developer) will be managed within the component
-- PWA state (isInstallable, isInstalled, promptInstall) will be accessed via usePWAInstall hook
-
-### 2. Dashboard.tsx Changes
-
-Replace ~100 lines of inline dropdown code with:
-
-```tsx
-<UserProfileDropdown
-  currentUser={currentUser}
-  userProfile={userProfile}
-  isSuperAdmin={isSuperAdmin}
-  onSignOut={handleSignOut}
-  signingOut={signingOut}
-/>
-```
-
-### 3. InspectionForm.tsx Changes
-
-Replace the minimal dropdown (lines 1800-1826) with the shared component.
-
-**Required additions:**
-- Import `UserProfileDropdown`
-- Add super admin check query (copy pattern from Dashboard)
-- Add `signingOut` state
-- Add `handleSignOut` function (already exists but may need adjustment)
-
-### 4. TrainingForm.tsx Changes
-
-Same pattern as InspectionForm - replace minimal dropdown with shared component.
-
-### 5. DailyAssessmentForm.tsx Changes
-
-Same pattern as InspectionForm - replace minimal dropdown with shared component.
-
----
-
-## Component Props Design
+Modify `syncInspectionAtomic()` to validate the session before any database operations:
 
 ```typescript
-interface UserProfileDropdownProps {
-  // User info for display
-  currentUser: { email?: string; id?: string } | null;
-  userProfile: { avatar_url?: string } | null;
-  
-  // Admin status
-  isSuperAdmin?: boolean;
-  
-  // Sign out handling
-  onSignOut: () => void;
-  signingOut?: boolean;
+// At the start of syncInspectionAtomic(), after the offline check:
+
+// CRITICAL: Ensure we have a valid JWT before any database operations
+// This prevents RLS failures due to expired tokens
+const validUser = await ensureValidSession();
+if (!validUser) {
+  console.error('[Atomic Sync] No valid session - sync aborted');
+  return { success: false, skipped: true, reason: 'invalid_session' };
+}
+
+// Use the validated user instead of cached user for ownership check
+if (inspection.inspector_id !== validUser.id) {
+  // ... existing ownership mismatch handling
 }
 ```
 
-**Internal hooks used:**
-- `usePWAInstall()` - for install button state
-- `useNavigate()` - for navigation
-- Internal state for dialogs
+Similarly update:
+- `syncTrainingAtomic()`
+- `syncDailyAssessmentAtomic()`
+- `syncAllInspectionsAtomic()` (before the loop)
+- `syncAllTrainingsAtomic()` (before the loop)  
+- `syncAllDailyAssessmentsAtomic()` (before the loop)
+
+### 3. Version Bump
+
+Update version to **2.2.101** in `vite.config.ts`.
 
 ---
 
-## Technical Considerations
+## Technical Details
 
-1. **Super Admin Check**: Each form page will need to add the super admin query to show/hide the Admin Dashboard option
-2. **Dialog State**: Push Notifications and Contact Developer dialogs will be managed inside the dropdown component
-3. **No Functional Changes**: Only the location of menu items changes; the logic remains identical
-4. **Consistent Styling**: The dropdown uses the same `w-56` width and styling across all pages
+### Why This Happens on Mobile More Often
 
----
+1. **Background sync timing**: Mobile devices often have longer intervals between syncs
+2. **App suspension**: iOS/Android suspend apps, sessions can expire while suspended
+3. **Network transitions**: Moving between WiFi/cellular can cause session state issues
+4. **PWA lifecycle**: Service workers and background sync have different session handling
 
-## Menu Item Order (Consistent Across All Pages)
+### Session Expiry Flow
 
-1. Account Header (with Super Admin badge if applicable)
-2. Separator
-3. Admin Dashboard (Super Admins only)
-4. Separator (Super Admins only)
-5. Profile
-6. Activity Log
-7. Push Notifications
-8. Device Capabilities
-9. Install Instructions
-10. Install App (if applicable)
-11. Check for Updates
-12. Force Sync Now
-13. Contact Developer
-14. Version Badge
-15. Separator
-16. Sign Out
+```text
+T=0:    User logs in, JWT valid for 1 hour
+T=45m:  User creates inspection offline
+T=50m:  App goes to background (iOS suspends)
+T=65m:  User returns, triggers sync
+        - getUserWithCache() returns cached user (from localStorage)
+        - JWT in Supabase client is EXPIRED
+        - Database call fails with RLS error
+```
+
+### After Fix
+
+```text
+T=65m:  User returns, triggers sync
+        - ensureValidSession() checks JWT expiry
+        - Detects JWT expired, calls refreshSession()
+        - Gets new valid JWT
+        - Database call succeeds
+```
 
 ---
 
 ## Testing Checklist
 
-1. **Dashboard** - Verify dropdown still works with all items
-2. **InspectionForm** - Verify all menu items now appear
-3. **TrainingForm** - Verify all menu items now appear
-4. **DailyAssessmentForm** - Verify all menu items now appear
-5. **Super Admin badge** - Verify it appears correctly on all pages for admins
-6. **Admin Dashboard link** - Verify it only appears for super admins
-7. **Install App** - Verify it only appears when installable
-8. **Force Sync** - Verify it works from any page
-9. **Contact Developer** - Verify sheet opens from any page
-10. **Sign Out** - Verify sign out works from any page
+1. **Normal sync flow** - Create inspection on mobile, verify appears on web
+2. **Expired session** - Wait 5+ minutes, sync should auto-refresh token
+3. **Offline creation** - Create offline, come online, verify sync works
+4. **Session refresh** - Verify refresh token flow works correctly
+5. **Error handling** - If refresh fails, verify proper error message shown
 
+---
+
+## Rollback Plan
+
+If issues arise, the change is isolated to session validation. Rollback by:
+1. Removing `ensureValidSession()` calls in atomic-sync-manager.ts
+2. Reverting to using `getUserWithCache()` directly
