@@ -1,124 +1,292 @@
 
-# Plan: Fix Versioning Yellow Items (v2.3.5)
 
-## Summary
+# Super Admin Access & Performance Resolution Plan (v2.3.6)
 
-Address the three versioning compliance issues identified in the Launch Readiness Assessment to move from Yellow to Green status.
+## Executive Summary
 
-## Issues to Fix
+After comprehensive analysis of the codebase, database schema, RLS policies, and data access patterns, I've identified **three distinct issues** affecting Super Admin report visibility and performance:
 
-| Item | Current State | Required Fix |
-|------|---------------|--------------|
-| vite.config.ts comment | Says "Z increments by 10" | Update to describe rollover scheme |
-| Unit tests | None exist | Add comprehensive test file |
-| Documentation | Scattered | Consolidate in version-calculator.ts header |
+| Issue | Severity | Root Cause | Status |
+|-------|----------|------------|--------|
+| **Offline Storage User Filtering** | HIGH | Super Admins get filtered to own reports in offline fallback | **Needs Fix** |
+| **Missing Performance Indexes** | MEDIUM | No index on `user_roles(user_id, role)` for fast super admin lookup | **Needs Fix** |
+| **Super Admin Status Caching** | MEDIUM | Multiple redundant RPC calls per session | **Optimization Needed** |
 
 ---
 
-## Technical Changes
+## Issue 1: Offline Storage User Filtering
 
-### 1. Update vite.config.ts Comment (Line 7)
+### Problem
+When the Dashboard loads, it shows offline data immediately while network data loads. The offline storage functions filter by `inspector_id === userId`:
 
-**Before:**
 ```typescript
-// Version follows vX.Y.Z format where Z increments by 10 on each deployment
+// src/lib/offline-storage.ts - Line 556-558
+if (userId) {
+  return allInspections.filter(i => i.inspector_id === userId);
+}
 ```
 
-**After:**
-```typescript
-// Version follows non-standard vX.Y.Z rollover scheme:
-// - PATCH resets to .1 when reaching .10 (e.g., v2.3.9 → v2.4.1)
-// - MINOR resets to .1 when reaching .10 (e.g., v2.9.9 → v3.1.1)
-// See src/lib/version-calculator.ts for implementation
+For Super Admins, this means:
+1. User logs in as Super Admin
+2. Dashboard calls `loadInspections(userId)` with the Super Admin's user ID
+3. Offline storage filters to ONLY show reports where `inspector_id === superAdminId`
+4. Network data loads, but if slow/failed, user only sees their own reports
+5. **Result**: Super Admin sees incomplete report list
+
+### Solution
+Create a `isSuperAdmin` flag check and pass it to offline storage functions so Super Admins bypass the user filtering:
+
+**Files to Modify:**
+- `src/lib/offline-storage.ts`: Add super admin bypass to `getOfflineInspections`, `getOfflineTrainings`, `getOfflineDailyAssessments`
+- `src/pages/Dashboard.tsx`: Pass super admin status to offline storage functions
+
+---
+
+## Issue 2: Missing Database Index
+
+### Problem
+The `is_super_admin()` function is called on every page load, every auth state change, and within RLS policy evaluation. Current index:
+
+```sql
+-- Existing index
+CREATE UNIQUE INDEX user_roles_user_id_organization_id_role_key 
+ON public.user_roles USING btree (user_id, organization_id, role)
 ```
 
-### 2. Create Unit Tests for version-calculator.ts
+This index includes `organization_id` in the middle, but the `is_super_admin()` function queries:
+```sql
+WHERE user_id = auth.uid() AND role = 'super_admin'
+```
 
-Create new file: `src/lib/version-calculator.test.ts`
+This query skips `organization_id`, reducing index efficiency. The query plan shows it's still using the index, but with "Heap Fetches".
 
-Test coverage will include:
-- Basic version parsing (with and without 'v' prefix)
-- Invalid version format handling
-- Standard increment (v2.3.4 → v2.3.5)
-- PATCH rollover (v2.3.9 → v2.4.1)
-- MINOR rollover (v2.9.9 → v3.1.1)
-- Double rollover edge case (v9.9.9 → v10.1.1)
-- Sequence generation
-- Validation function
+### Solution
+Add a dedicated index for super admin lookups:
 
-### 3. Bump Version to 2.3.5
+```sql
+CREATE INDEX idx_user_roles_super_admin_lookup 
+ON public.user_roles (user_id, role) 
+WHERE role = 'super_admin';
+```
 
-Update APP_VERSION and BUILD_TIMESTAMP in vite.config.ts.
+This partial index will:
+- Be very small (only super admin entries)
+- Provide direct lookup without heap fetches
+- Speed up all RLS policy evaluations for super admins
+
+---
+
+## Issue 3: Super Admin Status Caching
+
+### Problem
+The Dashboard makes multiple redundant `is_super_admin()` RPC calls:
+1. React Query hook (line 109-159)
+2. `useReportEditPermission` hook calls it per-report
+3. `useRequireSuperAdmin` hook calls it independently
+
+Each call takes ~0.8ms at the database, but network latency multiplies this.
+
+### Solution
+Enhance the existing caching pattern to:
+1. Store super admin status in memory with session lifetime
+2. Single-flight pattern to dedupe concurrent requests
+3. Invalidate on auth state changes
+
+**File to Modify:**
+- `src/lib/cached-auth.ts`: Add `getSuperAdminStatusWithCache()` function
+- `src/hooks/useReportEditPermission.tsx`: Use cached function
+- `src/pages/Dashboard.tsx`: Use cached function
+
+---
+
+## Implementation Details
+
+### Change 1: Offline Storage Super Admin Bypass
+
+**File: `src/lib/offline-storage.ts`**
+
+Update function signatures to accept optional `isSuperAdmin` parameter:
+
+```typescript
+// Updated getOfflineInspections
+export async function getOfflineInspections(userId?: string, isSuperAdmin?: boolean) {
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      const allInspections = await db.getAll('inspections');
+      
+      // Super admins see all reports
+      if (isSuperAdmin) {
+        return allInspections;
+      }
+      
+      // Filter by user ID if provided (for privacy on shared devices)
+      if (userId) {
+        return allInspections.filter(i => i.inspector_id === userId);
+      }
+      
+      return allInspections;
+    },
+    [],
+    'getOfflineInspections'
+  );
+}
+```
+
+Same pattern for `getOfflineTrainings` and `getOfflineDailyAssessments`.
+
+### Change 2: Dashboard Integration
+
+**File: `src/pages/Dashboard.tsx`**
+
+Update load functions to pass super admin status:
+
+```typescript
+// Line ~282-286
+const loadInspections = async (cachedUserId?: string, cachedIsSuperAdmin?: boolean) => {
+  try {
+    const userId = cachedUserId || (await getUserWithCache())?.id;
+    
+    // Pass super admin status to offline storage
+    const offlinePromise = getOfflineInspections(userId, cachedIsSuperAdmin).catch(() => []);
+    // ... rest of function
+```
+
+Update `loadAllData` to check super admin status once and pass to all loaders:
+
+```typescript
+const loadAllData = async () => {
+  setLoading(true);
+  
+  const user = await getUserWithCache();
+  const userId = user?.id;
+  
+  // Check super admin status once for offline storage bypass
+  let superAdminStatus = false;
+  if (user && navigator.onLine) {
+    const { data } = await supabase.rpc('is_super_admin');
+    superAdminStatus = !!data;
+  }
+  
+  // Pass to all loaders
+  await Promise.all([
+    loadInspections(userId, superAdminStatus),
+    loadTrainingReports(userId, superAdminStatus),
+    loadDailyAssessments(userId, superAdminStatus)
+  ]);
+  // ...
+```
+
+### Change 3: Database Index
+
+**SQL Migration:**
+
+```sql
+-- Add optimized index for super admin lookups
+CREATE INDEX IF NOT EXISTS idx_user_roles_super_admin_lookup 
+ON public.user_roles (user_id, role) 
+WHERE role = 'super_admin';
+
+-- Analyze to update query planner statistics
+ANALYZE public.user_roles;
+```
+
+### Change 4: Cached Super Admin Status
+
+**File: `src/lib/cached-auth.ts`**
+
+Add new cached function:
+
+```typescript
+// Super admin status cache
+let cachedSuperAdminStatus: boolean | null = null;
+let superAdminCacheTimestamp: number = 0;
+let pendingSuperAdminPromise: Promise<boolean> | null = null;
+const SUPER_ADMIN_CACHE_TTL = 120000; // 2 minutes
+
+export async function getSuperAdminStatusWithCache(): Promise<boolean> {
+  const now = Date.now();
+  
+  // Return cached value if still valid
+  if (cachedSuperAdminStatus !== null && (now - superAdminCacheTimestamp) < SUPER_ADMIN_CACHE_TTL) {
+    return cachedSuperAdminStatus;
+  }
+  
+  // Single-flight pattern
+  if (pendingSuperAdminPromise) {
+    return pendingSuperAdminPromise;
+  }
+  
+  // Check localStorage for offline fallback
+  const localCached = localStorage.getItem('cached-super-admin-status');
+  if (!navigator.onLine && localCached !== null) {
+    return localCached === 'true';
+  }
+  
+  pendingSuperAdminPromise = (async () => {
+    try {
+      const { data, error } = await supabase.rpc('is_super_admin');
+      if (error) throw error;
+      
+      const status = !!data;
+      cachedSuperAdminStatus = status;
+      superAdminCacheTimestamp = Date.now();
+      localStorage.setItem('cached-super-admin-status', status.toString());
+      
+      return status;
+    } catch (error) {
+      console.warn('[CachedAuth] Error checking super admin status:', error);
+      return localCached === 'true';
+    } finally {
+      pendingSuperAdminPromise = null;
+    }
+  })();
+  
+  return pendingSuperAdminPromise;
+}
+
+export function invalidateSuperAdminCache() {
+  cachedSuperAdminStatus = null;
+  superAdminCacheTimestamp = 0;
+}
+```
+
+### Change 5: Version Bump
+
+Update `vite.config.ts` to version **2.3.6**.
 
 ---
 
 ## Files to Modify
 
-| File | Action | Description |
-|------|--------|-------------|
-| `vite.config.ts` | **Modify** | Fix comment, bump to v2.3.5 |
-| `src/lib/version-calculator.test.ts` | **Create** | Add unit tests |
+| File | Changes |
+|------|---------|
+| `src/lib/offline-storage.ts` | Add `isSuperAdmin` param to 3 get functions |
+| `src/pages/Dashboard.tsx` | Pass super admin status to offline storage |
+| `src/lib/cached-auth.ts` | Add `getSuperAdminStatusWithCache()` |
+| `src/hooks/useReportEditPermission.tsx` | Use cached super admin function |
+| `vite.config.ts` | Version bump to 2.3.6 |
+| *Database Migration* | Add partial index on user_roles |
 
 ---
 
-## Test File Structure
+## Expected Outcomes
 
-```typescript
-// src/lib/version-calculator.test.ts
-import { describe, it, expect } from 'vitest';
-import {
-  parseVersion,
-  getNextVersion,
-  formatVersion,
-  calculateNextVersion,
-  generateVersionSequence,
-  isValidSchemeVersion
-} from './version-calculator';
+After implementation:
 
-describe('version-calculator', () => {
-  describe('parseVersion', () => {
-    it('parses version without prefix', () => { ... });
-    it('parses version with v prefix', () => { ... });
-    it('throws on invalid format', () => { ... });
-  });
-
-  describe('getNextVersion', () => {
-    it('increments patch normally', () => { ... });
-    it('rolls over patch at 10', () => { ... });
-    it('rolls over minor at 10', () => { ... });
-    it('handles double rollover', () => { ... });
-  });
-
-  describe('formatVersion', () => { ... });
-  describe('calculateNextVersion', () => { ... });
-  describe('generateVersionSequence', () => { ... });
-  describe('isValidSchemeVersion', () => { ... });
-});
-```
+1. **Super Admins see ALL reports immediately** - Offline storage won't filter by user ID
+2. **Faster RLS policy evaluation** - Partial index eliminates heap fetches
+3. **Reduced API calls** - Single-flight cached super admin check
+4. **Current/Future Super Admins covered** - All fixes are role-based, not user-specific
 
 ---
 
-## Expected Test Cases
+## Testing Checklist
 
-| Input | Expected Output | Test Type |
-|-------|-----------------|-----------|
-| `v2.3.4` | `v2.3.5` | Standard increment |
-| `v2.3.9` | `v2.4.1` | PATCH rollover |
-| `v2.9.9` | `v3.1.1` | MINOR rollover |
-| `v9.9.9` | `v10.1.1` | Edge case - MAJOR bump |
-| `v1.1.1` | `v1.1.2` | Minimum valid version |
-| `2.3.4` | `v2.3.5` | No prefix handling |
+1. Super Admin logs in and immediately sees all reports (before network loads)
+2. Super Admin sees correct count: 6 inspections, 5 trainings, 5 daily assessments
+3. Regular user still only sees their own reports
+4. Offline mode: Super Admin still sees all previously cached reports
+5. Performance: Dashboard loads in under 2 seconds
+6. No regression on image upload functionality
 
----
-
-## Why This Matters
-
-1. **Documentation Accuracy**: Developers reading vite.config.ts will understand the actual versioning scheme
-2. **Regression Prevention**: Unit tests ensure future changes don't break versioning logic
-3. **Launch Confidence**: Moving versioning from Yellow to Green status
-
----
-
-## Post-Implementation
-
-After these changes, the Versioning Compliance section of the Launch Readiness Scorecard moves from **Yellow** to **Green**, achieving 100% launch readiness.
