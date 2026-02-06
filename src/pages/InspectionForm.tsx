@@ -89,7 +89,8 @@ export default function InspectionForm() {
   const wasOfflineRef = useRef(!isOnline);
   const autoRetryingRef = useRef(false);
   const [currentUser, setCurrentUser] = useState<any>(null);
-  const [userProfile, setUserProfile] = useState<any>(null);
+  const [inspectorProfile, setInspectorProfile] = useState<any>(null);
+  const [currentUserProfile, setCurrentUserProfile] = useState<any>(null);
   const [signingOut, setSigningOut] = useState(false);
   const [htmlViewerOpen, setHtmlViewerOpen] = useState(false);
   const [reportHtml, setReportHtml] = useState<string>('');
@@ -319,11 +320,28 @@ export default function InspectionForm() {
         .eq("id", inspectorId)
         .maybeSingle();
       
-      setUserProfile(profile);
+      setInspectorProfile(profile);
     };
     
     fetchInspectorProfile();
   }, [inspectorId]);
+
+  // Fetch current logged-in user's profile (for avatar dropdown)
+  useEffect(() => {
+    const fetchCurrentUserProfile = async () => {
+      if (!currentUser?.id || !navigator.onLine) return;
+      
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("avatar_url")
+        .eq("id", currentUser.id)
+        .maybeSingle();
+      
+      setCurrentUserProfile(profile);
+    };
+    
+    fetchCurrentUserProfile();
+  }, [currentUser?.id]);
 
   // Fetch modified-by profile (who last modified the report, if different from owner)
   useEffect(() => {
@@ -347,12 +365,12 @@ export default function InspectionForm() {
     fetchModifiedByProfile();
   }, [inspection?.last_modified_by, inspection?.inspector_id]);
 
-  // Auto-populate ACCT# from user profile
+  // Auto-populate ACCT# from inspector profile (report owner)
   useEffect(() => {
-    if (inspection && userProfile && !inspection.acct_number && userProfile.acct_number) {
-      handleHeaderUpdate('acct_number', userProfile.acct_number);
+    if (inspection && inspectorProfile && !inspection.acct_number && inspectorProfile.acct_number) {
+      handleHeaderUpdate('acct_number', inspectorProfile.acct_number);
     }
-  }, [userProfile, inspection?.id]);
+  }, [inspectorProfile, inspection?.id]);
 
   // Track changes to inspection data and trigger debounced auto-save
   useEffect(() => {
@@ -1818,7 +1836,7 @@ export default function InspectionForm() {
             
             <UserProfileDropdown
               currentUser={currentUser}
-              userProfile={userProfile}
+              userProfile={currentUserProfile}
               isSuperAdmin={isSuperAdmin}
               onSignOut={handleSignOut}
               signingOut={signingOut}
@@ -1985,7 +2003,7 @@ export default function InspectionForm() {
 
         <InspectionHeader
           inspection={inspection}
-          userProfile={userProfile}
+          userProfile={inspectorProfile}
           modifiedByProfile={modifiedByProfile}
           onUpdate={isReadOnly ? () => {} : handleHeaderUpdate} 
           onImmediateSave={isReadOnly ? undefined : triggerImmediateSave}
