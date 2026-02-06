@@ -1,68 +1,165 @@
 
-# Comprehensive Cleanup and Fix Plan - v2.4.2 ✅ COMPLETED
+# Fix Plan: Stuck "Saving..." Spinner - v2.4.3
 
-## Issues Identified
+## Problem Analysis
 
-### 1. Ghost-Synced Records (7 total) ✅ FIXED
-Records that have `synced_at` set but are missing ALL child data (created pre-v2.3.8):
+The "Saving..." spinner in the InspectionForm gets stuck indefinitely because of **missing safety timeouts** in the auto-save functions.
 
-| Report Type | Organization | ID | Status |
-|------------|--------------|-----|--------|
-| **Inspection** | Camp of the Hills | `8acbee15-4dcd-4173-93ba-8c14a5ec7900` | ✅ Reset |
-| **Training** | Cal Farley's | `77b120a3-df7f-4c0e-a77b-df33f2ea3ed8` | ✅ Reset |
-| **Training** | Camp Lone Star - La Grange | `fef2e241-0c29-4094-8c15-dc58ad3a7ca7` | ✅ Reset |
-| **Daily Assessment** | Santa's Workshop | `b840ebe8-b4c2-48af-92ba-83a0f936592b` | ✅ Reset |
-| **Daily Assessment** | Cloud City | `92bbb88e-98a1-4e00-aedc-9db248bfd081` | ✅ Reset |
-| **Daily Assessment** | Mango Tractor | `42bdb28a-0587-43cf-9bd3-3fd5cb3ea1de` | ✅ Reset |
-| **Daily Assessment** | Cloud City | `03fe57b6-fcb6-42a2-8acd-031bbd5b1eaf` | ✅ Reset |
+### Root Cause Identification
 
-### 2. Unresolved Sync Conflict (1 total) ✅ RESOLVED
-| Organization | Inspection ID | Created |
-|-------------|---------------|---------|
-| Twin Lakes Family YMCA | `f44d0658-7563-48e5-956a-751215290966` | ✅ Resolved |
+From the console logs:
+```
+[Atomic Sync] Session validation timed out, skipping sync
+```
 
-### 3. Code Issues Cleaned Up ✅
+The session validation in `atomic-sync-manager.ts` times out after 5 seconds, but this is **not the direct cause** of the stuck spinner. The real issue is:
 
-**useSyncStatus.tsx** ✅ DELETED
-- Removed unused hook that duplicated functionality in `useAutoSync`
+**InspectionForm has TWO separate saving states:**
+1. `saving` - For manual save button (line 1361-1388) - **HAS safety timeout** ✅
+2. `autoSaving` - For auto-save/immediate save (lines 1310-1326, 1332-1346) - **NO safety timeout** ❌
 
-**sync-manager.ts** ✅ HARDENED
-- Deprecated functions now throw runtime errors instead of warning
-- Removed 400+ lines of dead code
-- File reduced from 577 lines to ~130 lines
+The `AutoSaveIndicator` component displays the "Saving..." spinner based on `isSaving={autoSaving}` (line 1894). When `performSave()` hangs (due to slow network, IndexedDB issues, or other async operations), the `autoSaving` state remains `true` forever.
+
+### Comparison with Other Forms
+
+| Form | Save State Pattern | Safety Timeout |
+|------|-------------------|----------------|
+| **InspectionForm** | `saving` + `autoSaving` (separate) | Only on `saving` ❌ |
+| **TrainingForm** | `isSaving` (unified) | Yes, 8s ✅ |
+| **DailyAssessmentForm** | `saving` (unified) | Yes, 8s ✅ |
 
 ---
 
-## Changes Applied
+## Solution
 
-### Phase 1: Database Cleanup ✅
-- Reset `synced_at = NULL` for all 7 ghost-synced records
-- Marked sync conflict as `resolved = true`
+### Phase 1: Add Safety Timeouts to Auto-Save Functions (InspectionForm)
 
-### Phase 2: Code Cleanup ✅
-- Deleted `src/hooks/useSyncStatus.tsx`
-- Rewrote `src/lib/sync-manager.ts` to remove dead code and add runtime throws
+Add 8-second safety timeouts to both `autoSaveProgress()` and `triggerImmediateSave()` in InspectionForm.
 
-### Phase 3: Version Bump ✅
-- Updated to **v2.4.2** in `vite.config.ts`
+**File: `src/pages/InspectionForm.tsx`**
+
+**Change 1: `triggerImmediateSave()` - Add safety timeout (around line 1301-1327)**
+
+```typescript
+const triggerImmediateSave = async () => {
+  if (saving || autoSaving) return;
+  
+  // Clear existing debounce timer using ref
+  if (saveDebounceTimerRef.current) {
+    clearTimeout(saveDebounceTimerRef.current);
+    saveDebounceTimerRef.current = null;
+  }
+  
+  setAutoSaving(true);
+  
+  // Safety timeout - NEVER get stuck in autoSaving state
+  const safetyTimeout = setTimeout(() => {
+    console.warn('[InspectionForm] triggerImmediateSave safety timeout reached, forcing state reset');
+    setAutoSaving(false);
+  }, 8000);
+  
+  try {
+    await performSave(true); // Silent immediate save
+    setLastSaved(new Date());
+    setHasUnsavedChanges(false);
+    sonnerToast.success("Changes saved");
+    if (import.meta.env.DEV) {
+      console.log("Immediate save triggered at", new Date().toLocaleTimeString());
+    }
+  } catch (error: any) {
+    console.error("Immediate save failed:", error);
+    setSaveError(error.message || 'Immediate save failed');
+  } finally {
+    clearTimeout(safetyTimeout);
+    setAutoSaving(false);
+  }
+};
+```
+
+**Change 2: `autoSaveProgress()` - Add safety timeout (around line 1329-1347)**
+
+```typescript
+const autoSaveProgress = async () => {
+  if (!hasUnsavedChanges || saving || autoSaving) return;
+  
+  setAutoSaving(true);
+  
+  // Safety timeout - NEVER get stuck in autoSaving state
+  const safetyTimeout = setTimeout(() => {
+    console.warn('[InspectionForm] autoSaveProgress safety timeout reached, forcing state reset');
+    setAutoSaving(false);
+  }, 8000);
+  
+  try {
+    await performSave(true); // Silent auto-save
+    setLastSaved(new Date());
+    setHasUnsavedChanges(false);
+    if (import.meta.env.DEV) {
+      console.log("Auto-saved successfully at", new Date().toLocaleTimeString());
+    }
+  } catch (error: any) {
+    console.error("Auto-save failed:", error);
+    setSaveError(error.message || 'Auto-save failed');
+  } finally {
+    clearTimeout(safetyTimeout);
+    setAutoSaving(false);
+  }
+};
+```
+
+### Phase 2: Version Bump
+
+Update version to **v2.4.3** in `vite.config.ts`.
 
 ---
 
 ## Files Changed
 
-| File | Action | Status |
-|------|--------|--------|
-| Database | Updated | ✅ 7 records reset, 1 conflict resolved |
-| `src/hooks/useSyncStatus.tsx` | Deleted | ✅ |
-| `src/lib/sync-manager.ts` | Rewritten | ✅ 577→130 lines |
-| `vite.config.ts` | Updated | ✅ v2.4.2 |
+| File | Action | Description |
+|------|--------|-------------|
+| `src/pages/InspectionForm.tsx` | Update | Add 8s safety timeouts to `triggerImmediateSave()` and `autoSaveProgress()` |
+| `vite.config.ts` | Update | Bump version to 2.4.3 |
+
+---
+
+## Expected Outcome
+
+After this fix:
+1. The "Saving..." spinner will **never get stuck** for more than 8 seconds
+2. Even if `performSave()` hangs due to network issues or IndexedDB problems, the UI will recover automatically
+3. The pattern will match the already-working TrainingForm and DailyAssessmentForm implementations
+4. All three form types (Inspection, Training, Daily Assessment) will have consistent safety timeout behavior
 
 ---
 
 ## Testing Checklist
 
-1. ✅ Ghost-synced records have synced_at = NULL in database
-2. ✅ Sync conflict resolved
-3. ✅ useSyncStatus.tsx deleted without breaking imports
-4. ✅ PWAProvider works with useAutoSync (no useSyncStatus dependency)
-5. ⏳ Mobile sync pending user verification
+1. Trigger an auto-save on InspectionForm and verify the spinner appears and disappears correctly
+2. Simulate a slow network condition to ensure the safety timeout kicks in after 8 seconds
+3. Verify that manual save still works with its existing safety timeout
+4. Confirm TrainingForm and DailyAssessmentForm continue to work correctly
+5. Test on mobile (iOS Safari) where IndexedDB can be particularly slow
+
+---
+
+## Technical Details
+
+### Why 8 Seconds?
+
+The 8-second timeout matches:
+- The existing manual save safety timeout in InspectionForm (line 1365)
+- The safety timeout in TrainingForm (line 396-400)
+- The safety timeout in DailyAssessmentForm (line 410-414)
+- The `SAVE_TIMEOUT_MS` constant in `non-blocking-save.ts` (line 9)
+
+This is sufficient for:
+- Local IndexedDB operations (typically < 500ms)
+- Network operations with retries (up to ~6 seconds with exponential backoff)
+- Buffer for slow mobile networks
+
+### Why Not Use `createSaveStateManager`?
+
+The `non-blocking-save.ts` utility provides `createSaveStateManager()` which handles this pattern, but:
+1. The forms already have their own state management pattern
+2. Retrofitting would require significant refactoring
+3. Adding inline safety timeouts is minimal, targeted change that matches existing code style
