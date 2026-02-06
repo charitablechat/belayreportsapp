@@ -1308,6 +1308,13 @@ export default function InspectionForm() {
     }
     
     setAutoSaving(true);
+    
+    // Safety timeout - NEVER get stuck in autoSaving state
+    const safetyTimeout = setTimeout(() => {
+      console.warn('[InspectionForm] triggerImmediateSave safety timeout reached, forcing state reset');
+      setAutoSaving(false);
+    }, 8000);
+    
     try {
       await performSave(true); // Silent immediate save
       setLastSaved(new Date());
@@ -1322,6 +1329,7 @@ export default function InspectionForm() {
       console.error("Immediate save failed:", error);
       setSaveError(error.message || 'Immediate save failed');
     } finally {
+      clearTimeout(safetyTimeout);
       setAutoSaving(false);
     }
   };
@@ -1330,6 +1338,13 @@ export default function InspectionForm() {
     if (!hasUnsavedChanges || saving || autoSaving) return;
     
     setAutoSaving(true);
+    
+    // Safety timeout - NEVER get stuck in autoSaving state
+    const safetyTimeout = setTimeout(() => {
+      console.warn('[InspectionForm] autoSaveProgress safety timeout reached, forcing state reset');
+      setAutoSaving(false);
+    }, 8000);
+    
     try {
       await performSave(true); // Silent auto-save
       setLastSaved(new Date());
@@ -1342,6 +1357,7 @@ export default function InspectionForm() {
       console.error("Auto-save failed:", error);
       setSaveError(error.message || 'Auto-save failed');
     } finally {
+      clearTimeout(safetyTimeout);
       setAutoSaving(false);
     }
   };
