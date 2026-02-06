@@ -78,13 +78,11 @@ export default function DailyAssessmentHeader({ assessment, onUpdate, isReadOnly
           </div>
 
           <div className="md:col-span-2">
-            <Label htmlFor="trainer-of-record">Trainer/Facilitator of Record</Label>
-            <GlobalAutocomplete
-              value={assessment.trainer_of_record || ''}
-              onChange={(value) => onUpdate("trainer_of_record", value)}
-              fieldType="trainer_name"
-              placeholder="Select or enter trainer name..."
-              disabled={isReadOnly}
+            <Label className="text-sm text-muted-foreground">Trainer/Facilitator of Record</Label>
+            <Input
+              value={assessment.trainer_of_record || 'Not Set'}
+              disabled
+              className="bg-muted/50 cursor-not-allowed"
             />
           </div>
           

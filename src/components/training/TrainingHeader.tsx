@@ -9,7 +9,7 @@ import { CalendarIcon } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { OrganizationAutocomplete } from "@/components/OrganizationAutocomplete";
-import { DatabaseAutocomplete } from "@/components/DatabaseAutocomplete";
+import { Input } from "@/components/ui/input";
 
 interface TrainingHeaderProps {
   training: any;
@@ -117,13 +117,11 @@ export default function TrainingHeader({ training, onUpdate, isReadOnly = false,
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="trainer_of_record">Trainer(s) of Record</Label>
-          <DatabaseAutocomplete
-            value={training.trainer_of_record || ''}
-            onChange={(value) => onUpdate('trainer_of_record', value)}
-            fieldType="trainer_name"
-            placeholder="Select or enter trainer name..."
-            disabled={isReadOnly}
+          <Label className="text-sm text-muted-foreground">Trainer(s) of Record</Label>
+          <Input
+            value={training.trainer_of_record || 'Not Set'}
+            disabled
+            className="bg-muted/50 cursor-not-allowed"
           />
         </div>
         
