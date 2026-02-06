@@ -8,10 +8,10 @@ import { pwaConfig } from "./vite-pwa-config";
 // - PATCH resets to .1 when reaching .10 (e.g., v2.3.9 → v2.4.1)
 // - MINOR resets to .1 when reaching .10 (e.g., v2.9.9 → v3.1.1)
 // See src/lib/version-calculator.ts for implementation
-// v2.3.8 - Atomic sync fix: defer synced_at until ALL related data commits
-   const APP_VERSION = "2.3.8";
-   const BUILD_DATE = "02-05-2026";
-   const BUILD_TIMESTAMP = "02-05-2026 at 11:30 PM CST";
+// v2.3.9 - Fixed profile avatar bug: dropdown now shows current user's avatar, not report owner's
+   const APP_VERSION = "2.3.9";
+   const BUILD_DATE = "02-06-2026";
+   const BUILD_TIMESTAMP = "02-06-2026 at 12:00 AM CST";
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({

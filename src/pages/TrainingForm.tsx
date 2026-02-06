@@ -84,7 +84,8 @@ export default function TrainingForm() {
   const [htmlViewerOpen, setHtmlViewerOpen] = useState(false);
   const [reportHtml, setReportHtml] = useState<string>('');
   const [currentUser, setCurrentUser] = useState<any>(null);
-  const [userProfile, setUserProfile] = useState<any>(null);
+  const [inspectorProfile, setInspectorProfile] = useState<any>(null);
+  const [currentUserProfile, setCurrentUserProfile] = useState<any>(null);
   const [modifiedByProfile, setModifiedByProfile] = useState<any>(null);
   const [signingOut, setSigningOut] = useState(false);
   
@@ -140,10 +141,27 @@ export default function TrainingForm() {
         .select('avatar_url, first_name, last_name')
         .eq('id', inspectorId)
         .single();
-      setUserProfile(profile);
+      setInspectorProfile(profile);
     };
     fetchInspectorProfile();
   }, [inspectorId]);
+
+  // Fetch current logged-in user's profile (for avatar dropdown)
+  useEffect(() => {
+    const fetchCurrentUserProfile = async () => {
+      if (!currentUser?.id || !navigator.onLine) return;
+      
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('avatar_url')
+        .eq('id', currentUser.id)
+        .maybeSingle();
+      
+      setCurrentUserProfile(profile);
+    };
+    
+    fetchCurrentUserProfile();
+  }, [currentUser?.id]);
 
   // Fetch modified-by profile (who last modified the report, if different from owner)
   useEffect(() => {
@@ -927,7 +945,7 @@ export default function TrainingForm() {
             
             <UserProfileDropdown
               currentUser={currentUser}
-              userProfile={userProfile}
+              userProfile={currentUserProfile}
               isSuperAdmin={isSuperAdmin}
               onSignOut={handleSignOut}
               signingOut={signingOut}
@@ -1053,7 +1071,7 @@ export default function TrainingForm() {
               training={training} 
               onUpdate={isReadOnly ? () => {} : updateTrainingField} 
               isReadOnly={isReadOnly}
-              userProfile={userProfile}
+              userProfile={inspectorProfile}
               modifiedByProfile={modifiedByProfile}
             />
           </TabsContent>
