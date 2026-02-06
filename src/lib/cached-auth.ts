@@ -19,6 +19,7 @@ let superAdminCacheTimestamp: number = 0;
 let pendingSuperAdminPromise: Promise<boolean> | null = null;
 const SUPER_ADMIN_CACHE_TTL = 120000; // 2 minutes
 const SESSION_REFRESH_BUFFER = 60; // Refresh if within 60 seconds of expiry
+const AUTH_NETWORK_TIMEOUT = 8000; // 8 seconds max for network auth fetch
 
 /**
  * Initialize auth state change listener (called lazily on first use)
@@ -85,17 +86,28 @@ export async function getUserWithCache(): Promise<CachedUser | null> {
     return null;
   }
   
-  // Create a new request and store the promise
+  // Create a new request and store the promise with timeout protection
   pendingUserPromise = (async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const authPromise = supabase.auth.getUser();
+      const result = await Promise.race([
+        authPromise.then(res => ({ user: res.data.user, timedOut: false })),
+        new Promise<{ user: null; timedOut: true }>((resolve) =>
+          setTimeout(() => resolve({ user: null, timedOut: true }), AUTH_NETWORK_TIMEOUT)
+        )
+      ]);
       
-      if (user) {
-        cachedUser = user;
+      if (result.timedOut) {
+        console.warn('[CachedAuth] Auth network request timed out');
+        return null;
+      }
+      
+      if (result.user) {
+        cachedUser = result.user;
         cacheTimestamp = Date.now();
       }
       
-      return user;
+      return result.user;
     } catch (error) {
       console.error('[CachedAuth] Error fetching user:', error);
       return null;

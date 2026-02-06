@@ -20,8 +20,9 @@ const SUPPORTED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 
 const MAX_FILE_SIZE_MB = 25; // 25MB max before compression
 
 // Timeout constants for preventing UI hangs
-const PROCESS_SAFETY_TIMEOUT = 20000; // 20 seconds max for entire batch (reduced for faster feedback)
-const PER_FILE_TIMEOUT = 10000; // 10 seconds per file (reduced from 15s)
+const AUTH_TIMEOUT = 5000; // 5 seconds max for auth check
+const PROCESS_SAFETY_TIMEOUT = 12000; // 12 seconds max (auth 5s + compression 3s + save 4s)
+const PER_FILE_TIMEOUT = 10000; // 10 seconds per file
 
 export default function PhotoCapture({ inspectionId, section, onPhotoAdded }: PhotoCaptureProps) {
   const cameraInputRef = useRef<HTMLInputElement>(null);
@@ -192,8 +193,17 @@ export default function PhotoCapture({ inspectionId, section, onPhotoAdded }: Ph
     let errorCount = 0;
 
     try {
-      const user = await getUserWithCache();
-      if (!user) throw new Error("Not authenticated");
+      // Auth check with timeout to prevent indefinite hang
+      const user = await Promise.race([
+        getUserWithCache(),
+        new Promise<null>((resolve) =>
+          setTimeout(() => {
+            console.warn('[PhotoCapture] Auth check timed out');
+            resolve(null);
+          }, AUTH_TIMEOUT)
+        )
+      ]);
+      if (!user) throw new Error("Not authenticated - please refresh the page");
 
       for (const file of Array.from(files)) {
         try {
