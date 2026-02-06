@@ -1,6 +1,6 @@
 import { useEffect, useCallback } from 'react';
 import { onSyncComplete, isBackgroundSyncSupported, registerPeriodicSync } from '@/lib/background-sync';
-import { useSyncStatus } from './useSyncStatus';
+import { useAutoSync } from './useAutoSync';
 
 /**
  * Hook for managing background sync functionality
@@ -8,7 +8,7 @@ import { useSyncStatus } from './useSyncStatus';
  * and updates the UI accordingly
  */
 export const useBackgroundSync = () => {
-  const { updateUnsyncedCount } = useSyncStatus();
+  const { updateUnsyncedCounts } = useAutoSync();
   const isSupported = isBackgroundSyncSupported();
   
   const handleSyncComplete = useCallback((data: any) => {
@@ -18,9 +18,9 @@ export const useBackgroundSync = () => {
         console.log('[Background Sync] Complete:', data.tag, 'count:', data.count);
       }
       // Update sync status to reflect changes
-      updateUnsyncedCount();
+      updateUnsyncedCounts();
     }
-  }, [updateUnsyncedCount]);
+  }, [updateUnsyncedCounts]);
   
   useEffect(() => {
     if (!isSupported) {
