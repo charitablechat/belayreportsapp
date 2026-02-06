@@ -1,141 +1,122 @@
 
+# Comprehensive Cleanup and Fix Plan - v2.4.2
 
-# Complete Super Admin Visibility Fix (v2.4.1)
+## Issues Identified
 
-## Problem Summary
+### 1. Ghost-Synced Records (7 total)
+Records that have `synced_at` set but are missing ALL child data (created pre-v2.3.8):
 
-As a Super Admin viewing another user's "Uranus" inspection:
+| Report Type | Organization | ID | Status |
+|------------|--------------|-----|--------|
+| **Inspection** | Camp of the Hills | `8acbee15-4dcd-4173-93ba-8c14a5ec7900` | draft |
+| **Training** | Cal Farley's | `77b120a3-df7f-4c0e-a77b-df33f2ea3ed8` | draft |
+| **Training** | Camp Lone Star - La Grange | `fef2e241-0c29-4094-8c15-dc58ad3a7ca7` | completed |
+| **Daily Assessment** | Santa's Workshop | `b840ebe8-b4c2-48af-92ba-83a0f936592b` | completed |
+| **Daily Assessment** | Cloud City | `92bbb88e-98a1-4e00-aedc-9db248bfd081` | draft |
+| **Daily Assessment** | Mango Tractor | `42bdb28a-0587-43cf-9bd3-3fd5cb3ea1de` | draft |
+| **Daily Assessment** | Cloud City | `03fe57b6-fcb6-42a2-8acd-031bbd5b1eaf` | draft |
 
-| What You See | What's In Database | Issue |
-|--------------|-------------------|-------|
-| Empty tables | 1 Zipline, 2 Systems, 6 Standards, 1 Summary | **RLS blocks SELECT** |
-| No photos | 3 photos uploaded | **RLS blocks SELECT on table + storage** |
+### 2. Unresolved Sync Conflict (1 total)
+| Organization | Inspection ID | Created |
+|-------------|---------------|---------|
+| Twin Lakes Family YMCA | `f44d0658-7563-48e5-956a-751215290966` | Feb 5, 2026 |
 
-## Root Cause: Missing SELECT Policies
+### 3. Code Issues to Clean Up
 
-### Database Tables Missing Super Admin SELECT
+**useSyncStatus.tsx** - Unused hook (replaced by useAutoSync):
+- The `useSyncStatus` hook is no longer used in the codebase
+- PWAProvider uses `useAutoSync` for all sync functionality
+- Should be removed to prevent confusion and dead code
 
-| Table | Has UPDATE Policy | Has SELECT Policy | Fix Needed |
-|-------|-------------------|-------------------|------------|
-| `inspection_systems` | ✅ | ❌ | Add SELECT |
-| `inspection_ziplines` | ✅ | ❌ | Add SELECT |
-| `inspection_equipment` | ✅ | ❌ | Add SELECT |
-| `inspection_standards` | ✅ | ❌ | Add SELECT |
-| `inspection_summary` | ✅ | ❌ | Add SELECT |
-| `inspection_photos` | ✅ | ❌ | **Add SELECT** |
-| `daily_assessment_*` (6 tables) | ✅ | ❌ | Add SELECT |
-
-### Storage Bucket Missing Super Admin Access
-
-The `inspection-photos` storage bucket only allows users to view photos in their **own folder** (where folder = user ID). Super Admins cannot view other users' photos!
-
----
-
-## Solution: Add 13 RLS Policies
-
-### 1. Inspection Child Tables (6 policies)
-
-```sql
--- Systems
-CREATE POLICY "Super admins can view all inspection systems"
-  ON public.inspection_systems FOR SELECT
-  USING (is_super_admin());
-
--- Ziplines  
-CREATE POLICY "Super admins can view all inspection ziplines"
-  ON public.inspection_ziplines FOR SELECT
-  USING (is_super_admin());
-
--- Equipment
-CREATE POLICY "Super admins can view all inspection equipment"
-  ON public.inspection_equipment FOR SELECT
-  USING (is_super_admin());
-
--- Standards
-CREATE POLICY "Super admins can view all inspection standards"
-  ON public.inspection_standards FOR SELECT
-  USING (is_super_admin());
-
--- Summary
-CREATE POLICY "Super admins can view all inspection summaries"
-  ON public.inspection_summary FOR SELECT
-  USING (is_super_admin());
-
--- Photos (database metadata)
-CREATE POLICY "Super admins can view all inspection photos"
-  ON public.inspection_photos FOR SELECT
-  USING (is_super_admin());
-```
-
-### 2. Daily Assessment Child Tables (6 policies)
-
-```sql
-CREATE POLICY "Super admins can view all beginning of day checks"
-  ON public.daily_assessment_beginning_of_day FOR SELECT
-  USING (is_super_admin());
-
-CREATE POLICY "Super admins can view all end of day checks"
-  ON public.daily_assessment_end_of_day FOR SELECT
-  USING (is_super_admin());
-
-CREATE POLICY "Super admins can view all environment checks"
-  ON public.daily_assessment_environment_checks FOR SELECT
-  USING (is_super_admin());
-
-CREATE POLICY "Super admins can view all equipment checks"
-  ON public.daily_assessment_equipment_checks FOR SELECT
-  USING (is_super_admin());
-
-CREATE POLICY "Super admins can view all daily assessment operating systems"
-  ON public.daily_assessment_operating_systems FOR SELECT
-  USING (is_super_admin());
-
-CREATE POLICY "Super admins can view all structure checks"
-  ON public.daily_assessment_structure_checks FOR SELECT
-  USING (is_super_admin());
-```
-
-### 3. Storage Bucket Policy (1 policy)
-
-```sql
-CREATE POLICY "Super admins can view all inspection photos"
-  ON storage.objects FOR SELECT
-  USING (
-    bucket_id = 'inspection-photos' 
-    AND is_super_admin()
-  );
-```
+**sync-manager.ts** - Deprecated functions still exist:
+- `syncInspections()`, `syncDailyAssessments()`, `syncTrainings()` are deprecated
+- These bypass the atomic sync manager and don't handle soft-deleted records correctly
+- Already marked with `@deprecated` comments but could cause issues if accidentally used
 
 ---
 
-## Files to Update
+## Solution
 
-| File | Change |
-|------|--------|
-| Database migration | Add 13 RLS policies |
-| `vite.config.ts` | Bump version to 2.4.1 |
+### Phase 1: Database Cleanup (Migration)
+
+Reset `synced_at` to NULL for ghost-synced records so they will re-sync with complete child data on next mobile sync:
+
+```sql
+-- Reset ghost-synced inspection
+UPDATE inspections 
+SET synced_at = NULL 
+WHERE id = '8acbee15-4dcd-4173-93ba-8c14a5ec7900';
+
+-- Reset ghost-synced trainings
+UPDATE trainings 
+SET synced_at = NULL 
+WHERE id IN (
+  '77b120a3-df7f-4c0e-a77b-df33f2ea3ed8',
+  'fef2e241-0c29-4094-8c15-dc58ad3a7ca7'
+);
+
+-- Reset ghost-synced daily assessments
+UPDATE daily_assessments 
+SET synced_at = NULL 
+WHERE id IN (
+  'b840ebe8-b4c2-48af-92ba-83a0f936592b',
+  '92bbb88e-98a1-4e00-aedc-9db248bfd081',
+  '42bdb28a-0587-43cf-9bd3-3fd5cb3ea1de',
+  '03fe57b6-fcb6-42a2-8acd-031bbd5b1eaf'
+);
+
+-- Auto-resolve stale sync conflict (older than 24 hours)
+UPDATE sync_conflicts 
+SET resolved = true 
+WHERE id = '7a84bbae-2673-4f0a-9cd3-ade43eb1dea2';
+```
+
+### Phase 2: Code Cleanup
+
+1. **Delete `src/hooks/useSyncStatus.tsx`**
+   - Unused hook that duplicates functionality in `useAutoSync`
+   - Reduces confusion and dead code
+
+2. **Add runtime protection in sync-manager.ts**
+   - Throw explicit errors if deprecated functions are called
+   - Ensures no accidental usage bypasses atomic sync
+
+### Phase 3: Version Bump
+
+Update to **v2.4.2** with changelog:
+- Fixed 7 ghost-synced records (reset synced_at for re-sync)
+- Resolved stale sync conflict for Twin Lakes Family YMCA
+- Removed unused useSyncStatus hook
+- Hardened deprecated sync functions with runtime errors
 
 ---
 
-## Expected Result After Fix
+## Files Changed
 
-When you open the "Uranus" inspection:
+| File | Action | Description |
+|------|--------|-------------|
+| Database migration | Create | Reset synced_at on ghost records, resolve conflict |
+| `src/hooks/useSyncStatus.tsx` | Delete | Remove unused hook |
+| `src/lib/sync-manager.ts` | Update | Add runtime throws for deprecated functions |
+| `vite.config.ts` | Update | Bump to v2.4.2 |
 
-| Component | Before | After |
-|-----------|--------|-------|
-| Ziplines table | Empty | Shows "Zip Line Right" (50,000ft GAC) |
-| Operating Systems | Empty | Shows 2 systems |
-| Standards | Empty | Shows 6 standards |
-| Summary | Empty | Shows critical actions |
-| **Photos** | **Not visible** | **3 photos visible** |
+---
+
+## Expected Outcome
+
+After this fix:
+1. Ghost-synced records will show as "pending sync" and re-sync with complete child data
+2. No stale conflicts remain in the system
+3. Cleaner codebase with no unused hooks
+4. Runtime protection prevents accidental use of deprecated sync functions
+5. Sync health: All 32 total reports will have complete data integrity
 
 ---
 
 ## Testing Checklist
 
-1. Open Uranus inspection as Super Admin
-2. Verify all table data appears (Ziplines, Systems, Standards)
-3. Verify **3 photos** are visible in the gallery
-4. Test a Daily Assessment report from another user
-5. Confirm regular users can still only see their own reports
-
+1. Verify the 7 ghost-synced records show synced_at = NULL in database
+2. Confirm sync conflict is resolved
+3. Test that deleting useSyncStatus.tsx doesn't break any imports
+4. Verify PWAProvider still works correctly with useAutoSync
+5. Test mobile sync to ensure ghost-synced records re-sync with child data
