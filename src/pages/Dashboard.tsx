@@ -239,11 +239,15 @@ export default function Dashboard() {
       // Invalidate super admin status to refresh from server
       invalidateSuperAdminCache();
       queryClient.invalidateQueries({ queryKey: ["is-super-admin"] });
-      // Get fresh super admin status
+      // Pre-fetch auth once, then pass to all loaders in parallel
+      const user = await getUserWithCache();
+      const userId = user?.id;
       const superAdminStatus = await getSuperAdminStatusWithCache();
-      loadInspections(undefined, superAdminStatus); // Reload when coming back online
-      loadTrainingReports(undefined, superAdminStatus);
-      loadDailyAssessments(undefined, superAdminStatus);
+      await Promise.all([
+        loadInspections(userId, superAdminStatus),
+        loadTrainingReports(userId, superAdminStatus),
+        loadDailyAssessments(userId, superAdminStatus),
+      ]);
     };
     const handleOffline = () => setIsOnline(false);
 
@@ -259,13 +263,14 @@ export default function Dashboard() {
       // Invalidate super admin status on sync (in case user roles were updated)
       invalidateSuperAdminCache();
       queryClient.invalidateQueries({ queryKey: ["is-super-admin"] });
-      // Get fresh super admin status and reload with it
+      // Pre-fetch auth once, then pass to all loaders in parallel
+      const user = await getUserWithCache();
+      const userId = user?.id;
       const superAdminStatus = await getSuperAdminStatusWithCache();
-      // Reload fresh data after background sync completes
       await Promise.all([
-        loadInspections(undefined, superAdminStatus),
-        loadTrainingReports(undefined, superAdminStatus),
-        loadDailyAssessments(undefined, superAdminStatus)
+        loadInspections(userId, superAdminStatus),
+        loadTrainingReports(userId, superAdminStatus),
+        loadDailyAssessments(userId, superAdminStatus),
       ]);
     });
 
@@ -280,7 +285,7 @@ export default function Dashboard() {
   // Helper function to add timeout to network queries
   const withNetworkTimeout = async <T,>(
     promise: Promise<T>,
-    timeoutMs: number = 6000,
+    timeoutMs: number = 15000,
     fallback: T | null = null
   ): Promise<T | null> => {
     return Promise.race([
