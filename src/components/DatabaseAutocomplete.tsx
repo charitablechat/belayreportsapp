@@ -304,12 +304,19 @@ export function DatabaseAutocomplete({
                   handleSelect(searchValue.trim());
                   setIsEditing(false);
                   triggerInputRef.current?.blur();
+                } else if (e.key === "Escape") {
+                  e.preventDefault();
+                  setSearchValue(value);
+                  setIsEditing(false);
+                  setOpen(false);
+                  triggerInputRef.current?.blur();
                 }
               }}
               placeholder={placeholder}
               disabled={disabled}
               className={cn(
-                "w-full pr-14 font-normal",
+                "w-full pr-14 font-normal transition-none",
+                isEditing && "border-2 border-foreground ring-0 ring-offset-0 focus-visible:ring-0 focus-visible:ring-offset-0 shadow-[2px_2px_0px_0px_hsl(var(--foreground))]",
                 !value && !isEditing && "text-muted-foreground",
                 className
               )}
