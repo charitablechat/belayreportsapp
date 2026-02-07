@@ -335,7 +335,7 @@ export default function DailyAssessmentForm() {
           
           // Non-blocking cache updates - don't await to prevent loading freeze
           const { saveDailyAssessmentOffline, saveAssessmentDataOffline } = await import('@/lib/offline-storage');
-          saveDailyAssessmentOffline(assessmentData).catch(e =>
+          saveDailyAssessmentOffline({ ...assessmentData, synced_at: assessmentData.synced_at || new Date().toISOString() }).catch(e =>
             console.warn('[DailyAssessmentForm] Non-critical: failed to cache assessment', e)
           );
           Promise.all([

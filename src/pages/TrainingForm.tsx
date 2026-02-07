@@ -321,7 +321,7 @@ export default function TrainingForm() {
             setTraining(trainingData);
             setInspectorId(trainingData.inspector_id);
             // Non-blocking cache update - don't await to prevent loading freeze
-            saveTrainingOffline(trainingData).catch(e =>
+            saveTrainingOffline({ ...trainingData, synced_at: trainingData.synced_at || new Date().toISOString() }).catch(e =>
               console.warn('[TrainingForm] Non-critical: failed to cache training', e)
             );
 
