@@ -281,11 +281,11 @@ export default function Dashboard() {
   const withNetworkTimeout = async <T,>(
     promise: Promise<T>,
     timeoutMs: number = 6000,
-    fallback: T
-  ): Promise<T> => {
+    fallback: T | null = null
+  ): Promise<T | null> => {
     return Promise.race([
       promise,
-      new Promise<T>((resolve) => setTimeout(() => {
+      new Promise<T | null>((resolve) => setTimeout(() => {
         console.warn('[Dashboard] Network query timed out after', timeoutMs, 'ms');
         resolve(fallback);
       }, timeoutMs))
@@ -304,7 +304,7 @@ export default function Dashboard() {
       // This ensures mobile users see data quickly even if IndexedDB times out
       const offlinePromise = getOfflineInspections(userId, isSuperAdmin).catch(() => []);
       
-      let supabasePromise: Promise<any[]> = Promise.resolve([]);
+      let supabasePromise: Promise<any[] | null> = Promise.resolve([]);
       if (navigator.onLine) {
         // Wrap in Promise.resolve to get a proper Promise with .catch()
         // Add 6-second timeout to prevent hanging
@@ -323,10 +323,10 @@ export default function Dashboard() {
             return data || [];
           }).catch(err => {
             console.error('[Dashboard] Supabase fetch error:', err);
-            return [];
+            return null;
           }),
           6000,
-          []
+          null
         );
       }
 
@@ -348,7 +348,7 @@ export default function Dashboard() {
       // Always try to get fresh data from network (runs in parallel)
       if (navigator.onLine) {
         const networkData = await supabasePromise;
-        if (networkData.length > 0) {
+        if (networkData && networkData.length > 0) {
           setInspections(networkData);
           
           // Background save to offline storage (fire-and-forget)
@@ -358,8 +358,8 @@ export default function Dashboard() {
           if (import.meta.env.DEV) {
             console.log('[Dashboard] Loaded from Supabase:', networkData.length);
           }
-        } else if (offlineData.length === 0) {
-          // Neither offline nor network has data - set empty explicitly
+        } else if (networkData !== null && offlineData.length === 0) {
+          // Only clear when server CONFIRMED zero records (not timeout/error)
           setInspections([]);
         }
       }
@@ -379,7 +379,7 @@ export default function Dashboard() {
       // PARALLEL LOADING: Start both fetches simultaneously
       const offlinePromise = getOfflineTrainings(userId, isSuperAdmin).catch(() => []);
       
-      let supabasePromise: Promise<any[]> = Promise.resolve([]);
+      let supabasePromise: Promise<any[] | null> = Promise.resolve([]);
       if (navigator.onLine) {
         // Add 6-second timeout to prevent hanging
         supabasePromise = withNetworkTimeout(
@@ -396,10 +396,10 @@ export default function Dashboard() {
             return data || [];
           }).catch(err => {
             console.error('[Dashboard] Supabase trainings fetch error:', err);
-            return [];
+            return null;
           }),
           6000,
-          []
+          null
         );
       }
 
@@ -420,7 +420,7 @@ export default function Dashboard() {
       // Always try to get fresh data from network
       if (navigator.onLine) {
         const networkData = await supabasePromise;
-        if (networkData.length > 0) {
+        if (networkData && networkData.length > 0) {
           setTrainings(networkData);
           
           Promise.all(networkData.map(training => saveTrainingOffline(training)))
@@ -429,7 +429,8 @@ export default function Dashboard() {
           if (import.meta.env.DEV) {
             console.log('[Dashboard] Loaded training reports from Supabase:', networkData.length);
           }
-        } else if (offlineData.length === 0) {
+        } else if (networkData !== null && offlineData.length === 0) {
+          // Only clear when server CONFIRMED zero records (not timeout/error)
           setTrainings([]);
         }
       }
@@ -449,7 +450,7 @@ export default function Dashboard() {
       // PARALLEL LOADING: Start both fetches simultaneously
       const offlinePromise = getOfflineDailyAssessments(userId, isSuperAdmin).catch(() => []);
       
-      let supabasePromise: Promise<any[]> = Promise.resolve([]);
+      let supabasePromise: Promise<any[] | null> = Promise.resolve([]);
       if (navigator.onLine) {
         // Add 6-second timeout to prevent hanging
         supabasePromise = withNetworkTimeout(
@@ -466,10 +467,10 @@ export default function Dashboard() {
             return data || [];
           }).catch(err => {
             console.error('[Dashboard] Supabase assessments fetch error:', err);
-            return [];
+            return null;
           }),
           6000,
-          []
+          null
         );
       }
 
@@ -490,7 +491,7 @@ export default function Dashboard() {
       // Always try to get fresh data from network
       if (navigator.onLine) {
         const networkData = await supabasePromise;
-        if (networkData.length > 0) {
+        if (networkData && networkData.length > 0) {
           setDailyAssessments(networkData);
           
           Promise.all(networkData.map(assessment => saveDailyAssessmentOffline(assessment)))
@@ -499,7 +500,8 @@ export default function Dashboard() {
           if (import.meta.env.DEV) {
             console.log('[Dashboard] Loaded daily assessments from Supabase:', networkData.length);
           }
-        } else if (offlineData.length === 0) {
+        } else if (networkData !== null && offlineData.length === 0) {
+          // Only clear when server CONFIRMED zero records (not timeout/error)
           setDailyAssessments([]);
         }
       }
