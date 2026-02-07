@@ -16,9 +16,10 @@ interface InspectionHeaderProps {
 }
 
 export default function InspectionHeader({ inspection, userProfile, modifiedByProfile, onUpdate, onImmediateSave, isReadOnly = false }: InspectionHeaderProps) {
-  const inspectorName = userProfile?.first_name && userProfile?.last_name
-    ? `${userProfile.first_name} ${userProfile.last_name}`
-    : 'Current User';
+  const inspectorName = [userProfile?.first_name, userProfile?.last_name]
+    .filter(Boolean)
+    .join(' ')
+    .trim() || (userProfile ? 'Inspector' : 'Loading...');
   
   // Build modified by name if different from inspector
   const modifiedByName = modifiedByProfile?.first_name && modifiedByProfile?.last_name
