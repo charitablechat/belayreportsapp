@@ -1,57 +1,75 @@
 
 
-# Fix Offline Sign-In with Expired Cached Sessions - v2.4.14
+# Add Unsynced Data Visibility for Users and Admins - v2.4.15
 
 ## Problem
 
-Supabase JWT tokens expire after approximately 1 hour. The current code checks `expires_at` and rejects expired tokens even when offline. This means if you were last online more than an hour ago and then go offline, you cannot access the app -- even though all report data is stored locally in IndexedDB.
+When a user fills out a report offline and comes back online, they have no way to **see** that reports are pending sync. The Force Sync button exists but gives no indication of how many items are queued. Users and admins need clear visibility into unsynced local data.
 
-Two places enforce this check:
-1. **`Index.tsx` (line 25)**: Rejects expired cached sessions, falls through to show the Auth screen
-2. **`cached-auth.ts` (`getCachedUserFromStorage`, line 180)**: Returns `null` for expired tokens, which causes `hasCachedSession()` to return `false`
-3. **`Auth.tsx` (line 203-205)**: Uses `checkCachedSession()` (which calls `hasCachedSession`) -- when it returns false, shows "Sign in requires an internet connection" instead of the "Go to Dashboard" button
+## What Already Works (No Changes Needed)
 
-## Solution
+- Force Sync button triggers full atomic sync of all report types
+- Auto-sync fires immediately on reconnection and periodically
+- Admin Data Recovery Tool shows all IndexedDB contents with per-item sync buttons
 
-When offline, token expiry should not block access. The token is only needed for server API calls, which aren't happening offline anyway. The user just needs access to their locally cached data.
+## Changes
 
-### 1. Add offline-aware session check (`src/lib/cached-auth.ts`)
+### 1. Add unsynced count badge to Force Sync button
 
-Add a new function `hasCachedSessionForOffline()` that checks if a cached session exists with valid user data, but ignores `expires_at` when offline. This keeps the strict check for online scenarios while allowing offline access.
+Show a red badge with the number of pending items directly on the Force Sync menu item in the profile dropdown. This gives users instant visibility.
 
-```typescript
-export function hasCachedSessionForOffline(): boolean {
-  try {
-    const cachedSession = localStorage.getItem('sb-ssgzcgvygnsrqalisshx-auth-token');
-    if (!cachedSession) return false;
-    const parsed = JSON.parse(cachedSession);
-    // Only require a user identity exists -- don't check expiry for offline use
-    return !!(parsed?.user?.id || parsed?.access_token);
-  } catch {
-    return false;
-  }
-}
+**File: `src/components/pwa/ForceSyncButton.tsx`**
+- Accept `unsyncedCount` as an optional prop
+- Display a red count badge next to "Force Sync Now" text when count > 0
+- After sync completes, the count updates automatically (already handled by useAutoSync)
+
+### 2. Add a "Pending Sync" banner on the Dashboard
+
+When there are unsynced items, show a small alert banner at the top of the dashboard with the count and a sync button.
+
+**File: `src/pages/Dashboard.tsx`**
+- Read `unsyncedCount` from the existing `usePWA()` hook (already available)
+- Show a compact alert banner when `unsyncedCount > 0` with text like "3 reports pending sync" and an inline "Sync Now" button
+- Banner disappears when count reaches 0
+
+### 3. Pass unsynced count to ForceSyncButton in dropdown
+
+**File: `src/components/UserProfileDropdown.tsx`**
+- Import `usePWA` to get `unsyncedCount`
+- Pass it to the `ForceSyncButton` component
+
+### 4. Version bump
+
+**File: `vite.config.ts`**
+- Bump to v2.4.15
+
+## Technical Details
+
+### ForceSyncButton badge (menu-item variant)
+
+```text
+Before:  [refresh icon] Force Sync Now
+After:   [refresh icon] Force Sync Now  [3]  (red badge)
 ```
 
-### 2. Fix `Index.tsx` offline redirect
+### Dashboard banner (when unsynced > 0)
 
-Remove the `expires_at` check from the offline branch. If the user is offline and has any cached session with an access token, navigate to the dashboard immediately.
+```text
++------------------------------------------------------+
+| [cloud icon] 3 reports pending sync    [Sync Now]    |
++------------------------------------------------------+
+```
 
-### 3. Fix `Auth.tsx` offline banner and button
+- Uses existing `usePWA().unsyncedCount` -- no new data fetching needed
+- Uses existing `usePWA().forceSync()` for the sync action
+- Banner uses `Alert` component with `variant="default"` and amber/orange styling
 
-- Replace `checkCachedSession()` with `hasCachedSessionForOffline()` so the "Go to Dashboard" button appears even with an expired token
-- Update the offline message to be more reassuring: "Tap below to access your cached reports"
-
-### 4. Version bump (`vite.config.ts`)
-
-Bump to v2.4.14.
-
-## Files Changed
+### Files Changed
 
 | File | Change |
 |------|--------|
-| `src/lib/cached-auth.ts` | Add `hasCachedSessionForOffline()` function |
-| `src/pages/Index.tsx` | Remove `expires_at` check in offline branch |
-| `src/components/Auth.tsx` | Use `hasCachedSessionForOffline()` for offline "Go to Dashboard" button |
-| `vite.config.ts` | Version bump to v2.4.14 |
+| `src/components/pwa/ForceSyncButton.tsx` | Add optional `unsyncedCount` prop, show badge in menu-item variant |
+| `src/components/UserProfileDropdown.tsx` | Pass `unsyncedCount` from `usePWA()` to ForceSyncButton |
+| `src/pages/Dashboard.tsx` | Add pending sync banner when `unsyncedCount > 0` |
+| `vite.config.ts` | Bump to v2.4.15 |
 
