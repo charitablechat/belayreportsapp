@@ -296,7 +296,21 @@ export default function DailyAssessmentForm() {
 
         if (assessmentError) throw assessmentError;
         
-        if (assessmentData) {
+        // Determine if local data should take priority
+        const localIsNewer = offlineAssessment && (
+          !offlineAssessment.synced_at ||
+          (offlineAssessment.updated_at && assessmentData?.updated_at &&
+           new Date(offlineAssessment.updated_at) > new Date(assessmentData.updated_at))
+        );
+
+        if (localIsNewer) {
+          // Local data is newer - preserve local state, only accept server metadata
+          console.log('[DailyAssessmentForm] Local data is newer -- preserving local state');
+          if (assessmentData) {
+            setAssessment(prev => ({ ...prev, status: assessmentData.status }));
+            setInspectorId(assessmentData.inspector_id);
+          }
+        } else if (assessmentData) {
           setAssessment(assessmentData);
           setInspectorId(assessmentData.inspector_id);
 
