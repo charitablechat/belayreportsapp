@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { RichTextEditor } from "./rich-text-editor";
+import DOMPurify from "dompurify";
 
 interface LazyRichTextEditorProps {
   content: string;
@@ -64,7 +65,7 @@ export function LazyRichTextEditor({
         {hasContent ? (
           <div 
             className="prose prose-sm max-w-none"
-            dangerouslySetInnerHTML={{ __html: content }} 
+            dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(content) }} 
           />
         ) : (
           <span className="text-muted-foreground">{placeholder}</span>
