@@ -2143,18 +2143,21 @@ export default function InspectionForm() {
                   displayName="Belay/Descent Device"
                   equipment={equipment}
                   onUpdate={setEquipment}
+                  onImmediateSave={triggerImmediateSave}
                 />
                 <EquipmentTable
                   category="trolleys"
                   displayName="Trolleys and Pulleys"
                   equipment={equipment}
                   onUpdate={setEquipment}
+                  onImmediateSave={triggerImmediateSave}
                 />
                 <EquipmentTable
                   category="other"
                   displayName="Other Equipment"
                   equipment={equipment}
                   onUpdate={setEquipment}
+                  onImmediateSave={triggerImmediateSave}
                 />
                 
                 <div className="mt-8 border-t pt-6">
