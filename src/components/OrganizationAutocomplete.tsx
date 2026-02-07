@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { getUserWithCache } from "@/lib/cached-auth";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
@@ -45,20 +44,17 @@ export const OrganizationAutocomplete = ({
   const [deletingItem, setDeletingItem] = useState<HistoryItem | null>(null);
   const queryClient = useQueryClient();
 
-  // Fetch user's organization history from database
+  // Fetch organization history from global_field_history (cross-user shared)
   const { data: historyItems = [], isLoading: isLoadingHistory } = useQuery({
-    queryKey: ["field-history", "organization"],
+    queryKey: ["global-field-history", "organization"],
     queryFn: async () => {
-      const user = await getUserWithCache();
-      if (!user) return [];
-
       const { data, error } = await supabase
-        .from("user_field_history")
+        .from("global_field_history")
         .select("id, value, usage_count, last_used_at")
-        .eq("user_id", user.id)
         .eq("field_type", "organization")
         .order("usage_count", { ascending: false })
-        .order("last_used_at", { ascending: false });
+        .order("last_used_at", { ascending: false })
+        .limit(200);
 
       if (error) {
         console.error("Error fetching organization history:", error);
@@ -103,27 +99,24 @@ export const OrganizationAutocomplete = ({
   const getHistoryItem = (val: string) => 
     historyItems.find(h => h.value.toLowerCase() === val.toLowerCase());
 
-  // Mutation to save/update history
+  // Mutation to save/update history (fire-and-forget to global_field_history)
   const saveMutation = useMutation({
     mutationFn: async (newValue: string) => {
-      const user = await getUserWithCache();
-      if (!user) throw new Error("Not authenticated");
-
       const trimmedValue = newValue.trim();
       if (!trimmedValue) return;
 
       const { error } = await supabase
-        .from("user_field_history")
+        .from("global_field_history")
         .upsert(
           {
-            user_id: user.id,
             field_type: "organization",
             value: trimmedValue,
             usage_count: 1,
             last_used_at: new Date().toISOString(),
           },
           {
-            onConflict: "user_id,field_type,value",
+            onConflict: "field_type,value",
+            ignoreDuplicates: false,
           }
         );
 
@@ -132,7 +125,7 @@ export const OrganizationAutocomplete = ({
       }
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["field-history", "organization"] });
+      queryClient.invalidateQueries({ queryKey: ["global-field-history", "organization"] });
     },
   });
 
@@ -140,7 +133,7 @@ export const OrganizationAutocomplete = ({
   const updateMutation = useMutation({
     mutationFn: async ({ id, newValue }: { id: string; newValue: string }) => {
       const { error } = await supabase
-        .from("user_field_history")
+        .from("global_field_history")
         .update({ value: newValue.trim() })
         .eq("id", id);
 
@@ -148,7 +141,7 @@ export const OrganizationAutocomplete = ({
       return { id, newValue: newValue.trim() };
     },
     onSuccess: ({ newValue }) => {
-      queryClient.invalidateQueries({ queryKey: ["field-history", "organization"] });
+      queryClient.invalidateQueries({ queryKey: ["global-field-history", "organization"] });
       toast.success("Entry updated");
       if (editingItem && value === editingItem.value) {
         onChange(newValue);
@@ -166,14 +159,14 @@ export const OrganizationAutocomplete = ({
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
       const { error } = await supabase
-        .from("user_field_history")
+        .from("global_field_history")
         .delete()
         .eq("id", id);
 
       if (error) throw error;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["field-history", "organization"] });
+      queryClient.invalidateQueries({ queryKey: ["global-field-history", "organization"] });
       toast.success("Entry deleted");
       setDeletingItem(null);
     },

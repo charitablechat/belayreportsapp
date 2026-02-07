@@ -331,7 +331,7 @@ export default function Dashboard() {
             console.error('[Dashboard] Supabase fetch error:', err);
             return null;
           }),
-          6000,
+          15000,
           null
         );
       }
@@ -405,7 +405,7 @@ export default function Dashboard() {
             console.error('[Dashboard] Supabase trainings fetch error:', err);
             return null;
           }),
-          6000,
+          15000,
           null
         );
       }
@@ -477,7 +477,7 @@ export default function Dashboard() {
             console.error('[Dashboard] Supabase assessments fetch error:', err);
             return null;
           }),
-          6000,
+          15000,
           null
         );
       }
