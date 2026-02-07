@@ -12,7 +12,8 @@
  } from "@/components/ui/dropdown-menu";
  import { LogOut, User, Bell, Settings, FileText, Download, MessageCircle, Loader2, Shield } from "lucide-react";
  import { UserAvatar } from "@/components/ui/user-avatar";
- import { usePWAInstall } from "@/hooks/usePWAInstall";
+import { usePWAInstall } from "@/hooks/usePWAInstall";
+import { usePWA } from "@/hooks/usePWA";
  import { ManualUpdateButton } from "@/components/pwa/ManualUpdateButton";
  import { ForceSyncButton } from "@/components/pwa/ForceSyncButton";
  import { NotificationCenter } from "@/components/pwa/NotificationCenter";
@@ -37,7 +38,8 @@
    signingOut = false,
  }: UserProfileDropdownProps) {
    const navigate = useNavigate();
-   const { isInstallable, isInstalled, promptInstall } = usePWAInstall();
+    const { isInstallable, isInstalled, promptInstall } = usePWAInstall();
+    const { unsyncedCount } = usePWA();
    const [notificationsDialogOpen, setNotificationsDialogOpen] = useState(false);
    const [contactSheetOpen, setContactSheetOpen] = useState(false);
  
@@ -121,10 +123,10 @@
               Contact Developer
             </DropdownMenuItem>
             
-            {/* Force Sync Now */}
-            <DropdownMenuItem asChild>
-              <ForceSyncButton variant="menu-item" />
-            </DropdownMenuItem>
+             {/* Force Sync Now */}
+             <DropdownMenuItem asChild>
+               <ForceSyncButton variant="menu-item" unsyncedCount={unsyncedCount} />
+             </DropdownMenuItem>
             
             {/* Activity Log */}
             <NotificationCenter 

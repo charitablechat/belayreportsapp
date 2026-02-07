@@ -10,6 +10,7 @@ import { addSyncNotification, addNotification } from "@/lib/notification-center"
 interface ForceSyncButtonProps {
   variant?: 'default' | 'icon' | 'menu-item';
   className?: string;
+  unsyncedCount?: number;
 }
 
 /**
@@ -21,7 +22,7 @@ interface ForceSyncButtonProps {
  * - icon: Icon-only button (mobile header)
  * - menu-item: For use inside dropdown menus (styled as menu item)
  */
-export const ForceSyncButton = ({ variant = 'default', className }: ForceSyncButtonProps) => {
+export const ForceSyncButton = ({ variant = 'default', className, unsyncedCount = 0 }: ForceSyncButtonProps) => {
   const { forceSync, isSyncing, isOnline } = usePWA();
   const isMobileDevice = isMobile();
 
@@ -118,6 +119,11 @@ export const ForceSyncButton = ({ variant = 'default', className }: ForceSyncBut
           )} 
         />
         {isSyncing ? "Syncing..." : "Force Sync Now"}
+        {!isSyncing && unsyncedCount > 0 && (
+          <span className="ml-auto inline-flex items-center justify-center rounded-full bg-destructive text-destructive-foreground text-xs font-bold min-w-[20px] h-5 px-1.5">
+            {unsyncedCount}
+          </span>
+        )}
       </button>
     );
   }
