@@ -1,141 +1,86 @@
 
-# Fix Plan: Stuck Photo Upload Spinner - v2.4.4
 
-## Root Cause Analysis
+# Fix Plan: Equipment Quantity Data Loss - v2.4.5
 
-The photo upload spinner gets stuck because the `processFiles()` function in `PhotoCapture.tsx` has a **critical blocking point** that lacks timeout protection:
+## Root Cause
 
-```typescript
-// Line 195 - NO TIMEOUT WRAPPER
-const user = await getUserWithCache();
-if (!user) throw new Error("Not authenticated");
-```
+The `EquipmentTable` component uses **object reference equality** (`eq === item`) to locate which equipment item to update. This silently drops edits when the `equipment` array is replaced with new object references -- which happens when:
 
-This call happens BEFORE the per-file timeout is applied (line 201), meaning:
-1. User clicks "Take Photo" or "Upload"
-2. `setUploading(true)` executes immediately (line 176)
-3. `getUserWithCache()` is called (line 195)
-4. If `supabase.auth.getUser()` hangs (session issues, slow network, etc.), the spinner stays forever
-5. The 20-second safety timeout eventually fires, but that's too long
+1. The Supabase fetch completes after offline data was already loaded (lines 888-894 in InspectionForm)
+2. Auto-save replaces temp IDs with real UUIDs (lines 1216-1223)
+3. Another EquipmentTable category triggers a state update
 
-### Why `getUserWithCache()` Can Hang
+When `eq === item` matches nothing, the `.map()` returns the array unchanged and the user's input is silently discarded.
 
-The function at `src/lib/cached-auth.ts` line 91 calls:
-```typescript
-const { data: { user } } = await supabase.auth.getUser();
-```
+### Why Other Tables Are Not Affected
 
-This Supabase call has **no internal timeout** and can stall indefinitely when:
-- The auth token is in a bad state (needs refresh but refresh is slow)
-- Network is unstable (connected but slow)
-- The Supabase auth service is experiencing latency
+- **OperatingSystemsTable**: Uses index-based updates (`updateSystem(index, field, value)`)
+- **ZiplinesTable**: Uses index-based updates (`updateZipline(index, field, value)`)
+- **EquipmentTable**: Uses reference equality -- the only table with this bug
 
-### Issue Scope
+### The Same Bug Exists in Delete
 
-This affects:
-- **All report types**: Inspection photos, Training photos (if added), Daily Assessment photos
-- **All platforms**: Web, iOS PWA, Android PWA
-- **All users**: Anyone experiencing auth latency
+`handleDeleteConfirm` also uses `eq !== itemToDelete.item` (reference equality), meaning deletes can also silently fail under the same race conditions.
 
 ---
 
 ## Solution
 
-### Phase 1: Add Auth Timeout to PhotoCapture
+Replace reference equality with **ID-based matching** in both `updateEquipment` and `handleDeleteConfirm` inside `EquipmentTable.tsx`. This is immune to object reference changes.
 
-Wrap the `getUserWithCache()` call in the same timeout pattern used for per-file processing.
+### File: `src/components/inspection/EquipmentTable.tsx`
 
-**File: `src/components/PhotoCapture.tsx`**
+**Change 1: Fix `updateEquipment` (line 92-97)**
 
+Before:
 ```typescript
-// Add new constant at top of file (around line 24)
-const AUTH_TIMEOUT = 5000; // 5 seconds max for auth check
-
-// Modify processFiles function (around line 194-196)
-// BEFORE:
-const user = await getUserWithCache();
-if (!user) throw new Error("Not authenticated");
-
-// AFTER:
-const user = await Promise.race([
-  getUserWithCache(),
-  new Promise<null>((resolve) =>
-    setTimeout(() => {
-      console.warn('[PhotoCapture] Auth check timed out');
-      resolve(null);
-    }, AUTH_TIMEOUT)
-  )
-]);
-if (!user) throw new Error("Not authenticated - please refresh the page");
+const updateEquipment = useCallback((item: any, field: string, value: any) => {
+  const updated = equipment.map((eq) =>
+    eq === item ? { ...eq, [field]: value } : eq
+  );
+  onUpdate(updated);
+}, [equipment, onUpdate]);
 ```
 
-### Phase 2: Add Timeout to `getUserWithCache()` Itself
-
-For defense-in-depth, also add timeout protection to the auth utility itself so ALL callers are protected.
-
-**File: `src/lib/cached-auth.ts`**
-
+After:
 ```typescript
-// Add constant (around line 21)
-const AUTH_NETWORK_TIMEOUT = 8000; // 8 seconds max for network auth fetch
+const updateEquipment = useCallback((item: any, field: string, value: any) => {
+  const updated = equipment.map((eq) =>
+    eq.id === item.id ? { ...eq, [field]: value } : eq
+  );
+  onUpdate(updated);
+}, [equipment, onUpdate]);
+```
 
-// Modify the SLOW PATH section (around line 89-107)
-// BEFORE:
-pendingUserPromise = (async () => {
-  try {
-    const { data: { user } } = await supabase.auth.getUser();
-    // ...
+**Change 2: Fix `handleDeleteConfirm` (line 99-106)**
+
+Before:
+```typescript
+const handleDeleteConfirm = useCallback(() => {
+  if (itemToDelete) {
+    const updated = equipment.filter((eq) => eq !== itemToDelete.item);
+    onUpdate(updated);
+    onImmediateSave?.();
+    setItemToDelete(null);
   }
-})();
-
-// AFTER:
-pendingUserPromise = (async () => {
-  try {
-    const authPromise = supabase.auth.getUser();
-    const result = await Promise.race([
-      authPromise.then(res => ({ user: res.data.user, timedOut: false })),
-      new Promise<{ user: null; timedOut: true }>((resolve) =>
-        setTimeout(() => resolve({ user: null, timedOut: true }), AUTH_NETWORK_TIMEOUT)
-      )
-    ]);
-    
-    if (result.timedOut) {
-      console.warn('[CachedAuth] Auth network request timed out');
-      return null;
-    }
-    
-    if (result.user) {
-      cachedUser = result.user;
-      cacheTimestamp = Date.now();
-    }
-    
-    return result.user;
-  } catch (error) {
-    console.error('[CachedAuth] Error fetching user:', error);
-    return null;
-  } finally {
-    pendingUserPromise = null;
-  }
-})();
+}, [itemToDelete, equipment, onUpdate, onImmediateSave]);
 ```
 
-### Phase 3: Reduce Safety Timeout
-
-The current 20-second `PROCESS_SAFETY_TIMEOUT` is too long for good UX. Reduce it:
-
-**File: `src/components/PhotoCapture.tsx`**
-
+After:
 ```typescript
-// BEFORE (line 23):
-const PROCESS_SAFETY_TIMEOUT = 20000; // 20 seconds
-
-// AFTER:
-const PROCESS_SAFETY_TIMEOUT = 12000; // 12 seconds max (auth 5s + compression 3s + save 4s)
+const handleDeleteConfirm = useCallback(() => {
+  if (itemToDelete) {
+    const updated = equipment.filter((eq) => eq.id !== itemToDelete.item.id);
+    onUpdate(updated);
+    onImmediateSave?.();
+    setItemToDelete(null);
+  }
+}, [itemToDelete, equipment, onUpdate, onImmediateSave]);
 ```
 
-### Phase 4: Version Bump
+### Version Bump
 
-Update version to **v2.4.4** in `vite.config.ts`.
+Update `vite.config.ts` to **v2.4.5**.
 
 ---
 
@@ -143,40 +88,33 @@ Update version to **v2.4.4** in `vite.config.ts`.
 
 | File | Action | Description |
 |------|--------|-------------|
-| `src/components/PhotoCapture.tsx` | Update | Add 5s auth timeout, reduce safety timeout to 12s |
-| `src/lib/cached-auth.ts` | Update | Add 8s network timeout to `getUserWithCache()` slow path |
-| `vite.config.ts` | Update | Bump version to v2.4.4 |
+| `src/components/inspection/EquipmentTable.tsx` | Update | Replace `===` reference equality with `.id` matching in update and delete |
+| `vite.config.ts` | Update | Bump to v2.4.5 |
 
 ---
 
-## Why These Specific Timeouts?
+## Why This Is a Client-Side Bug (Not RLS/Backend)
 
-| Component | Timeout | Rationale |
-|-----------|---------|-----------|
-| Auth (PhotoCapture) | 5s | User-facing, needs fast feedback |
-| Auth (cached-auth network) | 8s | Backend utility, slightly longer for reliability |
-| Per-file processing | 10s | Compression + IndexedDB write |
-| Safety timeout | 12s | 5s auth + 3s compression + 4s buffer |
+- The data never reaches the save function because `eq === item` silently produces an unchanged array
+- The Supabase upsert correctly persists whatever state it receives -- it just receives stale data
+- RLS policies are not involved since the data loss occurs before any network call
 
 ---
 
 ## Expected Outcome
 
-After this fix:
-1. Photo upload will **never hang more than 12 seconds** (down from 20s)
-2. Auth failures will be caught within 5 seconds with clear error message
-3. The fix applies universally to **all users** and **all platforms**
-4. Defense-in-depth: both PhotoCapture AND the auth utility are protected
-5. Users see actionable error: "Not authenticated - please refresh the page"
+1. Equipment quantities, production years, comments, and results will persist correctly across tab switches
+2. Deleting equipment items will work reliably even after Supabase data refresh
+3. All equipment categories (harnesses, helmets, lanyards, etc.) are fixed since they all share the same component
+4. Fix applies to all users, all platforms (web and mobile), all report types using EquipmentTable
 
 ---
 
 ## Testing Checklist
 
-- [ ] Test photo upload on web browser (Chrome, Safari, Firefox)
-- [ ] Test photo upload on iOS Safari PWA
-- [ ] Test photo upload on Android Chrome PWA
-- [ ] Simulate slow network to verify 5s auth timeout triggers
-- [ ] Verify offline photo capture still works (falls back to local storage)
-- [ ] Confirm "Pending" badge shows for unsynced photos
-- [ ] Verify background sync uploads photos when online
+- [ ] Add equipment, enter quantity, switch to another tab, return -- quantity persists
+- [ ] Enter production year, switch tabs and return -- year persists
+- [ ] Delete an equipment item after switching tabs -- deletion works
+- [ ] Add equipment while offline, verify data persists when coming back online
+- [ ] Verify all 8 equipment categories retain data correctly
+
