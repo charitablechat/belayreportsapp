@@ -11,7 +11,7 @@ import { Eye, EyeOff, WifiOff, ArrowRight } from "lucide-react";
 import { usePWA } from "@/hooks/usePWA";
 import ropeWorksLogo from "@/assets/rope-works-logo.png";
 import authBackgroundVideo from "@/assets/auth-background.mp4";
-import { hasCachedSession as checkCachedSession } from "@/lib/cached-auth";
+import { hasCachedSessionForOffline } from "@/lib/cached-auth";
 import { triggerHaptic } from "@/lib/haptics";
 import { toast } from "sonner";
 
@@ -200,13 +200,13 @@ export default function Auth() {
               <WifiOff className="h-4 w-4 text-orange-500" />
               <AlertDescription className="text-sm">
                 <span className="font-semibold">You're offline.</span>{" "}
-                {checkCachedSession() 
-                  ? "Your cached credentials will be used to access the dashboard."
+                {hasCachedSessionForOffline() 
+                  ? "Tap below to access your cached reports."
                   : "Sign in requires an internet connection."}
               </AlertDescription>
             </Alert>
           )}
-          {!isOnline && checkCachedSession() && (
+          {!isOnline && hasCachedSessionForOffline() && (
             <GradientButton
               type="button"
               onClick={handleGoToDashboard}

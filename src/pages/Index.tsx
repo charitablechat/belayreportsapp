@@ -19,22 +19,20 @@ const Index = () => {
           if (cachedSession) {
             try {
               const parsed = JSON.parse(cachedSession);
-              if (parsed && parsed.access_token) {
-                // Verify the token hasn't expired
-                const expiresAt = parsed.expires_at;
-                if (expiresAt && expiresAt * 1000 > Date.now()) {
-                  console.log('[Auth] Valid cached session found, navigating to dashboard');
-                  setSession(parsed);
-                  navigate("/dashboard", { replace: true });
-                  return;
-                }
+              // Offline: only require a user identity — ignore token expiry
+              // The JWT is only needed for server API calls, which won't happen offline
+              if (parsed && (parsed.user?.id || parsed.access_token)) {
+                console.log('[Auth] Cached session found (offline), navigating to dashboard');
+                setSession(parsed);
+                navigate("/dashboard", { replace: true });
+                return;
               }
             } catch (e) {
               console.error('[Auth] Error parsing cached session:', e);
             }
           }
           
-          // No valid cached session while offline
+          // No cached session at all while offline
           setLoading(false);
           return;
         }

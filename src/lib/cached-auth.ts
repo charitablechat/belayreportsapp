@@ -259,6 +259,22 @@ export function hasCachedSession(): boolean {
 export const getCachedUser = getCachedUserFromStorage;
 
 /**
+ * Offline-aware session check that ignores token expiry.
+ * When offline, the JWT is irrelevant (no server calls happen).
+ * We only need proof that a user previously authenticated.
+ */
+export function hasCachedSessionForOffline(): boolean {
+  try {
+    const cachedSession = localStorage.getItem('sb-ssgzcgvygnsrqalisshx-auth-token');
+    if (!cachedSession) return false;
+    const parsed = JSON.parse(cachedSession);
+    return !!(parsed?.user?.id || parsed?.access_token);
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Ensures the Supabase client has a valid session before database operations.
  * This is critical for sync operations that rely on RLS policies.
  * 
