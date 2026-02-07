@@ -842,82 +842,113 @@ export default function InspectionForm() {
           return;
         }
         
-        if (data) {
-          setInspection(data);
-          setInspectorId(data.inspector_id);
-          // Non-blocking cache update - don't await to prevent loading freeze
-          saveInspectionOffline(data).catch(e => 
-            console.warn('[InspectionForm] Non-critical: failed to cache inspection', e)
-          );
+        // Determine if local data should take priority over server data
+        // This prevents data loss when opening a report with unsynced local changes
+        const localIsNewer = offlineData && (
+          !offlineData.synced_at || // Never synced = local has unsynced changes
+          (offlineData.updated_at && data?.updated_at && 
+           new Date(offlineData.updated_at) > new Date(data.updated_at))
+        );
+
+        if (localIsNewer) {
+          // LOCAL DATA IS NEWER — preserve local state, don't overwrite with stale server data
+          console.log('[InspectionForm] Local data is newer than server — preserving local state', {
+            localUpdatedAt: offlineData.updated_at,
+            serverUpdatedAt: data?.updated_at,
+            localSyncedAt: offlineData.synced_at,
+          });
+          
+          // Only update inspection header metadata from server (status, inspector info)
+          if (data) {
+            setInspection(prev => ({
+              ...prev,
+              status: data.status,
+              inspector: (data as any).inspector,
+            }));
+            setInspectorId(data.inspector_id);
+            // Do NOT cache server inspection — local version is the source of truth
+          }
+          
+          // Skip all related data processing — local state (loaded earlier from IndexedDB) is preserved
+          // Do NOT call saveRelatedDataOffline with server data — that would overwrite local IndexedDB
           
           if (import.meta.env.DEV) {
-            console.log('[InspectionForm] Updated inspection from Supabase');
+            console.log('[InspectionForm] Skipped server data overwrite — local data preserved');
           }
-        }
+        } else {
+          // SERVER DATA IS CURRENT — apply it (existing behavior)
+          if (data) {
+            setInspection(data);
+            setInspectorId(data.inspector_id);
+            // Non-blocking cache update - don't await to prevent loading freeze
+            saveInspectionOffline(data).catch(e => 
+              console.warn('[InspectionForm] Non-critical: failed to cache inspection', e)
+            );
+            
+            if (import.meta.env.DEV) {
+              console.log('[InspectionForm] Updated inspection from Supabase');
+            }
+          }
 
-        // Process all fetched related data
-        const { data: systemsData } = systemsResult;
-        if (systemsData) {
-          const normalizedSystems = systemsData.map(item => ({
-            ...item,
-            result: normalizeResultValue(item.result)
-          }));
-          setSystems(normalizedSystems);
-          // Non-blocking cache update
-          saveRelatedDataOffline('systems', id!, normalizedSystems).catch(e =>
-            console.warn('[InspectionForm] Non-critical: failed to cache systems', e)
-          );
-        }
+          // Process all fetched related data
+          const { data: systemsData } = systemsResult;
+          if (systemsData) {
+            const normalizedSystems = systemsData.map(item => ({
+              ...item,
+              result: normalizeResultValue(item.result)
+            }));
+            setSystems(normalizedSystems);
+            saveRelatedDataOffline('systems', id!, normalizedSystems).catch(e =>
+              console.warn('[InspectionForm] Non-critical: failed to cache systems', e)
+            );
+          }
 
-        const { data: ziplinesData } = ziplinesResult;
-        if (ziplinesData) {
-          const normalizedZiplines = ziplinesData.map(item => ({
-            ...item,
-            result: normalizeResultValue(item.result),
-            cable_result: normalizeResultValue(item.cable_result),
-            braking_result: normalizeResultValue(item.braking_result),
-            ead_result: normalizeResultValue(item.ead_result)
-          }));
-          setZiplines(normalizedZiplines);
-          // Non-blocking cache update
-          saveRelatedDataOffline('ziplines', id!, normalizedZiplines).catch(e =>
-            console.warn('[InspectionForm] Non-critical: failed to cache ziplines', e)
-          );
-        }
+          const { data: ziplinesData } = ziplinesResult;
+          if (ziplinesData) {
+            const normalizedZiplines = ziplinesData.map(item => ({
+              ...item,
+              result: normalizeResultValue(item.result),
+              cable_result: normalizeResultValue(item.cable_result),
+              braking_result: normalizeResultValue(item.braking_result),
+              ead_result: normalizeResultValue(item.ead_result)
+            }));
+            setZiplines(normalizedZiplines);
+            saveRelatedDataOffline('ziplines', id!, normalizedZiplines).catch(e =>
+              console.warn('[InspectionForm] Non-critical: failed to cache ziplines', e)
+            );
+          }
 
-        const { data: equipmentData } = equipmentResult;
-        if (equipmentData) {
-          const normalizedEquipment = equipmentData.map(item => ({
-            ...item,
-            result: normalizeResultValue(item.result)
-          }));
-          setEquipment(normalizedEquipment);
-          // Non-blocking cache update
-          saveRelatedDataOffline('equipment', id!, normalizedEquipment).catch(e =>
-            console.warn('[InspectionForm] Non-critical: failed to cache equipment', e)
-          );
-        }
+          const { data: equipmentData } = equipmentResult;
+          if (equipmentData) {
+            const normalizedEquipment = equipmentData.map(item => ({
+              ...item,
+              result: normalizeResultValue(item.result)
+            }));
+            setEquipment(normalizedEquipment);
+            saveRelatedDataOffline('equipment', id!, normalizedEquipment).catch(e =>
+              console.warn('[InspectionForm] Non-critical: failed to cache equipment', e)
+            );
+          }
 
-        const { data: standardsData } = standardsResult;
-        if (standardsData && standardsData.length > 0) {
-          setStandards(standardsData);
-          // Non-blocking cache update
-          saveRelatedDataOffline('standards', id!, standardsData).catch(e =>
-            console.warn('[InspectionForm] Non-critical: failed to cache standards', e)
-          );
-        }
+          const { data: standardsData } = standardsResult;
+          if (standardsData && standardsData.length > 0) {
+            setStandards(standardsData);
+            saveRelatedDataOffline('standards', id!, standardsData).catch(e =>
+              console.warn('[InspectionForm] Non-critical: failed to cache standards', e)
+            );
+          }
 
-        const { data: summaryData } = summaryResult;
-        if (summaryData) {
-          setSummary(summaryData);
-          // Non-blocking cache update
-          saveRelatedDataOffline('summary', id!, [summaryData]).catch(e =>
-            console.warn('[InspectionForm] Non-critical: failed to cache summary', e)
-          );
-        }
+          const { data: summaryData } = summaryResult;
+          if (summaryData) {
+            setSummary(summaryData);
+            saveRelatedDataOffline('summary', id!, [summaryData]).catch(e =>
+              console.warn('[InspectionForm] Non-critical: failed to cache summary', e)
+            );
+          }
 
-        if (import.meta.env.DEV) {
-          console.log('[InspectionForm] Synced and cached all data from Supabase (parallel)');
+          if (import.meta.env.DEV) {
+            console.log('[InspectionForm] Synced and cached all data from Supabase (parallel)');
+          }
         }
       } else if (!offlineData) {
         // Offline and no cached data
