@@ -1,54 +1,61 @@
 
 
-# Plan: Remove "Repairs Performed" Heading Text from Generated Reports - v2.4.10
+# Plan: Ensure Inspector Name Always Shows Report Creator - v2.4.11
 
-## What Changes
+## Problem
 
-Remove only the **heading text** "Repairs Performed" from the HTML and PDF generated reports. The repairs content itself will still appear in the report — just without its title.
+The Inspector field in the form header shows "Current User" as a fallback when the inspector profile hasn't loaded yet or is unavailable (e.g., offline). Additionally, if only one of `first_name` or `last_name` is set (but not both), the name won't display due to the `&&` logic, falling back to "Current User" again.
+
+## Solution
+
+Fix the name resolution logic in `InspectionHeader.tsx` to:
+
+1. Use `||` instead of `&&` so a user with only a first name or only a last name still displays correctly.
+2. Add a "Loading..." fallback instead of "Current User" to make it clear the name is being fetched, not absent.
+3. Show the profile email or "Inspector" as a last-resort fallback rather than the misleading "Current User" text.
 
 ## Technical Details
 
-### File 1: `supabase/functions/generate-inspection-html/index.ts`
+### File: `src/components/inspection/InspectionHeader.tsx`
 
-**Line 2397** — Remove the `<h3>` element that renders "Repairs Performed":
+**Lines 19-21** -- Change the name resolution logic:
 
-```html
-<!-- Remove this line -->
-<h3 style="...">Repairs Performed</h3>
-```
-
-The surrounding `<div>` and the content block remain unchanged.
-
-### File 2: `supabase/functions/generate-inspection-pdf/index.ts`
-
-**Lines 531-535** — Remove the bold "Repairs Performed" text heading:
-
+Before:
 ```typescript
-// Remove these lines:
-doc.setFontSize(12);
-doc.setFont('helvetica', 'bold');
-doc.setTextColor(0, 0, 0);
-doc.text('Repairs Performed', margin, yPos);
-yPos += 6;
+const inspectorName = userProfile?.first_name && userProfile?.last_name
+  ? `${userProfile.first_name} ${userProfile.last_name}`
+  : 'Current User';
 ```
 
-The repair content text that follows will still render.
+After:
+```typescript
+const inspectorName = [userProfile?.first_name, userProfile?.last_name]
+  .filter(Boolean)
+  .join(' ')
+  .trim() || (userProfile ? 'Inspector' : 'Loading...');
+```
 
-### File 3: `vite.config.ts`
+This ensures:
+- A user with only a first name shows that first name
+- A user with only a last name shows that last name
+- If a profile exists but has no name fields, it shows "Inspector"
+- If the profile hasn't loaded yet, it shows "Loading..."
 
-Bump version to **v2.4.10**.
+### File: `vite.config.ts`
+
+Bump version to **v2.4.11**.
 
 ## Files Changed
 
 | File | Change |
 |------|--------|
-| `supabase/functions/generate-inspection-html/index.ts` | Remove `<h3>Repairs Performed</h3>` heading |
-| `supabase/functions/generate-inspection-pdf/index.ts` | Remove bold heading text output |
-| `vite.config.ts` | Version bump to v2.4.10 |
+| `src/components/inspection/InspectionHeader.tsx` | Fix inspector name resolution logic |
+| `vite.config.ts` | Version bump to v2.4.11 |
 
 ## What Stays the Same
 
-- The repairs content still renders in both HTML and PDF reports
-- The form input field in SummarySection.tsx is untouched
-- No database, sync, or auth changes
+- The inspector field remains disabled/immutable in the UI
+- The `inspector_id` database trigger still prevents ID changes
+- The `inspectorProfile` is still fetched using the report's `inspector_id` (always the original creator)
+- Generated HTML and PDF reports are unaffected (they already resolve the name server-side from `inspector_id`)
 
