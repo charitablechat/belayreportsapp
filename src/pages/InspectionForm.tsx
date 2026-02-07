@@ -1430,25 +1430,9 @@ export default function InspectionForm() {
       summary: summaryForValidation,
     });
     
-    if (!validation.success) {
-      // Show first error with field context
-      const firstError = formatValidationError(validation.errors[0]);
-      const totalErrors = validation.errors.length;
-      
-     // Show user feedback for validation failure
-     toast({
-       title: "Cannot complete inspection",
-       description: totalErrors > 1 
-         ? `${firstError} (+${totalErrors - 1} more issue${totalErrors > 2 ? 's' : ''})`
-         : firstError,
-       variant: "destructive",
-     });
-     
-      if (import.meta.env.DEV) {
-        console.error('[InspectionForm] Cannot complete - validation errors:', 
-          validation.errors.map(formatValidationError));
-      }
-      return;
+    if (!validation.success && import.meta.env.DEV) {
+      console.warn('[InspectionForm] Completing with validation warnings:', 
+        validation.errors.map(formatValidationError));
     }
     
     await saveProgress();
