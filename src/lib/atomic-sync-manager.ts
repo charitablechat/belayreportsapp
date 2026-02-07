@@ -38,6 +38,13 @@ import {
 } from "./offline-storage";
 
 /**
+ * Maximum number of items to process per sync cycle.
+ * Prevents timeout cascades when many items are queued (e.g., 22 reports).
+ * Remaining items will be picked up in subsequent sync cycles.
+ */
+const MAX_BATCH_SIZE = 5;
+
+/**
  * Interface for record status returned by check_record_status RPC
  * Used to bypass RLS and check if a record was soft-deleted
  */
@@ -449,9 +456,16 @@ export async function syncAllInspectionsAtomic() {
     return { total: -1, success: 0, failed: 0, errors: [{ id: 'indexeddb', error: 'Timeout fetching inspections' }] };
   }
   
+  // Batch limiting: only process MAX_BATCH_SIZE items per cycle
+  const totalUnsynced = unsynced.length;
+  const batch = unsynced.slice(0, MAX_BATCH_SIZE);
+  const remaining = totalUnsynced - batch.length;
+  
   if (import.meta.env.DEV) {
-    console.log('[Atomic Sync] Starting sync for all unsynced inspections', {
-      count: unsynced.length,
+    console.log('[Atomic Sync] Starting sync for unsynced inspections', {
+      total: totalUnsynced,
+      batchSize: batch.length,
+      remaining,
       platform: capabilities.isIOS ? 'iOS' : capabilities.isAndroid ? 'Android' : 'Desktop',
       browser: capabilities.browser,
       isPWA: capabilities.isPWA,
@@ -460,9 +474,9 @@ export async function syncAllInspectionsAtomic() {
   
   // Emit initial progress
   syncProgressEmitter.emit({
-    total: unsynced.length,
+    total: batch.length,
     current: 0,
-    currentItem: 'Starting sync...',
+    currentItem: `Starting sync... (${totalUnsynced} total pending)`,
     phase: 'inspections',
     errors: [],
   });
@@ -474,17 +488,17 @@ export async function syncAllInspectionsAtomic() {
   // Mobile devices get retry logic
   const maxRetries = capabilities.isMobile ? 2 : 1; // Reduced retries for faster recovery
   
-  for (let i = 0; i < unsynced.length; i++) {
-    const inspection = unsynced[i];
+  for (let i = 0; i < batch.length; i++) {
+    const inspection = batch[i];
     let retryCount = 0;
     let synced = false;
     
     while (retryCount < maxRetries && !synced) {
       // Emit progress for current item
       syncProgressEmitter.emit({
-        total: unsynced.length,
+        total: batch.length,
         current: i + 1,
-        currentItem: `${inspection.organization} - ${inspection.location}${retryCount > 0 ? ` (retry ${retryCount})` : ''}`,
+        currentItem: `${inspection.organization} - ${inspection.location}${retryCount > 0 ? ` (retry ${retryCount})` : ''}${remaining > 0 ? ` (${remaining} more queued)` : ''}`,
         phase: 'inspections',
         errors,
       });
@@ -509,7 +523,7 @@ export async function syncAllInspectionsAtomic() {
         }
         
         if (import.meta.env.DEV) {
-          console.log(`[Atomic Sync] Synced ${i + 1}/${unsynced.length}:`, inspection.id);
+          console.log(`[Atomic Sync] Synced ${i + 1}/${batch.length} (${remaining} remaining):`, inspection.id);
         }
       } catch (error: any) {
         retryCount++;
@@ -532,9 +546,9 @@ export async function syncAllInspectionsAtomic() {
   
   // Emit completion
   syncProgressEmitter.emit({
-    total: unsynced.length,
-    current: unsynced.length,
-    currentItem: 'Sync complete',
+    total: batch.length,
+    current: batch.length,
+    currentItem: remaining > 0 ? `Batch complete (${remaining} more queued)` : 'Sync complete',
     phase: 'complete',
     errors,
   });
@@ -542,7 +556,9 @@ export async function syncAllInspectionsAtomic() {
   // Log results
   if (import.meta.env.DEV) {
     console.log('[Atomic Sync] Results:', {
-      total: unsynced.length,
+      batch: batch.length,
+      totalPending: totalUnsynced,
+      remaining,
       success: successCount,
       failed: failCount,
     });
@@ -552,9 +568,10 @@ export async function syncAllInspectionsAtomic() {
   }
   
   return {
-    total: unsynced.length,
+    total: totalUnsynced,
     success: successCount,
     failed: failCount,
+    remaining,
     errors,
   };
 }
@@ -924,18 +941,25 @@ export async function syncAllTrainingsAtomic() {
     return { total: 0, success: 0, failed: 0, errors: [] };
   }
   
+  // Batch limiting: only process MAX_BATCH_SIZE items per cycle
+  const totalUnsynced = unsynced.length;
+  const batch = unsynced.slice(0, MAX_BATCH_SIZE);
+  const remaining = totalUnsynced - batch.length;
+  
   if (import.meta.env.DEV) {
-    console.log('[Atomic Sync] Starting sync for all unsynced trainings', {
-      count: unsynced.length,
+    console.log('[Atomic Sync] Starting sync for unsynced trainings', {
+      total: totalUnsynced,
+      batchSize: batch.length,
+      remaining,
       platform: capabilities.isIOS ? 'iOS' : capabilities.isAndroid ? 'Android' : 'Desktop',
     });
   }
   
   // Emit initial progress
   syncProgressEmitter.emit({
-    total: unsynced.length,
+    total: batch.length,
     current: 0,
-    currentItem: 'Starting training sync...',
+    currentItem: `Starting training sync... (${totalUnsynced} total pending)`,
     phase: 'trainings',
     errors: [],
   });
@@ -947,17 +971,17 @@ export async function syncAllTrainingsAtomic() {
   // Reduced retries for faster recovery
   const maxRetries = capabilities.isMobile ? 2 : 1;
   
-  for (let i = 0; i < unsynced.length; i++) {
-    const training = unsynced[i];
+  for (let i = 0; i < batch.length; i++) {
+    const training = batch[i];
     let retryCount = 0;
     let synced = false;
     
     while (retryCount < maxRetries && !synced) {
       // Emit progress for current item
       syncProgressEmitter.emit({
-        total: unsynced.length,
+        total: batch.length,
         current: i + 1,
-        currentItem: `${training.organization}${retryCount > 0 ? ` (retry ${retryCount})` : ''}`,
+        currentItem: `${training.organization}${retryCount > 0 ? ` (retry ${retryCount})` : ''}${remaining > 0 ? ` (${remaining} more queued)` : ''}`,
         phase: 'trainings',
         errors,
       });
@@ -976,7 +1000,7 @@ export async function syncAllTrainingsAtomic() {
         }
         
         if (import.meta.env.DEV) {
-          console.log(`[Atomic Sync] Synced training ${i + 1}/${unsynced.length}:`, training.id);
+          console.log(`[Atomic Sync] Synced training ${i + 1}/${batch.length} (${remaining} remaining):`, training.id);
         }
       } catch (error: any) {
         retryCount++;
@@ -998,16 +1022,19 @@ export async function syncAllTrainingsAtomic() {
   
   if (import.meta.env.DEV) {
     console.log('[Atomic Sync] Training sync results:', {
-      total: unsynced.length,
+      batch: batch.length,
+      totalPending: totalUnsynced,
+      remaining,
       success: successCount,
       failed: failCount,
     });
   }
   
   return {
-    total: unsynced.length,
+    total: totalUnsynced,
     success: successCount,
     failed: failCount,
+    remaining,
     errors,
   };
 }
@@ -1339,18 +1366,25 @@ export async function syncAllDailyAssessmentsAtomic() {
     return { total: 0, success: 0, failed: 0, errors: [] };
   }
   
+  // Batch limiting: only process MAX_BATCH_SIZE items per cycle
+  const totalUnsynced = unsynced.length;
+  const batch = unsynced.slice(0, MAX_BATCH_SIZE);
+  const remaining = totalUnsynced - batch.length;
+  
   if (import.meta.env.DEV) {
-    console.log('[Atomic Sync] Starting sync for all unsynced daily assessments', {
-      count: unsynced.length,
+    console.log('[Atomic Sync] Starting sync for unsynced daily assessments', {
+      total: totalUnsynced,
+      batchSize: batch.length,
+      remaining,
       platform: capabilities.isIOS ? 'iOS' : capabilities.isAndroid ? 'Android' : 'Desktop',
     });
   }
   
   // Emit initial progress
   syncProgressEmitter.emit({
-    total: unsynced.length,
+    total: batch.length,
     current: 0,
-    currentItem: 'Starting daily assessment sync...',
+    currentItem: `Starting daily assessment sync... (${totalUnsynced} total pending)`,
     phase: 'assessments',
     errors: [],
   });
@@ -1362,17 +1396,17 @@ export async function syncAllDailyAssessmentsAtomic() {
   // Reduced retries for faster recovery
   const maxRetries = capabilities.isMobile ? 2 : 1;
   
-  for (let i = 0; i < unsynced.length; i++) {
-    const assessment = unsynced[i];
+  for (let i = 0; i < batch.length; i++) {
+    const assessment = batch[i];
     let retryCount = 0;
     let synced = false;
     
     while (retryCount < maxRetries && !synced) {
       // Emit progress for current item
       syncProgressEmitter.emit({
-        total: unsynced.length,
+        total: batch.length,
         current: i + 1,
-        currentItem: `${assessment.organization} - ${assessment.site}${retryCount > 0 ? ` (retry ${retryCount})` : ''}`,
+        currentItem: `${assessment.organization} - ${assessment.site}${retryCount > 0 ? ` (retry ${retryCount})` : ''}${remaining > 0 ? ` (${remaining} more queued)` : ''}`,
         phase: 'assessments',
         errors,
       });
@@ -1391,7 +1425,7 @@ export async function syncAllDailyAssessmentsAtomic() {
         }
         
         if (import.meta.env.DEV) {
-          console.log(`[Atomic Sync] Synced daily assessment ${i + 1}/${unsynced.length}:`, assessment.id);
+          console.log(`[Atomic Sync] Synced daily assessment ${i + 1}/${batch.length} (${remaining} remaining):`, assessment.id);
         }
       } catch (error: any) {
         retryCount++;
@@ -1413,16 +1447,19 @@ export async function syncAllDailyAssessmentsAtomic() {
   
   if (import.meta.env.DEV) {
     console.log('[Atomic Sync] Daily assessment sync results:', {
-      total: unsynced.length,
+      batch: batch.length,
+      totalPending: totalUnsynced,
+      remaining,
       success: successCount,
       failed: failCount,
     });
   }
   
   return {
-    total: unsynced.length,
+    total: totalUnsynced,
     success: successCount,
     failed: failCount,
+    remaining,
     errors,
   };
 }
