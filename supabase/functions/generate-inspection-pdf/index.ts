@@ -528,11 +528,6 @@ serve(async (req) => {
       }
 
       if (summary.repairs_performed) {
-        doc.setFontSize(12);
-        doc.setFont('helvetica', 'bold');
-        doc.setTextColor(0, 0, 0);
-        doc.text('Repairs Performed', margin, yPos);
-        yPos += 6;
         doc.setFontSize(10);
         doc.setFont('helvetica', 'normal');
         const repairLines = doc.splitTextToSize(stripHtml(summary.repairs_performed), contentWidth);

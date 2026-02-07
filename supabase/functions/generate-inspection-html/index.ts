@@ -2394,7 +2394,7 @@ serve(async (req) => {
         summary.repairs_performed
           ? `
       <div style="margin-bottom: 20px;">
-        <h3 style="font-size: 12pt; font-weight: bold; margin-bottom: 8px; color: #1a1a1a; border-bottom: 2px solid #16a34a; padding-bottom: 5px;">Repairs Performed</h3>
+        
         <div class="text-block" style="padding: 10px 15px; background: #f9f9f9; border-left: 4px solid #16a34a;">
           ${renderBulletList(parseTextToList(summary.repairs_performed), deduplicateHtmlContent(summary.repairs_performed))}
         </div>
