@@ -1,38 +1,57 @@
 
 
-# Reorder Profile Dropdown Menu Items - v2.4.13
+# Fix Offline Sign-In with Expired Cached Sessions - v2.4.14
 
-## Changes
+## Problem
 
-Rearrange the menu items in `UserProfileDropdown.tsx` so the new order after "Profile" is:
+Supabase JWT tokens expire after approximately 1 hour. The current code checks `expires_at` and rejects expired tokens even when offline. This means if you were last online more than an hour ago and then go offline, you cannot access the app -- even though all report data is stored locally in IndexedDB.
 
-1. Profile
-2. Check for Updates
-3. Contact Developer
-4. Force Sync Now
-5. Activity Log
-6. Push Notifications
-7. Device Capabilities
-8. Install Instructions
-9. Install App (conditional)
-10. Version Badge
-11. Sign Out
+Two places enforce this check:
+1. **`Index.tsx` (line 25)**: Rejects expired cached sessions, falls through to show the Auth screen
+2. **`cached-auth.ts` (`getCachedUserFromStorage`, line 180)**: Returns `null` for expired tokens, which causes `hasCachedSession()` to return `false`
+3. **`Auth.tsx` (line 203-205)**: Uses `checkCachedSession()` (which calls `hasCachedSession`) -- when it returns false, shows "Sign in requires an internet connection" instead of the "Go to Dashboard" button
 
-## Technical Details
+## Solution
 
-### File: `src/components/UserProfileDropdown.tsx`
+When offline, token expiry should not block access. The token is only needed for server API calls, which aren't happening offline anyway. The user just needs access to their locally cached data.
 
-Move three blocks of JSX within `DropdownMenuContent`:
-- Move **Check for Updates** (lines 146-151) to directly after **Profile** (line 109)
-- Move **Contact Developer** (lines 158-162) to directly after Check for Updates
-- Move **Force Sync Now** (lines 153-156) to directly after Contact Developer
-- **Activity Log** stays where it is and naturally follows
+### 1. Add offline-aware session check (`src/lib/cached-auth.ts`)
 
-### File: `vite.config.ts`
+Add a new function `hasCachedSessionForOffline()` that checks if a cached session exists with valid user data, but ignores `expires_at` when offline. This keeps the strict check for online scenarios while allowing offline access.
 
-- Bump `APP_VERSION` from `"2.4.12"` to `"2.4.13"`
+```typescript
+export function hasCachedSessionForOffline(): boolean {
+  try {
+    const cachedSession = localStorage.getItem('sb-ssgzcgvygnsrqalisshx-auth-token');
+    if (!cachedSession) return false;
+    const parsed = JSON.parse(cachedSession);
+    // Only require a user identity exists -- don't check expiry for offline use
+    return !!(parsed?.user?.id || parsed?.access_token);
+  } catch {
+    return false;
+  }
+}
+```
 
-### Also: Fix the vite config build error
+### 2. Fix `Index.tsx` offline redirect
 
-The current build error ("config must export or return an object") is a transient HMR issue. Re-saving the file with the version bump will resolve it.
+Remove the `expires_at` check from the offline branch. If the user is offline and has any cached session with an access token, navigate to the dashboard immediately.
+
+### 3. Fix `Auth.tsx` offline banner and button
+
+- Replace `checkCachedSession()` with `hasCachedSessionForOffline()` so the "Go to Dashboard" button appears even with an expired token
+- Update the offline message to be more reassuring: "Tap below to access your cached reports"
+
+### 4. Version bump (`vite.config.ts`)
+
+Bump to v2.4.14.
+
+## Files Changed
+
+| File | Change |
+|------|--------|
+| `src/lib/cached-auth.ts` | Add `hasCachedSessionForOffline()` function |
+| `src/pages/Index.tsx` | Remove `expires_at` check in offline branch |
+| `src/components/Auth.tsx` | Use `hasCachedSessionForOffline()` for offline "Go to Dashboard" button |
+| `vite.config.ts` | Version bump to v2.4.14 |
 
