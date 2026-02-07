@@ -1,75 +1,114 @@
 
 
-# Add Unsynced Data Visibility for Users and Admins - v2.4.15
+# Prevent Equipment Data Loss on Load + Recover Twin Cedars Data - v2.4.16
 
 ## Problem
 
-When a user fills out a report offline and comes back online, they have no way to **see** that reports are pending sync. The Force Sync button exists but gives no indication of how many items are queued. Users and admins need clear visibility into unsynced local data.
+When a report has unsynced local changes (`synced_at` is NULL) and the user opens the form while online, the `loadInspection` function:
+1. Loads data from IndexedDB first (correct)
+2. Fetches data from the database (correct)
+3. **Unconditionally overwrites local state with server data** (BUG on lines 888-898)
 
-## What Already Works (No Changes Needed)
+This means any equipment items saved locally but not yet synced to the server are silently erased when the server returns its (stale) version.
 
-- Force Sync button triggers full atomic sync of all report types
-- Auto-sync fires immediately on reconnection and periodically
-- Admin Data Recovery Tool shows all IndexedDB contents with per-item sync buttons
+## Root Cause (src/pages/InspectionForm.tsx, lines 858-917)
 
-## Changes
+The server data fetch does not check whether local data is **newer** than server data. It blindly calls `setEquipment(normalizedEquipment)`, `setSystems(normalizedSystems)`, etc., replacing whatever was loaded from IndexedDB — even if the local copy has more recent, unsynced changes.
 
-### 1. Add unsynced count badge to Force Sync button
+## Solution
 
-Show a red badge with the number of pending items directly on the Force Sync menu item in the profile dropdown. This gives users instant visibility.
+### 1. Smart merge on load: prefer local data when unsynced (src/pages/InspectionForm.tsx)
 
-**File: `src/components/pwa/ForceSyncButton.tsx`**
-- Accept `unsyncedCount` as an optional prop
-- Display a red count badge next to "Force Sync Now" text when count > 0
-- After sync completes, the count updates automatically (already handled by useAutoSync)
+After fetching server data, compare `updated_at` timestamps between the offline inspection and the server inspection. If the local version is newer (or `synced_at` is NULL), **keep the local related data** instead of overwriting it with server data.
 
-### 2. Add a "Pending Sync" banner on the Dashboard
+```text
+Logic:
+  localInspection = from IndexedDB
+  serverInspection = from database
 
-When there are unsynced items, show a small alert banner at the top of the dashboard with the count and a sync button.
+  if (localInspection exists AND localInspection.updated_at > serverInspection.updated_at) OR
+     (localInspection exists AND localInspection.synced_at is NULL):
+    - Keep locally loaded systems/equipment/ziplines/standards/summary
+    - Still update the inspection header from server (for metadata like status)
+    - Cache server data as "server_baseline" but don't apply to state
+  else:
+    - Apply server data as before (current behavior)
+```
 
-**File: `src/pages/Dashboard.tsx`**
-- Read `unsyncedCount` from the existing `usePWA()` hook (already available)
-- Show a compact alert banner when `unsyncedCount > 0` with text like "3 reports pending sync" and an inline "Sync Now" button
-- Banner disappears when count reaches 0
+This affects the block from approximately line 858 to line 917 where all related data is processed after the database fetch.
 
-### 3. Pass unsynced count to ForceSyncButton in dropdown
+### 2. Add "Local Data Recovery" button to the Equipment section
 
-**File: `src/components/UserProfileDropdown.tsx`**
-- Import `usePWA` to get `unsyncedCount`
-- Pass it to the `ForceSyncButton` component
+Add a small "Recover from device" action that reads IndexedDB directly and merges any items not present in the current equipment list (matched by ID). This gives users a manual recovery path.
+
+### 3. Recover the Twin Cedars data
+
+The belay and trolley data should still exist in IndexedDB on the original device. The fix above will prevent this from being overwritten in the future. For immediate recovery:
+- The Admin Data Recovery Tool (already built) can extract IndexedDB contents
+- Once the code fix is deployed, opening the Twin Cedars report from the original device should load the local data correctly
 
 ### 4. Version bump
 
-**File: `vite.config.ts`**
-- Bump to v2.4.15
+Bump to v2.4.16.
 
 ## Technical Details
 
-### ForceSyncButton badge (menu-item variant)
+### File: src/pages/InspectionForm.tsx
 
-```text
-Before:  [refresh icon] Force Sync Now
-After:   [refresh icon] Force Sync Now  [3]  (red badge)
+**Change 1 — Smart merge in loadInspection (around line 858)**
+
+Before processing server-fetched related data, add a guard:
+
+```typescript
+// Determine if local data should take priority
+const localIsNewer = offlineData && (
+  !offlineData.synced_at || // Never synced = local has unsynced changes
+  (offlineData.updated_at && data?.updated_at && 
+   new Date(offlineData.updated_at) > new Date(data.updated_at))
+);
+
+if (localIsNewer) {
+  // Local data is newer - don't overwrite state with server data
+  // But still cache server data for conflict detection
+  console.log('[InspectionForm] Local data is newer than server - preserving local state');
+  
+  // Only update the inspection header metadata (status, etc.) from server
+  if (data) {
+    setInspection(prev => ({
+      ...prev,
+      // Keep local field values, but accept server metadata
+      status: data.status,
+      inspector: data.inspector,
+    }));
+    setInspectorId(data.inspector_id);
+  }
+  
+  // Trigger a sync to push local data to server
+  // (handled by useAutoSync, but we can hint it)
+} else {
+  // Server data is current - apply it (existing behavior)
+  // ... existing code for processing systemsData, equipmentData, etc.
+}
 ```
 
-### Dashboard banner (when unsynced > 0)
+**Change 2 — Also protect the offline cache from being overwritten by stale server data**
 
-```text
-+------------------------------------------------------+
-| [cloud icon] 3 reports pending sync    [Sync Now]    |
-+------------------------------------------------------+
-```
+When `localIsNewer` is true, skip the `saveRelatedDataOffline()` calls that would overwrite the local IndexedDB with the server's stale data.
 
-- Uses existing `usePWA().unsyncedCount` -- no new data fetching needed
-- Uses existing `usePWA().forceSync()` for the sync action
-- Banner uses `Alert` component with `variant="default"` and amber/orange styling
+### File: vite.config.ts
+- Bump to v2.4.16
 
-### Files Changed
+## Files Changed
 
 | File | Change |
 |------|--------|
-| `src/components/pwa/ForceSyncButton.tsx` | Add optional `unsyncedCount` prop, show badge in menu-item variant |
-| `src/components/UserProfileDropdown.tsx` | Pass `unsyncedCount` from `usePWA()` to ForceSyncButton |
-| `src/pages/Dashboard.tsx` | Add pending sync banner when `unsyncedCount > 0` |
-| `vite.config.ts` | Bump to v2.4.15 |
+| `src/pages/InspectionForm.tsx` | Add local-vs-server freshness check in `loadInspection`; skip server overwrite when local is newer |
+| `vite.config.ts` | Bump to v2.4.16 |
+
+## Impact
+
+- Prevents data loss when opening a report with unsynced local changes while online
+- Preserves existing behavior when server data is current (majority of cases)
+- Does not change save/sync logic — only the **load** path is affected
+- The Twin Cedars belay/trolley data should be recoverable if the user opens the report from the original device after this fix is deployed
 
