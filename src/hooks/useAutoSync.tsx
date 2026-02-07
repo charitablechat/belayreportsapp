@@ -95,6 +95,15 @@ export const useAutoSync = () => {
       return;
     }
     
+    // Skip if no authenticated user - prevents noisy "No valid session" errors
+    const user = await getUserWithCache();
+    if (!user) {
+      if (import.meta.env.DEV) {
+        console.log('[AutoSync] No authenticated user - skipping sync');
+      }
+      return;
+    }
+    
     // Prevent duplicate sync calls
     if (syncInProgressRef.current) {
       if (import.meta.env.DEV) {
