@@ -477,6 +477,8 @@ serve(async (req) => {
       line-height: 1.6;
       color: #000;
       background: #fff;
+      word-wrap: break-word;
+      overflow-wrap: break-word;
     }
 
     /* Fixed print elements - NOT USED for browser PDF */
@@ -495,7 +497,7 @@ serve(async (req) => {
       min-height: auto;
       padding: 0.25in;
       page-break-after: always;
-      page-break-inside: avoid;
+      page-break-inside: auto;
       box-sizing: border-box;
       /* CRITICAL: No max-height, no overflow:hidden - allows photos to render fully */
     }
@@ -656,7 +658,7 @@ serve(async (req) => {
       font-weight: 600;
       font-size: 10pt;
       color: #000;
-      white-space: nowrap;
+      white-space: normal;
       flex-shrink: 0;
     }
 
@@ -733,7 +735,7 @@ serve(async (req) => {
       border: 1px solid #000;
       vertical-align: top;
       line-height: 1.4;
-      max-width: 400px; /* Prevent excessive cell expansion */
+      max-width: none;
       word-wrap: break-word;
       overflow-wrap: break-word;
     }
@@ -803,7 +805,7 @@ serve(async (req) => {
     .ziplines-table th:nth-child(8),
     .ziplines-table td:nth-child(8) { width: 11%; } /* EAD Result - wider */
     .ziplines-table th:nth-child(9),
-    .ziplines-table td:nth-child(9) { width: auto; min-width: 120px; } /* Comments - dynamic */
+    .ziplines-table td:nth-child(9) { width: auto; min-width: 180px; } /* Comments - dynamic, wider */
 
     /* Optimized column widths for Operating Systems table */
     .systems-table th:nth-child(1),
@@ -823,7 +825,7 @@ serve(async (req) => {
     .standards-table th:nth-child(3),
     .standards-table td:nth-child(3) { width: auto; min-width: 200px; } /* Comments - dynamic */
 
-    /* Prevent column content wrapping where appropriate */
+    /* Allow result columns to wrap for longer text like "Pass with Provisions" */
     .equipment-table td:nth-child(2),
     .equipment-table td:nth-child(3),
     .equipment-table td:nth-child(4),
@@ -833,7 +835,8 @@ serve(async (req) => {
     .ziplines-table td:nth-child(8),
     .systems-table td:nth-child(3),
     .standards-table td:nth-child(2) {
-      white-space: nowrap;
+      white-space: normal;
+      word-wrap: break-word;
     }
 
     /* Allow comments columns to wrap and expand */
@@ -1081,8 +1084,12 @@ serve(async (req) => {
         page-break-before: auto;
       }
 
+      html, body {
+        overflow: visible !important;
+      }
+
       td, th {
-        max-width: 400px;
+        max-width: none;
         overflow-wrap: break-word;
         word-wrap: break-word;
         hyphens: auto;
