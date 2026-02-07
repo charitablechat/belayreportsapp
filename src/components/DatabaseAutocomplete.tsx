@@ -236,22 +236,99 @@ export function DatabaseAutocomplete({
     }
   };
 
+  const [isEditing, setIsEditing] = useState(false);
+  const triggerInputRef = useRef<HTMLInputElement>(null);
+
+  const handleOpenChange = (isOpen: boolean) => {
+    if (!isOpen) {
+      if (isEditing && searchValue.trim()) {
+        const trimmed = searchValue.trim();
+        if (trimmed !== value) {
+          handleSelect(trimmed);
+        }
+      }
+      setIsEditing(false);
+    }
+    setOpen(isOpen);
+  };
+
+  const handleTriggerFocus = () => {
+    setIsEditing(true);
+    setSearchValue(value);
+    if (!open) setOpen(true);
+  };
+
+  const handleTriggerBlur = () => {
+    setTimeout(() => {
+      if (!open) {
+        if (searchValue.trim()) {
+          const trimmed = searchValue.trim();
+          if (trimmed !== value) {
+            handleSelect(trimmed);
+          }
+        }
+        setIsEditing(false);
+      }
+    }, 200);
+  };
+
+  const handleClear = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    onChange("");
+    setSearchValue("");
+    setOpen(false);
+    setIsEditing(false);
+  };
+
   return (
     <>
-      <Popover open={open} onOpenChange={setOpen}>
+      <Popover open={open} onOpenChange={handleOpenChange}>
         <PopoverTrigger asChild>
-          <Button
-            variant="outline"
-            role="combobox"
-            aria-expanded={open}
-            className={cn("w-full justify-between font-normal", className)}
-            disabled={disabled}
-          >
-            <span className={cn("truncate", !value && "text-muted-foreground")}>
-              {value || placeholder}
-            </span>
-            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-          </Button>
+          <div className="relative w-full">
+            <Input
+              ref={triggerInputRef}
+              role="combobox"
+              aria-expanded={open}
+              value={isEditing ? searchValue : value}
+              onChange={(e) => {
+                setSearchValue(e.target.value);
+                if (!isEditing) setIsEditing(true);
+                if (!open) setOpen(true);
+              }}
+              onFocus={handleTriggerFocus}
+              onBlur={handleTriggerBlur}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && searchValue.trim()) {
+                  e.preventDefault();
+                  handleSelect(searchValue.trim());
+                  setIsEditing(false);
+                  triggerInputRef.current?.blur();
+                }
+              }}
+              placeholder={placeholder}
+              disabled={disabled}
+              className={cn(
+                "w-full pr-14 font-normal",
+                !value && !isEditing && "text-muted-foreground",
+                className
+              )}
+            />
+            <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-0.5">
+              {value && !disabled && (
+                <button
+                  type="button"
+                  onClick={handleClear}
+                  className="p-1 rounded-sm hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
+                  aria-label="Clear value"
+                  tabIndex={-1}
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+              <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
+            </div>
+          </div>
         </PopoverTrigger>
         <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
           <Command shouldFilter={false}>

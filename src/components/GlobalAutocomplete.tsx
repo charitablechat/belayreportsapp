@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Check, ChevronsUpDown, X, Plus, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Command,
   CommandEmpty,
@@ -78,9 +78,11 @@ export function GlobalAutocomplete({
   const [open, setOpen] = useState(false);
   const [historyOptions, setHistoryOptions] = useState<HistoryItem[]>([]);
   const [inputValue, setInputValue] = useState("");
+  const [isEditing, setIsEditing] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const hasFetchedFromDb = useRef(false);
   const lastSavedValue = useRef<string | null>(null);
+  const triggerInputRef = useRef<HTMLInputElement>(null);
   
   // LocalStorage key for offline fallback
   const storageKey = `global-autocomplete-${fieldType}`;
@@ -243,38 +245,107 @@ export function GlobalAutocomplete({
 
   const handleOpenChange = (isOpen: boolean) => {
     if (isOpen) {
-      // Fetch global history on first open
       if (!hasFetchedFromDb.current) {
         fetchGlobalHistory();
       }
+    } else {
+      // Commit on close
+      if (isEditing && inputValue.trim()) {
+        const trimmed = inputValue.trim();
+        if (trimmed !== value) {
+          onChange(trimmed);
+          saveToGlobalHistory(trimmed);
+        }
+      }
+      setIsEditing(false);
     }
     setOpen(isOpen);
+  };
+
+  const handleTriggerFocus = () => {
+    setIsEditing(true);
+    setInputValue(value);
+    if (!open) {
+      setOpen(true);
+    }
+  };
+
+  const handleTriggerBlur = () => {
+    // Delay to allow popover click to register
+    setTimeout(() => {
+      if (!open) {
+        if (inputValue.trim()) {
+          const trimmed = inputValue.trim();
+          if (trimmed !== value) {
+            onChange(trimmed);
+            saveToGlobalHistory(trimmed);
+          }
+        }
+        setIsEditing(false);
+        onBlur?.();
+      }
+    }, 200);
+  };
+
+  const handleTriggerKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" && inputValue.trim()) {
+      e.preventDefault();
+      handleSelect(inputValue.trim());
+      setIsEditing(false);
+      triggerInputRef.current?.blur();
+    }
+  };
+
+  const handleClear = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    onChange("");
+    setInputValue("");
+    setOpen(false);
+    setIsEditing(false);
+    onBlur?.();
   };
 
   return (
     <Popover open={open} onOpenChange={handleOpenChange}>
       <PopoverTrigger asChild>
-        <Button
-          variant="outline"
-          role="combobox"
-          aria-expanded={open}
-          className={cn(
-            "w-full justify-between font-normal",
-            !value && "text-muted-foreground",
-            className
-          )}
-          disabled={disabled}
-          onBlur={() => {
-            setTimeout(() => {
-              if (!open && value) {
-                onBlur?.();
-              }
-            }, 200);
-          }}
-        >
-          <span className="truncate">{value || placeholder}</span>
-          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-        </Button>
+        <div className="relative w-full">
+          <Input
+            ref={triggerInputRef}
+            role="combobox"
+            aria-expanded={open}
+            value={isEditing ? inputValue : value}
+            onChange={(e) => {
+              setInputValue(e.target.value);
+              if (!isEditing) setIsEditing(true);
+              if (!open) setOpen(true);
+            }}
+            onFocus={handleTriggerFocus}
+            onBlur={handleTriggerBlur}
+            onKeyDown={handleTriggerKeyDown}
+            placeholder={placeholder}
+            disabled={disabled}
+            className={cn(
+              "w-full pr-14 font-normal",
+              !value && !isEditing && "text-muted-foreground",
+              className
+            )}
+          />
+          <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-0.5">
+            {value && !disabled && (
+              <button
+                type="button"
+                onClick={handleClear}
+                className="p-1 rounded-sm hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
+                aria-label="Clear value"
+                tabIndex={-1}
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+            <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
+          </div>
+        </div>
       </PopoverTrigger>
       <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
         <Command shouldFilter={false}>
