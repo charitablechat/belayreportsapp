@@ -552,17 +552,20 @@ export async function getOfflineInspections(userId?: string, isSuperAdmin?: bool
       const db = await getDB();
       const allInspections = await db.getAll('inspections');
       
+      // Filter out soft-deleted records so they don't reappear on dashboard
+      const activeInspections = allInspections.filter(i => !i.deleted_at);
+      
       // Super admins see all reports - bypass user filtering
       if (isSuperAdmin) {
-        return allInspections;
+        return activeInspections;
       }
       
       // Filter by user ID if provided (for privacy on shared devices)
       if (userId) {
-        return allInspections.filter(i => i.inspector_id === userId);
+        return activeInspections.filter(i => i.inspector_id === userId);
       }
       
-      return allInspections;
+      return activeInspections;
     },
     [],
     'getOfflineInspections'
@@ -956,17 +959,20 @@ export async function getOfflineDailyAssessments(userId?: string, isSuperAdmin?:
       const db = await getDB();
       const allAssessments = await db.getAll('daily_assessments');
       
+      // Filter out soft-deleted records so they don't reappear on dashboard
+      const activeAssessments = allAssessments.filter(a => !a.deleted_at);
+      
       // Super admins see all reports - bypass user filtering
       if (isSuperAdmin) {
-        return allAssessments;
+        return activeAssessments;
       }
       
       // Filter by user ID if provided (for privacy on shared devices)
       if (userId) {
-        return allAssessments.filter(a => a.inspector_id === userId);
+        return activeAssessments.filter(a => a.inspector_id === userId);
       }
       
-      return allAssessments;
+      return activeAssessments;
     },
     [],
     'getOfflineDailyAssessments'
@@ -1203,17 +1209,20 @@ export async function getOfflineTrainings(userId?: string, isSuperAdmin?: boolea
       const db = await getDB();
       const allTrainings = await db.getAll('trainings');
       
+      // Filter out soft-deleted records so they don't reappear on dashboard
+      const activeTrainings = allTrainings.filter(t => !t.deleted_at);
+      
       // Super admins see all reports - bypass user filtering
       if (isSuperAdmin) {
-        return allTrainings;
+        return activeTrainings;
       }
       
       // Filter by user ID if provided (for privacy on shared devices)
       if (userId) {
-        return allTrainings.filter(t => t.inspector_id === userId);
+        return activeTrainings.filter(t => t.inspector_id === userId);
       }
       
-      return allTrainings;
+      return activeTrainings;
     },
     [],
     'getOfflineTrainings'

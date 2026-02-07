@@ -316,6 +316,7 @@ export default function Dashboard() {
                 *,
                 inspector:profiles!inspections_inspector_id_profiles_fkey(first_name, last_name, avatar_url)
               `)
+              .is('deleted_at', null)
               .order("last_opened_at", { ascending: false, nullsFirst: false })
               .order("created_at", { ascending: false })
           ).then(({ data, error }) => {
@@ -390,6 +391,7 @@ export default function Dashboard() {
                 *,
                 trainer:profiles!trainings_inspector_id_profiles_fkey(first_name, last_name, avatar_url)
               `)
+              .is('deleted_at', null)
               .order("created_at", { ascending: false })
           ).then(({ data, error }) => {
             if (error) throw error;
@@ -461,6 +463,7 @@ export default function Dashboard() {
                 *,
                 inspector:profiles!daily_assessments_inspector_id_profiles_fkey(first_name, last_name, avatar_url)
               `)
+              .is('deleted_at', null)
               .order("assessment_date", { ascending: false })
           ).then(({ data, error }) => {
             if (error) throw error;
