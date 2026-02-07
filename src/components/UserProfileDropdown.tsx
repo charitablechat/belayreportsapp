@@ -102,64 +102,64 @@
              </>
            )}
            
-           {/* Profile */}
-           <DropdownMenuItem onClick={() => navigate('/profile')}>
-             <User className="w-4 h-4 mr-2" />
-             Profile
-           </DropdownMenuItem>
-           
-           {/* Activity Log */}
-           <NotificationCenter 
-             trigger={
-               <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
-                 <Bell className="w-4 h-4 mr-2" />
-                 Activity Log
-               </DropdownMenuItem>
-             }
-           />
-           
-           {/* Push Notifications */}
-           <DropdownMenuItem onClick={() => setNotificationsDialogOpen(true)}>
-             <Bell className="w-4 h-4 mr-2" />
-             Push Notifications
-           </DropdownMenuItem>
-           
-           {/* Device Capabilities */}
-           <DropdownMenuItem onClick={() => navigate('/capabilities')}>
-             Device Capabilities
-           </DropdownMenuItem>
-           
-           {/* Install Instructions */}
-           <DropdownMenuItem onClick={() => navigate('/install')}>
-             <FileText className="w-4 h-4 mr-2" />
-             Install Instructions
-           </DropdownMenuItem>
-           
-           {/* Install App - only if installable and not installed */}
-           {isInstallable && !isInstalled && (
-             <DropdownMenuItem onClick={promptInstall}>
-               <Download className="w-4 h-4 mr-2" />
-               Install App
-             </DropdownMenuItem>
-           )}
-           
-           {/* Check for Updates */}
-           <DropdownMenuItem asChild>
-             <div className="w-full px-2 py-1.5">
-               <ManualUpdateButton />
-             </div>
-           </DropdownMenuItem>
-           
-           {/* Force Sync Now */}
-           <DropdownMenuItem asChild>
-             <ForceSyncButton variant="menu-item" />
-           </DropdownMenuItem>
-           
-           {/* Contact Developer */}
-           <DropdownMenuItem onClick={() => setContactSheetOpen(true)}>
-             <MessageCircle className="w-4 h-4 mr-2" />
-             Contact Developer
-           </DropdownMenuItem>
+            {/* Profile */}
+            <DropdownMenuItem onClick={() => navigate('/profile')}>
+              <User className="w-4 h-4 mr-2" />
+              Profile
+            </DropdownMenuItem>
+            
+            {/* Check for Updates */}
+            <DropdownMenuItem asChild>
+              <div className="w-full px-2 py-1.5">
+                <ManualUpdateButton />
+              </div>
+            </DropdownMenuItem>
+            
+            {/* Contact Developer */}
+            <DropdownMenuItem onClick={() => setContactSheetOpen(true)}>
+              <MessageCircle className="w-4 h-4 mr-2" />
+              Contact Developer
+            </DropdownMenuItem>
+            
+            {/* Force Sync Now */}
+            <DropdownMenuItem asChild>
+              <ForceSyncButton variant="menu-item" />
+            </DropdownMenuItem>
+            
+            {/* Activity Log */}
+            <NotificationCenter 
+              trigger={
+                <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
+                  <Bell className="w-4 h-4 mr-2" />
+                  Activity Log
+                </DropdownMenuItem>
+              }
+            />
+            
+            {/* Push Notifications */}
+            <DropdownMenuItem onClick={() => setNotificationsDialogOpen(true)}>
+              <Bell className="w-4 h-4 mr-2" />
+              Push Notifications
+            </DropdownMenuItem>
+            
+            {/* Device Capabilities */}
+            <DropdownMenuItem onClick={() => navigate('/capabilities')}>
+              Device Capabilities
+            </DropdownMenuItem>
+            
+            {/* Install Instructions */}
+            <DropdownMenuItem onClick={() => navigate('/install')}>
+              <FileText className="w-4 h-4 mr-2" />
+              Install Instructions
+            </DropdownMenuItem>
+            
+            {/* Install App - only if installable and not installed */}
+            {isInstallable && !isInstalled && (
+              <DropdownMenuItem onClick={promptInstall}>
+                <Download className="w-4 h-4 mr-2" />
+                Install App
+              </DropdownMenuItem>
+            )}
            
            {/* Version Badge */}
            <div className="px-2 py-1.5">
