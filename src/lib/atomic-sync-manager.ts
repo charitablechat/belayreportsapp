@@ -377,9 +377,12 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
     const inspectorProfile = await getCachedProfile(user.id);
     
     // Update local storage with sync timestamp and inspector profile
+    // CRITICAL: Align updated_at = synced_at to prevent re-queuing due to timestamp race
+    const syncTimestamp = new Date().toISOString();
     await saveInspectionOffline({
       ...inspection,
-      synced_at: new Date().toISOString(),
+      synced_at: syncTimestamp,
+      updated_at: syncTimestamp,
       inspector: inspectorProfile || { first_name: null, last_name: null, avatar_url: null },
     });
     
@@ -853,9 +856,12 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
     const inspectorProfile = await getCachedProfile(user.id);
     
     // Update local storage with sync timestamp and inspector profile
+    // CRITICAL: Align updated_at = synced_at to prevent re-queuing due to timestamp race
+    const syncTimestamp = new Date().toISOString();
     await saveTrainingOffline({
       ...training,
-      synced_at: new Date().toISOString(),
+      synced_at: syncTimestamp,
+      updated_at: syncTimestamp,
       inspector: inspectorProfile || { first_name: null, last_name: null, avatar_url: null },
     });
     
@@ -1278,9 +1284,12 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
     const inspectorProfile = await getCachedProfile(user.id);
     
     // Update local storage with sync timestamp and inspector profile
+    // CRITICAL: Align updated_at = synced_at to prevent re-queuing due to timestamp race
+    const syncTimestamp = new Date().toISOString();
     await saveDailyAssessmentOffline({
       ...assessment,
-      synced_at: new Date().toISOString(),
+      synced_at: syncTimestamp,
+      updated_at: syncTimestamp,
       inspector: inspectorProfile || { first_name: null, last_name: null, avatar_url: null },
     });
     
