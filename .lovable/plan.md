@@ -1,114 +1,95 @@
 
 
-# Prevent Equipment Data Loss on Load + Recover Twin Cedars Data - v2.4.16
+# Robust Data Persistence + Local-First Protection for All Report Types - v2.4.17
 
 ## Problem
 
-When a report has unsynced local changes (`synced_at` is NULL) and the user opens the form while online, the `loadInspection` function:
-1. Loads data from IndexedDB first (correct)
-2. Fetches data from the database (correct)
-3. **Unconditionally overwrites local state with server data** (BUG on lines 888-898)
+The "local-is-newer" guard that prevents server data from overwriting unsynced local changes was only added to **InspectionForm**. The same data-loss vulnerability still exists in **TrainingForm** and **DailyAssessmentForm** -- when opened online, server data silently replaces locally-entered data that hasn't been synced yet.
 
-This means any equipment items saved locally but not yet synced to the server are silently erased when the server returns its (stale) version.
+The dropdown menu order is already correct (Profile, Check for Updates, Contact Developer, Force Sync Now, Activity Log, then remaining items) -- no changes needed there.
 
-## Root Cause (src/pages/InspectionForm.tsx, lines 858-917)
+## What's Already Solid (No Changes Needed)
 
-The server data fetch does not check whether local data is **newer** than server data. It blindly calls `setEquipment(normalizedEquipment)`, `setSystems(normalizedSystems)`, etc., replacing whatever was loaded from IndexedDB — even if the local copy has more recent, unsynced changes.
+- **Soft deletion**: All three report tables use `deleted_at`/`retention_until` with 60-day retention and pg_cron cleanup
+- **Offline storage filtering**: All IndexedDB getters already filter `deleted_at` records
+- **Dashboard queries**: All three Supabase queries already include `.is('deleted_at', null)`
+- **InspectionForm**: Already has the `localIsNewer` guard (added in v2.4.16)
+- **Dropdown menu order**: Already matches the requested priority
 
-## Solution
+## Changes Required
 
-### 1. Smart merge on load: prefer local data when unsynced (src/pages/InspectionForm.tsx)
+### 1. TrainingForm - Add local-is-newer guard (src/pages/TrainingForm.tsx)
 
-After fetching server data, compare `updated_at` timestamps between the offline inspection and the server inspection. If the local version is newer (or `synced_at` is NULL), **keep the local related data** instead of overwriting it with server data.
+**Current behavior (lines 305-351):** When online, `trainingData` from the server unconditionally overwrites local state with `setTraining(trainingData)`, `setDeliveryApproaches(approachData)`, etc., and then saves server data back to IndexedDB -- erasing any unsynced local changes.
+
+**Fix:** Before applying server data, compare timestamps. If the local training has never been synced (`!synced_at`) or has a newer `updated_at`, skip the server overwrite and preserve local state. Only update server metadata (like status).
 
 ```text
-Logic:
-  localInspection = from IndexedDB
-  serverInspection = from database
+Logic inserted between lines 303 and 305:
 
-  if (localInspection exists AND localInspection.updated_at > serverInspection.updated_at) OR
-     (localInspection exists AND localInspection.synced_at is NULL):
-    - Keep locally loaded systems/equipment/ziplines/standards/summary
-    - Still update the inspection header from server (for metadata like status)
-    - Cache server data as "server_baseline" but don't apply to state
-  else:
-    - Apply server data as before (current behavior)
-```
+  const localIsNewer = offlineTraining && (
+    !offlineTraining.synced_at ||
+    (offlineTraining.updated_at && trainingData?.updated_at &&
+     new Date(offlineTraining.updated_at) > new Date(trainingData.updated_at))
+  );
 
-This affects the block from approximately line 858 to line 917 where all related data is processed after the database fetch.
-
-### 2. Add "Local Data Recovery" button to the Equipment section
-
-Add a small "Recover from device" action that reads IndexedDB directly and merges any items not present in the current equipment list (matched by ID). This gives users a manual recovery path.
-
-### 3. Recover the Twin Cedars data
-
-The belay and trolley data should still exist in IndexedDB on the original device. The fix above will prevent this from being overwritten in the future. For immediate recovery:
-- The Admin Data Recovery Tool (already built) can extract IndexedDB contents
-- Once the code fix is deployed, opening the Twin Cedars report from the original device should load the local data correctly
-
-### 4. Version bump
-
-Bump to v2.4.16.
-
-## Technical Details
-
-### File: src/pages/InspectionForm.tsx
-
-**Change 1 — Smart merge in loadInspection (around line 858)**
-
-Before processing server-fetched related data, add a guard:
-
-```typescript
-// Determine if local data should take priority
-const localIsNewer = offlineData && (
-  !offlineData.synced_at || // Never synced = local has unsynced changes
-  (offlineData.updated_at && data?.updated_at && 
-   new Date(offlineData.updated_at) > new Date(data.updated_at))
-);
-
-if (localIsNewer) {
-  // Local data is newer - don't overwrite state with server data
-  // But still cache server data for conflict detection
-  console.log('[InspectionForm] Local data is newer than server - preserving local state');
-  
-  // Only update the inspection header metadata (status, etc.) from server
-  if (data) {
-    setInspection(prev => ({
-      ...prev,
-      // Keep local field values, but accept server metadata
-      status: data.status,
-      inspector: data.inspector,
-    }));
-    setInspectorId(data.inspector_id);
+  if (localIsNewer) {
+    // Preserve local state, only accept server metadata
+    console.log('[TrainingForm] Local data is newer -- preserving local state');
+    if (trainingData) {
+      setTraining(prev => ({ ...prev, status: trainingData.status }));
+      setInspectorId(trainingData.inspector_id);
+    }
+    // Skip all related data loading and IndexedDB cache overwrites
+  } else {
+    // Existing server-data-apply logic (current lines 305-351)
   }
-  
-  // Trigger a sync to push local data to server
-  // (handled by useAutoSync, but we can hint it)
-} else {
-  // Server data is current - apply it (existing behavior)
-  // ... existing code for processing systemsData, equipmentData, etc.
-}
 ```
 
-**Change 2 — Also protect the offline cache from being overwritten by stale server data**
+### 2. DailyAssessmentForm - Add local-is-newer guard (src/pages/DailyAssessmentForm.tsx)
 
-When `localIsNewer` is true, skip the `saveRelatedDataOffline()` calls that would overwrite the local IndexedDB with the server's stale data.
+**Current behavior (lines 299-334):** Identical problem -- server data unconditionally overwrites local state.
 
-### File: vite.config.ts
-- Bump to v2.4.16
+**Fix:** Same pattern as above. If `offlineAssessment` is newer or unsynced, skip the server overwrite.
+
+```text
+Logic inserted between lines 297 and 299:
+
+  const localIsNewer = offlineAssessment && (
+    !offlineAssessment.synced_at ||
+    (offlineAssessment.updated_at && assessmentData?.updated_at &&
+     new Date(offlineAssessment.updated_at) > new Date(assessmentData.updated_at))
+  );
+
+  if (localIsNewer) {
+    console.log('[DailyAssessmentForm] Local data is newer -- preserving local state');
+    if (assessmentData) {
+      setAssessment(prev => ({ ...prev, status: assessmentData.status }));
+      setInspectorId(assessmentData.inspector_id);
+    }
+    // Skip related data loading and IndexedDB cache overwrites
+  } else {
+    // Existing server-data-apply logic (current lines 299-334)
+  }
+```
+
+### 3. Version bump (vite.config.ts)
+
+Bump to v2.4.17.
 
 ## Files Changed
 
 | File | Change |
 |------|--------|
-| `src/pages/InspectionForm.tsx` | Add local-vs-server freshness check in `loadInspection`; skip server overwrite when local is newer |
-| `vite.config.ts` | Bump to v2.4.16 |
+| `src/pages/TrainingForm.tsx` | Add `localIsNewer` guard before server data overwrites local state |
+| `src/pages/DailyAssessmentForm.tsx` | Add `localIsNewer` guard before server data overwrites local state |
+| `vite.config.ts` | Bump to v2.4.17 |
 
-## Impact
+## What This Does NOT Change
 
-- Prevents data loss when opening a report with unsynced local changes while online
-- Preserves existing behavior when server data is current (majority of cases)
-- Does not change save/sync logic — only the **load** path is affected
-- The Twin Cedars belay/trolley data should be recoverable if the user opens the report from the original device after this fix is deployed
+- No changes to save/sync logic -- only the **load** path is affected
+- No changes to soft deletion (already implemented correctly)
+- No changes to offline storage filtering (already filters `deleted_at`)
+- No changes to dropdown menu (already in correct order)
+- No changes to InspectionForm (already fixed in v2.4.16)
 
