@@ -91,14 +91,14 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
   // PERFORMANCE: Stable callback reference
   const updateEquipment = useCallback((item: any, field: string, value: any) => {
     const updated = equipment.map((eq) =>
-      eq === item ? { ...eq, [field]: value } : eq
+      eq.id === item.id ? { ...eq, [field]: value } : eq
     );
     onUpdate(updated);
   }, [equipment, onUpdate]);
 
   const handleDeleteConfirm = useCallback(() => {
     if (itemToDelete) {
-      const updated = equipment.filter((eq) => eq !== itemToDelete.item);
+      const updated = equipment.filter((eq) => eq.id !== itemToDelete.item.id);
       onUpdate(updated);
       onImmediateSave?.();
       setItemToDelete(null);
