@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import ResultSelect from "@/components/ResultSelect";
 import { GlobalAutocomplete } from "@/components/GlobalAutocomplete";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AnimatedTableRow, AnimatedListItem } from "@/components/ui/list-item-animation";
 import { useState, useEffect, useRef, useMemo, useCallback, memo } from "react";
@@ -158,15 +158,41 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
                     />
                   </td>
                   <td className="border p-2">
-                    <Input
-                      type="number"
-                      value={item.production_year || ""}
-                      onChange={(e) => updateEquipment(item, "production_year", parseInt(e.target.value) || null)}
-                      onBlur={onImmediateSave}
-                      onKeyDown={(e) => e.key === 'Enter' && onImmediateSave?.()}
-                      placeholder="Year"
-                      className="border-0 bg-transparent"
-                    />
+                    <div className="flex items-center gap-1">
+                      {item.production_year === 0 ? (
+                        <div className="flex items-center gap-1 px-2 py-1 bg-muted rounded text-sm flex-1">
+                          <span className="text-muted-foreground font-medium">N/A</span>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-5 w-5 p-0 ml-auto"
+                            onClick={() => { updateEquipment(item, "production_year", null); onImmediateSave?.(); }}
+                          >
+                            <X className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      ) : (
+                        <>
+                          <Input
+                            type="number"
+                            value={item.production_year || ""}
+                            onChange={(e) => updateEquipment(item, "production_year", parseInt(e.target.value) || null)}
+                            onBlur={onImmediateSave}
+                            onKeyDown={(e) => e.key === 'Enter' && onImmediateSave?.()}
+                            placeholder="Year"
+                            className="border-0 bg-transparent flex-1"
+                          />
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 px-2 text-xs shrink-0"
+                            onClick={() => { updateEquipment(item, "production_year", 0); onImmediateSave?.(); }}
+                          >
+                            N/A
+                          </Button>
+                        </>
+                      )}
+                    </div>
                   </td>
                   <td className="border p-2">
                     <Input
@@ -248,14 +274,41 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <Label className="text-xs text-muted-foreground">Production Year</Label>
-                      <Input
-                        type="number"
-                        value={item.production_year || ""}
-                        onChange={(e) => updateEquipment(item, "production_year", parseInt(e.target.value) || null)}
-                        onBlur={onImmediateSave}
-                        onKeyDown={(e) => e.key === 'Enter' && onImmediateSave?.()}
-                        placeholder="Year"
-                      />
+                      <div className="flex items-center gap-1">
+                        {item.production_year === 0 ? (
+                          <div className="flex items-center gap-1 px-2 py-1 bg-muted rounded text-sm flex-1 h-10">
+                            <span className="text-muted-foreground font-medium">N/A</span>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-5 w-5 p-0 ml-auto"
+                              onClick={() => { updateEquipment(item, "production_year", null); onImmediateSave?.(); }}
+                            >
+                              <X className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        ) : (
+                          <>
+                            <Input
+                              type="number"
+                              value={item.production_year || ""}
+                              onChange={(e) => updateEquipment(item, "production_year", parseInt(e.target.value) || null)}
+                              onBlur={onImmediateSave}
+                              onKeyDown={(e) => e.key === 'Enter' && onImmediateSave?.()}
+                              placeholder="Year"
+                              className="flex-1"
+                            />
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-10 px-2 text-xs shrink-0"
+                              onClick={() => { updateEquipment(item, "production_year", 0); onImmediateSave?.(); }}
+                            >
+                              N/A
+                            </Button>
+                          </>
+                        )}
+                      </div>
                     </div>
                     
                     <div>
