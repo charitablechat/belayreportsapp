@@ -21,6 +21,8 @@ const INITIAL_SYNC_DELAY = 2000; // 2 seconds delay for initial sync to not bloc
 const BASE_SYNC_TIMEOUT = 30000; // Base 30 second timeout
 const PER_ITEM_TIMEOUT_BUDGET = 8000; // 8 seconds budget per unsynced item
 const MAX_SYNC_TIMEOUT = 300000; // 5 minute absolute maximum
+const MAX_BATCH_SIZE = 5; // Must match atomic-sync-manager.ts
+const ACCELERATED_SYNC_DELAY = 5000; // 5s between cycles when draining a queue
 
 /**
  * Helper to wrap promises with a timeout
@@ -141,10 +143,11 @@ export const useAutoSync = () => {
     syncInProgressRef.current = true;
     setState(prev => ({ ...prev, isSyncing: true }));
     
-    // Calculate dynamic timeout based on unsynced item count
-    // More items = more time needed. Base 30s + 8s per item, max 5 min
+    // Calculate dynamic timeout based on BATCH size (not total unsynced)
+    // With MAX_BATCH_SIZE=5: 30s + (5 x 8s) = 70s -- well within safe limits
+    const batchSize = Math.min(state.unsyncedCount, MAX_BATCH_SIZE);
     const dynamicTimeout = Math.min(
-      BASE_SYNC_TIMEOUT + (state.unsyncedCount * PER_ITEM_TIMEOUT_BUDGET),
+      BASE_SYNC_TIMEOUT + (batchSize * PER_ITEM_TIMEOUT_BUDGET),
       MAX_SYNC_TIMEOUT
     );
     
@@ -197,6 +200,7 @@ export const useAutoSync = () => {
         const allFetchesFailed = results.length > 0 && results.every(r => r?.total === -1);
         const anySuccess = results.some(r => r?.success > 0);
         const totalSynced = results.reduce((sum, r) => sum + (r?.success || 0), 0);
+        const totalRemaining = results.reduce((sum, r) => sum + (r?.remaining || 0), 0);
         
         if (!allFetchesFailed) {
           // Refresh unsynced counts (non-blocking)
@@ -212,14 +216,16 @@ export const useAutoSync = () => {
             console.log('[AutoSync] Mobile sync complete:', {
               timestamp: new Date().toISOString(),
               itemsSynced: totalSynced,
-              results: results.map(r => ({ success: r?.success || 0, failed: r?.failed || 0 })),
+              remaining: totalRemaining,
+              results: results.map(r => ({ success: r?.success || 0, failed: r?.failed || 0, remaining: r?.remaining || 0 })),
             });
           }
           
           // Only show success toast if items were actually synced
           if (anySuccess) {
-            toast.success(`Data synced successfully (${totalSynced} items)`);
-            addSyncNotification(`Data synced successfully (${totalSynced} items)`);
+            const remainingMsg = totalRemaining > 0 ? ` (${totalRemaining} more queued)` : '';
+            toast.success(`Data synced successfully (${totalSynced} items)${remainingMsg}`);
+            addSyncNotification(`Data synced successfully (${totalSynced} items)${remainingMsg}`);
           }
           
           // Always emit sync complete event for Dashboard to reload data (clears error states)
@@ -228,6 +234,21 @@ export const useAutoSync = () => {
           // iOS: Clear pending sync flags after successful sync (fixes N3 - storage accumulation)
           if (isIOSDevice) {
             clearPendingSyncs();
+          }
+          
+          // ACCELERATED RE-SYNC: If items remain in queue, schedule next cycle sooner
+          // This drains large queues (e.g., 22 items) in ~25s instead of waiting for the full interval
+          if (totalRemaining > 0) {
+            if (import.meta.env.DEV) {
+              console.log(`[AutoSync] ${totalRemaining} items remaining - scheduling accelerated sync in ${ACCELERATED_SYNC_DELAY / 1000}s`);
+            }
+            // Reset the min sync interval guard so the accelerated sync can proceed
+            lastSyncAttemptRef.current = Date.now() - MIN_SYNC_INTERVAL + ACCELERATED_SYNC_DELAY;
+            setTimeout(() => {
+              if (navigator.onLine && !syncInProgressRef.current) {
+                performSync(true);
+              }
+            }, ACCELERATED_SYNC_DELAY);
           }
         } else {
           // All fetches timed out - don't report success, will retry next cycle
