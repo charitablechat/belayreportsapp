@@ -1,86 +1,106 @@
 
 
-# Fix Plan: Equipment Quantity Data Loss - v2.4.5
+# Fix Plan: Dashboard Reports Showing Zero - v2.4.6
 
 ## Root Cause
 
-The `EquipmentTable` component uses **object reference equality** (`eq === item`) to locate which equipment item to update. This silently drops edits when the `equipment` array is replaced with new object references -- which happens when:
+The data loading functions in `Dashboard.tsx` cannot distinguish between **"the server confirmed zero records"** and **"the network request failed/timed out"**. Both cases produce an empty array `[]`, which triggers the explicit `setInspections([])` call that wipes any previously displayed data.
 
-1. The Supabase fetch completes after offline data was already loaded (lines 888-894 in InspectionForm)
-2. Auto-save replaces temp IDs with real UUIDs (lines 1216-1223)
-3. Another EquipmentTable category triggers a state update
+### The Vulnerable Code Pattern (repeated 3x)
 
-When `eq === item` matches nothing, the `.map()` returns the array unchanged and the user's input is silently discarded.
+```text
+// Lines 348-364 (inspections), ~420-434 (trainings), ~490-504 (daily assessments)
+if (networkData.length > 0) {
+  setInspections(networkData);         // OK - replaces with fresh data
+} else if (offlineData.length === 0) {
+  setInspections([]);                  // BUG - wipes data on failed fetch
+}
+```
 
-### Why Other Tables Are Not Affected
+### How Zero Reports Occurs
 
-- **OperatingSystemsTable**: Uses index-based updates (`updateSystem(index, field, value)`)
-- **ZiplinesTable**: Uses index-based updates (`updateZipline(index, field, value)`)
-- **EquipmentTable**: Uses reference equality -- the only table with this bug
+1. User exits a report, Dashboard remounts
+2. `loadAllData()` starts initial data fetch
+3. Sync-complete event fires (line 255), triggering a SECOND parallel fetch
+4. If the second fetch's IndexedDB times out (2s limit) AND the network request fails/times out (6s limit):
+   - `offlineData = []` (timeout fallback)
+   - `networkData = []` (error/timeout fallback)
+   - `setInspections([])` overwrites the data loaded by the first fetch
+5. Dashboard displays "0 reports"
 
-### The Same Bug Exists in Delete
+### Why Errors and Timeouts Return `[]`
 
-`handleDeleteConfirm` also uses `eq !== itemToDelete.item` (reference equality), meaning deletes can also silently fail under the same race conditions.
+Both error handlers silently return empty arrays:
+
+```text
+// Network error catch (line 324-326):
+.catch(err => { return []; })
+
+// Network timeout fallback (line 328-329):
+withNetworkTimeout(..., 6000, [])
+
+// IndexedDB timeout (line 336):
+new Promise(resolve => setTimeout(() => resolve([]), 2000))
+```
+
+There is no way to tell "server said zero" from "request failed."
 
 ---
 
 ## Solution
 
-Replace reference equality with **ID-based matching** in both `updateEquipment` and `handleDeleteConfirm` inside `EquipmentTable.tsx`. This is immune to object reference changes.
+Use `null` to represent fetch failures and empty arrays `[]` only for confirmed empty results. Only clear displayed data when the network definitively confirms zero records.
 
-### File: `src/components/inspection/EquipmentTable.tsx`
+### File: `src/pages/Dashboard.tsx`
 
-**Change 1: Fix `updateEquipment` (line 92-97)**
+**Change 1: Update `withNetworkTimeout` return type** (lines 281-293)
+
+Change the timeout helper to support `null` fallback values so callers can distinguish timeout from empty.
+
+**Change 2: Fix `loadInspections`** (lines 295-369)
+
+- Change `.catch()` to return `null` instead of `[]`
+- Change timeout fallback to `null`
+- Update conditional: only `setInspections([])` when `networkData` is an actual empty array (not null)
 
 Before:
-```typescript
-const updateEquipment = useCallback((item: any, field: string, value: any) => {
-  const updated = equipment.map((eq) =>
-    eq === item ? { ...eq, [field]: value } : eq
-  );
-  onUpdate(updated);
-}, [equipment, onUpdate]);
+```
+.catch(err => { return []; })
+...
+withNetworkTimeout(..., 6000, [])
+...
+if (networkData.length > 0) {
+  setInspections(networkData);
+} else if (offlineData.length === 0) {
+  setInspections([]);
+}
 ```
 
 After:
-```typescript
-const updateEquipment = useCallback((item: any, field: string, value: any) => {
-  const updated = equipment.map((eq) =>
-    eq.id === item.id ? { ...eq, [field]: value } : eq
-  );
-  onUpdate(updated);
-}, [equipment, onUpdate]);
+```
+.catch(err => { return null; })
+...
+withNetworkTimeout(..., 6000, null)
+...
+if (networkData && networkData.length > 0) {
+  setInspections(networkData);
+} else if (networkData !== null && offlineData.length === 0) {
+  // Only clear when server CONFIRMED zero records (not timeout/error)
+  setInspections([]);
+}
 ```
 
-**Change 2: Fix `handleDeleteConfirm` (line 99-106)**
+**Change 3: Apply same fix to `loadTrainingReports`** (lines 371-439)
 
-Before:
-```typescript
-const handleDeleteConfirm = useCallback(() => {
-  if (itemToDelete) {
-    const updated = equipment.filter((eq) => eq !== itemToDelete.item);
-    onUpdate(updated);
-    onImmediateSave?.();
-    setItemToDelete(null);
-  }
-}, [itemToDelete, equipment, onUpdate, onImmediateSave]);
-```
+Same pattern: `.catch` returns `null`, timeout fallback is `null`, conditional checks `networkData !== null`.
 
-After:
-```typescript
-const handleDeleteConfirm = useCallback(() => {
-  if (itemToDelete) {
-    const updated = equipment.filter((eq) => eq.id !== itemToDelete.item.id);
-    onUpdate(updated);
-    onImmediateSave?.();
-    setItemToDelete(null);
-  }
-}, [itemToDelete, equipment, onUpdate, onImmediateSave]);
-```
+**Change 4: Apply same fix to `loadDailyAssessments`** (lines 441-509)
 
-### Version Bump
+Same pattern for daily assessments.
 
-Update `vite.config.ts` to **v2.4.5**.
+### Phase 2: Version Bump
+
+Update `vite.config.ts` to **v2.4.6**.
 
 ---
 
@@ -88,33 +108,27 @@ Update `vite.config.ts` to **v2.4.5**.
 
 | File | Action | Description |
 |------|--------|-------------|
-| `src/components/inspection/EquipmentTable.tsx` | Update | Replace `===` reference equality with `.id` matching in update and delete |
-| `vite.config.ts` | Update | Bump to v2.4.5 |
+| `src/pages/Dashboard.tsx` | Update | Distinguish fetch failures (null) from confirmed empty results ([]) in all 3 load functions |
+| `vite.config.ts` | Update | Bump to v2.4.6 |
 
 ---
 
-## Why This Is a Client-Side Bug (Not RLS/Backend)
+## Why This Fixes the Issue
 
-- The data never reaches the save function because `eq === item` silently produces an unchanged array
-- The Supabase upsert correctly persists whatever state it receives -- it just receives stale data
-- RLS policies are not involved since the data loss occurs before any network call
-
----
-
-## Expected Outcome
-
-1. Equipment quantities, production years, comments, and results will persist correctly across tab switches
-2. Deleting equipment items will work reliably even after Supabase data refresh
-3. All equipment categories (harnesses, helmets, lanyards, etc.) are fixed since they all share the same component
-4. Fix applies to all users, all platforms (web and mobile), all report types using EquipmentTable
+| Scenario | Before (broken) | After (fixed) |
+|----------|-----------------|---------------|
+| Server returns 0 records | Sets [] (correct) | Sets [] (correct) |
+| Network times out | Sets [] (WRONG - wipes data) | Preserves existing data |
+| Network error (auth, etc.) | Sets [] (WRONG - wipes data) | Preserves existing data |
+| Sync-complete reload races | Can wipe first load's data | Safely preserves displayed data |
 
 ---
 
 ## Testing Checklist
 
-- [ ] Add equipment, enter quantity, switch to another tab, return -- quantity persists
-- [ ] Enter production year, switch tabs and return -- year persists
-- [ ] Delete an equipment item after switching tabs -- deletion works
-- [ ] Add equipment while offline, verify data persists when coming back online
-- [ ] Verify all 8 equipment categories retain data correctly
+- [ ] Navigate in and out of reports - counts remain correct
+- [ ] Delete a report and verify count decreases by 1
+- [ ] Verify empty state still shows when user truly has 0 reports (new account)
+- [ ] Test on slow network to verify timeout doesn't wipe data
+- [ ] Verify sync-complete event doesn't cause count flicker
 
