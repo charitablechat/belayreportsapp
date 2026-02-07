@@ -1,50 +1,50 @@
 
-# Fix: Inspection Report HTML Content Wrapping & Cutoff
+# Production Readiness Audit -- v2.4.17 / v2.4.18
 
-## Root Cause Analysis
+## 1. Summary of Findings
 
-The inspection HTML report has several CSS rules that cause text to be cut off:
+Three areas require attention. No critical blockers were found -- the core data integrity and autocomplete patterns are correctly implemented. The issues identified are medium-severity consistency gaps and one performance concern.
 
-1. **`.page` uses `page-break-inside: avoid`** (line 498) -- when a page's content exceeds one printed page, the browser tries to keep it together, causing content to clip rather than flow to the next page
-2. **`white-space: nowrap`** applied to result columns (equipment, ziplines, systems, standards) and `.info-label` -- prevents text from wrapping when content is longer than the cell width
-3. **Ziplines table has 9 columns with fixed percentage widths** -- the comments column gets squeezed, truncating text
-4. **`max-width: 400px` on `table td`** -- caps cell width, causing overflow in cells with long comments
-5. **`overflow-x: hidden` on `html, body`** -- silently hides any content that bleeds past the viewport edge
+## 2. Detailed Issue Log
 
-## Changes
+| # | Issue | File(s) | Severity | Details & Proposed Fix |
+|---|-------|---------|----------|----------------------|
+| 1 | **TrainingForm localIsNewer guard does not protect child data** | `TrainingForm.tsx` (lines 306-318) | **High** | When `localIsNewer` is true, only `status` and `inspector_id` are updated from the server, which is correct for the parent record. However, the code falls through to `else if (trainingData)` which fetches AND applies all child data from the server (delivery_approaches, operating_systems, etc.), overwriting the local IndexedDB child data. Compare with `InspectionForm.tsx` (line 872) which explicitly skips all server child data when local is newer. **Fix**: Add an early return or skip the child data fetch block when `localIsNewer` is true. |
+| 2 | **DailyAssessmentForm localIsNewer guard does not protect child data** | `DailyAssessmentForm.tsx` (lines 306-349) | **High** | Same issue as TrainingForm. When `localIsNewer` is true, the code correctly preserves the parent assessment, but the child data fetch block (beginning_of_day, end_of_day, etc.) runs regardless because the `else if (assessmentData)` branch is separate. Since child data was already loaded from IndexedDB at lines 257-271, the server fetch should be skipped. **Fix**: Restructure the conditional to skip server child data loading when `localIsNewer`. |
+| 3 | **OrganizationAutocomplete uses legacy `user_field_history` table** | `OrganizationAutocomplete.tsx` | **Medium** | Still queries `user_field_history` (user-scoped) instead of `global_field_history` (cross-user). This means organization suggestions are not shared across users, unlike all other GlobalAutocomplete fields. This is inconsistent with the unified global autocomplete architecture. **Fix**: Migrate to use `GlobalAutocomplete` with `fieldType="organization"`, or update queries to use `global_field_history`. |
+| 4 | **DatabaseAutocomplete uses legacy `user_field_history` table** | `DatabaseAutocomplete.tsx` | **Medium** | Same issue as OrganizationAutocomplete -- still uses the legacy per-user table. **Fix**: Same approach -- migrate to GlobalAutocomplete or update the data source. |
+| 5 | **Dashboard supabase query has 6s inner timeout inside 15s outer timeout** | `Dashboard.tsx` (line 316) | **Low** | The `loadInspections` function wraps the Supabase query in `withNetworkTimeout(..., 6000)` but the outer `withNetworkTimeout` default is now 15s. The inner 6s timeout will always fire first, making the 15s increase partially ineffective for this specific query. The same pattern applies to training and assessment loaders. **Fix**: Increase inner timeout to match or remove the double-wrapping. |
+| 6 | **ResultSelect and SystemTypeSelect remain unchanged** | `ResultSelect.tsx`, `SystemTypeSelect.tsx` | **None (Verified)** | Both components use standard `Select` dropdowns with no inline-editable input pattern. They were correctly excluded from the v2.4.18 autocomplete redesign. No action needed. |
 
-### File: `supabase/functions/generate-inspection-html/index.ts`
+## 3. Verification Checklist
 
-**1. Allow pages to break across printed pages**
-- Change `.page` from `page-break-inside: avoid` to `page-break-inside: auto` (line 498)
-- This lets long content flow naturally to the next page instead of being clipped
+### v2.4.17 -- Data Persistence Logic (localIsNewer Guard)
 
-**2. Remove `white-space: nowrap` from table result columns**
-- Lines 826-837: Remove the `white-space: nowrap` rule on equipment result, zipline result, systems result, and standards documentation columns
-- Replace with `white-space: normal` and `word-wrap: break-word` so longer result text wraps
+- [x] **InspectionForm.tsx**: Correctly implemented. When `localIsNewer` is true, both parent inspection AND all child data (systems, ziplines, equipment, standards, summary) are preserved from local IndexedDB. Server data is skipped entirely (line 872).
+- [ ] **TrainingForm.tsx**: INCOMPLETE. Parent record protected, but child data (delivery_approaches, operating_systems, immediate_attention, verifiable_items, systems_in_place, summary) is overwritten by server fetch. Needs fix.
+- [ ] **DailyAssessmentForm.tsx**: INCOMPLETE. Parent record protected, but child data (beginning_of_day, end_of_day, operating_systems, equipment_checks, structure_checks, environment_checks) is overwritten by server fetch. Needs fix.
 
-**3. Remove `white-space: nowrap` from `.info-label`**
-- Line 659: Change to `white-space: normal` so long labels like "Previously Inspected by:" don't push the value off-screen
+### v2.4.18 -- Inline-Editable Autocomplete Fields
 
-**4. Remove `max-width: 400px` cap on table cells**
-- Lines 736 and 1085: Remove or increase the `max-width: 400px` constraint on `table td` that artificially limits cell width
+- [x] **GlobalAutocomplete**: Correct. Uses inline Input trigger with brutalist focus style, X clear button, Enter/Escape/Blur commit logic, lazy database fetch on popover open.
+- [x] **HistoryAutocomplete**: Correct. Same inline-editable pattern with localStorage + optional global_field_history sync.
+- [x] **OrganizationAutocomplete**: Correct inline-editable pattern. Uses legacy data source (see Issue #3) but interaction behavior matches spec.
+- [x] **DatabaseAutocomplete**: Correct inline-editable pattern. Uses legacy data source (see Issue #4) but interaction behavior matches spec.
+- [x] **ResultSelect**: Unchanged. Standard Select dropdown. Correctly excluded.
+- [x] **SystemTypeSelect**: Unchanged. Standard Select dropdown with custom option management. Correctly excluded.
 
-**5. Add global text wrapping safety net**
-- Add `word-wrap: break-word` and `overflow-wrap: break-word` to `body` to ensure no text element can overflow its container
+### Performance
 
-**6. Fix ziplines table column widths**
-- Widen the comments column and relax the fixed percentages so content isn't squeezed (the 9 columns only total ~76%, leaving the auto comments column too narrow for long text)
+- [x] Dashboard timeout increased to 15s (outer wrapper)
+- [x] Auth pre-fetch optimization in handleOnline/onSyncComplete (single getUserWithCache call shared across all loaders)
+- [x] Safety timeouts on all form saves (8s cap)
+- [x] Non-blocking cache updates (fire-and-forget pattern) across all forms
+- [ ] Inner 6s timeout on individual Supabase queries may still cause premature failures (Issue #5)
 
-**7. Ensure `overflow-x: hidden` doesn't clip content in print**
-- In the `@media print` section, override `overflow-x: hidden` with `overflow: visible` on `html, body`
+## 4. Recommended Implementation Priority
 
-### No other files change
-- The `HtmlReportViewer.tsx` already injects mobile override styles; no changes needed there
-- No database or migration changes
-
-## What This Fixes
-- Long comments in table cells will wrap instead of being cut off
-- Info field labels and values won't overlap or truncate
-- Pages with many table rows will flow across printed pages naturally
-- Result text (e.g., "Pass with Provisions") will wrap in narrow columns
-- PDF/print output will show all content without clipping
+1. **Fix TrainingForm localIsNewer child data protection** (High) -- prevents data loss
+2. **Fix DailyAssessmentForm localIsNewer child data protection** (High) -- prevents data loss
+3. **Align inner query timeouts with outer timeout** (Low) -- prevents premature timeout failures
+4. **Migrate OrganizationAutocomplete to global_field_history** (Medium) -- consistency improvement, not urgent
+5. **Migrate DatabaseAutocomplete to global_field_history** (Medium) -- same as above
