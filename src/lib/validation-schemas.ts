@@ -1,5 +1,14 @@
 import { z } from 'zod';
 
+// Accept both standard UUIDs and temp-prefixed UUIDs used before sync
+const flexibleUUID = z.string().refine(
+  (val) => {
+    const raw = val.startsWith('temp-') ? val.slice(5) : val;
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(raw);
+  },
+  { message: "Invalid identifier" }
+);
+
 // Inspection validation schema
 export const inspectionSchema = z.object({
   id: z.string().uuid(),
@@ -22,8 +31,8 @@ export const inspectionSchema = z.object({
 
 // System validation schema
 export const systemSchema = z.object({
-  id: z.string().uuid(),
-  inspection_id: z.string().uuid(),
+  id: flexibleUUID,
+  inspection_id: flexibleUUID,
   system_name: z.string().optional().nullable(),
   result: z.enum(['pass', 'pass w/provisions', 'fail', 'na']),
   comments: z.string().max(2000).optional().nullable(),
@@ -32,8 +41,8 @@ export const systemSchema = z.object({
 
 // Zipline validation schema
 export const ziplineSchema = z.object({
-  id: z.string().uuid(),
-  inspection_id: z.string().uuid(),
+  id: flexibleUUID,
+  inspection_id: flexibleUUID,
   zipline_name: z.string().optional().nullable(),
   cable_type: z.string().optional().nullable(),
   cable_length: z.number().int().positive().optional().nullable(),
@@ -51,8 +60,8 @@ export const ziplineSchema = z.object({
 
 // Equipment validation schema
 export const equipmentSchema = z.object({
-  id: z.string().uuid(),
-  inspection_id: z.string().uuid(),
+  id: flexibleUUID,
+  inspection_id: flexibleUUID,
   equipment_type: z.string().optional().nullable(),
   equipment_category: z.string().optional().nullable(),
   production_year: z.number().int().min(1900).max(2100).optional().nullable(),
@@ -64,8 +73,8 @@ export const equipmentSchema = z.object({
 
 // Standard validation schema
 export const standardSchema = z.object({
-  id: z.string().uuid(),
-  inspection_id: z.string().uuid(),
+  id: flexibleUUID,
+  inspection_id: flexibleUUID,
   standard_name: z.string().optional().nullable(),
   has_documentation: z.boolean().nullable(), // Allow null for "Not Set" state
   comments: z.string().max(2000).optional().nullable(),
@@ -74,8 +83,8 @@ export const standardSchema = z.object({
 
 // Summary validation schema
 export const summarySchema = z.object({
-  id: z.string().uuid(),
-  inspection_id: z.string().uuid(),
+  id: flexibleUUID,
+  inspection_id: flexibleUUID,
   repairs_performed: z.string().max(5000).optional().nullable(),
   critical_actions: z.string().max(5000).optional().nullable(),
   future_considerations: z.string().max(5000).optional().nullable(),
