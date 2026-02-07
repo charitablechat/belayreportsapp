@@ -728,6 +728,7 @@ serve(async (req) => {
       font-weight: bold;
       border: 1px solid #000;
       font-size: 10pt;
+      white-space: normal;
     }
 
     table td {
@@ -736,6 +737,7 @@ serve(async (req) => {
       vertical-align: top;
       line-height: 1.4;
       max-width: none;
+      white-space: normal;
       word-wrap: break-word;
       overflow-wrap: break-word;
     }
@@ -873,7 +875,7 @@ serve(async (req) => {
       color: #666;
       line-height: 1.5;
       font-style: italic;
-      max-width: 75%;
+      max-width: 100%;
     }
 
     .critical-box {
