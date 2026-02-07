@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { GradientButton } from "@/components/ui/gradient-button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, LogOut, FileText, GraduationCap, ArrowRight, Download, Settings, Trash2, MoreVertical, Bell, Cloud, User, Loader2, Check, RefreshCw, MessageCircle, Shield } from "lucide-react";
+import { Plus, LogOut, FileText, GraduationCap, ArrowRight, Download, Settings, Trash2, MoreVertical, Bell, Cloud, User, Loader2, Check, RefreshCw, MessageCircle, Shield, CloudOff } from "lucide-react";
 import { UserAvatar } from "@/components/ui/user-avatar";
 import { toast } from "sonner";
 import { format } from "date-fns";
@@ -88,7 +88,7 @@ export default function Dashboard() {
   const [inspectorFilter, setInspectorFilter] = useState<string>("all");
   // Silent auto-resolution of conflicts via last-write-wins
   useConflicts();
-  const { photosByInspection, isSyncing } = usePWA();
+  const { photosByInspection, isSyncing, unsyncedCount, forceSync } = usePWA();
   const { progress } = useSyncProgress();
   
   // Pull to refresh for mobile - only reloads data, sync is automatic
@@ -802,6 +802,26 @@ export default function Dashboard() {
       </header>
 
       <main className="container mx-auto px-1 md:px-4 py-8">
+        {/* Pending Sync Banner */}
+        {unsyncedCount > 0 && (
+          <div className="mb-6 flex items-center gap-3 rounded-lg border border-warning/50 bg-warning/10 px-4 py-3">
+            <CloudOff className="h-5 w-5 shrink-0 text-warning" />
+            <span className="text-sm font-medium text-foreground flex-1">
+              {unsyncedCount} {unsyncedCount === 1 ? 'report' : 'reports'} pending sync
+            </span>
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-1.5 border-warning/50 text-warning hover:bg-warning/20"
+              onClick={() => forceSync()}
+              disabled={isSyncing || !navigator.onLine}
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
+              {isSyncing ? 'Syncing...' : 'Sync Now'}
+            </Button>
+          </div>
+        )}
+
         {/* Conflicts are now resolved automatically via last-write-wins strategy */}
 
         {/* Foyer Section */}
