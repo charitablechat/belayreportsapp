@@ -811,9 +811,9 @@ serve(async (req) => {
 
     /* Optimized column widths for Operating Systems table */
     .systems-table th:nth-child(1),
-    .systems-table td:nth-child(1) { width: 18%; } /* System Type */
+    .systems-table td:nth-child(1) { width: 18%; } /* Element Name */
     .systems-table th:nth-child(2),
-    .systems-table td:nth-child(2) { width: 18%; } /* Name */
+    .systems-table td:nth-child(2) { width: 18%; } /* System Type */
     .systems-table th:nth-child(3),
     .systems-table td:nth-child(3) { width: 16%; } /* Result - wider for full words */
     .systems-table th:nth-child(4),
@@ -1840,8 +1840,8 @@ serve(async (req) => {
         <table class="systems-table">
           <thead>
             <tr>
-              <th>System Name</th>
               <th>Element Name</th>
+              <th>System Name</th>
               <th>Result</th>
               <th>Comments and/or Required Changes</th>
             </tr>
@@ -1853,8 +1853,8 @@ serve(async (req) => {
               const formattedComments = formatCommentsAsBullets(sys.comments);
               return `
               <tr>
-                <td><strong>${sys.system_name}</strong></td>
                 <td>${sys.name || "N/A"}</td>
+                <td><strong>${sys.system_name}</strong></td>
                 <td style="${resultData.cellStyle}">${resultData.html}</td>
                 <td style="font-size: 9pt;">${formattedComments}</td>
               </tr>
@@ -1961,8 +1961,8 @@ serve(async (req) => {
       <table class="systems-table">
         <thead>
           <tr>
-            <th>System Name</th>
             <th>Element Name</th>
+            <th>System Name</th>
             <th>Result</th>
             <th>Comments and/or Required Changes</th>
           </tr>
@@ -1974,8 +1974,8 @@ serve(async (req) => {
               const formattedComments = formatCommentsAsBullets(sys.comments);
               return `
               <tr>
-                <td><strong>${sys.system_name}</strong></td>
                 <td>${sys.name || "N/A"}</td>
+                <td><strong>${sys.system_name}</strong></td>
                 <td style="${resultData.cellStyle}">${resultData.html}</td>
                 <td style="font-size: 9pt;">${formattedComments}</td>
               </tr>
