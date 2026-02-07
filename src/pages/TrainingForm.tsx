@@ -311,7 +311,8 @@ export default function TrainingForm() {
 
           if (localIsNewer) {
             // Local data is newer - preserve local state, only accept server metadata
-            console.log('[TrainingForm] Local data is newer -- preserving local state');
+            // Skip ALL server child data fetches to prevent overwriting local edits
+            console.log('[TrainingForm] Local data is newer -- preserving local state (parent + child)');
             if (trainingData) {
               setTraining(prev => ({ ...prev, status: trainingData.status }));
               setInspectorId(trainingData.inspector_id);

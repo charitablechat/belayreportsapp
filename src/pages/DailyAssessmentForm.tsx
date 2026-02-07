@@ -305,11 +305,13 @@ export default function DailyAssessmentForm() {
 
         if (localIsNewer) {
           // Local data is newer - preserve local state, only accept server metadata
-          console.log('[DailyAssessmentForm] Local data is newer -- preserving local state');
+          // Skip ALL server child data fetches to prevent overwriting local edits
+          console.log('[DailyAssessmentForm] Local data is newer -- preserving local state (parent + child)');
           if (assessmentData) {
             setAssessment(prev => ({ ...prev, status: assessmentData.status }));
             setInspectorId(assessmentData.inspector_id);
           }
+          // Early exit: child data already loaded from IndexedDB above (lines 257-271)
         } else if (assessmentData) {
           setAssessment(assessmentData);
           setInspectorId(assessmentData.inspector_id);
