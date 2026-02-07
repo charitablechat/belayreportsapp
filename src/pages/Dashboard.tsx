@@ -358,7 +358,9 @@ export default function Dashboard() {
           setInspections(networkData);
           
           // Background save to offline storage (fire-and-forget)
-          Promise.all(networkData.map(inspection => saveInspectionOffline(inspection)))
+          // Stamp synced_at so localIsNewer guard knows this is server-sourced data
+          const now = new Date().toISOString();
+          Promise.all(networkData.map(inspection => saveInspectionOffline({ ...inspection, synced_at: inspection.synced_at || now })))
             .catch(err => console.error('[Dashboard] Error batch saving inspections:', err));
           
           if (import.meta.env.DEV) {
@@ -430,7 +432,8 @@ export default function Dashboard() {
         if (networkData && networkData.length > 0) {
           setTrainings(networkData);
           
-          Promise.all(networkData.map(training => saveTrainingOffline(training)))
+          const nowT = new Date().toISOString();
+          Promise.all(networkData.map(training => saveTrainingOffline({ ...training, synced_at: training.synced_at || nowT })))
             .catch(err => console.error('[Dashboard] Error batch saving trainings:', err));
           
           if (import.meta.env.DEV) {
@@ -502,7 +505,8 @@ export default function Dashboard() {
         if (networkData && networkData.length > 0) {
           setDailyAssessments(networkData);
           
-          Promise.all(networkData.map(assessment => saveDailyAssessmentOffline(assessment)))
+          const nowA = new Date().toISOString();
+          Promise.all(networkData.map(assessment => saveDailyAssessmentOffline({ ...assessment, synced_at: assessment.synced_at || nowA })))
             .catch(err => console.error('[Dashboard] Error batch saving assessments:', err));
           
           if (import.meta.env.DEV) {
