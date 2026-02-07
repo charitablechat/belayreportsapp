@@ -1,45 +1,19 @@
 
+# Fix: Add Missing `onImmediateSave` to Belay, Trolleys, and Other Equipment Tables
 
-# Swap Column Order: Element Name before Operating System
+## Problem
+The belay, trolleys, and other equipment tables lack the `onImmediateSave` prop. Data in these sections only persists via the 1.5s debounced auto-save. If a user navigates away before the timer fires, data is lost.
 
-## What Changes
+## Change
 
-The Operating Systems table in generated HTML/PDF reports currently shows columns as: **System Name | Element Name | Result | Comments**. This will be reordered to: **Element Name | System Name | Result | Comments**.
+**File: `src/pages/InspectionForm.tsx`** (lines 2141-2158)
 
-## Scope
+Add `onImmediateSave={triggerImmediateSave}` to all three components, matching the pattern already used by the other 5 equipment tables (harnesses, helmets, lanyards, connectors, rope).
 
-**File:** `supabase/functions/generate-inspection-html/index.ts`
+| Component | Line | Change |
+|-----------|------|--------|
+| belay | 2141-2146 | Add `onImmediateSave={triggerImmediateSave}` |
+| trolleys | 2147-2152 | Add `onImmediateSave={triggerImmediateSave}` |
+| other | 2153-2158 | Add `onImmediateSave={triggerImmediateSave}` |
 
-Three locations need updating:
-
-### 1. CSS Column Width Comments (lines 813-816)
-Swap the comments so column 1 becomes "Element Name" (18%) and column 2 becomes "System Type" (18%). The widths stay the same since both are 18%.
-
-### 2. Combined Systems+Ziplines Page (lines 1843-1860)
-- Swap `<th>` order: "Element Name" first, then "System Name"
-- Swap `<td>` order: `sys.name` first, then `sys.system_name`
-
-### 3. Separate Systems Page (lines 1964-1981)
-- Same swap as above for the standalone systems page layout
-
-### Technical Detail
-
-**Before (both table instances):**
-```
-<th>System Name</th>
-<th>Element Name</th>
-...
-<td><strong>${sys.system_name}</strong></td>
-<td>${sys.name || "N/A"}</td>
-```
-
-**After:**
-```
-<th>Element Name</th>
-<th>System Name</th>
-...
-<td>${sys.name || "N/A"}</td>
-<td><strong>${sys.system_name}</strong></td>
-```
-
-No other files, data structures, or logic are affected. The edge function will be redeployed automatically.
+No other files need modification.
