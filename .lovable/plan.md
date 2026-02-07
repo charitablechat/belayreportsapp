@@ -1,78 +1,80 @@
 
-# Root Cause: Why Twin Cedars Shows "Incomplete" on Mobile
+# Fix: Mobile Stuck on "Syncing 21 Reports"
 
-## The Bug
+## Root Cause
 
-The `synced_at` column for Twin Cedars is **NULL on the server**:
+Three issues combine to create a sync loop on mobile:
+
+### Issue 1: Dashboard fix not yet active on mobile
+The `synced_at` stamping fix we just deployed only runs when the Dashboard loads fresh server data. The mobile app's IndexedDB still has records cached BEFORE the fix, all with `synced_at: NULL`. Every one of these appears as "unsynced" to `getUnsyncedInspections`.
+
+### Issue 2: Sync-then-save race condition
+When `syncInspectionAtomic` succeeds (line 380-384), it does:
+```text
+saveInspectionOffline({
+  ...inspection,         // spreads the ORIGINAL inspection (with its updated_at)
+  synced_at: new Date().toISOString(),  // sets synced_at to NOW
+})
+```
+But `synced_at` and `updated_at` are set to the same millisecond-precision ISO string. On the next unsynced check, the string comparison `updated_at > synced_at` can evaluate to `true` if `updated_at` was set even 1ms later during a concurrent auto-save, causing the item to immediately re-enter the queue.
+
+### Issue 3: Orphaned local records
+The server has 19 active reports, but mobile has 21 in IndexedDB. The 2 extras are likely soft-deleted records that still exist locally. They fail every sync attempt because the server rejects them (RLS or soft-delete detection), but they never get removed from IndexedDB.
+
+## Fix Implementation
+
+### Fix A: Ensure `synced_at` always wins after successful sync
+**File: `src/lib/atomic-sync-manager.ts`**
+
+In `syncInspectionAtomic` (line 380), after a successful server transaction, set `synced_at` to be definitively AFTER `updated_at`:
 
 ```text
-Server state:
-  id:         ac29f491-...
-  status:     completed
-  synced_at:  NULL        <-- this is the problem
-  updated_at: 2026-02-07 22:14:34
+const syncTimestamp = new Date().toISOString();
+await saveInspectionOffline({
+  ...inspection,
+  synced_at: syncTimestamp,
+  updated_at: syncTimestamp,  // <-- Align both timestamps to prevent re-queuing
+  inspector: inspectorProfile || { ... },
+});
 ```
 
-This happens because the **web app saves directly to the database** (via Supabase SDK), which never sets `synced_at`. Only the mobile sync system sets `synced_at` after a successful push.
+Apply the same pattern in `syncTrainingAtomic` and `syncDailyAssessmentAtomic`.
 
-## The Chain of Failure
+This is safe because the server already has the correct `updated_at` from the upsert. The local copy just needs to know "this version is synced."
 
-1. Report is completed on the **web app** -- saved to Supabase with `synced_at: NULL`
-2. Dashboard on mobile loads server data and calls `saveInspectionOffline(inspection)` -- this saves the server record **as-is** into IndexedDB, including `synced_at: NULL`
-3. User opens the report on mobile. The form loads IndexedDB data first, then fetches server data
-4. The `localIsNewer` guard checks: `!offlineData.synced_at` -- this is `true` because `synced_at` is NULL
-5. Guard concludes "local has unsynced changes" and **skips the server data**, preserving the stale local copy
-6. The stale local copy still has `status: incomplete` from before the web completed it
+### Fix B: Handle sync failures that return `skipped` with `remote_deleted` reason
+**File: `src/lib/atomic-sync-manager.ts`**
 
-The `localIsNewer` guard was designed to protect offline edits from being overwritten, but it has a blind spot: **it treats server-sourced data cached with `synced_at: NULL` as "local unsynced changes."**
+The existing code already calls `deleteOfflineInspection` when a record is detected as soft-deleted (line 183). However, the item is marked as `skipped` (line 519) and doesn't increment `failCount`, so it silently persists if the deletion itself fails. Add a fallback: if the record's remote status check fails entirely (network error), mark the item with `synced_at = updated_at` to stop it from re-queuing.
 
-## Fix
+### Fix C: One-time stale cache reconciliation on Dashboard load
+**File: `src/pages/Dashboard.tsx`**
 
-When the Dashboard caches server data into IndexedDB, stamp it with `synced_at = now()`. Data that came FROM the server IS synced by definition.
+After loading server data and saving to IndexedDB (where we already stamp `synced_at`), add a cleanup step that removes any local records NOT present in the server response. This handles the orphaned 2 records:
 
-### File: `src/pages/Dashboard.tsx`
-
-In `loadInspections` (~line 361), `loadTrainingReports`, and `loadDailyAssessments` -- where `saveXxxOffline` is called with network data:
-
-```typescript
-// BEFORE (saves server record as-is, with synced_at: null)
-Promise.all(networkData.map(inspection => saveInspectionOffline(inspection)))
-
-// AFTER (stamp synced_at so localIsNewer guard knows this is server data)
-const now = new Date().toISOString();
-Promise.all(networkData.map(inspection => 
-  saveInspectionOffline({ ...inspection, synced_at: inspection.synced_at || now })
-))
+```text
+// After batch saving server data to IndexedDB:
+const serverIds = new Set(networkData.map(i => i.id));
+const localInspections = await getOfflineInspections(userId);
+for (const local of localInspections) {
+  if (!serverIds.has(local.id)) {
+    await deleteOfflineInspection(local.id);
+  }
+}
 ```
 
-Apply the same pattern to:
-- `loadTrainingReports` -- `saveTrainingOffline` call
-- `loadDailyAssessments` -- `saveDailyAssessmentOffline` call
+Apply to all three report types.
 
-### File: `src/pages/InspectionForm.tsx` (line 884)
+**Important caveat**: Only run this cleanup when the server fetch succeeded (not on timeout/error), and only for the current user's records.
 
-Same fix in the form's server cache write (the `else` branch when server data IS current):
+## Files to Modify
 
-```typescript
-// BEFORE
-saveInspectionOffline(data).catch(...)
+1. **`src/lib/atomic-sync-manager.ts`** -- Align `updated_at = synced_at` after successful sync in all three atomic sync functions (inspections, trainings, assessments)
+2. **`src/pages/Dashboard.tsx`** -- Add orphan cleanup after successful server data load for all three report types
 
-// AFTER  
-saveInspectionOffline({ ...data, synced_at: data.synced_at || new Date().toISOString() }).catch(...)
-```
+## Verification Plan
 
-Apply to `TrainingForm.tsx` and `DailyAssessmentForm.tsx` at their equivalent cache lines.
-
-### Why This Is Safe
-
-- Only sets `synced_at` when it's currently NULL and the data came from the server
-- If `synced_at` is already set, it's preserved as-is
-- Local edits made offline will update `updated_at` without touching `synced_at`, so the `updated_at > synced_at` comparison still correctly identifies true local changes
-
-### No database migration needed.
-
-## Verification
-
-1. After the fix, force-refresh the mobile dashboard (pull-to-refresh or Force Sync)
-2. Twin Cedars should now show "completed" on mobile
-3. Opening the report should display the server's completed data, not stale local data
+1. After deploying, force-refresh the mobile app (close and reopen, or pull-to-refresh)
+2. The Dashboard load will: (a) stamp all server records with `synced_at`, (b) delete the 2 orphaned records
+3. The pending count should drop from 21 to 0 within one sync cycle
+4. Subsequent edits should sync and stay synced (no re-queuing)
