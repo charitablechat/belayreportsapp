@@ -1,60 +1,78 @@
 
-# Root Cause Analysis: Cross-Device Sync Count Divergence (22 vs 1)
+# Root Cause: Why Twin Cedars Shows "Incomplete" on Mobile
 
-## RCA Summary
+## The Bug
 
-The pending sync count is **per-device**, not cross-device. This is by design -- each device maintains its own IndexedDB, and the "unsynced count" reflects `locally modified records that haven't been pushed to the server from THIS device`. Device A showing 22 and Device B showing 1 is expected behavior when:
+The `synced_at` column for Twin Cedars is **NULL on the server**:
 
-- Device A created/edited 22 reports offline (or had sync failures leaving `synced_at < updated_at`)
-- Device B only has 1 locally-modified report
+```text
+Server state:
+  id:         ac29f491-...
+  status:     completed
+  synced_at:  NULL        <-- this is the problem
+  updated_at: 2026-02-07 22:14:34
+```
 
-**The real problem is not count divergence -- it's that Device A's 22 reports are failing to sync.** The fix must address WHY those 22 reports remain stuck in the pending queue.
+This happens because the **web app saves directly to the database** (via Supabase SDK), which never sets `synced_at`. Only the mobile sync system sets `synced_at` after a successful push.
 
-## Root Cause: Sync Stalls From Cascading Timeouts
+## The Chain of Failure
 
-The unsynced detection logic (`!synced_at || updated_at > synced_at`) is correct. The issue is that large queues (22 items) trigger cascading failures:
+1. Report is completed on the **web app** -- saved to Supabase with `synced_at: NULL`
+2. Dashboard on mobile loads server data and calls `saveInspectionOffline(inspection)` -- this saves the server record **as-is** into IndexedDB, including `synced_at: NULL`
+3. User opens the report on mobile. The form loads IndexedDB data first, then fetches server data
+4. The `localIsNewer` guard checks: `!offlineData.synced_at` -- this is `true` because `synced_at` is NULL
+5. Guard concludes "local has unsynced changes" and **skips the server data**, preserving the stale local copy
+6. The stale local copy still has `status: incomplete` from before the web completed it
 
-1. **Per-item timeout (25s)** x 22 items = up to 550s theoretical max, but the outer `withSyncTimeout` caps at 5 minutes (300s), killing remaining items mid-batch
-2. **Sequential processing**: Each inspection sync involves 8+ database operations (fetch status, delete children, insert children, update synced_at). At 22 items, this compounds
-3. **Stale `synced_at` after partial success**: If sync completes for an item on the server but the local `saveInspectionOffline` call (which sets `synced_at`) fails or is interrupted by the outer timeout, the item stays "unsynced" permanently -- a ghost loop
+The `localIsNewer` guard was designed to protect offline edits from being overwritten, but it has a blind spot: **it treats server-sourced data cached with `synced_at: NULL` as "local unsynced changes."**
 
-## Fix Implementation
+## Fix
 
-### Fix 1: Batch Size Limiting (Prevents timeout cascade)
-In `syncAllInspectionsAtomic`, `syncAllTrainingsAtomic`, and `syncAllDailyAssessmentsAtomic`:
-- Process a maximum of **5 items per sync cycle** instead of all at once
-- Remaining items sync in subsequent cycles (every 30s desktop / 60s mobile)
-- This ensures each cycle completes well within the 5-minute cap
+When the Dashboard caches server data into IndexedDB, stamp it with `synced_at = now()`. Data that came FROM the server IS synced by definition.
 
-### Fix 2: Immediate Local `synced_at` Update (Prevents ghost loops)
-After the server transaction succeeds but before the full `saveInspectionOffline` call:
-- Write `synced_at` to the IndexedDB record immediately as a minimal update
-- If the subsequent full save fails, the record is still marked as synced
+### File: `src/pages/Dashboard.tsx`
 
-### Fix 3: Progress-Aware Timeout
-- Replace the flat 5-minute cap with a **per-batch** timeout: `BASE_SYNC_TIMEOUT + (BATCH_SIZE * PER_ITEM_TIMEOUT_BUDGET)`
-- For a batch of 5: 30s + (5 x 8s) = 70s -- well within safe limits
+In `loadInspections` (~line 361), `loadTrainingReports`, and `loadDailyAssessments` -- where `saveXxxOffline` is called with network data:
 
-## Technical Details
+```typescript
+// BEFORE (saves server record as-is, with synced_at: null)
+Promise.all(networkData.map(inspection => saveInspectionOffline(inspection)))
 
-### Files to modify:
+// AFTER (stamp synced_at so localIsNewer guard knows this is server data)
+const now = new Date().toISOString();
+Promise.all(networkData.map(inspection => 
+  saveInspectionOffline({ ...inspection, synced_at: inspection.synced_at || now })
+))
+```
 
-**`src/lib/atomic-sync-manager.ts`**
-- Add `MAX_BATCH_SIZE = 5` constant
-- In `syncAllInspectionsAtomic` (line ~460): slice `unsynced` to `MAX_BATCH_SIZE` before iterating
-- In `syncAllTrainingsAtomic`: same batch limiting
-- In `syncAllDailyAssessmentsAtomic`: same batch limiting
-- Log remaining count so the user sees progress ("Synced 5/22, 17 remaining")
+Apply the same pattern to:
+- `loadTrainingReports` -- `saveTrainingOffline` call
+- `loadDailyAssessments` -- `saveDailyAssessmentOffline` call
 
-**`src/hooks/useAutoSync.tsx`**
-- Adjust dynamic timeout calculation to use batch size instead of total unsynced count
-- After each sync cycle, if items remain, schedule the next cycle sooner (5s instead of 30s) to drain the queue faster
+### File: `src/pages/InspectionForm.tsx` (line 884)
 
-### No database changes required.
+Same fix in the form's server cache write (the `else` branch when server data IS current):
 
-## Verification Plan
+```typescript
+// BEFORE
+saveInspectionOffline(data).catch(...)
 
-1. Confirm Device A's 22 pending items begin draining in batches of 5 per cycle
-2. After 5 cycles (~2.5 minutes on desktop), count should reach 0
-3. Device B's count of 1 should sync normally in a single cycle
-4. Simulate a mid-sync network drop to confirm no ghost-synced records remain
+// AFTER  
+saveInspectionOffline({ ...data, synced_at: data.synced_at || new Date().toISOString() }).catch(...)
+```
+
+Apply to `TrainingForm.tsx` and `DailyAssessmentForm.tsx` at their equivalent cache lines.
+
+### Why This Is Safe
+
+- Only sets `synced_at` when it's currently NULL and the data came from the server
+- If `synced_at` is already set, it's preserved as-is
+- Local edits made offline will update `updated_at` without touching `synced_at`, so the `updated_at > synced_at` comparison still correctly identifies true local changes
+
+### No database migration needed.
+
+## Verification
+
+1. After the fix, force-refresh the mobile dashboard (pull-to-refresh or Force Sync)
+2. Twin Cedars should now show "completed" on mobile
+3. Opening the report should display the server's completed data, not stale local data
