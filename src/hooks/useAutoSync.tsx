@@ -18,7 +18,9 @@ const DESKTOP_SYNC_INTERVAL = 30000; // 30 seconds for desktop
 const MOBILE_SYNC_INTERVAL = 60000; // 60 seconds for mobile (reduced from 5min for faster sync)
 const MIN_SYNC_INTERVAL = 5000; // Minimum 5 seconds between syncs
 const INITIAL_SYNC_DELAY = 2000; // 2 seconds delay for initial sync to not block UI
-const SYNC_TIMEOUT = 30000; // 30 second timeout for sync operations to prevent deadlocks
+const BASE_SYNC_TIMEOUT = 30000; // Base 30 second timeout
+const PER_ITEM_TIMEOUT_BUDGET = 8000; // 8 seconds budget per unsynced item
+const MAX_SYNC_TIMEOUT = 300000; // 5 minute absolute maximum
 
 /**
  * Helper to wrap promises with a timeout
@@ -139,6 +141,13 @@ export const useAutoSync = () => {
     syncInProgressRef.current = true;
     setState(prev => ({ ...prev, isSyncing: true }));
     
+    // Calculate dynamic timeout based on unsynced item count
+    // More items = more time needed. Base 30s + 8s per item, max 5 min
+    const dynamicTimeout = Math.min(
+      BASE_SYNC_TIMEOUT + (state.unsyncedCount * PER_ITEM_TIMEOUT_BUDGET),
+      MAX_SYNC_TIMEOUT
+    );
+    
     // Safety: Force-reset sync state after timeout regardless of promise resolution
     const safetyTimeoutHandle = setTimeout(() => {
       if (syncInProgressRef.current) {
@@ -146,14 +155,14 @@ export const useAutoSync = () => {
         syncInProgressRef.current = false;
         setState(prev => ({ ...prev, isSyncing: false }));
       }
-    }, SYNC_TIMEOUT + 2000); // 2 seconds after main timeout as final safety
+    }, dynamicTimeout + 2000); // 2 seconds after main timeout as final safety
     
     try {
       if (import.meta.env.DEV) {
-        console.log('[AutoSync] Starting sync...');
+        console.log('[AutoSync] Starting sync...', { unsyncedCount: state.unsyncedCount, timeout: dynamicTimeout });
       }
       
-      // Sync all data types in parallel with timeout protection
+      // Sync all data types in parallel with dynamic timeout protection
       // Each operation has its own catch to prevent one failure from blocking others
       const syncResult = await withSyncTimeout(
         Promise.all([
@@ -162,7 +171,7 @@ export const useAutoSync = () => {
           syncAllDailyAssessmentsAtomic().catch(e => { console.error('[AutoSync] Assessments sync failed:', e); return null; }),
           syncPhotos().catch(e => { console.error('[AutoSync] Photos sync failed:', e); return null; }),
         ]),
-        SYNC_TIMEOUT
+        dynamicTimeout
       );
       
       // Clear safety timeout since we completed normally
