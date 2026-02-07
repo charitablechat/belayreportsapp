@@ -1,5 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
-import { getUserWithCache, ensureValidSession } from "@/lib/cached-auth";
+import { getUserWithCache, ensureValidSession, type CachedUser } from "@/lib/cached-auth";
 import { 
   getUnsyncedInspections,
   saveInspectionOffline,
@@ -85,7 +85,7 @@ async function checkRemoteRecordStatus(
 /**
  * Sync inspection with all related data atomically
  */
-export async function syncInspectionAtomic(inspectionId: string) {
+export async function syncInspectionAtomic(inspectionId: string, preValidatedUser?: CachedUser) {
   if (!navigator.onLine) {
     throw new Error("Cannot sync while offline");
   }
@@ -97,12 +97,12 @@ export async function syncInspectionAtomic(inspectionId: string) {
       throw new Error("Inspection not found in local storage");
     }
     
-    // CRITICAL: Ensure we have a valid JWT before any database operations
-    // This prevents RLS failures due to expired tokens on mobile
-    const user = await ensureValidSession();
+    // Use pre-validated user from batch caller, or validate session if called individually
+    const user = preValidatedUser || await ensureValidSession();
     if (!user) {
       console.error('[Atomic Sync] No valid session - sync aborted for inspection:', inspectionId);
-      return { success: false, skipped: true, reason: 'invalid_session' };
+      // THROW instead of returning silently so caller counts this as a failure
+      throw new Error('No valid session for sync');
     }
     
     // Skip inspections that don't belong to current user (they were filtered but double-check)
@@ -491,12 +491,22 @@ export async function syncAllInspectionsAtomic() {
       
       try {
         // Per-item timeout to prevent single item from blocking entire sync
-        await Promise.race([
-          syncInspectionAtomic(inspection.id),
+        // Pass pre-validated user to skip redundant session validation per item
+        const itemResult = await Promise.race([
+          syncInspectionAtomic(inspection.id, user as CachedUser),
           new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Item sync timeout')), ITEM_SYNC_TIMEOUT))
         ]);
-        successCount++;
-        synced = true;
+        // Only count as success if item was actually synced (not skipped)
+        if (itemResult && typeof itemResult === 'object' && (itemResult as any).skipped) {
+          // Skipped items don't count as success or failure
+          if (import.meta.env.DEV) {
+            console.log(`[Atomic Sync] Skipped ${i + 1}/${unsynced.length}:`, inspection.id, (itemResult as any).reason);
+          }
+          synced = true; // Don't retry skipped items
+        } else {
+          successCount++;
+          synced = true;
+        }
         
         if (import.meta.env.DEV) {
           console.log(`[Atomic Sync] Synced ${i + 1}/${unsynced.length}:`, inspection.id);
@@ -580,7 +590,7 @@ function transformTempIds<T extends { id?: string }>(items: T[]): T[] {
 /**
  * Sync training with all related data atomically
  */
-export async function syncTrainingAtomic(trainingId: string) {
+export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: CachedUser) {
   if (!navigator.onLine) {
     throw new Error("Cannot sync while offline");
   }
@@ -592,12 +602,11 @@ export async function syncTrainingAtomic(trainingId: string) {
       throw new Error("Training not found in local storage");
     }
     
-    // CRITICAL: Ensure we have a valid JWT before any database operations
-    // This prevents RLS failures due to expired tokens on mobile
-    const user = await ensureValidSession();
+    // Use pre-validated user from batch caller, or validate session if called individually
+    const user = preValidatedUser || await ensureValidSession();
     if (!user) {
       console.error('[Atomic Sync] No valid session - sync aborted for training:', trainingId);
-      return { success: false, skipped: true, reason: 'invalid_session' };
+      throw new Error('No valid session for sync');
     }
     
     // Skip trainings that don't belong to current user
@@ -954,13 +963,17 @@ export async function syncAllTrainingsAtomic() {
       });
       
       try {
-        // Per-item timeout
-        await Promise.race([
-          syncTrainingAtomic(training.id),
+        // Per-item timeout - pass pre-validated user to skip redundant session validation
+        const itemResult = await Promise.race([
+          syncTrainingAtomic(training.id, user as CachedUser),
           new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Item sync timeout')), ITEM_SYNC_TIMEOUT))
         ]);
-        successCount++;
-        synced = true;
+        if (itemResult && typeof itemResult === 'object' && (itemResult as any).skipped) {
+          synced = true;
+        } else {
+          successCount++;
+          synced = true;
+        }
         
         if (import.meta.env.DEV) {
           console.log(`[Atomic Sync] Synced training ${i + 1}/${unsynced.length}:`, training.id);
@@ -1002,7 +1015,7 @@ export async function syncAllTrainingsAtomic() {
 /**
  * Sync daily assessment with all related data atomically
  */
-export async function syncDailyAssessmentAtomic(assessmentId: string) {
+export async function syncDailyAssessmentAtomic(assessmentId: string, preValidatedUser?: CachedUser) {
   if (!navigator.onLine) {
     throw new Error("Cannot sync while offline");
   }
@@ -1014,12 +1027,11 @@ export async function syncDailyAssessmentAtomic(assessmentId: string) {
       throw new Error("Daily assessment not found in local storage");
     }
     
-    // CRITICAL: Ensure we have a valid JWT before any database operations
-    // This prevents RLS failures due to expired tokens on mobile
-    const user = await ensureValidSession();
+    // Use pre-validated user from batch caller, or validate session if called individually
+    const user = preValidatedUser || await ensureValidSession();
     if (!user) {
       console.error('[Atomic Sync] No valid session - sync aborted for assessment:', assessmentId);
-      return { success: false, skipped: true, reason: 'invalid_session' };
+      throw new Error('No valid session for sync');
     }
     
     // Skip assessments that don't belong to current user
@@ -1366,13 +1378,17 @@ export async function syncAllDailyAssessmentsAtomic() {
       });
       
       try {
-        // Per-item timeout
-        await Promise.race([
-          syncDailyAssessmentAtomic(assessment.id),
+        // Per-item timeout - pass pre-validated user to skip redundant session validation
+        const itemResult = await Promise.race([
+          syncDailyAssessmentAtomic(assessment.id, user as CachedUser),
           new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Item sync timeout')), ITEM_SYNC_TIMEOUT))
         ]);
-        successCount++;
-        synced = true;
+        if (itemResult && typeof itemResult === 'object' && (itemResult as any).skipped) {
+          synced = true;
+        } else {
+          successCount++;
+          synced = true;
+        }
         
         if (import.meta.env.DEV) {
           console.log(`[Atomic Sync] Synced daily assessment ${i + 1}/${unsynced.length}:`, assessment.id);
