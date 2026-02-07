@@ -1,61 +1,46 @@
 
 
-# Plan: Ensure Inspector Name Always Shows Report Creator - v2.4.11
+# Plan: Fix Deleted Reports Reappearing on Dashboard - v2.4.12
 
-## Problem
+## Root Cause
 
-The Inspector field in the form header shows "Current User" as a fallback when the inspector profile hasn't loaded yet or is unavailable (e.g., offline). Additionally, if only one of `first_name` or `last_name` is set (but not both), the name won't display due to the `&&` logic, falling back to "Current User" again.
+Two sources cause deleted reports to reappear after refresh:
+
+1. **Super Admin RLS Policy**: Regular users have `deleted_at IS NULL` in their RLS SELECT policies, so the database correctly hides deleted records for them. However, **super admins** have a separate policy (`Super admins can view deleted [table] for recovery`) that returns deleted records too. The dashboard queries don't filter these out, so deleted records reappear for super admins.
+
+2. **Offline Storage (IndexedDB)**: The parallel loading pattern shows IndexedDB-cached data first. The offline storage functions (`getOfflineInspections`, `getOfflineTrainings`, `getOfflineDailyAssessments`) never filter out records with a `deleted_at` field set. So even after a soft delete removes the record from IndexedDB, if the record was re-cached from a network fetch (which for super admins includes deleted records), it reappears.
 
 ## Solution
 
-Fix the name resolution logic in `InspectionHeader.tsx` to:
+### 1. Dashboard Supabase Queries - Filter out deleted records
 
-1. Use `||` instead of `&&` so a user with only a first name or only a last name still displays correctly.
-2. Add a "Loading..." fallback instead of "Current User" to make it clear the name is being fetched, not absent.
-3. Show the profile email or "Inspector" as a last-resort fallback rather than the misleading "Current User" text.
+Add `.is('deleted_at', null)` to all three dashboard queries (inspections, trainings, daily_assessments). This ensures that even for super admins (whose RLS allows seeing deleted records), the dashboard only shows active reports.
 
-## Technical Details
+**File: `src/pages/Dashboard.tsx`**
 
-### File: `src/components/inspection/InspectionHeader.tsx`
+- `loadInspections`: Add `.is('deleted_at', null)` to the Supabase query
+- `loadTrainingReports`: Add `.is('deleted_at', null)` to the Supabase query  
+- `loadDailyAssessments`: Add `.is('deleted_at', null)` to the Supabase query
 
-**Lines 19-21** -- Change the name resolution logic:
+### 2. Offline Storage - Filter out soft-deleted cached records
 
-Before:
-```typescript
-const inspectorName = userProfile?.first_name && userProfile?.last_name
-  ? `${userProfile.first_name} ${userProfile.last_name}`
-  : 'Current User';
-```
+Add `deleted_at` filtering to the three getter functions so IndexedDB never surfaces deleted records.
 
-After:
-```typescript
-const inspectorName = [userProfile?.first_name, userProfile?.last_name]
-  .filter(Boolean)
-  .join(' ')
-  .trim() || (userProfile ? 'Inspector' : 'Loading...');
-```
+**File: `src/lib/offline-storage.ts`**
 
-This ensures:
-- A user with only a first name shows that first name
-- A user with only a last name shows that last name
-- If a profile exists but has no name fields, it shows "Inspector"
-- If the profile hasn't loaded yet, it shows "Loading..."
+- `getOfflineInspections`: Filter out records where `deleted_at` is set
+- `getOfflineTrainings`: Filter out records where `deleted_at` is set (same pattern)
+- `getOfflineDailyAssessments`: Filter out records where `deleted_at` is set (same pattern)
 
-### File: `vite.config.ts`
+### 3. Version Bump
 
-Bump version to **v2.4.11**.
+**File: `vite.config.ts`** - Bump to v2.4.12
 
 ## Files Changed
 
 | File | Change |
 |------|--------|
-| `src/components/inspection/InspectionHeader.tsx` | Fix inspector name resolution logic |
-| `vite.config.ts` | Version bump to v2.4.11 |
-
-## What Stays the Same
-
-- The inspector field remains disabled/immutable in the UI
-- The `inspector_id` database trigger still prevents ID changes
-- The `inspectorProfile` is still fetched using the report's `inspector_id` (always the original creator)
-- Generated HTML and PDF reports are unaffected (they already resolve the name server-side from `inspector_id`)
+| `src/pages/Dashboard.tsx` | Add `.is('deleted_at', null)` filter to all 3 Supabase queries |
+| `src/lib/offline-storage.ts` | Filter out `deleted_at` records in all 3 getter functions |
+| `vite.config.ts` | Version bump to v2.4.12 |
 
