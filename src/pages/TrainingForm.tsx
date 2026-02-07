@@ -302,7 +302,21 @@ export default function TrainingForm() {
 
           if (trainingError) throw trainingError;
           
-          if (trainingData) {
+          // Determine if local data should take priority
+          const localIsNewer = offlineTraining && (
+            !offlineTraining.synced_at ||
+            (offlineTraining.updated_at && trainingData?.updated_at &&
+             new Date(offlineTraining.updated_at) > new Date(trainingData.updated_at))
+          );
+
+          if (localIsNewer) {
+            // Local data is newer - preserve local state, only accept server metadata
+            console.log('[TrainingForm] Local data is newer -- preserving local state');
+            if (trainingData) {
+              setTraining(prev => ({ ...prev, status: trainingData.status }));
+              setInspectorId(trainingData.inspector_id);
+            }
+          } else if (trainingData) {
             setTraining(trainingData);
             setInspectorId(trainingData.inspector_id);
             // Non-blocking cache update - don't await to prevent loading freeze

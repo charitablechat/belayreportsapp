@@ -9,9 +9,9 @@ import { pwaConfig } from "./vite-pwa-config";
 // - MINOR resets to .1 when reaching .10 (e.g., v2.9.9 → v3.1.1)
 // See src/lib/version-calculator.ts for implementation
 // v2.4.5 - Fixed equipment data loss: replaced object reference equality with ID-based matching
-   const APP_VERSION = "2.4.16";
+   const APP_VERSION = "2.4.17";
    const BUILD_DATE = "02-07-2026";
-   const BUILD_TIMESTAMP = "02-07-2026 at 11:00 PM CST";
+   const BUILD_TIMESTAMP = "02-07-2026 at 11:30 PM CST";
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
