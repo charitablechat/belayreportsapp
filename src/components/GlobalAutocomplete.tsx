@@ -12,8 +12,8 @@ import {
 } from "@/components/ui/command";
 import {
   Popover,
+  PopoverAnchor,
   PopoverContent,
-  PopoverTrigger,
 } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { supabase } from "@/integrations/supabase/client";
@@ -314,7 +314,7 @@ export function GlobalAutocomplete({
 
   return (
     <Popover open={open} onOpenChange={handleOpenChange}>
-      <PopoverTrigger asChild>
+      <PopoverAnchor asChild>
         <div className="relative w-full">
           <Input
             ref={triggerInputRef}
@@ -353,7 +353,7 @@ export function GlobalAutocomplete({
             <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
           </div>
         </div>
-      </PopoverTrigger>
+      </PopoverAnchor>
       <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
         <Command shouldFilter={false}>
           <CommandInput
