@@ -1,77 +1,59 @@
 
 
-# Polish Autocomplete Dropdown Styling
+# Polish All Inspection Header Fields
 
 ## Problem
 
-The dropdown list items look plain -- raw text with a bare "x" button. It lacks visual hierarchy, spacing, and refinement.
+The header fields (Inspector, Facility Name, Location, ACCT#, etc.) use plain default input styling -- flat white boxes with minimal visual definition. They lack the refinement seen in the recently polished autocomplete dropdown.
 
 ## Changes
 
-### File: `src/components/GlobalAutocomplete.tsx`
+### File: `src/components/inspection/InspectionHeader.tsx`
 
-**1. Improve each list item (lines ~404-427)**
+**1. Add consistent labels with better hierarchy**
 
-Give each `CommandItem` better padding, rounded corners, and a subtle separator between items. Add a cleaner layout with proper vertical alignment:
+Update the `Label` styling from `text-sm text-muted-foreground` to `text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1 block`. This gives labels a small-caps, defined look that clearly separates them from the input values.
 
+**2. Wrap each field group with subtle structure**
+
+Add a light background and rounded border to each field cell:
 ```tsx
-<CommandItem
-  key={option.id}
-  value={option.value}
-  onSelect={() => handleSelect(option.value)}
-  className="flex items-center justify-between cursor-pointer px-3 py-2.5 rounded-md mx-1 my-0.5"
->
-  <div className="flex items-center flex-1 min-w-0 gap-2">
-    <Check
-      className={cn(
-        "h-4 w-4 shrink-0 text-primary",
-        value === option.value ? "opacity-100" : "opacity-0"
-      )}
-    />
-    <span className="whitespace-nowrap text-sm font-medium">{option.value}</span>
-  </div>
-  <button
-    onClick={(e) => handleDelete(option, e)}
-    className="ml-3 shrink-0 text-muted-foreground/50 hover:text-destructive transition-colors p-1 rounded-sm hover:bg-destructive/10"
-    aria-label={`Remove ${option.value} from suggestions`}
-  >
-    <X className="h-3.5 w-3.5" />
-  </button>
-</CommandItem>
+<div className="space-y-1.5 p-3 rounded-lg bg-muted/30 border border-border/50">
 ```
 
-Key styling improvements:
-- `px-3 py-2.5` -- more generous padding for touch targets and breathing room
-- `rounded-md mx-1 my-0.5` -- subtle margins so items don't touch edges
-- `gap-2` -- consistent spacing between check icon and text
-- `text-sm font-medium` -- slightly bolder text for readability
-- `text-primary` on the check icon -- colored checkmark for selected item
-- Delete button: subdued by default (`text-muted-foreground/50`), with a soft red background on hover (`hover:bg-destructive/10`)
+This creates visually distinct "field cards" that group label + input together.
 
-**2. Refine the "Create new" item (lines ~390-398)**
+**3. Style the disabled Inspector field**
 
-Same spacing treatment for consistency:
-
+The Inspector field is always disabled. Give it a more intentional read-only appearance:
 ```tsx
-<CommandItem
-  onSelect={() => handleSelect(inputValue.trim())}
-  className="cursor-pointer px-3 py-2.5 rounded-md mx-1 my-0.5"
->
-  <Plus className="mr-2 h-4 w-4 text-primary" />
-  <span className="text-sm font-medium">Create "{inputValue.trim()}"</span>
-</CommandItem>
+className="bg-muted/50 cursor-not-allowed font-medium"
 ```
 
-**3. Add subtle padding to the PopoverContent (line ~366)**
+**4. Section heading for the two-column grid**
 
-Add a small vertical padding to the command list wrapper so items aren't flush against the border:
-
+Add a subtle heading above the fields grid:
 ```tsx
-<PopoverContent className="min-w-[--radix-popover-trigger-width] w-auto max-w-[calc(100vw-2rem)] p-0 shadow-lg border" align="start">
+<h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+  Report Details
+</h2>
 ```
 
-Adding `shadow-lg` and explicit `border` gives the dropdown more elevation and definition against the page.
+**5. Improve the "Known Course History" textarea section**
 
-## Summary
+Add a matching field-card wrapper so it visually aligns with the grid fields above.
 
-These are purely CSS/className changes within `GlobalAutocomplete.tsx`. No logic changes. The result is a cleaner, more polished dropdown with better spacing, visual hierarchy, and interactive feedback.
+**6. Clean up the Inspection Categories and Important Notes sections**
+
+These informational blocks can be simplified:
+- Give the categories section consistent card-like styling with the same `bg-muted/30 border` treatment
+- Tighten spacing between items
+
+### Summary of visual improvements
+
+- Labels: uppercase, smaller, tracked -- creates clear hierarchy
+- Field cells: subtle background + border grouping
+- Disabled fields: intentional read-only styling
+- Consistent spacing throughout the card
+- No logic changes -- purely CSS/className updates
+
