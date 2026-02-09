@@ -112,6 +112,13 @@ export default function NewInspection() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!formData.organization.trim() || !formData.location.trim()) {
+      toast.error("Required fields missing", {
+        description: "Organization and Location are required."
+      });
+      return;
+    }
      
      // Prevent double submission
      if (isSubmitting.current || loading) {
@@ -252,7 +259,7 @@ export default function NewInspection() {
             
             <form onSubmit={handleSubmit} className="space-y-6">
               <div className="space-y-2">
-                <Label htmlFor="organization">Organization</Label>
+                <Label htmlFor="organization">Organization <span className="text-destructive">*</span></Label>
                 <OrganizationAutocomplete
                   value={formData.organization}
                   onChange={(value) => setFormData(prev => ({ ...prev, organization: value }))}
@@ -261,7 +268,7 @@ export default function NewInspection() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="location">Location</Label>
+                <Label htmlFor="location">Location <span className="text-destructive">*</span></Label>
                 <div className="flex gap-2">
                   <Input
                     id="location"
