@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Check, ChevronsUpDown, Pencil, Trash2, Plus, X, Loader2 } from "lucide-react";
@@ -181,6 +181,7 @@ export const OrganizationAutocomplete = ({
     saveMutation.mutate(selectedValue);
     setOpen(false);
     setSearch("");
+    setIsEditing(false);
   };
 
   const handleEditClick = (e: React.MouseEvent, item: HistoryItem) => {
@@ -256,7 +257,7 @@ export const OrganizationAutocomplete = ({
   return (
     <>
       <Popover open={open} onOpenChange={handleOpenChange}>
-        <PopoverTrigger asChild>
+        <PopoverAnchor asChild>
           <div className="relative w-full">
             <Input
               ref={triggerInputRef}
@@ -307,7 +308,7 @@ export const OrganizationAutocomplete = ({
               <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
             </div>
           </div>
-        </PopoverTrigger>
+        </PopoverAnchor>
         <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
           <Command shouldFilter={false}>
             <CommandInput 

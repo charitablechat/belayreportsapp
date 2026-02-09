@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { RichTextEditor } from "@/components/ui/rich-text-editor";
+import { VoiceRichTextEditor } from "@/components/ui/voice-rich-text-editor";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -8,7 +8,7 @@ import ResultSelect from "@/components/ResultSelect";
 import { GlobalAutocomplete } from "@/components/GlobalAutocomplete";
 import { Plus, Trash2 } from "lucide-react";
 import { AnimatedTableRow, AnimatedListItem } from "@/components/ui/list-item-animation";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback, memo } from "react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -22,14 +22,14 @@ import {
 
 interface ZiplinesTableProps {
   ziplines: any[];
-  onUpdate: (ziplines: any[]) => void;
+  onUpdate: (ziplinesOrUpdater: any[] | ((prev: any[]) => any[])) => void;
   onImmediateSave?: () => void;
 }
 
-export default function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: ZiplinesTableProps) {
+function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: ZiplinesTableProps) {
   const [newItemIds, setNewItemIds] = useState<Set<string>>(new Set());
   const prevZiplinesLengthRef = useRef(ziplines.length);
-  const [itemToDelete, setItemToDelete] = useState<{ index: number; name: string } | null>(null);
+  const [itemToDelete, setItemToDelete] = useState<{ id: string; name: string } | null>(null);
 
   // Track newly added items for animation
   useEffect(() => {
@@ -37,7 +37,6 @@ export default function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: Z
       const latestZipline = ziplines[0];
       if (latestZipline?.id) {
         setNewItemIds(prev => new Set(prev).add(latestZipline.id));
-        // Clear the "new" status after animation completes
         setTimeout(() => {
           setNewItemIds(prev => {
             const next = new Set(prev);
@@ -50,8 +49,8 @@ export default function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: Z
     prevZiplinesLengthRef.current = ziplines.length;
   }, [ziplines.length]);
 
-  const addZipline = () => {
-    onUpdate([
+  const addZipline = useCallback(() => {
+    onUpdate(prev => [
       {
         id: `temp-${crypto.randomUUID()}`,
         inspection_id: window.location.pathname.split('/').pop(),
@@ -68,24 +67,23 @@ export default function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: Z
         result: "pass",
         comments: "",
       },
-      ...ziplines,
+      ...prev,
     ]);
-  };
+  }, [onUpdate]);
 
-  const updateZipline = (index: number, field: string, value: any) => {
-    const updated = [...ziplines];
-    updated[index] = { ...updated[index], [field]: value };
-    onUpdate(updated);
-  };
+  const updateZipline = useCallback((item: any, field: string, value: any) => {
+    onUpdate(prev => prev.map(z =>
+      z.id === item.id ? { ...z, [field]: value } : z
+    ));
+  }, [onUpdate]);
 
-  const handleDeleteConfirm = () => {
+  const handleDeleteConfirm = useCallback(() => {
     if (itemToDelete) {
-      const updated = ziplines.filter((_, i) => i !== itemToDelete.index);
-      onUpdate(updated);
+      onUpdate(prev => prev.filter(z => z.id !== itemToDelete.id));
       onImmediateSave?.();
       setItemToDelete(null);
     }
-  };
+  }, [itemToDelete, onUpdate, onImmediateSave]);
 
   return (
     <Card>
@@ -136,7 +134,7 @@ export default function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: Z
                   <td className="border p-1">
                     <GlobalAutocomplete
                       value={zipline.zipline_name}
-                      onChange={(value) => updateZipline(index, "zipline_name", value)}
+                      onChange={(value) => updateZipline(zipline, "zipline_name", value)}
                       onBlur={onImmediateSave}
                       fieldType="zipline_name"
                       placeholder="Name"
@@ -146,7 +144,7 @@ export default function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: Z
                   <td className="border p-1">
                     <Select
                       value={zipline.cable_type}
-                      onValueChange={(value) => updateZipline(index, "cable_type", value)}
+                      onValueChange={(value) => updateZipline(zipline, "cable_type", value)}
                     >
                       <SelectTrigger className="h-8 text-xs border-0 bg-transparent">
                         <SelectValue placeholder="Type" />
@@ -161,7 +159,7 @@ export default function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: Z
                     <Input
                       type="number"
                       value={zipline.cable_length || ""}
-                      onChange={(e) => updateZipline(index, "cable_length", parseFloat(e.target.value) || null)}
+                      onChange={(e) => updateZipline(zipline, "cable_length", parseFloat(e.target.value) || null)}
                       onBlur={onImmediateSave}
                       onKeyDown={(e) => e.key === 'Enter' && onImmediateSave?.()}
                       placeholder="ft"
@@ -172,7 +170,7 @@ export default function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: Z
                     <Input
                       type="number"
                       value={zipline.unload_tension || ""}
-                      onChange={(e) => updateZipline(index, "unload_tension", parseFloat(e.target.value) || null)}
+                      onChange={(e) => updateZipline(zipline, "unload_tension", parseFloat(e.target.value) || null)}
                       onBlur={onImmediateSave}
                       onKeyDown={(e) => e.key === 'Enter' && onImmediateSave?.()}
                       placeholder="lbf"
@@ -183,7 +181,7 @@ export default function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: Z
                     <Input
                       type="number"
                       value={zipline.load_tension || ""}
-                      onChange={(e) => updateZipline(index, "load_tension", parseFloat(e.target.value) || null)}
+                      onChange={(e) => updateZipline(zipline, "load_tension", parseFloat(e.target.value) || null)}
                       onBlur={onImmediateSave}
                       onKeyDown={(e) => e.key === 'Enter' && onImmediateSave?.()}
                       placeholder="lbf"
@@ -193,13 +191,13 @@ export default function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: Z
                   <td className="border p-1">
                     <ResultSelect
                       value={zipline.cable_result}
-                      onChange={(value) => updateZipline(index, "cable_result", value)}
+                      onChange={(value) => updateZipline(zipline, "cable_result", value)}
                     />
                   </td>
                   <td className="border p-1">
                     <Select
                       value={zipline.braking_system}
-                      onValueChange={(value) => updateZipline(index, "braking_system", value)}
+                      onValueChange={(value) => updateZipline(zipline, "braking_system", value)}
                     >
                       <SelectTrigger className="h-8 text-xs border-0 bg-transparent">
                         <SelectValue placeholder="Sys" />
@@ -215,13 +213,13 @@ export default function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: Z
                   <td className="border p-1">
                     <ResultSelect
                       value={zipline.braking_result}
-                      onChange={(value) => updateZipline(index, "braking_result", value)}
+                      onChange={(value) => updateZipline(zipline, "braking_result", value)}
                     />
                   </td>
                   <td className="border p-1">
                     <Select
                       value={zipline.ead_system}
-                      onValueChange={(value) => updateZipline(index, "ead_system", value)}
+                      onValueChange={(value) => updateZipline(zipline, "ead_system", value)}
                     >
                       <SelectTrigger className="h-8 text-xs border-0 bg-transparent">
                         <SelectValue placeholder="Sys" />
@@ -235,19 +233,19 @@ export default function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: Z
                   <td className="border p-1">
                     <ResultSelect
                       value={zipline.ead_result}
-                      onChange={(value) => updateZipline(index, "ead_result", value)}
+                      onChange={(value) => updateZipline(zipline, "ead_result", value)}
                     />
                   </td>
                   <td className="border p-1">
                     <ResultSelect
                       value={zipline.result}
-                      onChange={(value) => updateZipline(index, "result", value)}
+                      onChange={(value) => updateZipline(zipline, "result", value)}
                     />
                   </td>
                   <td className="border p-1">
-                    <RichTextEditor
+                    <VoiceRichTextEditor
                       content={zipline.comments || ""}
-                      onChange={(value) => updateZipline(index, "comments", value)}
+                      onChange={(value) => updateZipline(zipline, "comments", value)}
                       placeholder="Comments..."
                       className="border-0 bg-transparent"
                     />
@@ -256,7 +254,7 @@ export default function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: Z
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => setItemToDelete({ index, name: zipline.zipline_name || "this zipline" })}
+                      onClick={() => setItemToDelete({ id: zipline.id, name: zipline.zipline_name || "this zipline" })}
                       className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
                     >
                       <Trash2 className="h-4 w-4" />
@@ -280,7 +278,7 @@ export default function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: Z
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => setItemToDelete({ index, name: zipline.zipline_name || "this zipline" })}
+                onClick={() => setItemToDelete({ id: zipline.id, name: zipline.zipline_name || "this zipline" })}
                 className="absolute top-3 right-3 h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
               >
                 <Trash2 className="h-4 w-4" />
@@ -290,7 +288,7 @@ export default function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: Z
                   <Label className="text-xs text-muted-foreground">Line Name</Label>
                   <GlobalAutocomplete
                     value={zipline.zipline_name}
-                    onChange={(value) => updateZipline(index, "zipline_name", value)}
+                    onChange={(value) => updateZipline(zipline, "zipline_name", value)}
                     onBlur={onImmediateSave}
                     fieldType="zipline_name"
                     placeholder="Enter or select name"
@@ -302,7 +300,7 @@ export default function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: Z
                     <Label className="text-xs text-muted-foreground">Cable Type</Label>
                     <Select
                       value={zipline.cable_type}
-                      onValueChange={(value) => updateZipline(index, "cable_type", value)}
+                      onValueChange={(value) => updateZipline(zipline, "cable_type", value)}
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="Type" />
@@ -319,7 +317,7 @@ export default function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: Z
                     <Input
                       type="number"
                       value={zipline.cable_length || ""}
-                      onChange={(e) => updateZipline(index, "cable_length", parseFloat(e.target.value) || null)}
+                      onChange={(e) => updateZipline(zipline, "cable_length", parseFloat(e.target.value) || null)}
                       onBlur={onImmediateSave}
                       onKeyDown={(e) => e.key === 'Enter' && onImmediateSave?.()}
                       placeholder="Length"
@@ -333,7 +331,7 @@ export default function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: Z
                     <Input
                       type="number"
                       value={zipline.unload_tension || ""}
-                      onChange={(e) => updateZipline(index, "unload_tension", parseFloat(e.target.value) || null)}
+                      onChange={(e) => updateZipline(zipline, "unload_tension", parseFloat(e.target.value) || null)}
                       onBlur={onImmediateSave}
                       onKeyDown={(e) => e.key === 'Enter' && onImmediateSave?.()}
                       placeholder="Unload"
@@ -345,7 +343,7 @@ export default function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: Z
                     <Input
                       type="number"
                       value={zipline.load_tension || ""}
-                      onChange={(e) => updateZipline(index, "load_tension", parseFloat(e.target.value) || null)}
+                      onChange={(e) => updateZipline(zipline, "load_tension", parseFloat(e.target.value) || null)}
                       onBlur={onImmediateSave}
                       onKeyDown={(e) => e.key === 'Enter' && onImmediateSave?.()}
                       placeholder="Load"
@@ -357,7 +355,7 @@ export default function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: Z
                   <Label className="text-xs text-muted-foreground">Cable Result</Label>
                   <ResultSelect
                     value={zipline.cable_result}
-                    onChange={(value) => updateZipline(index, "cable_result", value)}
+                    onChange={(value) => updateZipline(zipline, "cable_result", value)}
                   />
                 </div>
                 
@@ -366,7 +364,7 @@ export default function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: Z
                     <Label className="text-xs text-muted-foreground">Braking Sys</Label>
                     <Select
                       value={zipline.braking_system}
-                      onValueChange={(value) => updateZipline(index, "braking_system", value)}
+                      onValueChange={(value) => updateZipline(zipline, "braking_system", value)}
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="System" />
@@ -384,7 +382,7 @@ export default function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: Z
                     <Label className="text-xs text-muted-foreground">Brake Result</Label>
                     <ResultSelect
                       value={zipline.braking_result}
-                      onChange={(value) => updateZipline(index, "braking_result", value)}
+                      onChange={(value) => updateZipline(zipline, "braking_result", value)}
                     />
                   </div>
                 </div>
@@ -394,7 +392,7 @@ export default function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: Z
                     <Label className="text-xs text-muted-foreground">EAD Sys</Label>
                     <Select
                       value={zipline.ead_system}
-                      onValueChange={(value) => updateZipline(index, "ead_system", value)}
+                      onValueChange={(value) => updateZipline(zipline, "ead_system", value)}
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="System" />
@@ -410,7 +408,7 @@ export default function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: Z
                     <Label className="text-xs text-muted-foreground">EAD Result</Label>
                     <ResultSelect
                       value={zipline.ead_result}
-                      onChange={(value) => updateZipline(index, "ead_result", value)}
+                      onChange={(value) => updateZipline(zipline, "ead_result", value)}
                     />
                   </div>
                 </div>
@@ -419,15 +417,15 @@ export default function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: Z
                   <Label className="text-xs text-muted-foreground">Overall Result</Label>
                   <ResultSelect
                     value={zipline.result}
-                    onChange={(value) => updateZipline(index, "result", value)}
+                    onChange={(value) => updateZipline(zipline, "result", value)}
                   />
                 </div>
                 
                 <div>
                   <Label className="text-xs text-muted-foreground">Comments / Changes</Label>
-                  <RichTextEditor
+                  <VoiceRichTextEditor
                     content={zipline.comments || ""}
-                    onChange={(value) => updateZipline(index, "comments", value)}
+                    onChange={(value) => updateZipline(zipline, "comments", value)}
                     placeholder="Enter comments..."
                   />
                 </div>
@@ -469,3 +467,5 @@ export default function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: Z
     </Card>
   );
 }
+
+export default memo(ZiplinesTable);

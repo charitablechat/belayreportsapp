@@ -7,7 +7,7 @@ import SystemTypeSelect from "@/components/SystemTypeSelect";
 import { GlobalAutocomplete } from "@/components/GlobalAutocomplete";
 import { Plus, Trash2 } from "lucide-react";
 import { AnimatedTableRow, AnimatedListItem } from "@/components/ui/list-item-animation";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback, memo } from "react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -21,14 +21,14 @@ import {
 
 interface OperatingSystemsTableProps {
   systems: any[];
-  onUpdate: (systems: any[]) => void;
+  onUpdate: (systemsOrUpdater: any[] | ((prev: any[]) => any[])) => void;
   onImmediateSave?: () => void;
 }
 
-export default function OperatingSystemsTable({ systems, onUpdate, onImmediateSave }: OperatingSystemsTableProps) {
+function OperatingSystemsTable({ systems, onUpdate, onImmediateSave }: OperatingSystemsTableProps) {
   const [newItemIds, setNewItemIds] = useState<Set<string>>(new Set());
   const prevSystemsLengthRef = useRef(systems.length);
-  const [itemToDelete, setItemToDelete] = useState<{ index: number; name: string } | null>(null);
+  const [itemToDelete, setItemToDelete] = useState<{ id: string; name: string } | null>(null);
 
   // Track newly added items for animation
   useEffect(() => {
@@ -49,8 +49,8 @@ export default function OperatingSystemsTable({ systems, onUpdate, onImmediateSa
     prevSystemsLengthRef.current = systems.length;
   }, [systems.length]);
 
-  const addSystem = () => {
-    onUpdate([
+  const addSystem = useCallback(() => {
+    onUpdate(prev => [
       { 
         id: `temp-${crypto.randomUUID()}`,
         inspection_id: window.location.pathname.split('/').pop(),
@@ -58,24 +58,23 @@ export default function OperatingSystemsTable({ systems, onUpdate, onImmediateSa
         result: "pass", 
         comments: "" 
       },
-      ...systems
+      ...prev
     ]);
-  };
+  }, [onUpdate]);
 
-  const updateSystem = (index: number, field: string, value: any) => {
-    const updated = [...systems];
-    updated[index] = { ...updated[index], [field]: value };
-    onUpdate(updated);
-  };
+  const updateSystem = useCallback((item: any, field: string, value: any) => {
+    onUpdate(prev => prev.map(s =>
+      s.id === item.id ? { ...s, [field]: value } : s
+    ));
+  }, [onUpdate]);
 
-  const handleDeleteConfirm = () => {
+  const handleDeleteConfirm = useCallback(() => {
     if (itemToDelete) {
-      const updated = systems.filter((_, i) => i !== itemToDelete.index);
-      onUpdate(updated);
+      onUpdate(prev => prev.filter(s => s.id !== itemToDelete.id));
       onImmediateSave?.();
       setItemToDelete(null);
     }
-  };
+  }, [itemToDelete, onUpdate, onImmediateSave]);
 
   return (
     <Card>
@@ -112,7 +111,7 @@ export default function OperatingSystemsTable({ systems, onUpdate, onImmediateSa
                   <td className="border p-2">
                     <GlobalAutocomplete
                       value={system.name || ""}
-                      onChange={(value) => updateSystem(index, "name", value)}
+                      onChange={(value) => updateSystem(system, "name", value)}
                       onBlur={onImmediateSave}
                       fieldType="operating_system_element"
                       placeholder="Enter or select name"
@@ -122,19 +121,19 @@ export default function OperatingSystemsTable({ systems, onUpdate, onImmediateSa
                   <td className="border p-2">
                     <SystemTypeSelect
                       value={system.system_name}
-                      onChange={(value) => updateSystem(index, "system_name", value)}
+                      onChange={(value) => updateSystem(system, "system_name", value)}
                     />
                   </td>
                   <td className="border p-2">
                     <ResultSelect
                       value={system.result}
-                      onChange={(value) => updateSystem(index, "result", value)}
+                      onChange={(value) => updateSystem(system, "result", value)}
                     />
                   </td>
                   <td className="border p-2">
                     <VoiceRichTextEditor
                       content={system.comments || ""}
-                      onChange={(value) => updateSystem(index, "comments", value)}
+                      onChange={(value) => updateSystem(system, "comments", value)}
                       placeholder="Enter comments..."
                       className="border-0 bg-transparent"
                     />
@@ -143,7 +142,7 @@ export default function OperatingSystemsTable({ systems, onUpdate, onImmediateSa
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => setItemToDelete({ index, name: system.name || system.system_name || "this system" })}
+                    onClick={() => setItemToDelete({ id: system.id, name: system.name || system.system_name || "this system" })}
                       className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
                     >
                       <Trash2 className="h-4 w-4" />
@@ -167,7 +166,7 @@ export default function OperatingSystemsTable({ systems, onUpdate, onImmediateSa
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => setItemToDelete({ index, name: system.name || system.system_name || "this system" })}
+                onClick={() => setItemToDelete({ id: system.id, name: system.name || system.system_name || "this system" })}
                 className="absolute top-3 right-3 h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
               >
                 <Trash2 className="h-4 w-4" />
@@ -175,9 +174,9 @@ export default function OperatingSystemsTable({ systems, onUpdate, onImmediateSa
               <div className="space-y-3 pr-10">
                 <div>
                   <Label className="text-xs text-muted-foreground">Element Name</Label>
-                  <GlobalAutocomplete
+                    <GlobalAutocomplete
                     value={system.name || ""}
-                    onChange={(value) => updateSystem(index, "name", value)}
+                    onChange={(value) => updateSystem(system, "name", value)}
                     onBlur={onImmediateSave}
                     fieldType="operating_system_element"
                     placeholder="Enter or select name"
@@ -188,7 +187,7 @@ export default function OperatingSystemsTable({ systems, onUpdate, onImmediateSa
                   <Label className="text-xs text-muted-foreground">Operating System</Label>
                   <SystemTypeSelect
                     value={system.system_name}
-                    onChange={(value) => updateSystem(index, "system_name", value)}
+                    onChange={(value) => updateSystem(system, "system_name", value)}
                   />
                 </div>
                 
@@ -196,7 +195,7 @@ export default function OperatingSystemsTable({ systems, onUpdate, onImmediateSa
                   <Label className="text-xs text-muted-foreground">Result</Label>
                   <ResultSelect
                     value={system.result}
-                    onChange={(value) => updateSystem(index, "result", value)}
+                    onChange={(value) => updateSystem(system, "result", value)}
                   />
                 </div>
                 
@@ -204,7 +203,7 @@ export default function OperatingSystemsTable({ systems, onUpdate, onImmediateSa
                   <Label className="text-xs text-muted-foreground">Comments / Changes</Label>
                   <VoiceRichTextEditor
                     content={system.comments || ""}
-                    onChange={(value) => updateSystem(index, "comments", value)}
+                    onChange={(value) => updateSystem(system, "comments", value)}
                     placeholder="Enter comments..."
                   />
                 </div>
@@ -246,3 +245,5 @@ export default function OperatingSystemsTable({ systems, onUpdate, onImmediateSa
     </Card>
   );
 }
+
+export default memo(OperatingSystemsTable);
