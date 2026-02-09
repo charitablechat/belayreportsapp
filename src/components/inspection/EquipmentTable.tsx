@@ -173,8 +173,17 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
                         <>
                           <Input
                             type="number"
+                            min={1900}
+                            max={2100}
                             value={item.production_year || ""}
-                            onChange={(e) => updateEquipment(item, "production_year", parseInt(e.target.value) || null)}
+                            onChange={(e) => {
+                              const raw = e.target.value;
+                              if (raw === "") { updateEquipment(item, "production_year", null); return; }
+                              const val = parseInt(raw, 10);
+                              if (!isNaN(val) && val >= 1900 && val <= 2100) {
+                                updateEquipment(item, "production_year", val);
+                              }
+                            }}
                             onBlur={onImmediateSave}
                             onKeyDown={(e) => e.key === 'Enter' && onImmediateSave?.()}
                             placeholder="Year"
@@ -195,8 +204,16 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
                   <td className="border p-2">
                     <Input
                       type="number"
+                      min={1}
                       value={item.quantity || ""}
-                      onChange={(e) => updateEquipment(item, "quantity", parseInt(e.target.value) || null)}
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        if (raw === "") { updateEquipment(item, "quantity", null); return; }
+                        const val = parseInt(raw, 10);
+                        if (!isNaN(val) && val >= 1) {
+                          updateEquipment(item, "quantity", val);
+                        }
+                      }}
                       onBlur={onImmediateSave}
                       onKeyDown={(e) => e.key === 'Enter' && onImmediateSave?.()}
                       placeholder="Qty"
@@ -289,8 +306,17 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
                           <>
                             <Input
                               type="number"
+                              min={1900}
+                              max={2100}
                               value={item.production_year || ""}
-                              onChange={(e) => updateEquipment(item, "production_year", parseInt(e.target.value) || null)}
+                              onChange={(e) => {
+                                const raw = e.target.value;
+                                if (raw === "") { updateEquipment(item, "production_year", null); return; }
+                                const val = parseInt(raw, 10);
+                                if (!isNaN(val) && val >= 1900 && val <= 2100) {
+                                  updateEquipment(item, "production_year", val);
+                                }
+                              }}
                               onBlur={onImmediateSave}
                               onKeyDown={(e) => e.key === 'Enter' && onImmediateSave?.()}
                               placeholder="Year"
@@ -313,8 +339,16 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
                       <Label className="text-xs text-muted-foreground">Quantity</Label>
                       <Input
                         type="number"
+                        min={1}
                         value={item.quantity || ""}
-                        onChange={(e) => updateEquipment(item, "quantity", parseInt(e.target.value) || null)}
+                        onChange={(e) => {
+                          const raw = e.target.value;
+                          if (raw === "") { updateEquipment(item, "quantity", null); return; }
+                          const val = parseInt(raw, 10);
+                          if (!isNaN(val) && val >= 1) {
+                            updateEquipment(item, "quantity", val);
+                          }
+                        }}
                         onBlur={onImmediateSave}
                         onKeyDown={(e) => e.key === 'Enter' && onImmediateSave?.()}
                         placeholder="Qty"
