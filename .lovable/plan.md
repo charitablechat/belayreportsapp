@@ -1,93 +1,60 @@
 
 
-# Fix Data Quality: Production Year & Quantity Validation
+# Fix Real Bugs in Inspection Report
 
-## Overview
+After thorough code review, only 2 of the 6 reported issues are actual bugs. The other 4 are either already fixed or working correctly. Here is the assessment and fix plan:
 
-Add UI-level input validation to prevent invalid production years and negative quantities, plus a one-time SQL migration to correct 4 corrupted records already in the database.
+## Assessment of All 6 Reported Bugs
+
+| # | Bug | Status | Notes |
+|---|-----|--------|-------|
+| 1 | Form validation for New Inspections | **REAL BUG** | No validation on Organization/Location before submit |
+| 2 | Broken Equipment Tab Navigation | **Not a bug** | Radix Tabs with `value`/`onValueChange` works correctly |
+| 3 | Facility Name Combobox State Retention | **Already fixed** | `PopoverAnchor` + `setIsEditing(false)` already applied |
+| 4 | Location Field Keyboard Input | **Not a bug** | Standard `<Input>` with `onChange` handler works correctly |
+| 5 | Unsaved Changes Warning on Completed | **REAL BUG** | No status check -- warning fires on completed reports |
+| 6 | PDF Download button inert | **By design** | PDF button intentionally commented out; HTML Download button in report viewer works correctly |
 
 ---
 
-## 1. UI Validation -- Production Year (EquipmentTable.tsx)
+## Fix 1: Add Validation to New Inspection Form
 
-Replace the raw `parseInt` handler on all 4 production_year inputs (2 desktop, 2 mobile) with a validating handler that:
-- Allows empty input (clears to `null`)
-- Rejects values outside the 1900--2100 range
-- Clamps `maxLength` to 4 digits via `min`/`max` HTML attributes as a first defense
+**File:** `src/pages/NewInspection.tsx`
 
-**Current code (4 locations -- lines 177, 293 for onChange; lines 175, 291 for the Input):**
-```typescript
-onChange={(e) => updateEquipment(item, "production_year", parseInt(e.target.value) || null)}
-```
+Add validation at the top of `handleSubmit` (before the `isSubmitting` guard) to check that `organization` and `location` are non-empty. Display a toast error and return early if either is blank.
 
-**New code:**
-```typescript
-onChange={(e) => {
-  const raw = e.target.value;
-  if (raw === "") { updateEquipment(item, "production_year", null); return; }
-  const val = parseInt(raw, 10);
-  if (!isNaN(val) && val >= 1900 && val <= 2100) {
-    updateEquipment(item, "production_year", val);
+Also add visual "required" indicators (asterisks) to the Organization and Location labels.
+
+**Changes:**
+- Add validation check inside `handleSubmit`:
+  ```typescript
+  if (!formData.organization.trim() || !formData.location.trim()) {
+    toast.error("Required fields missing", {
+      description: "Organization and Location are required."
+    });
+    return;
   }
-}}
-```
-
-Also add `min={1900} max={2100}` attributes to the `<Input>` elements as browser-level guardrails.
+  ```
+- Add asterisks to the Organization and Location `<Label>` elements
 
 ---
 
-## 2. UI Validation -- Quantity (EquipmentTable.tsx)
+## Fix 2: Suppress Unsaved Changes Warning on Completed Reports
 
-Replace the raw `parseInt` handler on all 2 quantity inputs (1 desktop line 199, 1 mobile line 317) with:
+**File:** `src/pages/InspectionForm.tsx`
 
-**Current:**
+The `useUnsavedChanges` hook at line 157 receives `hasUnsavedChanges` with no status check. When a completed report triggers internal updates (e.g., summary auto-regeneration), the warning dialog appears incorrectly.
+
+**Change:** Pass `hasUnsavedChanges && inspection?.status !== 'completed'` to the hook:
+
 ```typescript
-onChange={(e) => updateEquipment(item, "quantity", parseInt(e.target.value) || null)}
+const { isBlocked, confirmNavigation, cancelNavigation } = useUnsavedChanges({
+  hasUnsavedChanges: hasUnsavedChanges && inspection?.status !== 'completed',
+  message: "You have unsaved changes to this inspection. Are you sure you want to leave?",
+});
 ```
 
-**New:**
-```typescript
-onChange={(e) => {
-  const raw = e.target.value;
-  if (raw === "") { updateEquipment(item, "quantity", null); return; }
-  const val = parseInt(raw, 10);
-  if (!isNaN(val) && val >= 1) {
-    updateEquipment(item, "quantity", val);
-  }
-}}
-```
-
-Also add `min={1}` to the `<Input>` elements.
-
----
-
-## 3. One-Time SQL Migration
-
-Correct the 4 known corrupted records:
-
-```sql
--- Fix production_year values that were entered as MMDDYYYY instead of YYYY
-UPDATE public.inspection_equipment
-SET production_year = 2024
-WHERE id IN (
-  '75835ff6-a8b0-4765-a76e-7f4ee22c26b1',
-  '7bdb315f-13e2-4f6e-8dba-4f67d7fbeaaa',
-  '9d9da640-a1b3-4808-8d2a-7a5b51df53e9'
-)
-AND production_year NOT BETWEEN 1900 AND 2100;
-
--- Fix negative quantity
-UPDATE public.inspection_equipment
-SET quantity = 1
-WHERE id = '1cac4962-37b5-4b7d-a65d-ced6fc72da58'
-AND quantity < 1;
-```
-
----
-
-## 4. Zod Schema Update (validation-schemas.ts)
-
-The existing Zod schema already validates `production_year` with a range check, but `quantity` only checks `.positive()`. No changes needed -- both schemas already reject invalid values at the sync/validation layer. The UI fix prevents bad data from reaching the schema in the first place.
+This ensures the warning only appears for draft reports with pending modifications.
 
 ---
 
@@ -95,13 +62,14 @@ The existing Zod schema already validates `production_year` with a range check, 
 
 | File | Change |
 |------|--------|
-| `src/components/inspection/EquipmentTable.tsx` | Add range validation to 4 production_year inputs and 2 quantity inputs; add `min`/`max` HTML attributes |
-| SQL migration | One-time fix for 4 corrupted records |
+| `src/pages/NewInspection.tsx` | Add required field validation + visual indicators |
+| `src/pages/InspectionForm.tsx` | Suppress unsaved changes warning for completed reports |
 
 ## What This Does NOT Change
 
-- No changes to save logic, auto-save timing, or `isInternalUpdateRef`
-- No changes to other components (Systems, Ziplines, Standards)
-- No changes to the Zod validation schema (already correct)
-- No new dependencies
+- No changes to tab navigation (already working)
+- No changes to OrganizationAutocomplete (already fixed)
+- No changes to Location input (already working)
+- No changes to PDF/HTML download (HTML download works; PDF is intentionally hidden)
+- No changes to auto-save, auth, or report generation logic
 
