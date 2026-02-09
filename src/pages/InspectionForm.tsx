@@ -2078,20 +2078,20 @@ export default function InspectionForm() {
           setVisitedTabs(prev => new Set([...prev, tab]));
         }} className="space-y-6 mt-6">
           <div ref={swipeContainerRef}>
-            <TabsList className="grid grid-cols-2 lg:grid-cols-4 w-full gap-1 lg:gap-0 h-auto p-1.5 lg:p-1 bg-muted/80 border-b-2 border-border">
-              <TabsTrigger value="details" className="text-xs lg:text-sm py-2 flex flex-col lg:flex-row items-center gap-1 lg:gap-1.5 text-muted-foreground hover:text-foreground data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:font-semibold">
+            <TabsList className="grid grid-cols-2 lg:grid-cols-4 w-full gap-1 lg:gap-0 h-auto p-1.5 lg:p-1 bg-zinc-800 border-b-2 border-zinc-700 rounded-lg">
+              <TabsTrigger value="details" className="text-xs lg:text-sm py-2 flex flex-col lg:flex-row items-center gap-1 lg:gap-1.5 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-700 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-md data-[state=active]:font-semibold">
                 <Settings className="h-3.5 w-3.5" />
                 <span>{isMobileView ? "Systems" : "Systems - Ziplines"}</span>
               </TabsTrigger>
-              <TabsTrigger value="equipment" className="text-xs lg:text-sm py-2 flex flex-col lg:flex-row items-center gap-1 lg:gap-1.5 text-muted-foreground hover:text-foreground data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:font-semibold">
+              <TabsTrigger value="equipment" className="text-xs lg:text-sm py-2 flex flex-col lg:flex-row items-center gap-1 lg:gap-1.5 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-700 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-md data-[state=active]:font-semibold">
                 <Package className="h-3.5 w-3.5" />
                 <span>Equipment</span>
               </TabsTrigger>
-              <TabsTrigger value="standards" className="text-xs lg:text-sm py-2 flex flex-col lg:flex-row items-center gap-1 lg:gap-1.5 text-muted-foreground hover:text-foreground data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:font-semibold">
+              <TabsTrigger value="standards" className="text-xs lg:text-sm py-2 flex flex-col lg:flex-row items-center gap-1 lg:gap-1.5 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-700 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-md data-[state=active]:font-semibold">
                 <ClipboardList className="h-3.5 w-3.5" />
                 <span>{isMobileView ? "Criteria" : "Operations Criteria"}</span>
               </TabsTrigger>
-              <TabsTrigger value="summary" className="text-xs lg:text-sm py-2 flex flex-col lg:flex-row items-center gap-1 lg:gap-1.5 text-muted-foreground hover:text-foreground data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:font-semibold">
+              <TabsTrigger value="summary" className="text-xs lg:text-sm py-2 flex flex-col lg:flex-row items-center gap-1 lg:gap-1.5 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-700 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-md data-[state=active]:font-semibold">
                 <FileCheck className="h-3.5 w-3.5" />
                 <span>Summary</span>
               </TabsTrigger>
