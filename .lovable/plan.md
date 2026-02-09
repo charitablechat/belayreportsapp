@@ -1,46 +1,32 @@
 
 
-# Fix: Equipment Quantity Data Loss (Stale Closure Bug)
+# Improve Inspection Form Tab Visibility
 
 ## Problem
+The 4 category tabs (Systems - Ziplines, Equipment, Operations Criteria, Summary) blend into the background. The active tab is barely distinguishable from inactive tabs -- both use very light, low-contrast colors.
 
-All 8 `EquipmentTable` components share one `equipment` state array via `setEquipment`. Each component captures `equipment` in its `useCallback` closure. Because the component is wrapped in `React.memo()`, when one table updates `equipment`, the other 7 tables still hold the **old** `equipment` reference until React re-renders them.
+## Solution
+Apply stronger visual differentiation directly on the `TabsList` and `TabsTrigger` elements in `InspectionForm.tsx`:
 
-Any operation (edit, add, delete) in a second table before the re-render completes will derive its new array from the **stale** prop, silently dropping the first table's changes. This is why quantities disappear -- the upsert sends `quantity: null` from the stale array, overwriting what you entered.
+**Inactive tabs**: Add a slightly darker text color and a subtle bottom border so they read as clickable navigation items.
 
-## Root Cause (Technical)
+**Active tab**: Use a bold primary-colored bottom border (like an underline indicator), primary text color, and a slightly elevated background -- making it immediately obvious which tab is selected.
 
-In `src/components/inspection/EquipmentTable.tsx`, lines 75-106, three callbacks read `equipment` directly from the prop closure:
+**Icons**: Active tab icons switch to primary color; inactive icons stay muted.
 
-```text
-updateEquipment:  equipment.map(eq => ...)      -- line 93
-addEquipment:     [...equipment]                 -- line 87
-handleDeleteConfirm: equipment.filter(eq => ...) -- line 101
-```
+## Technical Changes
 
-Since `onUpdate` is `setEquipment` (a React state setter), it accepts **functional updates** (`prev => newValue`), which always receive the latest committed state -- not a stale closure.
+**File: `src/pages/InspectionForm.tsx`** (lines 2058-2074)
 
-## Fix
+1. **TabsList**: Add a visible bottom border and slightly more contrast:
+   - Change from default `bg-muted` to `bg-muted/80` with a `border-b-2 border-border`
 
-**File: `src/components/inspection/EquipmentTable.tsx`**
+2. **Each TabsTrigger**: Add active-state styling using Tailwind's `data-[state=active]:` modifier:
+   - `data-[state=active]:bg-primary/10` -- light primary tint background
+   - `data-[state=active]:text-primary` -- primary color text
+   - `data-[state=active]:border-b-2 data-[state=active]:border-primary` -- bold underline indicator
+   - `data-[state=active]:font-semibold` -- bolder text weight
+   - `text-muted-foreground` on inactive state for clearer contrast with active
+   - `hover:text-foreground` for hover feedback
 
-Convert all three callbacks to use functional state updates:
-
-### 1. `addEquipment` (line 75-89)
-Change from `onUpdate([newItem, ...equipment])` to `onUpdate(prev => [newItem, ...prev])`. Remove `equipment` from the dependency array.
-
-### 2. `updateEquipment` (line 92-97)
-Change from `onUpdate(equipment.map(...))` to `onUpdate(prev => prev.map(...))`. Remove `equipment` from the dependency array, keeping only `[onUpdate]`.
-
-### 3. `handleDeleteConfirm` (line 99-106)
-Change from `onUpdate(equipment.filter(...))` to `onUpdate(prev => prev.filter(...))`. Remove `equipment` from the dependency array.
-
-## Why This Fixes It
-
-With functional updates, each state mutation reads from `prev` (the latest committed state), not from a potentially stale prop reference. Even if 8 tables fire updates in rapid succession, no data is lost -- each update stacks correctly on top of the previous one.
-
-## Impact
-- Zero risk to other functionality -- `setEquipment` already accepts functional updaters natively
-- Improves performance by reducing `useCallback` dependency arrays (fewer re-creations)
-- Fixes data loss for **all** equipment fields (quantity, production year, comments, type, result), not just quantity
-
+This approach keeps the existing layout intact (grid, icons, responsive labels) while making the tabs significantly more scannable and the active state unmistakable.
