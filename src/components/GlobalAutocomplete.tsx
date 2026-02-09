@@ -226,22 +226,30 @@ export function GlobalAutocomplete({
     }
   };
 
-  const handleDelete = (optionToDelete: string, e: React.MouseEvent) => {
+  const handleDelete = (option: HistoryItem, e: React.MouseEvent) => {
     e.stopPropagation();
     // Remove from local state
-    setHistoryOptions(prev => prev.filter(opt => opt.value !== optionToDelete));
+    setHistoryOptions(prev => prev.filter(opt => opt.value !== option.value));
     
     // Update localStorage
     const saved = localStorage.getItem(storageKey);
     if (saved) {
       const existing = JSON.parse(saved);
       localStorage.setItem(storageKey, JSON.stringify(
-        existing.filter((v: string) => v !== optionToDelete)
+        existing.filter((v: string) => v !== option.value)
       ));
     }
     
-    // Note: Don't delete from database - shared history persists globally
-    // Super admins can delete via separate admin interface if needed
+    // Delete from database (fire-and-forget)
+    if (!option.id.startsWith('local-')) {
+      supabase
+        .from('global_field_history')
+        .delete()
+        .eq('id', option.id)
+        .then(({ error }) => {
+          if (error) console.error('Failed to delete from global history:', error);
+        });
+    }
   };
 
   const handleOpenChange = (isOpen: boolean) => {
@@ -407,11 +415,11 @@ export function GlobalAutocomplete({
                                 value === option.value ? "opacity-100" : "opacity-0"
                               )}
                             />
-                            <span className="truncate">{option.value}</span>
+                            <span className="break-all">{option.value}</span>
                           </div>
                           <button
-                            onClick={(e) => handleDelete(option.value, e)}
-                            className="opacity-0 group-hover:opacity-100 hover:text-destructive transition-opacity p-1"
+                            onClick={(e) => handleDelete(option, e)}
+                            className="ml-2 shrink-0 text-muted-foreground hover:text-destructive transition-colors p-1"
                             aria-label={`Remove ${option.value} from suggestions`}
                           >
                             <X className="h-3 w-3" />
