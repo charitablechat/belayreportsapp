@@ -1,117 +1,82 @@
 
 
-# Fix: Equipment Input Blocked by Concurrent Save Race Condition
+# Fix: Equipment Fields Unresponsive Due to Unstable `onImmediateSave` Prop
 
 ## Root Cause
 
-The issue is NOT the `isInternalUpdateRef` timing (that fix was correct but addressed a secondary problem). The primary issue is a **concurrent save race condition** caused by the safety timeout:
+`triggerImmediateSave` is defined as a plain async function inside `InspectionForm.tsx` (not wrapped in `useCallback`). This means every time `InspectionForm` re-renders, a **new function reference** is created.
+
+All 8 `EquipmentTable` components are wrapped in `React.memo()`, but `React.memo` does a shallow prop comparison. Since `onImmediateSave={triggerImmediateSave}` is a new reference on every render, `React.memo` is completely bypassed -- all 8 tables re-render on every parent state change.
+
+Here is what happens in practice:
 
 ```text
-1. User changes qty --> auto-save watcher fires (1.5s debounce)
-2. autoSaveProgress() starts, sets autoSaving=true
-3. performSave() runs: offline save completes fast (~0s),
-   but syncWithRetry(3) to the server is slow (network latency)
-4. 8-second safety timeout fires --> sets autoSaving=false
-   (but the sync is STILL running in the background!)
-5. 10-second backup interval sees: hasUnsavedChanges=true, autoSaving=false
-   --> starts ANOTHER autoSaveProgress()
-6. Now TWO concurrent performSave() calls are running
-7. Constant state toggling (setAutoSaving true/false) causes
-   continuous re-renders across all 8 EquipmentTable components
-8. Input fields become unresponsive due to render thrashing
+1. User adds equipment item --> setEquipment() --> re-render
+2. hasUnsavedChanges = true
+3. 10-second backup interval fires autoSaveProgress()
+4. performSave() throws "User not authenticated" (or any transient error)
+5. setSaveError() --> InspectionForm re-renders
+6. triggerImmediateSave is a NEW function reference
+7. React.memo bypassed --> all 8 EquipmentTables re-render
+8. GlobalAutocomplete inside each table re-renders
+9. Any open popover/editing state is destroyed
+10. User's typing is lost, field appears unresponsive
+11. Repeat every 10 seconds (or on any state change)
 ```
 
-The `triggerImmediateSave` change (removing the `autoSaving` guard) made this worse -- it can now start a THIRD concurrent save on every field blur.
+The `equipment` array prop also changes identity on re-renders, but that is expected and necessary. The unstable `onImmediateSave` is the avoidable cause of unnecessary re-renders.
 
-## Fix (1 file, 3 targeted changes)
+## Fix (1 file, 1 change)
 
 **File: `src/pages/InspectionForm.tsx`**
 
-### Change 1: Add a unified ref-based concurrency lock
-
-A single `anySaveInProgressRef` prevents ALL save entry points from running concurrently. Unlike state-based guards, this ref is NOT reset by the safety timeout, so the actual save completes without interference.
+Stabilize `triggerImmediateSave` using a ref + `useCallback` pattern. This ensures the function reference passed to `EquipmentTable` never changes, allowing `React.memo` to work correctly.
 
 ```typescript
-// Near line 89, alongside other refs
-const anySaveInProgressRef = useRef(false);
-```
+// Add a ref that always points to the latest triggerImmediateSave implementation
+const triggerImmediateSaveRef = useRef<() => Promise<void>>();
 
-### Change 2: Guard `autoSaveProgress` with the ref
-
-```typescript
-const autoSaveProgress = async () => {
-  if (!hasUnsavedChanges || saving || autoSaving || anySaveInProgressRef.current) return;
-
-  anySaveInProgressRef.current = true;
-  setAutoSaving(true);
-
-  const safetyTimeout = setTimeout(() => {
-    console.warn('[InspectionForm] autoSaveProgress safety timeout reached, forcing state reset');
-    setAutoSaving(false);
-    // NOTE: anySaveInProgressRef is NOT reset here -- the actual save
-    // still running will reset it in `finally`
-  }, 8000);
-
-  try {
-    await performSave(true);
-    setLastSaved(new Date());
-    setHasUnsavedChanges(false);
-  } catch (error: any) {
-    console.error("Auto-save failed:", error);
-    setSaveError(error.message || 'Auto-save failed');
-  } finally {
-    clearTimeout(safetyTimeout);
-    setAutoSaving(false);
-    anySaveInProgressRef.current = false;
-  }
-};
-```
-
-### Change 3: Guard `triggerImmediateSave` with the ref, queue instead of drop
-
-Instead of running concurrently or silently dropping, mark `hasUnsavedChanges = true` so the next save cycle picks up the data.
-
-```typescript
+// Keep the existing triggerImmediateSave function as-is (no changes to its logic)
 const triggerImmediateSave = async () => {
-  if (saving || anySaveInProgressRef.current) {
-    // Don't drop the save -- ensure data is saved on the next cycle
-    setHasUnsavedChanges(true);
-    return;
-  }
-
-  // ... rest unchanged
-  anySaveInProgressRef.current = true;
-
-  // ... existing logic ...
-
-  // In finally block, add:
-  anySaveInProgressRef.current = false;
+  // ... existing implementation unchanged ...
 };
+
+// Update the ref after every render
+triggerImmediateSaveRef.current = triggerImmediateSave;
+
+// Create a stable wrapper that delegates to the ref
+const stableTriggerImmediateSave = useCallback(() => {
+  return triggerImmediateSaveRef.current?.();
+}, []);
 ```
 
-## Why This Fixes the Problem
+Then replace all 8 `EquipmentTable` usages:
 
-- **No concurrent saves**: The ref-based lock prevents a new save from starting while a previous one is still running, regardless of the safety timeout
-- **Safety timeout still protects UI**: It resets `autoSaving` state so the UI indicator recovers, but the ref lock prevents a new save from starting
-- **No dropped data**: When `triggerImmediateSave` is blocked, it sets `hasUnsavedChanges = true`, guaranteeing the quantity change is picked up by the next save
-- **No render thrashing**: Without concurrent saves toggling state back and forth, re-renders are minimal and input fields remain responsive
+```diff
+ <EquipmentTable
+   category="harnesses"
+   displayName="Harnesses"
+   equipment={equipment}
+   onUpdate={setEquipment}
+-  onImmediateSave={triggerImmediateSave}
++  onImmediateSave={stableTriggerImmediateSave}
+ />
+```
 
-## What This Does NOT Change
+Repeat for all 8 instances (harnesses, helmets, lanyards, connectors, rope, belay, trolleys, other).
 
-- No changes to EquipmentTable.tsx
-- No changes to tab styling
-- No database or API changes
-- No new dependencies
-- The `isInternalUpdateRef` logic from the previous fix remains intact
+## Why This Works
 
-## Verification Strategy
+- The `useCallback` with empty `[]` deps creates a function reference that never changes
+- The ref pattern ensures the stable wrapper always calls the latest version of `triggerImmediateSave` (with current closures over `saving`, `anySaveInProgressRef`, etc.)
+- `React.memo` on `EquipmentTable` now works correctly -- tables only re-render when `equipment` array or `category` actually changes
+- No more unnecessary re-renders destroying `GlobalAutocomplete` editing state
 
-After applying the fix:
-1. Open an existing inspection with equipment items
-2. Navigate to the Equipment tab
-3. Click into a Quantity field in Belay, Trolleys, or Other Equipment
-4. Type a number -- it should appear immediately with no lag
-5. Click out (blur) -- "Changes saved" toast should appear once
-6. Reload the page -- the quantity should be persisted
-7. Rapid test: change qty in 3 different categories within 5 seconds -- all values should persist after reload
+## Scope
+
+- 1 file: `src/pages/InspectionForm.tsx`
+- No changes to `EquipmentTable.tsx`, `GlobalAutocomplete.tsx`, or any other file
+- No database, API, or dependency changes
+- No changes to tab styling or any other functionality
+- The existing `triggerImmediateSave` logic (including the `anySaveInProgressRef` concurrency lock) is completely preserved
 
