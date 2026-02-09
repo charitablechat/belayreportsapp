@@ -1,66 +1,38 @@
 
 
-# Fix Autocomplete Entry Visibility and Database Deletion
+# Fix Autocomplete Entry Text Wrapping
 
-## Overview
+## Problem
 
-Three changes to `src/components/GlobalAutocomplete.tsx` to fix text truncation, make delete buttons accessible on mobile, and ensure deletions propagate to the database.
+The current `break-all` CSS class breaks text at any character boundary, causing words to split mid-syllable (e.g., "Te-chnic", "Ste-el", "P-ro"). This makes entries very hard to read.
 
 ## Changes
 
-### 1. Fix text wrapping (line ~410)
-Remove `truncate` class from the entry text `<span>`, replace with `break-all` so long entries wrap fully.
+### File: `src/components/GlobalAutocomplete.tsx`
 
-### 2. Make delete button always visible (lines ~412-418)
-Remove `opacity-0 group-hover:opacity-100` so the 'x' icon is always visible (critical for mobile/touch).
+**1. Replace `break-all` with proper word wrapping (line ~418)**
 
-### 3. Database deletion in `handleDelete` (lines ~229-245)
-Update `handleDelete` to accept the full `HistoryItem` object (not just the string value) and add a fire-and-forget Supabase delete call:
-
-```typescript
-const handleDelete = (option: HistoryItem, e: React.MouseEvent) => {
-  e.stopPropagation();
-  setHistoryOptions(prev => prev.filter(opt => opt.value !== option.value));
-
-  // Update localStorage
-  const saved = localStorage.getItem(storageKey);
-  if (saved) {
-    const existing = JSON.parse(saved);
-    localStorage.setItem(storageKey, JSON.stringify(
-      existing.filter((v: string) => v !== option.value)
-    ));
-  }
-
-  // Delete from database (fire-and-forget)
-  if (!option.id.startsWith('local-')) {
-    supabase
-      .from('global_field_history')
-      .delete()
-      .eq('id', option.id)
-      .then(({ error }) => {
-        if (error) console.error('Failed to delete from global history:', error);
-      });
-  }
-};
-```
-
-### 4. Update call site (line ~418)
-Change `handleDelete(option.value, e)` to `handleDelete(option, e)` to pass the full object with the database ID.
-
-### 5. Update entry rendering (lines ~406-420)
+Change the entry text span from:
 ```tsx
 <span className="break-all">{option.value}</span>
-{/* delete button */}
-<button
-  onClick={(e) => handleDelete(option, e)}
-  className="ml-2 shrink-0 text-muted-foreground hover:text-destructive transition-colors p-1"
-  aria-label={`Remove ${option.value} from suggestions`}
->
-  <X className="h-3 w-3" />
-</button>
+```
+to:
+```tsx
+<span className="break-words">{option.value}</span>
 ```
 
-## Scope
+`break-words` (Tailwind for `overflow-wrap: break-word`) only breaks at word boundaries, keeping "Singing Rock Technic Speed Steel Harness" readable across lines.
 
-All changes are in one file: `src/components/GlobalAutocomplete.tsx`. Since this is the unified autocomplete used across all report forms (Inspections, Trainings, Daily Assessments), the fix applies universally.
+**2. Add `min-w-0` to the flex container (line ~411)**
+
+The parent flex div needs `min-w-0` so the text container can shrink and wrap properly instead of overflowing:
+```tsx
+<div className="flex items-center flex-1 min-w-0">
+```
+
+**3. Increase the ScrollArea height (line ~404)**
+
+Bump from `h-[200px]` to `h-[240px]` to give more vertical room for wrapped entries.
+
+These three small CSS changes will make all entries wrap cleanly at word boundaries while keeping the delete button accessible.
 
