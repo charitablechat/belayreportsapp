@@ -1,61 +1,52 @@
 
 
-# Fix Corrupted Records and Remove Ghost Duplicates
+# Fix Persistent "Unsaved Changes" Indicator on Form Load
 
-## Impact Assessment
+## Problem
 
-**No report content will be changed or removed.** Here is exactly what happens:
+When opening an inspection report, the yellow "Unsaved changes" indicator appears immediately, even though the user hasn't edited anything. This happens because:
 
-### Production Year Corrections (3 records)
-These equipment rows currently display nonsensical year values (7012024, 5292024). They will be corrected to `2024` -- the actual year embedded in the corrupted MMDDYYYY format.
+1. Auto-populate effects (ACCT number, summary fields) modify form state on load
+2. The auto-save watcher sees these changes and sets `hasUnsavedChanges = true`
+3. `lastSaved` starts as `null`, so even after auto-save completes, the indicator may flash
 
-| ID | Equipment Type | Current Year | Corrected Year |
-|----|---------------|-------------|----------------|
-| `75835ff6-...` | Dynamic | 7012024 | 2024 |
-| `7bdb315f-...` | Dynamic | 5292024 | 2024 |
-| `9d9da640-...` | Dynamic | 5292024 | 2024 |
+## Solution
 
-### Negative Quantity Fix (1 record)
-| ID | Equipment Type | Current Qty | Corrected Qty |
-|----|---------------|------------|---------------|
-| `1cac4962-...` | Headwall Seat Harness | -1 | 1 |
+Two targeted fixes in `src/pages/InspectionForm.tsx`:
 
-### Ghost Duplicate Removal (2 records)
-These are empty placeholder rows in `inspection_systems` with no name and no comments -- they are invisible in the report and carry no data. Deleting them removes clutter only.
+### Fix 1: Mark auto-populate effects as internal updates
 
-| ID | System Name | Name | Comments |
-|----|------------|------|----------|
-| `e2d22e89-...` | Spotted/Low | (empty) | (empty) |
-| `1bf6a534-...` | Spotted/Low | (empty) | (empty) |
+Wrap the ACCT number and summary auto-populate logic with the `isInternalUpdateRef` flag so they don't trigger the unsaved changes detector.
 
-The 9 real "Spotted/Low" systems (Whale Watch, Spider Web, Low Wall, etc.) with actual names and comments are **untouched**.
+- **ACCT# auto-populate** (~line 372): Set `isInternalUpdateRef.current = true` before calling `handleHeaderUpdate`
+- **Summary auto-populate** (~line 418): Set `isInternalUpdateRef.current = true` before modifying summary state
 
----
+### Fix 2: Initialize `lastSaved` when data loads from server
 
-## SQL Migration
+After successfully loading inspection data (from server or IndexedDB), set `lastSaved` to `new Date()` so the indicator starts in the green "Saved" state rather than showing nothing or "Unsaved".
 
-```sql
--- Fix 3 corrupted production_year values (MMDDYYYY -> YYYY)
-UPDATE public.inspection_equipment
-SET production_year = 2024
-WHERE id IN (
-  '75835ff6-7427-45a5-b274-0e8977a6c07b',
-  '7bdb315f-01e7-4467-b062-f3faae986e60',
-  '9d9da640-843a-41ca-a8eb-a9ef504a058a'
-);
+## Technical Details
 
--- Fix negative quantity
-UPDATE public.inspection_equipment
-SET quantity = 1
-WHERE id = '1cac4962-0d8a-484c-a75e-3bc719d2d9bd';
+**File:** `src/pages/InspectionForm.tsx`
 
--- Remove 2 ghost placeholder rows (no name, no comments)
-DELETE FROM public.inspection_systems
-WHERE id IN (
-  'e2d22e89-e382-4385-a294-31e9f0b0a0d6',
-  '1bf6a534-08e0-4d4a-b5e3-c6e6f6726f8a'
-);
+**Change 1 - ACCT auto-populate (~line 371-375):**
+```typescript
+useEffect(() => {
+  if (inspection && inspectorProfile && !inspection.acct_number && inspectorProfile.acct_number) {
+    isInternalUpdateRef.current = true;
+    handleHeaderUpdate('acct_number', inspectorProfile.acct_number);
+  }
+}, [inspectorProfile, inspection?.id]);
 ```
 
-All 6 changes are in a single migration. No code file changes needed.
+**Change 2 - Summary auto-populate (~line 418+):**
+Add `isInternalUpdateRef.current = true` before modifying summary state in the auto-populate effect.
+
+**Change 3 - Initialize lastSaved on load:**
+In the data loading/reconciliation logic, after inspection data is successfully loaded, add:
+```typescript
+setLastSaved(new Date());
+```
+
+This ensures the indicator shows green "Saved" immediately on load, yellow "Unsaved changes" only when the user actually edits something, and green "Saved" again after auto-save completes.
 
