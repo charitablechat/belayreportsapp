@@ -60,6 +60,43 @@ const handler = async (req: Request): Promise<Response> => {
       });
     }
 
+    // Validate attachment if provided
+    if (attachmentUrl) {
+      // Stricter rate limit for attachments: 1 per hour
+      const attachmentRateLimit = checkRateLimit(`contact-attachment:${clientIP}`, {
+        maxRequests: 1,
+        windowMs: 60 * 60 * 1000,
+      });
+      if (!attachmentRateLimit.allowed) {
+        return createRateLimitResponse(attachmentRateLimit.resetAt, corsHeaders);
+      }
+
+      // Verify attachment URL is from our storage bucket
+      const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
+      if (!attachmentUrl.startsWith(supabaseUrl) || !attachmentUrl.includes("/contact-attachments/")) {
+        return new Response(
+          JSON.stringify({ error: "Invalid attachment source" }),
+          { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
+        );
+      }
+
+      // Validate file size via HEAD request (10MB limit)
+      try {
+        const headResponse = await fetch(attachmentUrl, { method: "HEAD" });
+        if (headResponse.ok) {
+          const contentLength = parseInt(headResponse.headers.get("content-length") || "0");
+          if (contentLength > 10 * 1024 * 1024) {
+            return new Response(
+              JSON.stringify({ error: "Attachment too large (max 10MB)" }),
+              { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
+            );
+          }
+        }
+      } catch (e) {
+        console.warn("Could not verify attachment size:", e);
+      }
+    }
+
     // Validate required fields
     if (!name || !email || !subject || !message) {
       return new Response(
