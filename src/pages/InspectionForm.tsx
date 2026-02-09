@@ -155,7 +155,7 @@ export default function InspectionForm() {
 
   // Unsaved changes protection
   const { isBlocked, confirmNavigation, cancelNavigation } = useUnsavedChanges({
-    hasUnsavedChanges,
+    hasUnsavedChanges: hasUnsavedChanges && inspection?.status !== 'completed',
     message: "You have unsaved changes to this inspection. Are you sure you want to leave?",
   });
 
