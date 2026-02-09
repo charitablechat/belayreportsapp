@@ -29,7 +29,7 @@ export default function InspectionHeader({ inspection, userProfile, modifiedByPr
   const renderField = (label: string, field: string, value: string, type: string = "text", isTextarea: boolean = false) => {
     return (
       <div>
-        <Label className="text-sm text-muted-foreground">{label}</Label>
+        <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1 block">{label}</Label>
         {isTextarea ? (
           <VoiceTextarea
             value={value || ""}
@@ -68,29 +68,31 @@ export default function InspectionHeader({ inspection, userProfile, modifiedByPr
 
       <Card>
         <CardContent className="pt-6">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-4">
+            Report Details
+          </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 mb-6">
-            <div className="space-y-4">
-              <div>
-                <Label className="text-sm text-muted-foreground">Inspector</Label>
+            <div className="space-y-3">
+              <div className="space-y-1.5 p-3 rounded-lg bg-muted/30 border border-border/50">
+                <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1 block">Inspector</Label>
                 <VoiceInput
                   value={inspectorName}
                   disabled
-                  className="bg-muted/50 cursor-not-allowed"
+                  className="bg-muted/50 cursor-not-allowed font-medium"
                 />
               </div>
-              {/* Show "Report modified by" when a Super Admin has edited this report */}
               {modifiedByName && (
-                <div>
-                  <Label className="text-sm text-muted-foreground">Report modified by</Label>
+                <div className="space-y-1.5 p-3 rounded-lg bg-muted/30 border border-border/50">
+                  <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1 block">Report modified by</Label>
                   <VoiceInput
                     value={modifiedByName}
                     disabled
-                    className="bg-muted/50 cursor-not-allowed"
+                    className="bg-muted/50 cursor-not-allowed font-medium"
                   />
                 </div>
               )}
-              <div>
-                <Label className="text-sm text-muted-foreground">Facility Name</Label>
+              <div className="space-y-1.5 p-3 rounded-lg bg-muted/30 border border-border/50">
+                <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1 block">Facility Name</Label>
                 <OrganizationAutocomplete
                   value={inspection?.organization || ""}
                   onChange={(value) => {
@@ -100,9 +102,11 @@ export default function InspectionHeader({ inspection, userProfile, modifiedByPr
                   disabled={isReadOnly}
                 />
               </div>
-              {renderField("Location", "location", inspection?.location)}
-              <div>
-                <Label className="text-sm text-muted-foreground">Previous Inspector</Label>
+              <div className="space-y-1.5 p-3 rounded-lg bg-muted/30 border border-border/50">
+                {renderField("Location", "location", inspection?.location)}
+              </div>
+              <div className="space-y-1.5 p-3 rounded-lg bg-muted/30 border border-border/50">
+                <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1 block">Previous Inspector</Label>
                 <GlobalAutocomplete
                   value={inspection?.previous_inspector || ""}
                   onChange={(value) => {
@@ -115,11 +119,15 @@ export default function InspectionHeader({ inspection, userProfile, modifiedByPr
                 />
               </div>
             </div>
-            <div className="space-y-4">
-              {renderField("ACCT#", "acct_number", inspection?.acct_number)}
-              {renderField("Inspection Date", "inspection_date", inspection?.inspection_date, "date")}
-              <div>
-                <Label className="text-sm text-muted-foreground">Onsite Contact</Label>
+            <div className="space-y-3">
+              <div className="space-y-1.5 p-3 rounded-lg bg-muted/30 border border-border/50">
+                {renderField("ACCT#", "acct_number", inspection?.acct_number)}
+              </div>
+              <div className="space-y-1.5 p-3 rounded-lg bg-muted/30 border border-border/50">
+                {renderField("Inspection Date", "inspection_date", inspection?.inspection_date, "date")}
+              </div>
+              <div className="space-y-1.5 p-3 rounded-lg bg-muted/30 border border-border/50">
+                <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1 block">Onsite Contact</Label>
                 <GlobalAutocomplete
                   value={inspection?.onsite_contact || ""}
                   onChange={(value) => {
@@ -131,8 +139,8 @@ export default function InspectionHeader({ inspection, userProfile, modifiedByPr
                   disabled={isReadOnly}
                 />
               </div>
-              <div>
-                <Label className="text-sm text-muted-foreground">Prev. Inspection Date</Label>
+              <div className="space-y-1.5 p-3 rounded-lg bg-muted/30 border border-border/50">
+                <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1 block">Prev. Inspection Date</Label>
                 <PreviousInspectionDatePicker
                   value={inspection?.previous_inspection_date}
                   onChange={(value) => {
@@ -145,7 +153,7 @@ export default function InspectionHeader({ inspection, userProfile, modifiedByPr
             </div>
           </div>
 
-          <div className="mb-6">
+          <div className="space-y-1.5 p-3 rounded-lg bg-muted/30 border border-border/50 mb-6">
             {renderField("Known Course History", "course_history", inspection?.course_history, "text", true)}
           </div>
 
@@ -158,32 +166,32 @@ export default function InspectionHeader({ inspection, userProfile, modifiedByPr
             </p>
           </div>
 
-          <div className="mb-6">
-            <h3 className="font-semibold mb-3">Inspection Categories</h3>
-            <div className="grid grid-cols-2 gap-3">
+          <div className="p-4 rounded-lg bg-muted/30 border border-border/50 mb-6">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">Inspection Categories</h3>
+            <div className="grid grid-cols-2 gap-2.5">
               <div className="flex items-start gap-2">
-                <div className="w-2 h-2 rounded-full bg-primary mt-1.5" />
+                <div className="w-2 h-2 rounded-full bg-primary mt-1.5 shrink-0" />
                 <div>
                   <p className="font-medium text-sm">Lifeline Hardware</p>
                   <p className="text-xs text-muted-foreground">Cables, connections, and support systems</p>
                 </div>
               </div>
               <div className="flex items-start gap-2">
-                <div className="w-2 h-2 rounded-full bg-primary mt-1.5" />
+                <div className="w-2 h-2 rounded-full bg-primary mt-1.5 shrink-0" />
                 <div>
                   <p className="font-medium text-sm">Activity Hardware</p>
                   <p className="text-xs text-muted-foreground">Element-specific components</p>
                 </div>
               </div>
               <div className="flex items-start gap-2">
-                <div className="w-2 h-2 rounded-full bg-primary mt-1.5" />
+                <div className="w-2 h-2 rounded-full bg-primary mt-1.5 shrink-0" />
                 <div>
                   <p className="font-medium text-sm">Environment</p>
                   <p className="text-xs text-muted-foreground">Surrounding area and structures</p>
                 </div>
               </div>
               <div className="flex items-start gap-2">
-                <div className="w-2 h-2 rounded-full bg-primary mt-1.5" />
+                <div className="w-2 h-2 rounded-full bg-primary mt-1.5 shrink-0" />
                 <div>
                   <p className="font-medium text-sm">Pass/Fail Assessment</p>
                   <p className="text-xs text-muted-foreground">Overall safety rating</p>
@@ -192,8 +200,8 @@ export default function InspectionHeader({ inspection, userProfile, modifiedByPr
             </div>
           </div>
 
-          <div className="bg-blue-50 dark:bg-blue-950/20 p-4 rounded-lg">
-            <h3 className="font-semibold mb-2 text-sm">📋 Important Notes</h3>
+          <div className="p-4 rounded-lg bg-muted/30 border border-border/50">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">📋 Important Notes</h3>
             <ul className="space-y-1 text-xs text-muted-foreground">
               <li>• All equipment must be inspected before each use</li>
               <li>• Follow manufacturer specifications for all components</li>
