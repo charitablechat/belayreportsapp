@@ -25,7 +25,7 @@ interface EquipmentTableProps {
   category: string;
   displayName: string;
   equipment: any[];
-  onUpdate: (equipment: any[]) => void;
+  onUpdate: (equipmentOrUpdater: any[] | ((prev: any[]) => any[])) => void;
   onImmediateSave?: () => void;
 }
 
@@ -73,7 +73,7 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
   }, [categoryEquipment.length]);
 
   const addEquipment = useCallback(() => {
-    onUpdate([
+    onUpdate(prev => [
       {
         id: `temp-${crypto.randomUUID()}`,
         inspection_id: window.location.pathname.split('/').pop(),
@@ -84,26 +84,24 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
         result: "pass",
         comments: "",
       },
-      ...equipment,
+      ...prev,
     ]);
-  }, [equipment, category, onUpdate]);
+  }, [category, onUpdate]);
 
-  // PERFORMANCE: Stable callback reference
+  // PERFORMANCE: Stable callback reference — functional update prevents stale closures
   const updateEquipment = useCallback((item: any, field: string, value: any) => {
-    const updated = equipment.map((eq) =>
+    onUpdate(prev => prev.map((eq) =>
       eq.id === item.id ? { ...eq, [field]: value } : eq
-    );
-    onUpdate(updated);
-  }, [equipment, onUpdate]);
+    ));
+  }, [onUpdate]);
 
   const handleDeleteConfirm = useCallback(() => {
     if (itemToDelete) {
-      const updated = equipment.filter((eq) => eq.id !== itemToDelete.item.id);
-      onUpdate(updated);
+      onUpdate(prev => prev.filter((eq) => eq.id !== itemToDelete.item.id));
       onImmediateSave?.();
       setItemToDelete(null);
     }
-  }, [itemToDelete, equipment, onUpdate, onImmediateSave]);
+  }, [itemToDelete, onUpdate, onImmediateSave]);
 
   return (
     <Card>
