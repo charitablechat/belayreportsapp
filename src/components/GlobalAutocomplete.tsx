@@ -400,7 +400,7 @@ export function GlobalAutocomplete({
                 
                 {filteredOptions.length > 0 && (
                   <CommandGroup heading="Previous entries">
-                    <ScrollArea className="h-[200px]">
+                    <ScrollArea className="h-[240px]">
                       {filteredOptions.map((option) => (
                         <CommandItem
                           key={option.id}
@@ -408,14 +408,14 @@ export function GlobalAutocomplete({
                           onSelect={() => handleSelect(option.value)}
                           className="flex items-center justify-between group cursor-pointer"
                         >
-                          <div className="flex items-center flex-1">
+                          <div className="flex items-center flex-1 min-w-0">
                             <Check
                               className={cn(
                                 "mr-2 h-4 w-4",
                                 value === option.value ? "opacity-100" : "opacity-0"
                               )}
                             />
-                            <span className="break-all">{option.value}</span>
+                            <span className="break-words">{option.value}</span>
                           </div>
                           <button
                             onClick={(e) => handleDelete(option, e)}
