@@ -617,21 +617,29 @@ export default function InspectionForm() {
 
         if (error) throw error;
         
+        setHasUnsavedChanges(false);
         if (import.meta.env.DEV) {
           console.log('[InspectionForm] Header field updated:', field, value);
         }
       } else {
         // Queue for later sync
         await queueOperation('update', id!, updatedInspection);
+        setHasUnsavedChanges(false);
         
         if (import.meta.env.DEV) {
           console.log('[InspectionForm] Header field queued for sync:', field, value);
         }
       }
-
-      setHasUnsavedChanges(false);
     } catch (error: any) {
       console.error("Error updating field:", error);
+      // Queue for retry so the change isn't lost
+      if (id) {
+        queueOperation('update', id, {
+          ...inspection,
+          [field]: value,
+          updated_at: new Date().toISOString(),
+        }).catch(() => {});
+      }
     }
   };
 
@@ -1074,6 +1082,7 @@ export default function InspectionForm() {
       // Save to offline storage (fire-and-forget for UI responsiveness)
       // Offline storage is for fault tolerance, not blocking the critical path
       setInspection(inspectionToSave);
+      let localSaveSucceeded = false;
       Promise.all([
         saveInspectionOffline(inspectionToSave),
         saveRelatedDataOffline('systems', id!, validSystems),
@@ -1082,9 +1091,11 @@ export default function InspectionForm() {
         saveRelatedDataOffline('standards', id!, standards),
         saveRelatedDataOffline('summary', id!, [summary]),
       ]).then(() => {
+        localSaveSucceeded = true;
         console.log('[InspectionForm Save] Offline storage completed');
       }).catch((offlineError) => {
         console.warn('[InspectionForm Save] Offline storage failed:', offlineError);
+        // localSaveSucceeded remains false — checked after server sync
       });
 
       if (import.meta.env.DEV) {
@@ -1308,13 +1319,25 @@ export default function InspectionForm() {
           await queueOperation('update', id!, saveData);
           console.log('[InspectionForm Sync] Queued for later sync');
           
-          // Show toast for network failures with auto-retry hint - mobile-aware
-          if (isMobile()) {
-            addSyncNotification("Saved locally - will sync when online");
+          // If local save ALSO failed, warn the user urgently
+          if (!localSaveSucceeded) {
+            if (isMobile()) {
+              addSyncNotification("⚠️ Data could not be saved locally or remotely. Please retry.");
+            } else {
+              sonnerToast.error("Save failed", {
+                description: "Data could not be saved locally or remotely. Please check your connection and try again.",
+                duration: 10000,
+              });
+            }
           } else {
-            sonnerToast.info("Saved locally", {
-              description: "Will sync automatically when connection improves.",
-            });
+            // Show toast for network failures with auto-retry hint - mobile-aware
+            if (isMobile()) {
+              addSyncNotification("Saved locally - will sync when online");
+            } else {
+              sonnerToast.info("Saved locally", {
+                description: "Will sync automatically when connection improves.",
+              });
+            }
           }
         }
       } else {
