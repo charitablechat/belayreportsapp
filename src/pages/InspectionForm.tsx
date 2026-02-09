@@ -86,6 +86,7 @@ export default function InspectionForm() {
   const [photoRefreshKey, setPhotoRefreshKey] = useState(0);
   const [saveError, setSaveError] = useState<string | null>(null);
   const saveDebounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const isInternalUpdateRef = useRef(false);
   const wasOfflineRef = useRef(!isOnline);
   const autoRetryingRef = useRef(false);
   const [currentUser, setCurrentUser] = useState<any>(null);
@@ -374,7 +375,7 @@ export default function InspectionForm() {
 
   // Track changes to inspection data and trigger debounced auto-save
   useEffect(() => {
-    if (!loading) {
+    if (!loading && !isInternalUpdateRef.current) {
       setHasUnsavedChanges(true);
       
       // Clear existing debounce timer using ref
@@ -1196,12 +1197,14 @@ export default function InspectionForm() {
               // Replace temp items in-place, preserving position (no reordering)
               // Deferred to avoid blocking UI during save
               setTimeout(() => {
+                isInternalUpdateRef.current = true;
                 setSystems(prev => prev.map(s => {
                   if (s.id && s.id.startsWith('temp-') && systemTempToNewMap.has(s.id)) {
                     return systemTempToNewMap.get(s.id)!;
                   }
                   return s;
                 }));
+                requestAnimationFrame(() => { isInternalUpdateRef.current = false; });
               }, 100);
             }
             
@@ -1226,12 +1229,14 @@ export default function InspectionForm() {
               
               // Replace temp items in-place, preserving position (no reordering)
               setTimeout(() => {
+                isInternalUpdateRef.current = true;
                 setZiplines(prev => prev.map(z => {
                   if (z.id && z.id.startsWith('temp-') && ziplineTempToNewMap.has(z.id)) {
                     return ziplineTempToNewMap.get(z.id)!;
                   }
                   return z;
                 }));
+                requestAnimationFrame(() => { isInternalUpdateRef.current = false; });
               }, 100);
             }
             
@@ -1256,12 +1261,14 @@ export default function InspectionForm() {
               
               // Replace temp items in-place, preserving position (no reordering)
               setTimeout(() => {
+                isInternalUpdateRef.current = true;
                 setEquipment(prev => prev.map(e => {
                   if (e.id && e.id.startsWith('temp-') && equipmentTempToNewMap.has(e.id)) {
                     return equipmentTempToNewMap.get(e.id)!;
                   }
                   return e;
                 }));
+                requestAnimationFrame(() => { isInternalUpdateRef.current = false; });
               }, 100);
             }
             
@@ -1353,7 +1360,7 @@ export default function InspectionForm() {
   };
 
   const triggerImmediateSave = async () => {
-    if (saving || autoSaving) return;
+    if (saving) return;
     
     // Clear existing debounce timer using ref
     if (saveDebounceTimerRef.current) {
