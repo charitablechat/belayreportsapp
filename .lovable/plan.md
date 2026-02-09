@@ -1,52 +1,66 @@
 
 
-# Fix Persistent "Unsaved Changes" Indicator on Form Load
+# Fix Autocomplete Entry Visibility and Database Deletion
 
-## Problem
+## Overview
 
-When opening an inspection report, the yellow "Unsaved changes" indicator appears immediately, even though the user hasn't edited anything. This happens because:
+Three changes to `src/components/GlobalAutocomplete.tsx` to fix text truncation, make delete buttons accessible on mobile, and ensure deletions propagate to the database.
 
-1. Auto-populate effects (ACCT number, summary fields) modify form state on load
-2. The auto-save watcher sees these changes and sets `hasUnsavedChanges = true`
-3. `lastSaved` starts as `null`, so even after auto-save completes, the indicator may flash
+## Changes
 
-## Solution
+### 1. Fix text wrapping (line ~410)
+Remove `truncate` class from the entry text `<span>`, replace with `break-all` so long entries wrap fully.
 
-Two targeted fixes in `src/pages/InspectionForm.tsx`:
+### 2. Make delete button always visible (lines ~412-418)
+Remove `opacity-0 group-hover:opacity-100` so the 'x' icon is always visible (critical for mobile/touch).
 
-### Fix 1: Mark auto-populate effects as internal updates
+### 3. Database deletion in `handleDelete` (lines ~229-245)
+Update `handleDelete` to accept the full `HistoryItem` object (not just the string value) and add a fire-and-forget Supabase delete call:
 
-Wrap the ACCT number and summary auto-populate logic with the `isInternalUpdateRef` flag so they don't trigger the unsaved changes detector.
-
-- **ACCT# auto-populate** (~line 372): Set `isInternalUpdateRef.current = true` before calling `handleHeaderUpdate`
-- **Summary auto-populate** (~line 418): Set `isInternalUpdateRef.current = true` before modifying summary state
-
-### Fix 2: Initialize `lastSaved` when data loads from server
-
-After successfully loading inspection data (from server or IndexedDB), set `lastSaved` to `new Date()` so the indicator starts in the green "Saved" state rather than showing nothing or "Unsaved".
-
-## Technical Details
-
-**File:** `src/pages/InspectionForm.tsx`
-
-**Change 1 - ACCT auto-populate (~line 371-375):**
 ```typescript
-useEffect(() => {
-  if (inspection && inspectorProfile && !inspection.acct_number && inspectorProfile.acct_number) {
-    isInternalUpdateRef.current = true;
-    handleHeaderUpdate('acct_number', inspectorProfile.acct_number);
+const handleDelete = (option: HistoryItem, e: React.MouseEvent) => {
+  e.stopPropagation();
+  setHistoryOptions(prev => prev.filter(opt => opt.value !== option.value));
+
+  // Update localStorage
+  const saved = localStorage.getItem(storageKey);
+  if (saved) {
+    const existing = JSON.parse(saved);
+    localStorage.setItem(storageKey, JSON.stringify(
+      existing.filter((v: string) => v !== option.value)
+    ));
   }
-}, [inspectorProfile, inspection?.id]);
+
+  // Delete from database (fire-and-forget)
+  if (!option.id.startsWith('local-')) {
+    supabase
+      .from('global_field_history')
+      .delete()
+      .eq('id', option.id)
+      .then(({ error }) => {
+        if (error) console.error('Failed to delete from global history:', error);
+      });
+  }
+};
 ```
 
-**Change 2 - Summary auto-populate (~line 418+):**
-Add `isInternalUpdateRef.current = true` before modifying summary state in the auto-populate effect.
+### 4. Update call site (line ~418)
+Change `handleDelete(option.value, e)` to `handleDelete(option, e)` to pass the full object with the database ID.
 
-**Change 3 - Initialize lastSaved on load:**
-In the data loading/reconciliation logic, after inspection data is successfully loaded, add:
-```typescript
-setLastSaved(new Date());
+### 5. Update entry rendering (lines ~406-420)
+```tsx
+<span className="break-all">{option.value}</span>
+{/* delete button */}
+<button
+  onClick={(e) => handleDelete(option, e)}
+  className="ml-2 shrink-0 text-muted-foreground hover:text-destructive transition-colors p-1"
+  aria-label={`Remove ${option.value} from suggestions`}
+>
+  <X className="h-3 w-3" />
+</button>
 ```
 
-This ensures the indicator shows green "Saved" immediately on load, yellow "Unsaved changes" only when the user actually edits something, and green "Saved" again after auto-save completes.
+## Scope
+
+All changes are in one file: `src/components/GlobalAutocomplete.tsx`. Since this is the unified autocomplete used across all report forms (Inspections, Trainings, Daily Assessments), the fix applies universally.
 
