@@ -1,59 +1,27 @@
 
-
-# Polish All Inspection Header Fields
+# Soften the Category Navigation Bar
 
 ## Problem
 
-The header fields (Inspector, Facility Name, Location, ACCT#, etc.) use plain default input styling -- flat white boxes with minimal visual definition. They lack the refinement seen in the recently polished autocomplete dropdown.
+The category navigation bar (Systems - Ziplines, Equipment, Operations Criteria, Summary) uses a harsh dark `bg-zinc-800` background with `border-zinc-700`, creating a heavy, high-contrast block that feels jarring against the light page background.
 
-## Changes
+## Solution
 
-### File: `src/components/inspection/InspectionHeader.tsx`
+Replace the dark theme with a soft, muted light palette that matches the polished field-card styling already used in the header.
 
-**1. Add consistent labels with better hierarchy**
+### File: `src/pages/InspectionForm.tsx` (line 2120-2136)
 
-Update the `Label` styling from `text-sm text-muted-foreground` to `text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1 block`. This gives labels a small-caps, defined look that clearly separates them from the input values.
+**TabsList container** (line 2120):
+- Change `bg-zinc-800 border-b-2 border-zinc-700` to `bg-muted/50 border border-border/50`
+- This gives a soft gray background consistent with the field cards above
 
-**2. Wrap each field group with subtle structure**
+**All four TabsTrigger elements** (lines 2121, 2125, 2129, 2133):
+- Change `text-zinc-400 hover:text-zinc-100 hover:bg-zinc-700` to `text-muted-foreground hover:text-foreground hover:bg-accent/50`
+- Keep the active state: `data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-md data-[state=active]:font-semibold`
 
-Add a light background and rounded border to each field cell:
-```tsx
-<div className="space-y-1.5 p-3 rounded-lg bg-muted/30 border border-border/50">
-```
+### Result
 
-This creates visually distinct "field cards" that group label + input together.
-
-**3. Style the disabled Inspector field**
-
-The Inspector field is always disabled. Give it a more intentional read-only appearance:
-```tsx
-className="bg-muted/50 cursor-not-allowed font-medium"
-```
-
-**4. Section heading for the two-column grid**
-
-Add a subtle heading above the fields grid:
-```tsx
-<h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-  Report Details
-</h2>
-```
-
-**5. Improve the "Known Course History" textarea section**
-
-Add a matching field-card wrapper so it visually aligns with the grid fields above.
-
-**6. Clean up the Inspection Categories and Important Notes sections**
-
-These informational blocks can be simplified:
-- Give the categories section consistent card-like styling with the same `bg-muted/30 border` treatment
-- Tighten spacing between items
-
-### Summary of visual improvements
-
-- Labels: uppercase, smaller, tracked -- creates clear hierarchy
-- Field cells: subtle background + border grouping
-- Disabled fields: intentional read-only styling
-- Consistent spacing throughout the card
-- No logic changes -- purely CSS/className updates
-
+- Container: light muted background with subtle border -- calm and professional
+- Inactive tabs: soft gray text that darkens on hover with a gentle highlight
+- Active tab: keeps the bold primary-colored selection for clear navigation
+- Matches the refined field-card aesthetic throughout the header
