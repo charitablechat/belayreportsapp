@@ -1,101 +1,107 @@
 
-# Inconsistencies Found in the Inspection Report
 
-After a thorough review acting as a typical user, here are the issues discovered:
+# Fix Data Quality: Production Year & Quantity Validation
 
----
+## Overview
 
-## 1. OrganizationAutocomplete Still Uses PopoverTrigger (Toggle Bug)
-
-**File:** `src/components/OrganizationAutocomplete.tsx` (line 259)
-
-The "Facility Name" field uses `PopoverTrigger` instead of `PopoverAnchor`. This is the exact same bug that was just fixed in `GlobalAutocomplete` -- clicking the input opens then immediately closes the dropdown due to the Radix toggle conflict.
-
-**Fix:** Replace `PopoverTrigger` with `PopoverAnchor` (same pattern as the GlobalAutocomplete fix).
+Add UI-level input validation to prevent invalid production years and negative quantities, plus a one-time SQL migration to correct 4 corrupted records already in the database.
 
 ---
 
-## 2. OrganizationAutocomplete: Enter Key Doesn't Show Committed Value
+## 1. UI Validation -- Production Year (EquipmentTable.tsx)
 
-**File:** `src/components/OrganizationAutocomplete.tsx` (line 179-184)
+Replace the raw `parseInt` handler on all 4 production_year inputs (2 desktop, 2 mobile) with a validating handler that:
+- Allows empty input (clears to `null`)
+- Rejects values outside the 1900--2100 range
+- Clamps `maxLength` to 4 digits via `min`/`max` HTML attributes as a first defense
 
-The `handleSelect` function does not reset `isEditing` to `false`. This is the same bug just fixed in `GlobalAutocomplete` -- after pressing Enter, the input shows the cleared `search` value instead of the committed `value` prop.
+**Current code (4 locations -- lines 177, 293 for onChange; lines 175, 291 for the Input):**
+```typescript
+onChange={(e) => updateEquipment(item, "production_year", parseInt(e.target.value) || null)}
+```
 
-**Fix:** Add `setIsEditing(false)` to `handleSelect`.
+**New code:**
+```typescript
+onChange={(e) => {
+  const raw = e.target.value;
+  if (raw === "") { updateEquipment(item, "production_year", null); return; }
+  const val = parseInt(raw, 10);
+  if (!isNaN(val) && val >= 1900 && val <= 2100) {
+    updateEquipment(item, "production_year", val);
+  }
+}}
+```
 
----
-
-## 3. OperatingSystemsTable Uses Index-Based Updates (Data Loss Risk)
-
-**File:** `src/components/inspection/OperatingSystemsTable.tsx` (line 65-69)
-
-`updateSystem` creates a shallow copy with spread and updates by array index. Meanwhile, `EquipmentTable` uses functional updates with ID-based matching (`onUpdate(prev => prev.map(eq => eq.id === item.id ? ...))`). The index-based approach can cause data loss when background auto-saves reorder or modify the array between when the user started editing and when the update applies.
-
-**Fix:** Change `updateSystem` to use functional updates with ID-based matching, consistent with `EquipmentTable`.
-
----
-
-## 4. ZiplinesTable Also Uses Index-Based Updates (Same Risk)
-
-**File:** `src/components/inspection/ZiplinesTable.tsx` (line 75-79)
-
-Same issue as OperatingSystemsTable -- `updateZipline` uses index-based array mutation instead of functional ID-based updates.
-
-**Fix:** Change to functional updates with ID-based matching.
+Also add `min={1900} max={2100}` attributes to the `<Input>` elements as browser-level guardrails.
 
 ---
 
-## 5. OperatingSystemsTable and ZiplinesTable Are Not Wrapped in React.memo
+## 2. UI Validation -- Quantity (EquipmentTable.tsx)
 
-**Files:** `OperatingSystemsTable.tsx`, `ZiplinesTable.tsx`
+Replace the raw `parseInt` handler on all 2 quantity inputs (1 desktop line 199, 1 mobile line 317) with:
 
-`EquipmentTable` is wrapped in `React.memo` for performance. OperatingSystems and Ziplines tables are not, meaning they re-render on every parent state change (e.g., when equipment data changes on a different tab).
+**Current:**
+```typescript
+onChange={(e) => updateEquipment(item, "quantity", parseInt(e.target.value) || null)}
+```
 
-**Fix:** Add `export default memo(OperatingSystemsTable)` and `export default memo(ZiplinesTable)`.
+**New:**
+```typescript
+onChange={(e) => {
+  const raw = e.target.value;
+  if (raw === "") { updateEquipment(item, "quantity", null); return; }
+  const val = parseInt(raw, 10);
+  if (!isNaN(val) && val >= 1) {
+    updateEquipment(item, "quantity", val);
+  }
+}}
+```
 
----
-
-## 6. StandardsTable Has No onImmediateSave Prop
-
-**File:** `src/components/inspection/StandardsTable.tsx`
-
-When a user checks/unchecks a standards checkbox, there is no immediate save triggered. All other tables (Equipment, Systems, Ziplines, Summary) trigger `onImmediateSave` on user interactions. Standards only save via the 1.5-second debounce timer, which could lose data if the user navigates away quickly.
-
-**Fix:** Add `onImmediateSave` prop to StandardsTable and call it after checkbox changes.
-
----
-
-## 7. EquipmentTable Comments Use LazyRichTextEditor; Systems Use VoiceRichTextEditor
-
-**Files:** `EquipmentTable.tsx` (line 214), `OperatingSystemsTable.tsx` (line 135)
-
-Equipment comments use `LazyRichTextEditor` (no voice input), while Operating Systems comments use `VoiceRichTextEditor` (with microphone button). This is inconsistent from a user perspective -- voice input is available in one section but not another.
-
-**Fix:** Standardize to `VoiceRichTextEditor` across all comment fields, or use `LazyRichTextEditor` everywhere for consistency.
+Also add `min={1}` to the `<Input>` elements.
 
 ---
 
-## 8. Ziplines Comments Use Plain RichTextEditor (No Voice, No Lazy Loading)
+## 3. One-Time SQL Migration
 
-**File:** `ZiplinesTable.tsx` (line 248-253)
+Correct the 4 known corrupted records:
 
-Ziplines comments use the basic `RichTextEditor` -- no voice input AND no lazy loading. This is a third variant, different from both Equipment (LazyRichTextEditor) and Operating Systems (VoiceRichTextEditor).
+```sql
+-- Fix production_year values that were entered as MMDDYYYY instead of YYYY
+UPDATE public.inspection_equipment
+SET production_year = 2024
+WHERE id IN (
+  '75835ff6-a8b0-4765-a76e-7f4ee22c26b1',
+  '7bdb315f-13e2-4f6e-8dba-4f67d7fbeaaa',
+  '9d9da640-a1b3-4808-8d2a-7a5b51df53e9'
+)
+AND production_year NOT BETWEEN 1900 AND 2100;
 
-**Fix:** Standardize to match the chosen pattern from item 7.
+-- Fix negative quantity
+UPDATE public.inspection_equipment
+SET quantity = 1
+WHERE id = '1cac4962-37b5-4b7d-a65d-ced6fc72da58'
+AND quantity < 1;
+```
 
 ---
 
-## Technical Summary
+## 4. Zod Schema Update (validation-schemas.ts)
 
-| # | Component | Issue | Severity |
-|---|-----------|-------|----------|
-| 1 | OrganizationAutocomplete | PopoverTrigger toggle bug | High - field unusable |
-| 2 | OrganizationAutocomplete | Enter key doesn't show value | Medium - confusing UX |
-| 3 | OperatingSystemsTable | Index-based updates | Medium - data loss risk |
-| 4 | ZiplinesTable | Index-based updates | Medium - data loss risk |
-| 5 | OperatingSystems/Ziplines | Missing React.memo | Low - performance |
-| 6 | StandardsTable | No immediate save | Medium - data loss risk |
-| 7 | EquipmentTable | No voice on comments | Low - inconsistent UX |
-| 8 | ZiplinesTable | No voice or lazy on comments | Low - inconsistent UX + perf |
+The existing Zod schema already validates `production_year` with a range check, but `quantity` only checks `.positive()`. No changes needed -- both schemas already reject invalid values at the sync/validation layer. The UI fix prevents bad data from reaching the schema in the first place.
 
-All fixes follow existing patterns already established in the codebase (the EquipmentTable/GlobalAutocomplete patterns are the "gold standard" to replicate).
+---
+
+## Files Changed
+
+| File | Change |
+|------|--------|
+| `src/components/inspection/EquipmentTable.tsx` | Add range validation to 4 production_year inputs and 2 quantity inputs; add `min`/`max` HTML attributes |
+| SQL migration | One-time fix for 4 corrupted records |
+
+## What This Does NOT Change
+
+- No changes to save logic, auto-save timing, or `isInternalUpdateRef`
+- No changes to other components (Systems, Ziplines, Standards)
+- No changes to the Zod validation schema (already correct)
+- No new dependencies
+
