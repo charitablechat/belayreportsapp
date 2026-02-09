@@ -1,82 +1,80 @@
 
 
-# Fix: Equipment Fields Unresponsive Due to Unstable `onImmediateSave` Prop
+# Fix: GlobalAutocomplete Popover Opens and Immediately Closes
 
 ## Root Cause
 
-`triggerImmediateSave` is defined as a plain async function inside `InspectionForm.tsx` (not wrapped in `useCallback`). This means every time `InspectionForm` re-renders, a **new function reference** is created.
+The bug is in `GlobalAutocomplete.tsx`, not in `InspectionForm.tsx`. It's a **Radix PopoverTrigger toggle conflict**:
 
-All 8 `EquipmentTable` components are wrapped in `React.memo()`, but `React.memo` does a shallow prop comparison. Since `onImmediateSave={triggerImmediateSave}` is a new reference on every render, `React.memo` is completely bypassed -- all 8 tables re-render on every parent state change.
+1. User clicks the Input field inside `PopoverTrigger`
+2. `onFocus` fires first, calling `handleTriggerFocus()` which sets `open = true`
+3. React flushes this state update
+4. The `click` event then fires on the `PopoverTrigger`, which has built-in toggle behavior
+5. Radix reads the current `open` value (now `true`) and calls `onOpenChange(!true)` = `onOpenChange(false)`
+6. The popover closes ~100ms after opening -- before the user can type anything
 
-Here is what happens in practice:
+This matches the session replay data exactly: the dropdown opens, then closes within 86-104ms.
 
-```text
-1. User adds equipment item --> setEquipment() --> re-render
-2. hasUnsavedChanges = true
-3. 10-second backup interval fires autoSaveProgress()
-4. performSave() throws "User not authenticated" (or any transient error)
-5. setSaveError() --> InspectionForm re-renders
-6. triggerImmediateSave is a NEW function reference
-7. React.memo bypassed --> all 8 EquipmentTables re-render
-8. GlobalAutocomplete inside each table re-renders
-9. Any open popover/editing state is destroyed
-10. User's typing is lost, field appears unresponsive
-11. Repeat every 10 seconds (or on any state change)
-```
+The previous fixes (stable callbacks, concurrency locks) were addressing real but secondary issues. This is the primary cause of the "cannot type in the Type field" bug.
 
-The `equipment` array prop also changes identity on re-renders, but that is expected and necessary. The unstable `onImmediateSave` is the avoidable cause of unnecessary re-renders.
+## Fix (2 files, minimal changes)
 
-## Fix (1 file, 1 change)
+### File 1: `src/components/ui/popover.tsx`
 
-**File: `src/pages/InspectionForm.tsx`**
-
-Stabilize `triggerImmediateSave` using a ref + `useCallback` pattern. This ensures the function reference passed to `EquipmentTable` never changes, allowing `React.memo` to work correctly.
+Export `PopoverAnchor` from the existing Radix package. This component positions the popover relative to an element but does NOT add click-to-toggle behavior.
 
 ```typescript
-// Add a ref that always points to the latest triggerImmediateSave implementation
-const triggerImmediateSaveRef = useRef<() => Promise<void>>();
+const PopoverAnchor = PopoverPrimitive.Anchor;
 
-// Keep the existing triggerImmediateSave function as-is (no changes to its logic)
-const triggerImmediateSave = async () => {
-  // ... existing implementation unchanged ...
-};
-
-// Update the ref after every render
-triggerImmediateSaveRef.current = triggerImmediateSave;
-
-// Create a stable wrapper that delegates to the ref
-const stableTriggerImmediateSave = useCallback(() => {
-  return triggerImmediateSaveRef.current?.();
-}, []);
+export { Popover, PopoverTrigger, PopoverAnchor, PopoverContent };
 ```
 
-Then replace all 8 `EquipmentTable` usages:
+### File 2: `src/components/GlobalAutocomplete.tsx`
+
+Replace `PopoverTrigger` with `PopoverAnchor` for the input wrapper. Since we already manage `open` state manually through focus/blur/keydown handlers, we don't need the trigger's toggle behavior.
 
 ```diff
- <EquipmentTable
-   category="harnesses"
-   displayName="Harnesses"
-   equipment={equipment}
-   onUpdate={setEquipment}
--  onImmediateSave={triggerImmediateSave}
-+  onImmediateSave={stableTriggerImmediateSave}
- />
+ import {
+   Popover,
+-  PopoverTrigger,
++  PopoverAnchor,
+   PopoverContent,
+ } from "@/components/ui/popover";
 ```
 
-Repeat for all 8 instances (harnesses, helmets, lanyards, connectors, rope, belay, trolleys, other).
+```diff
+-      <PopoverTrigger asChild>
++      <PopoverAnchor asChild>
+         <div className="relative w-full">
+           <Input ... />
+         </div>
+-      </PopoverTrigger>
++      </PopoverAnchor>
+```
+
+That's it. No logic changes, no new state management, no changes to any other file.
 
 ## Why This Works
 
-- The `useCallback` with empty `[]` deps creates a function reference that never changes
-- The ref pattern ensures the stable wrapper always calls the latest version of `triggerImmediateSave` (with current closures over `saving`, `anySaveInProgressRef`, etc.)
-- `React.memo` on `EquipmentTable` now works correctly -- tables only re-render when `equipment` array or `category` actually changes
-- No more unnecessary re-renders destroying `GlobalAutocomplete` editing state
+- `PopoverAnchor` tells Radix "position the popover relative to this element" without adding any click/toggle handlers
+- The existing `handleTriggerFocus`, `handleTriggerBlur`, and `handleTriggerKeyDown` handlers continue to manage `open` state manually -- which is what they were always designed to do
+- No more conflict between the manual state management and the built-in trigger toggle
 
-## Scope
+## What This Does NOT Change
 
-- 1 file: `src/pages/InspectionForm.tsx`
-- No changes to `EquipmentTable.tsx`, `GlobalAutocomplete.tsx`, or any other file
+- No changes to `InspectionForm.tsx` (all previous fixes remain intact)
+- No changes to `EquipmentTable.tsx`
+- No changes to save logic, concurrency locks, or auto-save behavior
 - No database, API, or dependency changes
-- No changes to tab styling or any other functionality
-- The existing `triggerImmediateSave` logic (including the `anySaveInProgressRef` concurrency lock) is completely preserved
+- No styling changes
+
+## Verification
+
+After applying:
+1. Open an existing inspection, go to the Equipment tab
+2. Click the "Type" field in any equipment row
+3. The dropdown should open and STAY open
+4. Type text -- it should appear in the field
+5. Select an option or press Enter -- the value should commit
+6. Blur away -- the popover should close cleanly
 
