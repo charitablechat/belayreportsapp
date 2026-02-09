@@ -363,7 +363,7 @@ export function GlobalAutocomplete({
           </div>
         </div>
       </PopoverAnchor>
-      <PopoverContent className="min-w-[--radix-popover-trigger-width] w-auto max-w-[calc(100vw-2rem)] p-0" align="start">
+      <PopoverContent className="min-w-[--radix-popover-trigger-width] w-auto max-w-[calc(100vw-2rem)] p-0 shadow-lg border" align="start">
         <Command shouldFilter={false}>
           <CommandInput
             placeholder={placeholder}
@@ -390,10 +390,10 @@ export function GlobalAutocomplete({
                   <CommandGroup heading="Create new">
                     <CommandItem
                       onSelect={() => handleSelect(inputValue.trim())}
-                      className="cursor-pointer"
+                      className="cursor-pointer px-3 py-2.5 rounded-md mx-1 my-0.5"
                     >
                       <Plus className="mr-2 h-4 w-4 text-primary" />
-                      <span>Create "{inputValue.trim()}"</span>
+                      <span className="text-sm font-medium">Create "{inputValue.trim()}"</span>
                     </CommandItem>
                   </CommandGroup>
                 )}
@@ -406,23 +406,23 @@ export function GlobalAutocomplete({
                           key={option.id}
                           value={option.value}
                           onSelect={() => handleSelect(option.value)}
-                          className="flex items-center justify-between group cursor-pointer"
+                          className="flex items-center justify-between cursor-pointer px-3 py-2.5 rounded-md mx-1 my-0.5"
                         >
-                          <div className="flex items-center flex-1 min-w-0">
+                          <div className="flex items-center flex-1 min-w-0 gap-2">
                             <Check
                               className={cn(
-                                "mr-2 h-4 w-4",
+                                "h-4 w-4 shrink-0 text-primary",
                                 value === option.value ? "opacity-100" : "opacity-0"
                               )}
                             />
-                            <span className="whitespace-nowrap">{option.value}</span>
+                            <span className="whitespace-nowrap text-sm font-medium">{option.value}</span>
                           </div>
                           <button
                             onClick={(e) => handleDelete(option, e)}
-                            className="ml-2 shrink-0 text-muted-foreground hover:text-destructive transition-colors p-1"
+                            className="ml-3 shrink-0 text-muted-foreground/50 hover:text-destructive transition-colors p-1 rounded-sm hover:bg-destructive/10"
                             aria-label={`Remove ${option.value} from suggestions`}
                           >
-                            <X className="h-3 w-3" />
+                            <X className="h-3.5 w-3.5" />
                           </button>
                         </CommandItem>
                       ))}
