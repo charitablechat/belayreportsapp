@@ -363,7 +363,7 @@ export function GlobalAutocomplete({
           </div>
         </div>
       </PopoverAnchor>
-      <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+      <PopoverContent className="min-w-[--radix-popover-trigger-width] w-auto max-w-[calc(100vw-2rem)] p-0" align="start">
         <Command shouldFilter={false}>
           <CommandInput
             placeholder={placeholder}
@@ -415,7 +415,7 @@ export function GlobalAutocomplete({
                                 value === option.value ? "opacity-100" : "opacity-0"
                               )}
                             />
-                            <span className="break-words">{option.value}</span>
+                            <span className="whitespace-nowrap">{option.value}</span>
                           </div>
                           <button
                             onClick={(e) => handleDelete(option, e)}
