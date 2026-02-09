@@ -2242,7 +2242,7 @@ export default function InspectionForm() {
           </TabsContent>
 
           <TabsContent value="standards" className="space-y-4">
-            <StandardsTable standards={standards} onUpdate={setStandards} />
+            <StandardsTable standards={standards} onUpdate={setStandards} onImmediateSave={stableTriggerImmediateSave} />
             
             <div className="mt-8 border-t pt-6">
               <h3 className="text-lg font-semibold mb-4">Photos - Standards</h3>

@@ -7,6 +7,7 @@ import { triggerHaptic } from "@/lib/haptics";
 interface StandardsTableProps {
   standards: any[];
   onUpdate: (standards: any[]) => void;
+  onImmediateSave?: () => void;
 }
 
 const STANDARDS_LIST = [
@@ -18,7 +19,7 @@ const STANDARDS_LIST = [
   { name: "Operational Review Every 5 Years", reference: "(CHPT 2 ANSI/ACCT B.2.7)" },
 ];
 
-export default function StandardsTable({ standards, onUpdate }: StandardsTableProps) {
+export default function StandardsTable({ standards, onUpdate, onImmediateSave }: StandardsTableProps) {
   const updateStandard = (index: number, has_documentation: boolean | null) => {
     triggerHaptic('light');
     const updated = [...standards];
@@ -31,6 +32,7 @@ export default function StandardsTable({ standards, onUpdate }: StandardsTablePr
       has_documentation 
     };
     onUpdate(updated);
+    onImmediateSave?.();
   };
 
   // Handle YES checkbox: toggle between true and null
