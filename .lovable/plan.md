@@ -1,75 +1,61 @@
 
 
-# Fix Real Bugs in Inspection Report
+# Fix Corrupted Records and Remove Ghost Duplicates
 
-After thorough code review, only 2 of the 6 reported issues are actual bugs. The other 4 are either already fixed or working correctly. Here is the assessment and fix plan:
+## Impact Assessment
 
-## Assessment of All 6 Reported Bugs
+**No report content will be changed or removed.** Here is exactly what happens:
 
-| # | Bug | Status | Notes |
-|---|-----|--------|-------|
-| 1 | Form validation for New Inspections | **REAL BUG** | No validation on Organization/Location before submit |
-| 2 | Broken Equipment Tab Navigation | **Not a bug** | Radix Tabs with `value`/`onValueChange` works correctly |
-| 3 | Facility Name Combobox State Retention | **Already fixed** | `PopoverAnchor` + `setIsEditing(false)` already applied |
-| 4 | Location Field Keyboard Input | **Not a bug** | Standard `<Input>` with `onChange` handler works correctly |
-| 5 | Unsaved Changes Warning on Completed | **REAL BUG** | No status check -- warning fires on completed reports |
-| 6 | PDF Download button inert | **By design** | PDF button intentionally commented out; HTML Download button in report viewer works correctly |
+### Production Year Corrections (3 records)
+These equipment rows currently display nonsensical year values (7012024, 5292024). They will be corrected to `2024` -- the actual year embedded in the corrupted MMDDYYYY format.
 
----
+| ID | Equipment Type | Current Year | Corrected Year |
+|----|---------------|-------------|----------------|
+| `75835ff6-...` | Dynamic | 7012024 | 2024 |
+| `7bdb315f-...` | Dynamic | 5292024 | 2024 |
+| `9d9da640-...` | Dynamic | 5292024 | 2024 |
 
-## Fix 1: Add Validation to New Inspection Form
+### Negative Quantity Fix (1 record)
+| ID | Equipment Type | Current Qty | Corrected Qty |
+|----|---------------|------------|---------------|
+| `1cac4962-...` | Headwall Seat Harness | -1 | 1 |
 
-**File:** `src/pages/NewInspection.tsx`
+### Ghost Duplicate Removal (2 records)
+These are empty placeholder rows in `inspection_systems` with no name and no comments -- they are invisible in the report and carry no data. Deleting them removes clutter only.
 
-Add validation at the top of `handleSubmit` (before the `isSubmitting` guard) to check that `organization` and `location` are non-empty. Display a toast error and return early if either is blank.
+| ID | System Name | Name | Comments |
+|----|------------|------|----------|
+| `e2d22e89-...` | Spotted/Low | (empty) | (empty) |
+| `1bf6a534-...` | Spotted/Low | (empty) | (empty) |
 
-Also add visual "required" indicators (asterisks) to the Organization and Location labels.
-
-**Changes:**
-- Add validation check inside `handleSubmit`:
-  ```typescript
-  if (!formData.organization.trim() || !formData.location.trim()) {
-    toast.error("Required fields missing", {
-      description: "Organization and Location are required."
-    });
-    return;
-  }
-  ```
-- Add asterisks to the Organization and Location `<Label>` elements
+The 9 real "Spotted/Low" systems (Whale Watch, Spider Web, Low Wall, etc.) with actual names and comments are **untouched**.
 
 ---
 
-## Fix 2: Suppress Unsaved Changes Warning on Completed Reports
+## SQL Migration
 
-**File:** `src/pages/InspectionForm.tsx`
+```sql
+-- Fix 3 corrupted production_year values (MMDDYYYY -> YYYY)
+UPDATE public.inspection_equipment
+SET production_year = 2024
+WHERE id IN (
+  '75835ff6-7427-45a5-b274-0e8977a6c07b',
+  '7bdb315f-01e7-4467-b062-f3faae986e60',
+  '9d9da640-843a-41ca-a8eb-a9ef504a058a'
+);
 
-The `useUnsavedChanges` hook at line 157 receives `hasUnsavedChanges` with no status check. When a completed report triggers internal updates (e.g., summary auto-regeneration), the warning dialog appears incorrectly.
+-- Fix negative quantity
+UPDATE public.inspection_equipment
+SET quantity = 1
+WHERE id = '1cac4962-0d8a-484c-a75e-3bc719d2d9bd';
 
-**Change:** Pass `hasUnsavedChanges && inspection?.status !== 'completed'` to the hook:
-
-```typescript
-const { isBlocked, confirmNavigation, cancelNavigation } = useUnsavedChanges({
-  hasUnsavedChanges: hasUnsavedChanges && inspection?.status !== 'completed',
-  message: "You have unsaved changes to this inspection. Are you sure you want to leave?",
-});
+-- Remove 2 ghost placeholder rows (no name, no comments)
+DELETE FROM public.inspection_systems
+WHERE id IN (
+  'e2d22e89-e382-4385-a294-31e9f0b0a0d6',
+  '1bf6a534-08e0-4d4a-b5e3-c6e6f6726f8a'
+);
 ```
 
-This ensures the warning only appears for draft reports with pending modifications.
-
----
-
-## Files Changed
-
-| File | Change |
-|------|--------|
-| `src/pages/NewInspection.tsx` | Add required field validation + visual indicators |
-| `src/pages/InspectionForm.tsx` | Suppress unsaved changes warning for completed reports |
-
-## What This Does NOT Change
-
-- No changes to tab navigation (already working)
-- No changes to OrganizationAutocomplete (already fixed)
-- No changes to Location input (already working)
-- No changes to PDF/HTML download (HTML download works; PDF is intentionally hidden)
-- No changes to auto-save, auth, or report generation logic
+All 6 changes are in a single migration. No code file changes needed.
 
