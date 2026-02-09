@@ -390,6 +390,14 @@ export default function InspectionForm() {
     }
   }, [systems, ziplines, equipment, standards, summary]);
 
+  // Reset internal update flag AFTER the auto-save watcher above has run
+  // React runs effects in declaration order, so this always executes after the watcher skips
+  useEffect(() => {
+    if (isInternalUpdateRef.current) {
+      isInternalUpdateRef.current = false;
+    }
+  }, [systems, ziplines, equipment, standards, summary]);
+
   // Auto-save interval (every 10 seconds as backup)
   useEffect(() => {
     const autoSaveInterval = setInterval(() => {
@@ -1204,7 +1212,6 @@ export default function InspectionForm() {
                   }
                   return s;
                 }));
-                requestAnimationFrame(() => { isInternalUpdateRef.current = false; });
               }, 100);
             }
             
@@ -1236,7 +1243,6 @@ export default function InspectionForm() {
                   }
                   return z;
                 }));
-                requestAnimationFrame(() => { isInternalUpdateRef.current = false; });
               }, 100);
             }
             
@@ -1268,7 +1274,7 @@ export default function InspectionForm() {
                   }
                   return e;
                 }));
-                requestAnimationFrame(() => { isInternalUpdateRef.current = false; });
+                
               }, 100);
             }
             
