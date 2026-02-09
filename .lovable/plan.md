@@ -1,38 +1,40 @@
 
 
-# Fix Autocomplete Entry Text Wrapping
+# Show Full Entry Names on One Line
 
 ## Problem
 
-The current `break-all` CSS class breaks text at any character boundary, causing words to split mid-syllable (e.g., "Te-chnic", "Ste-el", "P-ro"). This makes entries very hard to read.
+The autocomplete dropdown matches the input field width, which on mobile is narrow (~300px). Long entries like "Singing Rock Technic Speed Steel Harness" cannot fit on one line.
 
-## Changes
+## Solution
+
+Make the popover wider than the trigger on mobile by using `min-width` instead of `width`, and allow it to grow up to the viewport width.
 
 ### File: `src/components/GlobalAutocomplete.tsx`
 
-**1. Replace `break-all` with proper word wrapping (line ~418)**
+**Change the PopoverContent className (line 366)**
 
-Change the entry text span from:
+From:
 ```tsx
-<span className="break-all">{option.value}</span>
-```
-to:
-```tsx
-<span className="break-words">{option.value}</span>
+<PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
 ```
 
-`break-words` (Tailwind for `overflow-wrap: break-word`) only breaks at word boundaries, keeping "Singing Rock Technic Speed Steel Harness" readable across lines.
-
-**2. Add `min-w-0` to the flex container (line ~411)**
-
-The parent flex div needs `min-w-0` so the text container can shrink and wrap properly instead of overflowing:
+To:
 ```tsx
-<div className="flex items-center flex-1 min-w-0">
+<PopoverContent className="min-w-[--radix-popover-trigger-width] w-auto max-w-[calc(100vw-2rem)] p-0" align="start">
 ```
 
-**3. Increase the ScrollArea height (line ~404)**
+This ensures:
+- The dropdown is at least as wide as the input field
+- It can grow wider to fit long text on a single line
+- It never exceeds the viewport width (with 1rem margin on each side)
+- Entries with short text still look compact
 
-Bump from `h-[200px]` to `h-[240px]` to give more vertical room for wrapped entries.
+Additionally, add `whitespace-nowrap` to the entry text span (line ~418) to prevent wrapping:
 
-These three small CSS changes will make all entries wrap cleanly at word boundaries while keeping the delete button accessible.
+```tsx
+<span className="break-words whitespace-nowrap">{option.value}</span>
+```
+
+This combination keeps every entry on a single readable line while the popover auto-sizes to fit.
 
