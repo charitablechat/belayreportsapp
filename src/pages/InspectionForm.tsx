@@ -87,6 +87,7 @@ export default function InspectionForm() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const saveDebounceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const isInternalUpdateRef = useRef(false);
+  const anySaveInProgressRef = useRef(false);
   const wasOfflineRef = useRef(!isOnline);
   const autoRetryingRef = useRef(false);
   const [currentUser, setCurrentUser] = useState<any>(null);
@@ -1366,7 +1367,11 @@ export default function InspectionForm() {
   };
 
   const triggerImmediateSave = async () => {
-    if (saving) return;
+    if (saving || anySaveInProgressRef.current) {
+      // Don't drop the save -- ensure data is saved on the next cycle
+      setHasUnsavedChanges(true);
+      return;
+    }
     
     // Clear existing debounce timer using ref
     if (saveDebounceTimerRef.current) {
@@ -1374,12 +1379,15 @@ export default function InspectionForm() {
       saveDebounceTimerRef.current = null;
     }
     
+    anySaveInProgressRef.current = true;
     setAutoSaving(true);
     
     // Safety timeout - NEVER get stuck in autoSaving state
     const safetyTimeout = setTimeout(() => {
       console.warn('[InspectionForm] triggerImmediateSave safety timeout reached, forcing state reset');
       setAutoSaving(false);
+      // NOTE: anySaveInProgressRef is NOT reset here -- the actual save
+      // still running will reset it in `finally`
     }, 8000);
     
     try {
@@ -1398,18 +1406,22 @@ export default function InspectionForm() {
     } finally {
       clearTimeout(safetyTimeout);
       setAutoSaving(false);
+      anySaveInProgressRef.current = false;
     }
   };
 
   const autoSaveProgress = async () => {
-    if (!hasUnsavedChanges || saving || autoSaving) return;
+    if (!hasUnsavedChanges || saving || autoSaving || anySaveInProgressRef.current) return;
     
+    anySaveInProgressRef.current = true;
     setAutoSaving(true);
     
     // Safety timeout - NEVER get stuck in autoSaving state
     const safetyTimeout = setTimeout(() => {
       console.warn('[InspectionForm] autoSaveProgress safety timeout reached, forcing state reset');
       setAutoSaving(false);
+      // NOTE: anySaveInProgressRef is NOT reset here -- the actual save
+      // still running will reset it in `finally`
     }, 8000);
     
     try {
@@ -1426,6 +1438,7 @@ export default function InspectionForm() {
     } finally {
       clearTimeout(safetyTimeout);
       setAutoSaving(false);
+      anySaveInProgressRef.current = false;
     }
   };
 
