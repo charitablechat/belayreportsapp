@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { toast } from "@/hooks/use-toast";
 import { toast as sonnerToast } from "@/components/ui/sonner";
 import { addSaveNotification, addSyncNotification } from "@/lib/notification-center";
@@ -1366,6 +1366,8 @@ export default function InspectionForm() {
     }
   };
 
+  const triggerImmediateSaveRef = useRef<() => Promise<void>>();
+
   const triggerImmediateSave = async () => {
     if (saving || anySaveInProgressRef.current) {
       // Don't drop the save -- ensure data is saved on the next cycle
@@ -1409,6 +1411,14 @@ export default function InspectionForm() {
       anySaveInProgressRef.current = false;
     }
   };
+
+  // Update ref after every render so the stable wrapper always calls the latest version
+  triggerImmediateSaveRef.current = triggerImmediateSave;
+
+  // Stable wrapper that never changes identity — allows React.memo to work on EquipmentTable
+  const stableTriggerImmediateSave = useCallback(() => {
+    return triggerImmediateSaveRef.current?.() ?? Promise.resolve();
+  }, []);
 
   const autoSaveProgress = async () => {
     if (!hasUnsavedChanges || saving || autoSaving || anySaveInProgressRef.current) return;
@@ -2086,7 +2096,7 @@ export default function InspectionForm() {
           userProfile={inspectorProfile}
           modifiedByProfile={modifiedByProfile}
           onUpdate={isReadOnly ? () => {} : handleHeaderUpdate} 
-          onImmediateSave={isReadOnly ? undefined : triggerImmediateSave}
+          onImmediateSave={isReadOnly ? undefined : stableTriggerImmediateSave}
           isReadOnly={isReadOnly}
         />
 
@@ -2125,8 +2135,8 @@ export default function InspectionForm() {
           </div>
 
           <TabsContent value="details" className="space-y-6">
-            <OperatingSystemsTable systems={systems} onUpdate={setSystems} onImmediateSave={triggerImmediateSave} />
-            <ZiplinesTable ziplines={ziplines} onUpdate={setZiplines} onImmediateSave={triggerImmediateSave} />
+            <OperatingSystemsTable systems={systems} onUpdate={setSystems} onImmediateSave={stableTriggerImmediateSave} />
+            <ZiplinesTable ziplines={ziplines} onUpdate={setZiplines} onImmediateSave={stableTriggerImmediateSave} />
             
             <div className="mt-8 border-t pt-6">
               <h3 className="text-lg font-semibold mb-4">Photos - Systems & Ziplines</h3>
@@ -2157,56 +2167,56 @@ export default function InspectionForm() {
                   displayName="Harnesses"
                   equipment={equipment}
                   onUpdate={setEquipment}
-                  onImmediateSave={triggerImmediateSave}
+                  onImmediateSave={stableTriggerImmediateSave}
                 />
                 <EquipmentTable
                   category="helmets"
                   displayName="Helmets"
                   equipment={equipment}
                   onUpdate={setEquipment}
-                  onImmediateSave={triggerImmediateSave}
+                  onImmediateSave={stableTriggerImmediateSave}
                 />
                 <EquipmentTable
                   category="lanyards"
                   displayName="Lanyards"
                   equipment={equipment}
                   onUpdate={setEquipment}
-                  onImmediateSave={triggerImmediateSave}
+                  onImmediateSave={stableTriggerImmediateSave}
                 />
                 <EquipmentTable
                   category="connectors"
                   displayName="Connectors (Carabiners & Quicklinks)"
                   equipment={equipment}
                   onUpdate={setEquipment}
-                  onImmediateSave={triggerImmediateSave}
+                  onImmediateSave={stableTriggerImmediateSave}
                 />
                 <EquipmentTable
                   category="rope"
                   displayName="Kernmantle Rope"
                   equipment={equipment}
                   onUpdate={setEquipment}
-                  onImmediateSave={triggerImmediateSave}
+                  onImmediateSave={stableTriggerImmediateSave}
                 />
                 <EquipmentTable
                   category="belay"
                   displayName="Belay/Descent Device"
                   equipment={equipment}
                   onUpdate={setEquipment}
-                  onImmediateSave={triggerImmediateSave}
+                  onImmediateSave={stableTriggerImmediateSave}
                 />
                 <EquipmentTable
                   category="trolleys"
                   displayName="Trolleys and Pulleys"
                   equipment={equipment}
                   onUpdate={setEquipment}
-                  onImmediateSave={triggerImmediateSave}
+                  onImmediateSave={stableTriggerImmediateSave}
                 />
                 <EquipmentTable
                   category="other"
                   displayName="Other Equipment"
                   equipment={equipment}
                   onUpdate={setEquipment}
-                  onImmediateSave={triggerImmediateSave}
+                  onImmediateSave={stableTriggerImmediateSave}
                 />
                 
                 <div className="mt-8 border-t pt-6">
@@ -2258,7 +2268,7 @@ export default function InspectionForm() {
             <SummarySection 
               summary={summary} 
               onUpdate={setSummary} 
-              onImmediateSave={triggerImmediateSave}
+              onImmediateSave={stableTriggerImmediateSave}
               onRegenerate={handleManualRegenerateSummary}
             />
             
