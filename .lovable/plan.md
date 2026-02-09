@@ -1,80 +1,58 @@
 
 
-# Fix: GlobalAutocomplete Popover Opens and Immediately Closes
+# Fix: Enter Key Doesn't Persist Value in GlobalAutocomplete
+
+## Problem
+
+When the user types "Petzl Accent" in the Type field and presses Enter, the value disappears. The data IS actually saved to the parent state, but the input displays empty because of a state inconsistency.
 
 ## Root Cause
 
-The bug is in `GlobalAutocomplete.tsx`, not in `InspectionForm.tsx`. It's a **Radix PopoverTrigger toggle conflict**:
+The input displays its value using this logic:
 
-1. User clicks the Input field inside `PopoverTrigger`
-2. `onFocus` fires first, calling `handleTriggerFocus()` which sets `open = true`
-3. React flushes this state update
-4. The `click` event then fires on the `PopoverTrigger`, which has built-in toggle behavior
-5. Radix reads the current `open` value (now `true`) and calls `onOpenChange(!true)` = `onOpenChange(false)`
-6. The popover closes ~100ms after opening -- before the user can type anything
+```
+value={isEditing ? inputValue : value}
+```
 
-This matches the session replay data exactly: the dropdown opens, then closes within 86-104ms.
+When Enter is pressed, `handleSelect` runs:
+1. `onChange("Petzl Accent")` -- parent receives the value (correct)
+2. `setInputValue("")` -- clears the search text
+3. `isEditing` remains `true` -- NOT reset
 
-The previous fixes (stable callbacks, concurrency locks) were addressing real but secondary issues. This is the primary cause of the "cannot type in the Type field" bug.
+Result: the input shows `isEditing ? inputValue : value` = `true ? "" : "Petzl Accent"` = **empty string**
 
-## Fix (2 files, minimal changes)
+The value was saved correctly, but the input renders empty because `isEditing` is still true and `inputValue` was cleared.
 
-### File 1: `src/components/ui/popover.tsx`
+The `handleTriggerKeyDown` handler (Enter on the outer input) does reset `isEditing`, but `handleInputKeyDown` (Enter on the popover's search input) does not. Since cmdk can capture focus inside the popover, the wrong handler runs.
 
-Export `PopoverAnchor` from the existing Radix package. This component positions the popover relative to an element but does NOT add click-to-toggle behavior.
+## Fix (1 file, 1 line)
+
+**File: `src/components/GlobalAutocomplete.tsx`**
+
+Add `setIsEditing(false)` to `handleSelect`, so editing state is always reset when a value is committed -- regardless of which input captured the Enter key.
 
 ```typescript
-const PopoverAnchor = PopoverPrimitive.Anchor;
-
-export { Popover, PopoverTrigger, PopoverAnchor, PopoverContent };
+const handleSelect = (selectedValue: string) => {
+    onChange(selectedValue);
+    saveToGlobalHistory(selectedValue);
+    setOpen(false);
+    setInputValue("");
+    setIsEditing(false);  // <-- ADD THIS LINE
+    onBlur?.();
+};
 ```
-
-### File 2: `src/components/GlobalAutocomplete.tsx`
-
-Replace `PopoverTrigger` with `PopoverAnchor` for the input wrapper. Since we already manage `open` state manually through focus/blur/keydown handlers, we don't need the trigger's toggle behavior.
-
-```diff
- import {
-   Popover,
--  PopoverTrigger,
-+  PopoverAnchor,
-   PopoverContent,
- } from "@/components/ui/popover";
-```
-
-```diff
--      <PopoverTrigger asChild>
-+      <PopoverAnchor asChild>
-         <div className="relative w-full">
-           <Input ... />
-         </div>
--      </PopoverTrigger>
-+      </PopoverAnchor>
-```
-
-That's it. No logic changes, no new state management, no changes to any other file.
 
 ## Why This Works
 
-- `PopoverAnchor` tells Radix "position the popover relative to this element" without adding any click/toggle handlers
-- The existing `handleTriggerFocus`, `handleTriggerBlur`, and `handleTriggerKeyDown` handlers continue to manage `open` state manually -- which is what they were always designed to do
-- No more conflict between the manual state management and the built-in trigger toggle
+- `handleSelect` is the single commit point called by both Enter handlers and by clicking an option in the dropdown
+- Setting `isEditing = false` here means the input switches to displaying the `value` prop (which was just set via `onChange`)
+- The user sees "Petzl Accent" immediately after pressing Enter
+- No new state, no new refs, no risk of re-triggering save loops
 
 ## What This Does NOT Change
 
-- No changes to `InspectionForm.tsx` (all previous fixes remain intact)
-- No changes to `EquipmentTable.tsx`
-- No changes to save logic, concurrency locks, or auto-save behavior
-- No database, API, or dependency changes
-- No styling changes
-
-## Verification
-
-After applying:
-1. Open an existing inspection, go to the Equipment tab
-2. Click the "Type" field in any equipment row
-3. The dropdown should open and STAY open
-4. Type text -- it should appear in the field
-5. Select an option or press Enter -- the value should commit
-6. Blur away -- the popover should close cleanly
+- No changes to InspectionForm.tsx or EquipmentTable.tsx
+- No changes to save logic, concurrency locks, or auto-save
+- No database or API changes
+- Blur-to-save behavior remains identical
 
