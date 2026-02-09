@@ -211,6 +211,7 @@ export function GlobalAutocomplete({
     saveToGlobalHistory(selectedValue);
     setOpen(false);
     setInputValue("");
+    setIsEditing(false);
     onBlur?.();
   };
 
