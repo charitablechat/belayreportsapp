@@ -1,65 +1,76 @@
 
 
-# Replace Dashboard Background with Winter Olympic Skier Image
+# Fix Dashboard Background Image Display
 
-## Overview
+## Problem
 
-Replace the current `dashboard-background.webp` with the uploaded skier image. Show it on all viewports (not just desktop) and add a dark overlay scrim to maintain legibility of the notification strip, report cards, and header against the busy action photo.
+The background image appears too enlarged because `object-cover` forces the image to fill the entire viewport height, cropping heavily on both sides. Combined with the `bg-background/80 backdrop-blur-sm` overlay on the content layer (line 824), the image is both over-cropped and barely visible.
 
-## Changes
+## Solution
 
-### 1. Copy uploaded image to project
+Use a **fixed/contained top-portion** approach instead of stretching the image across the full viewport:
 
-Copy `user-uploads://0x0.webp` to `src/assets/dashboard-background.webp`, replacing the existing file.
+1. **Limit the background image to the top portion** of the screen (roughly 40-50vh) and let it fade into the content background, rather than stretching it across the full `min-h-screen` container. This preserves the image's natural aspect ratio and avoids aggressive cropping.
 
-### 2. Update `src/pages/Dashboard.tsx` (lines 809-823)
+2. **Use `object-contain` on desktop / `object-cover` on mobile** with constrained height so the image shows more of the scene without over-zooming.
 
-Replace the current background section to:
-- Show the image on **all viewports** (remove `hidden md:block`)
-- Add a dark scrim overlay on top of the image for legibility
-- Use `object-cover` with `object-[center_30%]` to keep the skier's upper body visible across aspect ratios (the subject is in the center-upper portion)
+3. **Soften the content overlay** from `bg-background/80` to a lighter value so the image is actually visible where it shows.
+
+## Changes to `src/pages/Dashboard.tsx`
+
+### Background container (lines 809-823)
+
+Replace the full-bleed `absolute inset-0` approach with a height-constrained background that fades out at the bottom:
 
 ```tsx
 {/* Background image */}
-<div className="absolute inset-0 z-0">
-  {/* Full-bleed background image -- all viewports */}
+<div className="absolute inset-x-0 top-0 z-0 h-[45vh] md:h-[50vh] overflow-hidden">
   <img
     src={dashboardBackground}
     alt=""
-    className="w-full h-full object-cover object-[center_30%]"
+    className="w-full h-full object-cover object-center"
   />
   
-  {/* Dark scrim overlay for legibility of foreground content */}
-  <div className="absolute inset-0 bg-gradient-to-b from-slate-900/70 via-slate-900/50 to-slate-900/70" />
+  {/* Gradient fade: image fades into the page background at the bottom */}
+  <div className="absolute inset-0 bg-gradient-to-b from-slate-900/50 via-transparent to-background" />
   
   {/* Reduced motion fallback */}
   <div className="absolute inset-0 bg-gradient-to-br from-blue-900/80 via-sky-900/70 to-blue-900/80 hidden motion-reduce:block" />
 </div>
 ```
 
-Key design decisions:
-- **`object-[center_30%]`**: Positions the focal point (skier) toward the upper third, preventing important cropping on tall mobile screens
-- **Gradient scrim** (`from-slate-900/70 via-slate-900/50 to-slate-900/70`): Darker at top (header area) and bottom (cards), lighter in the middle to let the image show through while keeping all text readable
-- The existing `bg-background/80 backdrop-blur-sm` on line 824 provides an additional readability layer for the main content area
+### Content overlay (line 824)
 
-### 3. No other files change
+Reduce the opacity and remove backdrop-blur so the image shows through in the header area:
 
-The image import on line 23 (`import dashboardBackground from "@/assets/dashboard-background.webp"`) stays identical since the filename is unchanged.
+```tsx
+<div className="relative z-10 min-h-screen">
+```
 
-## Legibility Verification
+The header already has its own `bg-card/95 backdrop-blur-sm` (line 828), so legibility is maintained there. Report cards below the fold sit against the normal `bg-background` since the image fades out by ~45vh.
+
+## Key Design Decisions
+
+| Decision | Rationale |
+|----------|-----------|
+| Height-constrained to 45-50vh | Shows the full width of the image without extreme vertical cropping |
+| `object-center` instead of `object-[center_30%]` | With constrained height, the default center position works naturally |
+| Gradient fades to `to-background` | Seamlessly blends the image bottom edge into the page color -- no hard cutoff |
+| Lighter top scrim (`from-slate-900/50`) | Darker enough for header legibility, but lets the image show through |
+| Remove `bg-background/80 backdrop-blur-sm` from content div | This was hiding the image entirely; header/cards have their own backgrounds |
+
+## Legibility Still Guaranteed
 
 | Element | Protection |
 |---------|-----------|
-| Header (logos, user dropdown) | `bg-card/95 backdrop-blur-sm` (line 828) -- opaque card background |
-| Holiday Banner | Rendered above `z-10` content layer with its own background |
-| Sync status strip | Fixed height with own background styling, sits within `z-10` |
-| Report Cards | Inside `bg-background/80 backdrop-blur-sm` container + card backgrounds |
-| Notification strip | Own background color, unaffected by image layer at `z-0` |
+| Header | Own `bg-card/95 backdrop-blur-sm` background |
+| Holiday Banner | Own background styling |
+| Report Cards | Below the image fade zone; sit on normal `bg-background` |
+| Sync status strip | Within header zone with card background |
 
 ## Files Modified
 
 | File | Change |
 |------|--------|
-| `src/assets/dashboard-background.webp` | Replaced with skier image |
-| `src/pages/Dashboard.tsx` | Update background section (lines 809-823) for full-viewport image with dark scrim |
+| `src/pages/Dashboard.tsx` | Constrain background image height, soften overlays, remove content-layer blur |
 
