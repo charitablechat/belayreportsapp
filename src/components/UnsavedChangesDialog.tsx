@@ -9,11 +9,13 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { AlertTriangle } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 interface UnsavedChangesDialogProps {
   isOpen: boolean;
   onConfirm: () => void;
   onCancel: () => void;
+  onSaveAndLeave?: () => void;
   message?: string;
 }
 
@@ -21,6 +23,7 @@ export function UnsavedChangesDialog({
   isOpen,
   onConfirm,
   onCancel,
+  onSaveAndLeave,
   message = "You have unsaved changes that will be lost if you leave this page.",
 }: UnsavedChangesDialogProps) {
   return (
@@ -33,13 +36,21 @@ export function UnsavedChangesDialog({
           </AlertDialogTitle>
           <AlertDialogDescription>{message}</AlertDialogDescription>
         </AlertDialogHeader>
-        <AlertDialogFooter>
+        <AlertDialogFooter className="flex-col sm:flex-row gap-2">
           <AlertDialogCancel onClick={onCancel}>Stay on Page</AlertDialogCancel>
+          {onSaveAndLeave && (
+            <Button
+              variant="default"
+              onClick={onSaveAndLeave}
+            >
+              Save &amp; Leave
+            </Button>
+          )}
           <AlertDialogAction
             onClick={onConfirm}
             className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
           >
-            Leave Page
+            Leave Without Saving
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
