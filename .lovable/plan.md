@@ -1,122 +1,98 @@
 
 
-# Technical Report: Systems/Ziplines Sync Failure
+# Fix: Systems/Ziplines Data Loss During Online and Offline Save
 
-## Diagnosis: Why It Failed
+## Why It Is Still Happening
 
-### Confirmed Evidence
+The recent fix correctly saves ALL items (including empty-name rows) to IndexedDB. However, **the online server sync path still filters them out**. Here is the exact failure sequence:
 
-Database state for inspection `06d59d44-c8ee-496d-8ec4-ff78b72a1014`:
-- **Systems: 0, Ziplines: 0** (data lost)
-- Equipment: 16, Standards: 6, Summary: 1 (intact)
-- `synced_at: 2026-02-10 23:38:59` (inspection was marked as fully synced)
-- `updated_at: 2026-02-10 23:39:53` (modified after sync)
+1. User adds system rows -- they start with empty `system_name`
+2. Auto-save fires (1.5s debounce) while user is still typing names
+3. IndexedDB now has all rows (good -- recent fix works)
+4. Online sync runs in the same `performSave` call and sends only `validSystems` (rows with non-empty names) to the database -- **this is still 0 rows if names haven't been filled yet**
+5. `synced_at` is set to now, `updated_at` is set to match (`synced_at = updated_at`)
+6. User fills in names, triggering another debounce cycle
+7. Next auto-save fires -- but the online sync for systems only sends rows whose names are filled. If the user navigated away or the debounce was killed, the server still has 0 systems
+8. On next page load while online, server data (0 systems) is treated as authoritative because `synced_at >= updated_at`
 
-### Root Cause: Silent Data Exclusion During Save
+The atomic sync manager (background sync) does NOT filter by name and would correctly send everything -- but it never gets a chance because the record is already marked as fully synced.
 
-The `performSave` function in `InspectionForm.tsx` (line 1098-1102) applies a validation filter before saving:
+## The Fix (2 files)
 
-```text
-validSystems = systems.filter(s => s.system_name && s.system_name.trim() !== "")
-validZiplines = ziplines.filter(z => z.zipline_name && z.zipline_name.trim() !== "")
+### 1. `src/pages/InspectionForm.tsx` -- Stop filtering systems/ziplines/equipment for the online sync path
+
+The `validSystems`, `validZiplines`, and `validEquipment` filters should ONLY be used for display/reporting purposes, never for persistence. The online sync path should send ALL items to the database, matching what the atomic sync manager already does.
+
+Changes:
+- Replace all references to `validSystems` with `systems` in the server sync operations (lines 1197-1270)
+- Replace all references to `validZiplines` with `ziplines` in the server sync operations (lines 1272-1301)
+- Replace all references to `validEquipment` with `equipment` in the server sync operations (lines 1304-1333)
+- Keep the filter definitions for DEV logging only (useful for diagnostics)
+- Add pre-sync ID transformation (temp- to UUID) directly on the unfiltered arrays instead of the filtered ones
+
+### 2. `src/pages/InspectionForm.tsx` -- Prevent `synced_at = updated_at` alignment when items were incomplete
+
+After the online sync completes, do NOT align `updated_at` to match `synced_at` if any systems/ziplines had empty names at save time. This ensures the background sync will pick up the record again once names are filled in.
+
+Change at line 1349-1353:
+- Only set `updated_at = synced_at` if the save had no filtered-out items
+- Otherwise, keep the original `updated_at` so the record remains "newer than synced" and gets re-synced
+
+## Technical Details
+
+### File: `src/pages/InspectionForm.tsx`
+
+**Change 1 -- Use unfiltered arrays for server sync (lines 1197-1333)**
+
+Replace:
+```
+const existingSystems = validSystems.filter(s => s.id && !s.id.startsWith('temp-'));
+const newSystems = validSystems.filter(s => !s.id || s.id.startsWith('temp-')).map(...)
 ```
 
-If the `system_name` or `zipline_name` field is `null`, `undefined`, or an empty string at the moment of save, those entries are **silently excluded** from both the IndexedDB write and the server sync. The rest of the save proceeds normally and the inspection is marked as synced (`synced_at` is set), creating the false impression that all data was committed.
-
-This happens because:
-1. The online sync path (line 1204-1319) only pushes upsert/insert operations for items that pass the filter
-2. If `validSystems` is empty, **zero operations** are sent for systems -- no insert, no upsert
-3. The inspection is still marked as synced at line 1322 regardless
-4. Any subsequent page reload while online pulls server data (0 systems) and overwrites the IndexedDB cache
-
-### Contributing Factor: `useBlocker` Interaction
-
-The recently added `useUnsavedChanges` hook uses `useBlocker` to prevent navigation when `hasUnsavedChanges` is true. When the user confirms "Leave Page", the component unmounts and the pending 1.5-second auto-save debounce timer is killed. If the last batch of edits (setting `system_name` to a valid value) was within the debounce window, the data never reaches `performSave`.
-
-Timeline of failure:
-1. User adds system/zipline rows (entries created with empty `system_name`)
-2. Auto-save fires during this time -- saves inspection with `validSystems = []` (filtered out)
-3. User fills in the `system_name` values
-4. 1.5s debounce starts
-5. User navigates away before debounce completes
-6. `useBlocker` dialog appears, user clicks "Leave Page"
-7. Debounce timer cleared, data never saved
-8. Inspection already marked as synced with 0 systems
-
-### Contributing Factor: Fire-and-Forget Local Save
-
-The IndexedDB save at line 1122 is intentionally not awaited (fire-and-forget). While this improves UI responsiveness, it means:
-- The server sync can begin before IndexedDB has the latest data
-- If the server sync marks the record as synced, the `localIsNewer` guard on reload sees server data as authoritative
-- Local-only child data gets overwritten by empty server data
-
-## Immediate Action: Recover Current Data
-
-### Step 1: Manual Data Recovery
-
-The systems and ziplines data for this inspection must be re-entered by the user, as the data was never committed to either IndexedDB or the database. There is no backup to recover from since the data only existed in React state.
-
-### Step 2: Code Fixes (4 files)
-
-**File 1: `src/pages/InspectionForm.tsx` -- Save-before-leave**
-
-Modify the `UnsavedChangesDialog` integration to trigger an immediate save before confirming navigation. Change the `confirmNavigation` flow:
-
-- When user clicks "Leave Page", first flush any pending debounce timer and run `performSave(true)` (silent mode)
-- Only call `blocker.proceed()` after the save completes (or times out after 3 seconds)
-- This ensures the last batch of edits always reaches IndexedDB before unmount
-
-**File 2: `src/pages/InspectionForm.tsx` -- Await local save before server sync**
-
-Change the fire-and-forget IndexedDB save at line 1122 to be awaited (or at minimum, awaited before the server sync begins). This ensures IndexedDB always has the latest data before the inspection is marked as synced.
-
-```text
-// BEFORE (fire-and-forget):
-Promise.all([saveInspectionOffline(...), saveRelatedDataOffline(...)]).then(...)
-
-// AFTER (awaited):
-await Promise.all([saveInspectionOffline(...), saveRelatedDataOffline(...)])
+With:
+```
+const existingSystems = systems.filter(s => s.id && !s.id.startsWith('temp-'));
+const newSystems = systems.filter(s => !s.id || s.id.startsWith('temp-')).map(...)
 ```
 
-**File 3: `src/pages/InspectionForm.tsx` -- Include all rows in local save, filter only for server**
+Same pattern for ziplines and equipment.
 
-Split the filtering logic:
-- IndexedDB save: Save ALL items (including those with empty names) -- preserves work-in-progress data
-- Server sync: Continue filtering to only valid items (prevents DB constraint violations)
+**Change 2 -- Conditional timestamp alignment (lines 1348-1353)**
 
-This prevents the scenario where a user adds rows, hasn't filled names yet, auto-save deletes the rows from IndexedDB, and the data is lost.
+Replace:
+```
+await saveInspectionOffline({
+  ...inspectionToSave,
+  synced_at: new Date().toISOString(),
+  updated_at: new Date().toISOString(),
+});
+```
 
-**File 4: `src/components/UnsavedChangesDialog.tsx` -- Add "Save and Leave" option**
+With:
+```
+const hadFilteredItems = validSystems.length !== systems.length 
+  || validZiplines.length !== ziplines.length
+  || validEquipment.length !== equipment.length;
 
-Add a third button to the dialog: "Save and Leave" which triggers a save before proceeding with navigation. The existing "Leave Page" button remains for explicit abandon.
+const syncTimestamp = new Date().toISOString();
+await saveInspectionOffline({
+  ...inspectionToSave,
+  synced_at: syncTimestamp,
+  updated_at: hadFilteredItems ? inspectionToSave.updated_at : syncTimestamp,
+});
+```
 
-## Long-Term Strategy: Prevention Plan
+## What This Achieves
 
-### 1. Robust Save Guarantees
-
-- **Await critical local saves**: The IndexedDB write must complete before any server sync or sync-status marking
-- **Save-on-unmount**: Add a `useEffect` cleanup that flushes pending saves when the component unmounts (belt-and-suspenders with the blocker save)
-- **Separate filters for local vs remote**: Local IndexedDB stores all data (including incomplete rows); only the server sync filters for validity
-
-### 2. Explicit Sync Logging
-
-- Add a sync audit entry each time `performSave` runs, recording: item counts per category (systems, ziplines, equipment, standards), filtered-out counts, and whether the save was silent/manual
-- Log these to the existing Notification Center so the user can review what was saved
-- In DEV mode, add console warnings when `validSystems.length !== systems.length` to flag filtered-out items
-
-### 3. Audit Scope Integration
-
-This investigation confirms a broader pattern: the fire-and-forget save pattern and silent filtering can cause data loss across all form types. The remediation should be applied to:
-
-- `TrainingForm.tsx` -- check for similar filtering patterns on delivery approaches, operating systems
-- `DailyAssessmentForm.tsx` -- check for similar patterns on equipment checks, structure checks
-- All three forms should implement save-before-leave via the `useBlocker` integration
+- ALL data entered by the user is sent to the database immediately during online saves -- no silent filtering
+- Empty-name rows are preserved in the database (the schema allows `system_name` to be null/optional)
+- If rows had empty names at save time, the record stays flagged for re-sync so the background sync will push updated names later
+- The atomic sync manager (offline path) continues working as before -- no changes needed there
 
 ## Files Changed
 
 | File | Change |
 |------|--------|
-| `src/pages/InspectionForm.tsx` | Save-before-leave on blocker confirm; await local save; split filters for local vs server |
-| `src/components/UnsavedChangesDialog.tsx` | Add "Save and Leave" button option |
-| `src/hooks/useUnsavedChanges.tsx` | Add `onSaveAndLeave` callback support |
+| `src/pages/InspectionForm.tsx` | Use unfiltered arrays for server sync; conditional timestamp alignment |
 
