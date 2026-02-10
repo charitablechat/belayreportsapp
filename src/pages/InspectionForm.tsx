@@ -1,6 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from "react";
-import { toast } from "@/hooks/use-toast";
-import { toast as sonnerToast } from "@/components/ui/sonner";
+import { toast } from "@/components/ui/sonner";
 import { addSaveNotification, addSyncNotification } from "@/lib/notification-center";
 import { onSyncComplete } from "@/lib/sync-events";
 import { useNavigate, useParams } from "react-router-dom";
@@ -473,8 +472,7 @@ export default function InspectionForm() {
       };
       
       if (showToast) {
-        toast({
-          title: "Summary Updated",
+        toast.success("Summary Updated", {
           description: "Summary regenerated from inspection data",
         });
       }
@@ -546,10 +544,8 @@ export default function InspectionForm() {
         if (isMobile()) {
           addSaveNotification("Summary auto-updated from inspection items");
         } else {
-          toast({
-            title: "Summary Auto-Updated",
+          toast.info("Summary Auto-Updated", {
             description: "Critical actions and repairs updated from inspection items",
-            duration: 3000,
           });
         }
       }, 800);
@@ -679,10 +675,8 @@ export default function InspectionForm() {
       if (!loadCompleted) {
         console.error('[InspectionForm] Safety timeout triggered - forcing loading completion');
         setLoading(false);
-        toast({
-          title: "Loading timed out",
+        toast.error("Loading timed out", {
           description: "The inspection is taking too long to load. Please try again.",
-          variant: "destructive",
         });
       }
     }, LOAD_TIMEOUT);
@@ -882,10 +876,8 @@ export default function InspectionForm() {
         // Handle inspection not found - redirect to dashboard
         if (!data && !offlineData) {
           console.warn('[InspectionForm] Inspection not found:', id);
-          toast({
-            title: "Inspection not found",
+          toast.error("Inspection not found", {
             description: "This inspection may have been deleted or doesn't exist.",
-            variant: "destructive",
           });
           navigate('/dashboard');
           return;
@@ -1003,20 +995,16 @@ export default function InspectionForm() {
         }
       } else if (!offlineData) {
         // Offline and no cached data
-        toast({
-          title: "Inspection not available offline",
+        toast.error("Inspection not available offline", {
           description: "Please connect to the internet to load this inspection.",
-          variant: "destructive",
         });
         navigate('/dashboard');
         return;
       }
     } catch (error: any) {
       console.error("Error loading inspection:", error);
-      toast({
-        title: "Failed to load inspection",
+      toast.error("Failed to load inspection", {
         description: error.message || "An error occurred while loading the inspection.",
-        variant: "destructive",
       });
       navigate('/dashboard');
     } finally {
@@ -1376,7 +1364,7 @@ export default function InspectionForm() {
             if (isMobile()) {
               addSyncNotification("⚠️ Data could not be saved locally or remotely. Please retry.");
             } else {
-              sonnerToast.error("Save failed", {
+              toast.error("Save failed", {
                 description: "Data could not be saved locally or remotely. Please check your connection and try again.",
                 duration: 10000,
               });
@@ -1386,7 +1374,7 @@ export default function InspectionForm() {
             if (isMobile()) {
               addSyncNotification("Saved locally - will sync when online");
             } else {
-              sonnerToast.info("Saved locally", {
+              toast.info("Saved locally", {
                 description: "Will sync automatically when connection improves.",
               });
             }
@@ -1435,7 +1423,7 @@ export default function InspectionForm() {
       setLastSaved(new Date());
       setHasUnsavedChanges(false);
       // Non-intrusive success feedback (routes to notification center on mobile)
-      sonnerToast.success("Changes saved");
+      toast.success("Changes saved");
       if (import.meta.env.DEV) {
         console.log("Immediate save triggered at", new Date().toLocaleTimeString());
       }
@@ -1840,10 +1828,8 @@ export default function InspectionForm() {
     const safetyTimeoutHandle = setTimeout(() => {
       console.error('[HTML Generation] Safety timeout reached after 10 seconds - force resetting state');
       setGeneratingHtml(false);
-      toast({
-        title: "Report generation timed out",
+      toast.error("Report generation timed out", {
         description: "Please check your connection and try again.",
-        variant: "destructive",
       });
     }, GENERATION_TIMEOUT);
 
@@ -1891,10 +1877,8 @@ export default function InspectionForm() {
       
       // Only show error toast if not already shown by safety timeout
       if (!error.message?.includes('TIMEOUT')) {
-        toast({
-          title: "Failed to generate report",
+        toast.error("Failed to generate report", {
           description: error.message || "Please try again.",
-          variant: "destructive",
         });
       }
     } finally {
@@ -2000,10 +1984,10 @@ export default function InspectionForm() {
                       setSaveError(null);
                       try {
                         await saveProgress();
-                        sonnerToast.success("Save successful");
+                        toast.success("Save successful");
                       } catch (err) {
                         console.error('[InspectionForm] Manual save failed:', err);
-                        sonnerToast.error("Save failed", {
+                        toast.error("Save failed", {
                           description: "Please try again or check your connection.",
                         });
                       }
