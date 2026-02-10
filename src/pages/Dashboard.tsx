@@ -808,18 +808,18 @@ export default function Dashboard() {
       
       {/* Background image */}
       <div className="absolute inset-0 z-0">
-        {/* Gradient overlay for mobile */}
-        <div className="absolute inset-0 bg-gradient-to-br from-blue-900/30 via-sky-900/20 to-blue-900/30 md:hidden" />
-        
-        {/* Static image - desktop, no warping */}
+        {/* Full-bleed background image -- all viewports */}
         <img
           src={dashboardBackground}
           alt=""
-          className="hidden md:block w-full h-full object-cover object-center"
+          className="w-full h-full object-cover object-[center_30%]"
         />
         
-        {/* Gradient fallback when image hidden */}
-        <div className="absolute inset-0 bg-gradient-to-br from-blue-900/30 via-sky-900/20 to-blue-900/30 hidden motion-reduce:block" />
+        {/* Dark scrim overlay for legibility of foreground content */}
+        <div className="absolute inset-0 bg-gradient-to-b from-slate-900/70 via-slate-900/50 to-slate-900/70" />
+        
+        {/* Reduced motion fallback */}
+        <div className="absolute inset-0 bg-gradient-to-br from-blue-900/80 via-sky-900/70 to-blue-900/80 hidden motion-reduce:block" />
       </div>
       <div className="relative z-10 min-h-screen bg-background/80 backdrop-blur-sm">
         {/* Holiday Banner */}
