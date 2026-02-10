@@ -176,15 +176,19 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
                             inputMode="numeric"
                             pattern="[0-9]*"
                             value={item.production_year || ""}
-                            onChange={(e) => {
+                          onChange={(e) => {
                               const raw = e.target.value;
                               if (raw === "") { updateEquipment(item, "production_year", null); return; }
-                              const val = parseInt(raw, 10);
-                              if (!isNaN(val) && val >= 1900 && val <= 2100) {
-                                updateEquipment(item, "production_year", val);
+                              if (/^\d{0,4}$/.test(raw)) {
+                                updateEquipment(item, "production_year", parseInt(raw, 10));
                               }
                             }}
-                            onBlur={onImmediateSave}
+                            onBlur={() => {
+                              if (item.production_year && (item.production_year < 1900 || item.production_year > 2100)) {
+                                updateEquipment(item, "production_year", null);
+                              }
+                              onImmediateSave?.();
+                            }}
                             onKeyDown={(e) => e.key === 'Enter' && onImmediateSave?.()}
                             placeholder="Year"
                             className="border-0 bg-transparent flex-1"
@@ -312,12 +316,16 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
                               onChange={(e) => {
                                 const raw = e.target.value;
                                 if (raw === "") { updateEquipment(item, "production_year", null); return; }
-                                const val = parseInt(raw, 10);
-                                if (!isNaN(val) && val >= 1900 && val <= 2100) {
-                                  updateEquipment(item, "production_year", val);
+                                if (/^\d{0,4}$/.test(raw)) {
+                                  updateEquipment(item, "production_year", parseInt(raw, 10));
                                 }
                               }}
-                              onBlur={onImmediateSave}
+                              onBlur={() => {
+                                if (item.production_year && (item.production_year < 1900 || item.production_year > 2100)) {
+                                  updateEquipment(item, "production_year", null);
+                                }
+                                onImmediateSave?.();
+                              }}
                               onKeyDown={(e) => e.key === 'Enter' && onImmediateSave?.()}
                               placeholder="Year"
                               className="flex-1"
