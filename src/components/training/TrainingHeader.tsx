@@ -62,26 +62,15 @@ export default function TrainingHeader({ training, onUpdate, isReadOnly = false,
                 <Button
                   variant="outline"
                   className={cn(
-                    "w-full justify-start text-left font-normal",
+                    "w-full justify-start text-left font-normal bg-muted/50 cursor-not-allowed",
                     !training.start_date && "text-muted-foreground"
                   )}
-                  disabled={isReadOnly}
+                  disabled
                 >
                   <CalendarIcon className="mr-2 h-4 w-4" />
                   {training.start_date ? format(parseLocalDate(training.start_date)!, "PPP") : "Pick a date"}
                 </Button>
               </PopoverTrigger>
-              {!isReadOnly && (
-              <PopoverContent className="w-auto p-0">
-                <Calendar
-                  mode="single"
-                  selected={parseLocalDate(training.start_date)}
-                  onSelect={(date) => onUpdate('start_date', date ? format(date, 'yyyy-MM-dd') : '')}
-                  initialFocus
-                  className="pointer-events-auto"
-                />
-              </PopoverContent>
-              )}
             </Popover>
           </div>
 

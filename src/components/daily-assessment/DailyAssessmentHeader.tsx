@@ -41,10 +41,10 @@ export default function DailyAssessmentHeader({ assessment, onUpdate, isReadOnly
                 <Button
                   variant="outline"
                   className={cn(
-                    "w-full justify-start text-left font-normal",
+                    "w-full justify-start text-left font-normal bg-muted/50 cursor-not-allowed",
                     !assessment.assessment_date && "text-muted-foreground"
                   )}
-                  disabled={isReadOnly}
+                  disabled
                 >
                   <CalendarIcon className="mr-2 h-4 w-4" />
                   {assessment.assessment_date ? (
@@ -54,17 +54,6 @@ export default function DailyAssessmentHeader({ assessment, onUpdate, isReadOnly
                   )}
                 </Button>
               </PopoverTrigger>
-              {!isReadOnly && (
-              <PopoverContent className="w-auto p-0">
-                <Calendar
-                  mode="single"
-                  selected={parseLocalDate(assessment.assessment_date)}
-                  onSelect={(date) => onUpdate("assessment_date", date ? format(date, "yyyy-MM-dd") : null)}
-                  initialFocus
-                  className="pointer-events-auto"
-                />
-              </PopoverContent>
-              )}
             </Popover>
           </div>
 
