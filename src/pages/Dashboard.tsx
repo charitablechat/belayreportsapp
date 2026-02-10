@@ -226,10 +226,14 @@ export default function Dashboard() {
     // Listen for auth state changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
-        setCurrentUser(session?.user ?? null);
+        // Only update currentUser from real auth events, not synthetic session failures
+        if (session?.user) {
+          setCurrentUser(session.user);
+        }
         
-        // Redirect to login page when user signs out
-        if (event === 'SIGNED_OUT' || !session) {
+        // Only redirect on explicit sign-out while online
+        // Offline synthetic sessions may trigger false SIGNED_OUT events
+        if (event === 'SIGNED_OUT' && navigator.onLine) {
           navigate("/", { replace: true });
         }
       }
