@@ -1,91 +1,98 @@
 
-# Fix Back Button Not Working on Inspection Form
 
-## Root Cause
+# Comprehensive Codebase Audit -- Issues and Fixes
 
-The back button IS triggering navigation, but `useBlocker` (from the unsaved changes protection) silently intercepts it because `hasUnsavedChanges` is stuck at `true` -- even when no user edits have occurred.
+## Issue 1: Back Button Broken on TrainingForm and DailyAssessmentForm (Same Bug as InspectionForm)
 
-**Why `hasUnsavedChanges` is spuriously `true`:**
+**Severity: High**
 
-The change-tracking `useEffect` (line 392) watches `[systems, ziplines, equipment, standards, summary]` and sets `hasUnsavedChanges = true` whenever they change. The guard (`isInternalUpdateRef`) is supposed to skip internal/programmatic updates, but two code paths fail to set it:
+The same back button issue we just fixed in `InspectionForm.tsx` exists in both `TrainingForm.tsx` and `DailyAssessmentForm.tsx`. These forms have NO `isInternalUpdateRef` guard at all, meaning `hasUnsavedChanges` is set to `true` on every initial data load, blocking navigation via `useBlocker`.
 
-1. **Initial data load** (lines 769-800 for offline, 945-988 for server) -- sets `setSystems`, `setZiplines`, `setEquipment`, `setStandards`, `setSummary` without marking them as internal updates
-2. **Summary auto-regeneration** (line 540-541) -- calls `handleRegenerateSummary` which calls `setSummary(...)` without the internal guard
+**TrainingForm.tsx (line 565-589):** The change-tracking `useEffect` unconditionally sets `setHasUnsavedChanges(true)` when `deliveryApproaches`, `operatingSystems`, etc. change -- including during initial load at lines 274-285 and server data load at lines 350-358.
 
-This means on every page load:
-- Data loads, change watcher fires, `hasUnsavedChanges = true`
-- Auto-save debounce fires 1.5s later, saves, resets to `false`
-- But if the user clicks back during that window, or summary auto-regeneration re-triggers it, navigation is blocked
+**DailyAssessmentForm.tsx (line 209-233):** Same pattern -- `setHasUnsavedChanges(true)` fires whenever `beginningOfDay`, `endOfDay`, etc. change, including initial load at lines 271-276 and server load at lines 334-339.
 
-The `UnsavedChangesDialog` should appear when blocked, but if the user isn't expecting it (or if it flashes briefly before auto-save clears the flag), it feels like "nothing happens."
+**Fix:** Add the same `isInternalUpdateRef` pattern used in InspectionForm:
+- Add `const isInternalUpdateRef = useRef(false)` to both forms
+- Guard the change-tracking `useEffect` with `if (!isInternalUpdateRef.current)`
+- Add a reset `useEffect` that clears the ref after the watcher skips
+- Set `isInternalUpdateRef.current = true` before all programmatic data loads (offline and server)
 
-## Changes
+### TrainingForm.tsx changes:
+1. Add `isInternalUpdateRef` ref declaration (~line 84)
+2. Guard the auto-save watcher at line 569 with `if (!isInternalUpdateRef.current)`
+3. Add reset effect after the watcher
+4. Set guard before offline data load (line 274)
+5. Set guard before server data load (line 350)
+6. Set guard before auto-populate summary (line 236, inside `setSummary`)
 
-### 1. Guard initial offline data load (lines 764-800)
+### DailyAssessmentForm.tsx changes:
+1. Add `isInternalUpdateRef` ref declaration (~line 87)
+2. Guard the auto-save watcher at line 213 with `if (!isInternalUpdateRef.current)`
+3. Add reset effect after the watcher
+4. Set guard before offline data load (line 271)
+5. Set guard before server data load (line 334)
 
-**File: `src/pages/InspectionForm.tsx`**
+---
 
-Set `isInternalUpdateRef.current = true` before setting offline data:
+## Issue 2: Missing Online Guard on Profile Fetches (Crashes Offline)
 
-```typescript
-// Mark as internal update to prevent change tracker from firing
-isInternalUpdateRef.current = true;
-if (offlineSystems.length > 0) {
-  // ... existing normalization and setSystems
-}
-// ... rest of offline data loads
-```
+**Severity: Medium**
 
-### 2. Guard initial server data load (lines 940-990)
+In `TrainingForm.tsx` (line 141) and `DailyAssessmentForm.tsx` (line 137), the `fetchInspectorProfile` effect does NOT check `navigator.onLine` before calling `supabase.from('profiles').select(...)`. The InspectionForm correctly has `if (!inspectorId || !navigator.onLine) return;` but these two forms only check `if (!inspectorId) return;`.
 
-**File: `src/pages/InspectionForm.tsx`**
+This means opening a training or daily assessment while offline will trigger a network request that silently fails, and `.single()` will throw an error on no results.
 
-Set `isInternalUpdateRef.current = true` before setting server data:
+**Fix:** Add `!navigator.onLine` guard to the `fetchInspectorProfile` effect in both files.
 
-```typescript
-// Mark as internal update to prevent change tracker from firing
-isInternalUpdateRef.current = true;
-if (systemsData && systemsData.length > 0) {
-  // ... existing normalization and setSystems
-}
-// ... rest of server data loads
-```
+---
 
-### 3. Guard summary auto-regeneration (line 540)
+## Issue 3: Duplicate Sync on iOS (useIOSSync + useAutoSync)
 
-**File: `src/pages/InspectionForm.tsx`**
+**Severity: Low**
 
-Set `isInternalUpdateRef.current = true` before the debounced `handleRegenerateSummary` call:
+`useIOSSync.tsx` registers its own `visibilitychange`, `focus`, `online`, and `pageshow` event listeners with a 60-second polling interval. However, `useAutoSync.tsx` (lines 345-411) already registers the exact same listeners with iOS-specific handling (pageshow, focus). Both hooks run concurrently, causing **double sync** on every visibility change, focus, and reconnect event for iOS users.
 
-```typescript
-summaryRegenerateTimerRef.current = setTimeout(() => {
-  isInternalUpdateRef.current = true;
-  handleRegenerateSummary(false);
-  // ... existing toast logic
-}, 800);
-```
+**Fix:** Remove the `useIOSSync` hook entirely since `useAutoSync` already handles all iOS-specific sync behavior. Remove its usage from any component that imports it.
 
-### 4. Guard `handleRegenerateSummary` itself (line 464)
+---
 
-**File: `src/pages/InspectionForm.tsx`**
+## Issue 4: Training Auto-populate Summary Triggers Unsaved Changes
 
-As a safety net, mark the summary update as internal inside the function:
+**Severity: Medium**
 
-```typescript
-const handleRegenerateSummary = (showToast = true) => {
-  const autoGenerated = generateSummaryFromInspection();
-  isInternalUpdateRef.current = true;
-  setSummary(prev => { ... });
-};
-```
+In `TrainingForm.tsx` (line 236), the auto-populate effect calls `setSummary({ ...summary, ...updates })` which triggers the change-tracking watcher at line 565, setting `hasUnsavedChanges = true`. This is another path that needs the `isInternalUpdateRef` guard (covered in Issue 1 fix).
 
-## Summary
+---
 
-| Location | Change |
-|----------|--------|
-| `InspectionForm.tsx` ~line 764 | Add `isInternalUpdateRef.current = true` before offline data load |
-| `InspectionForm.tsx` ~line 940 | Add `isInternalUpdateRef.current = true` before server data load |
-| `InspectionForm.tsx` ~line 540 | Add `isInternalUpdateRef.current = true` before summary auto-regen |
-| `InspectionForm.tsx` ~line 464 | Add `isInternalUpdateRef.current = true` inside `handleRegenerateSummary` |
+## Issue 5: Production Console Logging
 
-All four changes are in a single file. The fix ensures that only genuine user edits trigger the unsaved changes flag, so the back button navigates immediately without being blocked.
+**Severity: Low**
+
+Several `console.log` statements in `TrainingForm.tsx` and `DailyAssessmentForm.tsx` are NOT guarded by `import.meta.env.DEV`:
+- TrainingForm: lines 408, 412, 443, 538, 543, 536, 579, 599
+- DailyAssessmentForm: lines 223, 239, 427, 453, 462, 487, 559, 571
+
+These log to production users' consoles, which is noisy and unprofessional.
+
+**Fix:** Wrap all non-error `console.log` calls with `if (import.meta.env.DEV)` guards.
+
+---
+
+## Summary Table
+
+| # | Issue | Severity | File(s) | Fix |
+|---|-------|----------|---------|-----|
+| 1 | Back button blocked on Training/DailyAssessment forms | High | TrainingForm.tsx, DailyAssessmentForm.tsx | Add `isInternalUpdateRef` pattern |
+| 2 | Missing online guard on profile fetch | Medium | TrainingForm.tsx, DailyAssessmentForm.tsx | Add `!navigator.onLine` check |
+| 3 | Duplicate iOS sync (useIOSSync + useAutoSync) | Low | useIOSSync.tsx | Remove hook; useAutoSync covers it |
+| 4 | Auto-populate triggers unsaved changes | Medium | TrainingForm.tsx | Covered by Issue 1 fix |
+| 5 | Production console logging | Low | TrainingForm.tsx, DailyAssessmentForm.tsx | Add DEV guards |
+
+## Implementation Order
+
+1. Fix Issues 1+4 (TrainingForm.tsx -- `isInternalUpdateRef` + online guard)
+2. Fix Issues 1+2 (DailyAssessmentForm.tsx -- `isInternalUpdateRef` + online guard)
+3. Fix Issue 3 (Remove useIOSSync hook)
+4. Fix Issue 5 (DEV guards on console.log -- can be done in parallel with above)
+
