@@ -285,8 +285,8 @@ export default function TrainingForm() {
           });
         }
 
-        // If online, fetch from Supabase and update offline storage
-        if (isOnline) {
+        // If online and not a temp-ID, fetch from Supabase and update offline storage
+        if (isOnline && !id.startsWith('temp-')) {
           const { data: trainingData, error: trainingError } = await supabase
             .from('trainings')
             .select('*')

@@ -606,15 +606,22 @@ export async function getUnsyncedInspections(userId?: string) {
       let unsynced = allInspections.filter(i => !i.synced_at || i.updated_at > i.synced_at);
       
       if (userId) {
-        unsynced = unsynced.filter(i => i.inspector_id === userId);
+        const owned = unsynced.filter(i => i.inspector_id === userId);
+        const orphaned = unsynced.filter(
+          i => i.inspector_id !== userId && i.id.startsWith('temp-')
+        );
+        if (orphaned.length > 0) {
+          console.warn('[Offline Storage] Found orphaned temp-ID inspections:', 
+            orphaned.map(i => ({ id: i.id.substring(0, 20) }))
+          );
+        }
+        unsynced = [...owned, ...orphaned];
       }
       
-      if (import.meta.env.DEV) {
-        console.log('[Offline Storage] Unsynced inspections:', {
-          total: unsynced.length,
-          userId: userId ? userId.substring(0, 8) + '...' : 'all',
-        });
-      }
+      console.log('[Offline Storage] Unsynced inspections:', {
+        total: unsynced.length,
+        userId: userId ? userId.substring(0, 8) + '...' : 'all',
+      });
       
       return unsynced;
     },
@@ -1040,15 +1047,22 @@ export async function getUnsyncedDailyAssessments(userId?: string) {
       let unsynced = allAssessments.filter(a => !a.synced_at || a.updated_at > a.synced_at);
       
       if (userId) {
-        unsynced = unsynced.filter(a => a.inspector_id === userId);
+        const owned = unsynced.filter(a => a.inspector_id === userId);
+        const orphaned = unsynced.filter(
+          a => a.inspector_id !== userId && a.id.startsWith('temp-')
+        );
+        if (orphaned.length > 0) {
+          console.warn('[Offline Storage] Found orphaned temp-ID daily assessments:', 
+            orphaned.map(a => ({ id: a.id.substring(0, 20) }))
+          );
+        }
+        unsynced = [...owned, ...orphaned];
       }
       
-      if (import.meta.env.DEV) {
-        console.log('[Offline Storage] Unsynced daily assessments:', {
-          total: unsynced.length,
-          userId: userId ? userId.substring(0, 8) + '...' : 'all',
-        });
-      }
+      console.log('[Offline Storage] Unsynced daily assessments:', {
+        total: unsynced.length,
+        userId: userId ? userId.substring(0, 8) + '...' : 'all',
+      });
       
       return unsynced;
     },
@@ -1290,15 +1304,22 @@ export async function getUnsyncedTrainings(userId?: string) {
       let unsynced = allTrainings.filter(t => !t.synced_at || t.updated_at > t.synced_at);
       
       if (userId) {
-        unsynced = unsynced.filter(t => t.inspector_id === userId);
+        const owned = unsynced.filter(t => t.inspector_id === userId);
+        const orphaned = unsynced.filter(
+          t => t.inspector_id !== userId && t.id.startsWith('temp-')
+        );
+        if (orphaned.length > 0) {
+          console.warn('[Offline Storage] Found orphaned temp-ID trainings:', 
+            orphaned.map(t => ({ id: t.id.substring(0, 20) }))
+          );
+        }
+        unsynced = [...owned, ...orphaned];
       }
       
-      if (import.meta.env.DEV) {
-        console.log('[Offline Storage] Unsynced trainings:', {
-          total: unsynced.length,
-          userId: userId ? userId.substring(0, 8) + '...' : 'all',
-        });
-      }
+      console.log('[Offline Storage] Unsynced trainings:', {
+        total: unsynced.length,
+        userId: userId ? userId.substring(0, 8) + '...' : 'all',
+      });
       
       return unsynced;
     },
