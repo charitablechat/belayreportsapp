@@ -1,94 +1,44 @@
 
-
-# Fix Back Navigation Using React Router's `useBlocker`
+# Fix: Dashboard "Recent Reports" Not Loading
 
 ## Root Cause
 
-The custom `useUnsavedChanges` hook only handles two things:
-1. `beforeunload` event -- prevents tab close/refresh (works)
-2. `safeNavigate` wrapper -- intercepts programmatic navigation (works for the app back button)
+The console logs reveal **"Atomic Sync Session validation timed out, skipping sync"** repeating in a loop. This indicates the auth session (JWT) is stale or expired. The cascade effect:
 
-But it does NOT intercept the **browser's back/forward buttons**. When the user presses the browser back button, React Router handles the `popstate` event directly and navigates away without any check. The `beforeunload` event does not fire for in-SPA route changes.
+1. `getUserWithCache()` returns a cached user object, but the **Supabase client's actual JWT** is expired
+2. Dashboard queries (inspections, trainings, assessments) are sent with an invalid JWT -- RLS policies block all data, returning **empty arrays**
+3. `syncAllInspectionsAtomic()` calls `ensureValidSession()` which times out -- sync is skipped
+4. AutoSync emits `syncComplete` even when nothing synced (line 233 in useAutoSync.tsx), which triggers Dashboard to re-load with the same broken session
+5. This creates a reload loop where data never appears
 
-React Router v7 provides `useBlocker` specifically for this purpose -- it intercepts all SPA navigation including browser back/forward buttons.
+The dashboard shows (0) counts and permanent skeleton loaders because the data loading functions silently return empty results.
 
-## Solution
+## Fix (2 files)
 
-Rewrite `useUnsavedChanges` to use React Router's built-in `useBlocker` hook instead of the manual approach.
+### 1. `src/pages/Dashboard.tsx` -- Refresh session before loading data
 
-### File: `src/hooks/useUnsavedChanges.tsx`
+Add an `ensureValidSession()` call at the start of `loadAllData` (before any Supabase queries). This refreshes the JWT if it is near expiry, ensuring RLS policies see a valid `auth.uid()`.
 
-Replace the current implementation with one that uses `useBlocker`:
-
-```typescript
-import { useEffect, useCallback } from "react";
-import { useBlocker } from "react-router-dom";
-
-export function useUnsavedChanges({ hasUnsavedChanges, message }) {
-  // Block SPA navigation (covers browser back, forward, and link clicks)
-  const blocker = useBlocker(hasUnsavedChanges);
-
-  // Block hard page unload (refresh, tab close)
-  useEffect(() => {
-    const handler = (e: BeforeUnloadEvent) => {
-      if (hasUnsavedChanges) {
-        e.preventDefault();
-        e.returnValue = message;
-      }
-    };
-    window.addEventListener("beforeunload", handler);
-    return () => window.removeEventListener("beforeunload", handler);
-  }, [hasUnsavedChanges, message]);
-
-  // safeNavigate no longer needed -- useBlocker intercepts ALL navigation
-  const safeNavigate = useCallback((to) => {
-    // Navigate normally; useBlocker will intercept if needed
-    navigate(to);
-  }, [navigate]);
-
-  return {
-    isBlocked: blocker.state === "blocked",
-    confirmNavigation: () => blocker.proceed?.(),
-    cancelNavigation: () => blocker.reset?.(),
-    safeNavigate,
-    message,
-  };
-}
+```
+loadAllData:
+  1. Call ensureValidSession() first (with a 5s timeout fallback)
+  2. Then getUserWithCache() as before
+  3. If BOTH fail, use getOfflineUserId() as last resort for IndexedDB-only loading
 ```
 
-Key changes:
-- `useBlocker(hasUnsavedChanges)` automatically intercepts ALL SPA navigation (browser back, forward, link clicks, programmatic `navigate()` calls)
-- `blocker.state === "blocked"` replaces the manual `pendingNavigation` state
-- `blocker.proceed()` lets the navigation continue (replaces `confirmNavigation`)
-- `blocker.reset()` cancels the navigation (replaces `cancelNavigation`)
-- `safeNavigate` now just calls `navigate()` directly -- `useBlocker` catches it automatically
+This ensures that even if the token needs refreshing, the dashboard will either:
+- Refresh successfully and load server data
+- Or fall back gracefully to IndexedDB data using the emergency userId extractor
 
-### File: `src/pages/InspectionForm.tsx`
+### 2. `src/hooks/useAutoSync.tsx` -- Stop emitting syncComplete when sync was skipped
 
-The `safeGoBack` function simplifies because `useBlocker` intercepts all navigation:
+Line 232-233 emits `emitSyncComplete()` unconditionally after sync, even when all operations were skipped due to session timeouts. This triggers the Dashboard to re-load data unnecessarily (creating a loop of empty fetches).
 
-```typescript
-const safeGoBack = useCallback(() => {
-  if (window.history.length > 1) {
-    navigate(-1);
-  } else {
-    navigate("/dashboard");
-  }
-}, [navigate]);
-```
-
-This is now just the normal `goBack` logic -- no need to route through `safeNavigate` because `useBlocker` will automatically intercept the navigation and show the dialog if there are unsaved changes.
-
-### No changes to other files
-
-- `UnsavedChangesDialog` -- stays the same, still receives `isOpen`, `onConfirm`, `onCancel`
-- `TrainingForm.tsx` and `DailyAssessmentForm.tsx` -- they use the same `useUnsavedChanges` hook, so they automatically get the fix too
-- `goBack` utility in `src/lib/navigation.ts` -- can remain as-is
+Change: Only emit `syncComplete` when `anySuccess` is true (items were actually synced), OR when the session is valid and IndexedDB fetches succeeded. Do NOT emit when all syncs were skipped due to session validation timeouts.
 
 ## What Changes in Behavior
 
-- **Browser back button**: Now properly blocked when there are unsaved changes. The "Unsaved Changes" dialog appears.
-- **App back arrow**: Works the same as before (dialog when dirty, navigates when clean).
-- **Swipe-to-go-back**: Works the same as before.
-- **Browser refresh / tab close**: Still shows the browser's native "Leave site?" prompt (unchanged).
-
+- Dashboard will **refresh the auth token** before querying, fixing the empty RLS results
+- If token refresh fails, dashboard still shows **IndexedDB data** using the emergency userId fallback
+- The sync-complete reload loop stops -- the dashboard won't repeatedly re-fetch with a broken session
+- No new features added; this restores the existing intended behavior
