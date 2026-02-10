@@ -82,6 +82,7 @@ export default function TrainingForm() {
   const [systemsInPlace, setSystemsInPlace] = useState<any[]>([]);
   const [summary, setSummary] = useState<any>(null);
   const autoSaveTimer = useRef<NodeJS.Timeout | null>(null);
+  const isInternalUpdateRef = useRef(false);
   const [htmlViewerOpen, setHtmlViewerOpen] = useState(false);
   const [reportHtml, setReportHtml] = useState<string>('');
   const [currentUser, setCurrentUser] = useState<any>(null);
@@ -139,7 +140,7 @@ export default function TrainingForm() {
   // Fetch inspector profile (the report owner, not current user)
   useEffect(() => {
     const fetchInspectorProfile = async () => {
-      if (!inspectorId) return;
+      if (!inspectorId || !navigator.onLine) return;
       
       const { data: profile } = await supabase
         .from('profiles')
@@ -233,6 +234,7 @@ export default function TrainingForm() {
           
           // Only update if there are changes
           if (Object.keys(updates).length > 0) {
+            isInternalUpdateRef.current = true;
             setSummary({ ...summary, ...updates });
           }
         }
@@ -271,6 +273,7 @@ export default function TrainingForm() {
         ]);
 
         if (offlineTraining) {
+          isInternalUpdateRef.current = true;
           setTraining(offlineTraining);
           setInspectorId(offlineTraining.inspector_id);
           setDeliveryApproaches(delivery_approaches || []);
@@ -347,6 +350,7 @@ export default function TrainingForm() {
               supabase.from('training_summary').select('*').eq('training_id', id).maybeSingle()
             ]);
 
+            isInternalUpdateRef.current = true;
             setDeliveryApproaches(approachData || []);
             setOperatingSystems(systemData || []);
             setImmediateAttention(attentionData || []);
@@ -405,11 +409,11 @@ export default function TrainingForm() {
 
     // Prevent duplicate save calls
     if (saveInProgressRef.current) {
-      console.log('[Training Save] Save already in progress, skipping');
+      if (import.meta.env.DEV) console.log('[Training Save] Save already in progress, skipping');
       return;
     }
 
-    console.log('[Training Save] Starting save...');
+    if (import.meta.env.DEV) console.log('[Training Save] Starting save...');
     saveInProgressRef.current = true;
     setIsSaving(true);
 
@@ -533,14 +537,14 @@ export default function TrainingForm() {
             ...updatedTraining,
             synced_at: new Date().toISOString()
           });
-          console.log('[Training Save] Synced to database');
+          if (import.meta.env.DEV) console.log('[Training Save] Synced to database');
         } catch (error) {
-          console.log('[Training Save] Failed to sync, queuing operation:', error);
+          if (import.meta.env.DEV) console.log('[Training Save] Failed to sync, queuing operation:', error);
           await queueTrainingOperation('update', id, updatedTraining);
         }
       } else {
         // Queue for later sync
-        console.log('[Training Save] Offline - queuing for sync');
+        if (import.meta.env.DEV) console.log('[Training Save] Offline - queuing for sync');
         await queueTrainingOperation('update', id, updatedTraining);
       }
 
@@ -550,7 +554,7 @@ export default function TrainingForm() {
       console.error('[Training Save] Error saving training:', error);
     } finally {
       clearTimeout(safetyTimeout);
-      console.log('[Training Save] Completed, setting isSaving to false');
+      if (import.meta.env.DEV) console.log('[Training Save] Completed, setting isSaving to false');
       setIsSaving(false);
       saveInProgressRef.current = false;
     }
@@ -565,6 +569,9 @@ export default function TrainingForm() {
   useEffect(() => {
     if (isLoading || !training) return;
     
+    // Skip internal/programmatic updates (initial load, server hydration, auto-populate)
+    if (isInternalUpdateRef.current) return;
+    
     // Mark as having unsaved changes
     setHasUnsavedChanges(true);
     
@@ -576,7 +583,9 @@ export default function TrainingForm() {
     // Set new debounce timer - 1.5 seconds after last change (optimized for near-instant feel)
     saveDebounceTimerRef.current = setTimeout(() => {
       if (!isSaving) {
-        console.log('[Training AutoSave] Debounced save triggered');
+        if (import.meta.env.DEV) {
+          console.log('[Training AutoSave] Debounced save triggered');
+        }
         saveTraining();
       }
     }, 1500);
@@ -588,6 +597,13 @@ export default function TrainingForm() {
     };
   }, [deliveryApproaches, operatingSystems, immediateAttention, verifiableItems, systemsInPlace, summary]);
 
+  // Reset internal update ref after the change tracker skips
+  useEffect(() => {
+    if (isInternalUpdateRef.current) {
+      isInternalUpdateRef.current = false;
+    }
+  });
+
   // Backup auto-save interval (every 30 seconds) - fallback only
   useEffect(() => {
     if (autoSaveTimer.current) {
@@ -596,7 +612,7 @@ export default function TrainingForm() {
 
     autoSaveTimer.current = setInterval(() => {
       if (hasUnsavedChanges && !isSaving && !isLoading && training) {
-        console.log('[Training AutoSave] Interval save triggered');
+        if (import.meta.env.DEV) console.log('[Training AutoSave] Interval save triggered');
         saveTraining();
       }
     }, 30000);

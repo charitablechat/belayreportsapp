@@ -84,6 +84,7 @@ export default function DailyAssessmentForm() {
   const [currentUserProfile, setCurrentUserProfile] = useState<any>(null);
   const [modifiedByProfile, setModifiedByProfile] = useState<any>(null);
   const [signingOut, setSigningOut] = useState(false);
+  const isInternalUpdateRef = useRef(false);
   
   // Tab navigation state
   const [currentTab, setCurrentTab] = useState("beginning");
@@ -134,13 +135,13 @@ export default function DailyAssessmentForm() {
   // Fetch inspector profile (the report owner, not current user)
   useEffect(() => {
     const fetchInspectorProfile = async () => {
-      if (!inspectorId) return;
+      if (!inspectorId || !navigator.onLine) return;
       
       const { data: profile } = await supabase
         .from('profiles')
         .select('avatar_url, first_name, last_name')
         .eq('id', inspectorId)
-        .single();
+        .maybeSingle();
       setInspectorProfile(profile);
     };
     fetchInspectorProfile();
@@ -209,6 +210,9 @@ export default function DailyAssessmentForm() {
   useEffect(() => {
     if (loading || !assessment) return;
     
+    // Skip internal/programmatic updates (initial load, server hydration)
+    if (isInternalUpdateRef.current) return;
+    
     // Mark as having unsaved changes
     setHasUnsavedChanges(true);
     
@@ -220,7 +224,9 @@ export default function DailyAssessmentForm() {
     // Set new debounce timer - 1.5 seconds after last change (optimized for near-instant feel)
     autoSaveTimerRef.current = setTimeout(() => {
       if (!saving) {
-        console.log('[DailyAssessment AutoSave] Debounced save triggered');
+        if (import.meta.env.DEV) {
+          console.log('[DailyAssessment AutoSave] Debounced save triggered');
+        }
         handleSaveProgress();
       }
     }, 1500);
@@ -232,11 +238,18 @@ export default function DailyAssessmentForm() {
     };
   }, [beginningOfDay, endOfDay, operatingSystems, equipmentChecks, structureChecks, environmentChecks, assessment?.structure_comments, assessment?.environment_comments, assessment?.systems_comments]);
 
+  // Reset internal update ref after the change tracker skips
+  useEffect(() => {
+    if (isInternalUpdateRef.current) {
+      isInternalUpdateRef.current = false;
+    }
+  });
+
   // Backup auto-save interval (every 10 seconds)
   useEffect(() => {
     autoSaveIntervalRef.current = setInterval(() => {
       if (hasUnsavedChanges && !saving && !loading) {
-        console.log('[DailyAssessment AutoSave] Interval save triggered');
+        if (import.meta.env.DEV) console.log('[DailyAssessment AutoSave] Interval save triggered');
         handleSaveProgress();
       }
     }, 10000);
@@ -268,6 +281,7 @@ export default function DailyAssessmentForm() {
           getAssessmentDataOffline('environment_checks', id!),
         ]);
 
+        isInternalUpdateRef.current = true;
         setBeginningOfDay(bodData);
         setEndOfDay(eodData);
         setOperatingSystems(osData);
@@ -331,6 +345,7 @@ export default function DailyAssessmentForm() {
             supabase.from('daily_assessment_environment_checks').select('*').eq('assessment_id', id),
           ]);
 
+          isInternalUpdateRef.current = true;
           setBeginningOfDay(bodData.data || []);
           setEndOfDay(eodData.data || []);
           setOperatingSystems(osData.data || []);
@@ -420,11 +435,11 @@ export default function DailyAssessmentForm() {
   const handleSaveProgress = async () => {
     // Prevent duplicate save calls
     if (saveInProgressRef.current) {
-      console.log('[Save] Save already in progress, skipping');
+      if (import.meta.env.DEV) console.log('[Save] Save already in progress, skipping');
       return;
     }
     
-    console.log('[Save] Starting save progress...');
+    if (import.meta.env.DEV) console.log('[Save] Starting save progress...');
     saveInProgressRef.current = true;
     setSaving(true);
     
@@ -450,7 +465,7 @@ export default function DailyAssessmentForm() {
       
       // Save related data offline (fire-and-forget for UI responsiveness)
       if (offlineStorage) {
-        console.log('[Save] Saving to offline storage...');
+        if (import.meta.env.DEV) console.log('[Save] Saving to offline storage...');
         Promise.all([
           offlineStorage.saveAssessmentDataOffline('beginning_of_day', id!, beginningOfDay),
           offlineStorage.saveAssessmentDataOffline('end_of_day', id!, endOfDay),
@@ -459,7 +474,7 @@ export default function DailyAssessmentForm() {
           offlineStorage.saveAssessmentDataOffline('structure_checks', id!, structureChecks),
           offlineStorage.saveAssessmentDataOffline('environment_checks', id!, environmentChecks),
         ]).then(() => {
-          console.log('[Save] Offline storage completed');
+          if (import.meta.env.DEV) console.log('[Save] Offline storage completed');
         }).catch((offlineError) => {
           console.warn('[Save] Offline storage failed:', offlineError);
         });
@@ -484,7 +499,7 @@ export default function DailyAssessmentForm() {
       }
 
       if (navigator.onLine) {
-        console.log('[Save] Online - syncing to database...');
+        if (import.meta.env.DEV) console.log('[Save] Online - syncing to database...');
         try {
           // Use upsert with onConflict to prevent duplicates
           const upsertResults = await Promise.all([
@@ -556,7 +571,7 @@ export default function DailyAssessmentForm() {
             console.error('[Save] Upsert errors:', errors.map(e => e.error));
             throw new Error(`Failed to save ${errors.length} section(s)`);
           }
-          console.log('[Save] Child tables synced successfully');
+          if (import.meta.env.DEV) console.log('[Save] Child tables synced successfully');
 
           // Update assessment (keep current status)
           const { error: assessmentError } = await supabase
@@ -568,7 +583,7 @@ export default function DailyAssessmentForm() {
             console.error('[Save] Assessment update error:', assessmentError);
             throw assessmentError;
           }
-          console.log('[Save] Assessment updated in database');
+          if (import.meta.env.DEV) console.log('[Save] Assessment updated in database');
 
           // Update synced_at
           updatedAssessment.synced_at = new Date().toISOString();
