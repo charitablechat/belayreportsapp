@@ -1,34 +1,66 @@
 
 
-# Fix: Daily Assessment Sync Timeout
+# Fix: Inspection Count Flashing (11 to 7) on Dashboard
 
-## Problem
+## What's Happening
 
-The sync is not "slow" -- it is **failing and retrying in a loop**. The console logs show:
+You're seeing 11 reports briefly, then 7. Those extra 4 are **stale records in IndexedDB** (local cache) that no longer exist on the server -- they were either deleted or belong to old sessions. Since you're a super admin, the local cache returns ALL stored records without user filtering, including orphans.
 
-```
-Step timeout: upsert:daily_assessments
-Transaction failed after 0/8 steps. Rollback: successful
-```
-
-The stuck record (`b840ebe8...` / "Santa's Workshop") is **1.9 MB** -- an unusually large row. The current per-step timeout of 8 seconds is too short to upload nearly 2 MB of JSON to the database, so it times out on the very first step, rolls back, and retries endlessly.
+The sequence on every page load:
+1. IndexedDB returns 11 cached records (including 4 orphans) -- displayed immediately
+2. Server returns the real 7 records -- replaces the list
+3. Orphan cleanup removes the 4 stale records from cache (but too late, the flash already happened)
 
 ## Solution
 
-Increase the step timeout in `transaction-manager.ts` from 8 seconds to 15 seconds. This gives large records enough time to complete the upsert while still protecting against genuinely hung operations.
+**Wait for the network response when online instead of showing stale cache first.** The cache-first pattern was designed for offline/slow-network scenarios, but when online it creates this flash. The fix:
 
-8 seconds is reasonable for small records but insufficient for payloads approaching 2 MB on mobile or slower connections. 15 seconds provides a comfortable margin without risking the overall sync timeout (which caps at 5 minutes).
+- When **online**: Skip displaying cached data entirely. Show skeleton loaders until the server responds (typically under 1 second). Cache is only used if the network request fails.
+- When **offline**: Continue showing cached data immediately (no change to offline behavior).
 
-## Technical Change
+This eliminates the flash completely because there's only one data source displayed per load cycle.
+
+## Technical Detail
+
+### File: `src/pages/Dashboard.tsx`
+
+In all three loader functions (`loadInspections`, `loadTrainingReports`, `loadDailyAssessments`), change the cache display logic:
+
+**Current behavior:**
+```
+const offlineData = await offlineWithTimeout;
+if (offlineData.length > 0 && inspections.length === 0) {
+  setInspections(offlineData);  // shows stale cache, then server overwrites = flash
+}
+```
+
+**New behavior:**
+```
+const offlineData = await offlineWithTimeout;
+if (offlineData.length > 0 && !navigator.onLine) {
+  setInspections(offlineData);  // only show cache when truly offline
+}
+```
+
+Apply this same change in all three loaders:
+- `loadInspections` (around line 366)
+- `loadTrainingReports` (equivalent location)
+- `loadDailyAssessments` (equivalent location)
+
+The rest of the function stays the same -- the network fetch path already handles the online case correctly, and the fallback for network failure (`networkData === null && offlineData.length > 0`) still kicks in.
+
+### What This Fixes
+- No more count flashing (11 to 7, or 8 to 17)
+- Skeleton loaders show for ~1 second on page load until server responds
+- Offline experience unchanged -- cache displays instantly
+
+### What Does NOT Change
+- Network fetch logic
+- Orphan cleanup (still runs after network data loads)
+- Sync event handling
+- Offline-first behavior when network is unavailable
 
 | File | Change |
 |------|--------|
-| `src/lib/transaction-manager.ts` | Line 4: Change `STEP_TIMEOUT` from `8000` to `15000` |
-
-## Why This is Safe
-
-- The overall sync timeout (dynamic, max 5 minutes) already caps total sync duration
-- The safety timeout in `useAutoSync` force-resets state if the entire sync hangs
-- 15 seconds is still well under the 30-second base sync timeout, so a single slow step won't cascade into a full timeout
-- Rollback behavior is unchanged -- if a step genuinely fails, it still rolls back correctly
+| `src/pages/Dashboard.tsx` | Change cache display guard from `inspections.length === 0` to `!navigator.onLine` in all 3 loaders |
 
