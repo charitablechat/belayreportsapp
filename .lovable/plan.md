@@ -1,46 +1,64 @@
 
-# Auto-Save Photos to Device on Capture
 
-## Overview
+# Fix: Dashboard Report Count Flashing (8 to 17)
 
-After each photo is captured and compressed in the app, automatically trigger a browser download so the image is saved to the device's Downloads folder (or Photos on some mobile browsers). This runs silently alongside the existing IndexedDB save -- no user interaction required.
+## Root Cause
 
-## How It Works
+The Dashboard uses a "cache-first, then network" loading pattern. Every time data loads:
 
-Browsers support programmatic downloads via a hidden `<a>` element with the `download` attribute. When clicked, the file is saved to the device's default download location (typically "Downloads" on Android, "Downloads" or Files app on iOS Safari). This is a well-supported, no-permission-required mechanism.
+1. It fetches from IndexedDB (local cache) and immediately displays it (e.g., 8 reports)
+2. Then fetches from the server and replaces the list (e.g., 17 reports)
+3. Background sync completes and fires a `syncComplete` event
+4. The event triggers a full reload, repeating steps 1-2 (flash: 8 -> 17 again)
 
-## Limitations (Important)
+The IndexedDB cache is stale because orphan cleanup (which removes old records) runs *after* the network data is displayed, meaning the next cache read still returns the old count.
 
-- **iOS Safari**: Downloads go to the Files app, not the Photos app. Users will find images in Files > Downloads. There is no way for a PWA to save directly to the iOS Camera Roll.
-- **Android Chrome**: Downloads go to the Downloads folder and typically also appear in the Gallery app automatically.
-- **No silent save**: Some browsers may briefly show a download notification/bar -- this is expected and cannot be suppressed.
+## Solution
 
-## Technical Changes
+**Only show IndexedDB data as a placeholder when nothing is currently displayed.** If we already have reports on screen (from a previous network fetch), skip the cache step and wait for the network response silently.
 
-### 1. New utility: `src/lib/save-to-device.ts`
+### Change in `src/pages/Dashboard.tsx`
 
-Create a small helper function that:
-- Takes a `Blob` and a `fileName`
-- Creates a temporary object URL
-- Creates a hidden `<a>` element with `download` attribute set to the filename
-- Programmatically clicks it to trigger the download
-- Cleans up the object URL and element afterwards
+In `loadInspections`, `loadTrainingReports`, and `loadDailyAssessments`:
 
+**Before (current behavior -- always overwrites with cache):**
 ```
-function saveToDevice(blob: Blob, fileName: string): void
+const offlineData = await offlineWithTimeout;
+if (offlineData.length > 0) {
+  setInspections(offlineData);  // <-- causes flash
+}
 ```
 
-The filename will follow the pattern: `RopeWorks_[section]_[timestamp].jpg` for easy identification in the device's file manager.
+**After (only use cache when list is empty):**
+```
+const offlineData = await offlineWithTimeout;
+if (offlineData.length > 0 && inspections.length === 0) {
+  setInspections(offlineData);  // only on first load
+}
+```
 
-### 2. Modify `src/components/PhotoCapture.tsx`
+This same pattern applies to all three loader functions:
+- `loadInspections` (~line 367): guard with `inspections.length === 0`
+- `loadTrainingReports` (~line 460): guard with `trainings.length === 0`
+- `loadDailyAssessments` (~line 550): guard with `dailyAssessments.length === 0`
 
-In the `processSingleFile` function, immediately after the image is compressed (around line 135) and before saving to IndexedDB, call `saveToDevice(processedFile, formattedFileName)`.
+Since these functions are defined inside the component, they have access to the current state. The guard ensures cached data only appears during the initial skeleton-loading phase, not during subsequent reloads triggered by sync events.
 
-This is a fire-and-forget call -- it does not block the rest of the pipeline (IndexedDB save, gallery refresh, background upload). If it fails for any reason, it logs a warning and continues normally.
+### What This Fixes
 
-## File Summary
+- No more visible count jumping (8 -> 17 -> 8 -> 17)
+- First load still shows cached data instantly (fast perceived load)
+- Sync-triggered reloads go straight to network data without the intermediate flash
+- Orphan cleanup continues to work normally in the background
+
+### What Does NOT Change
+
+- Offline behavior (cache is still the primary source when offline)
+- Network fetch logic (still runs the same queries)
+- Sync event handling (still reloads on sync complete)
+- Orphan cleanup (still removes stale local records)
 
 | File | Change |
 |------|--------|
-| `src/lib/save-to-device.ts` | New file -- download helper utility |
-| `src/components/PhotoCapture.tsx` | Add auto-save call after compression |
+| `src/pages/Dashboard.tsx` | Add `currentState.length === 0` guard to cache display in all 3 loaders |
+
