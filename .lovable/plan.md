@@ -1,57 +1,49 @@
 
 
-# Final Cleanup: Wrap Remaining Production Console Logs
+# Add Pending Reports List to Sync Status Sheet
 
-## Context
+## What Changes
 
-All structural fixes (temp-ID guards, orphan cleanup protection, `isInternalUpdateRef` pattern, online guards, `useIOSSync` removal) are verified and stable. The only remaining issue is **7 unguarded `console.log` statements** that leak to production users' browser consoles.
+The existing "Sync Status" sheet (the one you showed in your screenshot) will be enhanced to show a list of **all** pending reports -- Inspections, Trainings, and Daily Assessments -- not just inspections.
 
-## Changes
+## How It Works
 
-### File 1: `src/pages/TrainingForm.tsx`
+### 1. `src/hooks/useAutoSync.tsx` -- Expose unsynced item lists
 
-**Line 323** -- Wrap `localIsNewer` log:
-```typescript
-if (import.meta.env.DEV) {
-  console.log('[TrainingForm] Local data is newer -- preserving local state (parent + child)');
-}
-```
+The `updateUnsyncedCounts` function already fetches all three types of unsynced records but discards the details and only stores the total count. We will expand the state to also store the individual arrays so the UI can list them.
 
-**Line 447** -- Wrap offline storage completion log:
-```typescript
-if (import.meta.env.DEV) console.log('[Training Save] Offline storage completed');
-```
+- Add `unsyncedInspections`, `unsyncedTrainings`, `unsyncedAssessments` arrays to `AutoSyncState`
+- Store the fetched arrays in `updateUnsyncedCounts` instead of discarding them
+- Return the new arrays from the hook
 
-**Line 901** -- Wrap sync failure log (change to `console.warn` since it indicates a problem):
-```typescript
-console.warn('[Offline] Failed to sync, queuing operation');
-```
+### 2. `src/components/pwa/PWAProvider.tsx` -- Pass data through context
 
-### File 2: `src/pages/DailyAssessmentForm.tsx`
+- Add `unsyncedTrainings` and `unsyncedAssessments` to `PWAContextType`
+- Replace the hardcoded `unsyncedInspections: []` with the real data from `useAutoSync`
+- Pass all three arrays into the context value
 
-**Line 328** -- Wrap `localIsNewer` log:
-```typescript
-if (import.meta.env.DEV) {
-  console.log('[DailyAssessmentForm] Local data is newer -- preserving local state (parent + child)');
-}
-```
+### 3. `src/hooks/usePWA.tsx` -- Update fallback defaults
 
-### File 3: `src/pages/Dashboard.tsx`
+- Add `unsyncedTrainings: []` and `unsyncedAssessments: []` to the fallback context
 
-**Lines 390, 481, 572** -- Wrap all three orphan cleanup logs:
-```typescript
-if (import.meta.env.DEV) {
-  console.log('[Dashboard] Removing orphaned local inspection:', local.id);
-}
-```
-(Same pattern for training and assessment variants.)
+### 4. `src/components/pwa/SyncPulse.tsx` -- Render the full list
 
-## Summary
+Replace the current inspections-only "Pending reports" section with a unified list showing all three types:
 
-| File | Lines | Change |
-|------|-------|--------|
-| TrainingForm.tsx | 323, 447, 901 | Wrap 3 logs with DEV guard |
-| DailyAssessmentForm.tsx | 328 | Wrap 1 log with DEV guard |
-| Dashboard.tsx | 390, 481, 572 | Wrap 3 logs with DEV guard |
+- Pull `unsyncedInspections`, `unsyncedTrainings`, `unsyncedAssessments` from `usePWA()`
+- Render each item as a row with:
+  - A small color-coded type label: **Inspection** (blue), **Training** (purple), **Assessment** (amber)
+  - Organization/location name (where available)
+  - Temp-ID indicator if applicable
+- Group all items in one scrollable list under "Pending reports (N)"
 
-7 total changes across 3 files. No logic changes, only log visibility.
+The design stays minimal and consistent with the existing sheet layout -- just rows with a left border and a type label added.
+
+## Files Changed
+
+| File | Change |
+|------|--------|
+| `src/hooks/useAutoSync.tsx` | Store unsynced item arrays in state, return them |
+| `src/components/pwa/PWAProvider.tsx` | Add training/assessment arrays to context type and value |
+| `src/hooks/usePWA.tsx` | Add fallback defaults for new arrays |
+| `src/components/pwa/SyncPulse.tsx` | Render all three report types in the pending list |
