@@ -4,11 +4,13 @@ import { useNavigate, useBlocker } from "react-router-dom";
 interface UseUnsavedChangesOptions {
   hasUnsavedChanges: boolean;
   message?: string;
+  onSaveAndLeave?: () => Promise<void>;
 }
 
 export function useUnsavedChanges({
   hasUnsavedChanges,
   message = "You have unsaved changes. Are you sure you want to leave?",
+  onSaveAndLeave,
 }: UseUnsavedChangesOptions) {
   const navigate = useNavigate();
 
@@ -42,10 +44,25 @@ export function useUnsavedChanges({
     blocker.reset?.();
   }, [blocker]);
 
+  const saveAndLeave = useCallback(async () => {
+    if (onSaveAndLeave) {
+      try {
+        await Promise.race([
+          onSaveAndLeave(),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Save timeout')), 5000)),
+        ]);
+      } catch (e) {
+        console.warn('[useUnsavedChanges] Save before leave failed or timed out:', e);
+      }
+    }
+    blocker.proceed?.();
+  }, [blocker, onSaveAndLeave]);
+
   return {
     isBlocked: blocker.state === "blocked",
     confirmNavigation,
     cancelNavigation,
+    saveAndLeave,
     safeNavigate,
     message,
   };

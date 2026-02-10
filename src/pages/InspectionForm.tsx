@@ -153,10 +153,30 @@ export default function InspectionForm() {
     },
   });
 
+  // Save-before-leave handler: flushes debounce and performs immediate save
+  const saveBeforeLeaveRef = useRef<(() => Promise<void>) | null>(null);
+  const handleSaveAndLeave = useCallback(async () => {
+    // Cancel pending debounce
+    if (saveDebounceTimerRef.current) {
+      clearTimeout(saveDebounceTimerRef.current);
+      saveDebounceTimerRef.current = null;
+    }
+    try {
+      await performSave(true);
+      setHasUnsavedChanges(false);
+      console.log('[InspectionForm] Save-before-leave completed');
+    } catch (e) {
+      console.warn('[InspectionForm] Save-before-leave failed:', e);
+    }
+  }, []);
+  // Keep ref updated so the stable callback always calls the latest performSave
+  saveBeforeLeaveRef.current = handleSaveAndLeave;
+
   // Unsaved changes protection
-  const { isBlocked, confirmNavigation, cancelNavigation } = useUnsavedChanges({
+  const { isBlocked, confirmNavigation, cancelNavigation, saveAndLeave } = useUnsavedChanges({
     hasUnsavedChanges: hasUnsavedChanges && inspection?.status !== 'completed',
     message: "You have unsaved changes to this inspection. Are you sure you want to leave?",
+    onSaveAndLeave: async () => { await saveBeforeLeaveRef.current?.(); },
   });
 
   const safeGoBack = useCallback(() => {
@@ -1115,26 +1135,33 @@ export default function InspectionForm() {
         ]);
       };
 
-      // Save to offline storage (fire-and-forget for UI responsiveness)
-      // Offline storage is for fault tolerance, not blocking the critical path
+      // Save ALL items to offline storage (including incomplete rows)
+      // This preserves work-in-progress data locally even if names are empty
       setInspection(inspectionToSave);
       let localSaveSucceeded = false;
-      Promise.all([
-        saveInspectionOffline(inspectionToSave),
-        saveRelatedDataOffline('systems', id!, validSystems),
-        saveRelatedDataOffline('ziplines', id!, validZiplines),
-        saveRelatedDataOffline('equipment', id!, validEquipment),
-        saveRelatedDataOffline('standards', id!, standards),
-        saveRelatedDataOffline('summary', id!, [summary]),
-      ]).then(() => {
+      try {
+        await Promise.all([
+          saveInspectionOffline(inspectionToSave),
+          saveRelatedDataOffline('systems', id!, systems),       // ALL systems, not filtered
+          saveRelatedDataOffline('ziplines', id!, ziplines),     // ALL ziplines, not filtered
+          saveRelatedDataOffline('equipment', id!, equipment),   // ALL equipment, not filtered
+          saveRelatedDataOffline('standards', id!, standards),
+          saveRelatedDataOffline('summary', id!, [summary]),
+        ]);
         localSaveSucceeded = true;
         console.log('[InspectionForm Save] Offline storage completed');
-      }).catch((offlineError) => {
+      } catch (offlineError) {
         console.warn('[InspectionForm Save] Offline storage failed:', offlineError);
-        // localSaveSucceeded remains false — checked after server sync
-      });
+      }
 
+      // DEV: warn if filtering excludes items from server sync
       if (import.meta.env.DEV) {
+        if (validSystems.length !== systems.length) {
+          console.warn(`[InspectionForm] ${systems.length - validSystems.length} system(s) filtered out (empty name) — saved locally but excluded from server sync`);
+        }
+        if (validZiplines.length !== ziplines.length) {
+          console.warn(`[InspectionForm] ${ziplines.length - validZiplines.length} zipline(s) filtered out (empty name) — saved locally but excluded from server sync`);
+        }
         console.log('[InspectionForm] Saved all data to offline storage');
       }
       
@@ -1913,6 +1940,7 @@ export default function InspectionForm() {
         isOpen={isBlocked}
         onConfirm={confirmNavigation}
         onCancel={cancelNavigation}
+        onSaveAndLeave={saveAndLeave}
         message="You have unsaved changes to this inspection. Are you sure you want to leave?"
       />
       <div className="min-h-screen bg-background">
