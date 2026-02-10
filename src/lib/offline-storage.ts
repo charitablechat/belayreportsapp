@@ -732,6 +732,37 @@ export async function savePhotoOffline(photo: {
   );
 }
 
+export async function relinkPhotosToNewInspectionId(
+  oldInspectionId: string,
+  newInspectionId: string
+): Promise<number> {
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      const tx = db.transaction('photos', 'readwrite');
+      const index = tx.store.index('by-inspection');
+      const photos = await index.getAll(oldInspectionId);
+      
+      let relinkedCount = 0;
+      for (const photo of photos) {
+        photo.inspectionId = newInspectionId;
+        await tx.store.put(photo);
+        relinkedCount++;
+      }
+      
+      await tx.done;
+      
+      if (relinkedCount > 0) {
+        console.log(`[Offline Storage] Relinked ${relinkedCount} photos from ${oldInspectionId} to ${newInspectionId}`);
+      }
+      
+      return relinkedCount;
+    },
+    0,
+    'relinkPhotosToNewInspectionId'
+  );
+}
+
 export async function getOfflinePhotos(inspectionId: string) {
   return withIndexedDBErrorBoundary(
     async () => {
