@@ -1,105 +1,50 @@
 
 
-# Fix Temp-ID Sync and Redirect for ALL Report Types
+# Fix Dashboard Orphan Cleanup and Dead Code
 
 ## Problem
 
-The previous fix only addressed **Inspections**. Trainings and Daily Assessments have the exact same two vulnerabilities:
+Two issues identified in the previous audit:
 
-1. **Redirect on open**: Both `TrainingForm.tsx` (line 289-304) and `DailyAssessmentForm.tsx` (line 285-299) query the server with temp-IDs, get null back, and redirect to dashboard.
-2. **Silent sync skip**: Both `getUnsyncedTrainings` (line 1293) and `getUnsyncedDailyAssessments` (line 1043) filter by `inspector_id === userId`, silently excluding orphaned offline records. The sync functions in `atomic-sync-manager.ts` (lines 708 and 1146) also skip on ownership mismatch.
+1. **Data Loss Risk**: The orphan cleanup loops in `Dashboard.tsx` delete any local record not found on the server. This includes `temp-` ID records that haven't synced yet -- meaning unsynced offline reports can be silently destroyed when the dashboard refreshes.
+
+2. **Dead Code**: Lines 552-554 contain an `if (navigator.onLine)` check inside a branch already gated by `!navigator.onLine`, making it unreachable.
 
 ## Changes
 
-### 1. TrainingForm.tsx -- Skip server queries for temp-IDs
+### 1. Guard orphan cleanup loops against temp-IDs (3 locations)
 
-Wrap the `if (isOnline)` block (line 289) with `!id.startsWith('temp-')` guard, matching the pattern already applied to InspectionForm:
+**File: `src/pages/Dashboard.tsx`**
 
+Add `&& !local.id.startsWith('temp-')` to all three orphan cleanup conditions:
+
+**Inspections (line 389):**
 ```typescript
-// Only fetch from server if this isn't a temp-ID
-if (isOnline && !id.startsWith('temp-')) {
-  // ... existing server fetch logic unchanged ...
-} else if (!offlineTraining) {
-  toast({ title: "Training not available offline", ... });
-  navigate('/dashboard');
-  return;
-}
+if (!serverIds.has(local.id) && !local.id.startsWith('temp-')) {
 ```
 
-### 2. DailyAssessmentForm.tsx -- Skip server queries for temp-IDs
-
-Same pattern at line 285:
-
+**Trainings (line 480):**
 ```typescript
-if (navigator.onLine && !id!.startsWith('temp-')) {
-  // ... existing server fetch logic ...
-} else if (!offlineAssessment) {
-  toast.error("Assessment not available offline", ...);
-  navigate('/dashboard');
-  return;
-}
+if (!serverIds.has(local.id) && !local.id.startsWith('temp-')) {
 ```
 
-### 3. offline-storage.ts -- Include orphaned temp-ID records in all three sync queries
-
-Update all three `getUnsynced*` functions to include records where the `inspector_id` doesn't match but the ID starts with `temp-`:
-
-- `getUnsyncedInspections` (line 608-609)
-- `getUnsyncedTrainings` (line 1292-1293)
-- `getUnsyncedDailyAssessments` (line 1042-1043)
-
-Pattern for each:
-
+**Daily Assessments (line 574):**
 ```typescript
-if (userId) {
-  const owned = unsynced.filter(i => i.inspector_id === userId);
-  const orphaned = unsynced.filter(
-    i => i.inspector_id !== userId && i.id.startsWith('temp-')
-  );
-  if (orphaned.length > 0) {
-    console.warn('[Offline Storage] Found orphaned temp-ID records:', 
-      orphaned.map(i => ({ id: i.id.substring(0, 20) }))
-    );
-  }
-  unsynced = [...owned, ...orphaned];
-}
+if (!serverIds.has(local.id) && !local.id.startsWith('temp-')) {
 ```
 
-### 4. atomic-sync-manager.ts -- Auto-fix ownership for all three types
+### 2. Remove dead code block (lines 552-554)
 
-Update the ownership check in all three sync functions to auto-correct `inspector_id` for local-only records instead of skipping:
+**File: `src/pages/Dashboard.tsx`**
 
-- `syncInspectionAtomic` (line 136)
-- `syncTrainingAtomic` (line 708)
-- `syncDailyAssessmentAtomic` (line 1146)
-
-Pattern for each:
-
-```typescript
-if (record.inspector_id !== user.id) {
-  if (originalId.startsWith('temp-') || !record.synced_at) {
-    console.log('[Atomic Sync] Auto-fixing inspector_id for local record');
-    record.inspector_id = user.id;
-    await saveRecordOffline(record); // persist fix locally
-  } else {
-    return { success: false, skipped: true, reason: 'ownership_mismatch' };
-  }
-}
-```
-
-### 5. atomic-sync-manager.ts -- Production-visible sync logging
-
-Move sync result logging outside `import.meta.env.DEV` guards in all three `syncAll*Atomic` functions so mobile production issues are diagnosable.
+Remove the unreachable `if (navigator.onLine) { setLoading(false); }` block inside the `!navigator.onLine` branch.
 
 ## Summary
 
-| File | Change | Scope |
-|------|--------|-------|
-| `src/pages/TrainingForm.tsx` | Skip server queries for temp-IDs | Trainings |
-| `src/pages/DailyAssessmentForm.tsx` | Skip server queries for temp-IDs | Daily Assessments |
-| `src/lib/offline-storage.ts` | Include orphaned temp-ID records in all 3 unsynced queries | All types |
-| `src/lib/atomic-sync-manager.ts` | Auto-fix ownership for local records in all 3 sync functions | All types |
-| `src/lib/atomic-sync-manager.ts` | Enable production sync logging | All types |
-
-This ensures any report created offline -- inspection, training, or daily assessment -- will correctly load from local storage, sync to the server, and never silently redirect to the dashboard.
+| Location | Change |
+|----------|--------|
+| `Dashboard.tsx` line 389 | Add temp-ID guard to inspection orphan cleanup |
+| `Dashboard.tsx` line 480 | Add temp-ID guard to training orphan cleanup |
+| `Dashboard.tsx` line 574 | Add temp-ID guard to assessment orphan cleanup |
+| `Dashboard.tsx` lines 552-554 | Remove dead code |
 
