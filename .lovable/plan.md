@@ -1,53 +1,46 @@
 
-# Fix: Offline Photos Lost During Temp-ID-to-UUID Sync
+# Auto-Save Photos to Device on Capture
 
-## Problem
+## Overview
 
-When a report is created offline with a temporary ID (`temp-...`), photos are saved in IndexedDB with `inspectionId` set to that temp ID. During sync, `syncInspectionAtomic` correctly replaces the temp ID with a real UUID for the inspection and all child records (systems, ziplines, equipment, standards, summary) -- but **photos are never updated**. They remain tagged with the old temp ID.
+After each photo is captured and compressed in the app, automatically trigger a browser download so the image is saved to the device's Downloads folder (or Photos on some mobile browsers). This runs silently alongside the existing IndexedDB save -- no user interaction required.
 
-When `syncPhotos()` runs afterwards, it tries to insert `inspection_id: photo.inspectionId` (still the temp ID) into the `inspection_photos` table. This fails because no inspection with that temp ID exists in the database. The photos silently fail to upload and are eventually lost.
+## How It Works
 
-## Solution
+Browsers support programmatic downloads via a hidden `<a>` element with the `download` attribute. When clicked, the file is saved to the device's default download location (typically "Downloads" on Android, "Downloads" or Files app on iOS Safari). This is a well-supported, no-permission-required mechanism.
 
-Two changes in two files:
+## Limitations (Important)
 
-### 1. `src/lib/offline-storage.ts` -- Add a photo relinking function
+- **iOS Safari**: Downloads go to the Files app, not the Photos app. Users will find images in Files > Downloads. There is no way for a PWA to save directly to the iOS Camera Roll.
+- **Android Chrome**: Downloads go to the Downloads folder and typically also appear in the Gallery app automatically.
+- **No silent save**: Some browsers may briefly show a download notification/bar -- this is expected and cannot be suppressed.
 
-Add a new exported function `relinkPhotosToNewInspectionId(oldId, newId)` that:
-- Opens the `photos` store in IndexedDB
-- Queries all photos where `inspectionId === oldId` using the `by-inspection` index
-- For each matching photo, updates `inspectionId` to `newId` and writes back via `db.put`
-- Logs the count of relinked photos
+## Technical Changes
 
-```typescript
-export async function relinkPhotosToNewInspectionId(
-  oldInspectionId: string,
-  newInspectionId: string
-): Promise<number> {
-  // wrapped in withIndexedDBErrorBoundary for safety
-  // query photos index 'by-inspection' for oldInspectionId
-  // update each photo's inspectionId to newInspectionId
-  // return count of updated photos
-}
-```
+### 1. New utility: `src/lib/save-to-device.ts`
 
-### 2. `src/lib/atomic-sync-manager.ts` -- Call relinking after temp-ID cleanup
-
-In `syncInspectionAtomic`, inside the `if (inspectionIdMapping)` block (around line 430), add a call to `relinkPhotosToNewInspectionId(oldId, newId)` **after** the child record cleanup and **before** returning success. This ensures photos are re-parented to the permanent UUID before `syncPhotos()` attempts to upload them.
-
-The insertion point is after the existing child record re-save (line 449) and before the success log (line 452):
+Create a small helper function that:
+- Takes a `Blob` and a `fileName`
+- Creates a temporary object URL
+- Creates a hidden `<a>` element with `download` attribute set to the filename
+- Programmatically clicks it to trigger the download
+- Cleans up the object URL and element afterwards
 
 ```
-// existing: save child records under new UUID (line 443-449)
-// NEW: relink photos from temp ID to new UUID
-await relinkPhotosToNewInspectionId(oldId, newId);
-// existing: success log (line 452)
+function saveToDevice(blob: Blob, fileName: string): void
 ```
 
-## What Changes in Behavior
+The filename will follow the pattern: `RopeWorks_[section]_[timestamp].jpg` for easy identification in the device's file manager.
 
-- Photos captured offline for a temp-ID report will have their `inspectionId` updated to the permanent UUID immediately after the report syncs
-- When `syncPhotos()` runs (called in the same sync cycle via `useAutoSync`), the photos will reference the correct UUID and upload successfully
-- No new UI changes -- `SyncPulse` already shows pending photo counts and errors
-- Zero data loss: photos remain in IndexedDB until explicitly marked as uploaded
-- No validation bypass: the UUID transformation happens before any server-bound payload is constructed
+### 2. Modify `src/components/PhotoCapture.tsx`
+
+In the `processSingleFile` function, immediately after the image is compressed (around line 135) and before saving to IndexedDB, call `saveToDevice(processedFile, formattedFileName)`.
+
+This is a fire-and-forget call -- it does not block the rest of the pipeline (IndexedDB save, gallery refresh, background upload). If it fails for any reason, it logs a warning and continues normally.
+
+## File Summary
+
+| File | Change |
+|------|--------|
+| `src/lib/save-to-device.ts` | New file -- download helper utility |
+| `src/components/PhotoCapture.tsx` | Add auto-save call after compression |
