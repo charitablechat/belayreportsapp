@@ -1,44 +1,80 @@
 
-# Clean Up Profile Dropdown -- Group Utility Items
+# Move System & Device Items into a Nested Submenu
 
 ## Overview
 
-Tidy the dropdown by grouping the four utility/info items under a "System & Device" section label. Everything remains visible at once with no sub-menus. Light styling touch to keep it clean -- no dramatic aesthetic overhaul.
+Collapse the four "System & Device" items (Activity Log, Push Notifications, Device Capabilities, Install Instructions) into a single compact row with a nested dropdown, mirroring the existing "Check for Updates" pattern -- a label/button on the left and a `MoreVertical` (ellipsis) icon on the right that opens the sub-items.
 
 ## Changes to `src/components/UserProfileDropdown.tsx`
 
-### Add a section header before the utility items
+### Replace the expanded section with a compact submenu row
 
-Insert a `DropdownMenuSeparator` and a `DropdownMenuLabel` with the text "System & Device" (small, muted, uppercase) right before the Activity Log item (line 131). Then another separator after Install Instructions / Install App (before the Version Badge).
+**Remove** (lines 131-170): The separator, "System & Device" label, and the four individual menu items (Activity Log, Push Notifications, Device Capabilities, Install Instructions, plus conditional Install App).
 
-This visually groups: Activity Log, Push Notifications, Device Capabilities, Install Instructions (and the conditional Install App) under one heading.
+**Insert** in their place: A single `DropdownMenuItem`-styled row containing:
+- A `Monitor` icon and "System & Device" label on the left
+- A nested `DropdownMenu` with a `MoreVertical` trigger button on the right
 
-### Add a missing icon to Device Capabilities
+The nested dropdown content will contain the four items (Activity Log, Push Notifications, Device Capabilities, Install Instructions) plus the conditional Install App item, preserving all existing `onClick` handlers and icon usage exactly as-is.
 
-Currently the "Device Capabilities" item has no icon. Add a `Monitor` (or `Smartphone`) icon from lucide-react for consistency with the other items.
+### Structure
 
-### Menu order (unchanged)
+```text
+Before:
+  Force Sync Now
+  ─────────────
+  SYSTEM & DEVICE        (section label)
+  Activity Log
+  Push Notifications
+  Device Capabilities
+  Install Instructions
+  Install App (conditional)
+  ─────────────
 
-1. Account header + email
-2. Admin Dashboard (if super admin)
-3. Profile
-4. Check for Updates
-5. Contact Developer
-6. Force Sync Now
-7. **--- separator ---**
-8. **"System & Device" label**
-9. Activity Log
-10. Push Notifications
-11. Device Capabilities
-12. Install Instructions
-13. Install App (conditional)
-14. **--- separator ---**
-15. Version Badge
-16. Sign Out
+After:
+  Force Sync Now
+  ─────────────
+  [Monitor] System & Device    [...]   <-- single row, ellipsis opens submenu
+  ─────────────
+```
 
-### Technical detail
+### Implementation detail
 
-- Section label styling: `text-[11px] uppercase tracking-wider text-muted-foreground font-medium` on a `DropdownMenuLabel`
-- Import `Monitor` (or `Smartphone`) from lucide-react for the Device Capabilities icon
-- No logic, navigation, or functionality changes whatsoever
+```tsx
+<DropdownMenuSeparator />
+<div className="flex items-center justify-between px-2 py-1.5">
+  <span className="flex items-center text-sm text-muted-foreground">
+    <Monitor className="w-4 h-4 mr-2" />
+    System & Device
+  </span>
+  <DropdownMenu>
+    <DropdownMenuTrigger asChild>
+      <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
+        <MoreVertical className="w-4 h-4" />
+      </Button>
+    </DropdownMenuTrigger>
+    <DropdownMenuContent align="end" side="left">
+      {/* Activity Log -- NotificationCenter with trigger */}
+      {/* Push Notifications -- opens dialog */}
+      {/* Device Capabilities -- navigates to /capabilities */}
+      {/* Install Instructions -- navigates to /install */}
+      {/* Install App -- conditional */}
+    </DropdownMenuContent>
+  </DropdownMenu>
+</div>
+<DropdownMenuSeparator />
+```
+
+### Import change
+
+Add `MoreVertical` to the lucide-react import (line 13).
+
+## What Does NOT Change
+
+- All onClick handlers, navigation targets, and dialog/sheet triggers remain identical
+- NotificationCenter still uses its Sheet-based trigger pattern
+- PushNotificationManager Dialog behavior unchanged
+- Conditional Install App rendering logic unchanged
+- No data fetching, security, or routing logic affected
+- Version Badge, Sign Out, and all other menu items stay as-is
 - Only file modified: `src/components/UserProfileDropdown.tsx`
