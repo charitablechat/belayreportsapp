@@ -99,6 +99,11 @@ export default function NewTraining() {
     try {
       const user = await getUserWithCache();
       if (!user) {
+        if (!navigator.onLine) {
+          toast.error("Please sign in to create reports");
+          setLoading(false);
+          return;
+        }
         navigate("/", { replace: true });
         return;
       }

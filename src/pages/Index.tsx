@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import Auth from "@/components/Auth";
+import { hasPendingOfflineAuth } from "@/lib/offline-auth";
 
 const Index = () => {
   const navigate = useNavigate();
@@ -20,7 +21,6 @@ const Index = () => {
             try {
               const parsed = JSON.parse(cachedSession);
               // Offline: only require a user identity — ignore token expiry
-              // The JWT is only needed for server API calls, which won't happen offline
               if (parsed && (parsed.user?.id || parsed.access_token)) {
                 console.log('[Auth] Cached session found (offline), navigating to dashboard');
                 setSession(parsed);
@@ -32,7 +32,15 @@ const Index = () => {
             }
           }
           
-          // No cached session at all while offline
+          // Check for pending offline auth (user previously signed in offline)
+          if (hasPendingOfflineAuth()) {
+            console.log('[Auth] Pending offline auth found, navigating to dashboard');
+            setSession({ offline: true });
+            navigate("/dashboard", { replace: true });
+            return;
+          }
+          
+          // No cached session at all while offline - show login form (allows offline sign-in)
           setLoading(false);
           return;
         }
