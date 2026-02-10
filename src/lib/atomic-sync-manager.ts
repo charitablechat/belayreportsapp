@@ -5,6 +5,8 @@ import {
   saveInspectionOffline,
   getOfflineInspection,
   getRelatedDataOffline,
+  saveRelatedDataOffline,
+  clearRelatedDataOffline,
   getUnsyncedTrainings,
   saveTrainingOffline,
   getOfflineTraining,
@@ -97,11 +99,28 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
     throw new Error("Cannot sync while offline");
   }
   
+  // Track temp-to-UUID mapping for post-sync IndexedDB cleanup
+  let inspectionIdMapping: { oldId: string; newId: string } | null = null;
+  
   try {
     // 1. Gather all data for this inspection
     const inspection = await getOfflineInspection(inspectionId);
     if (!inspection) {
       throw new Error("Inspection not found in local storage");
+    }
+    
+    // Detect and replace temp inspection IDs with real UUIDs before validation
+    if (inspection.id.startsWith('temp-')) {
+      const newId = crypto.randomUUID();
+      inspectionIdMapping = { oldId: inspection.id, newId };
+      
+      console.log('[Atomic Sync] Replacing temp inspection ID with real UUID:', {
+        oldId: inspection.id,
+        newId,
+      });
+      
+      inspection.id = newId;
+      inspectionId = newId;
     }
     
     // Use pre-validated user from batch caller, or validate session if called individually
@@ -122,15 +141,36 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
       return { success: false, skipped: true, reason: 'ownership_mismatch' };
     }
     
+    // Fetch child records using the ORIGINAL ID (before temp-to-UUID swap)
+    // because they are stored in IndexedDB under the original inspection_id
+    const fetchId = inspectionIdMapping ? inspectionIdMapping.oldId : inspectionId;
+    
     const [rawSystems, rawZiplines, rawEquipment, rawStandards, summaryArray] = await Promise.all([
-      getRelatedDataOffline('systems', inspectionId),
-      getRelatedDataOffline('ziplines', inspectionId),
-      getRelatedDataOffline('equipment', inspectionId),
-      getRelatedDataOffline('standards', inspectionId),
-      getRelatedDataOffline('summary', inspectionId),
+      getRelatedDataOffline('systems', fetchId),
+      getRelatedDataOffline('ziplines', fetchId),
+      getRelatedDataOffline('equipment', fetchId),
+      getRelatedDataOffline('standards', fetchId),
+      getRelatedDataOffline('summary', fetchId),
     ]);
     
-    const rawSummary = summaryArray[0] || null;
+    let rawSummary = summaryArray[0] || null;
+    
+    // If we swapped the inspection ID, propagate new ID to all child records
+    if (inspectionIdMapping) {
+      const updateChildInspectionId = (items: any[]) =>
+        items.map(item => ({
+          ...item,
+          inspection_id: inspectionIdMapping!.newId,
+        }));
+      
+      rawSystems.forEach(item => item.inspection_id = inspectionIdMapping!.newId);
+      rawZiplines.forEach(item => item.inspection_id = inspectionIdMapping!.newId);
+      rawEquipment.forEach(item => item.inspection_id = inspectionIdMapping!.newId);
+      rawStandards.forEach(item => item.inspection_id = inspectionIdMapping!.newId);
+      if (rawSummary) {
+        rawSummary = { ...rawSummary, inspection_id: inspectionIdMapping.newId };
+      }
+    }
     
     // Transform temp- IDs to valid UUIDs before validation
     // These temp IDs are created in the UI for new rows but need real UUIDs for DB
@@ -385,6 +425,29 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
       updated_at: syncTimestamp,
       inspector: inspectorProfile || { first_name: null, last_name: null, avatar_url: null },
     });
+    
+    // 7. If we swapped a temp ID, clean up old IndexedDB entries
+    if (inspectionIdMapping) {
+      console.log('[Atomic Sync] Cleaning up old temp-ID entries from IndexedDB:', inspectionIdMapping.oldId);
+      
+      // Delete old inspection entry keyed by temp ID
+      await deleteOfflineInspection(inspectionIdMapping.oldId);
+      
+      // Clean up child record stores that were keyed under the old temp inspection_id
+      const childStores = ['systems', 'ziplines', 'equipment', 'standards', 'summary'] as const;
+      for (const store of childStores) {
+        await clearRelatedDataOffline(store, inspectionIdMapping.oldId);
+      }
+      
+      // Save child records under the new UUID
+      await Promise.all([
+        systems.length > 0 ? saveRelatedDataOffline('systems', inspectionIdMapping.newId, systems) : Promise.resolve(),
+        ziplines.length > 0 ? saveRelatedDataOffline('ziplines', inspectionIdMapping.newId, ziplines) : Promise.resolve(),
+        equipment.length > 0 ? saveRelatedDataOffline('equipment', inspectionIdMapping.newId, equipment) : Promise.resolve(),
+        standards.length > 0 ? saveRelatedDataOffline('standards', inspectionIdMapping.newId, standards) : Promise.resolve(),
+        summary ? saveRelatedDataOffline('summary', inspectionIdMapping.newId, [summary]) : Promise.resolve(),
+      ]);
+    }
     
     if (import.meta.env.DEV) {
       console.log('[Atomic Sync] Successfully synced inspection:', inspectionId);
