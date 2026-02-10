@@ -20,6 +20,8 @@ export const SyncPulse = ({ className }: { className?: string }) => {
   const {
     unsyncedCount,
     unsyncedInspections,
+    unsyncedTrainings,
+    unsyncedAssessments,
     isSyncing,
     lastSyncTime,
     syncError,
@@ -120,16 +122,32 @@ export const SyncPulse = ({ className }: { className?: string }) => {
             {unsyncedCount > 0 && (
               <div className="space-y-2">
                 <p className="font-medium">Pending reports ({unsyncedCount})</p>
-                <div className="space-y-1.5 max-h-40 overflow-y-auto">
-                  {unsyncedInspections.slice(0, 8).map((inspection) => (
-                    <div key={inspection.id} className="pl-3 border-l-2 border-muted">
-                      <p className="font-medium text-foreground">{inspection.organization}</p>
-                      <p className="text-muted-foreground text-xs">{inspection.location}</p>
+                <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                  {unsyncedInspections.map((item) => (
+                    <div key={item.id} className="pl-3 border-l-2 border-blue-400 flex items-start gap-2">
+                      <span className="shrink-0 mt-0.5 text-[10px] font-semibold uppercase tracking-wide bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 rounded px-1.5 py-0.5">Inspection</span>
+                      <div className="min-w-0">
+                        <p className="font-medium text-foreground truncate">{item.organization || 'Untitled'}</p>
+                        {item.location && <p className="text-muted-foreground text-xs truncate">{item.location}</p>}
+                      </div>
                     </div>
                   ))}
-                  {unsyncedInspections.length > 8 && (
-                    <p className="text-muted-foreground text-xs pl-3">+{unsyncedInspections.length - 8} more</p>
-                  )}
+                  {unsyncedTrainings.map((item) => (
+                    <div key={item.id} className="pl-3 border-l-2 border-purple-400 flex items-start gap-2">
+                      <span className="shrink-0 mt-0.5 text-[10px] font-semibold uppercase tracking-wide bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300 rounded px-1.5 py-0.5">Training</span>
+                      <div className="min-w-0">
+                        <p className="font-medium text-foreground truncate">{item.organization || 'Untitled'}</p>
+                      </div>
+                    </div>
+                  ))}
+                  {unsyncedAssessments.map((item) => (
+                    <div key={item.id} className="pl-3 border-l-2 border-amber-400 flex items-start gap-2">
+                      <span className="shrink-0 mt-0.5 text-[10px] font-semibold uppercase tracking-wide bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 rounded px-1.5 py-0.5">Assessment</span>
+                      <div className="min-w-0">
+                        <p className="font-medium text-foreground truncate">{item.organization || item.site || 'Untitled'}</p>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
             )}

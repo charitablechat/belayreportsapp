@@ -44,6 +44,8 @@ class PWAErrorBoundary extends Component<
         rtt: null,
         unsyncedCount: 0,
         unsyncedInspections: [],
+        unsyncedTrainings: [],
+        unsyncedAssessments: [],
         isSyncing: false,
         lastSyncTime: null,
         syncError: this.state.error?.message || 'PWA initialization failed',
@@ -88,6 +90,8 @@ export interface PWAContextType {
   // Sync state (automatic with manual force sync option)
   unsyncedCount: number;
   unsyncedInspections: any[];
+  unsyncedTrainings: any[];
+  unsyncedAssessments: any[];
   isSyncing: boolean;
   lastSyncTime: Date | null;
   syncError: string | null;
@@ -115,6 +119,9 @@ const PWAProviderContent = ({ children }: PWAProviderProps) => {
   // Use the new automatic sync hook with manual force sync option
   const { 
     unsyncedCount,
+    unsyncedInspections,
+    unsyncedTrainings,
+    unsyncedAssessments,
     isSyncing, 
     lastSyncTime, 
     updateUnsyncedCounts,
@@ -158,7 +165,9 @@ const PWAProviderContent = ({ children }: PWAProviderProps) => {
     
     // Sync state (automatic with manual force sync option)
     unsyncedCount,
-    unsyncedInspections: [], // Simplified - detailed list not needed for passive indicator
+    unsyncedInspections,
+    unsyncedTrainings,
+    unsyncedAssessments,
     isSyncing,
     lastSyncTime,
     syncError: null, // Errors are handled silently in automatic sync
