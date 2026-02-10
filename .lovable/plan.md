@@ -1,108 +1,105 @@
 
-# Fix: "Temple of Doom" Not Syncing and Redirecting to Dashboard
 
-## What's Happening
+# Fix Temp-ID Sync and Redirect for ALL Report Types
 
-Two related problems stem from the same root cause: the inspection was created offline with a temporary ID (`temp-XXXX`), and the sync pipeline is failing silently on mobile.
+## Problem
 
-### Problem 1: Redirect to Dashboard
-When you try to open the report on mobile (while online), the InspectionForm:
-1. Loads the record from IndexedDB successfully (temp-ID lookup works)
-2. Attempts to update `last_opened_at` in the database using the temp-ID (silently fails, no rows matched)
-3. Queries the database for the inspection using the temp-ID -- returns `null`
-4. Reaches the check: `if (!data && !offlineData)` -- but `offlineData` should exist...
+The previous fix only addressed **Inspections**. Trainings and Daily Assessments have the exact same two vulnerabilities:
 
-The likely cause is that IndexedDB's 3-second timeout (`withOfflineTimeout`) is too tight on mobile under load, causing `offlineData` to return `null`. Combined with the server also returning `null` (temp-ID doesn't exist), both are null, triggering the redirect at line 867.
+1. **Redirect on open**: Both `TrainingForm.tsx` (line 289-304) and `DailyAssessmentForm.tsx` (line 285-299) query the server with temp-IDs, get null back, and redirect to dashboard.
+2. **Silent sync skip**: Both `getUnsyncedTrainings` (line 1293) and `getUnsyncedDailyAssessments` (line 1043) filter by `inspector_id === userId`, silently excluding orphaned offline records. The sync functions in `atomic-sync-manager.ts` (lines 708 and 1146) also skip on ownership mismatch.
 
-### Problem 2: Sync Not Completing
-The sync system detects the unsynced record and starts the temp-ID-to-UUID transformation, but the transaction is failing due to one of:
-- Session validation timeout (5s limit at line 487 in `atomic-sync-manager.ts`)
-- The step timeout (now 15s, but was 8s) still not enough for this specific record
-- Silent catch swallowing the error without surfacing it to the UI
+## Changes
 
-## Solution
+### 1. TrainingForm.tsx -- Skip server queries for temp-IDs
 
-### Change 1: Prevent redirect when offline data exists but server data doesn't (InspectionForm)
+Wrap the `if (isOnline)` block (line 289) with `!id.startsWith('temp-')` guard, matching the pattern already applied to InspectionForm:
 
-The form should not redirect to dashboard when a temp-ID inspection exists in IndexedDB. The current logic correctly checks `!data && !offlineData`, but the offline load can time out on mobile (3s limit). Increase the offline timeout for the initial inspection header load from 3s to 5s, and add a fallback retry without timeout if the first attempt returns null but we know the ID is a temp-ID.
-
-**File: `src/pages/InspectionForm.tsx`** (around line 720)
-
-```
-// Current:
-const offlineData = await withOfflineTimeout(
-  getOfflineInspection(id!),
-  null
-);
-
-// New: For temp-ID records, retry without timeout if first attempt fails
-let offlineData = await withOfflineTimeout(
-  getOfflineInspection(id!),
-  null,
-  5000  // Increase from 3s to 5s
-);
-
-// Temp-ID records only exist locally -- retry without timeout if needed
-if (!offlineData && id!.startsWith('temp-')) {
-  try {
-    offlineData = await getOfflineInspection(id!);
-  } catch (e) {
-    console.warn('[InspectionForm] Retry for temp-ID also failed:', e);
-  }
-}
-```
-
-### Change 2: Skip server queries for temp-ID inspections (InspectionForm)
-
-When the URL contains a `temp-` ID, there's no point querying the server -- it will never have this record. Skip the server fetch entirely and rely on local data only.
-
-**File: `src/pages/InspectionForm.tsx`** (around line 797)
-
-Wrap the entire server fetch block (`if (isOnline)`) with an additional guard:
-
-```
-// Only fetch from server if this isn't a temp-ID (temp records only exist locally)
-if (isOnline && !id!.startsWith('temp-')) {
+```typescript
+// Only fetch from server if this isn't a temp-ID
+if (isOnline && !id.startsWith('temp-')) {
   // ... existing server fetch logic unchanged ...
-} else if (!offlineData) {
-  // Offline (or temp-ID) and no cached data
-  toast({ ... });
+} else if (!offlineTraining) {
+  toast({ title: "Training not available offline", ... });
   navigate('/dashboard');
   return;
 }
 ```
 
-This eliminates: the `last_opened_at` update failure, the pointless server query, and the false redirect.
+### 2. DailyAssessmentForm.tsx -- Skip server queries for temp-IDs
 
-### Change 3: Add sync debugging for temp-ID inspections
+Same pattern at line 285:
 
-Add a console log in `syncAllInspectionsAtomic` (in `atomic-sync-manager.ts`) to surface when a temp-ID inspection is found but sync fails, so we can diagnose the mobile sync failure:
-
-**File: `src/lib/atomic-sync-manager.ts`** (around line 534)
-
-After the batch is selected, log temp-ID items specifically:
-
-```
-const tempIdItems = batch.filter(i => i.id.startsWith('temp-'));
-if (tempIdItems.length > 0) {
-  console.log('[Atomic Sync] Batch includes temp-ID inspections:', 
-    tempIdItems.map(i => ({ id: i.id.substring(0, 20), org: i.organization }))
-  );
+```typescript
+if (navigator.onLine && !id!.startsWith('temp-')) {
+  // ... existing server fetch logic ...
+} else if (!offlineAssessment) {
+  toast.error("Assessment not available offline", ...);
+  navigate('/dashboard');
+  return;
 }
 ```
 
-## Summary of Changes
+### 3. offline-storage.ts -- Include orphaned temp-ID records in all three sync queries
 
-| File | Change | Purpose |
-|------|--------|---------|
-| `src/pages/InspectionForm.tsx` | Increase offline timeout from 3s to 5s; retry for temp-IDs | Prevent false null for local-only records |
-| `src/pages/InspectionForm.tsx` | Skip server queries when URL has temp-ID | Eliminate pointless server queries and false redirects |
-| `src/lib/atomic-sync-manager.ts` | Add temp-ID batch logging | Surface sync failures for diagnosis |
+Update all three `getUnsynced*` functions to include records where the `inspector_id` doesn't match but the ID starts with `temp-`:
 
-## What This Fixes
-- Opening the Temple of Doom report on mobile will load from IndexedDB without being redirected
-- No wasted server queries for records that only exist locally
-- Better visibility into why temp-ID records aren't syncing
+- `getUnsyncedInspections` (line 608-609)
+- `getUnsyncedTrainings` (line 1292-1293)
+- `getUnsyncedDailyAssessments` (line 1042-1043)
 
-## What This Does NOT Fix (yet)
-- The underlying sync failure on mobile needs the console logs to diagnose. Once we can see what's happening (session timeout? transaction failure?), we can apply a targeted fix.
+Pattern for each:
+
+```typescript
+if (userId) {
+  const owned = unsynced.filter(i => i.inspector_id === userId);
+  const orphaned = unsynced.filter(
+    i => i.inspector_id !== userId && i.id.startsWith('temp-')
+  );
+  if (orphaned.length > 0) {
+    console.warn('[Offline Storage] Found orphaned temp-ID records:', 
+      orphaned.map(i => ({ id: i.id.substring(0, 20) }))
+    );
+  }
+  unsynced = [...owned, ...orphaned];
+}
+```
+
+### 4. atomic-sync-manager.ts -- Auto-fix ownership for all three types
+
+Update the ownership check in all three sync functions to auto-correct `inspector_id` for local-only records instead of skipping:
+
+- `syncInspectionAtomic` (line 136)
+- `syncTrainingAtomic` (line 708)
+- `syncDailyAssessmentAtomic` (line 1146)
+
+Pattern for each:
+
+```typescript
+if (record.inspector_id !== user.id) {
+  if (originalId.startsWith('temp-') || !record.synced_at) {
+    console.log('[Atomic Sync] Auto-fixing inspector_id for local record');
+    record.inspector_id = user.id;
+    await saveRecordOffline(record); // persist fix locally
+  } else {
+    return { success: false, skipped: true, reason: 'ownership_mismatch' };
+  }
+}
+```
+
+### 5. atomic-sync-manager.ts -- Production-visible sync logging
+
+Move sync result logging outside `import.meta.env.DEV` guards in all three `syncAll*Atomic` functions so mobile production issues are diagnosable.
+
+## Summary
+
+| File | Change | Scope |
+|------|--------|-------|
+| `src/pages/TrainingForm.tsx` | Skip server queries for temp-IDs | Trainings |
+| `src/pages/DailyAssessmentForm.tsx` | Skip server queries for temp-IDs | Daily Assessments |
+| `src/lib/offline-storage.ts` | Include orphaned temp-ID records in all 3 unsynced queries | All types |
+| `src/lib/atomic-sync-manager.ts` | Auto-fix ownership for local records in all 3 sync functions | All types |
+| `src/lib/atomic-sync-manager.ts` | Enable production sync logging | All types |
+
+This ensures any report created offline -- inspection, training, or daily assessment -- will correctly load from local storage, sync to the server, and never silently redirect to the dashboard.
+
