@@ -1,7 +1,7 @@
 import { supabase } from "@/integrations/supabase/client";
 
 // Timeout for individual database steps to prevent hanging on slow connections
-const STEP_TIMEOUT = 8000; // 8 seconds per step (generous but not infinite)
+const STEP_TIMEOUT = 15000; // 15 seconds per step (allows large ~2MB records to sync on slower connections)
 
 /**
  * Wrap a promise with a timeout to prevent individual steps from blocking
