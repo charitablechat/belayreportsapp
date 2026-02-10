@@ -2,14 +2,19 @@ import { useState, useEffect } from 'react';
 import { usePWA } from '@/hooks/usePWA';
 import { isMobile, isIOS } from '@/lib/mobile-detection';
 import { cn } from '@/lib/utils';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+} from '@/components/ui/sheet';
 
 type Phase = 'idle' | 'syncing' | 'synced' | 'unsynced' | 'error';
 
 /**
  * SyncPulse — minimal dot-based sync indicator.
- * Replaces the old SyncStatusIndicator badge in the header.
- * Never shifts layout; uses fixed dimensions with opacity-only transitions.
+ * Tappable to open a detail sheet with sync status info.
  */
 export const SyncPulse = ({ className }: { className?: string }) => {
   const {
@@ -22,10 +27,10 @@ export const SyncPulse = ({ className }: { className?: string }) => {
     unsyncedPhotoCount,
   } = usePWA();
 
-  const isMobileDevice = isMobile();
   const isIOSDevice = isIOS();
   const [justSynced, setJustSynced] = useState(false);
   const [previousSyncingState, setPreviousSyncingState] = useState(false);
+  const [open, setOpen] = useState(false);
 
   const totalUnsynced = unsyncedCount + unsyncedPhotoCount;
 
@@ -59,61 +64,102 @@ export const SyncPulse = ({ className }: { className?: string }) => {
     return date.toLocaleDateString();
   };
 
+  const statusLabel =
+    phase === 'syncing' ? 'Syncing...'
+    : phase === 'error' ? (isOnline ? 'Sync Failed' : 'Offline')
+    : phase === 'unsynced' ? `${totalUnsynced} Unsynced`
+    : phase === 'synced' ? 'Synced'
+    : 'All Synced';
+
   return (
-    <TooltipProvider>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <div className={cn('relative flex items-center justify-center w-8 h-8', className)}>
-            <div
-              className={cn(
-                'w-2 h-2 rounded-full transition-all duration-500 ease-in-out',
-                phase === 'syncing' && 'bg-blue-500 opacity-90 animate-[pulse_2s_ease-in-out_infinite]',
-                phase === 'error' && 'bg-destructive opacity-100',
-                phase === 'unsynced' && 'bg-amber-500 opacity-80',
-                phase === 'synced' && 'bg-green-500 opacity-100',
-                phase === 'idle' && 'opacity-0',
-              )}
-            />
-            {totalUnsynced > 0 && phase !== 'syncing' && (
-              <span className="absolute -top-0.5 -right-0.5 text-[9px] font-mono leading-none bg-amber-500 text-white rounded-full min-w-[14px] h-[14px] flex items-center justify-center">
-                {totalUnsynced}
-              </span>
-            )}
-          </div>
-        </TooltipTrigger>
-        <TooltipContent className={isMobileDevice ? 'max-w-xs' : ''}>
-          <div className="space-y-1 text-xs">
-            <p>
-              <strong>Status:</strong>{' '}
-              {phase === 'syncing' ? 'Syncing...' : phase === 'error' ? (isOnline ? 'Sync Failed' : 'Offline') : phase === 'unsynced' ? `${totalUnsynced} Unsynced` : phase === 'synced' ? 'Synced' : 'All synced'}
-            </p>
-            <p><strong>Last sync:</strong> {formatLastSync(lastSyncTime)}</p>
-            <p className="text-muted-foreground italic">Sync happens automatically in the background</p>
-            {isIOSDevice && (
-              <p className="text-muted-foreground italic">iOS: Auto-sync on visibility change and every 30 seconds</p>
-            )}
+    <>
+      <button
+        type="button"
+        aria-label="Sync status"
+        onClick={() => setOpen(true)}
+        className={cn('relative flex items-center justify-center w-8 h-8', className)}
+      >
+        <div
+          className={cn(
+            'w-2 h-2 rounded-full transition-all duration-500 ease-in-out',
+            phase === 'syncing' && 'bg-blue-500 opacity-90 animate-[pulse_2s_ease-in-out_infinite]',
+            phase === 'error' && 'bg-destructive opacity-100',
+            phase === 'unsynced' && 'bg-amber-500 opacity-80',
+            phase === 'synced' && 'bg-green-500 opacity-100',
+            phase === 'idle' && 'opacity-0',
+          )}
+        />
+        {totalUnsynced > 0 && phase !== 'syncing' && (
+          <span className="absolute -top-0.5 -right-0.5 text-[9px] font-mono leading-none bg-amber-500 text-white rounded-full min-w-[14px] h-[14px] flex items-center justify-center">
+            {totalUnsynced}
+          </span>
+        )}
+      </button>
+
+      <Sheet open={open} onOpenChange={setOpen}>
+        <SheetContent side="bottom" className="rounded-t-xl max-h-[70vh] overflow-y-auto">
+          <SheetHeader className="pb-2">
+            <SheetTitle className="text-base">Sync Status</SheetTitle>
+            <SheetDescription className="sr-only">Details about data synchronization</SheetDescription>
+          </SheetHeader>
+
+          <div className="space-y-4 text-sm px-1 pb-4">
+            {/* Status row */}
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Status</span>
+              <span className="font-medium">{statusLabel}</span>
+            </div>
+
+            {/* Last sync */}
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Last sync</span>
+              <span className="font-medium">{formatLastSync(lastSyncTime)}</span>
+            </div>
+
+            {/* Pending reports */}
             {unsyncedCount > 0 && (
-              <>
-                <p><strong>Pending items:</strong> {unsyncedCount}</p>
-                <div className="mt-2 space-y-1 max-h-40 overflow-y-auto">
-                  {unsyncedInspections.slice(0, 5).map((inspection) => (
-                    <div key={inspection.id} className="pl-2 border-l-2 border-muted">
-                      <p className="font-medium">{inspection.organization}</p>
-                      <p className="text-muted-foreground">{inspection.location}</p>
+              <div className="space-y-2">
+                <p className="font-medium">Pending reports ({unsyncedCount})</p>
+                <div className="space-y-1.5 max-h-40 overflow-y-auto">
+                  {unsyncedInspections.slice(0, 8).map((inspection) => (
+                    <div key={inspection.id} className="pl-3 border-l-2 border-muted">
+                      <p className="font-medium text-foreground">{inspection.organization}</p>
+                      <p className="text-muted-foreground text-xs">{inspection.location}</p>
                     </div>
                   ))}
-                  {unsyncedInspections.length > 5 && (
-                    <p className="text-muted-foreground">+{unsyncedInspections.length - 5} more</p>
+                  {unsyncedInspections.length > 8 && (
+                    <p className="text-muted-foreground text-xs pl-3">+{unsyncedInspections.length - 8} more</p>
                   )}
                 </div>
-              </>
+              </div>
             )}
-            {unsyncedPhotoCount > 0 && <p><strong>Pending photos:</strong> {unsyncedPhotoCount}</p>}
-            {syncError && <p className="text-destructive">{syncError}</p>}
-            {!isOnline && <p>Changes will sync when back online</p>}
+
+            {/* Pending photos */}
+            {unsyncedPhotoCount > 0 && (
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Pending photos</span>
+                <span className="font-medium">{unsyncedPhotoCount}</span>
+              </div>
+            )}
+
+            {/* Error */}
+            {syncError && (
+              <p className="text-destructive text-xs bg-destructive/10 rounded-md p-2">{syncError}</p>
+            )}
+
+            {/* Offline notice */}
+            {!isOnline && (
+              <p className="text-muted-foreground text-xs">Changes will sync when back online.</p>
+            )}
+
+            {/* Info footer */}
+            <p className="text-muted-foreground text-xs italic pt-1 border-t border-border">
+              Sync happens automatically in the background.
+              {isIOSDevice && ' On iOS, auto-sync runs on visibility change and every 30 seconds.'}
+            </p>
           </div>
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
+        </SheetContent>
+      </Sheet>
+    </>
   );
 };
