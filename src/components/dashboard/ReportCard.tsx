@@ -12,7 +12,7 @@ import { format } from "date-fns";
 import { FileText, MoreVertical, Trash2, Download, Check, Cloud } from "lucide-react";
 import { triggerHaptic } from "@/lib/haptics";
 import { parseLocalDate } from "@/lib/date-utils";
-import { HeartsBorder } from "@/components/christmas/HeartsBorder";
+import { OlympicRings } from "@/components/christmas/OlympicRings";
 import { triggerValentineBurst } from "@/lib/confetti";
 import { useClickAndHoverSparkles, SparkleContainer } from "@/components/christmas/Sparkles";
 
@@ -103,7 +103,7 @@ export function ReportCard({ report, type, onDelete, onClick, getStatusBadge }: 
 
   return (
     <Card 
-      className="relative overflow-visible cursor-pointer transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5 hover:border-primary/50 active:scale-[0.99] active:shadow-md group valentine-card-glow"
+      className="relative overflow-visible cursor-pointer transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5 hover:border-primary/50 active:scale-[0.99] active:shadow-md group"
       onClick={(e) => {
         triggerHaptic('light');
         triggerSparkles(e);
@@ -116,7 +116,7 @@ export function ReportCard({ report, type, onDelete, onClick, getStatusBadge }: 
       onMouseMove={handleMouseMove}
     >
       <SparkleContainer sparkles={sparkles} />
-      <HeartsBorder />
+      <OlympicRings />
       {getReportStatus() === 'completed' && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
           <span className="text-green-500/20 text-4xl md:text-5xl font-bold tracking-wider rotate-[-25deg] select-none whitespace-nowrap">

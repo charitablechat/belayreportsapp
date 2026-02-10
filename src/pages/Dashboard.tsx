@@ -40,9 +40,9 @@ import { onSyncComplete } from "@/lib/sync-events";
 import { InspectionsEmptyState, TrainingsEmptyState, DailyAssessmentsEmptyState } from "@/components/EmptyState";
 import { getUserWithCache, getSuperAdminStatusWithCache, invalidateSuperAdminCache } from "@/lib/cached-auth";
 /* Holiday Theme Components */
-import { FallingHearts } from "@/components/christmas/FallingHearts";
+import { Snowfall } from "@/components/christmas/Snowfall";
 import { HolidayBanner } from "@/components/christmas/HolidayBanner";
-import { HeartsBorder } from "@/components/christmas/HeartsBorder";
+import { OlympicRings } from "@/components/christmas/OlympicRings";
 import { UserProfileDropdown } from "@/components/UserProfileDropdown";
 
 
@@ -770,8 +770,8 @@ export default function Dashboard() {
 
   return (
     <div className="relative min-h-screen">
-      {/* Valentine's Falling Hearts Animation */}
-      <FallingHearts />
+      {/* Winter Olympic Snowfall Animation */}
+      <Snowfall />
       
       
       
@@ -913,8 +913,8 @@ export default function Dashboard() {
                     navigate("/inspection/new");
                   }}
                 >
-                  <HeartsBorder />
-                  <div className="absolute inset-0 bg-gradient-to-br from-pink-50 to-transparent opacity-50 rounded-lg" />
+                  <OlympicRings />
+                  <div className="absolute inset-0 bg-gradient-to-br from-blue-50/30 to-transparent opacity-50 rounded-lg" />
                   <CardHeader className="relative z-10 text-center pb-4">
                     <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-blue-100 flex items-center justify-center group-hover:scale-110 transition-transform">
                       <FileText className="w-8 h-8 text-blue-600" />
@@ -940,8 +940,8 @@ export default function Dashboard() {
                     navigate("/training/new");
                   }}
                 >
-                  <HeartsBorder />
-                  <div className="absolute inset-0 bg-gradient-to-br from-rose-50 to-transparent opacity-50 rounded-lg" />
+                  <OlympicRings />
+                  <div className="absolute inset-0 bg-gradient-to-br from-sky-50/30 to-transparent opacity-50 rounded-lg" />
                   <CardHeader className="relative z-10 text-center pb-4">
                     <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-green-100 flex items-center justify-center group-hover:scale-110 transition-transform">
                       <GraduationCap className="w-8 h-8 text-green-600" />
@@ -967,8 +967,8 @@ export default function Dashboard() {
                     navigate("/daily-assessment/new");
                   }}
                 >
-                  <HeartsBorder />
-                  <div className="absolute inset-0 bg-gradient-to-br from-red-50 to-transparent opacity-50 rounded-lg" />
+                  <OlympicRings />
+                  <div className="absolute inset-0 bg-gradient-to-br from-indigo-50/30 to-transparent opacity-50 rounded-lg" />
                   <CardHeader className="relative z-10 text-center pb-4">
                     <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-purple-100 flex items-center justify-center group-hover:scale-110 transition-transform">
                       <FileText className="w-8 h-8 text-purple-600" />
