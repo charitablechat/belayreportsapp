@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Check, ChevronsUpDown, Pencil, Trash2, X, Plus, Loader2 } from "lucide-react";
+import { Check, Pencil, Trash2, X, Plus, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -333,7 +333,7 @@ export function DatabaseAutocomplete({
                   <X className="h-3.5 w-3.5" />
                 </button>
               )}
-              <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
+              
             </div>
           </div>
         </PopoverTrigger>
