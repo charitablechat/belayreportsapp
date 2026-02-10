@@ -134,6 +134,12 @@ export default function NewInspection() {
       // Get user from cache or online - works offline!
       const user = await getUserWithCache();
       if (!user) {
+        if (!navigator.onLine) {
+          toast.error("Please sign in to create reports");
+          setLoading(false);
+          isSubmitting.current = false;
+          return;
+        }
         throw new Error("Not authenticated");
       }
 

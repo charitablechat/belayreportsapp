@@ -4,6 +4,7 @@ import { syncAllInspectionsAtomic, syncAllTrainingsAtomic, syncAllDailyAssessmen
 import { syncPhotos } from '@/lib/sync-manager';
 import { getUnsyncedInspections, getUnsyncedTrainings, getUnsyncedDailyAssessments } from '@/lib/offline-storage';
 import { getUserWithCache } from '@/lib/cached-auth';
+import { hasPendingOfflineAuth, verifyAndReconcileOfflineAuth } from '@/lib/offline-auth';
 import { useQueryClient } from '@tanstack/react-query';
 import { isMobile, isIOS } from '@/lib/mobile-detection';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -317,10 +318,21 @@ export const useAutoSync = () => {
   /**
    * Handle online event - sync immediately when network reconnects
    */
-  const handleOnline = useCallback(() => {
+  const handleOnline = useCallback(async () => {
     if (import.meta.env.DEV) {
-      console.log('[AutoSync] Network reconnected - syncing immediately');
+      console.log('[AutoSync] Network reconnected - checking offline auth then syncing');
     }
+    
+    // Verify offline credentials before syncing to prevent RLS failures
+    if (hasPendingOfflineAuth()) {
+      try {
+        await verifyAndReconcileOfflineAuth();
+      } catch (e) {
+        console.warn('[AutoSync] Offline auth verification failed:', e);
+        // Don't block sync - data is still local
+      }
+    }
+    
     performSync(false);
   }, [performSync]);
   

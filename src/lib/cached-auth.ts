@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { saveUserMapping, clearOfflineAuth } from "@/lib/offline-auth";
 
 export interface CachedUser {
   id: string;
@@ -105,6 +106,10 @@ export async function getUserWithCache(): Promise<CachedUser | null> {
       if (result.user) {
         cachedUser = result.user;
         cacheTimestamp = Date.now();
+        // Save email-to-userId mapping for future offline logins (fire-and-forget)
+        if (result.user.email) {
+          saveUserMapping(result.user.email, result.user.id).catch(() => {});
+        }
       }
       
       return result.user;
@@ -157,6 +162,8 @@ export function invalidateUserCache() {
   pendingUserPromise = null;
   // Also invalidate super admin cache on user cache invalidation
   invalidateSuperAdminCache();
+  // Clear offline auth credentials on sign-out
+  clearOfflineAuth().catch(() => {});
 }
 
 /**

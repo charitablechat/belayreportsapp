@@ -12,6 +12,7 @@ import { usePWA } from "@/hooks/usePWA";
 import ropeWorksLogo from "@/assets/rope-works-logo.png";
 import authBackgroundVideo from "@/assets/auth-background.mp4";
 import { hasCachedSessionForOffline } from "@/lib/cached-auth";
+import { createOfflineSession } from "@/lib/offline-auth";
 import { triggerHaptic } from "@/lib/haptics";
 import { toast } from "sonner";
 
@@ -84,6 +85,14 @@ export default function Auth() {
     setLoading(true);
 
     try {
+      // OFFLINE SIGN-IN: Allow sign-in (not sign-up) while offline
+      if (!isOnline && !isSignUp) {
+        await createOfflineSession(email, password);
+        toast.success("Signed in offline. Credentials will be verified when you reconnect.");
+        navigate("/dashboard", { replace: true });
+        return;
+      }
+
       if (isSignUp) {
         const { error } = await supabase.auth.signUp({
           email,
@@ -202,7 +211,9 @@ export default function Auth() {
                 <span className="font-semibold">You're offline.</span>{" "}
                 {hasCachedSessionForOffline() 
                   ? "Tap below to access your cached reports."
-                  : "Sign in requires an internet connection."}
+                  : isSignUp
+                  ? "Sign up requires an internet connection."
+                  : "You can sign in offline. Your credentials will be verified when you reconnect."}
               </AlertDescription>
             </Alert>
           )}
@@ -339,7 +350,7 @@ export default function Auth() {
             <GradientButton
               type="submit"
               className="w-full"
-              disabled={loading}
+              disabled={loading || (!isOnline && isSignUp) || (!isOnline && isForgotPassword)}
             >
               {loading 
                 ? "Please wait..." 
@@ -347,6 +358,8 @@ export default function Auth() {
                 ? "Send Reset Link" 
                 : isSignUp 
                 ? "Create Account" 
+                : !isOnline
+                ? "Sign In Offline"
                 : "Sign In"}
             </GradientButton>
             {isForgotPassword ? (
