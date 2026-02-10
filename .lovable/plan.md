@@ -1,142 +1,65 @@
 
 
-# Harden Offline-First Data Persistence and Authentication
+# Replace Dashboard Background with Winter Olympic Skier Image
 
-## Current State
+## Overview
 
-The application already has a substantial offline infrastructure:
-- **IndexedDB** with 20+ object stores for all report types and child data (v6 schema in `offline-storage.ts`)
-- **Offline sign-in** via synthetic sessions (`offline-auth.ts`) -- just implemented
-- **Background sync** with atomic batch processing, accelerated re-sync, and LWW conflict resolution (`useAutoSync`, `atomic-sync-manager.ts`)
-- **Deferred credential verification** with userId migration on reconnect
+Replace the current `dashboard-background.webp` with the uploaded skier image. Show it on all viewports (not just desktop) and add a dark overlay scrim to maintain legibility of the notification strip, report cards, and header against the busy action photo.
 
-However, there are **three critical gaps** that would break the offline experience on mobile devices:
+## Changes
 
-## Gap 1: Expired Real Sessions Block Dashboard Offline
+### 1. Copy uploaded image to project
 
-**Problem:** `getCachedUserFromStorage()` in `cached-auth.ts` (line 239) rejects tokens where `expires_at` has passed. If a user logs in online, goes offline, and their JWT expires (typically 1 hour), `getUserWithCache()` returns `null`. The Dashboard then has no `userId` and cannot load any IndexedDB data.
+Copy `user-uploads://0x0.webp` to `src/assets/dashboard-background.webp`, replacing the existing file.
 
-The `hasCachedSessionForOffline()` function correctly ignores expiry, but `getCachedUserFromStorage()` does not. Since the Dashboard and all forms use `getUserWithCache()` (which calls `getCachedUserFromStorage()`), expired sessions silently break offline data access.
+### 2. Update `src/pages/Dashboard.tsx` (lines 809-823)
 
-**Fix:** Make `getCachedUserFromStorage()` skip expiry checks when offline, matching the behavior of `hasCachedSessionForOffline()`.
+Replace the current background section to:
+- Show the image on **all viewports** (remove `hidden md:block`)
+- Add a dark scrim overlay on top of the image for legibility
+- Use `object-cover` with `object-[center_30%]` to keep the skier's upper body visible across aspect ratios (the subject is in the center-upper portion)
 
-| File | Change |
-|------|--------|
-| `src/lib/cached-auth.ts` | In `getCachedUserFromStorage()`, skip the `expires_at` check when `!navigator.onLine` |
-
-## Gap 2: Dashboard Auth Listener Ejects Offline Users
-
-**Problem:** Dashboard line 232: `if (event === 'SIGNED_OUT' || !session)` redirects to login. When the Supabase client initializes with a synthetic session (fake JWT `offline_placeholder_token`), it may emit `TOKEN_REFRESHED` failure or `SIGNED_OUT` events because the token is not a valid JWT. This would kick the user out of the Dashboard while offline.
-
-**Fix:** Guard the redirect so it only fires when the user is online or explicitly signs out.
-
-| File | Change |
-|------|--------|
-| `src/pages/Dashboard.tsx` | Add `navigator.onLine` check before redirecting on auth state change. Only redirect on explicit `SIGNED_OUT` events, not on missing sessions while offline. |
-
-## Gap 3: Form Pages Lack Offline Auth Guards
-
-**Problem:** `InspectionForm.tsx`, `TrainingForm.tsx`, and `DailyAssessmentForm.tsx` fetch the current user on load. If `getUserWithCache()` returns null while offline (e.g., due to gap 1 before the fix), these forms fail silently or show errors instead of loading existing offline data.
-
-**Fix:** Add defensive offline guards to form page load sequences -- if offline and no user found, attempt to read userId from the synthetic session in localStorage as a fallback.
-
-| File | Change |
-|------|--------|
-| `src/pages/InspectionForm.tsx` | Add offline fallback for userId resolution |
-| `src/pages/TrainingForm.tsx` | Add offline fallback for userId resolution |
-| `src/pages/DailyAssessmentForm.tsx` | Add offline fallback for userId resolution |
-
-## Implementation Details
-
-### 1. `src/lib/cached-auth.ts` -- Skip expiry when offline
-
-```typescript
-// In getCachedUserFromStorage(), change:
-if (!expiresAt || expiresAt * 1000 <= Date.now()) {
-  return null;
-}
-// To:
-if (!navigator.onLine) {
-  // Offline: ignore token expiry -- we only need user identity for IndexedDB filtering
-} else if (!expiresAt || expiresAt * 1000 <= Date.now()) {
-  return null;
-}
-```
-
-### 2. `src/pages/Dashboard.tsx` -- Guard auth state redirect
-
-```typescript
-// Change the auth state change handler:
-supabase.auth.onAuthStateChange((event, session) => {
-  // Only update currentUser from real auth events, not synthetic session failures
-  if (session?.user) {
-    setCurrentUser(session.user);
-  }
+```tsx
+{/* Background image */}
+<div className="absolute inset-0 z-0">
+  {/* Full-bleed background image -- all viewports */}
+  <img
+    src={dashboardBackground}
+    alt=""
+    className="w-full h-full object-cover object-[center_30%]"
+  />
   
-  // Only redirect on explicit sign-out while online
-  // Offline synthetic sessions may trigger false SIGNED_OUT events
-  if (event === 'SIGNED_OUT' && navigator.onLine) {
-    navigate("/", { replace: true });
-  }
-});
+  {/* Dark scrim overlay for legibility of foreground content */}
+  <div className="absolute inset-0 bg-gradient-to-b from-slate-900/70 via-slate-900/50 to-slate-900/70" />
+  
+  {/* Reduced motion fallback */}
+  <div className="absolute inset-0 bg-gradient-to-br from-blue-900/80 via-sky-900/70 to-blue-900/80 hidden motion-reduce:block" />
+</div>
 ```
 
-### 3. Form pages -- Offline userId fallback utility
+Key design decisions:
+- **`object-[center_30%]`**: Positions the focal point (skier) toward the upper third, preventing important cropping on tall mobile screens
+- **Gradient scrim** (`from-slate-900/70 via-slate-900/50 to-slate-900/70`): Darker at top (header area) and bottom (cards), lighter in the middle to let the image show through while keeping all text readable
+- The existing `bg-background/80 backdrop-blur-sm` on line 824 provides an additional readability layer for the main content area
 
-Create a small shared utility in `cached-auth.ts`:
+### 3. No other files change
 
-```typescript
-export function getOfflineUserId(): string | null {
-  try {
-    const session = localStorage.getItem('sb-ssgzcgvygnsrqalisshx-auth-token');
-    if (!session) return null;
-    const parsed = JSON.parse(session);
-    return parsed?.user?.id || null;
-  } catch {
-    return null;
-  }
-}
-```
+The image import on line 23 (`import dashboardBackground from "@/assets/dashboard-background.webp"`) stays identical since the filename is unchanged.
 
-Then in each form page's user check:
-```typescript
-const user = await getUserWithCache();
-const userId = user?.id || getOfflineUserId();
-if (!userId) {
-  // Truly no identity available
-  ...
-}
-```
+## Legibility Verification
 
-## Synchronization Architecture Summary
+| Element | Protection |
+|---------|-----------|
+| Header (logos, user dropdown) | `bg-card/95 backdrop-blur-sm` (line 828) -- opaque card background |
+| Holiday Banner | Rendered above `z-10` content layer with its own background |
+| Sync status strip | Fixed height with own background styling, sits within `z-10` |
+| Report Cards | Inside `bg-background/80 backdrop-blur-sm` container + card backgrounds |
+| Notification strip | Own background color, unaffected by image layer at `z-0` |
 
-For reference, the complete offline data flow uses:
+## Files Modified
 
-- **Local Storage Technology:** IndexedDB via the `idb` library (v8), with a dedicated `rope-works-inspections` database (v6) containing 20+ object stores for all report types and child data
-- **Operation Queue:** Three operation stores (`operations`, `assessment_operations`, `training_operations`) with auto-incrementing keys, retry counters, and timestamps
-- **Conflict Resolution:** Silent Last-Write-Wins (LWW) comparing `updated_at` timestamps between local and remote records
-- **Sync Trigger Points:** Debounced (3s after edits), immediate (on reconnect), periodic (30s desktop / 60s mobile), visibility change, and iOS pageshow/focus events
-- **Batch Processing:** Maximum 5 items per sync cycle with accelerated 5s re-sync for remaining items
-- **Circuit Breaker:** Disables IndexedDB for 60s after 3 consecutive timeout failures (2s threshold)
-- **Auth Reconciliation:** On reconnect, `verifyAndReconcileOfflineAuth()` runs before sync to validate credentials and migrate userId if needed
-
-## Files Summary
-
-| File | Action | Description |
-|------|--------|-------------|
-| `src/lib/cached-auth.ts` | Modify | Skip token expiry when offline; add `getOfflineUserId()` utility |
-| `src/pages/Dashboard.tsx` | Modify | Guard auth state redirect to prevent ejecting offline users |
-| `src/pages/InspectionForm.tsx` | Modify | Add offline userId fallback |
-| `src/pages/TrainingForm.tsx` | Modify | Add offline userId fallback |
-| `src/pages/DailyAssessmentForm.tsx` | Modify | Add offline userId fallback |
-
-## What Does NOT Change
-
-- IndexedDB schema and offline-storage.ts (already complete)
-- offline-auth.ts (just implemented, no changes needed)
-- useAutoSync.tsx (already handles offline auth verification)
-- atomic-sync-manager.ts (unchanged)
-- UserProfileDropdown component (no dependency on auth flow)
-- Dashboard layout and sync status strip spacing (unchanged)
-- goBack(navigate) navigation logic (unchanged)
+| File | Change |
+|------|--------|
+| `src/assets/dashboard-background.webp` | Replaced with skier image |
+| `src/pages/Dashboard.tsx` | Update background section (lines 809-823) for full-viewport image with dark scrim |
 
