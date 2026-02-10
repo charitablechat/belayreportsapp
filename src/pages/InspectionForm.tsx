@@ -1194,22 +1194,22 @@ export default function InspectionForm() {
             
             // OPTIMIZED: Parallelize all independent database operations
             // Pre-generate UUIDs for new items to avoid .select() roundtrips
-            const existingSystems = validSystems.filter(s => s.id && !s.id.startsWith('temp-'));
-            const newSystems = validSystems.filter(s => !s.id || s.id.startsWith('temp-')).map(s => ({
+            const existingSystems = systems.filter(s => s.id && !s.id.startsWith('temp-'));
+            const newSystems = systems.filter(s => !s.id || s.id.startsWith('temp-')).map(s => ({
               ...s,
               id: crypto.randomUUID(), // Pre-generate UUID
               inspection_id: id
             }));
             
-            const existingZiplines = validZiplines.filter(z => z.id && !z.id.startsWith('temp-'));
-            const newZiplines = validZiplines.filter(z => !z.id || z.id.startsWith('temp-')).map(z => ({
+            const existingZiplines = ziplines.filter(z => z.id && !z.id.startsWith('temp-'));
+            const newZiplines = ziplines.filter(z => !z.id || z.id.startsWith('temp-')).map(z => ({
               ...z,
               id: crypto.randomUUID(),
               inspection_id: id
             }));
             
-            const existingEquipment = validEquipment.filter(e => e.id && !e.id.startsWith('temp-'));
-            const newEquipment = validEquipment.filter(e => !e.id || e.id.startsWith('temp-')).map(e => ({
+            const existingEquipment = equipment.filter(e => e.id && !e.id.startsWith('temp-'));
+            const newEquipment = equipment.filter(e => !e.id || e.id.startsWith('temp-')).map(e => ({
               ...e,
               id: crypto.randomUUID(),
               inspection_id: id
@@ -1246,7 +1246,7 @@ export default function InspectionForm() {
             if (newSystems.length > 0) {
               // Build temp ID → new item map for position-preserving replacement
               const systemTempToNewMap = new Map<string, typeof newSystems[0]>();
-              validSystems.filter(s => !s.id || s.id.startsWith('temp-')).forEach((original, i) => {
+              systems.filter(s => !s.id || s.id.startsWith('temp-')).forEach((original, i) => {
                 if (newSystems[i]) {
                   systemTempToNewMap.set(original.id || '', newSystems[i]);
                 }
@@ -1278,7 +1278,7 @@ export default function InspectionForm() {
             if (newZiplines.length > 0) {
               // Build temp ID → new item map for position-preserving replacement
               const ziplineTempToNewMap = new Map<string, typeof newZiplines[0]>();
-              validZiplines.filter(z => !z.id || z.id.startsWith('temp-')).forEach((original, i) => {
+              ziplines.filter(z => !z.id || z.id.startsWith('temp-')).forEach((original, i) => {
                 if (newZiplines[i]) {
                   ziplineTempToNewMap.set(original.id || '', newZiplines[i]);
                 }
@@ -1309,7 +1309,7 @@ export default function InspectionForm() {
             if (newEquipment.length > 0) {
               // Build temp ID → new item map for position-preserving replacement
               const equipmentTempToNewMap = new Map<string, typeof newEquipment[0]>();
-              validEquipment.filter(e => !e.id || e.id.startsWith('temp-')).forEach((original, i) => {
+              equipment.filter(e => !e.id || e.id.startsWith('temp-')).forEach((original, i) => {
                 if (newEquipment[i]) {
                   equipmentTempToNewMap.set(original.id || '', newEquipment[i]);
                 }
@@ -1345,11 +1345,18 @@ export default function InspectionForm() {
             // Execute all in parallel
             await Promise.all(parallelOperations);
 
-            // Mark as synced
+            // Mark as synced - conditional timestamp alignment
+            // If any items had empty names, keep updated_at ahead of synced_at
+            // so background sync re-processes once names are filled
+            const hadFilteredItems = validSystems.length !== systems.length
+              || validZiplines.length !== ziplines.length
+              || validEquipment.length !== equipment.length;
+
+            const syncTimestamp = new Date().toISOString();
             await saveInspectionOffline({
               ...inspectionToSave,
-              synced_at: new Date().toISOString(),
-              updated_at: new Date().toISOString(),
+              synced_at: syncTimestamp,
+              updated_at: hadFilteredItems ? inspectionToSave.updated_at : syncTimestamp,
             });
 
             console.log('[InspectionForm Sync] Synced all data to Supabase successfully');
