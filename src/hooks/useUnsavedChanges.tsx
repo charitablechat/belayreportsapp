@@ -10,7 +10,7 @@ export function useUnsavedChanges({
   hasUnsavedChanges,
   message = "You have unsaved changes. Are you sure you want to leave?",
 }: UseUnsavedChangesOptions) {
-  const [pendingNavigation, setPendingNavigation] = useState<string | null>(null);
+  const [pendingNavigation, setPendingNavigation] = useState<string | number | null>(null);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -29,19 +29,23 @@ export function useUnsavedChanges({
   }, [hasUnsavedChanges, message]);
 
   // Intercept navigation attempts
-  const safeNavigate = useCallback((to: string) => {
+  const safeNavigate = useCallback((to: string | number) => {
     if (hasUnsavedChanges) {
       setPendingNavigation(to);
     } else {
-      navigate(to);
+      navigate(to as any);
     }
   }, [hasUnsavedChanges, navigate]);
 
   const confirmNavigation = useCallback(() => {
-    if (pendingNavigation) {
+    if (pendingNavigation !== null) {
       const destination = pendingNavigation;
       setPendingNavigation(null);
-      navigate(destination);
+      if (typeof destination === 'number') {
+        navigate(destination);
+      } else {
+        navigate(destination);
+      }
     }
   }, [pendingNavigation, navigate]);
 
