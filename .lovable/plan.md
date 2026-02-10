@@ -1,49 +1,71 @@
 
 
-# Add Pending Reports List to Sync Status Sheet
+# Silence Routine Toasts on Mobile During Data Entry
 
-## What Changes
+## Problem
 
-The existing "Sync Status" sheet (the one you showed in your screenshot) will be enhanced to show a list of **all** pending reports -- Inspections, Trainings, and Daily Assessments -- not just inspections.
+You have a well-built notification criticality system (`notification-config.ts`) that classifies toasts as critical/standard/silent and routes non-critical ones to the Notification Center on mobile. However, **none of the three form pages use it**:
 
-## How It Works
+- `InspectionForm.tsx` and `TrainingForm.tsx` import `toast` from `@/hooks/use-toast` (shadcn toast) -- no mobile filtering at all
+- `DailyAssessmentForm.tsx` imports `toast` directly from `sonner` -- also no filtering
 
-### 1. `src/hooks/useAutoSync.tsx` -- Expose unsynced item lists
+This means every save, sync, and status message fires a full visual toast overlay while you're trying to enter data.
 
-The `updateUnsyncedCounts` function already fetches all three types of unsynced records but discards the details and only stores the total count. We will expand the state to also store the individual arrays so the UI can list them.
+## Solution
 
-- Add `unsyncedInspections`, `unsyncedTrainings`, `unsyncedAssessments` arrays to `AutoSyncState`
-- Store the fetched arrays in `updateUnsyncedCounts` instead of discarding them
-- Return the new arrays from the hook
+Re-route all form toast calls through the filtered `toast` from `@/components/ui/sonner.tsx`, which already applies the criticality rules. Then expand the "silent" patterns to catch more routine messages.
 
-### 2. `src/components/pwa/PWAProvider.tsx` -- Pass data through context
+## Changes
 
-- Add `unsyncedTrainings` and `unsyncedAssessments` to `PWAContextType`
-- Replace the hardcoded `unsyncedInspections: []` with the real data from `useAutoSync`
-- Pass all three arrays into the context value
+### 1. `src/pages/InspectionForm.tsx` -- Switch imports
 
-### 3. `src/hooks/usePWA.tsx` -- Update fallback defaults
+- Remove: `import { toast } from "@/hooks/use-toast"` and `import { toast as sonnerToast } from "@/components/ui/sonner"`
+- Add: `import { toast } from "@/components/ui/sonner"`
+- Replace all `sonnerToast.xxx(...)` calls with `toast.xxx(...)`
+- Convert shadcn-style `toast({ title, description, variant })` calls to sonner-style `toast.error(title, { description })` or `toast.success(title, { description })`
+- Roughly 10 shadcn toast calls + 28 sonnerToast calls to migrate
 
-- Add `unsyncedTrainings: []` and `unsyncedAssessments: []` to the fallback context
+### 2. `src/pages/TrainingForm.tsx` -- Switch imports
 
-### 4. `src/components/pwa/SyncPulse.tsx` -- Render the full list
+- Remove: `import { toast } from "@/hooks/use-toast"`
+- Add: `import { toast } from "@/components/ui/sonner"`
+- Convert all shadcn-style `toast({ title, description })` calls to sonner-style `toast.error(...)` / `toast.success(...)` / `toast.info(...)`
+- Roughly 5 toast calls to migrate
 
-Replace the current inspections-only "Pending reports" section with a unified list showing all three types:
+### 3. `src/pages/DailyAssessmentForm.tsx` -- Switch imports
 
-- Pull `unsyncedInspections`, `unsyncedTrainings`, `unsyncedAssessments` from `usePWA()`
-- Render each item as a row with:
-  - A small color-coded type label: **Inspection** (blue), **Training** (purple), **Assessment** (amber)
-  - Organization/location name (where available)
-  - Temp-ID indicator if applicable
-- Group all items in one scrollable list under "Pending reports (N)"
+- Change: `import { toast } from "sonner"` to `import { toast } from "@/components/ui/sonner"`
+- All existing `toast.success(...)` / `toast.error(...)` calls remain identical in syntax -- only the import changes
+- No call-site changes needed
 
-The design stays minimal and consistent with the existing sheet layout -- just rows with a left border and a type label added.
+### 4. `src/lib/notification-config.ts` -- Expand silent patterns
+
+Add more patterns to catch the routine messages that are most frequent during data entry:
+
+```
+/progress saved/i
+/saved offline/i
+/save successful/i
+/summary (auto-)?updated/i
+/saving changes before/i
+/assessment submitted/i
+/will sync (automatically )?when/i
+```
+
+These messages will be silently routed to the Notification Center on mobile (still visible in the bell icon) but will no longer interrupt data entry. Errors, failures, and connection issues will continue showing as toasts.
+
+## What This Means for You
+
+- **On mobile**: Routine "saved", "synced", "updated" messages disappear from the screen and go to the Notification Center (the bell icon). Errors still show as toasts.
+- **On desktop**: No change -- all toasts still appear as normal.
+- **Notification Center**: All messages (including silenced ones) are logged and reviewable anytime by tapping the bell icon.
 
 ## Files Changed
 
 | File | Change |
 |------|--------|
-| `src/hooks/useAutoSync.tsx` | Store unsynced item arrays in state, return them |
-| `src/components/pwa/PWAProvider.tsx` | Add training/assessment arrays to context type and value |
-| `src/hooks/usePWA.tsx` | Add fallback defaults for new arrays |
-| `src/components/pwa/SyncPulse.tsx` | Render all three report types in the pending list |
+| `src/pages/InspectionForm.tsx` | Switch from shadcn/sonner imports to filtered toast |
+| `src/pages/TrainingForm.tsx` | Switch from shadcn import to filtered toast |
+| `src/pages/DailyAssessmentForm.tsx` | Switch from raw sonner import to filtered toast |
+| `src/lib/notification-config.ts` | Add more silent patterns for routine form messages |
+
