@@ -4,6 +4,7 @@ import { toast as sonnerToast } from "@/components/ui/sonner";
 import { addSaveNotification, addSyncNotification } from "@/lib/notification-center";
 import { onSyncComplete } from "@/lib/sync-events";
 import { useNavigate, useParams } from "react-router-dom";
+import { goBack } from "@/lib/navigation";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -148,7 +149,7 @@ export default function InspectionForm() {
       if (currentIndex > 0) {
         setCurrentTab(tabOrder[currentIndex - 1]);
       } else if (currentIndex === 0) {
-        navigate('/dashboard');
+        goBack(navigate);
       }
     },
   });
@@ -1921,7 +1922,7 @@ export default function InspectionForm() {
           {/* Top row - Back button, Logo, User Avatar */}
           <div className="flex items-center justify-between mb-2 sm:mb-0">
             <div className="flex items-center gap-2">
-              <Button variant="ghost" size="icon" onClick={() => navigate("/dashboard")}>
+              <Button variant="ghost" size="icon" onClick={() => goBack(navigate)}>
                 <ArrowLeft className="w-4 h-4" />
               </Button>
               <img src={ropeWorksLogo} alt="Rope Works" className="h-8 sm:h-10 w-auto object-contain" />
