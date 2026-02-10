@@ -1,24 +1,58 @@
 
 
-# Add Border to Active Navigation Tab
+# Fix Training Report Count Flickering (6 to 7 Toggle)
 
-## Problem
+## Root Cause
 
-After softening the navigation bar, the active tab blends in a bit too much. It needs a subtle border or outline to calmly distinguish it from inactive tabs without reverting to the harsh dark theme.
+The `loadTrainingReports()` function (and all three loaders) uses a **parallel loading pattern** that calls `setTrainings()` twice in rapid succession:
 
-## Change
+1. **First call** (line 438): Sets state with IndexedDB offline data (e.g., 6 items)
+2. **Second call** (line 448): Sets state with fresh network data (e.g., 7 items)
 
-### File: `src/pages/InspectionForm.tsx` (lines 2121, 2125, 2129, 2133)
+Since the tab label renders `Training ({trainings.length})`, the count visibly flickers between the two values on every reload. This is triggered by:
+- Initial page load
+- Online/offline events
+- Sync-complete events
+- Pull-to-refresh
 
-Add `data-[state=active]:border data-[state=active]:border-primary/30` to each `TabsTrigger` className. This adds a soft, semi-transparent border around the active tab that reinforces the selection without being loud.
+The pattern exists identically in `loadInspections()` and `loadDailyAssessments()`, but the training tab is where the mismatch is most visible (likely because the offline cache has one fewer record than the server).
 
-Updated active-state classes on all four triggers:
+## Solution
 
+**When online**, skip the early `setTrainings(offlineData)` call. Instead, use offline data only as a fallback if the network request fails or returns null. This eliminates the double-state-set that causes flickering.
+
+**When offline**, the behavior stays the same -- offline data is shown immediately.
+
+### File: `src/pages/Dashboard.tsx`
+
+Apply the same fix to all three loader functions:
+
+**`loadTrainingReports()` (lines 437-442):**
+Change the early offline-data state set to only fire when NOT online:
+```tsx
+if (offlineData.length > 0 && !navigator.onLine) {
+  setTrainings(offlineData);
+}
 ```
-data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-md data-[state=active]:font-semibold data-[state=active]:border data-[state=active]:border-primary/30
+Then after the network block, add a final fallback: if we're online but network returned null (error/timeout), use offline data:
+```tsx
+} else if (networkData === null && offlineData.length > 0) {
+  // Network failed -- fall back to offline data
+  setTrainings(offlineData);
+}
 ```
 
-## Result
+**`loadInspections()` (lines 347-352):**
+Same pattern -- guard the early `setInspections(offlineData)` with `!navigator.onLine`, add network-failure fallback.
 
-The active tab gets a calm, color-coordinated border that pairs with the existing primary background and shadow, making it clearly stand out while staying visually refined.
+**`loadDailyAssessments()` (equivalent lines):**
+Same pattern for consistency.
+
+## Summary of changes
+
+- 3 functions modified in `src/pages/Dashboard.tsx`
+- Each change: guard the early offline-data `setState` call to only fire when offline
+- Each change: add a fallback branch so offline data is used when network fails
+- No new UI, no new dependencies, no logic changes elsewhere
+- Result: each loader calls `setState` exactly once per reload cycle, eliminating the flicker
 
