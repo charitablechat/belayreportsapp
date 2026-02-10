@@ -20,7 +20,7 @@ import { KnownIssuesCard } from "@/components/dashboard/KnownIssuesCard";
 import { DeveloperNotesCard } from "@/components/dashboard/DeveloperNotesCard";
 import ropeWorksLogo from "@/assets/rope-works-logo.png";
 import acctLogo from "@/assets/acct-accredited-vendor.png";
-import dashboardBackgroundVideo from "@/assets/dashboard-background.mp4";
+import dashboardBackground from "@/assets/dashboard-background.webp";
 import { triggerHaptic } from "@/lib/haptics";
 
 import { useSyncProgress } from "@/hooks/useSyncProgress";
@@ -802,28 +802,20 @@ export default function Dashboard() {
         </div>
       )}
       
-      {/* Background - Christmas gradient on mobile, video on desktop */}
+      {/* Background image */}
       <div className="absolute inset-0 z-0">
-        {/* Christmas gradient for mobile */}
-        <div className="absolute inset-0 bg-gradient-to-br from-red-900/30 via-green-900/20 to-red-900/30 md:hidden" />
+        {/* Gradient overlay for mobile */}
+        <div className="absolute inset-0 bg-gradient-to-br from-blue-900/30 via-sky-900/20 to-blue-900/30 md:hidden" />
         
-        {/* Video background - desktop only, respects reduced motion */}
-        <video 
-          autoPlay 
-          loop 
-          muted 
-          playsInline
-          className="hidden md:block w-full h-full object-cover motion-reduce:hidden"
-          onLoadedMetadata={(e) => {
-            const video = e.currentTarget;
-            video.playbackRate = 0.7;
-          }}
-        >
-          <source src={dashboardBackgroundVideo} type="video/mp4" />
-        </video>
+        {/* Static image - desktop, no warping */}
+        <img
+          src={dashboardBackground}
+          alt=""
+          className="hidden md:block w-full h-full object-cover object-center"
+        />
         
-        {/* Gradient fallback when motion is reduced */}
-        <div className="absolute inset-0 bg-gradient-to-br from-red-900/30 via-green-900/20 to-red-900/30 hidden motion-reduce:block" />
+        {/* Gradient fallback when image hidden */}
+        <div className="absolute inset-0 bg-gradient-to-br from-blue-900/30 via-sky-900/20 to-blue-900/30 hidden motion-reduce:block" />
       </div>
       <div className="relative z-10 min-h-screen bg-background/80 backdrop-blur-sm">
         {/* Holiday Banner */}
