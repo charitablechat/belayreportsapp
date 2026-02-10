@@ -1,67 +1,48 @@
 
+# Add Month/Year Dropdown Navigation to All Calendar Date Pickers
 
-# Fix Production Year Input Blocking
+## Approach
 
-## Root Cause
+`react-day-picker` v8 (already installed) has built-in dropdown navigation via the `captionLayout` prop. By setting this in the shared `Calendar` component, every date picker in the app gets month/year dropdowns automatically -- no new libraries or per-component changes needed.
 
-The `onChange` handler validates the **full range (1900-2100) on every keystroke**. When a user types "1998" character by character:
+## Changes
 
-- Types "1" --> `parseInt("1")` = 1 --> `1 >= 1900` is FALSE --> **input rejected, nothing appears**
-- The user can never reach a valid 4-digit year because partial input is always blocked
+### `src/components/ui/calendar.tsx` (single file)
 
-This same bug exists in both the desktop (line 183) and mobile (line 316) views.
+Add three props to the `DayPicker` component:
 
-## Fix
+- `captionLayout="dropdown-buttons"` -- shows both month/year dropdowns AND prev/next arrow buttons
+- `fromYear={2000}` -- earliest selectable year (covers all reasonable production/inspection dates)
+- `toYear={2035}` -- latest selectable year (future inspections/training)
 
-Allow any partial numeric input during typing, and only enforce the 1900-2100 range on blur (when the user finishes typing). This matches standard year-input UX.
+These are set as defaults but can be overridden by any consuming component via spread props.
 
-### `src/components/inspection/EquipmentTable.tsx` (2 locations)
+Add classNames for the dropdown selects to ensure they look consistent with the existing design:
 
-**Desktop input (~line 179-185) and Mobile input (~line 312-318):**
+- `caption_dropdowns` -- flex layout for the two dropdowns
+- `dropdown_month`, `dropdown_year` -- styling for the select elements
+- `dropdown` -- base select styling
 
-Replace the onChange logic:
+### Day grid remains unchanged
 
-```js
-// BEFORE (blocks partial input):
-onChange={(e) => {
-  const raw = e.target.value;
-  if (raw === "") { updateEquipment(item, "production_year", null); return; }
-  const val = parseInt(raw, 10);
-  if (!isNaN(val) && val >= 1900 && val <= 2100) {
-    updateEquipment(item, "production_year", val);
-  }
-}}
+The standard calendar day grid is untouched -- users still tap a day to select it. The dropdowns only replace the month/year caption navigation.
 
-// AFTER (allows typing, validates on blur):
-onChange={(e) => {
-  const raw = e.target.value;
-  if (raw === "") { updateEquipment(item, "production_year", null); return; }
-  // Allow any digits up to 4 characters while typing
-  if (/^\d{0,4}$/.test(raw)) {
-    updateEquipment(item, "production_year", parseInt(raw, 10));
-  }
-}}
+### No other files change
+
+All 6 components that use `Calendar` (InspectionHeader, SummarySection, PreviousInspectionDatePicker, TrainingHeader, TrainingSummarySection, DailyAssessmentHeader) inherit this behavior automatically since they all import from `@/components/ui/calendar`.
+
+## Technical Details
+
+```text
+Before:  [<]  February 2026  [>]     (arrows only)
+After:   [<]  [February v] [2026 v]  [>]  (dropdowns + arrows)
 ```
 
-Also update `onBlur` to clamp or clear out-of-range values:
+The dropdowns are native `<select>` elements rendered by react-day-picker, which provide smooth, native scrolling on both mobile (iOS scroll wheel) and desktop (click to open list). No custom scroll library needed.
 
-```js
-// BEFORE:
-onBlur={onImmediateSave}
+## Risk Assessment
 
-// AFTER:
-onBlur={() => {
-  // Clamp to valid range on blur
-  if (item.production_year && (item.production_year < 1900 || item.production_year > 2100)) {
-    updateEquipment(item, "production_year", null);
-  }
-  onImmediateSave?.();
-}}
-```
-
-## Files Changed
-
-| File | What |
-|------|------|
-| `src/components/inspection/EquipmentTable.tsx` | Fix onChange to allow partial year input; add onBlur range validation (desktop + mobile, 2 locations each) |
-
+- Zero risk to data persistence -- this is purely a caption layout change
+- No backend changes
+- No new dependencies
+- All existing `onSelect` callbacks and date formatting remain identical
