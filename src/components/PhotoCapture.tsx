@@ -7,6 +7,7 @@ import { savePhotoOffline, markPhotoAsUploaded } from "@/lib/offline-storage";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { triggerHaptic } from "@/lib/haptics";
 import { compressImage } from "@/lib/image-compression";
+import { saveToDevice } from "@/lib/save-to-device";
 import { toast } from "sonner";
 
 interface PhotoCaptureProps {
@@ -133,6 +134,10 @@ export default function PhotoCapture({ inspectionId, section, onPhotoAdded }: Ph
       console.warn(`[PhotoCapture] Compression failed for ${file.name}:`, errorMessage);
       // Continue with original file if compression fails
     }
+
+    // Auto-save to device Downloads folder (fire-and-forget)
+    const deviceFileName = `RopeWorks_${section}_${Date.now()}.jpg`;
+    saveToDevice(processedFile, deviceFileName);
 
     // ===== LOCAL-FIRST ARCHITECTURE =====
     // ALWAYS save to IndexedDB FIRST (regardless of online status)
