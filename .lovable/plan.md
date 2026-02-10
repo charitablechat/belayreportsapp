@@ -1,44 +1,67 @@
 
 
-# Fix Equipment Section: Dropdown Clipping and Production Year Arrows
+# Fix Production Year Input Blocking
 
-## Problem 1: Equipment Type Dropdown Shows No Options
+## Root Cause
 
-The dropdown popover is being **clipped by the table's `overflow-x-auto` container**. Radix popover portals to the body by default, but the visual trigger area and interaction can be disrupted by overflow containers. The data itself is present in the database (20+ equipment type entries confirmed).
+The `onChange` handler validates the **full range (1900-2100) on every keystroke**. When a user types "1998" character by character:
 
-**Fix:** Add `overflow-visible` to the table container when any popover is open, or more reliably, ensure the PopoverContent uses a portal with appropriate z-index. The simpler fix is to remove `overflow-x-auto` from the desktop table wrapper since the table uses percentage widths and doesn't actually need horizontal scroll, or set `overflow: visible` so the popover isn't clipped.
+- Types "1" --> `parseInt("1")` = 1 --> `1 >= 1900` is FALSE --> **input rejected, nothing appears**
+- The user can never reach a valid 4-digit year because partial input is always blocked
 
-### Changes in `src/components/inspection/EquipmentTable.tsx`
-- Change the desktop table wrapper from `overflow-x-auto` to `overflow-visible` so the GlobalAutocomplete popover can render above the table boundaries without being clipped.
+This same bug exists in both the desktop (line 183) and mobile (line 316) views.
 
-## Problem 2: Production Year Has Browser Spinner Arrows
+## Fix
 
-The `<Input type="number">` renders native browser up/down spinner arrows. These should be hidden so the field is keyboard-only entry with a number pad.
+Allow any partial numeric input during typing, and only enforce the 1900-2100 range on blur (when the user finishes typing). This matches standard year-input UX.
 
-**Fix:** Change `type="number"` to `type="text"` with `inputMode="numeric"` and `pattern="[0-9]*"`. This gives mobile users a number pad without the spinner arrows, and works consistently across all browsers.
+### `src/components/inspection/EquipmentTable.tsx` (2 locations)
 
-### Changes in `src/components/inspection/EquipmentTable.tsx`
-- Desktop row: Update the Production Year `<Input>` (around line 175) — change `type="number"` to `type="text"`, add `inputMode="numeric"` and `pattern="[0-9]*"`
-- Mobile card: Update the Production Year `<Input>` (around line 253) — same change
-- Both Quantity inputs remain `type="number"` (spinners are acceptable for quantity)
+**Desktop input (~line 179-185) and Mobile input (~line 312-318):**
 
-### Changes in `src/index.css`
-- Add CSS to globally hide number input spinners as a safety net:
-```css
-input[type="number"]::-webkit-inner-spin-button,
-input[type="number"]::-webkit-outer-spin-button {
-  -webkit-appearance: none;
-  margin: 0;
-}
-input[type="number"] {
-  -moz-appearance: textfield;
-}
+Replace the onChange logic:
+
+```js
+// BEFORE (blocks partial input):
+onChange={(e) => {
+  const raw = e.target.value;
+  if (raw === "") { updateEquipment(item, "production_year", null); return; }
+  const val = parseInt(raw, 10);
+  if (!isNaN(val) && val >= 1900 && val <= 2100) {
+    updateEquipment(item, "production_year", val);
+  }
+}}
+
+// AFTER (allows typing, validates on blur):
+onChange={(e) => {
+  const raw = e.target.value;
+  if (raw === "") { updateEquipment(item, "production_year", null); return; }
+  // Allow any digits up to 4 characters while typing
+  if (/^\d{0,4}$/.test(raw)) {
+    updateEquipment(item, "production_year", parseInt(raw, 10));
+  }
+}}
 ```
 
-## Summary of File Changes
+Also update `onBlur` to clamp or clear out-of-range values:
 
-| File | Change |
-|------|--------|
-| `src/components/inspection/EquipmentTable.tsx` | Remove `overflow-x-auto` (use `overflow-visible`); change Production Year inputs from `type="number"` to `type="text"` with `inputMode="numeric"` |
-| `src/index.css` | Add global CSS to hide number spinner arrows on all number inputs |
+```js
+// BEFORE:
+onBlur={onImmediateSave}
+
+// AFTER:
+onBlur={() => {
+  // Clamp to valid range on blur
+  if (item.production_year && (item.production_year < 1900 || item.production_year > 2100)) {
+    updateEquipment(item, "production_year", null);
+  }
+  onImmediateSave?.();
+}}
+```
+
+## Files Changed
+
+| File | What |
+|------|------|
+| `src/components/inspection/EquipmentTable.tsx` | Fix onChange to allow partial year input; add onBlur range validation (desktop + mobile, 2 locations each) |
 
