@@ -325,7 +325,7 @@ export default function DailyAssessmentForm() {
         if (localIsNewer) {
           // Local data is newer - preserve local state, only accept server metadata
           // Skip ALL server child data fetches to prevent overwriting local edits
-          console.log('[DailyAssessmentForm] Local data is newer -- preserving local state (parent + child)');
+          if (import.meta.env.DEV) console.log('[DailyAssessmentForm] Local data is newer -- preserving local state (parent + child)');
           if (assessmentData) {
             setAssessment(prev => ({ ...prev, status: assessmentData.status }));
             setInspectorId(assessmentData.inspector_id);

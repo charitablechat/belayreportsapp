@@ -387,7 +387,7 @@ export default function Dashboard() {
                 const localInspections = await getOfflineInspections(userId);
                 for (const local of localInspections) {
                   if (!serverIds.has(local.id) && !local.id.startsWith('temp-')) {
-                    console.log('[Dashboard] Removing orphaned local inspection:', local.id);
+                    if (import.meta.env.DEV) console.log('[Dashboard] Removing orphaned local inspection:', local.id);
                     await deleteOfflineInspection(local.id);
                   }
                 }
@@ -478,7 +478,7 @@ export default function Dashboard() {
                 const localTrainings = await getOfflineTrainings(userId);
                 for (const local of localTrainings) {
                   if (!serverIds.has(local.id) && !local.id.startsWith('temp-')) {
-                    console.log('[Dashboard] Removing orphaned local training:', local.id);
+                    if (import.meta.env.DEV) console.log('[Dashboard] Removing orphaned local training:', local.id);
                     await deleteOfflineTraining(local.id);
                   }
                 }
@@ -569,7 +569,7 @@ export default function Dashboard() {
                 const localAssessments = await getOfflineDailyAssessments(userId);
                 for (const local of localAssessments) {
                   if (!serverIds.has(local.id) && !local.id.startsWith('temp-')) {
-                    console.log('[Dashboard] Removing orphaned local assessment:', local.id);
+                    if (import.meta.env.DEV) console.log('[Dashboard] Removing orphaned local assessment:', local.id);
                     await deleteOfflineDailyAssessment(local.id);
                   }
                 }
