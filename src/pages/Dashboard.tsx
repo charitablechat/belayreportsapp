@@ -386,7 +386,7 @@ export default function Dashboard() {
                 const serverIds = new Set(networkData.map((i: any) => i.id));
                 const localInspections = await getOfflineInspections(userId);
                 for (const local of localInspections) {
-                  if (!serverIds.has(local.id)) {
+                  if (!serverIds.has(local.id) && !local.id.startsWith('temp-')) {
                     console.log('[Dashboard] Removing orphaned local inspection:', local.id);
                     await deleteOfflineInspection(local.id);
                   }
@@ -477,7 +477,7 @@ export default function Dashboard() {
                 const serverIds = new Set(networkData.map((t: any) => t.id));
                 const localTrainings = await getOfflineTrainings(userId);
                 for (const local of localTrainings) {
-                  if (!serverIds.has(local.id)) {
+                  if (!serverIds.has(local.id) && !local.id.startsWith('temp-')) {
                     console.log('[Dashboard] Removing orphaned local training:', local.id);
                     await deleteOfflineTraining(local.id);
                   }
@@ -549,9 +549,6 @@ export default function Dashboard() {
       const offlineData = await offlineWithTimeout;
       if (offlineData.length > 0 && !navigator.onLine) {
         setDailyAssessments(offlineData);
-        if (navigator.onLine) {
-          setLoading(false);
-        }
         if (import.meta.env.DEV) {
           console.log('[Dashboard] Loaded daily assessments from offline storage:', offlineData.length);
         }
@@ -571,7 +568,7 @@ export default function Dashboard() {
                 const serverIds = new Set(networkData.map((a: any) => a.id));
                 const localAssessments = await getOfflineDailyAssessments(userId);
                 for (const local of localAssessments) {
-                  if (!serverIds.has(local.id)) {
+                  if (!serverIds.has(local.id) && !local.id.startsWith('temp-')) {
                     console.log('[Dashboard] Removing orphaned local assessment:', local.id);
                     await deleteOfflineDailyAssessment(local.id);
                   }
