@@ -119,7 +119,7 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
       </CardHeader>
       <CardContent className="px-3 md:px-6">
         {/* Desktop table view */}
-        <div className="hidden md:block overflow-x-auto">
+        <div className="hidden md:block overflow-visible">
           <table className="w-full border-collapse">
             <thead>
               <tr className="bg-blue-50 dark:bg-blue-950/20">
@@ -172,9 +172,9 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
                       ) : (
                         <>
                           <Input
-                            type="number"
-                            min={1900}
-                            max={2100}
+                            type="text"
+                            inputMode="numeric"
+                            pattern="[0-9]*"
                             value={item.production_year || ""}
                             onChange={(e) => {
                               const raw = e.target.value;
@@ -305,9 +305,9 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
                         ) : (
                           <>
                             <Input
-                              type="number"
-                              min={1900}
-                              max={2100}
+                              type="text"
+                              inputMode="numeric"
+                              pattern="[0-9]*"
                               value={item.production_year || ""}
                               onChange={(e) => {
                                 const raw = e.target.value;
