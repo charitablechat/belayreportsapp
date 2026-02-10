@@ -1,10 +1,14 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { VoiceRichTextEditor } from "@/components/ui/voice-rich-text-editor";
-import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { RefreshCw } from "lucide-react";
+import { RefreshCw, CalendarIcon } from "lucide-react";
 import { convertCircleBulletsToHtml } from "@/lib/bullet-converter";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { format } from "date-fns";
+import { cn } from "@/lib/utils";
+import { parseLocalDate } from "@/lib/date-utils";
 
 interface SummarySectionProps {
   summary: any;
@@ -80,17 +84,30 @@ export default function SummarySection({ summary, onUpdate, onImmediateSave, onR
 
         <div className="space-y-2">
           <Label className="text-base font-semibold">Next inspection date:</Label>
-          <Input
-            type="date"
-            value={summary.next_inspection_date || ""}
-            onChange={(e) => updateField("next_inspection_date", e.target.value)}
-            onBlur={onImmediateSave}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                onImmediateSave?.();
-              }
-            }}
-          />
+          <Popover onOpenChange={(open) => { if (!open) onImmediateSave?.(); }}>
+            <PopoverTrigger asChild>
+              <Button
+                variant="outline"
+                className={cn("w-full justify-start text-left font-normal", !summary.next_inspection_date && "text-muted-foreground")}
+              >
+                <CalendarIcon className="mr-2 h-4 w-4" />
+                {summary.next_inspection_date ? format(parseLocalDate(summary.next_inspection_date)!, "PPP") : "Pick a date"}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0">
+              <Calendar
+                mode="single"
+                selected={parseLocalDate(summary.next_inspection_date)}
+                onSelect={(date) => {
+                  updateField("next_inspection_date", date ? format(date, "yyyy-MM-dd") : "");
+                  onImmediateSave?.();
+                }}
+                defaultMonth={parseLocalDate(summary.next_inspection_date) || new Date()}
+                initialFocus
+                className="pointer-events-auto"
+              />
+            </PopoverContent>
+          </Popover>
         </div>
 
         <div className="border-t pt-6">
