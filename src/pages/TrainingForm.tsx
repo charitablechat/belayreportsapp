@@ -320,7 +320,7 @@ export default function TrainingForm() {
           if (localIsNewer) {
             // Local data is newer - preserve local state, only accept server metadata
             // Skip ALL server child data fetches to prevent overwriting local edits
-            console.log('[TrainingForm] Local data is newer -- preserving local state (parent + child)');
+            if (import.meta.env.DEV) console.log('[TrainingForm] Local data is newer -- preserving local state (parent + child)');
             if (trainingData) {
               setTraining(prev => ({ ...prev, status: trainingData.status }));
               setInspectorId(trainingData.inspector_id);
@@ -444,7 +444,7 @@ export default function TrainingForm() {
         saveTrainingDataOffline('systems_in_place', id, systemsInPlace),
         summary && saveTrainingDataOffline('summary', id, summary)
       ]).then(() => {
-        console.log('[Training Save] Offline storage completed');
+        if (import.meta.env.DEV) console.log('[Training Save] Offline storage completed');
       }).catch((offlineError) => {
         console.warn('[Training Save] Offline storage failed:', offlineError);
       });
@@ -898,7 +898,7 @@ export default function TrainingForm() {
             synced_at: new Date().toISOString()
           });
         } catch (error) {
-          console.log('[Offline] Failed to sync, queuing operation');
+          console.warn('[Offline] Failed to sync, queuing operation');
           await queueTrainingOperation('update', id, completedTraining);
         }
       } else {
