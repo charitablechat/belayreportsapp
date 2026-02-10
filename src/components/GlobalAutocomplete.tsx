@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Check, ChevronsUpDown, X, Plus, Loader2 } from "lucide-react";
+import { Check, X, Plus, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import {
@@ -359,7 +359,7 @@ export function GlobalAutocomplete({
                 <X className="h-3.5 w-3.5" />
               </button>
             )}
-            <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
+            
           </div>
         </div>
       </PopoverAnchor>

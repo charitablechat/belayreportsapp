@@ -5,7 +5,7 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Check, ChevronsUpDown, Pencil, Trash2, Plus, X, Loader2 } from "lucide-react";
+import { Check, Pencil, Trash2, Plus, X, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   AlertDialog,
@@ -335,7 +335,7 @@ export const OrganizationAutocomplete = ({
                   <X className="h-3.5 w-3.5" />
                 </button>
               )}
-              <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
+              
             </div>
           </div>
         </PopoverAnchor>
