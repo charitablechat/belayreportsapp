@@ -1,44 +1,53 @@
 
-# Fix: Dashboard "Recent Reports" Not Loading
+# Fix: Offline Photos Lost During Temp-ID-to-UUID Sync
 
-## Root Cause
+## Problem
 
-The console logs reveal **"Atomic Sync Session validation timed out, skipping sync"** repeating in a loop. This indicates the auth session (JWT) is stale or expired. The cascade effect:
+When a report is created offline with a temporary ID (`temp-...`), photos are saved in IndexedDB with `inspectionId` set to that temp ID. During sync, `syncInspectionAtomic` correctly replaces the temp ID with a real UUID for the inspection and all child records (systems, ziplines, equipment, standards, summary) -- but **photos are never updated**. They remain tagged with the old temp ID.
 
-1. `getUserWithCache()` returns a cached user object, but the **Supabase client's actual JWT** is expired
-2. Dashboard queries (inspections, trainings, assessments) are sent with an invalid JWT -- RLS policies block all data, returning **empty arrays**
-3. `syncAllInspectionsAtomic()` calls `ensureValidSession()` which times out -- sync is skipped
-4. AutoSync emits `syncComplete` even when nothing synced (line 233 in useAutoSync.tsx), which triggers Dashboard to re-load with the same broken session
-5. This creates a reload loop where data never appears
+When `syncPhotos()` runs afterwards, it tries to insert `inspection_id: photo.inspectionId` (still the temp ID) into the `inspection_photos` table. This fails because no inspection with that temp ID exists in the database. The photos silently fail to upload and are eventually lost.
 
-The dashboard shows (0) counts and permanent skeleton loaders because the data loading functions silently return empty results.
+## Solution
 
-## Fix (2 files)
+Two changes in two files:
 
-### 1. `src/pages/Dashboard.tsx` -- Refresh session before loading data
+### 1. `src/lib/offline-storage.ts` -- Add a photo relinking function
 
-Add an `ensureValidSession()` call at the start of `loadAllData` (before any Supabase queries). This refreshes the JWT if it is near expiry, ensuring RLS policies see a valid `auth.uid()`.
+Add a new exported function `relinkPhotosToNewInspectionId(oldId, newId)` that:
+- Opens the `photos` store in IndexedDB
+- Queries all photos where `inspectionId === oldId` using the `by-inspection` index
+- For each matching photo, updates `inspectionId` to `newId` and writes back via `db.put`
+- Logs the count of relinked photos
+
+```typescript
+export async function relinkPhotosToNewInspectionId(
+  oldInspectionId: string,
+  newInspectionId: string
+): Promise<number> {
+  // wrapped in withIndexedDBErrorBoundary for safety
+  // query photos index 'by-inspection' for oldInspectionId
+  // update each photo's inspectionId to newInspectionId
+  // return count of updated photos
+}
+```
+
+### 2. `src/lib/atomic-sync-manager.ts` -- Call relinking after temp-ID cleanup
+
+In `syncInspectionAtomic`, inside the `if (inspectionIdMapping)` block (around line 430), add a call to `relinkPhotosToNewInspectionId(oldId, newId)` **after** the child record cleanup and **before** returning success. This ensures photos are re-parented to the permanent UUID before `syncPhotos()` attempts to upload them.
+
+The insertion point is after the existing child record re-save (line 449) and before the success log (line 452):
 
 ```
-loadAllData:
-  1. Call ensureValidSession() first (with a 5s timeout fallback)
-  2. Then getUserWithCache() as before
-  3. If BOTH fail, use getOfflineUserId() as last resort for IndexedDB-only loading
+// existing: save child records under new UUID (line 443-449)
+// NEW: relink photos from temp ID to new UUID
+await relinkPhotosToNewInspectionId(oldId, newId);
+// existing: success log (line 452)
 ```
-
-This ensures that even if the token needs refreshing, the dashboard will either:
-- Refresh successfully and load server data
-- Or fall back gracefully to IndexedDB data using the emergency userId extractor
-
-### 2. `src/hooks/useAutoSync.tsx` -- Stop emitting syncComplete when sync was skipped
-
-Line 232-233 emits `emitSyncComplete()` unconditionally after sync, even when all operations were skipped due to session timeouts. This triggers the Dashboard to re-load data unnecessarily (creating a loop of empty fetches).
-
-Change: Only emit `syncComplete` when `anySuccess` is true (items were actually synced), OR when the session is valid and IndexedDB fetches succeeded. Do NOT emit when all syncs were skipped due to session validation timeouts.
 
 ## What Changes in Behavior
 
-- Dashboard will **refresh the auth token** before querying, fixing the empty RLS results
-- If token refresh fails, dashboard still shows **IndexedDB data** using the emergency userId fallback
-- The sync-complete reload loop stops -- the dashboard won't repeatedly re-fetch with a broken session
-- No new features added; this restores the existing intended behavior
+- Photos captured offline for a temp-ID report will have their `inspectionId` updated to the permanent UUID immediately after the report syncs
+- When `syncPhotos()` runs (called in the same sync cycle via `useAutoSync`), the photos will reference the correct UUID and upload successfully
+- No new UI changes -- `SyncPulse` already shows pending photo counts and errors
+- Zero data loss: photos remain in IndexedDB until explicitly marked as uploaded
+- No validation bypass: the UUID transformation happens before any server-bound payload is constructed
