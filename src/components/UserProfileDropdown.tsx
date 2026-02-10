@@ -10,7 +10,7 @@
    DropdownMenuSeparator,
    DropdownMenuTrigger,
  } from "@/components/ui/dropdown-menu";
- import { LogOut, User, Bell, Settings, FileText, Download, MessageCircle, Loader2, Shield, Monitor } from "lucide-react";
+ import { LogOut, User, Bell, Settings, FileText, Download, MessageCircle, Loader2, Shield, Monitor, MoreVertical } from "lucide-react";
  import { UserAvatar } from "@/components/ui/user-avatar";
 import { usePWAInstall } from "@/hooks/usePWAInstall";
 import { usePWA } from "@/hooks/usePWA";
@@ -128,46 +128,48 @@ import { usePWA } from "@/hooks/usePWA";
                <ForceSyncButton variant="menu-item" unsyncedCount={unsyncedCount} />
              </DropdownMenuItem>
              
-             <DropdownMenuSeparator />
-             <DropdownMenuLabel className="text-[11px] uppercase tracking-wider text-muted-foreground font-medium px-2 py-1.5">
-               System & Device
-             </DropdownMenuLabel>
-
-             {/* Activity Log */}
-             <NotificationCenter 
-               trigger={
-                 <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
-                   <Bell className="w-4 h-4 mr-2" />
-                   Activity Log
-                 </DropdownMenuItem>
-               }
-             />
-             
-             {/* Push Notifications */}
-             <DropdownMenuItem onClick={() => setNotificationsDialogOpen(true)}>
-               <Bell className="w-4 h-4 mr-2" />
-               Push Notifications
-             </DropdownMenuItem>
-             
-             {/* Device Capabilities */}
-             <DropdownMenuItem onClick={() => navigate('/capabilities')}>
-               <Monitor className="w-4 h-4 mr-2" />
-               Device Capabilities
-             </DropdownMenuItem>
-             
-             {/* Install Instructions */}
-             <DropdownMenuItem onClick={() => navigate('/install')}>
-               <FileText className="w-4 h-4 mr-2" />
-               Install Instructions
-             </DropdownMenuItem>
-             
-             {/* Install App - only if installable and not installed */}
-             {isInstallable && !isInstalled && (
-               <DropdownMenuItem onClick={promptInstall}>
-                 <Download className="w-4 h-4 mr-2" />
-                 Install App
-               </DropdownMenuItem>
-             )}
+              <DropdownMenuSeparator />
+              <div className="flex items-center justify-between px-2 py-1.5">
+                <span className="flex items-center text-sm text-muted-foreground">
+                  <Monitor className="w-4 h-4 mr-2" />
+                  System & Device
+                </span>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
+                      <MoreVertical className="w-4 h-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" side="left" className="z-[60]">
+                    <NotificationCenter 
+                      trigger={
+                        <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
+                          <Bell className="w-4 h-4 mr-2" />
+                          Activity Log
+                        </DropdownMenuItem>
+                      }
+                    />
+                    <DropdownMenuItem onClick={() => setNotificationsDialogOpen(true)}>
+                      <Bell className="w-4 h-4 mr-2" />
+                      Push Notifications
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => navigate('/capabilities')}>
+                      <Monitor className="w-4 h-4 mr-2" />
+                      Device Capabilities
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => navigate('/install')}>
+                      <FileText className="w-4 h-4 mr-2" />
+                      Install Instructions
+                    </DropdownMenuItem>
+                    {isInstallable && !isInstalled && (
+                      <DropdownMenuItem onClick={promptInstall}>
+                        <Download className="w-4 h-4 mr-2" />
+                        Install App
+                      </DropdownMenuItem>
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
 
              <DropdownMenuSeparator />
            {/* Version Badge */}
