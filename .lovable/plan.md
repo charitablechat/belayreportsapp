@@ -1,58 +1,62 @@
 
+# Replace Plain Date Inputs with Calendar Date Pickers
 
-# Fix Training Report Count Flickering (6 to 7 Toggle)
+## Problem
 
-## Root Cause
+Two date fields in the inspection report still use the browser's native `<Input type="date">` instead of the consistent Popover + Calendar date picker used everywhere else. These native inputs look different across browsers/devices and don't match the app's design language.
 
-The `loadTrainingReports()` function (and all three loaders) uses a **parallel loading pattern** that calls `setTrainings()` twice in rapid succession:
+## Affected Fields
 
-1. **First call** (line 438): Sets state with IndexedDB offline data (e.g., 6 items)
-2. **Second call** (line 448): Sets state with fresh network data (e.g., 7 items)
+1. **Inspection Date** in `src/components/inspection/InspectionHeader.tsx` (line 127) -- currently rendered via `renderField("Inspection Date", "inspection_date", ..., "date")`
+2. **Next Inspection Date** in `src/components/inspection/SummarySection.tsx` (lines 82-93) -- currently a plain `<Input type="date">`
 
-Since the tab label renders `Training ({trainings.length})`, the count visibly flickers between the two values on every reload. This is triggered by:
-- Initial page load
-- Online/offline events
-- Sync-complete events
-- Pull-to-refresh
+All other date fields in the app (Training start/end dates, submission date, assessment date, previous inspection date) already use the calendar picker pattern.
 
-The pattern exists identically in `loadInspections()` and `loadDailyAssessments()`, but the training tab is where the mismatch is most visible (likely because the offline cache has one fewer record than the server).
+## Changes
 
-## Solution
+### 1. `src/components/inspection/InspectionHeader.tsx`
 
-**When online**, skip the early `setTrainings(offlineData)` call. Instead, use offline data only as a fallback if the network request fails or returns null. This eliminates the double-state-set that causes flickering.
+- Import `Calendar`, `Popover`, `PopoverContent`, `PopoverTrigger`, `Button`, `CalendarIcon`, `format`, `cn`, and `parseLocalDate`
+- Replace the `renderField("Inspection Date", ...)` call (line 127) with a Popover+Calendar date picker that:
+  - Displays the current `inspection_date` formatted with `format(parseLocalDate(...), "PPP")`
+  - On date selection, calls `onUpdate("inspection_date", format(date, "yyyy-MM-dd"))` followed by `onImmediateSave?.()`
+  - Respects the `isReadOnly` flag by disabling the trigger and hiding the popover content
+  - Defaults to today's date when opening if no date is set (via `defaultMonth`)
 
-**When offline**, the behavior stays the same -- offline data is shown immediately.
+### 2. `src/components/inspection/SummarySection.tsx`
 
-### File: `src/pages/Dashboard.tsx`
+- Import `Calendar`, `Popover`, `PopoverContent`, `PopoverTrigger`, `Button`, `CalendarIcon`, `format`, `cn`, and `parseLocalDate`
+- Replace the `<Input type="date">` block (lines 82-93) with a Popover+Calendar date picker that:
+  - Displays the current `next_inspection_date` formatted nicely
+  - On date selection, calls `updateField("next_inspection_date", format(date, "yyyy-MM-dd"))` followed by `onImmediateSave?.()`
+  - Calls `onImmediateSave` when the popover closes (preserving existing save-on-blur behavior)
 
-Apply the same fix to all three loader functions:
+## Technical Details
 
-**`loadTrainingReports()` (lines 437-442):**
-Change the early offline-data state set to only fire when NOT online:
+Both replacements follow the exact same Popover+Calendar pattern already used in `TrainingHeader.tsx`, `DailyAssessmentHeader.tsx`, and `TrainingSummarySection.tsx`:
+
 ```tsx
-if (offlineData.length > 0 && !navigator.onLine) {
-  setTrainings(offlineData);
-}
+<Popover>
+  <PopoverTrigger asChild>
+    <Button variant="outline" className={cn("w-full justify-start text-left font-normal", !value && "text-muted-foreground")}>
+      <CalendarIcon className="mr-2 h-4 w-4" />
+      {value ? format(parseLocalDate(value), "PPP") : "Pick a date"}
+    </Button>
+  </PopoverTrigger>
+  <PopoverContent className="w-auto p-0">
+    <Calendar
+      mode="single"
+      selected={parseLocalDate(value)}
+      onSelect={(date) => onChange(date ? format(date, "yyyy-MM-dd") : "")}
+      initialFocus
+      className="pointer-events-auto"
+    />
+  </PopoverContent>
+</Popover>
 ```
-Then after the network block, add a final fallback: if we're online but network returned null (error/timeout), use offline data:
-```tsx
-} else if (networkData === null && offlineData.length > 0) {
-  // Network failed -- fall back to offline data
-  setTrainings(offlineData);
-}
-```
 
-**`loadInspections()` (lines 347-352):**
-Same pattern -- guard the early `setInspections(offlineData)` with `!navigator.onLine`, add network-failure fallback.
+The `parseLocalDate` utility from `@/lib/date-utils` is used to avoid timezone-shift issues (parsing `YYYY-MM-DD` as local time rather than UTC).
 
-**`loadDailyAssessments()` (equivalent lines):**
-Same pattern for consistency.
+## Result
 
-## Summary of changes
-
-- 3 functions modified in `src/pages/Dashboard.tsx`
-- Each change: guard the early offline-data `setState` call to only fire when offline
-- Each change: add a fallback branch so offline data is used when network fails
-- No new UI, no new dependencies, no logic changes elsewhere
-- Result: each loader calls `setState` exactly once per reload cycle, eliminating the flicker
-
+All date fields across the entire application will use consistent, touch-friendly calendar pickers. No new UI features are introduced -- this simply standardizes the existing date input pattern.
