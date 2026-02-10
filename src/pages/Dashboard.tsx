@@ -38,7 +38,7 @@ import { getOfflineInspections, deleteOfflineInspection, queueOperation, saveIns
 import { ContactDeveloperSheet } from "@/components/ContactDeveloperSheet";
 import { onSyncComplete } from "@/lib/sync-events";
 import { InspectionsEmptyState, TrainingsEmptyState, DailyAssessmentsEmptyState } from "@/components/EmptyState";
-import { getUserWithCache, getSuperAdminStatusWithCache, invalidateSuperAdminCache } from "@/lib/cached-auth";
+import { getUserWithCache, getSuperAdminStatusWithCache, invalidateSuperAdminCache, ensureValidSession, getOfflineUserId } from "@/lib/cached-auth";
 /* Holiday Theme Components */
 import { Snowfall } from "@/components/christmas/Snowfall";
 import { HolidayBanner } from "@/components/christmas/HolidayBanner";
@@ -164,9 +164,22 @@ export default function Dashboard() {
     const loadAllData = async () => {
       setLoading(true);
       
+      // CRITICAL: Refresh auth session before any RLS-restricted queries
+      // This fixes the "session validation timed out" loop where stale JWTs
+      // cause all Supabase queries to return empty results
+      try {
+        await Promise.race([
+          ensureValidSession(),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Session refresh timeout')), 5000))
+        ]);
+      } catch (e) {
+        console.warn('[Dashboard] Session refresh failed, will try cached auth:', e);
+      }
+      
       // PERFORMANCE: Fetch user once, then pass to all loaders
       const user = await getUserWithCache();
-      const userId = user?.id;
+      // Fallback: if getUserWithCache returns null (e.g. stale cache), extract userId from localStorage
+      const userId = user?.id || getOfflineUserId();
       
       // Get super admin status once using cached function (for offline storage bypass)
       // This uses single-flight pattern to dedupe concurrent requests
