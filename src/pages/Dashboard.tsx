@@ -363,14 +363,10 @@ export default function Dashboard() {
       
       // Show offline data immediately if available
       const offlineData = await offlineWithTimeout;
-      if (offlineData.length > 0 && inspections.length === 0) {
+      if (offlineData.length > 0 && !navigator.onLine) {
         setInspections(offlineData);
-        // When online, clear loading immediately since we have cached data to show
-        if (navigator.onLine) {
-          setLoading(false);
-        }
         if (import.meta.env.DEV) {
-          console.log('[Dashboard] Loaded from offline storage:', offlineData.length);
+          console.log('[Dashboard] Offline - loaded from cache:', offlineData.length);
         }
       }
 
@@ -460,13 +456,10 @@ export default function Dashboard() {
       ]);
       
       const offlineData = await offlineWithTimeout;
-      if (offlineData.length > 0 && trainings.length === 0) {
+      if (offlineData.length > 0 && !navigator.onLine) {
         setTrainings(offlineData);
-        if (navigator.onLine) {
-          setLoading(false);
-        }
         if (import.meta.env.DEV) {
-          console.log('[Dashboard] Loaded trainings from offline storage:', offlineData.length);
+          console.log('[Dashboard] Offline - loaded trainings from cache:', offlineData.length);
         }
       }
 
@@ -554,7 +547,7 @@ export default function Dashboard() {
       ]);
       
       const offlineData = await offlineWithTimeout;
-      if (offlineData.length > 0 && dailyAssessments.length === 0) {
+      if (offlineData.length > 0 && !navigator.onLine) {
         setDailyAssessments(offlineData);
         if (navigator.onLine) {
           setLoading(false);
