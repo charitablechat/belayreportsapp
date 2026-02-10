@@ -717,10 +717,21 @@ export default function InspectionForm() {
       };
 
       // Load inspection header from offline first (with timeout protection)
-      const offlineData = await withOfflineTimeout(
+      let offlineData = await withOfflineTimeout(
         getOfflineInspection(id!),
-        null
+        null,
+        5000  // 5s timeout (increased from 3s for mobile reliability)
       );
+      
+      // Temp-ID records only exist locally -- retry without timeout if needed
+      if (!offlineData && id!.startsWith('temp-')) {
+        try {
+          console.log('[InspectionForm] Retrying temp-ID lookup without timeout:', id);
+          offlineData = await getOfflineInspection(id!);
+        } catch (e) {
+          console.warn('[InspectionForm] Retry for temp-ID also failed:', e);
+        }
+      }
       
       if (offlineData) {
         setInspection(offlineData);
@@ -794,7 +805,8 @@ export default function InspectionForm() {
       }
 
       // If online, fetch from Supabase and update local cache
-      if (isOnline) {
+      // Skip server queries for temp-ID inspections (they only exist locally)
+      if (isOnline && !id!.startsWith('temp-')) {
         // Update last_opened_at timestamp (with 5s timeout)
         const now = new Date().toISOString();
         await withQueryTimeout(

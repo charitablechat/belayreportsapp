@@ -531,6 +531,14 @@ export async function syncAllInspectionsAtomic() {
   const batch = unsynced.slice(0, MAX_BATCH_SIZE);
   const remaining = totalUnsynced - batch.length;
   
+  // Log temp-ID items for sync debugging (always, not just DEV)
+  const tempIdItems = batch.filter(i => i.id.startsWith('temp-'));
+  if (tempIdItems.length > 0) {
+    console.log('[Atomic Sync] Batch includes temp-ID inspections:', 
+      tempIdItems.map(i => ({ id: i.id.substring(0, 20), org: i.organization }))
+    );
+  }
+  
   if (import.meta.env.DEV) {
     console.log('[Atomic Sync] Starting sync for unsynced inspections', {
       total: totalUnsynced,
