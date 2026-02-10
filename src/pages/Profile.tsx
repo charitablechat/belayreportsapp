@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { goBack } from "@/lib/navigation";
 import { supabase } from "@/integrations/supabase/client";
 import { getUserWithCache } from "@/lib/cached-auth";
 import { Button } from "@/components/ui/button";
@@ -256,7 +257,7 @@ export default function Profile() {
       <header className="border-b bg-card">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <Button variant="ghost" size="icon" onClick={() => navigate("/dashboard")}>
+            <Button variant="ghost" size="icon" onClick={() => goBack(navigate)}>
               <ArrowLeft className="w-4 h-4" />
             </Button>
             <img src={ropeWorksLogo} alt="Rope Works" className="h-10 w-auto object-contain" />

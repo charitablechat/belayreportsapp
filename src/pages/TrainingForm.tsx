@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import { goBack } from "@/lib/navigation";
 import { supabase } from "@/integrations/supabase/client";
 import { getUserWithCache } from "@/lib/cached-auth";
 import { Button } from "@/components/ui/button";
@@ -109,7 +110,7 @@ export default function TrainingForm() {
       if (currentIndex > 0) {
         setCurrentTab(tabOrder[currentIndex - 1]);
       } else if (currentIndex === 0) {
-        navigate('/dashboard');
+        goBack(navigate);
       }
     },
   });
@@ -952,7 +953,7 @@ export default function TrainingForm() {
           {/* Top row - Back button, Logo, User Avatar */}
           <div className="flex items-center justify-between mb-2 sm:mb-0">
             <div className="flex items-center gap-2">
-              <Button variant="ghost" size="icon" onClick={() => navigate("/dashboard")}>
+              <Button variant="ghost" size="icon" onClick={() => goBack(navigate)}>
                 <ArrowLeft className="w-4 h-4" />
               </Button>
               <img src={ropeWorksLogo} alt="Rope Works" className="h-8 sm:h-10 w-auto object-contain" />
