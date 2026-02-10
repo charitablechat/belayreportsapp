@@ -37,7 +37,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { useSwipeNavigation } from "@/hooks/useSwipeNavigation";
 import { SwipeBackIndicator } from "@/components/SwipeBackIndicator";
 import { UserProfileDropdown } from "@/components/UserProfileDropdown";
-import { toast } from "sonner";
+import { toast } from "@/components/ui/sonner";
 import { isMobile } from "@/lib/mobile-detection";
 import { addSyncNotification, addSaveNotification, addNotification } from "@/lib/notification-center";
 import { useReportSync } from "@/hooks/useReportSync";

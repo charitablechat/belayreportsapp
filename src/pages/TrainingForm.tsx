@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, Save, FileDown, FileText, ChevronLeft, WifiOff, Wifi, Mail, CheckCircle, Info, Users, Settings, AlertTriangle, ClipboardCheck, FileCheck, LogOut, User, CloudOff, ArrowLeft } from "lucide-react";
-import { toast } from "@/hooks/use-toast";
+import { toast } from "@/components/ui/sonner";
 import ropeWorksLogo from "@/assets/rope-works-logo.png";
 
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -299,10 +299,8 @@ export default function TrainingForm() {
           // Handle training not found - redirect to dashboard
           if (!trainingData && !offlineTraining) {
             console.warn('[TrainingForm] Training not found:', id);
-            toast({
-              title: "Training not found",
+            toast.error("Training not found", {
               description: "This training may have been deleted or doesn't exist.",
-              variant: "destructive",
             });
             navigate('/dashboard');
             return;
@@ -376,20 +374,16 @@ export default function TrainingForm() {
           }
         } else if (!offlineTraining) {
           // Offline and no cached data
-          toast({
-            title: "Training not available offline",
+          toast.error("Training not available offline", {
             description: "Please connect to the internet to load this training.",
-            variant: "destructive",
           });
           navigate('/dashboard');
           return;
         }
       } catch (error) {
         console.error('Error loading training:', error);
-        toast({
-          title: "Failed to load training",
+        toast.error("Failed to load training", {
           description: "An error occurred while loading the training.",
-          variant: "destructive",
         });
         navigate('/dashboard');
       } finally {
@@ -720,10 +714,8 @@ export default function TrainingForm() {
     const safetyTimeoutHandle = setTimeout(() => {
       console.error('[HTML Generation] Safety timeout reached after 10 seconds - force resetting state');
       setIsGeneratingHTML(false);
-      toast({
-        title: "Report generation timed out",
+      toast.error("Report generation timed out", {
         description: "Please check your connection and try again.",
-        variant: "destructive",
       });
     }, GENERATION_TIMEOUT);
     
@@ -766,10 +758,8 @@ export default function TrainingForm() {
       
       // Only show error toast if not already shown by safety timeout
       if (!error.message?.includes('TIMEOUT')) {
-        toast({
-          title: "Failed to generate report",
+        toast.error("Failed to generate report", {
           description: error.message || "Please try again.",
-          variant: "destructive",
         });
       }
     } finally {
