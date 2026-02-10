@@ -28,7 +28,7 @@ export type GlobalFieldType =
   | "previous_inspector"
   | "onsite_contact"
   | "trainer_name"
-  | "organization"
+  
   // Equipment fields
   | "equipment_type"
   // Operating systems

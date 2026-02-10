@@ -42,26 +42,40 @@ export const OrganizationAutocomplete = ({
   const [editingItem, setEditingItem] = useState<HistoryItem | null>(null);
   const [editValue, setEditValue] = useState("");
   const [deletingItem, setDeletingItem] = useState<HistoryItem | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
   const queryClient = useQueryClient();
 
-  // Fetch organization history from global_field_history (cross-user shared)
+  // Get current user ID for user-scoped operations
+  useEffect(() => {
+    const getUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      setUserId(user?.id ?? null);
+    };
+    getUser();
+  }, []);
+
+  // Fetch organization history from user_field_history (user-scoped)
   const { data: historyItems = [], isLoading: isLoadingHistory } = useQuery({
-    queryKey: ["global-field-history", "organization"],
+    queryKey: ["user-field-history", "organization", userId],
     queryFn: async () => {
+      if (!userId) return [];
+
       const { data, error } = await supabase
-        .from("global_field_history")
+        .from("user_field_history")
         .select("id, value, usage_count, last_used_at")
+        .eq("user_id", userId)
         .eq("field_type", "organization")
         .order("usage_count", { ascending: false })
         .order("last_used_at", { ascending: false })
         .limit(200);
 
       if (error) {
-        console.error("Error fetching organization history:", error);
+        console.error("Error fetching user organization history:", error);
         return [];
       }
       return data as HistoryItem[];
     },
+    enabled: !!userId,
   });
 
   // Also fetch from organizations table for global suggestions
@@ -99,33 +113,49 @@ export const OrganizationAutocomplete = ({
   const getHistoryItem = (val: string) => 
     historyItems.find(h => h.value.toLowerCase() === val.toLowerCase());
 
-  // Mutation to save/update history (fire-and-forget to global_field_history)
+  // Mutation to save/update history (user-scoped to user_field_history)
   const saveMutation = useMutation({
     mutationFn: async (newValue: string) => {
       const trimmedValue = newValue.trim();
-      if (!trimmedValue) return;
+      if (!trimmedValue || !userId) return;
 
-      const { error } = await supabase
-        .from("global_field_history")
-        .upsert(
-          {
+      // Check if entry already exists for this user
+      const existing = historyItems.find(
+        h => h.value.toLowerCase() === trimmedValue.toLowerCase()
+      );
+
+      if (existing) {
+        // Update usage count and last_used_at
+        const { error } = await supabase
+          .from("user_field_history")
+          .update({
+            usage_count: (existing.usage_count || 0) + 1,
+            last_used_at: new Date().toISOString(),
+          })
+          .eq("id", existing.id);
+
+        if (error) {
+          console.error("Error updating user organization history:", error);
+        }
+      } else {
+        // Insert new entry
+        const { error } = await supabase
+          .from("user_field_history")
+          .insert({
+            user_id: userId,
             field_type: "organization",
             value: trimmedValue,
             usage_count: 1,
             last_used_at: new Date().toISOString(),
-          },
-          {
-            onConflict: "field_type,value",
-            ignoreDuplicates: false,
-          }
-        );
+          });
 
-      if (error) {
-        console.error("Error saving organization history:", error);
+        if (error) {
+          console.error("Error saving user organization history:", error);
+        }
       }
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["global-field-history", "organization"] });
+      queryClient.invalidateQueries({ queryKey: ["user-field-history", "organization", userId] });
     },
   });
 
@@ -133,7 +163,7 @@ export const OrganizationAutocomplete = ({
   const updateMutation = useMutation({
     mutationFn: async ({ id, newValue }: { id: string; newValue: string }) => {
       const { error } = await supabase
-        .from("global_field_history")
+        .from("user_field_history")
         .update({ value: newValue.trim() })
         .eq("id", id);
 
@@ -141,7 +171,7 @@ export const OrganizationAutocomplete = ({
       return { id, newValue: newValue.trim() };
     },
     onSuccess: ({ newValue }) => {
-      queryClient.invalidateQueries({ queryKey: ["global-field-history", "organization"] });
+      queryClient.invalidateQueries({ queryKey: ["user-field-history", "organization", userId] });
       toast.success("Entry updated");
       if (editingItem && value === editingItem.value) {
         onChange(newValue);
@@ -159,14 +189,14 @@ export const OrganizationAutocomplete = ({
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
       const { error } = await supabase
-        .from("global_field_history")
+        .from("user_field_history")
         .delete()
         .eq("id", id);
 
       if (error) throw error;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["global-field-history", "organization"] });
+      queryClient.invalidateQueries({ queryKey: ["user-field-history", "organization", userId] });
       toast.success("Entry deleted");
       setDeletingItem(null);
     },
