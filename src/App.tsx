@@ -1,7 +1,7 @@
 import { MobileAwareToaster, MobileAwareSonner } from "@/components/ui/mobile-aware-toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, useNavigate } from "react-router-dom";
+import { createBrowserRouter, RouterProvider, useNavigate, Outlet } from "react-router-dom";
 import { useEffect } from "react";
 import Index from "./pages/Index";
 import Dashboard from "./pages/Dashboard";
@@ -35,7 +35,7 @@ import { cleanupStaleCachedPhotos } from "@/lib/photo-cache";
 
 const queryClient = new QueryClient();
 
-const AppContent = () => {
+const RootLayout = () => {
   const isMobileDevice = isMobile();
   const navigate = useNavigate();
   
@@ -80,8 +80,42 @@ const AppContent = () => {
     };
   }, []);
 
-  return null;
+  return (
+    <>
+      {/* PWA Notifications */}
+      <InstallBanner />
+      <UpdateNotification />
+      <InstallSuccessNotification />
+      <Outlet />
+    </>
+  );
 };
+
+const router = createBrowserRouter([
+  {
+    element: <RootLayout />,
+    children: [
+      { path: "/", element: <Index /> },
+      { path: "/welcome", element: <AuroraLanding /> },
+      { path: "/dashboard", element: <Dashboard /> },
+      { path: "/inspection/new", element: <NewInspection /> },
+      { path: "/inspection/:id", element: <InspectionForm /> },
+      { path: "/training/new", element: <NewTraining /> },
+      { path: "/training/:id", element: <TrainingForm /> },
+      { path: "/daily-assessment/new", element: <NewDailyAssessment /> },
+      { path: "/daily-assessment/:id", element: <DailyAssessmentForm /> },
+      { path: "/install", element: <Install /> },
+      { path: "/capabilities", element: <Capabilities /> },
+      { path: "/profile", element: <Profile /> },
+      { path: "/admin", element: <SuperAdminDashboard /> },
+      { path: "/base64-converter", element: <Base64Converter /> },
+      { path: "/upload-logos", element: <UploadLogos /> },
+      { path: "/upload-logos-storage", element: <UploadLogosToStorage /> },
+      { path: "/admin/logos", element: <AdminLogoManagement /> },
+      { path: "*", element: <NotFound /> },
+    ],
+  },
+]);
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
@@ -89,36 +123,7 @@ const App = () => (
       <TooltipProvider>
         <MobileAwareToaster />
         <MobileAwareSonner />
-        <BrowserRouter>
-          <AppContent />
-          
-          {/* PWA Notifications */}
-          <InstallBanner />
-          <UpdateNotification />
-          <InstallSuccessNotification />
-          
-          <Routes>
-            <Route path="/" element={<Index />} />
-            <Route path="/welcome" element={<AuroraLanding />} />
-            <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/inspection/new" element={<NewInspection />} />
-            <Route path="/inspection/:id" element={<InspectionForm />} />
-            <Route path="/training/new" element={<NewTraining />} />
-            <Route path="/training/:id" element={<TrainingForm />} />
-            <Route path="/daily-assessment/new" element={<NewDailyAssessment />} />
-            <Route path="/daily-assessment/:id" element={<DailyAssessmentForm />} />
-            <Route path="/install" element={<Install />} />
-            <Route path="/capabilities" element={<Capabilities />} />
-            <Route path="/profile" element={<Profile />} />
-            <Route path="/admin" element={<SuperAdminDashboard />} />
-            <Route path="/base64-converter" element={<Base64Converter />} />
-            <Route path="/upload-logos" element={<UploadLogos />} />
-            <Route path="/upload-logos-storage" element={<UploadLogosToStorage />} />
-            <Route path="/admin/logos" element={<AdminLogoManagement />} />
-            {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </BrowserRouter>
+        <RouterProvider router={router} />
       </TooltipProvider>
     </PWAProvider>
   </QueryClientProvider>
