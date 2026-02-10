@@ -15,6 +15,7 @@ import {
   saveDailyAssessmentOffline,
   getOfflineDailyAssessment,
   getAssessmentDataOffline,
+  relinkPhotosToNewInspectionId,
 } from "./offline-storage";
 import { 
   validateInspectionPackage,
@@ -447,6 +448,9 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
         standards.length > 0 ? saveRelatedDataOffline('standards', inspectionIdMapping.newId, standards) : Promise.resolve(),
         summary ? saveRelatedDataOffline('summary', inspectionIdMapping.newId, [summary]) : Promise.resolve(),
       ]);
+      
+      // Relink photos from temp ID to new UUID so syncPhotos() can upload them
+      await relinkPhotosToNewInspectionId(inspectionIdMapping.oldId, inspectionIdMapping.newId);
     }
     
     if (import.meta.env.DEV) {
