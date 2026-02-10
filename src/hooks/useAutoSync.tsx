@@ -229,8 +229,11 @@ export const useAutoSync = () => {
             addSyncNotification(`Data synced successfully (${totalSynced} items)${remainingMsg}`);
           }
           
-          // Always emit sync complete event for Dashboard to reload data (clears error states)
-          emitSyncComplete();
+          // Only emit sync complete when items were actually synced
+          // Prevents reload loop when all syncs are skipped due to session timeouts
+          if (anySuccess) {
+            emitSyncComplete();
+          }
           
           // iOS: Clear pending sync flags after successful sync (fixes N3 - storage accumulation)
           if (isIOSDevice) {
