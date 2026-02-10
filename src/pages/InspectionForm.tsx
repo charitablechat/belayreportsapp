@@ -155,15 +155,18 @@ export default function InspectionForm() {
   });
 
   // Unsaved changes protection
-  const { isBlocked, confirmNavigation, cancelNavigation, safeNavigate } = useUnsavedChanges({
+  const { isBlocked, confirmNavigation, cancelNavigation } = useUnsavedChanges({
     hasUnsavedChanges: hasUnsavedChanges && inspection?.status !== 'completed',
     message: "You have unsaved changes to this inspection. Are you sure you want to leave?",
   });
 
   const safeGoBack = useCallback(() => {
-    const destination = window.history.length > 1 ? -1 : "/dashboard";
-    safeNavigate(destination as any);
-  }, [safeNavigate]);
+    if (window.history.length > 1) {
+      navigate(-1);
+    } else {
+      navigate("/dashboard");
+    }
+  }, [navigate]);
 
   // Auto-retry on network reconnect is now handled by useAutoSync hook
   // This component only needs to handle local save retries

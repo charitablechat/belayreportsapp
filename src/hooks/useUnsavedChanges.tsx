@@ -1,5 +1,5 @@
-import { useEffect, useState, useCallback } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useEffect, useCallback } from "react";
+import { useNavigate, useBlocker } from "react-router-dom";
 
 interface UseUnsavedChangesOptions {
   hasUnsavedChanges: boolean;
@@ -10,11 +10,12 @@ export function useUnsavedChanges({
   hasUnsavedChanges,
   message = "You have unsaved changes. Are you sure you want to leave?",
 }: UseUnsavedChangesOptions) {
-  const [pendingNavigation, setPendingNavigation] = useState<string | number | null>(null);
   const navigate = useNavigate();
-  const location = useLocation();
 
-  // Handle browser back/forward, refresh, and close
+  // Block ALL SPA navigation (browser back/forward, link clicks, programmatic navigate)
+  const blocker = useBlocker(hasUnsavedChanges);
+
+  // Block hard page unload (refresh, tab close)
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
       if (hasUnsavedChanges) {
@@ -28,33 +29,21 @@ export function useUnsavedChanges({
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, [hasUnsavedChanges, message]);
 
-  // Intercept navigation attempts
+  // safeNavigate just calls navigate directly -- useBlocker intercepts if needed
   const safeNavigate = useCallback((to: string | number) => {
-    if (hasUnsavedChanges) {
-      setPendingNavigation(to);
-    } else {
-      navigate(to as any);
-    }
-  }, [hasUnsavedChanges, navigate]);
+    navigate(to as any);
+  }, [navigate]);
 
   const confirmNavigation = useCallback(() => {
-    if (pendingNavigation !== null) {
-      const destination = pendingNavigation;
-      setPendingNavigation(null);
-      if (typeof destination === 'number') {
-        navigate(destination);
-      } else {
-        navigate(destination);
-      }
-    }
-  }, [pendingNavigation, navigate]);
+    blocker.proceed?.();
+  }, [blocker]);
 
   const cancelNavigation = useCallback(() => {
-    setPendingNavigation(null);
-  }, []);
+    blocker.reset?.();
+  }, [blocker]);
 
   return {
-    isBlocked: pendingNavigation !== null,
+    isBlocked: blocker.state === "blocked",
     confirmNavigation,
     cancelNavigation,
     safeNavigate,
