@@ -149,16 +149,21 @@ export default function InspectionForm() {
       if (currentIndex > 0) {
         setCurrentTab(tabOrder[currentIndex - 1]);
       } else if (currentIndex === 0) {
-        goBack(navigate);
+        safeGoBack();
       }
     },
   });
 
   // Unsaved changes protection
-  const { isBlocked, confirmNavigation, cancelNavigation } = useUnsavedChanges({
+  const { isBlocked, confirmNavigation, cancelNavigation, safeNavigate } = useUnsavedChanges({
     hasUnsavedChanges: hasUnsavedChanges && inspection?.status !== 'completed',
     message: "You have unsaved changes to this inspection. Are you sure you want to leave?",
   });
+
+  const safeGoBack = useCallback(() => {
+    const destination = window.history.length > 1 ? -1 : "/dashboard";
+    safeNavigate(destination as any);
+  }, [safeNavigate]);
 
   // Auto-retry on network reconnect is now handled by useAutoSync hook
   // This component only needs to handle local save retries
@@ -1930,7 +1935,7 @@ export default function InspectionForm() {
           {/* Top row - Back button, Logo, User Avatar */}
           <div className="flex items-center justify-between mb-2 sm:mb-0">
             <div className="flex items-center gap-2">
-              <Button variant="ghost" size="icon" onClick={() => goBack(navigate)}>
+              <Button variant="ghost" size="icon" onClick={safeGoBack}>
                 <ArrowLeft className="w-4 h-4" />
               </Button>
               <img src={ropeWorksLogo} alt="Rope Works" className="h-8 sm:h-10 w-auto object-contain" />
