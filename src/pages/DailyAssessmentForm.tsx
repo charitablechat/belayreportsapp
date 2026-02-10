@@ -2,7 +2,7 @@ import { useEffect, useState, useRef, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { goBack } from "@/lib/navigation";
 import { supabase } from "@/integrations/supabase/client";
-import { getUserWithCache } from "@/lib/cached-auth";
+import { getUserWithCache, getOfflineUserId } from "@/lib/cached-auth";
 import { useFormConfiguration } from "@/hooks/useFormConfiguration";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Save, FileText, Loader2, WifiOff, Check, Sunrise, Sunset, Settings, Package, Building, Cloud, LogOut, User, CloudOff, CheckCircle } from "lucide-react";
@@ -118,10 +118,14 @@ export default function DailyAssessmentForm() {
 
   // Auto-retry on network reconnect is now handled by useAutoSync hook
 
-  // Fetch current user
+  // Fetch current user with offline fallback
   useEffect(() => {
     const fetchUser = async () => {
-      const user = await getUserWithCache();
+      let user = await getUserWithCache();
+      if (!user && !navigator.onLine) {
+        const offlineId = getOfflineUserId();
+        if (offlineId) user = { id: offlineId } as any;
+      }
       setCurrentUser(user);
     };
     fetchUser();

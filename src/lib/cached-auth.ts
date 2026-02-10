@@ -234,10 +234,12 @@ export function getCachedUserFromStorage(): CachedUser | null {
     const parsed = JSON.parse(cachedSession);
     if (!parsed || !parsed.access_token) return null;
 
-    // Check if session is expired
+    // Check if session is expired (skip when offline -- we only need user identity for IndexedDB)
     const expiresAt = parsed.expires_at;
-    if (!expiresAt || expiresAt * 1000 <= Date.now()) {
-      return null;
+    if (navigator.onLine) {
+      if (!expiresAt || expiresAt * 1000 <= Date.now()) {
+        return null;
+      }
     }
 
     // Extract user from session
@@ -264,6 +266,21 @@ export function hasCachedSession(): boolean {
  * Used in UI components that need synchronous access to cached user
  */
 export const getCachedUser = getCachedUserFromStorage;
+
+/**
+ * Emergency fallback: extract userId directly from localStorage session.
+ * Used when getUserWithCache() returns null while offline (e.g., synthetic session).
+ */
+export function getOfflineUserId(): string | null {
+  try {
+    const session = localStorage.getItem('sb-ssgzcgvygnsrqalisshx-auth-token');
+    if (!session) return null;
+    const parsed = JSON.parse(session);
+    return parsed?.user?.id || null;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Offline-aware session check that ignores token expiry.

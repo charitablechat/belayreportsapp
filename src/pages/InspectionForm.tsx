@@ -36,7 +36,7 @@ import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { usePWA } from "@/hooks/usePWA";
 import { ForceSyncButton } from "@/components/pwa/ForceSyncButton";
 import { convertCircleBulletsToHtml } from "@/lib/bullet-converter";
-import { getUserWithCache } from "@/lib/cached-auth";
+import { getUserWithCache, getOfflineUserId } from "@/lib/cached-auth";
 import { HtmlReportViewer } from "@/components/HtmlReportViewer";
 import { openHtmlReport } from "@/lib/html-report-viewer";
 import { useKeyboardAvoidance } from "@/hooks/useKeyboardAvoidance";
@@ -266,9 +266,13 @@ export default function InspectionForm() {
   useEffect(() => {
     loadInspection();
     
-    // Fetch current user - works offline with cache!
+    // Fetch current user - works offline with cache + offline fallback
     const fetchUser = async () => {
-      const user = await getUserWithCache();
+      let user = await getUserWithCache();
+      if (!user && !navigator.onLine) {
+        const offlineId = getOfflineUserId();
+        if (offlineId) user = { id: offlineId } as any;
+      }
       setCurrentUser(user);
     };
     
@@ -999,8 +1003,12 @@ export default function InspectionForm() {
 
   const performSave = async (silent: boolean = false) => {
     try {
-      // Verify user is authenticated before saving
-      const user = await getUserWithCache();
+      // Verify user is authenticated before saving (with offline fallback)
+      let user = await getUserWithCache();
+      if (!user && !navigator.onLine) {
+        const offlineId = getOfflineUserId();
+        if (offlineId) user = { id: offlineId } as any;
+      }
       if (!user) {
         throw new Error('User not authenticated');
       }
