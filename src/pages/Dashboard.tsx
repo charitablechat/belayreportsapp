@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { cn } from "@/lib/utils";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -866,24 +867,26 @@ export default function Dashboard() {
       </header>
 
       <main className="container mx-auto px-1 md:px-4 py-8">
-        {/* Inline sync status — thin strip, no layout shift */}
-        {unsyncedCount > 0 && (
-          <div className="mb-2 flex items-center gap-2 px-3 py-1.5 text-xs font-mono
-                          text-amber-700 dark:text-amber-400 bg-amber-50/50 dark:bg-amber-950/20
-                          border border-amber-200/50 dark:border-amber-800/30 rounded
-                          transition-opacity duration-500 ease-in-out">
-            <div className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-[pulse_3s_ease-in-out_infinite]" />
-            <span>{unsyncedCount} pending</span>
-            <button
-              onClick={() => forceSync()}
-              disabled={isSyncing || !navigator.onLine}
-              className="ml-auto text-xs underline underline-offset-2 hover:no-underline
-                         disabled:opacity-40 disabled:no-underline"
-            >
-              {isSyncing ? 'syncing...' : 'sync now'}
-            </button>
-          </div>
-        )}
+        {/* Inline sync status -- always present, visibility via opacity only */}
+        <div
+          className={cn(
+            "mb-2 flex items-center gap-2 px-3 py-1.5 text-xs font-mono rounded",
+            "border transition-all duration-500 ease-in-out",
+            unsyncedCount > 0
+              ? "opacity-100 text-amber-700 dark:text-amber-400 bg-amber-50/50 dark:bg-amber-950/20 border-amber-200/50 dark:border-amber-800/30"
+              : "opacity-0 pointer-events-none border-transparent"
+          )}
+        >
+          <div className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-[pulse_3s_ease-in-out_infinite]" />
+          <span>{unsyncedCount} pending</span>
+          <button
+            onClick={() => forceSync()}
+            disabled={isSyncing || !navigator.onLine}
+            className="ml-auto text-xs underline underline-offset-2 hover:no-underline disabled:opacity-40 disabled:no-underline"
+          >
+            {isSyncing ? 'syncing...' : 'sync now'}
+          </button>
+        </div>
 
         {/* Conflicts are now resolved automatically via last-write-wins strategy */}
 
