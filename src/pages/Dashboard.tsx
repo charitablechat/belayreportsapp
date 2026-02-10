@@ -29,6 +29,7 @@ import { NetworkQualityIndicator } from "@/components/pwa/NetworkQualityIndicato
 import { ForceSyncButton } from "@/components/pwa/ForceSyncButton";
 import { OfflineSimulator } from "@/components/dev/OfflineSimulator";
 import { StatusIndicator } from "@/components/pwa/StatusIndicator";
+import { SyncPulse } from "@/components/pwa/SyncPulse";
 import { useConflicts } from "@/hooks/useConflicts";
 import { usePWA } from "@/hooks/usePWA";
 import { usePullToRefresh } from "@/hooks/usePullToRefresh";
@@ -729,16 +730,16 @@ export default function Dashboard() {
     const isCurrentlySyncing = isSyncing && progress.currentItem === inspection.id;
     
     return (
-      <div className="flex gap-1 items-center flex-nowrap">
-        {/* Show syncing indicator when actively syncing this inspection */}
+      <div className="flex gap-1 items-center flex-nowrap transition-opacity duration-500">
+        {/* Syncing: static badge, no spin/pulse */}
         {isCurrentlySyncing && (
-          <Badge variant="default" className="gap-1 bg-primary text-primary-foreground animate-pulse text-xs px-2 py-0">
-            <RefreshCw className="w-3 h-3 animate-spin" />
+          <Badge variant="default" className="gap-1 bg-primary/70 text-primary-foreground text-xs px-2 py-0 border-l-2 border-primary">
+            <RefreshCw className="w-3 h-3" />
             <span className="hidden sm:inline">Syncing</span>
           </Badge>
         )}
         
-        {/* Show sync status badge only when synced */}
+        {/* Synced badge */}
         {!isCurrentlySyncing && inspection.synced_at && (
           <Tooltip>
             <TooltipTrigger asChild>
@@ -755,7 +756,7 @@ export default function Dashboard() {
           </Tooltip>
         )}
         
-        {/* Show unsynced photos count if any */}
+        {/* Unsynced photos count */}
         {unsyncedPhotosCount > 0 && (
           <Badge variant="secondary" className="gap-1 text-xs px-2 py-0">
             <Cloud className="w-3 h-3" />
@@ -837,8 +838,8 @@ export default function Dashboard() {
             </div>
             
             <div className="flex items-center gap-2">
-              {/* Subtle status indicator for mobile - shows sync/save status */}
-              <StatusIndicator className="md:hidden" />
+              {/* Minimal dot-based sync indicator */}
+              <SyncPulse />
               
               <NetworkQualityIndicator />
               
@@ -865,23 +866,22 @@ export default function Dashboard() {
       </header>
 
       <main className="container mx-auto px-1 md:px-4 py-8">
-        {/* Pending Sync Banner */}
+        {/* Inline sync status — thin strip, no layout shift */}
         {unsyncedCount > 0 && (
-          <div className="mb-6 flex items-center gap-3 rounded-lg border border-warning/50 bg-warning/10 px-4 py-3">
-            <CloudOff className="h-5 w-5 shrink-0 text-warning" />
-            <span className="text-sm font-medium text-foreground flex-1">
-              {unsyncedCount} {unsyncedCount === 1 ? 'report' : 'reports'} pending sync
-            </span>
-            <Button
-              size="sm"
-              variant="outline"
-              className="gap-1.5 border-warning/50 text-warning hover:bg-warning/20"
+          <div className="mb-2 flex items-center gap-2 px-3 py-1.5 text-xs font-mono
+                          text-amber-700 dark:text-amber-400 bg-amber-50/50 dark:bg-amber-950/20
+                          border border-amber-200/50 dark:border-amber-800/30 rounded
+                          transition-opacity duration-500 ease-in-out">
+            <div className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-[pulse_3s_ease-in-out_infinite]" />
+            <span>{unsyncedCount} pending</span>
+            <button
               onClick={() => forceSync()}
               disabled={isSyncing || !navigator.onLine}
+              className="ml-auto text-xs underline underline-offset-2 hover:no-underline
+                         disabled:opacity-40 disabled:no-underline"
             >
-              <RefreshCw className={`h-3.5 w-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
-              {isSyncing ? 'Syncing...' : 'Sync Now'}
-            </Button>
+              {isSyncing ? 'syncing...' : 'sync now'}
+            </button>
           </div>
         )}
 
