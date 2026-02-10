@@ -1,76 +1,57 @@
 
 
-# Fix Dashboard Background Image Display
+# Scope Organization & Facility Dropdowns to Per-User; Keep All Others Global
 
-## Problem
+## Current State
 
-The background image appears too enlarged because `object-cover` forces the image to fill the entire viewport height, cropping heavily on both sides. Combined with the `bg-background/80 backdrop-blur-sm` overlay on the content layer (line 824), the image is both over-cropped and barely visible.
+| Component | Table Used | Scoping |
+|-----------|-----------|---------|
+| `GlobalAutocomplete` (all field types) | `global_field_history` | Shared across all users (no `user_id` column) |
+| `OrganizationAutocomplete` | `global_field_history` + `organizations` | Shared across all users |
 
-## Solution
+The `user_field_history` table already exists with a `user_id` column and user-scoped RLS policies (`auth.uid() = user_id`), but is currently unused (legacy). It already has 26 organization entries from a previous migration.
 
-Use a **fixed/contained top-portion** approach instead of stretching the image across the full viewport:
+## What Changes
 
-1. **Limit the background image to the top portion** of the screen (roughly 40-50vh) and let it fade into the content background, rather than stretching it across the full `min-h-screen` container. This preserves the image's natural aspect ratio and avoids aggressive cropping.
+### 1. Switch `OrganizationAutocomplete` to `user_field_history` (user-scoped)
 
-2. **Use `object-contain` on desktop / `object-cover` on mobile** with constrained height so the image shows more of the scene without over-zooming.
+Currently it reads/writes `global_field_history` with `field_type = "organization"`. Change it to read/write `user_field_history` instead, passing `auth.uid()` as `user_id`. This makes saved organization entries visible **only to the user who entered them**.
 
-3. **Soften the content overlay** from `bg-background/80` to a lighter value so the image is actually visible where it shows.
+The component will still also query the shared `organizations` table as a secondary "global suggestions" source (existing behavior), so users can pick from known organizations -- but their personal history stays private.
 
-## Changes to `src/pages/Dashboard.tsx`
+**Offline integration:** The existing `localStorage` fallback key (`global-autocomplete-organization`) will be renamed to `user-autocomplete-organization` to keep offline cache scoped. On reconnect, the sync writes to `user_field_history` with the real `user_id` (resolved via `getOfflineUserId()` fallback).
 
-### Background container (lines 809-823)
+### 2. Remove `"organization"` from `GlobalFieldType`
 
-Replace the full-bleed `absolute inset-0` approach with a height-constrained background that fades out at the bottom:
+Since organizations are no longer stored in the global table, remove `"organization"` from the `GlobalFieldType` union in `GlobalAutocomplete.tsx` to prevent accidental global writes.
 
-```tsx
-{/* Background image */}
-<div className="absolute inset-x-0 top-0 z-0 h-[45vh] md:h-[50vh] overflow-hidden">
-  <img
-    src={dashboardBackground}
-    alt=""
-    className="w-full h-full object-cover object-center"
-  />
-  
-  {/* Gradient fade: image fades into the page background at the bottom */}
-  <div className="absolute inset-0 bg-gradient-to-b from-slate-900/50 via-transparent to-background" />
-  
-  {/* Reduced motion fallback */}
-  <div className="absolute inset-0 bg-gradient-to-br from-blue-900/80 via-sky-900/70 to-blue-900/80 hidden motion-reduce:block" />
-</div>
-```
+### 3. Add `"facility"` field type to `user_field_history` (user-scoped)
 
-### Content overlay (line 824)
+"Facility" currently uses `OrganizationAutocomplete` in InspectionHeader (labeled "Facility Name"). Since it shares the same component, it will automatically become user-scoped with change 1.
 
-Reduce the opacity and remove backdrop-blur so the image shows through in the header area:
+### 4. No changes to other dropdowns
 
-```tsx
-<div className="relative z-10 min-h-screen">
-```
+All other `GlobalAutocomplete` field types (`inspector_name`, `previous_inspector`, `onsite_contact`, `trainer_name`, `equipment_type`, `operating_system_element`, `system_type`, `zipline_name`, `braking_system`, `ead_system`, `cable_type`) remain on `global_field_history` -- shared across all users as required.
 
-The header already has its own `bg-card/95 backdrop-blur-sm` (line 828), so legibility is maintained there. Report cards below the fold sit against the normal `bg-background` since the image fades out by ~45vh.
+## Technical Details
 
-## Key Design Decisions
+### Database
 
-| Decision | Rationale |
-|----------|-----------|
-| Height-constrained to 45-50vh | Shows the full width of the image without extreme vertical cropping |
-| `object-center` instead of `object-[center_30%]` | With constrained height, the default center position works naturally |
-| Gradient fades to `to-background` | Seamlessly blends the image bottom edge into the page color -- no hard cutoff |
-| Lighter top scrim (`from-slate-900/50`) | Darker enough for header legibility, but lets the image show through |
-| Remove `bg-background/80 backdrop-blur-sm` from content div | This was hiding the image entirely; header/cards have their own backgrounds |
+No schema changes needed. Both tables already exist with correct structures:
+- `global_field_history`: `(id, field_type, value, usage_count, last_used_at)` with UNIQUE on `(field_type, value)` -- no `user_id`
+- `user_field_history`: `(id, user_id, field_type, value, usage_count, last_used_at)` with RLS `auth.uid() = user_id`
 
-## Legibility Still Guaranteed
+The existing RLS on `user_field_history` already enforces user-scoping for all operations.
 
-| Element | Protection |
-|---------|-----------|
-| Header | Own `bg-card/95 backdrop-blur-sm` background |
-| Holiday Banner | Own background styling |
-| Report Cards | Below the image fade zone; sit on normal `bg-background` |
-| Sync status strip | Within header zone with card background |
-
-## Files Modified
+### Files Modified
 
 | File | Change |
 |------|--------|
-| `src/pages/Dashboard.tsx` | Constrain background image height, soften overlays, remove content-layer blur |
+| `src/components/OrganizationAutocomplete.tsx` | Switch from `global_field_history` to `user_field_history` for save/read/update/delete mutations. Pass current user ID on inserts. Keep `organizations` table as secondary global source. |
+| `src/components/GlobalAutocomplete.tsx` | Remove `"organization"` from the `GlobalFieldType` union type (line 31). No other changes. |
 
+### Offline Behavior
+
+- **User-scoped data (Org/Facility):** Saved to `localStorage` under `user-autocomplete-organization`. On reconnect, upserted to `user_field_history` with the real user ID.
+- **Global data (all other fields):** No change -- continues to use `global_field_history` with `localStorage` fallback keyed by `global-autocomplete-{fieldType}`.
+- Both paths integrate with the existing offline auth via `getOfflineUserId()` for identity resolution when offline.
