@@ -5,6 +5,13 @@ import { VoiceTextarea } from "@/components/ui/voice-textarea";
 import { OrganizationAutocomplete } from "@/components/OrganizationAutocomplete";
 import { GlobalAutocomplete } from "@/components/GlobalAutocomplete";
 import { PreviousInspectionDatePicker } from "@/components/PreviousInspectionDatePicker";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Button } from "@/components/ui/button";
+import { CalendarIcon } from "lucide-react";
+import { format } from "date-fns";
+import { cn } from "@/lib/utils";
+import { parseLocalDate } from "@/lib/date-utils";
 
 interface InspectionHeaderProps {
   inspection: any;
@@ -124,7 +131,32 @@ export default function InspectionHeader({ inspection, userProfile, modifiedByPr
                 {renderField("ACCT#", "acct_number", inspection?.acct_number)}
               </div>
               <div className="space-y-1.5 p-3 rounded-lg bg-muted/30 border border-border/50">
-                {renderField("Inspection Date", "inspection_date", inspection?.inspection_date, "date")}
+                <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1 block">Inspection Date</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className={cn("w-full justify-start text-left font-normal", !inspection?.inspection_date && "text-muted-foreground")}
+                      disabled={isReadOnly}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {inspection?.inspection_date ? format(parseLocalDate(inspection.inspection_date)!, "PPP") : "Pick a date"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0">
+                    <Calendar
+                      mode="single"
+                      selected={parseLocalDate(inspection?.inspection_date)}
+                      onSelect={(date) => {
+                        onUpdate("inspection_date", date ? format(date, "yyyy-MM-dd") : "");
+                        onImmediateSave?.();
+                      }}
+                      defaultMonth={parseLocalDate(inspection?.inspection_date) || new Date()}
+                      initialFocus
+                      className="pointer-events-auto"
+                    />
+                  </PopoverContent>
+                </Popover>
               </div>
               <div className="space-y-1.5 p-3 rounded-lg bg-muted/30 border border-border/50">
                 <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1 block">Onsite Contact</Label>
