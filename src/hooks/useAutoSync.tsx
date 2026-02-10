@@ -55,6 +55,9 @@ export interface AutoSyncState {
   lastSyncTime: Date | null;
   unsyncedCount: number;
   unsyncedPhotoCount: number;
+  unsyncedInspections: any[];
+  unsyncedTrainings: any[];
+  unsyncedAssessments: any[];
 }
 
 /**
@@ -79,6 +82,9 @@ export const useAutoSync = () => {
     lastSyncTime: null,
     unsyncedCount: 0,
     unsyncedPhotoCount: 0,
+    unsyncedInspections: [],
+    unsyncedTrainings: [],
+    unsyncedAssessments: [],
   });
   
   // Refs for debouncing and preventing duplicate syncs
@@ -295,6 +301,9 @@ export const useAutoSync = () => {
       setState(prev => ({
         ...prev,
         unsyncedCount: total,
+        unsyncedInspections: inspections,
+        unsyncedTrainings: trainings,
+        unsyncedAssessments: assessments,
       }));
       
       if (import.meta.env.DEV && total > 0) {

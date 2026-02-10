@@ -17,6 +17,8 @@ const fallbackContext: PWAContextType = {
   rtt: null,
   unsyncedCount: 0,
   unsyncedInspections: [],
+  unsyncedTrainings: [],
+  unsyncedAssessments: [],
   isSyncing: false,
   lastSyncTime: null,
   syncError: null,
