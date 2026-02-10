@@ -344,7 +344,7 @@ export default function Dashboard() {
       
       // Show offline data immediately if available
       const offlineData = await offlineWithTimeout;
-      if (offlineData.length > 0) {
+      if (offlineData.length > 0 && !navigator.onLine) {
         setInspections(offlineData);
         if (import.meta.env.DEV) {
           console.log('[Dashboard] Loaded from offline storage:', offlineData.length);
@@ -384,6 +384,9 @@ export default function Dashboard() {
         } else if (networkData !== null && offlineData.length === 0) {
           // Only clear when server CONFIRMED zero records (not timeout/error)
           setInspections([]);
+        } else if (networkData === null && offlineData.length > 0) {
+          // Network failed -- fall back to offline data
+          setInspections(offlineData);
         }
       }
     } catch (error: any) {
@@ -434,7 +437,7 @@ export default function Dashboard() {
       ]);
       
       const offlineData = await offlineWithTimeout;
-      if (offlineData.length > 0) {
+      if (offlineData.length > 0 && !navigator.onLine) {
         setTrainings(offlineData);
         if (import.meta.env.DEV) {
           console.log('[Dashboard] Loaded trainings from offline storage:', offlineData.length);
@@ -472,6 +475,9 @@ export default function Dashboard() {
         } else if (networkData !== null && offlineData.length === 0) {
           // Only clear when server CONFIRMED zero records (not timeout/error)
           setTrainings([]);
+        } else if (networkData === null && offlineData.length > 0) {
+          // Network failed -- fall back to offline data
+          setTrainings(offlineData);
         }
       }
     } catch (error: any) {
@@ -522,7 +528,7 @@ export default function Dashboard() {
       ]);
       
       const offlineData = await offlineWithTimeout;
-      if (offlineData.length > 0) {
+      if (offlineData.length > 0 && !navigator.onLine) {
         setDailyAssessments(offlineData);
         if (import.meta.env.DEV) {
           console.log('[Dashboard] Loaded daily assessments from offline storage:', offlineData.length);
@@ -560,6 +566,9 @@ export default function Dashboard() {
         } else if (networkData !== null && offlineData.length === 0) {
           // Only clear when server CONFIRMED zero records (not timeout/error)
           setDailyAssessments([]);
+        } else if (networkData === null && offlineData.length > 0) {
+          // Network failed -- fall back to offline data
+          setDailyAssessments(offlineData);
         }
       }
     } catch (error: any) {
