@@ -132,14 +132,22 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
       throw new Error('No valid session for sync');
     }
     
-    // Skip inspections that don't belong to current user (they were filtered but double-check)
+    // Auto-fix ownership for locally-created records, skip only for server-origin records
     if (inspection.inspector_id !== user.id) {
-      if (import.meta.env.DEV) {
-        console.log('[Atomic Sync] Skipping inspection - belongs to different user', {
+      if (inspectionId.startsWith('temp-') || !inspection.synced_at) {
+        console.log('[Atomic Sync] Auto-fixing inspector_id for local inspection:', {
+          inspectionId,
+          oldInspectorId: inspection.inspector_id?.substring(0, 8),
+          newInspectorId: user.id.substring(0, 8),
+        });
+        inspection.inspector_id = user.id;
+        await saveInspectionOffline(inspection);
+      } else {
+        console.warn('[Atomic Sync] Skipping inspection - belongs to different user', {
           inspection_id: inspectionId,
         });
+        return { success: false, skipped: true, reason: 'ownership_mismatch' };
       }
-      return { success: false, skipped: true, reason: 'ownership_mismatch' };
     }
     
     // Fetch child records using the ORIGINAL ID (before temp-to-UUID swap)
@@ -631,18 +639,16 @@ export async function syncAllInspectionsAtomic() {
     errors,
   });
   
-  // Log results
-  if (import.meta.env.DEV) {
-    console.log('[Atomic Sync] Results:', {
-      batch: batch.length,
-      totalPending: totalUnsynced,
-      remaining,
-      success: successCount,
-      failed: failCount,
-    });
-    if (failCount > 0) {
-      console.error('[Atomic Sync] Errors:', errors);
-    }
+  // Log results (always, not just DEV - critical for mobile production diagnostics)
+  console.log('[Atomic Sync] Inspection sync results:', {
+    batch: batch.length,
+    totalPending: totalUnsynced,
+    remaining,
+    success: successCount,
+    failed: failCount,
+  });
+  if (failCount > 0) {
+    console.error('[Atomic Sync] Errors:', errors);
   }
   
   return {
@@ -704,14 +710,22 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
       throw new Error('No valid session for sync');
     }
     
-    // Skip trainings that don't belong to current user
+    // Auto-fix ownership for locally-created records, skip only for server-origin records
     if (training.inspector_id !== user.id) {
-      if (import.meta.env.DEV) {
-        console.log('[Atomic Sync] Skipping training - belongs to different user', {
+      if (trainingId.startsWith('temp-') || !training.synced_at) {
+        console.log('[Atomic Sync] Auto-fixing inspector_id for local training:', {
+          trainingId,
+          oldInspectorId: training.inspector_id?.substring(0, 8),
+          newInspectorId: user.id.substring(0, 8),
+        });
+        training.inspector_id = user.id;
+        await saveTrainingOffline(training);
+      } else {
+        console.warn('[Atomic Sync] Skipping training - belongs to different user', {
           training_id: trainingId,
         });
+        return { success: false, skipped: true, reason: 'ownership_mismatch' };
       }
-      return { success: false, skipped: true, reason: 'ownership_mismatch' };
     }
     
     const [rawDeliveryApproaches, rawOperatingSystems, rawImmediateAttention, rawVerifiableItems, rawSystemsInPlace, summaryArray] = await Promise.all([
@@ -1101,15 +1115,13 @@ export async function syncAllTrainingsAtomic() {
     }
   }
   
-  if (import.meta.env.DEV) {
-    console.log('[Atomic Sync] Training sync results:', {
-      batch: batch.length,
-      totalPending: totalUnsynced,
-      remaining,
-      success: successCount,
-      failed: failCount,
-    });
-  }
+  console.log('[Atomic Sync] Training sync results:', {
+    batch: batch.length,
+    totalPending: totalUnsynced,
+    remaining,
+    success: successCount,
+    failed: failCount,
+  });
   
   return {
     total: totalUnsynced,
@@ -1142,14 +1154,22 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
       throw new Error('No valid session for sync');
     }
     
-    // Skip assessments that don't belong to current user
+    // Auto-fix ownership for locally-created records, skip only for server-origin records
     if (assessment.inspector_id !== user.id) {
-      if (import.meta.env.DEV) {
-        console.log('[Atomic Sync] Skipping assessment - belongs to different user', {
+      if (assessmentId.startsWith('temp-') || !assessment.synced_at) {
+        console.log('[Atomic Sync] Auto-fixing inspector_id for local assessment:', {
+          assessmentId,
+          oldInspectorId: assessment.inspector_id?.substring(0, 8),
+          newInspectorId: user.id.substring(0, 8),
+        });
+        assessment.inspector_id = user.id;
+        await saveDailyAssessmentOffline(assessment);
+      } else {
+        console.warn('[Atomic Sync] Skipping assessment - belongs to different user', {
           assessment_id: assessmentId,
         });
+        return { success: false, skipped: true, reason: 'ownership_mismatch' };
       }
-      return { success: false, skipped: true, reason: 'ownership_mismatch' };
     }
     
     const [rawBeginningOfDay, rawEndOfDay, rawOperatingSystems, rawEquipmentChecks, rawStructureChecks, rawEnvironmentChecks] = await Promise.all([
@@ -1529,15 +1549,13 @@ export async function syncAllDailyAssessmentsAtomic() {
     }
   }
   
-  if (import.meta.env.DEV) {
-    console.log('[Atomic Sync] Daily assessment sync results:', {
-      batch: batch.length,
-      totalPending: totalUnsynced,
-      remaining,
-      success: successCount,
-      failed: failCount,
-    });
-  }
+  console.log('[Atomic Sync] Daily assessment sync results:', {
+    batch: batch.length,
+    totalPending: totalUnsynced,
+    remaining,
+    success: successCount,
+    failed: failCount,
+  });
   
   return {
     total: totalUnsynced,

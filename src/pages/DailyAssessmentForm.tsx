@@ -281,8 +281,8 @@ export default function DailyAssessmentForm() {
         }
       }
 
-      // If online, fetch from Supabase
-      if (navigator.onLine) {
+      // If online and not a temp-ID, fetch from Supabase
+      if (navigator.onLine && !id!.startsWith('temp-')) {
         const { data: assessmentData, error: assessmentError } = await supabase
           .from('daily_assessments')
           .select('*')
