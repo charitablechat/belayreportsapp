@@ -1,74 +1,93 @@
 
 
-# Conditional Styling and Sorting for Report Cards by Age and Status
+# Fix: Back Button Reliability Across All Report Forms
 
-## Overview
+## Problem Identified
 
-Add age-based visual states (warning at 3+ days, critical at 5+ days) and completion-based styling (green border) to report cards. Critical reports are sorted to the top of the list. Completed reports revert to standard chronological sorting.
+After investigating the code, the `goBack` utility and `navigationDepth` tracker in `src/lib/navigation.ts` and `src/App.tsx` are working correctly. The actual issue is an inconsistency in how **TrainingForm** and **DailyAssessmentForm** configure their unsaved-changes blocker compared to **InspectionForm**.
 
-## Visual States
+### Root Cause
 
-| State | Condition | Style |
-|-------|-----------|-------|
-| Default | Age <= 3 days, not completed | No change (existing card styling) |
-| Warning | Age > 3 days, not completed | Yellow left border (border-l-4 border-yellow-400) |
-| Critical | Age > 5 days, not completed | Red background (bg-red-50 border-red-300, dark: bg-red-950/30 border-red-700) |
-| Completed | status === 'completed' | Green left border (border-l-4 border-green-500) |
+| Form | `useBlocker` condition | `onSaveAndLeave` | Effect on completed reports |
+|------|------------------------|-------------------|-----------------------------|
+| InspectionForm | `hasUnsavedChanges && status !== 'completed'` | Yes | Blocker disabled when completed -- back works freely |
+| TrainingForm | `hasUnsavedChanges` (no status check) | No | Blocker may fire on completed reports, blocking back navigation |
+| DailyAssessmentForm | `hasUnsavedChanges` (no status check) | No | Same problem as TrainingForm |
 
-"Age" is calculated from `created_at` to `new Date()`.
+When a completed report triggers `hasUnsavedChanges` (e.g., from initial data load or internal state updates), the `useBlocker` intercepts the back button navigation. This creates the appearance that the back button "doesn't work" -- the click is consumed by the blocker but the dialog may not be clearly visible or actionable.
 
-## Sorting Logic
+## Fix (3 files)
 
-Before the existing inspector-name sort, a primary sort is applied:
+### 1. `src/pages/TrainingForm.tsx`
 
-1. **Critical (>5 days, incomplete)** -- always first
-2. **Warning (>3 days, incomplete)** -- after critical
-3. **Default/Completed** -- retain existing chronological order
+**Line ~129-132**: Update `useUnsavedChanges` to exclude completed reports from the blocker, matching InspectionForm's pattern:
 
-Within each tier, the existing sort (by `last_opened_at`/`created_at`/`assessment_date` or inspector name filter) is preserved.
+```typescript
+// BEFORE
+const { isBlocked, confirmNavigation, cancelNavigation } = useUnsavedChanges({
+  hasUnsavedChanges,
+  message: "...",
+});
 
-Completed reports are excluded from age-based priority sorting regardless of their creation date.
-
-## Files Changed
-
-### 1. `src/components/dashboard/ReportCard.tsx`
-
-- Import `differenceInDays` from `date-fns`
-- Add a helper to compute the age state: `getAgeState(createdAt, status)` returning `'critical' | 'warning' | 'completed' | 'default'`
-- Apply conditional className to the `<Card>` element based on the age state:
-  - `'critical'`: `bg-red-50 dark:bg-red-950/30 border-red-300 dark:border-red-700`
-  - `'warning'`: `border-l-4 border-yellow-400`
-  - `'completed'`: `border-l-4 border-green-500`
-  - `'default'`: no additional classes
-
-### 2. `src/pages/Dashboard.tsx`
-
-- Import `differenceInDays` from `date-fns`
-- Extract a shared sort function `sortReportsWithAgePriority(reports, inspectorFilter, getNameFn)` that:
-  1. Computes age tier for each report (critical > warning > default/completed)
-  2. Sorts critical first, then warning, then the rest
-  3. Within each tier, applies the existing inspector-name sort if active
-  4. Otherwise preserves the server-provided chronological order
-- Replace the three inline `.sort()` calls (inspections, trainings, dailyAssessments) with calls to this shared function
-
-## Key Implementation Detail
-
-The age calculation uses `created_at` (available on all three report types) rather than the report-specific date fields (`inspection_date`, `start_date`, `assessment_date`), because `created_at` represents when the report was actually started and is always present.
-
-```text
-Age State Logic:
-  if status === 'completed' --> 'completed' (green border, normal sort position)
-  else if differenceInDays(now, created_at) > 5 --> 'critical' (red bg, sort to top)
-  else if differenceInDays(now, created_at) > 3 --> 'warning' (yellow border)
-  else --> 'default'
+// AFTER
+const { isBlocked, confirmNavigation, cancelNavigation, saveAndLeave } = useUnsavedChanges({
+  hasUnsavedChanges: hasUnsavedChanges && training?.status !== 'completed',
+  message: "You have unsaved changes to this training report. Are you sure you want to leave?",
+  onSaveAndLeave: async () => { /* flush debounce + immediate save */ },
+});
 ```
+
+**Line ~944-948**: Pass `saveAndLeave` to `UnsavedChangesDialog`:
+
+```typescript
+<UnsavedChangesDialog
+  isOpen={isBlocked}
+  onConfirm={confirmNavigation}
+  onCancel={cancelNavigation}
+  onSaveAndLeave={saveAndLeave}  // ADD THIS
+  message="..."
+/>
+```
+
+Add a `saveBeforeLeaveRef` pattern (same as InspectionForm) to flush the auto-save debounce timer and perform an immediate save before navigation proceeds.
+
+### 2. `src/pages/DailyAssessmentForm.tsx`
+
+**Line ~123-127**: Same fix as TrainingForm:
+
+```typescript
+// BEFORE
+const { isBlocked, confirmNavigation, cancelNavigation } = useUnsavedChanges({
+  hasUnsavedChanges,
+  message: "...",
+});
+
+// AFTER
+const { isBlocked, confirmNavigation, cancelNavigation, saveAndLeave } = useUnsavedChanges({
+  hasUnsavedChanges: hasUnsavedChanges && assessment?.status !== 'completed',
+  message: "You have unsaved changes to this assessment. Are you sure you want to leave?",
+  onSaveAndLeave: async () => { /* flush debounce + immediate save */ },
+});
+```
+
+Pass `saveAndLeave` to `UnsavedChangesDialog` in the JSX as well.
+
+### 3. Verify `src/pages/InspectionForm.tsx`
+
+No changes needed -- this form already implements the correct pattern. It serves as the reference implementation.
+
+## What This Fixes
+
+- Back button on completed Training reports no longer gets blocked by `useBlocker`
+- Back button on completed Daily Assessment reports no longer gets blocked
+- All three forms gain a consistent "Save and Leave" option in the unsaved changes dialog
+- Swipe-back gesture on first tab (mobile) also benefits from the same fix since it calls `goBack(navigate)`
 
 ## What Does NOT Change
 
-- No database changes or new columns
-- No changes to data fetching, offline storage, or sync logic
-- No changes to the existing `getStatusBadge` prop or status badge rendering
-- No changes to delete, click, or navigation handlers
-- The existing "COMPLETED" watermark overlay remains unchanged
-- The existing inspector-name filter (super admin) continues to work as a secondary sort
+- The `goBack` utility and `navigationDepth` tracker remain unchanged (they work correctly)
+- No changes to `useUnsavedChanges` hook itself
+- No changes to `CompletionLockDialog` or `CompletionLockOverlay`
+- No changes to save/sync logic, auto-save debounce, or data persistence
+- No database or backend changes
 
