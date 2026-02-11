@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Plus, LogOut, FileText, GraduationCap, ArrowRight, Download, Settings, Trash2, MoreVertical, Bell, Cloud, User, Loader2, Check, RefreshCw, MessageCircle, Shield, CloudOff } from "lucide-react";
 import { UserAvatar } from "@/components/ui/user-avatar";
 import { toast } from "sonner";
-import { format } from "date-fns";
+import { format, differenceInDays } from "date-fns";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { ReportCard } from "@/components/dashboard/ReportCard";
@@ -1065,6 +1065,17 @@ export default function Dashboard() {
                           return 'Unknown';
                         };
 
+                        // Age-priority tier: critical=0, warning=1, rest=2
+                        const tierOf = (r: any) => {
+                          if (r.status === 'completed') return 2;
+                          const age = differenceInDays(new Date(), new Date(r.created_at));
+                          if (age > 5) return 0;
+                          if (age > 3) return 1;
+                          return 2;
+                        };
+                        const tierDiff = tierOf(a) - tierOf(b);
+                        if (tierDiff !== 0) return tierDiff;
+
                         if (inspectorFilter === 'a-z') {
                           return getInspectorName(a).localeCompare(getInspectorName(b));
                         } else if (inspectorFilter === 'z-a') {
@@ -1119,6 +1130,16 @@ export default function Dashboard() {
                           return 'Unknown';
                         };
 
+                        const tierOf = (r: any) => {
+                          if (r.status === 'completed') return 2;
+                          const age = differenceInDays(new Date(), new Date(r.created_at));
+                          if (age > 5) return 0;
+                          if (age > 3) return 1;
+                          return 2;
+                        };
+                        const tierDiff = tierOf(a) - tierOf(b);
+                        if (tierDiff !== 0) return tierDiff;
+
                         if (inspectorFilter === 'a-z') {
                           return getTrainerName(a).localeCompare(getTrainerName(b));
                         } else if (inspectorFilter === 'z-a') {
@@ -1171,6 +1192,16 @@ export default function Dashboard() {
                           }
                           return 'Unknown';
                         };
+
+                        const tierOf = (r: any) => {
+                          if (r.status === 'completed') return 2;
+                          const age = differenceInDays(new Date(), new Date(r.created_at));
+                          if (age > 5) return 0;
+                          if (age > 3) return 1;
+                          return 2;
+                        };
+                        const tierDiff = tierOf(a) - tierOf(b);
+                        if (tierDiff !== 0) return tierDiff;
 
                         if (inspectorFilter === 'a-z') {
                           return getInspectorName(a).localeCompare(getInspectorName(b));

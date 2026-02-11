@@ -8,13 +8,25 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { format } from "date-fns";
+import { format, differenceInDays } from "date-fns";
 import { FileText, MoreVertical, Trash2, Download, Check, Cloud } from "lucide-react";
 import { triggerHaptic } from "@/lib/haptics";
 import { parseLocalDate } from "@/lib/date-utils";
 import { OlympicRings } from "@/components/christmas/OlympicRings";
 import { triggerValentineBurst } from "@/lib/confetti";
 import { useClickAndHoverSparkles, SparkleContainer } from "@/components/christmas/Sparkles";
+import { cn } from "@/lib/utils";
+
+export type ReportAgeState = 'critical' | 'warning' | 'completed' | 'default';
+
+export function getReportAgeState(createdAt: string | null | undefined, status: string): ReportAgeState {
+  if (status === 'completed') return 'completed';
+  if (!createdAt) return 'default';
+  const age = differenceInDays(new Date(), new Date(createdAt));
+  if (age > 5) return 'critical';
+  if (age > 3) return 'warning';
+  return 'default';
+}
 
 interface ReportCardProps {
   report: any;
@@ -101,9 +113,21 @@ export function ReportCard({ report, type, onDelete, onClick, getStatusBadge }: 
     }
   };
 
+  const ageState = getReportAgeState(report.created_at, getReportStatus());
+
+  const ageStateClasses: Record<ReportAgeState, string> = {
+    critical: 'bg-red-50 dark:bg-red-950/30 border-red-300 dark:border-red-700',
+    warning: 'border-l-4 border-l-yellow-400',
+    completed: 'border-l-4 border-l-green-500',
+    default: '',
+  };
+
   return (
     <Card 
-      className="relative overflow-visible cursor-pointer transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5 hover:border-primary/50 active:scale-[0.99] active:shadow-md group"
+      className={cn(
+        "relative overflow-visible cursor-pointer transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5 hover:border-primary/50 active:scale-[0.99] active:shadow-md group",
+        ageStateClasses[ageState]
+      )}
       onClick={(e) => {
         triggerHaptic('light');
         triggerSparkles(e);
