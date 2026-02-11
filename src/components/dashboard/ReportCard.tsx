@@ -116,7 +116,7 @@ export function ReportCard({ report, type, onDelete, onClick, getStatusBadge }: 
   const ageState = getReportAgeState(report.created_at, getReportStatus());
 
   const ageStateClasses: Record<ReportAgeState, string> = {
-    critical: 'bg-red-50 dark:bg-red-950/30 border-red-300 dark:border-red-700',
+    critical: 'bg-red-200 dark:bg-red-900/40 border-red-400 dark:border-red-800',
     warning: 'bg-yellow-50 dark:bg-yellow-950/30 border-yellow-300 dark:border-yellow-700',
     completed: 'border-l-4 border-l-green-500',
     default: '',
