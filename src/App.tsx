@@ -1,8 +1,9 @@
 import { MobileAwareToaster, MobileAwareSonner } from "@/components/ui/mobile-aware-toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { createBrowserRouter, RouterProvider, useNavigate, Outlet } from "react-router-dom";
-import { useEffect } from "react";
+import { createBrowserRouter, RouterProvider, useNavigate, Outlet, useLocation } from "react-router-dom";
+import { useEffect, useRef } from "react";
+import { trackNavigation } from "@/lib/navigation";
 import Index from "./pages/Index";
 import Dashboard from "./pages/Dashboard";
 import NewInspection from "./pages/NewInspection";
@@ -38,6 +39,16 @@ const queryClient = new QueryClient();
 const RootLayout = () => {
   const isMobileDevice = isMobile();
   const navigate = useNavigate();
+  const location = useLocation();
+  const prevLocation = useRef(location.pathname);
+  
+  // Track in-app navigations for reliable back button behavior
+  useEffect(() => {
+    if (location.pathname !== prevLocation.current) {
+      trackNavigation();
+      prevLocation.current = location.pathname;
+    }
+  }, [location.pathname]);
   
   // Enable scroll restoration
   useScrollRestoration(true);
