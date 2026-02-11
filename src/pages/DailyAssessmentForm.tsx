@@ -120,10 +120,28 @@ export default function DailyAssessmentForm() {
     },
   });
 
+  // Save-before-leave handler: flushes debounce and performs immediate save
+  const saveBeforeLeaveRef = useRef<(() => Promise<void>) | null>(null);
+  const handleSaveAndLeave = useCallback(async () => {
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current);
+      autoSaveTimerRef.current = null;
+    }
+    try {
+      await handleSaveProgress();
+      setHasUnsavedChanges(false);
+      console.log('[DailyAssessmentForm] Save-before-leave completed');
+    } catch (e) {
+      console.warn('[DailyAssessmentForm] Save-before-leave failed:', e);
+    }
+  }, []);
+  saveBeforeLeaveRef.current = handleSaveAndLeave;
+
   // Unsaved changes protection
-  const { isBlocked, confirmNavigation, cancelNavigation } = useUnsavedChanges({
-    hasUnsavedChanges,
+  const { isBlocked, confirmNavigation, cancelNavigation, saveAndLeave } = useUnsavedChanges({
+    hasUnsavedChanges: hasUnsavedChanges && assessment?.status !== 'completed',
     message: "You have unsaved changes to this assessment. Are you sure you want to leave?",
+    onSaveAndLeave: async () => { await saveBeforeLeaveRef.current?.(); },
   });
 
   // Auto-retry on network reconnect is now handled by useAutoSync hook
@@ -1010,6 +1028,7 @@ export default function DailyAssessmentForm() {
         isOpen={isBlocked}
         onConfirm={confirmNavigation}
         onCancel={cancelNavigation}
+        onSaveAndLeave={saveAndLeave}
         message="You have unsaved changes to this assessment. Are you sure you want to leave?"
       />
       

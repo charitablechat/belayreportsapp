@@ -125,10 +125,28 @@ export default function TrainingForm() {
     },
   });
 
+  // Save-before-leave handler: flushes debounce and performs immediate save
+  const saveBeforeLeaveRef = useRef<(() => Promise<void>) | null>(null);
+  const handleSaveAndLeave = useCallback(async () => {
+    if (autoSaveTimer.current) {
+      clearTimeout(autoSaveTimer.current);
+      autoSaveTimer.current = null;
+    }
+    try {
+      await saveTraining();
+      setHasUnsavedChanges(false);
+      console.log('[TrainingForm] Save-before-leave completed');
+    } catch (e) {
+      console.warn('[TrainingForm] Save-before-leave failed:', e);
+    }
+  }, []);
+  saveBeforeLeaveRef.current = handleSaveAndLeave;
+
   // Unsaved changes protection
-  const { isBlocked, confirmNavigation, cancelNavigation } = useUnsavedChanges({
-    hasUnsavedChanges,
+  const { isBlocked, confirmNavigation, cancelNavigation, saveAndLeave } = useUnsavedChanges({
+    hasUnsavedChanges: hasUnsavedChanges && training?.status !== 'completed',
     message: "You have unsaved changes to this training report. Are you sure you want to leave?",
+    onSaveAndLeave: async () => { await saveBeforeLeaveRef.current?.(); },
   });
 
   // Auto-retry on network reconnect is now handled by useAutoSync hook
@@ -945,6 +963,7 @@ export default function TrainingForm() {
         isOpen={isBlocked}
         onConfirm={confirmNavigation}
         onCancel={cancelNavigation}
+        onSaveAndLeave={saveAndLeave}
         message="You have unsaved changes to this training report. Are you sure you want to leave?"
       />
       <CompletionLockDialog
