@@ -2249,7 +2249,8 @@ export default function InspectionForm() {
                 />
                 <EquipmentTable
                   category="rope"
-                  displayName="Kernmantle Rope"
+                  displayName="Rope"
+                  showRopeType
                   equipment={equipment}
                   onUpdate={setEquipment}
                   onImmediateSave={stableTriggerImmediateSave}
