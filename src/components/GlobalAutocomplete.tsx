@@ -253,11 +253,7 @@ export function GlobalAutocomplete({
   };
 
   const handleOpenChange = (isOpen: boolean) => {
-    if (isOpen) {
-      if (!hasFetchedFromDb.current) {
-        fetchGlobalHistory();
-      }
-    } else {
+    if (!isOpen) {
       // Commit on close
       if (isEditing && inputValue.trim()) {
         const trimmed = inputValue.trim();
@@ -276,6 +272,9 @@ export function GlobalAutocomplete({
     setInputValue(value);
     if (!open) {
       setOpen(true);
+    }
+    if (!hasFetchedFromDb.current) {
+      fetchGlobalHistory();
     }
   };
 
@@ -333,7 +332,12 @@ export function GlobalAutocomplete({
             onChange={(e) => {
               setInputValue(e.target.value);
               if (!isEditing) setIsEditing(true);
-              if (!open) setOpen(true);
+              if (!open) {
+                setOpen(true);
+                if (!hasFetchedFromDb.current) {
+                  fetchGlobalHistory();
+                }
+              }
             }}
             onFocus={handleTriggerFocus}
             onBlur={handleTriggerBlur}
