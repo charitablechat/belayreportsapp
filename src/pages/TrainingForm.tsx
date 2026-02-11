@@ -46,6 +46,7 @@ import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
 import { UnsavedChangesDialog } from "@/components/UnsavedChangesDialog";
 import { useSaveShortcut } from "@/hooks/useKeyboardShortcuts";
 import { useReportEditPermission } from "@/hooks/useReportEditPermission";
+import { CompletionLockDialog, CompletionLockOverlay } from "@/components/CompletionLockDialog";
 
 export default function TrainingForm() {
   const { id } = useParams();
@@ -60,6 +61,10 @@ export default function TrainingForm() {
     inspectorId,
     reportType: 'training'
   });
+  
+  // Completion lock: prevent accidental edits to completed reports
+  const [completionLockOverridden, setCompletionLockOverridden] = useState(false);
+  const [showCompletionLockDialog, setShowCompletionLockDialog] = useState(false);
   
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -81,6 +86,10 @@ export default function TrainingForm() {
   const [verifiableItems, setVerifiableItems] = useState<any[]>([]);
   const [systemsInPlace, setSystemsInPlace] = useState<any[]>([]);
   const [summary, setSummary] = useState<any>(null);
+  // Completion lock derived values (after report state is declared)
+  const isCompletionLocked = training?.status === 'completed' && !completionLockOverridden;
+  const effectiveReadOnly = isReadOnly || isCompletionLocked;
+
   const autoSaveTimer = useRef<NodeJS.Timeout | null>(null);
   const isInternalUpdateRef = useRef(false);
   const [htmlViewerOpen, setHtmlViewerOpen] = useState(false);
@@ -938,6 +947,11 @@ export default function TrainingForm() {
         onCancel={cancelNavigation}
         message="You have unsaved changes to this training report. Are you sure you want to leave?"
       />
+      <CompletionLockDialog
+        open={showCompletionLockDialog}
+        onOpenChange={setShowCompletionLockDialog}
+        onConfirm={() => setCompletionLockOverridden(true)}
+      />
       <div className="min-h-screen bg-background">
       {/* Offline Mode Banner */}
       {!isOnline && (
@@ -996,7 +1010,7 @@ export default function TrainingForm() {
             </div>
             
             <div className="flex items-center gap-2">
-              {!isReadOnly && (
+              {!effectiveReadOnly && (
               <>
               <Button 
                 variant="outline" 
@@ -1053,6 +1067,7 @@ export default function TrainingForm() {
       </header>
 
       {/* Main Content */}
+      <CompletionLockOverlay isLocked={isCompletionLocked} onAttemptEdit={() => setShowCompletionLockDialog(true)}>
       <div className="container mx-auto px-4 py-8">
         {/* Swipe back indicator for mobile */}
         {isMobile && isFirstTab && (
@@ -1095,8 +1110,8 @@ export default function TrainingForm() {
           <TabsContent value="info" className="space-y-6">
             <TrainingHeader 
               training={training} 
-              onUpdate={isReadOnly ? () => {} : updateTrainingField} 
-              isReadOnly={isReadOnly}
+              onUpdate={effectiveReadOnly ? () => {} : updateTrainingField} 
+              isReadOnly={effectiveReadOnly}
               userProfile={inspectorProfile}
               modifiedByProfile={modifiedByProfile}
             />
@@ -1140,6 +1155,7 @@ export default function TrainingForm() {
           </TabsContent>
         </Tabs>
       </div>
+      </CompletionLockOverlay>
 
       {/* Email Dialog */}
       <Dialog open={showEmailDialog} onOpenChange={setShowEmailDialog}>

@@ -46,6 +46,7 @@ import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
 import { UnsavedChangesDialog } from "@/components/UnsavedChangesDialog";
 import { useSaveShortcut } from "@/hooks/useKeyboardShortcuts";
 import { useReportEditPermission } from "@/hooks/useReportEditPermission";
+import { CompletionLockDialog, CompletionLockOverlay } from "@/components/CompletionLockDialog";
 
 export default function DailyAssessmentForm() {
   const { id } = useParams();
@@ -61,6 +62,10 @@ export default function DailyAssessmentForm() {
     inspectorId,
     reportType: 'daily_assessment'
   });
+  
+  // Completion lock: prevent accidental edits to completed reports
+  const [completionLockOverridden, setCompletionLockOverridden] = useState(false);
+  const [showCompletionLockDialog, setShowCompletionLockDialog] = useState(false);
   
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -84,6 +89,10 @@ export default function DailyAssessmentForm() {
   const [currentUserProfile, setCurrentUserProfile] = useState<any>(null);
   const [modifiedByProfile, setModifiedByProfile] = useState<any>(null);
   const [signingOut, setSigningOut] = useState(false);
+  // Completion lock derived values (after report state is declared)
+  const isCompletionLocked = assessment?.status === 'completed' && !completionLockOverridden;
+  const effectiveReadOnly = isReadOnly || isCompletionLocked;
+
   const isInternalUpdateRef = useRef(false);
   
   // Tab navigation state
@@ -1020,6 +1029,11 @@ export default function DailyAssessmentForm() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <CompletionLockDialog
+        open={showCompletionLockDialog}
+        onOpenChange={setShowCompletionLockDialog}
+        onConfirm={() => setCompletionLockOverridden(true)}
+      />
       
       <div className="min-h-screen bg-background">
       {/* Offline Mode Banner */}
@@ -1079,7 +1093,7 @@ export default function DailyAssessmentForm() {
             </div>
             
             <div className="flex items-center gap-2">
-              {!isReadOnly && (
+              {!effectiveReadOnly && (
               <>
               <Button 
                 variant="outline"
@@ -1135,12 +1149,13 @@ export default function DailyAssessmentForm() {
         </div>
       </header>
       
+      <CompletionLockOverlay isLocked={isCompletionLocked} onAttemptEdit={() => setShowCompletionLockDialog(true)}>
       <div className="container mx-auto px-4 py-4 lg:py-8 max-w-5xl">
       <div className="space-y-6">
         <DailyAssessmentHeader 
           assessment={assessment} 
-          onUpdate={isReadOnly ? () => {} : handleUpdateAssessment} 
-          isReadOnly={isReadOnly}
+          onUpdate={effectiveReadOnly ? () => {} : handleUpdateAssessment} 
+          isReadOnly={effectiveReadOnly}
           userProfile={inspectorProfile}
           modifiedByProfile={modifiedByProfile}
         />
@@ -1233,6 +1248,7 @@ export default function DailyAssessmentForm() {
         </Tabs>
       </div>
       </div>
+      </CompletionLockOverlay>
 
       <HtmlReportViewer
         html={reportHtml}
