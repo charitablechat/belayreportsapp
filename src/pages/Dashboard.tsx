@@ -40,7 +40,6 @@ import { onSyncComplete } from "@/lib/sync-events";
 import { InspectionsEmptyState, TrainingsEmptyState, DailyAssessmentsEmptyState } from "@/components/EmptyState";
 import { getUserWithCache, getSuperAdminStatusWithCache, invalidateSuperAdminCache, ensureValidSession, getOfflineUserId } from "@/lib/cached-auth";
 /* Holiday Theme Components */
-import { Snowfall } from "@/components/christmas/Snowfall";
 import { HolidayBanner } from "@/components/christmas/HolidayBanner";
 import { OlympicRings } from "@/components/christmas/OlympicRings";
 import { UserProfileDropdown } from "@/components/UserProfileDropdown";
@@ -787,8 +786,6 @@ export default function Dashboard() {
 
   return (
     <div className="relative min-h-screen">
-      {/* Winter Olympic Snowfall Animation */}
-      <Snowfall />
       
       
       
