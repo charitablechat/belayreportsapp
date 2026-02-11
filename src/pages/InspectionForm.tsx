@@ -54,6 +54,7 @@ import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
 import { UnsavedChangesDialog } from "@/components/UnsavedChangesDialog";
 import { useSaveShortcut } from "@/hooks/useKeyboardShortcuts";
 import { useReportEditPermission } from "@/hooks/useReportEditPermission";
+import { CompletionLockDialog, CompletionLockOverlay } from "@/components/CompletionLockDialog";
 
 export default function InspectionForm() {
   const { id } = useParams();
@@ -69,6 +70,10 @@ export default function InspectionForm() {
     inspectorId,
     reportType: 'inspection'
   });
+  
+  // Completion lock: prevent accidental edits to completed reports
+  const [completionLockOverridden, setCompletionLockOverridden] = useState(false);
+  const [showCompletionLockDialog, setShowCompletionLockDialog] = useState(false);
   
   // Enable keyboard avoidance for mobile
   useKeyboardAvoidance();
@@ -117,6 +122,10 @@ export default function InspectionForm() {
     future_considerations: "",
     next_inspection_date: null,
   });
+
+  // Completion lock derived values (after report state is declared)
+  const isCompletionLocked = inspection?.status === 'completed' && !completionLockOverridden;
+  const effectiveReadOnly = isReadOnly || isCompletionLocked;
 
   // Track if auto-population has run for this inspection
   const autoPopulatedRef = useRef<string | null>(null);
@@ -1946,6 +1955,11 @@ export default function InspectionForm() {
         onSaveAndLeave={saveAndLeave}
         message="You have unsaved changes to this inspection. Are you sure you want to leave?"
       />
+      <CompletionLockDialog
+        open={showCompletionLockDialog}
+        onOpenChange={setShowCompletionLockDialog}
+        onConfirm={() => setCompletionLockOverridden(true)}
+      />
       <div className="min-h-screen bg-background">
       {/* Offline Mode Banner */}
       {!isOnline && (
@@ -2042,7 +2056,7 @@ export default function InspectionForm() {
             </div>
             
             <div className="flex items-center gap-2">
-              {!isReadOnly && (
+              {!effectiveReadOnly && (
               <Button 
                 variant="outline" 
                 size={isMobileView ? "default" : "sm"} 
@@ -2053,7 +2067,7 @@ export default function InspectionForm() {
                 {isMobileView ? (saving ? "..." : "Save") : (saving ? "Saving..." : isOnline ? "Save Progress" : "Save Locally")}
               </Button>
               )}
-              {!isReadOnly && (
+              {!effectiveReadOnly && (
                 <Button 
                   size={isMobileView ? "default" : "sm"} 
                   onClick={completeInspection} 
@@ -2134,6 +2148,7 @@ export default function InspectionForm() {
         </div>
       </header>
 
+      <CompletionLockOverlay isLocked={isCompletionLocked} onAttemptEdit={() => setShowCompletionLockDialog(true)}>
       <main className="container mx-auto px-4 py-8 max-w-6xl">
         {!isOnline && (
           <Alert className="mb-6 border-warning bg-warning/10">
@@ -2148,9 +2163,9 @@ export default function InspectionForm() {
           inspection={inspection}
           userProfile={inspectorProfile}
           modifiedByProfile={modifiedByProfile}
-          onUpdate={isReadOnly ? () => {} : handleHeaderUpdate} 
-          onImmediateSave={isReadOnly ? undefined : stableTriggerImmediateSave}
-          isReadOnly={isReadOnly}
+          onUpdate={effectiveReadOnly ? () => {} : handleHeaderUpdate} 
+          onImmediateSave={effectiveReadOnly ? undefined : stableTriggerImmediateSave}
+          isReadOnly={effectiveReadOnly}
         />
 
         {/* Swipe back indicator for mobile */}
@@ -2193,7 +2208,7 @@ export default function InspectionForm() {
             
             <div className="mt-8 border-t pt-6">
               <h3 className="text-lg font-semibold mb-4">Photos - Systems & Ziplines</h3>
-              {!isReadOnly && (
+              {!effectiveReadOnly && (
                 <PhotoCapture
                   inspectionId={id!}
                   section="systems"
@@ -2205,7 +2220,7 @@ export default function InspectionForm() {
                   key={`systems-${photoRefreshKey}`}
                   inspectionId={id!}
                   section="systems"
-                  readOnly={isReadOnly}
+                  readOnly={effectiveReadOnly}
                 />
               </div>
             </div>
@@ -2275,7 +2290,7 @@ export default function InspectionForm() {
                 
                 <div className="mt-8 border-t pt-6">
                   <h3 className="text-lg font-semibold mb-4">Photos - Equipment</h3>
-                  {!isReadOnly && (
+                  {!effectiveReadOnly && (
                     <PhotoCapture
                       inspectionId={id!}
                       section="equipment"
@@ -2287,7 +2302,7 @@ export default function InspectionForm() {
                       key={`equipment-${photoRefreshKey}`}
                       inspectionId={id!}
                       section="equipment"
-                      readOnly={isReadOnly}
+                      readOnly={effectiveReadOnly}
                     />
                   </div>
                 </div>
@@ -2300,7 +2315,7 @@ export default function InspectionForm() {
             
             <div className="mt-8 border-t pt-6">
               <h3 className="text-lg font-semibold mb-4">Photos - Standards</h3>
-              {!isReadOnly && (
+              {!effectiveReadOnly && (
                 <PhotoCapture
                   inspectionId={id!}
                   section="standards"
@@ -2312,7 +2327,7 @@ export default function InspectionForm() {
                   key={`standards-${photoRefreshKey}`}
                   inspectionId={id!}
                   section="standards"
-                  readOnly={isReadOnly}
+                  readOnly={effectiveReadOnly}
                 />
               </div>
             </div>
@@ -2328,7 +2343,7 @@ export default function InspectionForm() {
             
             <div className="mt-8 border-t pt-6">
               <h3 className="text-lg font-semibold mb-4">Photos - Summary</h3>
-              {!isReadOnly && (
+              {!effectiveReadOnly && (
                 <PhotoCapture
                   inspectionId={id!}
                   section="summary"
@@ -2340,13 +2355,14 @@ export default function InspectionForm() {
                   key={`summary-${photoRefreshKey}`}
                   inspectionId={id!}
                   section="summary"
-                  readOnly={isReadOnly}
+                  readOnly={effectiveReadOnly}
                 />
               </div>
             </div>
           </TabsContent>
         </Tabs>
       </main>
+      </CompletionLockOverlay>
 
       <HtmlReportViewer
         html={reportHtml}
