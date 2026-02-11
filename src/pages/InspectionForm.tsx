@@ -180,11 +180,7 @@ export default function InspectionForm() {
   });
 
   const safeGoBack = useCallback(() => {
-    if (window.history.length > 1) {
-      navigate(-1);
-    } else {
-      navigate("/dashboard");
-    }
+    goBack(navigate);
   }, [navigate]);
 
   // Auto-retry on network reconnect is now handled by useAutoSync hook
