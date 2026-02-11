@@ -820,15 +820,15 @@ export default function Dashboard() {
       )}
       
       {/* Background image */}
-      <div className="absolute inset-x-0 top-0 z-0 h-[45vh] md:h-[50vh] overflow-hidden">
+      <div className="fixed inset-0 z-0 overflow-hidden">
         <img
           src={dashboardBackground}
           alt=""
-          className="w-full h-full object-cover object-[center_70%]"
+          className="w-full h-full object-cover object-center"
         />
         
-        {/* Gradient fade: image fades into the page background at the bottom */}
-        <div className="absolute inset-0 bg-gradient-to-b from-slate-900/50 via-transparent to-background" />
+        {/* Gradient fade: ensures text/cards remain readable over full-page background */}
+        <div className="absolute inset-0 bg-gradient-to-b from-slate-900/50 via-background/60 to-background/80" />
         
         {/* Reduced motion fallback */}
         <div className="absolute inset-0 bg-gradient-to-br from-blue-900/80 via-sky-900/70 to-blue-900/80 hidden motion-reduce:block" />
