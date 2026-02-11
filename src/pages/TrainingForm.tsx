@@ -836,79 +836,64 @@ export default function TrainingForm() {
 
           if (trainingError) throw trainingError;
 
-          // Delete and re-insert all related records
-          await Promise.all([
-            supabase.from('training_delivery_approaches').delete().eq('training_id', id),
-            supabase.from('training_operating_systems').delete().eq('training_id', id),
-            supabase.from('training_immediate_attention').delete().eq('training_id', id),
-            supabase.from('training_verifiable_items').delete().eq('training_id', id),
-            supabase.from('training_systems_in_place').delete().eq('training_id', id),
-          ]);
+          // Safe upsert pattern (matches saveTraining) - never deletes existing data
+          const prepareItems = <T extends { id?: string }>(items: T[], foreignKey: string) => 
+            items.map(item => ({
+              ...item,
+              id: item.id?.startsWith('temp-') ? crypto.randomUUID() : (item.id || crypto.randomUUID()),
+              [foreignKey]: id
+            }));
 
-          // Insert new records
-          const insertPromises = [];
-          
+          const dbOp = async (operation: PromiseLike<{ error: any }>) => {
+            const { error } = await operation;
+            if (error) throw error;
+          };
+
+          const parallelOps: Promise<void>[] = [];
+
           if (deliveryApproaches.length > 0) {
-            insertPromises.push(
-              supabase.from('training_delivery_approaches').insert(
-                deliveryApproaches.map(a => ({ ...a, training_id: id }))
-              )
+            parallelOps.push(
+              dbOp(supabase.from('training_delivery_approaches').upsert(prepareItems(deliveryApproaches, 'training_id'), { onConflict: 'id' }))
             );
           }
 
           if (operatingSystems.length > 0) {
-            insertPromises.push(
-              supabase.from('training_operating_systems').insert(
-                operatingSystems.map(s => ({ ...s, training_id: id }))
-              )
+            parallelOps.push(
+              dbOp(supabase.from('training_operating_systems').upsert(prepareItems(operatingSystems, 'training_id'), { onConflict: 'id' }))
             );
           }
 
           if (immediateAttention.length > 0) {
-            insertPromises.push(
-              supabase.from('training_immediate_attention').insert(
-                immediateAttention.map(i => ({ ...i, training_id: id }))
-              )
+            parallelOps.push(
+              dbOp(supabase.from('training_immediate_attention').upsert(prepareItems(immediateAttention, 'training_id'), { onConflict: 'id' }))
             );
           }
 
           if (verifiableItems.length > 0) {
-            insertPromises.push(
-              supabase.from('training_verifiable_items').insert(
-                verifiableItems.map(v => ({ ...v, training_id: id }))
-              )
+            parallelOps.push(
+              dbOp(supabase.from('training_verifiable_items').upsert(prepareItems(verifiableItems, 'training_id'), { onConflict: 'id' }))
             );
           }
 
           if (systemsInPlace.length > 0) {
-            insertPromises.push(
-              supabase.from('training_systems_in_place').insert(
-                systemsInPlace.map(s => ({ ...s, training_id: id }))
-              )
+            parallelOps.push(
+              dbOp(supabase.from('training_systems_in_place').upsert(prepareItems(systemsInPlace, 'training_id'), { onConflict: 'id' }))
             );
           }
 
-          await Promise.all(insertPromises);
-
-          // Update or insert summary
+          // Summary - use upsert for atomic operation
           if (summary) {
-            const { data: existingSummary } = await supabase
-              .from('training_summary')
-              .select('id')
-              .eq('training_id', id)
-              .single();
-
-            if (existingSummary) {
-              await supabase
-                .from('training_summary')
-                .update(summary)
-                .eq('training_id', id);
-            } else {
-              await supabase
-                .from('training_summary')
-                .insert({ ...summary, training_id: id });
-            }
+            const preparedSummary = {
+              ...summary,
+              id: summary.id || crypto.randomUUID(),
+              training_id: id
+            };
+            parallelOps.push(
+              dbOp(supabase.from('training_summary').upsert(preparedSummary, { onConflict: 'training_id' }))
+            );
           }
+
+          await Promise.all(parallelOps);
 
           await saveTrainingOffline({
             ...completedTraining,
