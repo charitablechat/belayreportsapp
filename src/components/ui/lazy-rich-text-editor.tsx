@@ -86,6 +86,7 @@ export function LazyRichTextEditor({
         }}
         placeholder={placeholder}
         className={className}
+        autoFocus
       />
     </div>
   );
