@@ -824,7 +824,7 @@ export default function Dashboard() {
         <img
           src={dashboardBackground}
           alt=""
-          className="w-full h-full object-cover object-[center_50%]"
+          className="w-full h-full object-cover object-[center_70%]"
         />
         
         {/* Gradient fade: image fades into the page background at the bottom */}
