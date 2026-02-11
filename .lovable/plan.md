@@ -1,58 +1,105 @@
 
 
-# Fix: Single-Click Instant Focus for LazyRichTextEditor
+# Completion Lock for Finalized Reports
 
-## Problem
+## Overview
 
-The `LazyRichTextEditor` component implements a two-phase interaction:
-1. **Click 1**: Swaps the static HTML preview for the full TipTap editor
-2. **Click 2**: Places the cursor inside the editor to begin typing
+Add a confirmation gate that prevents accidental edits to completed reports. When a report's status is `completed`, the form renders in a locked (read-only) state. If the user attempts to edit, a confirmation dialog appears. Selecting "Yes" unlocks the form for the session; selecting "No" keeps it locked.
 
-This creates a frustrating "double-click to edit" experience, especially on mobile during data entry.
+## Logic Flow
 
-## Root Cause
-
-The `RichTextEditor` (TipTap) does not set `autofocus: true` in its editor configuration. When `LazyRichTextEditor` mounts TipTap after the first click, the editor appears but the cursor is not placed.
-
-## Fix
-
-Add `autofocus: true` as a prop/option to `RichTextEditor` that `LazyRichTextEditor` can activate. This is a single property addition to TipTap's `useEditor` config.
-
-### File 1: `src/components/ui/rich-text-editor.tsx`
-
-Add an optional `autoFocus` prop. When true, pass `autofocus: true` to TipTap's `useEditor`:
-
-```typescript
-interface RichTextEditorProps {
-  // ...existing props
-  autoFocus?: boolean;
-}
-
-const editor = useEditor({
-  // ...existing config
-  autofocus: autoFocus ?? false,
-});
+```text
+User opens report
+       |
+       v
+  Status === 'completed'?
+    NO  --> Form loads in normal edit mode (no change from today)
+    YES --> Form loads in READ-ONLY mode (locked)
+              |
+              v
+        User attempts edit (clicks field, Save, Complete, etc.)
+              |
+              v
+        Confirmation dialog appears:
+        "This report has been completed. Do you want to proceed with new edits?"
+              |
+         +----+----+
+         |         |
+        YES       NO / Cancel
+         |         |
+         v         v
+    Set session   Dismiss dialog,
+    unlock flag   form stays locked
+    (state var)
+         |
+         v
+    Form re-renders
+    in full edit mode
+    for this session
 ```
 
-### File 2: `src/components/ui/lazy-rich-text-editor.tsx`
+## What Changes
 
-Pass `autoFocus={true}` to `RichTextEditor` when mounting it after the user's click:
+### 1. New state variable in each form (InspectionForm, TrainingForm, DailyAssessmentForm)
 
-```typescript
-<RichTextEditor
-  content={content}
-  onChange={onChange}
-  onBlur={...}
-  placeholder={placeholder}
-  className={className}
-  autoFocus={true}
-/>
+- `completionLockOverridden` -- a boolean, starts `false`
+- `showCompletionLockDialog` -- a boolean controlling dialog visibility
+
+### 2. Derive the effective read-only state
+
+Currently each form uses:
+```
+const { canEdit, isReadOnly } = useReportEditPermission(...)
 ```
 
-## Scope and Safety
+A new derived value will combine the existing permission check with the completion lock:
 
-- **Two files changed**: `rich-text-editor.tsx` (add prop), `lazy-rich-text-editor.tsx` (pass prop)
-- **Zero impact on data**: No state management, save logic, debounce timers, or sync behavior is modified
-- **No impact on non-lazy editors**: The `autoFocus` prop defaults to `false`, so `VoiceRichTextEditor` and any direct `RichTextEditor` usage is unaffected
-- **No impact on `useBlocker`**: Focus changes do not trigger unsaved-changes detection
+```
+const isCompletionLocked = report?.status === 'completed' && !completionLockOverridden;
+const effectiveReadOnly = isReadOnly || isCompletionLocked;
+```
+
+All existing `isReadOnly` references in each form's JSX will be replaced with `effectiveReadOnly`. This is a find-and-replace within each form file -- no child component changes needed since they already accept a generic `isReadOnly` prop.
+
+### 3. Intercept edit attempts
+
+When `isCompletionLocked` is true and the user clicks an interactive element (a field, Save button, etc.), the form opens the confirmation dialog instead of performing the action. The simplest approach: wrap the form content area in a transparent overlay `div` that captures clicks and opens the dialog, only rendered when `isCompletionLocked` is true. This avoids modifying every individual input component.
+
+### 4. Confirmation dialog
+
+A shared reusable component (or inline AlertDialog) with:
+- **Title**: "Report Locked"
+- **Message**: "This report has been completed. Do you want to proceed with new edits?"
+- **Actions**: "Yes, Edit" (sets `completionLockOverridden = true`, closes dialog) and "No" (closes dialog, no state change)
+
+This will use the existing `AlertDialog` component already imported in the codebase.
+
+### 5. Lock resets
+
+The `completionLockOverridden` flag is session-scoped (React state). It resets naturally when the user navigates away and returns. No persistence needed.
+
+## Files Modified
+
+| File | Change |
+|------|--------|
+| `src/pages/InspectionForm.tsx` | Add `completionLockOverridden` state, derive `effectiveReadOnly`, add dialog, replace `isReadOnly` references |
+| `src/pages/TrainingForm.tsx` | Same pattern |
+| `src/pages/DailyAssessmentForm.tsx` | Same pattern |
+
+Optionally, the dialog can be extracted into a shared component (e.g., `src/components/CompletionLockDialog.tsx`) to avoid duplication across the three forms.
+
+## What Does NOT Change
+
+- **No database changes** -- status field and values remain identical
+- **No changes to `useReportEditPermission`** -- the hook continues to handle ownership and super-admin logic independently
+- **No changes to save/sync logic** -- debounce timers, auto-save, `useBlocker`, and atomic sync are untouched
+- **No changes to child components** -- they already respect the `isReadOnly` / `readOnly` prop passed down
+- **No changes to the completion flow** -- marking a report as completed works exactly as before
+- **No RLS or backend changes**
+
+## Edge Cases
+
+- **Super Admin viewing another user's completed report**: Both `isReadOnly` (from permissions) and `isCompletionLocked` would be true. The permission-based lock takes priority -- the completion lock dialog would not appear since the form is already read-only for a different reason.
+- **Owner re-opens a completed report, unlocks, makes edits, then navigates away**: The existing `useBlocker` / `UnsavedChangesDialog` handles unsaved changes as normal. On return, the lock re-engages.
+- **Report completed during the current session**: After the completion action succeeds, `isCompletionLocked` becomes true. The user would need to confirm to make further edits, which is the intended behavior.
 
