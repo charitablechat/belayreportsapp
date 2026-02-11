@@ -9,6 +9,7 @@ interface RichTextEditorProps {
   onBlur?: () => void;
   placeholder?: string;
   className?: string;
+  autoFocus?: boolean;
 }
 
 export const RichTextEditor = ({
@@ -17,6 +18,7 @@ export const RichTextEditor = ({
   onBlur,
   placeholder = 'Enter comments...',
   className,
+  autoFocus,
 }: RichTextEditorProps) => {
   const editor = useEditor({
     extensions: [
@@ -29,6 +31,7 @@ export const RichTextEditor = ({
       }),
     ],
     content,
+    autofocus: autoFocus ?? false,
     onUpdate: ({ editor }) => {
       onChange(editor.getHTML());
     },
