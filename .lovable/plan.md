@@ -1,33 +1,69 @@
-
-
-# Fix Photo Buttons Missing When Offline
+# Fix: Prevent Training Data Loss on Completion
 
 ## Problem
-When the device goes offline (airplane mode), the "Take Photo" and "Upload" buttons disappear from all photo sections in the Inspection Form. They reappear when back online. The root cause is in the `useReportEditPermission` hook.
 
-## Root Cause
-The `useReportEditPermission` hook calls `getUserWithCache()` to determine `currentUserId`. When offline with an expired session token, this can return `null` on some devices (e.g., if `navigator.onLine` briefly reports `true` during airplane mode transitions, causing the expiry check to reject the cached token). When `currentUserId` is `null`, the hook returns `isReadOnly: true` (line 98), which hides the `PhotoCapture` buttons via `{!effectiveReadOnly && <PhotoCapture />}`.
+The "Complete Training" flow uses a destructive **delete-all-then-reinsert** pattern for child tables. If any in-memory array is empty when the user clicks Complete, all server-side data for that section is permanently deleted. This is the confirmed root cause of the Youth Odyssey data loss.
 
-## Fix
+## Recovery (Manual)
 
-**File: `src/hooks/useReportEditPermission.tsx`**
+The lost data (Immediate Attention checkboxes, Verifiable Items checkboxes, Systems in Place checkboxes, and Summary observations/recommendations) **cannot be recovered from the database**. The rows were hard-deleted.
 
-Add an offline fallback using `getOfflineUserId()` (already used elsewhere in the app for this exact scenario). If `getUserWithCache()` returns null, fall back to extracting the user ID directly from localStorage, bypassing token expiry checks entirely.
+**Possible recovery from device**: If the original mobile device's browser cache (IndexedDB) has not been cleared, the data may still exist locally. The user should:
 
-```typescript
-import { getUserWithCache, getSuperAdminStatusWithCache, getOfflineUserId } from "@/lib/cached-auth";
+1. Open the app on the original device (keep it in airplane mode to prevent sync from overwriting)
+2. Navigate to the training report
+3. Check if the checkboxes and summary text are still populated
+4. If yes, go back online and let the auto-save sync the data back
 
-// In checkPermissions():
-const user = await getUserWithCache();
-const userId = user?.id ?? getOfflineUserId(); // Offline fallback
-setCurrentUserId(userId ?? null);
+## Code Fix
+
+### File: `src/pages/TrainingForm.tsx` -- `completeTraining()` function
+
+**Change**: Replace the delete-then-insert pattern (lines 839-891) with the same upsert pattern already used by `saveTraining()` (lines 488-555).
+
+Before (destructive):
+
+```
+// Delete and re-insert all related records
+await Promise.all([
+  supabase.from('training_delivery_approaches').delete().eq('training_id', id),
+  supabase.from('training_operating_systems').delete().eq('training_id', id),
+  supabase.from('training_immediate_attention').delete().eq('training_id', id),
+  supabase.from('training_verifiable_items').delete().eq('training_id', id),
+  supabase.from('training_systems_in_place').delete().eq('training_id', id),
+]);
+// Then insert if length > 0 ...
 ```
 
-This matches the existing "offline auth hardening" pattern already used in `InspectionForm.tsx`, `TrainingForm.tsx`, and `DailyAssessmentForm.tsx` form components.
+After (safe upsert, matching saveTraining):
 
-## Impact
-- CSS/layout: No changes
-- Data persistence: No changes -- this only affects the read-only flag that controls button visibility
-- All three form types (Inspection, Training, Daily Assessment) use this same hook, so the fix applies everywhere
-- The `getOfflineUserId()` function already exists and is battle-tested for offline scenarios
+```
+// Use the same upsert pattern as saveTraining()
+const prepareItems = (items, foreignKey) =>
+  items.map(item => ({
+    ...item,
+    id: item.id?.startsWith('temp-') ? crypto.randomUUID() : (item.id || crypto.randomUUID()),
+    [foreignKey]: id
+  }));
 
+const parallelOps = [];
+// Upsert each table (safe -- won't delete missing rows, just adds/updates)
+if (preparedApproaches.length > 0)
+  parallelOps.push(dbOp(supabase.from('training_delivery_approaches').upsert(...)));
+// ... same for all child tables and summary
+await Promise.all(parallelOps);
+```
+
+This change:
+
+- Eliminates the destructive delete step entirely
+- Uses upsert (insert-or-update) which is idempotent and safe
+- Matches the proven pattern already used by the auto-save flow
+- Zero impact on data already in the database -- existing rows are preserved
+- Make sure that this will never happen again for any report. Check and remove and and all dectructive data patterns for any and all parent and child tables. 
+
+### Data Integrity Verification
+
+- The `saveTraining()` function (auto-save) already uses upsert safely -- no changes needed there
+- The header fields, trainee data, and delivery/operating system data are unaffected
+- No changes to IndexedDB storage, sync timestamps, or offline behavior 
