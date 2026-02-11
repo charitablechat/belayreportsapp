@@ -1,0 +1,1 @@
+ALTER TABLE public.inspection_equipment ADD COLUMN rope_type text DEFAULT NULL;

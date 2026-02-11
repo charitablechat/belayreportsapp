@@ -609,6 +609,7 @@ export type Database = {
           production_year: number | null
           quantity: number | null
           result: string
+          rope_type: string | null
         }
         Insert: {
           comments?: string | null
@@ -620,6 +621,7 @@ export type Database = {
           production_year?: number | null
           quantity?: number | null
           result: string
+          rope_type?: string | null
         }
         Update: {
           comments?: string | null
@@ -631,6 +633,7 @@ export type Database = {
           production_year?: number | null
           quantity?: number | null
           result?: string
+          rope_type?: string | null
         }
         Relationships: [
           {

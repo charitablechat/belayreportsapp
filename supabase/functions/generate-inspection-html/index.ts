@@ -2121,7 +2121,7 @@ serve(async (req) => {
               category === "connectors"
                 ? "CONNECTORS (CARABINERS & QUICKLINKS)"
                 : category === "rope"
-                  ? "KERNMANTLE ROPE"
+                  ? "ROPE"
                   : category === "belay"
                     ? "BELAY/DESCENT DEVICES"
                     : category === "trolleys"
@@ -2136,7 +2136,7 @@ serve(async (req) => {
             <table class="equipment-table">
               <thead>
                 <tr>
-                  <th>Type</th>
+                  ${category === "rope" ? "<th>Brand</th><th>Type</th>" : "<th>Type</th>"}
                   <th>Quantity</th>
                   <th>Year</th>
                   <th>Result</th>
@@ -2151,6 +2151,7 @@ serve(async (req) => {
                     return `
                     <tr>
                       <td>${eq.equipment_type}</td>
+                      ${category === "rope" ? `<td>${eq.rope_type || "N/A"}</td>` : ""}
                       <td style="text-align: center;">${eq.quantity || "N/A"}</td>
                       <td style="text-align: center;">${eq.production_year || "N/A"}</td>
                       <td style="${resultData.cellStyle}">${resultData.html}</td>
@@ -2251,7 +2252,7 @@ serve(async (req) => {
             category === "connectors"
               ? "CONNECTORS (CARABINERS & QUICKLINKS)"
               : category === "rope"
-                ? "KERNMANTLE ROPE"
+                ? "ROPE"
                 : category === "belay"
                   ? "BELAY/DESCENT DEVICES"
                   : category === "trolleys"
