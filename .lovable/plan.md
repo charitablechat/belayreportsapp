@@ -1,39 +1,33 @@
 
 
-# Fix Duplicate Month/Year in Calendar on Mobile
+# Fix Photo Buttons Missing When Offline
 
 ## Problem
-
-The `Calendar` component (`src/components/ui/calendar.tsx`) uses `captionLayout="dropdown-buttons"` which renders both a static caption label ("February 2026") AND interactive dropdown selectors. The static label is supposed to be hidden via `caption_label: "text-sm font-medium hidden"`, but on mobile it still renders, causing the month and year to appear twice as shown in the screenshot.
+When the device goes offline (airplane mode), the "Take Photo" and "Upload" buttons disappear from all photo sections in the Inspection Form. They reappear when back online. The root cause is in the `useReportEditPermission` hook.
 
 ## Root Cause
-
-The Tailwind `hidden` class can be overridden by other styles in the react-day-picker v8 rendering. Using `!hidden` (with the important modifier) ensures the static label is suppressed regardless of specificity conflicts.
+The `useReportEditPermission` hook calls `getUserWithCache()` to determine `currentUserId`. When offline with an expired session token, this can return `null` on some devices (e.g., if `navigator.onLine` briefly reports `true` during airplane mode transitions, causing the expiry check to reject the cached token). When `currentUserId` is `null`, the hook returns `isReadOnly: true` (line 98), which hides the `PhotoCapture` buttons via `{!effectiveReadOnly && <PhotoCapture />}`.
 
 ## Fix
 
-**File: `src/components/ui/calendar.tsx`** (single change)
+**File: `src/hooks/useReportEditPermission.tsx`**
 
-| Line | Before | After |
-|------|--------|-------|
-| 22 | `caption_label: "text-sm font-medium hidden"` | `caption_label: "text-sm font-medium !hidden"` |
+Add an offline fallback using `getOfflineUserId()` (already used elsewhere in the app for this exact scenario). If `getUserWithCache()` returns null, fall back to extracting the user ID directly from localStorage, bypassing token expiry checks entirely.
 
-This uses Tailwind's `!important` modifier to guarantee the static caption label is hidden on all viewports, leaving only the interactive dropdown selectors visible.
+```typescript
+import { getUserWithCache, getSuperAdminStatusWithCache, getOfflineUserId } from "@/lib/cached-auth";
 
-## Impact Scope
+// In checkPermissions():
+const user = await getUserWithCache();
+const userId = user?.id ?? getOfflineUserId(); // Offline fallback
+setCurrentUserId(userId ?? null);
+```
 
-All date pickers across all three report types use this shared `Calendar` component, so the fix automatically applies everywhere:
+This matches the existing "offline auth hardening" pattern already used in `InspectionForm.tsx`, `TrainingForm.tsx`, and `DailyAssessmentForm.tsx` form components.
 
-- **Inspection Form**: `InspectionHeader.tsx` (inspection date), `SummarySection.tsx` (next inspection date), `PreviousInspectionDatePicker.tsx` (previous inspection date)
-- **Training Form**: `TrainingHeader.tsx` (start date), `TrainingSummarySection.tsx` (end date)
-- **Daily Assessment Form**: `DailyAssessmentHeader.tsx` (assessment date)
-- **New Inspection page**: `PreviousInspectionDatePicker` usage
-
-## Data Integrity
-
-This is a CSS-only change to a `classNames` prop. Zero impact on:
-- Date selection logic or `onSelect` callbacks
-- Data persistence / auto-save flows
-- Sync timestamp alignment
-- Systems/ziplines/equipment filtering or saving
+## Impact
+- CSS/layout: No changes
+- Data persistence: No changes -- this only affects the read-only flag that controls button visibility
+- All three form types (Inspection, Training, Daily Assessment) use this same hook, so the fix applies everywhere
+- The `getOfflineUserId()` function already exists and is battle-tested for offline scenarios
 
