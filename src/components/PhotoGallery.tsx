@@ -28,10 +28,15 @@ import {
   rectSortingStrategy,
 } from "@dnd-kit/sortable";
 
+type PhotoTableName = "inspection_photos" | "training_photos";
+
 interface PhotoGalleryProps {
   inspectionId: string;
   section: string;
   readOnly?: boolean;
+  tableName?: PhotoTableName;
+  foreignKeyColumn?: string;
+  storageBucket?: string;
 }
 
 interface Photo {
@@ -43,7 +48,14 @@ interface Photo {
   display_order: number;
 }
 
-export default function PhotoGallery({ inspectionId, section, readOnly = false }: PhotoGalleryProps) {
+export default function PhotoGallery({ 
+  inspectionId, 
+  section, 
+  readOnly = false,
+  tableName = "inspection_photos",
+  foreignKeyColumn = "inspection_id",
+  storageBucket = "inspection-photos",
+}: PhotoGalleryProps) {
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -107,10 +119,10 @@ export default function PhotoGallery({ inspectionId, section, readOnly = false }
 
       // If online, also load from Supabase
       if (isOnline) {
-        const { data, error } = await supabase
-          .from('inspection_photos')
+        const { data, error } = await (supabase
+          .from(tableName) as any)
           .select('*')
-          .eq('inspection_id', inspectionId)
+          .eq(foreignKeyColumn, inspectionId)
           .eq('photo_section', section)
           .order('display_order', { ascending: true });
 
@@ -120,7 +132,7 @@ export default function PhotoGallery({ inspectionId, section, readOnly = false }
           (data || []).map(async (photo, index) => {
             // Get signed URL with 1 hour expiration for security
             const { data: signedUrlData, error: urlError } = await supabase.storage
-              .from('inspection-photos')
+              .from(storageBucket)
               .createSignedUrl(photo.photo_url, 3600); // 1 hour = 3600 seconds
 
             if (urlError) {
@@ -272,8 +284,8 @@ export default function PhotoGallery({ inspectionId, section, readOnly = false }
           // This is ~N times faster than sequential awaits
           Promise.all(
             updates.map(update =>
-              supabase
-                .from('inspection_photos')
+              (supabase
+                .from(tableName) as any)
                 .update({ display_order: update.display_order })
                 .eq('id', update.id)
             )
@@ -291,9 +303,9 @@ export default function PhotoGallery({ inspectionId, section, readOnly = false }
     triggerHaptic('warning');
     try {
       if (isOnline && photo.uploaded) {
-        // Delete from Supabase
-        const { error } = await supabase
-          .from('inspection_photos')
+        // User-initiated delete only (explicit button click)
+        const { error } = await (supabase
+          .from(tableName) as any)
           .delete()
           .eq('id', photo.id);
 
@@ -375,7 +387,7 @@ export default function PhotoGallery({ inspectionId, section, readOnly = false }
                     <PhotoCaptionInput
                       photoId={photo.id}
                       initialCaption={photo.caption}
-                      tableName="inspection_photos"
+                      tableName={tableName}
                       disabled={readOnly}
                     />
                   </div>
