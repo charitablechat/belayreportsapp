@@ -1,121 +1,97 @@
 
 
-# Zero Data Loss Strategy: Complete Implementation Plan
+# Automated Tests for Zero Data Loss Guards
 
-## Audit Results: Remaining Threats
+## Overview
 
-After exhaustive code review of every file that touches report data, here are ALL remaining paths where data can be lost:
+Create two test files that validate the safety guards implemented in the Zero Data Loss Strategy. These are pure logic/unit tests that don't require browser or IndexedDB -- they test the guard conditions (empty-array blocking and temp-ID restrictions) by extracting and testing the guard logic directly.
 
-### CRITICAL: Service Worker (`public/sw-sync.js`) -- DELETE-THEN-INSERT
+## Test Files to Create
 
-This is the **most dangerous remaining threat**. The service worker runs independently of the main application and uses raw `fetch()` DELETE calls against the database REST API. It completely bypasses the transaction manager blocklist and all application-level safeguards.
+### 1. `src/lib/offline-storage-guards.test.ts`
 
-- Lines 97-106: `deleteRelatedData()` sends HTTP DELETE requests to `inspection_systems`, `inspection_ziplines`, `inspection_equipment`, `inspection_standards`, `inspection_summary`
-- Lines 149-156: Called inside `syncInspectionWithTransaction()` -- deletes ALL child rows then re-inserts
-- If IndexedDB returns empty arrays (quota exceeded, browser GC, corruption), the DELETE runs but INSERT is skipped -- permanent data loss
+Tests the three categories of safety guards in `offline-storage.ts`:
 
-### MODERATE: IndexedDB Local Save Functions -- Atomic Delete+Put
+**Empty-Array Guards (6 tests)**
+- `saveRelatedDataOffline` returns early when called with empty array (for each of: systems, ziplines, equipment, standards, summary)
+- `saveAssessmentDataOffline` returns early when called with empty array
+- `saveTrainingDataOffline` returns early when called with empty array
 
-Three functions in `src/lib/offline-storage.ts` use a "delete existing then put new" pattern within IndexedDB:
+**Temp-ID Restriction Guards (6 tests)**
+- `clearRelatedDataOffline` blocks when called with a permanent UUID
+- `clearRelatedDataOffline` allows when called with a `temp-` prefixed ID
+- `clearAssessmentDataOffline` blocks on permanent UUID
+- `clearAssessmentDataOffline` allows on `temp-` ID
+- `clearTrainingDataOffline` blocks on permanent UUID
+- `clearTrainingDataOffline` allows on `temp-` ID
 
-- `saveRelatedDataOffline()` (line 909): Deletes all existing items, then puts new ones
-- `saveAssessmentDataOffline()` (line 1165): Same pattern for daily assessments
-- `saveTrainingDataOffline()` (line 1424): Same pattern for trainings
+**Approach**: Since these functions depend on IndexedDB (via `idb` library), the tests will mock the `idb` module's `openDB` to provide a fake database. The key assertion is that when the guard condition is met (empty array or non-temp ID), the `openDB` function is **never called** -- proving the function returned early before touching storage.
 
-These are safe when called with populated data (the delete and put happen in the same IndexedDB transaction, so if the put fails the delete is also rolled back). However, if called with an **empty array** as the `data` parameter, all existing IndexedDB data for that report section is wiped with nothing replacing it.
+### 2. `src/lib/sw-sync-guards.test.ts`
 
-### LOW: `clearRelatedDataOffline` / `clearAssessmentDataOffline` / `clearTrainingDataOffline`
+Tests the service worker upsert logic by extracting the guard functions (`validateInspectionData` and the empty-array check in `upsertRelatedData`) and testing them in isolation.
 
-These are standalone "clear all" functions. Currently only called during temp-ID migration (cleaning up old temp-ID entries after a permanent UUID is assigned). Safe in current usage, but they are exported and could be misused.
+**Validation Tests (5 tests)**
+- Returns invalid when inspection missing required fields
+- Returns valid with complete data
+- Returns invalid for systems missing required fields
+- Returns invalid for equipment missing required fields
+- Returns valid with empty child arrays (allowed -- just means nothing to validate)
 
----
+**Upsert Empty-Array Guard Tests (3 tests)**
+- `upsertRelatedData` skips fetch when data is `null`
+- `upsertRelatedData` skips fetch when data is empty array `[]`
+- `upsertRelatedData` calls fetch when data has items
 
-## Implementation Plan
+**Approach**: Since `sw-sync.js` is a service worker file (not a module), we'll re-implement the pure guard functions in a small testable helper file `src/lib/sw-sync-validators.ts` that mirrors the exact logic, then test that. This avoids the complexity of loading service worker globals in a vitest environment.
 
-### Fix 1: Rewrite Service Worker Sync to Upsert-Only
+## Setup Required
 
-**File:** `public/sw-sync.js`
+### New file: `vitest.config.ts`
+Standard vitest config with `jsdom` environment and path aliases matching the project.
 
-Replace the `deleteRelatedData()` + `insertRelatedData()` pattern with a single `upsertRelatedData()` function that uses the PostgREST `PATCH` or `POST` with `Prefer: resolution=merge-duplicates` header (PostgREST upsert).
+### New file: `src/test/setup.ts`  
+Minimal test setup with `@testing-library/jest-dom` import and `matchMedia` mock.
 
-Changes:
-- Remove the `deleteRelatedData()` function entirely
-- Create new `upsertRelatedData()` function using HTTP POST with upsert headers
-- Update `syncInspectionWithTransaction()` to skip the delete step and only upsert
-- Add empty-array guard: if local data is empty, skip that table entirely (never send a request that could wipe data)
+### Update: `tsconfig.app.json`
+Add `"vitest/globals"` to the `types` array.
 
-### Fix 2: Add Empty-Array Guard to IndexedDB Save Functions
+## Files to Create/Modify
 
-**File:** `src/lib/offline-storage.ts`
+| File | Action |
+|------|--------|
+| `vitest.config.ts` | Create -- vitest configuration |
+| `src/test/setup.ts` | Create -- test setup file |
+| `src/lib/sw-sync-validators.ts` | Create -- extracted pure validation functions from sw-sync.js |
+| `src/lib/offline-storage-guards.test.ts` | Create -- 12 tests for empty-array and temp-ID guards |
+| `src/lib/sw-sync-guards.test.ts` | Create -- 8 tests for upsert and validation guards |
+| `tsconfig.app.json` | Update -- add vitest/globals type |
 
-Add a guard at the top of `saveRelatedDataOffline()`, `saveAssessmentDataOffline()`, and `saveTrainingDataOffline()` that prevents overwriting existing data with nothing:
+## Technical Details
 
+The tests use `vi.mock()` to mock the `idb` module, preventing any real IndexedDB access. The core assertion pattern is:
+
+```typescript
+// Mock idb so we can detect if openDB was called
+vi.mock('idb', () => ({ openDB: vi.fn() }));
+
+it('blocks save of empty array', async () => {
+  const { openDB } = await import('idb');
+  await saveRelatedDataOffline('systems', 'some-uuid', []);
+  // Guard should have returned early -- openDB never called
+  expect(openDB).not.toHaveBeenCalled();
+});
 ```
-if (data.length === 0) {
-  // SAFETY: Never overwrite existing IndexedDB data with an empty array
-  // This prevents silent data loss from empty state being persisted
-  console.warn('[Offline Storage] Blocked save of empty array -- preserving existing data');
-  return;
-}
+
+For the service worker validators, the pattern tests pure functions directly:
+
+```typescript
+it('returns invalid when inspection missing fields', () => {
+  const result = validateInspectionData(
+    { id: null, organization: '', location: '' },
+    [], [], [], [], null
+  );
+  expect(result.valid).toBe(false);
+});
 ```
 
-This ensures that even if a form component accidentally passes an empty array during initialization, auto-save, or background sync, the existing local data survives.
-
-### Fix 3: Restrict `clear*DataOffline` Functions
-
-**File:** `src/lib/offline-storage.ts`
-
-Add a parameter guard to `clearRelatedDataOffline()`, `clearAssessmentDataOffline()`, and `clearTrainingDataOffline()` that only allows clearing data for temp-IDs (the only legitimate use case):
-
-```
-if (!inspectionId.startsWith('temp-')) {
-  console.error('[SAFETY] Blocked clear operation on non-temp ID:', inspectionId);
-  return;
-}
-```
-
-This prevents any code path from accidentally wiping IndexedDB data for real (permanent UUID) reports.
-
----
-
-## Files Modified
-
-| File | Change | Risk |
-|------|--------|------|
-| `public/sw-sync.js` | Replace delete-then-insert with upsert; add empty-array guards | CRITICAL |
-| `src/lib/offline-storage.ts` | Add empty-array guards to 3 save functions; restrict 3 clear functions to temp-IDs only | MODERATE |
-
-## Files NOT Modified (Already Safe)
-
-| File | Why Safe |
-|------|----------|
-| `src/lib/atomic-sync-manager.ts` | Already converted to upsert-only + has empty-local-guard (previous fix) |
-| `src/lib/transaction-manager.ts` | Already has REPORT_TABLE_BLOCKLIST blocking deletes (previous fix) |
-| `src/pages/TrainingForm.tsx` | `completeTraining()` already converted to upsert (previous fix) |
-| `src/pages/InspectionForm.tsx` | `completeInspection()` only updates status field |
-| `src/pages/DailyAssessmentForm.tsx` | `handleSubmit()` uses upsert pattern |
-| `src/pages/Dashboard.tsx` | Already has threshold guard on orphan cleanup (previous fix) |
-| `src/components/PhotoGallery.tsx` | Photo delete is user-initiated only (explicit button click with confirmation) |
-| `src/hooks/useEmptyReportCleanup.tsx` | Uses soft-delete (sets `deleted_at`), only for truly empty reports, skipped if user interacted |
-| `src/hooks/useSoftDelete.tsx` | Admin-initiated soft-delete only |
-
-## What This Guarantees
-
-After implementation, the following failure modes are ALL protected:
-
-1. **Page refresh**: Data persists in IndexedDB (already working) -- empty-array guard prevents accidental overwrites during re-initialization
-2. **Network interruption / offline-to-online**: Sync uses upsert-only, never deletes. Empty local state is blocked from syncing
-3. **Background sync (service worker)**: Converted from delete-then-insert to upsert. Empty arrays skip the sync
-4. **Browser storage pressure / IndexedDB corruption**: Empty-array guard prevents "corrupted empty read" from propagating to server
-5. **Component unmount / state reset**: Auto-save debounce with empty-array guard prevents empty state from overwriting IndexedDB
-6. **Partial server responses**: Dashboard threshold guard already prevents orphan cleanup on incomplete data
-
-**The ONLY way data can be removed after this implementation is by explicit user action** (clicking a delete/remove button in the UI).
-
-## Testing Protocol
-
-1. **Rapid refresh test**: Fill out all fields in a Training report, rapidly refresh the page 5 times, verify all data persists
-2. **Offline-to-online test**: Fill out a report offline, toggle airplane mode on/off 3 times, verify no data lost
-3. **Empty state sync test**: Open browser DevTools, manually clear an IndexedDB store, go online -- verify server data is NOT deleted
-4. **Service worker sync test**: Create an inspection with all child data, force a service worker sync event, verify all child records survive
-5. **Multi-tab test**: Open same report in two tabs, edit in one, close the other -- verify no data wiped
