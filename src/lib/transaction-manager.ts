@@ -15,6 +15,19 @@ function withStepTimeout<T>(promise: Promise<T>, stepName: string): Promise<T> {
   ]);
 }
 
+// Tables that are NEVER allowed to have delete operations via the transaction manager
+// This is a compile-time/runtime guard against accidental data loss
+const REPORT_TABLE_BLOCKLIST = new Set([
+  'inspections', 'inspection_systems', 'inspection_ziplines', 'inspection_equipment',
+  'inspection_standards', 'inspection_summary', 'inspection_photos',
+  'trainings', 'training_delivery_approaches', 'training_operating_systems',
+  'training_immediate_attention', 'training_verifiable_items', 'training_systems_in_place',
+  'training_summary', 'training_photos',
+  'daily_assessments', 'daily_assessment_beginning_of_day', 'daily_assessment_end_of_day',
+  'daily_assessment_operating_systems', 'daily_assessment_equipment_checks',
+  'daily_assessment_structure_checks', 'daily_assessment_environment_checks',
+]);
+
 export interface TransactionStep {
   table: string;
   operation: 'insert' | 'update' | 'upsert' | 'delete';
@@ -77,6 +90,11 @@ export async function executeTransaction(
           break;
           
         case 'delete':
+          // ZERO DATA LOSS GUARD: Block delete operations on report-related tables
+          if (REPORT_TABLE_BLOCKLIST.has(step.table)) {
+            console.error(`[Transaction] BLOCKED: Delete operation on protected table "${step.table}". This is a safety guard to prevent data loss.`);
+            throw new Error(`Delete operation blocked on protected table: ${step.table}. Use upsert instead.`);
+          }
           result = await withStepTimeout(
             (supabase as any).from(step.table).delete().match(step.filter),
             `delete:${step.table}`

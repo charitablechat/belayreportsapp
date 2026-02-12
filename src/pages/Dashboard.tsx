@@ -380,14 +380,25 @@ export default function Dashboard() {
           const now = new Date().toISOString();
           Promise.all(networkData.map(inspection => saveInspectionOffline({ ...inspection, synced_at: inspection.synced_at || now })))
             .then(async () => {
-              // ORPHAN CLEANUP: Remove local records not present on server
+              // ORPHAN CLEANUP with threshold guard: protect against incomplete server responses
               try {
                 const serverIds = new Set(networkData.map((i: any) => i.id));
                 const localInspections = await getOfflineInspections(userId);
-                for (const local of localInspections) {
-                  if (!serverIds.has(local.id) && !local.id.startsWith('temp-')) {
-                    if (import.meta.env.DEV) console.log('[Dashboard] Removing orphaned local inspection:', local.id);
-                    await deleteOfflineInspection(local.id);
+                const nonTempLocals = localInspections.filter(l => !l.id.startsWith('temp-'));
+                
+                // SAFETY: If server returned far fewer records than local, skip cleanup
+                // This prevents data loss from partial responses, query limits, or RLS changes
+                if (networkData.length < nonTempLocals.length * 0.5 && nonTempLocals.length > 3) {
+                  console.warn('[Dashboard] Server returned far fewer inspections than local -- skipping orphan cleanup', {
+                    server: networkData.length,
+                    local: nonTempLocals.length,
+                  });
+                } else {
+                  for (const local of localInspections) {
+                    if (!serverIds.has(local.id) && !local.id.startsWith('temp-')) {
+                      if (import.meta.env.DEV) console.log('[Dashboard] Removing orphaned local inspection:', local.id);
+                      await deleteOfflineInspection(local.id);
+                    }
                   }
                 }
               } catch (cleanupErr) {
@@ -471,14 +482,23 @@ export default function Dashboard() {
           const nowT = new Date().toISOString();
           Promise.all(networkData.map(training => saveTrainingOffline({ ...training, synced_at: training.synced_at || nowT })))
             .then(async () => {
-              // ORPHAN CLEANUP: Remove local records not present on server
+              // ORPHAN CLEANUP with threshold guard
               try {
                 const serverIds = new Set(networkData.map((t: any) => t.id));
                 const localTrainings = await getOfflineTrainings(userId);
-                for (const local of localTrainings) {
-                  if (!serverIds.has(local.id) && !local.id.startsWith('temp-')) {
-                    if (import.meta.env.DEV) console.log('[Dashboard] Removing orphaned local training:', local.id);
-                    await deleteOfflineTraining(local.id);
+                const nonTempLocals = localTrainings.filter(l => !l.id.startsWith('temp-'));
+                
+                if (networkData.length < nonTempLocals.length * 0.5 && nonTempLocals.length > 3) {
+                  console.warn('[Dashboard] Server returned far fewer trainings than local -- skipping orphan cleanup', {
+                    server: networkData.length,
+                    local: nonTempLocals.length,
+                  });
+                } else {
+                  for (const local of localTrainings) {
+                    if (!serverIds.has(local.id) && !local.id.startsWith('temp-')) {
+                      if (import.meta.env.DEV) console.log('[Dashboard] Removing orphaned local training:', local.id);
+                      await deleteOfflineTraining(local.id);
+                    }
                   }
                 }
               } catch (cleanupErr) {
@@ -562,14 +582,23 @@ export default function Dashboard() {
           const nowA = new Date().toISOString();
           Promise.all(networkData.map(assessment => saveDailyAssessmentOffline({ ...assessment, synced_at: assessment.synced_at || nowA })))
             .then(async () => {
-              // ORPHAN CLEANUP: Remove local records not present on server
+              // ORPHAN CLEANUP with threshold guard
               try {
                 const serverIds = new Set(networkData.map((a: any) => a.id));
                 const localAssessments = await getOfflineDailyAssessments(userId);
-                for (const local of localAssessments) {
-                  if (!serverIds.has(local.id) && !local.id.startsWith('temp-')) {
-                    if (import.meta.env.DEV) console.log('[Dashboard] Removing orphaned local assessment:', local.id);
-                    await deleteOfflineDailyAssessment(local.id);
+                const nonTempLocals = localAssessments.filter(l => !l.id.startsWith('temp-'));
+                
+                if (networkData.length < nonTempLocals.length * 0.5 && nonTempLocals.length > 3) {
+                  console.warn('[Dashboard] Server returned far fewer assessments than local -- skipping orphan cleanup', {
+                    server: networkData.length,
+                    local: nonTempLocals.length,
+                  });
+                } else {
+                  for (const local of localAssessments) {
+                    if (!serverIds.has(local.id) && !local.id.startsWith('temp-')) {
+                      if (import.meta.env.DEV) console.log('[Dashboard] Removing orphaned local assessment:', local.id);
+                      await deleteOfflineDailyAssessment(local.id);
+                    }
                   }
                 }
               } catch (cleanupErr) {

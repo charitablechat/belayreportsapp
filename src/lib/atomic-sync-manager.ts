@@ -331,10 +331,10 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
       rollbackData,
     });
     
-    // Step 2: Delete existing related data (to handle deletions)
-    // Capture existing data for rollback safety before deletion
+    // ZERO DATA LOSS: Empty-array safeguard
+    // If the server has child data but local is completely empty, this is suspicious
+    // (likely IndexedDB corruption or failed read) -- skip sync to prevent data loss
     if (recordStatus?.record_exists && !recordStatus?.is_deleted) {
-      // Fetch existing related data for rollback
       const [
         existingSystems,
         existingZiplines,
@@ -349,46 +349,56 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
         fetchRollbackData('inspection_summary', { inspection_id: inspectionId }),
       ]);
       
-      steps.push(
-        { table: 'inspection_systems', operation: 'delete', filter: { inspection_id: inspectionId }, rollbackData: existingSystems },
-        { table: 'inspection_ziplines', operation: 'delete', filter: { inspection_id: inspectionId }, rollbackData: existingZiplines },
-        { table: 'inspection_equipment', operation: 'delete', filter: { inspection_id: inspectionId }, rollbackData: existingEquipment },
-        { table: 'inspection_standards', operation: 'delete', filter: { inspection_id: inspectionId }, rollbackData: existingStandards },
-        { table: 'inspection_summary', operation: 'delete', filter: { inspection_id: inspectionId }, rollbackData: existingSummary }
-      );
+      const serverHasChildData = existingSystems.length > 0 || existingZiplines.length > 0 || 
+        existingEquipment.length > 0 || existingStandards.length > 0 || existingSummary.length > 0;
+      const localIsCompletelyEmpty = systems.length === 0 && ziplines.length === 0 && 
+        equipment.length === 0 && standards.length === 0 && !summary;
+      
+      if (serverHasChildData && localIsCompletelyEmpty) {
+        console.error('[SAFETY] Blocked inspection sync: server has child data but local is completely empty', {
+          inspectionId,
+          serverCounts: {
+            systems: existingSystems.length,
+            ziplines: existingZiplines.length,
+            equipment: existingEquipment.length,
+            standards: existingStandards.length,
+            summary: existingSummary.length,
+          },
+        });
+        return { success: false, skipped: true, reason: 'empty_local_guard' };
+      }
     }
     
-    // Step 3: Insert all related data as BATCH operations (much faster on mobile)
-    // Instead of N individual inserts, use single bulk insert per table
+    // Step 2: UPSERT all related data (NEVER delete -- preserves server rows not in local state)
     if (systems.length > 0) {
       steps.push({
         table: 'inspection_systems',
-        operation: 'insert',
-        data: systems, // Batch insert all at once
+        operation: 'upsert',
+        data: systems,
       });
     }
     
     if (ziplines.length > 0) {
       steps.push({
         table: 'inspection_ziplines',
-        operation: 'insert',
-        data: ziplines, // Batch insert all at once
+        operation: 'upsert',
+        data: ziplines,
       });
     }
     
     if (equipment.length > 0) {
       steps.push({
         table: 'inspection_equipment',
-        operation: 'insert',
-        data: equipment, // Batch insert all at once
+        operation: 'upsert',
+        data: equipment,
       });
     }
     
     if (standards.length > 0) {
       steps.push({
         table: 'inspection_standards',
-        operation: 'insert',
-        data: standards, // Batch insert all at once
+        operation: 'upsert',
+        data: standards,
       });
     }
     
@@ -401,8 +411,8 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
       
       steps.push({
         table: 'inspection_summary',
-        operation: 'insert',
-        data: [sanitizedSummary], // Wrap in array for consistency
+        operation: 'upsert',
+        data: [sanitizedSummary],
       });
     }
     
@@ -840,10 +850,10 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
       rollbackData,
     });
     
-    // Step 2: Delete existing related data (to handle deletions)
-    // Capture existing data for rollback safety before deletion
+    // ZERO DATA LOSS: Empty-array safeguard
+    // If the server has child data but local is completely empty, this is suspicious
+    // (likely IndexedDB corruption or failed read) -- skip sync to prevent data loss
     if (recordStatus?.record_exists && !recordStatus?.is_deleted) {
-      // Fetch existing related data for rollback
       const [
         existingApproaches,
         existingSystems,
@@ -860,54 +870,67 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
         fetchRollbackData('training_summary', { training_id: trainingId }),
       ]);
       
-      steps.push(
-        { table: 'training_delivery_approaches', operation: 'delete', filter: { training_id: trainingId }, rollbackData: existingApproaches },
-        { table: 'training_operating_systems', operation: 'delete', filter: { training_id: trainingId }, rollbackData: existingSystems },
-        { table: 'training_immediate_attention', operation: 'delete', filter: { training_id: trainingId }, rollbackData: existingAttention },
-        { table: 'training_verifiable_items', operation: 'delete', filter: { training_id: trainingId }, rollbackData: existingVerifiable },
-        { table: 'training_systems_in_place', operation: 'delete', filter: { training_id: trainingId }, rollbackData: existingSystemsInPlace },
-        { table: 'training_summary', operation: 'delete', filter: { training_id: trainingId }, rollbackData: existingSummary }
-      );
+      const serverHasChildData = existingApproaches.length > 0 || existingSystems.length > 0 || 
+        existingAttention.length > 0 || existingVerifiable.length > 0 || 
+        existingSystemsInPlace.length > 0 || existingSummary.length > 0;
+      const localIsCompletelyEmpty = delivery_approaches.length === 0 && operating_systems.length === 0 && 
+        immediate_attention.length === 0 && verifiable_items.length === 0 && 
+        systems_in_place.length === 0 && !summary;
+      
+      if (serverHasChildData && localIsCompletelyEmpty) {
+        console.error('[SAFETY] Blocked training sync: server has child data but local is completely empty', {
+          trainingId,
+          serverCounts: {
+            approaches: existingApproaches.length,
+            systems: existingSystems.length,
+            attention: existingAttention.length,
+            verifiable: existingVerifiable.length,
+            systemsInPlace: existingSystemsInPlace.length,
+            summary: existingSummary.length,
+          },
+        });
+        return { success: false, skipped: true, reason: 'empty_local_guard' };
+      }
     }
     
-    // Step 3: Insert all related data as BATCH operations (much faster on mobile)
+    // Step 2: UPSERT all related data (NEVER delete -- preserves server rows not in local state)
     if (delivery_approaches.length > 0) {
       steps.push({
         table: 'training_delivery_approaches',
-        operation: 'insert',
-        data: delivery_approaches, // Batch insert all at once
+        operation: 'upsert',
+        data: delivery_approaches,
       });
     }
     
     if (operating_systems.length > 0) {
       steps.push({
         table: 'training_operating_systems',
-        operation: 'insert',
-        data: operating_systems, // Batch insert all at once
+        operation: 'upsert',
+        data: operating_systems,
       });
     }
     
     if (immediate_attention.length > 0) {
       steps.push({
         table: 'training_immediate_attention',
-        operation: 'insert',
-        data: immediate_attention, // Batch insert all at once
+        operation: 'upsert',
+        data: immediate_attention,
       });
     }
     
     if (verifiable_items.length > 0) {
       steps.push({
         table: 'training_verifiable_items',
-        operation: 'insert',
-        data: verifiable_items, // Batch insert all at once
+        operation: 'upsert',
+        data: verifiable_items,
       });
     }
     
     if (systems_in_place.length > 0) {
       steps.push({
         table: 'training_systems_in_place',
-        operation: 'insert',
-        data: systems_in_place, // Batch insert all at once
+        operation: 'upsert',
+        data: systems_in_place,
       });
     }
     
@@ -920,8 +943,8 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
       
       steps.push({
         table: 'training_summary',
-        operation: 'insert',
-        data: [sanitizedSummary], // Wrap in array for consistency
+        operation: 'upsert',
+        data: [sanitizedSummary],
       });
     }
     
@@ -1280,10 +1303,10 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
       rollbackData,
     });
     
-    // Step 2: Delete existing related data (to handle deletions)
-    // Capture existing data for rollback safety before deletion
+    // ZERO DATA LOSS: Empty-array safeguard
+    // If the server has child data but local is completely empty, this is suspicious
+    // (likely IndexedDB corruption or failed read) -- skip sync to prevent data loss
     if (recordStatus?.record_exists && !recordStatus?.is_deleted) {
-      // Fetch existing related data for rollback
       const [
         existingBeginning,
         existingEnd,
@@ -1300,62 +1323,75 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
         fetchRollbackData('daily_assessment_environment_checks', { assessment_id: assessmentId }),
       ]);
       
-      steps.push(
-        { table: 'daily_assessment_beginning_of_day', operation: 'delete', filter: { assessment_id: assessmentId }, rollbackData: existingBeginning },
-        { table: 'daily_assessment_end_of_day', operation: 'delete', filter: { assessment_id: assessmentId }, rollbackData: existingEnd },
-        { table: 'daily_assessment_operating_systems', operation: 'delete', filter: { assessment_id: assessmentId }, rollbackData: existingSystems },
-        { table: 'daily_assessment_equipment_checks', operation: 'delete', filter: { assessment_id: assessmentId }, rollbackData: existingEquipment },
-        { table: 'daily_assessment_structure_checks', operation: 'delete', filter: { assessment_id: assessmentId }, rollbackData: existingStructure },
-        { table: 'daily_assessment_environment_checks', operation: 'delete', filter: { assessment_id: assessmentId }, rollbackData: existingEnvironment }
-      );
+      const serverHasChildData = existingBeginning.length > 0 || existingEnd.length > 0 || 
+        existingSystems.length > 0 || existingEquipment.length > 0 || 
+        existingStructure.length > 0 || existingEnvironment.length > 0;
+      const localIsCompletelyEmpty = beginning_of_day.length === 0 && end_of_day.length === 0 && 
+        operating_systems.length === 0 && equipment_checks.length === 0 && 
+        structure_checks.length === 0 && environment_checks.length === 0;
+      
+      if (serverHasChildData && localIsCompletelyEmpty) {
+        console.error('[SAFETY] Blocked assessment sync: server has child data but local is completely empty', {
+          assessmentId,
+          serverCounts: {
+            beginning: existingBeginning.length,
+            end: existingEnd.length,
+            systems: existingSystems.length,
+            equipment: existingEquipment.length,
+            structure: existingStructure.length,
+            environment: existingEnvironment.length,
+          },
+        });
+        return { success: false, skipped: true, reason: 'empty_local_guard' };
+      }
     }
     
-    // Step 3: Insert all related data as BATCH operations (much faster on mobile)
+    // Step 2: UPSERT all related data (NEVER delete -- preserves server rows not in local state)
     if (beginning_of_day.length > 0) {
       steps.push({
         table: 'daily_assessment_beginning_of_day',
-        operation: 'insert',
-        data: beginning_of_day, // Batch insert all at once
+        operation: 'upsert',
+        data: beginning_of_day,
       });
     }
     
     if (end_of_day.length > 0) {
       steps.push({
         table: 'daily_assessment_end_of_day',
-        operation: 'insert',
-        data: end_of_day, // Batch insert all at once
+        operation: 'upsert',
+        data: end_of_day,
       });
     }
     
     if (operating_systems.length > 0) {
       steps.push({
         table: 'daily_assessment_operating_systems',
-        operation: 'insert',
-        data: operating_systems, // Batch insert all at once
+        operation: 'upsert',
+        data: operating_systems,
       });
     }
     
     if (equipment_checks.length > 0) {
       steps.push({
         table: 'daily_assessment_equipment_checks',
-        operation: 'insert',
-        data: equipment_checks, // Batch insert all at once
+        operation: 'upsert',
+        data: equipment_checks,
       });
     }
     
     if (structure_checks.length > 0) {
       steps.push({
         table: 'daily_assessment_structure_checks',
-        operation: 'insert',
-        data: structure_checks, // Batch insert all at once
+        operation: 'upsert',
+        data: structure_checks,
       });
     }
     
     if (environment_checks.length > 0) {
       steps.push({
         table: 'daily_assessment_environment_checks',
-        operation: 'insert',
-        data: environment_checks, // Batch insert all at once
+        operation: 'upsert',
+        data: environment_checks,
       });
     }
     
