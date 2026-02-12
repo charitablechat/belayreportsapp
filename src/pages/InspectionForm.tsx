@@ -2261,7 +2261,7 @@ export default function InspectionForm() {
                 <EquipmentTable
                   category="rope"
                   displayName="Rope"
-                  showRopeType
+                  typeOptions={["Dynamic Kernmantle", "Low-elongation Kernmantle", "Static Kernmantle", "Multi-Line"]}
                   equipment={equipment}
                   onUpdate={setEquipment}
                   onImmediateSave={stableTriggerImmediateSave}

@@ -28,7 +28,7 @@ interface EquipmentTableProps {
   equipment: any[];
   onUpdate: (equipmentOrUpdater: any[] | ((prev: any[]) => any[])) => void;
   onImmediateSave?: () => void;
-  showRopeType?: boolean;
+  typeOptions?: string[];
 }
 
 /**
@@ -41,7 +41,7 @@ interface EquipmentTableProps {
  * 6. React.memo on expensive sub-components
  */
 
-function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediateSave, showRopeType }: EquipmentTableProps) {
+function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediateSave, typeOptions }: EquipmentTableProps) {
   // PERFORMANCE: Single hook call, passed to all animation children
   const isMobile = useIsMobile();
   
@@ -81,7 +81,6 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
         inspection_id: window.location.pathname.split('/').pop(),
         equipment_category: category,
         equipment_type: "",
-        rope_type: showRopeType ? null : undefined,
         production_year: null,
         quantity: null,
         result: "pass",
@@ -126,8 +125,7 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
           <table className="w-full border-collapse">
             <thead>
               <tr className="bg-blue-50 dark:bg-blue-950/20">
-                <th className="border p-3 text-left font-semibold text-sm">{showRopeType ? "Brand" : "Type"}</th>
-                {showRopeType && <th className="border p-3 text-left font-semibold text-sm w-48">Type</th>}
+                <th className="border p-3 text-left font-semibold text-sm">Type</th>
                 <th className="border p-3 text-left font-semibold text-sm w-32">Production Year</th>
                 <th className="border p-3 text-left font-semibold text-sm w-24">Quantity</th>
                 <th className="border p-3 text-left font-semibold text-sm w-48">Result</th>
@@ -145,36 +143,41 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
                   className="hover:bg-muted/50"
                 >
                    <td className="border p-2">
-                    <GlobalAutocomplete
-                      value={item.equipment_type}
-                      onChange={(value) => updateEquipment(item, "equipment_type", value)}
-                      onBlur={onImmediateSave}
-                      fieldType="equipment_type"
-                      placeholder={showRopeType ? "Enter or select brand" : "Enter or select type"}
-                      className={cn(
-                        "border-0 bg-transparent",
-                        !item.equipment_type || item.equipment_type.trim() === ""
-                          ? "ring-2 ring-destructive"
-                          : ""
-                      )}
-                    />
-                  </td>
-                  {showRopeType && (
-                    <td className="border p-2">
+                    {typeOptions ? (
                       <Select
-                        value={item.rope_type || ""}
-                        onValueChange={(v) => { updateEquipment(item, "rope_type", v); onImmediateSave?.(); }}
+                        value={item.equipment_type || ""}
+                        onValueChange={(v) => { updateEquipment(item, "equipment_type", v); onImmediateSave?.(); }}
                       >
-                        <SelectTrigger className="border-0 bg-transparent">
+                        <SelectTrigger className={cn(
+                          "border-0 bg-transparent",
+                          !item.equipment_type || item.equipment_type.trim() === ""
+                            ? "ring-2 ring-destructive"
+                            : ""
+                        )}>
                           <SelectValue placeholder="Select type" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="Kernmantle">Kernmantle</SelectItem>
-                          <SelectItem value="Low Elongation (static)">Low Elongation (static)</SelectItem>
+                          {typeOptions.map((opt) => (
+                            <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
-                    </td>
-                  )}
+                    ) : (
+                      <GlobalAutocomplete
+                        value={item.equipment_type}
+                        onChange={(value) => updateEquipment(item, "equipment_type", value)}
+                        onBlur={onImmediateSave}
+                        fieldType="equipment_type"
+                        placeholder="Enter or select type"
+                        className={cn(
+                          "border-0 bg-transparent",
+                          !item.equipment_type || item.equipment_type.trim() === ""
+                            ? "ring-2 ring-destructive"
+                            : ""
+                        )}
+                      />
+                    )}
+                  </td>
                   <td className="border p-2">
                     <div className="flex items-center gap-1">
                       {item.production_year === 0 ? (
@@ -295,37 +298,40 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
                 </Button>
                 <div className="space-y-3 pr-10">
                    <div>
-                    <Label className="text-xs text-muted-foreground">{showRopeType ? "Brand *" : "Type *"}</Label>
-                    <GlobalAutocomplete
-                      value={item.equipment_type}
-                      onChange={(value) => updateEquipment(item, "equipment_type", value)}
-                      onBlur={onImmediateSave}
-                      fieldType="equipment_type"
-                      placeholder={showRopeType ? "Enter or select brand" : "Enter or select type"}
-                      className={cn(
-                        !item.equipment_type || item.equipment_type.trim() === ""
-                          ? "ring-2 ring-destructive"
-                          : ""
-                      )}
-                    />
-                  </div>
-                  {showRopeType && (
-                    <div>
-                      <Label className="text-xs text-muted-foreground">Type</Label>
+                    <Label className="text-xs text-muted-foreground">Type *</Label>
+                    {typeOptions ? (
                       <Select
-                        value={item.rope_type || ""}
-                        onValueChange={(v) => { updateEquipment(item, "rope_type", v); onImmediateSave?.(); }}
+                        value={item.equipment_type || ""}
+                        onValueChange={(v) => { updateEquipment(item, "equipment_type", v); onImmediateSave?.(); }}
                       >
-                        <SelectTrigger>
+                        <SelectTrigger className={cn(
+                          !item.equipment_type || item.equipment_type.trim() === ""
+                            ? "ring-2 ring-destructive"
+                            : ""
+                        )}>
                           <SelectValue placeholder="Select type" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="Kernmantle">Kernmantle</SelectItem>
-                          <SelectItem value="Low Elongation (static)">Low Elongation (static)</SelectItem>
+                          {typeOptions.map((opt) => (
+                            <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
-                    </div>
-                  )}
+                    ) : (
+                      <GlobalAutocomplete
+                        value={item.equipment_type}
+                        onChange={(value) => updateEquipment(item, "equipment_type", value)}
+                        onBlur={onImmediateSave}
+                        fieldType="equipment_type"
+                        placeholder="Enter or select type"
+                        className={cn(
+                          !item.equipment_type || item.equipment_type.trim() === ""
+                            ? "ring-2 ring-destructive"
+                            : ""
+                        )}
+                      />
+                    )}
+                  </div>
                   
                   <div className="grid grid-cols-2 gap-4">
                     <div>

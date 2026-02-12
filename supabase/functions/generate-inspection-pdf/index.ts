@@ -416,18 +416,10 @@ serve(async (req) => {
         doc.text(category, margin, yPos);
         yPos += 6;
 
-        const isRope = category === 'rope';
         doc.autoTable({
           startY: yPos,
-          head: [isRope ? ['Brand', 'Type', 'Qty', 'Year', 'Result', 'Comments'] : ['Type', 'Qty', 'Year', 'Result', 'Comments']],
-          body: items.map(eq => isRope ? [
-            stripHtml(eq.equipment_type) || 'N/A',
-            eq.rope_type || 'N/A',
-            eq.quantity?.toString() || 'N/A',
-            eq.production_year?.toString() || 'N/A',
-            eq.result || 'N/A',
-            formatCommentsForPdf(eq.comments)
-          ] : [
+          head: [['Type', 'Qty', 'Year', 'Result', 'Comments']],
+          body: items.map(eq => [
             stripHtml(eq.equipment_type) || 'N/A',
             eq.quantity?.toString() || 'N/A',
             eq.production_year?.toString() || 'N/A',
@@ -437,14 +429,7 @@ serve(async (req) => {
           styles: { fontSize: 9, cellPadding: 2, textColor: [0, 0, 0] },
           headStyles: { fillColor: [30, 64, 175], textColor: [255, 255, 255], fontStyle: 'bold' },
           alternateRowStyles: { fillColor: [248, 250, 252] },
-          columnStyles: isRope ? {
-            0: { cellWidth: 30 },
-            1: { cellWidth: 35 },
-            2: { cellWidth: 12 },
-            3: { cellWidth: 15 },
-            4: { cellWidth: 20 },
-            5: { cellWidth: 'auto' }
-          } : {
+          columnStyles: {
             0: { cellWidth: 40 },
             1: { cellWidth: 15 },
             2: { cellWidth: 15 },
