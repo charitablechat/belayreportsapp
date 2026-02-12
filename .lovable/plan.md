@@ -1,97 +1,64 @@
 
 
-# Automated Tests for Zero Data Loss Guards
+# Remove Brand Column from Rope Equipment & Update Type Dropdown
 
 ## Overview
 
-Create two test files that validate the safety guards implemented in the Zero Data Loss Strategy. These are pure logic/unit tests that don't require browser or IndexedDB -- they test the guard conditions (empty-array blocking and temp-ID restrictions) by extracting and testing the guard logic directly.
+Remove the `brand` column concept from Rope equipment records and convert the existing two-column layout (Brand + Type dropdown) into a single "Type" dropdown with four specific options. This change touches the UI form, database schema, and report generation (HTML and PDF).
 
-## Test Files to Create
+## What Changes
 
-### 1. `src/lib/offline-storage-guards.test.ts`
+The current Rope equipment row has two columns:
+- **Brand** (free-text autocomplete via `equipment_type` field)
+- **Type** (dropdown via `rope_type` field with 2 options)
 
-Tests the three categories of safety guards in `offline-storage.ts`:
+After this change, Rope equipment will have one column:
+- **Type** (dropdown with 4 options: Dynamic Kernmantle, Low-elongation Kernmantle, Static Kernmantle, Multi-Line)
 
-**Empty-Array Guards (6 tests)**
-- `saveRelatedDataOffline` returns early when called with empty array (for each of: systems, ziplines, equipment, standards, summary)
-- `saveAssessmentDataOffline` returns early when called with empty array
-- `saveTrainingDataOffline` returns early when called with empty array
+The `equipment_type` column will store the selected dropdown value (replacing the free-text brand). The `rope_type` column becomes unused.
 
-**Temp-ID Restriction Guards (6 tests)**
-- `clearRelatedDataOffline` blocks when called with a permanent UUID
-- `clearRelatedDataOffline` allows when called with a `temp-` prefixed ID
-- `clearAssessmentDataOffline` blocks on permanent UUID
-- `clearAssessmentDataOffline` allows on `temp-` ID
-- `clearTrainingDataOffline` blocks on permanent UUID
-- `clearTrainingDataOffline` allows on `temp-` ID
+## Data Safety
 
-**Approach**: Since these functions depend on IndexedDB (via `idb` library), the tests will mock the `idb` module's `openDB` to provide a fake database. The key assertion is that when the guard condition is met (empty array or non-temp ID), the `openDB` function is **never called** -- proving the function returned early before touching storage.
+All changes use **update/upsert** patterns only. No destructive delete operations. Existing records retain their data; the `rope_type` column is left in the database (not dropped) to avoid data loss for historical records.
 
-### 2. `src/lib/sw-sync-guards.test.ts`
+## Files to Modify
 
-Tests the service worker upsert logic by extracting the guard functions (`validateInspectionData` and the empty-array check in `upsertRelatedData`) and testing them in isolation.
-
-**Validation Tests (5 tests)**
-- Returns invalid when inspection missing required fields
-- Returns valid with complete data
-- Returns invalid for systems missing required fields
-- Returns invalid for equipment missing required fields
-- Returns valid with empty child arrays (allowed -- just means nothing to validate)
-
-**Upsert Empty-Array Guard Tests (3 tests)**
-- `upsertRelatedData` skips fetch when data is `null`
-- `upsertRelatedData` skips fetch when data is empty array `[]`
-- `upsertRelatedData` calls fetch when data has items
-
-**Approach**: Since `sw-sync.js` is a service worker file (not a module), we'll re-implement the pure guard functions in a small testable helper file `src/lib/sw-sync-validators.ts` that mirrors the exact logic, then test that. This avoids the complexity of loading service worker globals in a vitest environment.
-
-## Setup Required
-
-### New file: `vitest.config.ts`
-Standard vitest config with `jsdom` environment and path aliases matching the project.
-
-### New file: `src/test/setup.ts`  
-Minimal test setup with `@testing-library/jest-dom` import and `matchMedia` mock.
-
-### Update: `tsconfig.app.json`
-Add `"vitest/globals"` to the `types` array.
-
-## Files to Create/Modify
-
-| File | Action |
+| File | Change |
 |------|--------|
-| `vitest.config.ts` | Create -- vitest configuration |
-| `src/test/setup.ts` | Create -- test setup file |
-| `src/lib/sw-sync-validators.ts` | Create -- extracted pure validation functions from sw-sync.js |
-| `src/lib/offline-storage-guards.test.ts` | Create -- 12 tests for empty-array and temp-ID guards |
-| `src/lib/sw-sync-guards.test.ts` | Create -- 8 tests for upsert and validation guards |
-| `tsconfig.app.json` | Update -- add vitest/globals type |
+| `src/components/inspection/EquipmentTable.tsx` | Replace Brand autocomplete + Type dropdown with single Type dropdown (4 options). Remove `showRopeType` prop. |
+| `src/pages/InspectionForm.tsx` | Remove `showRopeType` prop from Rope EquipmentTable usage. |
+| `supabase/functions/generate-inspection-html/index.ts` | Remove Brand/Type dual-column for rope; use single "Type" column showing `equipment_type`. |
+| `supabase/functions/generate-inspection-pdf/index.ts` | Remove Brand/Type dual-column for rope; use single "Type" column like other categories. |
 
 ## Technical Details
 
-The tests use `vi.mock()` to mock the `idb` module, preventing any real IndexedDB access. The core assertion pattern is:
+### 1. EquipmentTable.tsx
 
-```typescript
-// Mock idb so we can detect if openDB was called
-vi.mock('idb', () => ({ openDB: vi.fn() }));
+- Remove the `showRopeType` prop entirely from the interface and component.
+- For the Rope category, the first column ("Type") will render a `Select` dropdown instead of the `GlobalAutocomplete`. The dropdown options are:
+  - `Dynamic Kernmantle`
+  - `Low-elongation Kernmantle`
+  - `Static Kernmantle`
+  - `Multi-Line`
+- The selected value is stored in `equipment_type` (not `rope_type`).
+- Remove the conditional second "Type" column (`rope_type` dropdown).
+- Need a new prop or detection mechanism: since `showRopeType` is being removed, the component needs to know when to show a dropdown vs. autocomplete. A new prop `useTypeDropdown` with the allowed values array, or simply a `ropeCategory` boolean, will be introduced. The simplest approach: add a `typeOptions` prop (optional string array). When provided, the Type column renders a dropdown with those options instead of the autocomplete.
+- Remove the `rope_type` field from `addEquipment` initialization.
+- Both desktop table and mobile card views are updated.
 
-it('blocks save of empty array', async () => {
-  const { openDB } = await import('idb');
-  await saveRelatedDataOffline('systems', 'some-uuid', []);
-  // Guard should have returned early -- openDB never called
-  expect(openDB).not.toHaveBeenCalled();
-});
-```
+### 2. InspectionForm.tsx
 
-For the service worker validators, the pattern tests pure functions directly:
+- Remove `showRopeType` prop.
+- Pass `typeOptions={["Dynamic Kernmantle", "Low-elongation Kernmantle", "Static Kernmantle", "Multi-Line"]}` to the Rope EquipmentTable.
 
-```typescript
-it('returns invalid when inspection missing fields', () => {
-  const result = validateInspectionData(
-    { id: null, organization: '', location: '' },
-    [], [], [], [], null
-  );
-  expect(result.valid).toBe(false);
-});
-```
+### 3. generate-inspection-html/index.ts
+
+- Remove the `category === "rope"` branch that renders `<th>Brand</th><th>Type</th>`.
+- Rope now renders identically to other categories: single `<th>Type</th>` column with `eq.equipment_type`.
+
+### 4. generate-inspection-pdf/index.ts
+
+- Remove the `isRope` branching that adds a Brand column.
+- Rope uses the same column layout as other equipment categories.
+- Adjust `columnStyles` to use the non-rope layout for all categories.
 
