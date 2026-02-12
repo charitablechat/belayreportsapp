@@ -1,133 +1,121 @@
 
-# Zero Data Loss Architecture: Comprehensive Protection Plan
 
-## Executive Summary
+# Zero Data Loss Strategy: Complete Implementation Plan
 
-After a thorough audit of every file that touches report data, I found **3 critical destructive patterns** that can silently wipe user-entered data. This plan eliminates ALL of them and adds safeguards to guarantee that no data is ever removed except by explicit user action (clicking a delete button).
+## Audit Results: Remaining Threats
 
----
+After exhaustive code review of every file that touches report data, here are ALL remaining paths where data can be lost:
 
-## Findings: All Destructive Patterns Identified
+### CRITICAL: Service Worker (`public/sw-sync.js`) -- DELETE-THEN-INSERT
 
-### CRITICAL 1: Atomic Sync Manager -- Delete-Then-Insert (ALL 3 report types)
+This is the **most dangerous remaining threat**. The service worker runs independently of the main application and uses raw `fetch()` DELETE calls against the database REST API. It completely bypasses the transaction manager blocklist and all application-level safeguards.
 
-**File:** `src/lib/atomic-sync-manager.ts`
+- Lines 97-106: `deleteRelatedData()` sends HTTP DELETE requests to `inspection_systems`, `inspection_ziplines`, `inspection_equipment`, `inspection_standards`, `inspection_summary`
+- Lines 149-156: Called inside `syncInspectionWithTransaction()` -- deletes ALL child rows then re-inserts
+- If IndexedDB returns empty arrays (quota exceeded, browser GC, corruption), the DELETE runs but INSERT is skipped -- permanent data loss
 
-The background sync system uses a **delete-all-rows-then-insert** pattern for child tables. If the local IndexedDB has empty arrays (e.g., user never visited that tab, or IndexedDB read failed), the delete executes but nothing is inserted -- wiping the server data permanently.
+### MODERATE: IndexedDB Local Save Functions -- Atomic Delete+Put
 
-**Affected lines:**
-- Inspections: lines 334-358 (delete inspection_systems, ziplines, equipment, standards, summary)
-- Trainings: lines 843-870 (delete training_delivery_approaches, operating_systems, immediate_attention, verifiable_items, systems_in_place, summary)
-- Daily Assessments: lines 1283-1310 (delete daily_assessment_beginning_of_day, end_of_day, operating_systems, equipment_checks, structure_checks, environment_checks)
+Three functions in `src/lib/offline-storage.ts` use a "delete existing then put new" pattern within IndexedDB:
 
-**Risk:** This runs automatically in the background every 30 minutes and on every online event. If IndexedDB returns empty data for ANY reason (corruption, quota exceeded, browser GC), the sync will delete all server-side child data for that report.
+- `saveRelatedDataOffline()` (line 909): Deletes all existing items, then puts new ones
+- `saveAssessmentDataOffline()` (line 1165): Same pattern for daily assessments
+- `saveTrainingDataOffline()` (line 1424): Same pattern for trainings
 
-### CRITICAL 2: Transaction Manager -- Supports "delete" Operation
+These are safe when called with populated data (the delete and put happen in the same IndexedDB transaction, so if the put fails the delete is also rolled back). However, if called with an **empty array** as the `data` parameter, all existing IndexedDB data for that report section is wiped with nothing replacing it.
 
-**File:** `src/lib/transaction-manager.ts` (lines 79-84, 148-157)
+### LOW: `clearRelatedDataOffline` / `clearAssessmentDataOffline` / `clearTrainingDataOffline`
 
-The transaction manager has a `delete` operation type that is actively used by the atomic sync manager. The rollback mechanism attempts to re-insert deleted data on failure, but if the rollback itself fails (network timeout, quota error), the data is gone permanently.
-
-### MODERATE 3: Dashboard Orphan Cleanup -- Local Data Deletion
-
-**File:** `src/pages/Dashboard.tsx` (lines 388-391, 479-482, 570-573)
-
-When the dashboard fetches reports from the server, it deletes any local IndexedDB records not found on the server (excluding temp- IDs). This is generally safe but could delete local data if:
-- The server query hits the 1000-row limit and returns an incomplete list
-- A network timeout returns partial results
-- RLS policy changes make records invisible
+These are standalone "clear all" functions. Currently only called during temp-ID migration (cleaning up old temp-ID entries after a permanent UUID is assigned). Safe in current usage, but they are exported and could be misused.
 
 ---
 
-## The Fix: Upsert-Only Architecture
+## Implementation Plan
 
-### Change 1: Replace ALL delete-then-insert with upsert in `atomic-sync-manager.ts`
+### Fix 1: Rewrite Service Worker Sync to Upsert-Only
 
-For each of the 3 report types, replace the destructive pattern:
+**File:** `public/sw-sync.js`
 
-```text
-BEFORE (dangerous):
-  Step 2: DELETE all child rows WHERE parent_id = X
-  Step 3: INSERT child rows (skipped if array empty = DATA LOSS)
+Replace the `deleteRelatedData()` + `insertRelatedData()` pattern with a single `upsertRelatedData()` function that uses the PostgREST `PATCH` or `POST` with `Prefer: resolution=merge-duplicates` header (PostgREST upsert).
 
-AFTER (safe):
-  Step 2: UPSERT child rows (insert or update, never delete)
-  -- No delete step exists. Empty arrays simply skip the upsert.
-  -- Existing server rows are preserved untouched.
+Changes:
+- Remove the `deleteRelatedData()` function entirely
+- Create new `upsertRelatedData()` function using HTTP POST with upsert headers
+- Update `syncInspectionWithTransaction()` to skip the delete step and only upsert
+- Add empty-array guard: if local data is empty, skip that table entirely (never send a request that could wipe data)
+
+### Fix 2: Add Empty-Array Guard to IndexedDB Save Functions
+
+**File:** `src/lib/offline-storage.ts`
+
+Add a guard at the top of `saveRelatedDataOffline()`, `saveAssessmentDataOffline()`, and `saveTrainingDataOffline()` that prevents overwriting existing data with nothing:
+
 ```
-
-**Inspection sync** (lines 334-407): Remove the 5 delete steps. Change the 5 insert steps to upsert operations.
-
-**Training sync** (lines 843-926): Remove the 6 delete steps. Change the 6 insert steps to upsert operations.
-
-**Daily Assessment sync** (lines 1283-1360): Remove the 6 delete steps. Change the 6 insert steps to upsert operations.
-
-Each upsert will use `onConflict: 'id'` to update existing rows or insert new ones.
-
-### Change 2: Remove "delete" operation from `transaction-manager.ts`
-
-Since no code path should ever use destructive deletes for report data, remove the `delete` case from `executeTransaction()` and its rollback handler. This acts as a compile-time/runtime guard: even if someone accidentally adds a delete step in the future, the transaction manager will reject it.
-
-**Alternative (safer):** Instead of removing it entirely (since it may be needed for non-report operations in the future), add a guard that logs a loud warning and blocks execution if a delete is attempted on any report-related table.
-
-### Change 3: Add empty-array safeguard to sync functions
-
-Before syncing, verify that local data is not suspiciously empty when server data exists. If the server has 10 child records but local has 0, this is almost certainly a data loss scenario -- skip the sync for that entity and log a warning.
-
-```text
-// Pseudo-code for each sync function:
-if (recordStatus?.record_exists && !recordStatus?.is_deleted) {
-  // Check if local data is suspiciously empty
-  const serverHasData = existingApproaches.length > 0 || existingSystems.length > 0 ...;
-  const localIsEmpty = delivery_approaches.length === 0 && operating_systems.length === 0 ...;
-  
-  if (serverHasData && localIsEmpty) {
-    console.error('[SAFETY] Blocked sync: server has data but local is empty');
-    return { success: false, skipped: true, reason: 'empty_local_guard' };
-  }
+if (data.length === 0) {
+  // SAFETY: Never overwrite existing IndexedDB data with an empty array
+  // This prevents silent data loss from empty state being persisted
+  console.warn('[Offline Storage] Blocked save of empty array -- preserving existing data');
+  return;
 }
 ```
 
-### Change 4: Protect Dashboard orphan cleanup from incomplete server responses
+This ensures that even if a form component accidentally passes an empty array during initialization, auto-save, or background sync, the existing local data survives.
 
-Add a minimum threshold check: if the server returns fewer records than expected (e.g., less than the local count minus some tolerance), skip orphan cleanup entirely.
+### Fix 3: Restrict `clear*DataOffline` Functions
 
-```text
-// Only clean up orphans if server returned a credible number of records
-const localCount = localInspections.filter(l => !l.id.startsWith('temp-')).length;
-if (networkData.length < localCount * 0.5 && localCount > 3) {
-  console.warn('[Dashboard] Server returned far fewer records than local -- skipping orphan cleanup');
-  return; // Don't delete anything
+**File:** `src/lib/offline-storage.ts`
+
+Add a parameter guard to `clearRelatedDataOffline()`, `clearAssessmentDataOffline()`, and `clearTrainingDataOffline()` that only allows clearing data for temp-IDs (the only legitimate use case):
+
+```
+if (!inspectionId.startsWith('temp-')) {
+  console.error('[SAFETY] Blocked clear operation on non-temp ID:', inspectionId);
+  return;
 }
 ```
+
+This prevents any code path from accidentally wiping IndexedDB data for real (permanent UUID) reports.
 
 ---
 
 ## Files Modified
 
-| File | Change | Risk Level |
-|------|--------|------------|
-| `src/lib/atomic-sync-manager.ts` | Replace delete-then-insert with upsert for ALL 3 report types + add empty-array guard | CRITICAL |
-| `src/lib/transaction-manager.ts` | Add blocklist for delete operations on report tables | MODERATE |
-| `src/pages/Dashboard.tsx` | Add threshold guard to orphan cleanup | LOW |
+| File | Change | Risk |
+|------|--------|------|
+| `public/sw-sync.js` | Replace delete-then-insert with upsert; add empty-array guards | CRITICAL |
+| `src/lib/offline-storage.ts` | Add empty-array guards to 3 save functions; restrict 3 clear functions to temp-IDs only | MODERATE |
 
 ## Files NOT Modified (Already Safe)
 
-| File | Status | Why |
-|------|--------|-----|
-| `src/pages/TrainingForm.tsx` | Already fixed | Previous fix replaced delete-then-insert with upsert in `completeTraining()` |
-| `src/pages/InspectionForm.tsx` | Safe | `completeInspection()` only updates status, no child table manipulation |
-| `src/pages/DailyAssessmentForm.tsx` | Safe | `handleSubmit()` already uses upsert pattern |
-| `src/components/PhotoGallery.tsx` | Safe | Photo delete is user-initiated (explicit button click) |
-| `src/hooks/useEmptyReportCleanup.tsx` | Safe | Uses soft-delete (sets deleted_at), not hard delete |
-| `src/hooks/useSoftDelete.tsx` | Safe | User-initiated soft-delete only |
+| File | Why Safe |
+|------|----------|
+| `src/lib/atomic-sync-manager.ts` | Already converted to upsert-only + has empty-local-guard (previous fix) |
+| `src/lib/transaction-manager.ts` | Already has REPORT_TABLE_BLOCKLIST blocking deletes (previous fix) |
+| `src/pages/TrainingForm.tsx` | `completeTraining()` already converted to upsert (previous fix) |
+| `src/pages/InspectionForm.tsx` | `completeInspection()` only updates status field |
+| `src/pages/DailyAssessmentForm.tsx` | `handleSubmit()` uses upsert pattern |
+| `src/pages/Dashboard.tsx` | Already has threshold guard on orphan cleanup (previous fix) |
+| `src/components/PhotoGallery.tsx` | Photo delete is user-initiated only (explicit button click with confirmation) |
+| `src/hooks/useEmptyReportCleanup.tsx` | Uses soft-delete (sets `deleted_at`), only for truly empty reports, skipped if user interacted |
+| `src/hooks/useSoftDelete.tsx` | Admin-initiated soft-delete only |
 
 ## What This Guarantees
 
-After implementation:
-1. No background process can ever delete report child data
-2. No sync operation can ever wipe data due to empty local state
-3. The only way data is removed is by explicit user action (delete button)
-4. Page refresh, offline-to-online transitions, and background sync are all non-destructive
-5. Photos are only deletable via the user-facing delete button in PhotoGallery
-6. The transaction manager will block any future accidental delete operations on report tables
+After implementation, the following failure modes are ALL protected:
+
+1. **Page refresh**: Data persists in IndexedDB (already working) -- empty-array guard prevents accidental overwrites during re-initialization
+2. **Network interruption / offline-to-online**: Sync uses upsert-only, never deletes. Empty local state is blocked from syncing
+3. **Background sync (service worker)**: Converted from delete-then-insert to upsert. Empty arrays skip the sync
+4. **Browser storage pressure / IndexedDB corruption**: Empty-array guard prevents "corrupted empty read" from propagating to server
+5. **Component unmount / state reset**: Auto-save debounce with empty-array guard prevents empty state from overwriting IndexedDB
+6. **Partial server responses**: Dashboard threshold guard already prevents orphan cleanup on incomplete data
+
+**The ONLY way data can be removed after this implementation is by explicit user action** (clicking a delete/remove button in the UI).
+
+## Testing Protocol
+
+1. **Rapid refresh test**: Fill out all fields in a Training report, rapidly refresh the page 5 times, verify all data persists
+2. **Offline-to-online test**: Fill out a report offline, toggle airplane mode on/off 3 times, verify no data lost
+3. **Empty state sync test**: Open browser DevTools, manually clear an IndexedDB store, go online -- verify server data is NOT deleted
+4. **Service worker sync test**: Create an inspection with all child data, force a service worker sync event, verify all child records survive
+5. **Multi-tab test**: Open same report in two tabs, edit in one, close the other -- verify no data wiped
