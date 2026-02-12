@@ -94,39 +94,33 @@ function validateInspectionData(inspection, systems, ziplines, equipment, standa
   return { valid: errors.length === 0, errors };
 }
 
-// Delete related data
-async function deleteRelatedData(supabaseUrl, supabaseKey, table, inspectionId) {
-  const response = await fetch(`${supabaseUrl}/rest/v1/${table}?inspection_id=eq.${inspectionId}`, {
-    method: 'DELETE',
-    headers: {
-      'apikey': supabaseKey,
-      'Authorization': `Bearer ${supabaseKey}`
-    }
-  });
-  return response.ok;
-}
+// SAFETY: Upsert related data using PostgREST merge-duplicates (never deletes)
+async function upsertRelatedData(supabaseUrl, supabaseKey, table, data) {
+  if (!data || data.length === 0) {
+    console.log(`[SW Upsert] Skipping ${table} -- empty array, preserving server data`);
+    return true;
+  }
 
-// Insert related data
-async function insertRelatedData(supabaseUrl, supabaseKey, table, data) {
   const response = await fetch(`${supabaseUrl}/rest/v1/${table}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'apikey': supabaseKey,
       'Authorization': `Bearer ${supabaseKey}`,
-      'Prefer': 'return=representation'
+      'Prefer': 'resolution=merge-duplicates,return=representation'
     },
     body: JSON.stringify(data)
   });
   
   if (!response.ok) {
-    throw new Error(`Insert to ${table} failed`);
+    const errorText = await response.text();
+    throw new Error(`Upsert to ${table} failed: ${errorText}`);
   }
   
   return true;
 }
 
-// Sync inspection with all related data as a transaction
+// Sync inspection with all related data using upsert-only (no deletes)
 async function syncInspectionWithTransaction(inspection, systems, ziplines, equipment, standards, summary) {
   const supabaseUrl = 'https://ssgzcgvygnsrqalisshx.supabase.co';
   const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNzZ3pjZ3Z5Z25zcnFhbGlzc2h4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIyMzM5NjksImV4cCI6MjA3NzgwOTk2OX0.buTFy44tZdRIlRSFIm5BqeOGb4nX3ARuHawWA9hZN54';
@@ -146,42 +140,19 @@ async function syncInspectionWithTransaction(inspection, systems, ziplines, equi
     
     if (!inspResponse.ok) throw new Error('Inspection sync failed');
     
-    // 2. Delete existing related data
+    // 2. Upsert all related data (NO deletes -- upsert-only for zero data loss)
     await Promise.all([
-      deleteRelatedData(supabaseUrl, supabaseKey, 'inspection_systems', inspection.id),
-      deleteRelatedData(supabaseUrl, supabaseKey, 'inspection_ziplines', inspection.id),
-      deleteRelatedData(supabaseUrl, supabaseKey, 'inspection_equipment', inspection.id),
-      deleteRelatedData(supabaseUrl, supabaseKey, 'inspection_standards', inspection.id),
-      deleteRelatedData(supabaseUrl, supabaseKey, 'inspection_summary', inspection.id),
+      upsertRelatedData(supabaseUrl, supabaseKey, 'inspection_systems', systems),
+      upsertRelatedData(supabaseUrl, supabaseKey, 'inspection_ziplines', ziplines),
+      upsertRelatedData(supabaseUrl, supabaseKey, 'inspection_equipment', equipment),
+      upsertRelatedData(supabaseUrl, supabaseKey, 'inspection_standards', standards),
+      summary ? upsertRelatedData(supabaseUrl, supabaseKey, 'inspection_summary', [summary]) : Promise.resolve(true),
     ]);
-    
-    // 3. Insert all related data
-    const insertPromises = [];
-    
-    if (systems.length > 0) {
-      insertPromises.push(insertRelatedData(supabaseUrl, supabaseKey, 'inspection_systems', systems));
-    }
-    if (ziplines.length > 0) {
-      insertPromises.push(insertRelatedData(supabaseUrl, supabaseKey, 'inspection_ziplines', ziplines));
-    }
-    if (equipment.length > 0) {
-      insertPromises.push(insertRelatedData(supabaseUrl, supabaseKey, 'inspection_equipment', equipment));
-    }
-    if (standards.length > 0) {
-      insertPromises.push(insertRelatedData(supabaseUrl, supabaseKey, 'inspection_standards', standards));
-    }
-    if (summary) {
-      insertPromises.push(insertRelatedData(supabaseUrl, supabaseKey, 'inspection_summary', [summary]));
-    }
-    
-    await Promise.all(insertPromises);
     
     return true;
     
   } catch (error) {
     console.error('[SW Transaction] Failed:', error);
-    // Rollback would go here, but service worker limitations make this complex
-    // The next sync attempt will retry
     return false;
   }
 }
@@ -218,7 +189,7 @@ async function syncInspectionsAtomic() {
           continue;
         }
         
-        // Sync atomically using transaction
+        // Sync using upsert-only transaction (no deletes)
         const success = await syncInspectionWithTransaction(
           inspection, systems, ziplines, equipment, standards, summary
         );
@@ -348,7 +319,7 @@ self.addEventListener('sync', async (event) => {
   console.log('[SW Sync] Sync event triggered:', event.tag);
   
   if (event.tag === 'inspection-sync') {
-    event.waitUntil(syncInspectionsAtomic());  // Use atomic version
+    event.waitUntil(syncInspectionsAtomic());
   } else if (event.tag === 'photo-sync') {
     event.waitUntil(syncPhotos());
   }
@@ -361,11 +332,11 @@ self.addEventListener('periodicsync', async (event) => {
   if (event.tag === 'periodic-inspection-sync') {
     event.waitUntil(
       Promise.all([
-        syncInspectionsAtomic(),  // Use atomic version
+        syncInspectionsAtomic(),
         syncPhotos()
       ])
     );
   }
 });
 
-console.log('[SW Sync] Background sync worker with atomic operations loaded');
+console.log('[SW Sync] Background sync worker with upsert-only operations loaded');

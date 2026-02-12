@@ -892,6 +892,12 @@ export async function saveRelatedDataOffline(
   inspectionId: string,
   data: any[]
 ) {
+  // SAFETY: Never overwrite existing IndexedDB data with an empty array
+  if (data.length === 0) {
+    console.warn(`[Offline Storage] Blocked save of empty ${type} array for ${inspectionId} -- preserving existing data`);
+    return;
+  }
+
   return withIndexedDBErrorBoundary(
     async () => {
       const db = await getDB();
@@ -949,6 +955,12 @@ export async function clearRelatedDataOffline(
   type: RelatedDataType,
   inspectionId: string
 ) {
+  // SAFETY: Only allow clearing data for temp-IDs (used during temp-to-permanent ID migration)
+  if (!inspectionId.startsWith('temp-')) {
+    console.error(`[SAFETY] Blocked clear ${type} operation on non-temp ID:`, inspectionId);
+    return;
+  }
+
   return withIndexedDBErrorBoundary(
     async () => {
       const db = await getDB();
@@ -1147,6 +1159,12 @@ export async function saveAssessmentDataOffline(
   assessmentId: string,
   data: any[]
 ) {
+  // SAFETY: Never overwrite existing IndexedDB data with an empty array
+  if (data.length === 0) {
+    console.warn(`[Offline Storage] Blocked save of empty ${type} array for ${assessmentId} -- preserving existing data`);
+    return;
+  }
+
   return withIndexedDBErrorBoundary(
     async () => {
       const db = await getDB();
@@ -1206,6 +1224,12 @@ export async function clearAssessmentDataOffline(
   type: AssessmentDataType,
   assessmentId: string
 ) {
+  // SAFETY: Only allow clearing data for temp-IDs (used during temp-to-permanent ID migration)
+  if (!assessmentId.startsWith('temp-')) {
+    console.error(`[SAFETY] Blocked clear ${type} operation on non-temp ID:`, assessmentId);
+    return;
+  }
+
   return withIndexedDBErrorBoundary(
     async () => {
       const db = await getDB();
@@ -1404,6 +1428,13 @@ export async function saveTrainingDataOffline(
   trainingId: string,
   data: any[] | any
 ) {
+  // SAFETY: Never overwrite existing IndexedDB data with an empty array
+  const items = Array.isArray(data) ? data : [data];
+  if (items.length === 0) {
+    console.warn(`[Offline Storage] Blocked save of empty ${type} array for ${trainingId} -- preserving existing data`);
+    return;
+  }
+
   return withIndexedDBErrorBoundary(
     async () => {
       const db = await getDB();
@@ -1418,7 +1449,7 @@ export async function saveTrainingDataOffline(
       // Get existing data within the transaction
       const existingData = await index.getAll(trainingId);
       
-      const items = Array.isArray(data) ? data : [data];
+      // items already computed above (with empty-array guard)
       
       // Batch all operations within the same transaction (no await between operations)
       const deletePromises = existingData.map(item => store.delete(item.id));
@@ -1466,6 +1497,12 @@ export async function clearTrainingDataOffline(
   type: TrainingDataType,
   trainingId: string
 ) {
+  // SAFETY: Only allow clearing data for temp-IDs (used during temp-to-permanent ID migration)
+  if (!trainingId.startsWith('temp-')) {
+    console.error(`[SAFETY] Blocked clear ${type} operation on non-temp ID:`, trainingId);
+    return;
+  }
+
   return withIndexedDBErrorBoundary(
     async () => {
       const db = await getDB();
