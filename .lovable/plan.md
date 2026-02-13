@@ -1,84 +1,87 @@
 
 
-# Allow "+" Suffix in Equipment Quantity Field (e.g., "10+")
+# Fix: "Pro Tour" Report Lost During Offline-to-Online Sync
 
-## Overview
+## Root Cause: Race Condition Between Sync and Orphan Cleanup
 
-Change the quantity field to accept values like `5+`, `10+`, `100+` in addition to plain numbers. This requires a database column type change from `integer` to `text`, plus updates to the input component, validation schema, and report generators.
+When a report is created offline (with a `temp-` ID) and the device reconnects, **two processes run simultaneously**:
 
-## Changes Required
+1. **Auto-sync** (`useAutoSync.handleOnline`): Transforms `temp-` ID to a real UUID, upserts to the server
+2. **Dashboard reload** (`handleOnline` + `onSyncComplete`): Fetches server data, then runs orphan cleanup
 
-### 1. Database Migration
-- Alter `inspection_equipment.quantity` from `integer` to `text`
-- This preserves all existing numeric data (e.g., `10` becomes `'10'`)
+The orphan cleanup deletes any local record whose ID is NOT on the server AND does NOT start with `temp-`. The problem:
 
-```sql
-ALTER TABLE public.inspection_equipment
-  ALTER COLUMN quantity TYPE text
-  USING quantity::text;
-```
+- Step A: Sync renames `temp-ProTour` to `uuid-ProTour` in IndexedDB (temp- prefix removed)
+- Step B: Sync starts uploading `uuid-ProTour` to the server (takes seconds)
+- Step C: Dashboard fetches server data (server doesn't have `uuid-ProTour` yet)
+- Step D: Orphan cleanup sees `uuid-ProTour` locally, not on server, not `temp-` prefixed -- **deletes it**
 
-### 2. EquipmentTable.tsx (2 locations: desktop table + mobile card)
-- Change input `type` from `"number"` to `"text"` with `inputMode="numeric"`
-- Update validation to accept digits optionally followed by `+`
-- Store the value as a string (e.g., `"10+"` or `"10"`)
+The upload in Step B finishes, but the local copy is already gone. On next page load, there is nothing left.
 
-### 3. Validation Schema (validation-schemas.ts)
-- Change `quantity` from `z.number().int().positive()` to `z.string().regex(/^\d+\+?$/)` (digits with optional trailing +)
+## Immediate Fix
 
-### 4. Report Generators (no logic changes needed)
-- `generate-inspection-html` already renders `eq.quantity || "N/A"` -- works with strings
-- `generate-inspection-pdf` already calls `eq.quantity?.toString() || 'N/A'` -- works with strings
+### 1. Dashboard.tsx -- Add "recently synced" guard to orphan cleanup (3 locations)
 
-## Technical Details
+Before deleting an orphan, check if the record was recently synced (within the last 60 seconds). A record that just had its ID transformed by the sync pipeline will have a very recent `updated_at` but no `synced_at` yet -- or a `synced_at` that is very recent. Either way, skipping recent records prevents the race.
 
-### EquipmentTable.tsx Input Change (applied to both desktop and mobile views)
+**For all three orphan cleanup blocks** (inspections at ~line 401, trainings at ~line 504, assessments at ~line 606):
 
-**Before:**
+Before:
 ```typescript
-<Input
-  type="number"
-  min={1}
-  value={item.quantity || ""}
-  onChange={(e) => {
-    const raw = e.target.value;
-    if (raw === "") { updateEquipment(item, "quantity", null); return; }
-    const val = parseInt(raw, 10);
-    if (!isNaN(val) && val >= 1) {
-      updateEquipment(item, "quantity", val);
-    }
-  }}
+if (!serverIds.has(local.id) && !local.id.startsWith('temp-')) {
+  await deleteOfflineInspection(local.id);
+}
 ```
 
-**After:**
+After:
 ```typescript
-<Input
-  type="text"
-  inputMode="numeric"
-  value={item.quantity || ""}
-  onChange={(e) => {
-    const raw = e.target.value;
-    if (raw === "") { updateEquipment(item, "quantity", null); return; }
-    if (/^\d+\+?$/.test(raw)) {
-      updateEquipment(item, "quantity", raw);
-    }
-  }}
+if (!serverIds.has(local.id) && !local.id.startsWith('temp-')) {
+  // SAFETY: Skip records that were recently created or synced
+  // They may be in-flight (temp-to-UUID transform completed, server upload pending)
+  const updatedAt = local.updated_at ? new Date(local.updated_at).getTime() : 0;
+  const isRecentlyModified = (Date.now() - updatedAt) < 60000; // 60 seconds
+  if (isRecentlyModified) {
+    console.log('[Dashboard] Skipping orphan cleanup for recently modified record:', local.id);
+    continue;
+  }
+  await deleteOfflineInspection(local.id);
+}
 ```
 
-### Validation Schema Change
+This applies identically to the training and daily assessment orphan cleanup blocks, using their respective delete functions.
 
-**Before:**
-```typescript
-quantity: z.number().int().positive().optional().nullable(),
-```
+### 2. atomic-sync-manager.ts -- Delay old temp-ID deletion until AFTER server commit
 
-**After:**
-```typescript
-quantity: z.string().regex(/^\d+\+?$/, "Must be a number, optionally followed by +").optional().nullable(),
-```
+Currently, the sync pipeline deletes the old `temp-` IndexedDB entry and re-saves under the new UUID. But the `emitSyncComplete()` event fires immediately after, triggering a Dashboard reload before the server has fully committed.
+
+Move the `emitSyncComplete` call timing: this is already handled by `useAutoSync` (line 240), so no change needed in atomic-sync-manager. The fix is entirely in the Dashboard orphan guard above.
+
+## Verification Strategy
+
+1. **Offline creation test**:
+   - Disconnect from network
+   - Create a new inspection report (e.g., "Test Pro Tour")
+   - Verify it appears in the dashboard with a `temp-` ID
+   - Reconnect to network
+   - Wait 10 seconds for sync to complete
+   - Verify the report persists on the dashboard with a real UUID
+   - Refresh the page -- report should still be there
+
+2. **Multi-tab race test**:
+   - Create an offline report
+   - Open a second browser tab on the dashboard
+   - Reconnect to network
+   - Verify both tabs show the report after sync
+
+3. **Repeat for all report types**: Training reports, Daily Assessments
+
+## Preventative Measure
+
+Add a `created_at` check as a permanent safety net: never orphan-delete any record created within the last 5 minutes, regardless of server state. This protects against any future race conditions in the sync pipeline.
 
 ## Files Changed
 
-1. **Database migration** -- alter column type from integer to text
-2. **src/components/inspection/EquipmentTable.tsx** -- update both desktop and mobile quantity inputs
-3. **src/lib/validation-schemas.ts** -- update quantity validation rule
+1. **src/pages/Dashboard.tsx** -- Add recently-modified guard to all 3 orphan cleanup blocks (inspections, trainings, daily assessments)
+
+No database changes required. No changes to the sync pipeline itself.
+
