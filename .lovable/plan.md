@@ -1,83 +1,50 @@
 
+# Add Unit Test for `localIsNewer` Guard Logic
 
-# Fix Rope Type Values Not Displaying (Data Migration Required)
+## Overview
 
-## Root Cause
+Extract the `localIsNewer` determination logic from `InspectionForm.tsx` into a testable pure function, then write unit tests covering all scenarios.
 
-The data is **not lost**. It is safely stored in the database. The issue is a **value mismatch** between existing data and the new dropdown options introduced in the recent refactor.
+## Changes
 
-The old dropdown had values like:
-- `Dynamic`
-- `Low Elongation (static)`
-- `Low Elongation`
-- `blue water`
+### 1. New file: `src/lib/local-data-guards.ts`
 
-The new dropdown expects:
-- `Dynamic Kernmantle`
-- `Low-elongation Kernmantle`
-- `Static Kernmantle`
-- `Multi-Line`
+Extract the guard logic into a reusable pure function:
 
-Since `"Dynamic"` does not match `"Dynamic Kernmantle"`, the Select component renders blank, making it appear as though data was erased.
-
-## Solution
-
-### Step 1: Database Migration -- Map Old Values to New Values
-
-Run a safe UPDATE migration to remap existing rope `equipment_type` values:
-
-| Old Value | New Value |
-|-----------|-----------|
-| `Dynamic` | `Dynamic Kernmantle` |
-| `Low Elongation (static)` | `Static Kernmantle` |
-| `Low Elongation` | `Low-elongation Kernmantle` |
-| `blue water` | *(leave unchanged -- see note)* |
-
-`blue water` appears to be a brand name, not a rope type. It will be left as-is; the user can manually correct it in the form.
-
-### Step 2: UI Resilience -- Handle Unrecognized Values Gracefully
-
-Modify `EquipmentTable.tsx` so that when a `typeOptions` dropdown is used but the current `equipment_type` value does not match any option, the component:
-1. Still displays the stored value (not blank)
-2. Shows it with a visual indicator (e.g., warning styling) so the user knows it needs updating
-3. Allows selecting a valid option to replace it
-
-This prevents any future dropdown option rename from silently blanking out existing data.
-
-### Step 3: Quantity Protection (No Change Needed)
-
-Quantities are intact in the database. The visual "loss" was caused by the same blank-row appearance from the type mismatch. Once types display correctly, quantities will also be visible as normal.
-
-## Files to Modify
-
-| File | Change |
-|------|--------|
-| New SQL migration | UPDATE `inspection_equipment` to remap old rope type values to new values |
-| `src/components/inspection/EquipmentTable.tsx` | Add fallback display for unrecognized `equipment_type` values when `typeOptions` is provided |
-
-## Technical Details
-
-### SQL Migration
-
-```sql
-UPDATE inspection_equipment
-SET equipment_type = CASE equipment_type
-  WHEN 'Dynamic' THEN 'Dynamic Kernmantle'
-  WHEN 'Low Elongation (static)' THEN 'Static Kernmantle'
-  WHEN 'Low Elongation' THEN 'Low-elongation Kernmantle'
-  ELSE equipment_type
-END
-WHERE equipment_category = 'rope'
-  AND equipment_type IN ('Dynamic', 'Low Elongation (static)', 'Low Elongation');
+```typescript
+export function isLocalDataNewer(
+  offlineData: { updated_at?: string | null; synced_at?: string | null } | null | undefined,
+  serverData: { updated_at?: string | null } | null | undefined
+): boolean {
+  if (!offlineData) return false;
+  if (!offlineData.synced_at) return true; // Never synced = local has unsynced changes
+  return !!(
+    offlineData.updated_at &&
+    serverData?.updated_at &&
+    new Date(offlineData.updated_at) > new Date(serverData.updated_at)
+  );
+}
 ```
 
-This is a safe UPDATE (no deletes), fully aligned with the Zero Data Loss strategy.
+### 2. New file: `src/lib/local-data-guards.test.ts`
 
-### EquipmentTable.tsx -- Unrecognized Value Fallback
+Test cases:
 
-When `typeOptions` is provided and the current `equipment_type` value is not in the options list:
-- Temporarily include the current value as an extra option in the dropdown (marked with a note like "(legacy)")
-- This ensures the value is visible and the user can choose to update it to a valid option
+| Scenario | offlineData | serverData | Expected |
+|----------|------------|------------|----------|
+| No offline data | `null` | any | `false` |
+| Offline never synced (no `synced_at`) | `{ updated_at: "...", synced_at: null }` | any | `true` |
+| Local `updated_at` newer than server | `{ updated_at: "2025-01-02", synced_at: "2025-01-01" }` | `{ updated_at: "2025-01-01" }` | `true` |
+| Server `updated_at` newer than local | `{ updated_at: "2025-01-01", synced_at: "2025-01-01" }` | `{ updated_at: "2025-01-02" }` | `false` |
+| Equal timestamps | same timestamps | same timestamps | `false` |
+| Server data is null | has data | `null` | `false` |
 
-This approach prevents future dropdown option changes from ever causing a "blank field" appearance.
+### 3. Update `src/pages/InspectionForm.tsx`
 
+Replace inline logic at line 913-917 with a call to `isLocalDataNewer(offlineData, data)`. Same import can be used by `TrainingForm.tsx` and `DailyAssessmentForm.tsx` for consistency, but that is optional scope.
+
+## Technical Notes
+
+- No new dependencies needed
+- Tests will run via existing Vitest setup
+- The extraction is a pure refactor with no behavioral change
