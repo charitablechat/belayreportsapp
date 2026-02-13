@@ -336,7 +336,10 @@ export default function Dashboard() {
             supabase
               .from("inspections")
               .select(`
-                *,
+                id, inspector_id, organization, location, inspection_date,
+                status, created_at, updated_at, synced_at, last_opened_at,
+                acct_number, started_at, latest_report_generated_at, report_version,
+                deleted_at, organization_id, previous_inspector, previous_inspection_date,
                 inspector:profiles!inspections_inspector_id_profiles_fkey(first_name, last_name, avatar_url)
               `)
               .is('deleted_at', null)
@@ -442,7 +445,9 @@ export default function Dashboard() {
             supabase
               .from("trainings")
               .select(`
-                *,
+                id, inspector_id, organization, trainer_of_record, start_date,
+                end_date, status, created_at, updated_at, synced_at,
+                latest_report_generated_at, report_version, deleted_at,
                 trainer:profiles!trainings_inspector_id_profiles_fkey(first_name, last_name, avatar_url)
               `)
               .is('deleted_at', null)
@@ -542,7 +547,9 @@ export default function Dashboard() {
             supabase
               .from("daily_assessments")
               .select(`
-                *,
+                id, inspector_id, organization, site, trainer_of_record,
+                assessment_date, status, created_at, updated_at, synced_at,
+                latest_report_generated_at, report_version, deleted_at,
                 inspector:profiles!daily_assessments_inspector_id_profiles_fkey(first_name, last_name, avatar_url)
               `)
               .is('deleted_at', null)
