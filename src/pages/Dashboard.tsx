@@ -83,6 +83,7 @@ export default function Dashboard() {
   const [inspectionToDelete, setInspectionToDelete] = useState<any>(null);
   const [reportToDelete, setReportToDelete] = useState<any>(null);
   const [activeReportTab, setActiveReportTab] = useState("inspections");
+  const [reportSection, setReportSection] = useState<"recent" | "all">("recent");
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [userProfile, setUserProfile] = useState<any>(null);
@@ -1032,25 +1033,41 @@ export default function Dashboard() {
           </div>
         </section>
 
-        {/* Recent Reports Section */}
+        {/* Reports Section */}
         <section>
           <div className="mb-6">
-            <h3 className="text-2xl font-bold mb-4">Recent Reports</h3>
+            {/* Section Toggle: Recent / All Reports */}
+            <Tabs value={reportSection} onValueChange={(v) => setReportSection(v as "recent" | "all")}>
+              <TabsList className="mb-4 h-11">
+                <TabsTrigger value="recent" className="text-base font-semibold px-5 py-2">
+                  Recent Reports
+                </TabsTrigger>
+                <TabsTrigger value="all" className="text-base font-semibold px-5 py-2">
+                  All Reports
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
             
+            {(() => {
+              const displayInspections = reportSection === "recent" ? inspections.slice(0, 9) : inspections;
+              const displayTrainings = reportSection === "recent" ? trainings.slice(0, 9) : trainings;
+              const displayDailyAssessments = reportSection === "recent" ? dailyAssessments.slice(0, 9) : dailyAssessments;
+              
+              return (
             <Tabs value={activeReportTab} onValueChange={setActiveReportTab}>
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
                 <TabsList className="w-full sm:w-auto">
                   <TabsTrigger value="inspections" className="flex items-center gap-2">
                     <FileText className="w-4 h-4" />
-                    Inspections ({inspections.length})
+                    Inspections ({displayInspections.length})
                   </TabsTrigger>
                   <TabsTrigger value="training" className="flex items-center gap-2">
                     <GraduationCap className="w-4 h-4" />
-                    Training ({trainings.length})
+                    Training ({displayTrainings.length})
                   </TabsTrigger>
                   <TabsTrigger value="daily" className="flex items-center gap-2">
                     <FileText className="w-4 h-4" />
-                    Daily ({dailyAssessments.length})
+                    Daily ({displayDailyAssessments.length})
                   </TabsTrigger>
                 </TabsList>
                 
@@ -1075,7 +1092,7 @@ export default function Dashboard() {
                       <ReportCardSkeleton key={i} />
                     ))}
                   </div>
-                ) : inspections.length === 0 ? (
+                ) : displayInspections.length === 0 ? (
                   <Card>
                     <CardContent className="p-0">
                       <InspectionsEmptyState 
@@ -1088,7 +1105,7 @@ export default function Dashboard() {
                   </Card>
                 ) : (
                   <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                    {inspections
+                    {displayInspections
                       .sort((a, b) => {
                         const getInspectorName = (inspection: any) => {
                           const inspector = (inspection as any).inspector;
@@ -1140,7 +1157,7 @@ export default function Dashboard() {
                       <ReportCardSkeleton key={i} />
                     ))}
                   </div>
-                ) : trainings.length === 0 ? (
+                ) : displayTrainings.length === 0 ? (
                   <Card>
                     <CardContent className="p-0">
                       <TrainingsEmptyState 
@@ -1153,7 +1170,7 @@ export default function Dashboard() {
                   </Card>
                 ) : (
                   <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                    {trainings
+                    {displayTrainings
                       .sort((a, b) => {
                         const getTrainerName = (training: any) => {
                           const trainer = training.trainer;
@@ -1203,7 +1220,7 @@ export default function Dashboard() {
                       <ReportCardSkeleton key={i} />
                     ))}
                   </div>
-                ) : dailyAssessments.length === 0 ? (
+                ) : displayDailyAssessments.length === 0 ? (
                   <Card>
                     <CardContent className="p-0">
                       <DailyAssessmentsEmptyState 
@@ -1216,7 +1233,7 @@ export default function Dashboard() {
                   </Card>
 ) : (
                   <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                    {dailyAssessments
+                    {displayDailyAssessments
                       .sort((a, b) => {
                         const getInspectorName = (assessment: any) => {
                           const inspector = assessment.inspector;
@@ -1259,6 +1276,8 @@ export default function Dashboard() {
                 )}
               </TabsContent>
             </Tabs>
+              );
+            })()}
           </div>
           
           {/* TEMPORARY FEATURE: Known Issues - Remove when project complete */}
