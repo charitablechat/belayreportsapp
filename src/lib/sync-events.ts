@@ -9,6 +9,24 @@
 type SyncEventListener = () => void;
 const listeners = new Set<SyncEventListener>();
 
+// Global sync-in-progress flag
+// Prevents Dashboard orphan cleanup from running while sync is active
+let _syncInProgress = false;
+
+/**
+ * Check if a sync operation is currently in progress
+ */
+export function isSyncInProgress(): boolean {
+  return _syncInProgress;
+}
+
+/**
+ * Set the sync-in-progress flag (called by useAutoSync)
+ */
+export function setSyncInProgress(value: boolean): void {
+  _syncInProgress = value;
+}
+
 /**
  * Subscribe to sync completion events
  * @param listener Callback to invoke when sync completes

@@ -9,7 +9,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { isMobile, isIOS } from '@/lib/mobile-detection';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { addSyncNotification } from '@/lib/notification-center';
-import { emitSyncComplete } from '@/lib/sync-events';
+import { emitSyncComplete, setSyncInProgress } from '@/lib/sync-events';
 import { clearPendingSyncs } from '@/lib/background-sync';
 import { toast } from '@/components/ui/sonner';
 
@@ -148,6 +148,7 @@ export const useAutoSync = () => {
     
     lastSyncAttemptRef.current = now;
     syncInProgressRef.current = true;
+    setSyncInProgress(true);
     setState(prev => ({ ...prev, isSyncing: true }));
     
     // Calculate dynamic timeout based on BATCH size (not total unsynced)
@@ -277,6 +278,7 @@ export const useAutoSync = () => {
       // Desktop toast is not needed here since errors are usually transient and auto-retry handles them
     } finally {
       syncInProgressRef.current = false;
+      setSyncInProgress(false);
       // CRITICAL: Always reset isSyncing state in finally block to prevent stuck spinner
       setState(prev => ({ ...prev, isSyncing: false }));
     }
