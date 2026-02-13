@@ -144,24 +144,38 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
                 >
                    <td className="border p-2">
                     {typeOptions ? (
-                      <Select
-                        value={item.equipment_type || ""}
-                        onValueChange={(v) => { updateEquipment(item, "equipment_type", v); onImmediateSave?.(); }}
-                      >
-                        <SelectTrigger className={cn(
-                          "border-0 bg-transparent",
-                          !item.equipment_type || item.equipment_type.trim() === ""
-                            ? "ring-2 ring-destructive"
-                            : ""
-                        )}>
-                          <SelectValue placeholder="Select type" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {typeOptions.map((opt) => (
-                            <SelectItem key={opt} value={opt}>{opt}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      (() => {
+                        const currentVal = item.equipment_type || "";
+                        const isLegacy = currentVal.trim() !== "" && !typeOptions.includes(currentVal);
+                        return (
+                          <Select
+                            value={currentVal}
+                            onValueChange={(v) => { updateEquipment(item, "equipment_type", v); onImmediateSave?.(); }}
+                          >
+                            <SelectTrigger className={cn(
+                              "border-0 bg-transparent",
+                              !currentVal || currentVal.trim() === ""
+                                ? "ring-2 ring-destructive"
+                                : isLegacy
+                                  ? "ring-2 ring-amber-500"
+                                  : ""
+                            )}>
+                              <SelectValue placeholder="Select type" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {isLegacy && (
+                                <SelectItem key={currentVal} value={currentVal} className="text-amber-600 italic">
+                                  {currentVal} (legacy)
+                                </SelectItem>
+                              )}
+                              {typeOptions.map((opt) => (
+                                <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        );
+                      })()
+                      
                     ) : (
                       <GlobalAutocomplete
                         value={item.equipment_type}
@@ -300,23 +314,36 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
                    <div>
                     <Label className="text-xs text-muted-foreground">Type *</Label>
                     {typeOptions ? (
-                      <Select
-                        value={item.equipment_type || ""}
-                        onValueChange={(v) => { updateEquipment(item, "equipment_type", v); onImmediateSave?.(); }}
-                      >
-                        <SelectTrigger className={cn(
-                          !item.equipment_type || item.equipment_type.trim() === ""
-                            ? "ring-2 ring-destructive"
-                            : ""
-                        )}>
-                          <SelectValue placeholder="Select type" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {typeOptions.map((opt) => (
-                            <SelectItem key={opt} value={opt}>{opt}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      (() => {
+                        const currentVal = item.equipment_type || "";
+                        const isLegacy = currentVal.trim() !== "" && !typeOptions.includes(currentVal);
+                        return (
+                          <Select
+                            value={currentVal}
+                            onValueChange={(v) => { updateEquipment(item, "equipment_type", v); onImmediateSave?.(); }}
+                          >
+                            <SelectTrigger className={cn(
+                              !currentVal || currentVal.trim() === ""
+                                ? "ring-2 ring-destructive"
+                                : isLegacy
+                                  ? "ring-2 ring-amber-500"
+                                  : ""
+                            )}>
+                              <SelectValue placeholder="Select type" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {isLegacy && (
+                                <SelectItem key={currentVal} value={currentVal} className="text-amber-600 italic">
+                                  {currentVal} (legacy)
+                                </SelectItem>
+                              )}
+                              {typeOptions.map((opt) => (
+                                <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        );
+                      })()
                     ) : (
                       <GlobalAutocomplete
                         value={item.equipment_type}
