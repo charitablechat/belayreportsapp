@@ -4,6 +4,7 @@ import { addSaveNotification, addSyncNotification } from "@/lib/notification-cen
 import { onSyncComplete } from "@/lib/sync-events";
 import { useNavigate, useParams } from "react-router-dom";
 import { goBack } from "@/lib/navigation";
+import { isLocalDataNewer } from "@/lib/local-data-guards";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -910,11 +911,7 @@ export default function InspectionForm() {
         
         // Determine if local data should take priority over server data
         // This prevents data loss when opening a report with unsynced local changes
-        const localIsNewer = offlineData && (
-          !offlineData.synced_at || // Never synced = local has unsynced changes
-          (offlineData.updated_at && data?.updated_at && 
-           new Date(offlineData.updated_at) > new Date(data.updated_at))
-        );
+        const localIsNewer = isLocalDataNewer(offlineData, data);
 
         if (localIsNewer) {
           // LOCAL DATA IS NEWER — preserve local state, don't overwrite with stale server data
