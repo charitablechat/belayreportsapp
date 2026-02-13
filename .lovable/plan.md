@@ -1,64 +1,83 @@
 
 
-# Remove Brand Column from Rope Equipment & Update Type Dropdown
+# Fix Rope Type Values Not Displaying (Data Migration Required)
 
-## Overview
+## Root Cause
 
-Remove the `brand` column concept from Rope equipment records and convert the existing two-column layout (Brand + Type dropdown) into a single "Type" dropdown with four specific options. This change touches the UI form, database schema, and report generation (HTML and PDF).
+The data is **not lost**. It is safely stored in the database. The issue is a **value mismatch** between existing data and the new dropdown options introduced in the recent refactor.
 
-## What Changes
+The old dropdown had values like:
+- `Dynamic`
+- `Low Elongation (static)`
+- `Low Elongation`
+- `blue water`
 
-The current Rope equipment row has two columns:
-- **Brand** (free-text autocomplete via `equipment_type` field)
-- **Type** (dropdown via `rope_type` field with 2 options)
+The new dropdown expects:
+- `Dynamic Kernmantle`
+- `Low-elongation Kernmantle`
+- `Static Kernmantle`
+- `Multi-Line`
 
-After this change, Rope equipment will have one column:
-- **Type** (dropdown with 4 options: Dynamic Kernmantle, Low-elongation Kernmantle, Static Kernmantle, Multi-Line)
+Since `"Dynamic"` does not match `"Dynamic Kernmantle"`, the Select component renders blank, making it appear as though data was erased.
 
-The `equipment_type` column will store the selected dropdown value (replacing the free-text brand). The `rope_type` column becomes unused.
+## Solution
 
-## Data Safety
+### Step 1: Database Migration -- Map Old Values to New Values
 
-All changes use **update/upsert** patterns only. No destructive delete operations. Existing records retain their data; the `rope_type` column is left in the database (not dropped) to avoid data loss for historical records.
+Run a safe UPDATE migration to remap existing rope `equipment_type` values:
+
+| Old Value | New Value |
+|-----------|-----------|
+| `Dynamic` | `Dynamic Kernmantle` |
+| `Low Elongation (static)` | `Static Kernmantle` |
+| `Low Elongation` | `Low-elongation Kernmantle` |
+| `blue water` | *(leave unchanged -- see note)* |
+
+`blue water` appears to be a brand name, not a rope type. It will be left as-is; the user can manually correct it in the form.
+
+### Step 2: UI Resilience -- Handle Unrecognized Values Gracefully
+
+Modify `EquipmentTable.tsx` so that when a `typeOptions` dropdown is used but the current `equipment_type` value does not match any option, the component:
+1. Still displays the stored value (not blank)
+2. Shows it with a visual indicator (e.g., warning styling) so the user knows it needs updating
+3. Allows selecting a valid option to replace it
+
+This prevents any future dropdown option rename from silently blanking out existing data.
+
+### Step 3: Quantity Protection (No Change Needed)
+
+Quantities are intact in the database. The visual "loss" was caused by the same blank-row appearance from the type mismatch. Once types display correctly, quantities will also be visible as normal.
 
 ## Files to Modify
 
 | File | Change |
 |------|--------|
-| `src/components/inspection/EquipmentTable.tsx` | Replace Brand autocomplete + Type dropdown with single Type dropdown (4 options). Remove `showRopeType` prop. |
-| `src/pages/InspectionForm.tsx` | Remove `showRopeType` prop from Rope EquipmentTable usage. |
-| `supabase/functions/generate-inspection-html/index.ts` | Remove Brand/Type dual-column for rope; use single "Type" column showing `equipment_type`. |
-| `supabase/functions/generate-inspection-pdf/index.ts` | Remove Brand/Type dual-column for rope; use single "Type" column like other categories. |
+| New SQL migration | UPDATE `inspection_equipment` to remap old rope type values to new values |
+| `src/components/inspection/EquipmentTable.tsx` | Add fallback display for unrecognized `equipment_type` values when `typeOptions` is provided |
 
 ## Technical Details
 
-### 1. EquipmentTable.tsx
+### SQL Migration
 
-- Remove the `showRopeType` prop entirely from the interface and component.
-- For the Rope category, the first column ("Type") will render a `Select` dropdown instead of the `GlobalAutocomplete`. The dropdown options are:
-  - `Dynamic Kernmantle`
-  - `Low-elongation Kernmantle`
-  - `Static Kernmantle`
-  - `Multi-Line`
-- The selected value is stored in `equipment_type` (not `rope_type`).
-- Remove the conditional second "Type" column (`rope_type` dropdown).
-- Need a new prop or detection mechanism: since `showRopeType` is being removed, the component needs to know when to show a dropdown vs. autocomplete. A new prop `useTypeDropdown` with the allowed values array, or simply a `ropeCategory` boolean, will be introduced. The simplest approach: add a `typeOptions` prop (optional string array). When provided, the Type column renders a dropdown with those options instead of the autocomplete.
-- Remove the `rope_type` field from `addEquipment` initialization.
-- Both desktop table and mobile card views are updated.
+```sql
+UPDATE inspection_equipment
+SET equipment_type = CASE equipment_type
+  WHEN 'Dynamic' THEN 'Dynamic Kernmantle'
+  WHEN 'Low Elongation (static)' THEN 'Static Kernmantle'
+  WHEN 'Low Elongation' THEN 'Low-elongation Kernmantle'
+  ELSE equipment_type
+END
+WHERE equipment_category = 'rope'
+  AND equipment_type IN ('Dynamic', 'Low Elongation (static)', 'Low Elongation');
+```
 
-### 2. InspectionForm.tsx
+This is a safe UPDATE (no deletes), fully aligned with the Zero Data Loss strategy.
 
-- Remove `showRopeType` prop.
-- Pass `typeOptions={["Dynamic Kernmantle", "Low-elongation Kernmantle", "Static Kernmantle", "Multi-Line"]}` to the Rope EquipmentTable.
+### EquipmentTable.tsx -- Unrecognized Value Fallback
 
-### 3. generate-inspection-html/index.ts
+When `typeOptions` is provided and the current `equipment_type` value is not in the options list:
+- Temporarily include the current value as an extra option in the dropdown (marked with a note like "(legacy)")
+- This ensures the value is visible and the user can choose to update it to a valid option
 
-- Remove the `category === "rope"` branch that renders `<th>Brand</th><th>Type</th>`.
-- Rope now renders identically to other categories: single `<th>Type</th>` column with `eq.equipment_type`.
-
-### 4. generate-inspection-pdf/index.ts
-
-- Remove the `isRope` branching that adds a Brand column.
-- Rope uses the same column layout as other equipment categories.
-- Adjust `columnStyles` to use the non-rope layout for all categories.
+This approach prevents future dropdown option changes from ever causing a "blank field" appearance.
 
