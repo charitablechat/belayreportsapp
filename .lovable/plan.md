@@ -1,128 +1,112 @@
 
+# Fix: Equipment Data Loss Caused by Missing RLS Policies
 
-# Fix: Stale Closure in Save-Before-Leave Causes Equipment Data Loss
+## Root Cause (Confirmed via Network Logs)
 
-## Root Cause
+The equipment save is returning **HTTP 403 Forbidden** from the database. This is NOT a state management or stale closure issue -- it is an **RLS (Row Level Security) policy gap**.
 
-All three report forms (InspectionForm, TrainingForm, DailyAssessmentForm) share an identical stale closure bug in the "Save and Leave" handler.
-
-The `handleSaveAndLeave` function is wrapped in `useCallback(..., [])` with an **empty dependency array**. This means it captures the save function (`performSave` / `saveTraining` / `handleSaveProgress`) from the **first render only**. That first-render save function closes over the initial empty state arrays (`equipment = []`, `systems = []`, etc.).
-
-When a user edits equipment fields and navigates away, the "Unsaved Changes" dialog fires correctly (thanks to the previous fix), but clicking **"Save and Leave"** calls the stale save function which reads the initial empty state -- effectively overwriting real data with empty arrays.
-
-**Why the existing ref pattern doesn't help:**
-```typescript
-const handleSaveAndLeave = useCallback(async () => {
-  await performSave(true);  // <-- captures first-render performSave
-}, []);  // <-- never recreated
-
-saveBeforeLeaveRef.current = handleSaveAndLeave;  // Same stale function every render
+### The Evidence
+Network request captured from the user's browser:
+```
+POST /rest/v1/inspection_equipment?on_conflict=id → 403 Forbidden
 ```
 
-The ref updates every render, but to the **same stale function** since `useCallback(fn, [])` never recreates it.
+### Why It Happens
 
-## Fix
+The logged-in user (Kale Dabling, `759e973e-...`) is a **super admin** but is NOT the inspector/owner of the Twin Cedars report (owned by `62ef2a7b-...`).
 
-Use a ref for the save function itself, so the stable `handleSaveAndLeave` always calls the **latest** version:
+The `inspection_equipment` table has these RLS policies for super admins:
+- SELECT -- can view (works)
+- UPDATE -- can update (works)
+- **INSERT -- MISSING**
+- **DELETE -- MISSING**
 
-### InspectionForm.tsx
+The save code uses PostgREST **upsert** (`INSERT ... ON CONFLICT ... DO UPDATE`), which requires **INSERT** permission even when updating existing rows. Since INSERT is denied, the entire upsert fails with 403.
 
-Add a `performSaveRef` that updates every render. Then `handleSaveAndLeave` calls through the ref instead of capturing `performSave` directly.
+This same gap exists on ALL FIVE child tables:
+- `inspection_equipment` (the reported issue)
+- `inspection_systems`
+- `inspection_ziplines`
+- `inspection_standards`
+- `inspection_summary`
 
-**Before (line 168-183):**
-```typescript
-const handleSaveAndLeave = useCallback(async () => {
-  if (saveDebounceTimerRef.current) {
-    clearTimeout(saveDebounceTimerRef.current);
-    saveDebounceTimerRef.current = null;
-  }
-  try {
-    await performSave(true);  // STALE -- first-render closure
-    setHasUnsavedChanges(false);
-  } catch (e) { ... }
-}, []);
-saveBeforeLeaveRef.current = handleSaveAndLeave;
+### Why It Appears to "Save" But Then Data Disappears
+
+1. User edits equipment quantity
+2. `performSave` writes to IndexedDB (succeeds) AND updates the `inspections` table's `updated_at` (succeeds -- super admins have full CRUD on `inspections`)
+3. Equipment upsert fails with 403 (server equipment NOT updated)
+4. Error handler shows "Saved locally -- will sync when online" (misleading)
+5. User navigates away and returns
+6. Form loads: local inspection `updated_at` = server `updated_at` (both were updated in step 2)
+7. `isLocalDataNewer` returns `false` (timestamps are equal, not local-is-newer)
+8. Server equipment (without edits) overwrites local equipment -- data lost
+
+## Fix: Add Missing RLS Policies
+
+Add INSERT and DELETE policies for super admins on all 5 inspection child tables.
+
+### Database Migration
+
+```sql
+-- inspection_equipment
+CREATE POLICY "Super admins can insert inspection equipment"
+  ON public.inspection_equipment FOR INSERT
+  TO public WITH CHECK (is_super_admin());
+
+CREATE POLICY "Super admins can delete inspection equipment"
+  ON public.inspection_equipment FOR DELETE
+  TO public USING (is_super_admin());
+
+-- inspection_systems
+CREATE POLICY "Super admins can insert inspection systems"
+  ON public.inspection_systems FOR INSERT
+  TO public WITH CHECK (is_super_admin());
+
+CREATE POLICY "Super admins can delete inspection systems"
+  ON public.inspection_systems FOR DELETE
+  TO public USING (is_super_admin());
+
+-- inspection_ziplines
+CREATE POLICY "Super admins can insert inspection ziplines"
+  ON public.inspection_ziplines FOR INSERT
+  TO public WITH CHECK (is_super_admin());
+
+CREATE POLICY "Super admins can delete inspection ziplines"
+  ON public.inspection_ziplines FOR DELETE
+  TO public USING (is_super_admin());
+
+-- inspection_standards
+CREATE POLICY "Super admins can insert inspection standards"
+  ON public.inspection_standards FOR INSERT
+  TO public WITH CHECK (is_super_admin());
+
+CREATE POLICY "Super admins can delete inspection standards"
+  ON public.inspection_standards FOR DELETE
+  TO public USING (is_super_admin());
+
+-- inspection_summary
+CREATE POLICY "Super admins can insert inspection summaries"
+  ON public.inspection_summary FOR INSERT
+  TO public WITH CHECK (is_super_admin());
+
+CREATE POLICY "Super admins can delete inspection summaries"
+  ON public.inspection_summary FOR DELETE
+  TO public USING (is_super_admin());
 ```
 
-**After:**
-```typescript
-const performSaveRef = useRef<(silent: boolean) => Promise<void>>();
-// (performSaveRef.current = performSave is set after performSave is defined)
+## No Code Changes Required
 
-const handleSaveAndLeave = useCallback(async () => {
-  if (saveDebounceTimerRef.current) {
-    clearTimeout(saveDebounceTimerRef.current);
-    saveDebounceTimerRef.current = null;
-  }
-  try {
-    await performSaveRef.current?.(true);  // Always latest via ref
-    setHasUnsavedChanges(false);
-  } catch (e) { ... }
-}, []);
-saveBeforeLeaveRef.current = handleSaveAndLeave;
-```
-
-Then after `performSave` is defined (~line 1429):
-```typescript
-performSaveRef.current = performSave;
-```
-
-### TrainingForm.tsx
-
-Same pattern -- add `saveTrainingRef`:
-
-**Before (line 131):**
-```typescript
-await saveTraining();  // STALE
-```
-
-**After:**
-```typescript
-const saveTrainingRef = useRef<() => Promise<void>>();
-// ...
-await saveTrainingRef.current?.();  // Always latest
-// After saveTraining is defined (~line 556):
-saveTrainingRef.current = saveTraining;
-```
-
-### DailyAssessmentForm.tsx
-
-Same pattern -- add `handleSaveProgressRef`:
-
-**Before (line 132):**
-```typescript
-await handleSaveProgress();  // STALE
-```
-
-**After:**
-```typescript
-const handleSaveProgressRef = useRef<() => Promise<void>>();
-// ...
-await handleSaveProgressRef.current?.();  // Always latest
-// After handleSaveProgress is defined:
-handleSaveProgressRef.current = handleSaveProgress;
-```
-
-## Files Changed
-
-1. **src/pages/InspectionForm.tsx** -- Add `performSaveRef`, update `handleSaveAndLeave` to use it, set ref after `performSave` definition
-2. **src/pages/TrainingForm.tsx** -- Add `saveTrainingRef`, update `handleSaveAndLeave` to use it, set ref after `saveTraining` definition
-3. **src/pages/DailyAssessmentForm.tsx** -- Add `handleSaveProgressRef`, update `handleSaveAndLeave` to use it, set ref after `handleSaveProgress` definition
-
-## Why This Is Safe
-
-- The ref pattern is already proven in the codebase (e.g., `triggerImmediateSaveRef` on line 1431 of InspectionForm uses the exact same approach)
-- No changes to data loading, IndexedDB persistence, sync logic, or database operations
-- The `useCallback(..., [])` wrapper is preserved for stability -- only the internal call target changes from a direct capture to a ref lookup
-- All existing auto-save, debounce, and manual save paths are unaffected
+This is purely a database policy issue. No changes to `InspectionForm.tsx`, `EquipmentTable.tsx`, or any other source file are needed.
 
 ## Impact
 
 | Scenario | Before | After |
 |----------|--------|-------|
-| Edit equipment, click "Save and Leave" | Saves empty initial state, data lost | Saves current state with all edits |
-| Edit training fields, click "Save and Leave" | Saves stale first-render state | Saves current state |
-| Edit assessment, click "Save and Leave" | Saves stale first-render state | Saves current state |
-| Auto-save (1.5s debounce) | Already works (not affected) | No change |
-| Manual save button | Already works (not affected) | No change |
+| Super admin edits equipment on another user's report | 403 error, data silently lost | Save succeeds |
+| Super admin adds new equipment to another user's report | 403 error | Insert succeeds |
+| Super admin deletes equipment from another user's report | 403 error | Delete succeeds |
+| Report owner edits their own equipment | Works (uses "ALL" policy) | No change |
 
+## Why Previous Fixes Didn't Help
+
+The stale closure fix and navigation guard fix were both valid improvements, but they addressed secondary issues. The primary blocker was always the 403 from the database rejecting the write. No amount of state management fixes can save data when the database refuses to accept it.
