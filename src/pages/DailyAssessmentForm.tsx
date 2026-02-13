@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from "react";
+import { isLocalDataNewer } from "@/lib/local-data-guards";
 import { useParams, useNavigate } from "react-router-dom";
 import { goBack } from "@/lib/navigation";
 import { supabase } from "@/integrations/supabase/client";
@@ -139,7 +140,7 @@ export default function DailyAssessmentForm() {
 
   // Unsaved changes protection
   const { isBlocked, confirmNavigation, cancelNavigation, saveAndLeave } = useUnsavedChanges({
-    hasUnsavedChanges: hasUnsavedChanges && assessment?.status !== 'completed',
+    hasUnsavedChanges: hasUnsavedChanges && (assessment?.status !== 'completed' || completionLockOverridden),
     message: "You have unsaved changes to this assessment. Are you sure you want to leave?",
     onSaveAndLeave: async () => { await saveBeforeLeaveRef.current?.(); },
   });
@@ -343,11 +344,7 @@ export default function DailyAssessmentForm() {
         if (assessmentError) throw assessmentError;
         
         // Determine if local data should take priority
-        const localIsNewer = offlineAssessment && (
-          !offlineAssessment.synced_at ||
-          (offlineAssessment.updated_at && assessmentData?.updated_at &&
-           new Date(offlineAssessment.updated_at) > new Date(assessmentData.updated_at))
-        );
+        const localIsNewer = isLocalDataNewer(offlineAssessment, assessmentData);
 
         if (localIsNewer) {
           // Local data is newer - preserve local state, only accept server metadata
