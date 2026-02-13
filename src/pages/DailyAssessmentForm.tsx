@@ -122,6 +122,8 @@ export default function DailyAssessmentForm() {
   });
 
   // Save-before-leave handler: flushes debounce and performs immediate save
+  // Use a ref for the save function to avoid stale closure in useCallback([], [])
+  const handleSaveProgressRef = useRef<() => Promise<void>>();
   const saveBeforeLeaveRef = useRef<(() => Promise<void>) | null>(null);
   const handleSaveAndLeave = useCallback(async () => {
     if (autoSaveTimerRef.current) {
@@ -129,7 +131,7 @@ export default function DailyAssessmentForm() {
       autoSaveTimerRef.current = null;
     }
     try {
-      await handleSaveProgress();
+      await handleSaveProgressRef.current?.();
       setHasUnsavedChanges(false);
       console.log('[DailyAssessmentForm] Save-before-leave completed');
     } catch (e) {
@@ -664,6 +666,9 @@ export default function DailyAssessmentForm() {
       saveInProgressRef.current = false;
     }
   };
+
+  // Keep handleSaveProgressRef pointing to the latest handleSaveProgress on every render
+  handleSaveProgressRef.current = handleSaveProgress;
 
   // Auto-save/sync retry is now handled by useAutoSync hook
 

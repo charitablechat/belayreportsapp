@@ -164,6 +164,9 @@ export default function InspectionForm() {
   });
 
   // Save-before-leave handler: flushes debounce and performs immediate save
+  // Use a ref for the save function to avoid stale closure -- useCallback([], []) captures
+  // the first-render performSave which closes over empty state arrays, causing data loss.
+  const performSaveRef = useRef<(silent: boolean) => Promise<void>>();
   const saveBeforeLeaveRef = useRef<(() => Promise<void>) | null>(null);
   const handleSaveAndLeave = useCallback(async () => {
     // Cancel pending debounce
@@ -172,14 +175,13 @@ export default function InspectionForm() {
       saveDebounceTimerRef.current = null;
     }
     try {
-      await performSave(true);
+      await performSaveRef.current?.(true);
       setHasUnsavedChanges(false);
       console.log('[InspectionForm] Save-before-leave completed');
     } catch (e) {
       console.warn('[InspectionForm] Save-before-leave failed:', e);
     }
   }, []);
-  // Keep ref updated so the stable callback always calls the latest performSave
   saveBeforeLeaveRef.current = handleSaveAndLeave;
 
   // Unsaved changes protection
@@ -1427,6 +1429,9 @@ export default function InspectionForm() {
       throw error;
     }
   };
+
+  // Keep performSaveRef pointing to the latest performSave on every render
+  performSaveRef.current = performSave;
 
   const triggerImmediateSaveRef = useRef<() => Promise<void>>();
 
