@@ -400,6 +400,16 @@ export default function Dashboard() {
                 } else {
                   for (const local of localInspections) {
                     if (!serverIds.has(local.id) && !local.id.startsWith('temp-')) {
+                      // SAFETY: Skip records recently modified -- they may be in-flight
+                      // (temp-to-UUID transform completed, server upload still pending)
+                      const updatedAt = local.updated_at ? new Date(local.updated_at).getTime() : 0;
+                      const createdAt = local.created_at ? new Date(local.created_at).getTime() : 0;
+                      const recencyTs = Math.max(updatedAt, createdAt);
+                      const isRecentlyModified = (Date.now() - recencyTs) < 60000;
+                      if (isRecentlyModified) {
+                        console.log('[Dashboard] Skipping orphan cleanup for recently modified inspection:', local.id);
+                        continue;
+                      }
                       if (import.meta.env.DEV) console.log('[Dashboard] Removing orphaned local inspection:', local.id);
                       await deleteOfflineInspection(local.id);
                     }
@@ -502,6 +512,14 @@ export default function Dashboard() {
                 } else {
                   for (const local of localTrainings) {
                     if (!serverIds.has(local.id) && !local.id.startsWith('temp-')) {
+                      const updatedAt = local.updated_at ? new Date(local.updated_at).getTime() : 0;
+                      const createdAt = local.created_at ? new Date(local.created_at).getTime() : 0;
+                      const recencyTs = Math.max(updatedAt, createdAt);
+                      const isRecentlyModified = (Date.now() - recencyTs) < 60000;
+                      if (isRecentlyModified) {
+                        console.log('[Dashboard] Skipping orphan cleanup for recently modified training:', local.id);
+                        continue;
+                      }
                       if (import.meta.env.DEV) console.log('[Dashboard] Removing orphaned local training:', local.id);
                       await deleteOfflineTraining(local.id);
                     }
@@ -604,6 +622,14 @@ export default function Dashboard() {
                 } else {
                   for (const local of localAssessments) {
                     if (!serverIds.has(local.id) && !local.id.startsWith('temp-')) {
+                      const updatedAt = local.updated_at ? new Date(local.updated_at).getTime() : 0;
+                      const createdAt = local.created_at ? new Date(local.created_at).getTime() : 0;
+                      const recencyTs = Math.max(updatedAt, createdAt);
+                      const isRecentlyModified = (Date.now() - recencyTs) < 60000;
+                      if (isRecentlyModified) {
+                        console.log('[Dashboard] Skipping orphan cleanup for recently modified assessment:', local.id);
+                        continue;
+                      }
                       if (import.meta.env.DEV) console.log('[Dashboard] Removing orphaned local assessment:', local.id);
                       await deleteOfflineDailyAssessment(local.id);
                     }
