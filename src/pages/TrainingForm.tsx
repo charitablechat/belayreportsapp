@@ -227,53 +227,30 @@ export default function TrainingForm() {
   // Keyboard shortcut for save (Ctrl/Cmd+S)
   useSaveShortcut(() => saveTraining(), hasUnsavedChanges && !isSaving);
 
-  // Auto-populate person submitting and submission date
+  // Auto-populate person submitting (from report creator) and submission date
   useEffect(() => {
-    const fetchUserProfile = async () => {
-      try {
-        const user = await getUserWithCache();
-        if (!user) return;
+    if (!summary || isLoading || !inspectorProfile) return;
 
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('first_name, last_name')
-          .eq('id', user.id)
-          .single();
+    const updates: any = {};
 
-        if (profile && summary) {
-          const updates: any = {};
-          
-          // Auto-populate person submitting if empty
-          if (!summary.person_submitting) {
-            const fullName = [profile.first_name, profile.last_name]
-              .filter(Boolean)
-              .join(' ');
-            
-            if (fullName) {
-              updates.person_submitting = fullName;
-            }
-          }
-          
-          // Auto-populate submission date if empty
-          if (!summary.submission_date) {
-            updates.submission_date = format(new Date(), 'yyyy-MM-dd');
-          }
-          
-          // Only update if there are changes
-          if (Object.keys(updates).length > 0) {
-            isInternalUpdateRef.current = true;
-            setSummary({ ...summary, ...updates });
-          }
-        }
-      } catch (error) {
-        console.error('Error fetching user profile:', error);
+    if (!summary.person_submitting) {
+      const fullName = [inspectorProfile.first_name, inspectorProfile.last_name]
+        .filter(Boolean)
+        .join(' ');
+      if (fullName) {
+        updates.person_submitting = fullName;
       }
-    };
-
-    if (summary && !isLoading) {
-      fetchUserProfile();
     }
-  }, [summary?.id, isLoading]);
+
+    if (!summary.submission_date) {
+      updates.submission_date = format(new Date(), 'yyyy-MM-dd');
+    }
+
+    if (Object.keys(updates).length > 0) {
+      isInternalUpdateRef.current = true;
+      setSummary({ ...summary, ...updates });
+    }
+  }, [summary?.id, isLoading, inspectorProfile]);
 
   // Load training data
   useEffect(() => {
