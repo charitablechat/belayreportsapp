@@ -36,7 +36,7 @@ import { usePWA } from "@/hooks/usePWA";
 import { usePullToRefresh } from "@/hooks/usePullToRefresh";
 import { getOfflineInspections, deleteOfflineInspection, queueOperation, saveInspectionOffline, getOfflineTrainings, saveTrainingOffline, deleteOfflineTraining, getOfflineDailyAssessments, saveDailyAssessmentOffline, deleteOfflineDailyAssessment } from "@/lib/offline-storage";
 import { ContactDeveloperSheet } from "@/components/ContactDeveloperSheet";
-import { onSyncComplete } from "@/lib/sync-events";
+import { onSyncComplete, isSyncInProgress } from "@/lib/sync-events";
 import { InspectionsEmptyState, TrainingsEmptyState, DailyAssessmentsEmptyState } from "@/components/EmptyState";
 import { getUserWithCache, getSuperAdminStatusWithCache, invalidateSuperAdminCache, ensureValidSession, getOfflineUserId } from "@/lib/cached-auth";
 /* Holiday Theme Components */
@@ -397,19 +397,27 @@ export default function Dashboard() {
                     server: networkData.length,
                     local: nonTempLocals.length,
                   });
+                } else if (isSyncInProgress()) {
+                  console.log('[Dashboard] Sync in progress -- skipping inspection orphan cleanup');
                 } else {
                   for (const local of localInspections) {
                     if (!serverIds.has(local.id) && !local.id.startsWith('temp-')) {
-                      // SAFETY: Skip records recently modified -- they may be in-flight
-                      // (temp-to-UUID transform completed, server upload still pending)
                       const updatedAt = local.updated_at ? new Date(local.updated_at).getTime() : 0;
                       const createdAt = local.created_at ? new Date(local.created_at).getTime() : 0;
                       const recencyTs = Math.max(updatedAt, createdAt);
                       const isRecentlyModified = (Date.now() - recencyTs) < 60000;
-                      if (isRecentlyModified) {
-                        console.log('[Dashboard] Skipping orphan cleanup for recently modified inspection:', local.id);
+                      const isRecentlyCreated = (Date.now() - createdAt) < 300000; // 5 minutes
+                      if (isRecentlyModified || isRecentlyCreated) {
+                        console.log('[Dashboard] Skipping orphan cleanup for recent inspection:', local.id);
                         continue;
                       }
+                      // LAST RESORT: Log deleted orphan for recovery
+                      try {
+                        const orphanLog = JSON.parse(localStorage.getItem('deletedOrphans') || '[]');
+                        orphanLog.push({ ...local, deletedAt: new Date().toISOString(), type: 'inspection' });
+                        if (orphanLog.length > 20) orphanLog.shift();
+                        localStorage.setItem('deletedOrphans', JSON.stringify(orphanLog));
+                      } catch {}
                       if (import.meta.env.DEV) console.log('[Dashboard] Removing orphaned local inspection:', local.id);
                       await deleteOfflineInspection(local.id);
                     }
@@ -509,6 +517,8 @@ export default function Dashboard() {
                     server: networkData.length,
                     local: nonTempLocals.length,
                   });
+                } else if (isSyncInProgress()) {
+                  console.log('[Dashboard] Sync in progress -- skipping training orphan cleanup');
                 } else {
                   for (const local of localTrainings) {
                     if (!serverIds.has(local.id) && !local.id.startsWith('temp-')) {
@@ -516,10 +526,17 @@ export default function Dashboard() {
                       const createdAt = local.created_at ? new Date(local.created_at).getTime() : 0;
                       const recencyTs = Math.max(updatedAt, createdAt);
                       const isRecentlyModified = (Date.now() - recencyTs) < 60000;
-                      if (isRecentlyModified) {
-                        console.log('[Dashboard] Skipping orphan cleanup for recently modified training:', local.id);
+                      const isRecentlyCreated = (Date.now() - createdAt) < 300000;
+                      if (isRecentlyModified || isRecentlyCreated) {
+                        console.log('[Dashboard] Skipping orphan cleanup for recent training:', local.id);
                         continue;
                       }
+                      try {
+                        const orphanLog = JSON.parse(localStorage.getItem('deletedOrphans') || '[]');
+                        orphanLog.push({ ...local, deletedAt: new Date().toISOString(), type: 'training' });
+                        if (orphanLog.length > 20) orphanLog.shift();
+                        localStorage.setItem('deletedOrphans', JSON.stringify(orphanLog));
+                      } catch {}
                       if (import.meta.env.DEV) console.log('[Dashboard] Removing orphaned local training:', local.id);
                       await deleteOfflineTraining(local.id);
                     }
@@ -619,6 +636,8 @@ export default function Dashboard() {
                     server: networkData.length,
                     local: nonTempLocals.length,
                   });
+                } else if (isSyncInProgress()) {
+                  console.log('[Dashboard] Sync in progress -- skipping assessment orphan cleanup');
                 } else {
                   for (const local of localAssessments) {
                     if (!serverIds.has(local.id) && !local.id.startsWith('temp-')) {
@@ -626,10 +645,17 @@ export default function Dashboard() {
                       const createdAt = local.created_at ? new Date(local.created_at).getTime() : 0;
                       const recencyTs = Math.max(updatedAt, createdAt);
                       const isRecentlyModified = (Date.now() - recencyTs) < 60000;
-                      if (isRecentlyModified) {
-                        console.log('[Dashboard] Skipping orphan cleanup for recently modified assessment:', local.id);
+                      const isRecentlyCreated = (Date.now() - createdAt) < 300000;
+                      if (isRecentlyModified || isRecentlyCreated) {
+                        console.log('[Dashboard] Skipping orphan cleanup for recent assessment:', local.id);
                         continue;
                       }
+                      try {
+                        const orphanLog = JSON.parse(localStorage.getItem('deletedOrphans') || '[]');
+                        orphanLog.push({ ...local, deletedAt: new Date().toISOString(), type: 'daily_assessment' });
+                        if (orphanLog.length > 20) orphanLog.shift();
+                        localStorage.setItem('deletedOrphans', JSON.stringify(orphanLog));
+                      } catch {}
                       if (import.meta.env.DEV) console.log('[Dashboard] Removing orphaned local assessment:', local.id);
                       await deleteOfflineDailyAssessment(local.id);
                     }
