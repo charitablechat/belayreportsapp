@@ -244,15 +244,14 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
                   </td>
                   <td className="border p-2">
                     <Input
-                      type="number"
-                      min={1}
+                      type="text"
+                      inputMode="numeric"
                       value={item.quantity || ""}
                       onChange={(e) => {
                         const raw = e.target.value;
                         if (raw === "") { updateEquipment(item, "quantity", null); return; }
-                        const val = parseInt(raw, 10);
-                        if (!isNaN(val) && val >= 1) {
-                          updateEquipment(item, "quantity", val);
+                        if (/^\d+\+?$/.test(raw)) {
+                          updateEquipment(item, "quantity", raw);
                         }
                       }}
                       onBlur={onImmediateSave}
@@ -416,15 +415,14 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
                     <div>
                       <Label className="text-xs text-muted-foreground">Quantity</Label>
                       <Input
-                        type="number"
-                        min={1}
+                        type="text"
+                        inputMode="numeric"
                         value={item.quantity || ""}
                         onChange={(e) => {
                           const raw = e.target.value;
                           if (raw === "") { updateEquipment(item, "quantity", null); return; }
-                          const val = parseInt(raw, 10);
-                          if (!isNaN(val) && val >= 1) {
-                            updateEquipment(item, "quantity", val);
+                          if (/^\d+\+?$/.test(raw)) {
+                            updateEquipment(item, "quantity", raw);
                           }
                         }}
                         onBlur={onImmediateSave}

@@ -621,7 +621,7 @@ export type Database = {
           id: string
           inspection_id: string
           production_year: number | null
-          quantity: number | null
+          quantity: string | null
           result: string
           rope_type: string | null
         }
@@ -633,7 +633,7 @@ export type Database = {
           id?: string
           inspection_id: string
           production_year?: number | null
-          quantity?: number | null
+          quantity?: string | null
           result: string
           rope_type?: string | null
         }
@@ -645,7 +645,7 @@ export type Database = {
           id?: string
           inspection_id?: string
           production_year?: number | null
-          quantity?: number | null
+          quantity?: string | null
           result?: string
           rope_type?: string | null
         }
