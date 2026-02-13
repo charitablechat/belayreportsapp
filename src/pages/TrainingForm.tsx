@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from "react";
+import { isLocalDataNewer } from "@/lib/local-data-guards";
 import { useParams, useNavigate } from "react-router-dom";
 import { goBack } from "@/lib/navigation";
 import { supabase } from "@/integrations/supabase/client";
@@ -144,7 +145,7 @@ export default function TrainingForm() {
 
   // Unsaved changes protection
   const { isBlocked, confirmNavigation, cancelNavigation, saveAndLeave } = useUnsavedChanges({
-    hasUnsavedChanges: hasUnsavedChanges && training?.status !== 'completed',
+    hasUnsavedChanges: hasUnsavedChanges && (training?.status !== 'completed' || completionLockOverridden),
     message: "You have unsaved changes to this training report. Are you sure you want to leave?",
     onSaveAndLeave: async () => { await saveBeforeLeaveRef.current?.(); },
   });
@@ -313,11 +314,7 @@ export default function TrainingForm() {
           if (trainingError) throw trainingError;
           
           // Determine if local data should take priority
-          const localIsNewer = offlineTraining && (
-            !offlineTraining.synced_at ||
-            (offlineTraining.updated_at && trainingData?.updated_at &&
-             new Date(offlineTraining.updated_at) > new Date(trainingData.updated_at))
-          );
+          const localIsNewer = isLocalDataNewer(offlineTraining, trainingData);
 
           if (localIsNewer) {
             // Local data is newer - preserve local state, only accept server metadata
