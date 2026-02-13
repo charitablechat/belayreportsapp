@@ -1,87 +1,79 @@
 
 
-# Fix: "Pro Tour" Report Lost During Offline-to-Online Sync
+# Additional Hardening: Prevent Offline Report Data Loss
 
-## Root Cause: Race Condition Between Sync and Orphan Cleanup
+## Context
 
-When a report is created offline (with a `temp-` ID) and the device reconnects, **two processes run simultaneously**:
+The "Pro Tour" report was lost this morning due to the race condition between sync and orphan cleanup. The 60-second recency guard we just deployed fixes the primary vector. This plan adds **defense-in-depth** to ensure no other path can cause this.
 
-1. **Auto-sync** (`useAutoSync.handleOnline`): Transforms `temp-` ID to a real UUID, upserts to the server
-2. **Dashboard reload** (`handleOnline` + `onSyncComplete`): Fetches server data, then runs orphan cleanup
+## What Happened to "Pro Tour"
 
-The orphan cleanup deletes any local record whose ID is NOT on the server AND does NOT start with `temp-`. The problem:
+1. Report created offline with a `temp-` ID
+2. Device reconnected -- sync renamed `temp-XXX` to a real UUID in IndexedDB
+3. Dashboard simultaneously fetched server data (server didn't have the report yet)
+4. Orphan cleanup deleted the local UUID copy because it wasn't on the server and wasn't `temp-` prefixed
+5. Server never received the data -- report is **not recoverable**
 
-- Step A: Sync renames `temp-ProTour` to `uuid-ProTour` in IndexedDB (temp- prefix removed)
-- Step B: Sync starts uploading `uuid-ProTour` to the server (takes seconds)
-- Step C: Dashboard fetches server data (server doesn't have `uuid-ProTour` yet)
-- Step D: Orphan cleanup sees `uuid-ProTour` locally, not on server, not `temp-` prefixed -- **deletes it**
+The fix deployed moments ago (60-second recency guard) prevents this exact scenario going forward.
 
-The upload in Step B finishes, but the local copy is already gone. On next page load, there is nothing left.
+## Additional Hardening (3 measures)
 
-## Immediate Fix
+### 1. Add "sync-in-progress" flag to prevent orphan cleanup during active sync
 
-### 1. Dashboard.tsx -- Add "recently synced" guard to orphan cleanup (3 locations)
+The recency guard is timestamp-based and works well, but a belt-and-suspenders approach adds a global flag that the sync pipeline sets before starting and clears when done. Dashboard orphan cleanup checks this flag and skips cleanup entirely if sync is active.
 
-Before deleting an orphan, check if the record was recently synced (within the last 60 seconds). A record that just had its ID transformed by the sync pipeline will have a very recent `updated_at` but no `synced_at` yet -- or a `synced_at` that is very recent. Either way, skipping recent records prevents the race.
+**File: `src/lib/sync-events.ts`** -- Add `isSyncInProgress()` / `setSyncInProgress()` exports
 
-**For all three orphan cleanup blocks** (inspections at ~line 401, trainings at ~line 504, assessments at ~line 606):
-
-Before:
+**File: `src/pages/Dashboard.tsx`** -- Before each orphan cleanup loop, check:
 ```typescript
-if (!serverIds.has(local.id) && !local.id.startsWith('temp-')) {
-  await deleteOfflineInspection(local.id);
+if (isSyncInProgress()) {
+  console.log('[Dashboard] Sync in progress -- skipping orphan cleanup');
+  // skip entire cleanup block
 }
 ```
 
-After:
+**File: `src/hooks/useAutoSync.tsx`** -- Wrap `performSync` with `setSyncInProgress(true/false)`
+
+### 2. Extend recency window from 60 seconds to 5 minutes for created_at
+
+The current guard uses `Math.max(updated_at, created_at)` with a 60-second window. For reports created offline (which may sit for hours before reconnecting), the `created_at` could be old. But `updated_at` gets refreshed during the temp-to-UUID transform, so 60s is sufficient for that.
+
+However, as an extra safety net, add a dedicated check: never delete any record whose `created_at` is within the last 5 minutes, regardless of `updated_at`. This protects against edge cases where the sync pipeline doesn't update `updated_at`.
+
+**File: `src/pages/Dashboard.tsx`** -- Enhance the guard in all 3 cleanup blocks:
 ```typescript
-if (!serverIds.has(local.id) && !local.id.startsWith('temp-')) {
-  // SAFETY: Skip records that were recently created or synced
-  // They may be in-flight (temp-to-UUID transform completed, server upload pending)
-  const updatedAt = local.updated_at ? new Date(local.updated_at).getTime() : 0;
-  const isRecentlyModified = (Date.now() - updatedAt) < 60000; // 60 seconds
-  if (isRecentlyModified) {
-    console.log('[Dashboard] Skipping orphan cleanup for recently modified record:', local.id);
-    continue;
-  }
-  await deleteOfflineInspection(local.id);
+const createdAt = local.created_at ? new Date(local.created_at).getTime() : 0;
+const isRecentlyCreated = (Date.now() - createdAt) < 300000; // 5 minutes
+if (isRecentlyModified || isRecentlyCreated) {
+  console.log('[Dashboard] Skipping orphan cleanup for recent record:', local.id);
+  continue;
 }
 ```
 
-This applies identically to the training and daily assessment orphan cleanup blocks, using their respective delete functions.
+### 3. Log deleted orphans to a recovery array (last resort)
 
-### 2. atomic-sync-manager.ts -- Delay old temp-ID deletion until AFTER server commit
+Before deleting an orphan, snapshot the full record into a `deletedOrphans` array stored in localStorage (capped at 20 entries). This provides a last-resort recovery path if the guards ever fail again.
 
-Currently, the sync pipeline deletes the old `temp-` IndexedDB entry and re-saves under the new UUID. But the `emitSyncComplete()` event fires immediately after, triggering a Dashboard reload before the server has fully committed.
-
-Move the `emitSyncComplete` call timing: this is already handled by `useAutoSync` (line 240), so no change needed in atomic-sync-manager. The fix is entirely in the Dashboard orphan guard above.
-
-## Verification Strategy
-
-1. **Offline creation test**:
-   - Disconnect from network
-   - Create a new inspection report (e.g., "Test Pro Tour")
-   - Verify it appears in the dashboard with a `temp-` ID
-   - Reconnect to network
-   - Wait 10 seconds for sync to complete
-   - Verify the report persists on the dashboard with a real UUID
-   - Refresh the page -- report should still be there
-
-2. **Multi-tab race test**:
-   - Create an offline report
-   - Open a second browser tab on the dashboard
-   - Reconnect to network
-   - Verify both tabs show the report after sync
-
-3. **Repeat for all report types**: Training reports, Daily Assessments
-
-## Preventative Measure
-
-Add a `created_at` check as a permanent safety net: never orphan-delete any record created within the last 5 minutes, regardless of server state. This protects against any future race conditions in the sync pipeline.
+**File: `src/pages/Dashboard.tsx`** -- Before each `deleteOffline*` call:
+```typescript
+try {
+  const orphanLog = JSON.parse(localStorage.getItem('deletedOrphans') || '[]');
+  orphanLog.push({ ...local, deletedAt: new Date().toISOString(), type: 'inspection' });
+  if (orphanLog.length > 20) orphanLog.shift();
+  localStorage.setItem('deletedOrphans', JSON.stringify(orphanLog));
+} catch {}
+```
 
 ## Files Changed
 
-1. **src/pages/Dashboard.tsx** -- Add recently-modified guard to all 3 orphan cleanup blocks (inspections, trainings, daily assessments)
+1. **src/lib/sync-events.ts** -- Add sync-in-progress flag
+2. **src/hooks/useAutoSync.tsx** -- Set/clear sync-in-progress flag around performSync
+3. **src/pages/Dashboard.tsx** -- Add sync-in-progress check, extend created_at guard to 5 minutes, add orphan deletion logging
 
-No database changes required. No changes to the sync pipeline itself.
+## Verification Strategy
+
+1. Create a report offline, reconnect, and confirm it persists on the dashboard
+2. Verify the console shows "Skipping orphan cleanup" log messages during sync
+3. Check localStorage for `deletedOrphans` key to confirm the safety net is in place
+4. Repeat for all three report types (Inspection, Training, Daily Assessment)
 
