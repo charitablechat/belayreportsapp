@@ -127,6 +127,8 @@ export default function TrainingForm() {
   });
 
   // Save-before-leave handler: flushes debounce and performs immediate save
+  // Use a ref for the save function to avoid stale closure in useCallback([], [])
+  const saveTrainingRef = useRef<() => Promise<void>>();
   const saveBeforeLeaveRef = useRef<(() => Promise<void>) | null>(null);
   const handleSaveAndLeave = useCallback(async () => {
     if (autoSaveTimer.current) {
@@ -134,7 +136,7 @@ export default function TrainingForm() {
       autoSaveTimer.current = null;
     }
     try {
-      await saveTraining();
+      await saveTrainingRef.current?.();
       setHasUnsavedChanges(false);
       console.log('[TrainingForm] Save-before-leave completed');
     } catch (e) {
@@ -554,6 +556,9 @@ export default function TrainingForm() {
       saveInProgressRef.current = false;
     }
   }, [training, id, deliveryApproaches, operatingSystems, immediateAttention, verifiableItems, systemsInPlace, summary, isOnline]);
+
+  // Keep saveTrainingRef pointing to the latest saveTraining on every render
+  saveTrainingRef.current = saveTraining;
 
   // Auto-save/sync retry is now handled by useAutoSync hook
 
