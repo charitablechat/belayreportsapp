@@ -1,63 +1,71 @@
 
 
-# Speed Up Recent Reports Loading
+# Add "All Reports" Section to Dashboard
 
-## Root Cause
+## Overview
 
-The dashboard queries use `SELECT *` on all three report tables. Each table has a `latest_report_html` column containing full HTML report content:
+Add a new "All Reports" navigation section alongside the existing "Recent Reports" section. "Recent Reports" will be capped at 9 reports per tab, while "All Reports" shows the complete set.
 
-- **Trainings**: avg 2.8 MB per record x 8 records = ~22 MB
-- **Daily Assessments**: avg 1.4 MB per record x 4 records = ~6 MB
-- **Total unnecessary data transfer: ~28 MB**
+## Current State
 
-The `ReportCard` component only needs a handful of lightweight columns (organization, date, status, inspector profile). The HTML is never displayed on the dashboard.
+- The dashboard fetches all reports into `inspections`, `trainings`, and `dailyAssessments` state arrays
+- These are displayed in a single "Recent Reports" section with no limit
+- Data fetching already uses optimized column selection (no `latest_report_html`)
+- RLS policies already handle Super Admin vs. standard user visibility
 
-## Solution
+## Implementation
 
-Replace `SELECT *` with explicit column lists in all three dashboard loaders, excluding the heavy `latest_report_html` column. This alone should reduce load time dramatically (from ~28 MB to under 50 KB).
+### 1. Add a top-level section toggle (Recent Reports / All Reports)
 
-## Changes
+Add a new state variable `reportSection` (`"recent"` | `"all"`) and render two clickable section headers (styled as a segmented control or tab bar) above the existing Inspections/Training/Daily tabs.
 
-### 1. Update `src/pages/Dashboard.tsx`
+### 2. Cap "Recent Reports" at 9
 
-**loadInspections** (line 337): Replace `*` with explicit columns:
+When `reportSection === "recent"`, slice each sorted array to `.slice(0, 9)` before rendering. The tab counts will reflect the sliced count (e.g., "Inspections (9)").
+
+### 3. "All Reports" shows everything
+
+When `reportSection === "all"`, render the full arrays with their existing sort logic. Tab counts show the full totals.
+
+### 4. No new data fetching required
+
+Both sections use the same `inspections`, `trainings`, and `dailyAssessments` arrays that are already loaded. The only difference is whether `.slice(0, 9)` is applied. This means zero additional network requests and instant switching.
+
+### 5. UI Layout
+
+```text
++-----------------------------+
+| [Recent Reports] [All Reports] |   <-- section toggle
++-----------------------------+
+| Inspections | Training | Daily |   <-- existing sub-tabs
++-----------------------------+
+| Report cards grid              |
++-----------------------------+
 ```
-id, inspector_id, organization, location, inspection_date,
-status, created_at, updated_at, synced_at, last_opened_at,
-acct_number, started_at, latest_report_generated_at, report_version,
-deleted_at, organization_id, previous_inspector, previous_inspection_date
-```
 
-**loadTrainingReports** (line 443): Replace `*` with explicit columns:
-```
-id, inspector_id, organization, trainer_of_record, start_date,
-end_date, status, created_at, updated_at, synced_at,
-latest_report_generated_at, report_version, deleted_at
-```
+The section toggle will use a `Tabs` component with a distinct visual style (e.g., larger, bolder) to differentiate it from the sub-tabs. The active section will be clearly highlighted.
 
-**loadDailyAssessments** (line 544): Replace `*` with explicit columns:
-```
-id, inspector_id, organization, site, trainer_of_record,
-assessment_date, status, created_at, updated_at, synced_at,
-latest_report_generated_at, report_version, deleted_at
-```
+## File Changes
 
-All three keep their existing `.is('deleted_at', null)` filter and profile joins unchanged.
+### `src/pages/Dashboard.tsx`
 
-### 2. Verify offline storage compatibility
+1. Add state: `const [reportSection, setReportSection] = useState<"recent" | "all">("recent");`
+2. Add a top-level `Tabs` wrapper around the section header area with `"recent"` and `"all"` triggers
+3. Compute display arrays based on section:
+   ```typescript
+   const displayInspections = reportSection === "recent" 
+     ? sortedInspections.slice(0, 9) 
+     : sortedInspections;
+   ```
+4. Update tab count badges to reflect the displayed count
+5. No changes to data loading, offline logic, delete handlers, or sync -- all remain identical
 
-The offline save calls (`saveInspectionOffline`, etc.) will cache the lighter records. When a user opens a report, the form fetches the full record independently, so no data is lost.
+## Technical Notes
 
-## Expected Impact
-
-| Metric | Before | After |
-|--------|--------|-------|
-| Data transferred | ~28 MB | ~50 KB |
-| Load time (good connection) | 3-8 seconds | under 1 second |
-| Load time (slow mobile) | 10-15+ seconds | 1-2 seconds |
-
-## Risk Assessment
-
-- **Low risk**: The `latest_report_html` column is only used when generating/viewing reports, which happens in the individual form pages (InspectionForm, TrainingForm, DailyAssessmentForm) -- those already fetch their own data independently.
-- The offline cache will store lighter records, but since forms re-fetch on open, there is no functional impact.
+- No database changes or new queries needed
+- No new dependencies
+- Offline/IndexedDB behavior unchanged -- both sections draw from the same cached data
+- Super Admin filter dropdown works identically in both sections
+- The tier-based priority sorting (critical > warning > default) applies in both sections, ensuring the most urgent reports appear first in "Recent Reports"
+- Mobile-responsive: the section toggle will stack or scroll horizontally on small screens
 
