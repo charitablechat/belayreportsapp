@@ -55,7 +55,8 @@ import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
 import { UnsavedChangesDialog } from "@/components/UnsavedChangesDialog";
 import { useSaveShortcut } from "@/hooks/useKeyboardShortcuts";
 import { useReportEditPermission } from "@/hooks/useReportEditPermission";
-import { CompletionLockDialog, CompletionLockOverlay } from "@/components/CompletionLockDialog";
+import { CompletionLockDialog } from "@/components/CompletionLockDialog";
+import { Lock } from "lucide-react";
 
 export default function InspectionForm() {
   const { id } = useParams();
@@ -127,6 +128,21 @@ export default function InspectionForm() {
   // Completion lock derived values (after report state is declared)
   const isCompletionLocked = inspection?.status === 'completed' && !completionLockOverridden;
   const effectiveReadOnly = isReadOnly || isCompletionLocked;
+
+  // Field-level click interception for locked reports
+  const handleLockedFieldClick = useCallback((e: React.MouseEvent) => {
+    if (!isCompletionLocked) return;
+    const target = e.target as HTMLElement;
+    const isEditableField = target.closest(
+      'input, textarea, select, [role="checkbox"], [role="combobox"], ' +
+      '[contenteditable], .tiptap, button:not([data-nav])'
+    );
+    if (isEditableField) {
+      e.preventDefault();
+      e.stopPropagation();
+      setShowCompletionLockDialog(true);
+    }
+  }, [isCompletionLocked]);
 
   // Track if auto-population has run for this inspection
   const autoPopulatedRef = useRef<string | null>(null);
@@ -2150,8 +2166,13 @@ export default function InspectionForm() {
         </div>
       </header>
 
-      <CompletionLockOverlay isLocked={isCompletionLocked} onAttemptEdit={() => setShowCompletionLockDialog(true)}>
-      <main className="container mx-auto px-4 py-8 max-w-6xl">
+      <main onClickCapture={handleLockedFieldClick} className="container mx-auto px-4 py-8 max-w-6xl">
+        {isCompletionLocked && (
+          <div className="border-2 border-amber-500/60 bg-black/90 text-amber-400 font-mono text-xs px-4 py-2 flex items-center gap-2 mb-4 rounded">
+            <Lock className="h-3.5 w-3.5" />
+            <span>LOCKED — Click any field to unlock for editing</span>
+          </div>
+        )}
         {!isOnline && (
           <Alert className="mb-6 border-warning bg-warning/10">
             <CloudOff className="h-4 w-4 text-warning" />
@@ -2364,7 +2385,7 @@ export default function InspectionForm() {
           </TabsContent>
         </Tabs>
       </main>
-      </CompletionLockOverlay>
+      
 
       <HtmlReportViewer
         html={reportHtml}

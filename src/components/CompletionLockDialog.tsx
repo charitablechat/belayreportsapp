@@ -8,6 +8,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Lock } from "lucide-react";
 
 interface CompletionLockDialogProps {
   open: boolean;
@@ -18,43 +19,28 @@ interface CompletionLockDialogProps {
 export function CompletionLockDialog({ open, onOpenChange, onConfirm }: CompletionLockDialogProps) {
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent>
+      <AlertDialogContent className="bg-black border-2 border-amber-500 font-mono max-w-md">
         <AlertDialogHeader>
-          <AlertDialogTitle>Report Locked</AlertDialogTitle>
-          <AlertDialogDescription>
-            This report has been completed. Do you want to proceed with new edits?
+          <AlertDialogTitle className="text-amber-400 flex items-center gap-2 text-lg tracking-wide">
+            <Lock className="h-5 w-5" />
+            REPORT LOCKED
+          </AlertDialogTitle>
+          <AlertDialogDescription className="text-gray-300 font-mono text-sm leading-relaxed">
+            This report has been completed. Editing will reopen it for modifications. Proceed?
           </AlertDialogDescription>
         </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel>No</AlertDialogCancel>
-          <AlertDialogAction onClick={onConfirm}>Yes, Edit</AlertDialogAction>
+        <AlertDialogFooter className="gap-2">
+          <AlertDialogCancel className="border-2 border-amber-500/60 bg-transparent text-amber-400 hover:bg-amber-500/10 hover:text-amber-300 font-mono">
+            Cancel
+          </AlertDialogCancel>
+          <AlertDialogAction
+            onClick={onConfirm}
+            className="bg-amber-500 text-black hover:bg-amber-400 font-mono font-bold border-2 border-amber-500"
+          >
+            Unlock &amp; Edit
+          </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
-  );
-}
-
-interface CompletionLockOverlayProps {
-  isLocked: boolean;
-  onAttemptEdit: () => void;
-  children: React.ReactNode;
-}
-
-export function CompletionLockOverlay({ isLocked, onAttemptEdit, children }: CompletionLockOverlayProps) {
-  if (!isLocked) return <>{children}</>;
-
-  return (
-    <div className="relative">
-      {children}
-      <div
-        className="absolute inset-0 z-10 cursor-pointer"
-        onClick={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          onAttemptEdit();
-        }}
-        aria-label="Report is locked. Click to unlock."
-      />
-    </div>
   );
 }
