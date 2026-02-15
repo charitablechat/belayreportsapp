@@ -1,100 +1,44 @@
 
 
-# Conditional UI/UX for Locked Reports -- Minimal Brutalism
+# Fix Text Wrapping in Systems Area (Inspection Form)
 
-## Current Problem
+## Problem
 
-The existing `CompletionLockOverlay` renders an invisible `absolute inset-0` div over the entire report content area. This blocks **all** interaction -- including scrolling, tab switching, and viewing -- forcing the unlock dialog on any click. Users cannot freely browse completed reports without first unlocking them.
+The inspection form's navigation tabs and table columns in the "Systems - Ziplines" section suffer from text wrapping/truncation at certain viewport widths. Specifically:
 
-## Solution Overview
+1. **Tab Navigation Bar**: Labels like "Systems - Ziplines" and "Operations Criteria" wrap awkwardly in the 2-column mobile grid layout
+2. **Operating Systems Table**: The "Element Name" and "Operating System" columns in the desktop table can compress, causing text to wrap or be clipped
+3. **Ziplines Table**: With 13 columns in the desktop view, all columns are extremely compressed, clipping "Line Name" and other content
 
-Replace the blanket overlay approach with a field-level interception strategy. Locked reports render all data as static read-only text. Clicking any editable field triggers a Minimal Brutalist warning dialog. Only after confirming does the UI transition to interactive inputs.
+## Solution
 
-## Implementation Details
+### 1. Tab Navigation Labels (InspectionForm.tsx, ~line 2208-2225)
 
-### 1. Restyle CompletionLockDialog to Minimal Brutalism
+- Add `whitespace-nowrap` to each `TabsTrigger` to prevent label wrapping
+- Use clearer short labels on mobile: keep "Systems" and "Criteria" as-is (already shortened)
+- On desktop, keep full labels but ensure `min-w-0` and `text-center` for balanced distribution
 
-**File: `src/components/CompletionLockDialog.tsx`**
+### 2. Operating Systems Table (OperatingSystemsTable.tsx)
 
-Replace the standard AlertDialog styling with Minimal Brutalism aesthetic:
-- Pure black background (`bg-black`)
-- Sharp borders (`border-2 border-amber-500`)
-- Monospace font (`font-mono`)
-- High-contrast amber/white text
-- Direct, stark messaging: "REPORT LOCKED" with a warning icon
-- Buttons: amber outline for "Cancel", solid amber for "Unlock & Edit"
+- Add `min-w-[180px]` to the "Element Name" column header and cells to guarantee enough space for names
+- Add `min-w-[160px]` to the "Operating System" column to prevent the select dropdown from being clipped
+- Change the table container from `overflow-x-auto` to ensure full visibility while still allowing horizontal scroll when needed on smaller desktop screens
 
-Remove the `CompletionLockOverlay` component entirely -- it will no longer be needed.
+### 3. Ziplines Table (ZiplinesTable.tsx)
 
-### 2. Remove CompletionLockOverlay from All Three Forms
-
-**Files:**
-- `src/pages/InspectionForm.tsx`
-- `src/pages/TrainingForm.tsx`
-- `src/pages/DailyAssessmentForm.tsx`
-
-In each form:
-- Remove the `<CompletionLockOverlay>` wrapper around the main content area
-- The `effectiveReadOnly` prop is already passed to all child components -- this already renders fields as disabled/read-only when locked
-- The `CompletionLockDialog` remains, triggered when users click on locked fields
-
-### 3. Add Click Interception on Editable Fields
-
-The `effectiveReadOnly` boolean already controls whether fields are interactive. When `isCompletionLocked` is true, `effectiveReadOnly` is true, so all fields are already rendered as disabled inputs.
-
-Add an `onClickCapture` handler on the main content container that detects clicks on editable elements (inputs, textareas, selects, checkboxes, rich-text editors) and triggers the unlock dialog:
-
-```typescript
-const handleLockedFieldClick = useCallback((e: React.MouseEvent) => {
-  if (!isCompletionLocked) return;
-  
-  const target = e.target as HTMLElement;
-  const isEditableField = target.closest(
-    'input, textarea, select, [role="checkbox"], [role="combobox"], ' +
-    '[contenteditable], .tiptap, button:not([data-nav])'
-  );
-  
-  if (isEditableField) {
-    e.preventDefault();
-    e.stopPropagation();
-    setShowCompletionLockDialog(true);
-  }
-}, [isCompletionLocked]);
-```
-
-Applied to the main content wrapper:
-```tsx
-<main onClickCapture={handleLockedFieldClick} className="...">
-```
-
-This preserves scrolling, tab navigation, and general browsing while intercepting only edit-intent clicks.
-
-### 4. Add Visual Lock Indicator
-
-Add a persistent but non-blocking banner at the top of locked reports:
-
-```tsx
-{isCompletionLocked && (
-  <div className="border-2 border-amber-500/60 bg-black/90 text-amber-400 
-                  font-mono text-xs px-4 py-2 flex items-center gap-2 mb-4">
-    <Lock className="h-3.5 w-3.5" />
-    <span>LOCKED -- Click any field to unlock for editing</span>
-  </div>
-)}
-```
+- Add `min-w-[150px]` to the "Line Name" column to prevent name truncation
+- Add `min-w-[1200px]` to the table element itself (inside the `overflow-x-auto` wrapper) to enforce a minimum table width and prevent column crushing
+- This creates a horizontally scrollable table on narrower screens rather than compressing columns
 
 ## Files Changed
 
-1. **`src/components/CompletionLockDialog.tsx`** -- Restyle dialog to Minimal Brutalism; remove `CompletionLockOverlay` export
-2. **`src/pages/InspectionForm.tsx`** -- Remove overlay wrapper; add `onClickCapture` handler; add lock banner
-3. **`src/pages/TrainingForm.tsx`** -- Same changes
-4. **`src/pages/DailyAssessmentForm.tsx`** -- Same changes
+1. **`src/pages/InspectionForm.tsx`** -- Add `whitespace-nowrap` to TabsTrigger elements in the category navigation bar
+2. **`src/components/inspection/OperatingSystemsTable.tsx`** -- Add `min-w` constraints to Element Name and Operating System columns
+3. **`src/components/inspection/ZiplinesTable.tsx`** -- Add `min-w` to Line Name column; set minimum table width to prevent column crushing
 
-## What Stays the Same
+## Technical Notes
 
-- `effectiveReadOnly` logic (already makes fields non-interactive)
-- `completionLockOverridden` state management
-- `useUnsavedChanges` only activates when lock is overridden
-- All RLS policies and permissions are unchanged
-- `useReportEditPermission` hook remains untouched
+- The mobile card views for both tables are unaffected (they use full-width stacked layouts)
+- No logic or data changes -- purely CSS/layout adjustments
+- Horizontal scrolling is preferred over text truncation for data-dense inspection tables, as full text visibility is the priority
 
