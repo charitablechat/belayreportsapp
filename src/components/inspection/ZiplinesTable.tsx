@@ -105,10 +105,10 @@ function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: ZiplinesTablePro
 
         {/* Desktop table view */}
         <div className="hidden md:block overflow-x-auto">
-          <table className="w-full border-collapse text-sm">
+          <table className="w-full border-collapse text-sm min-w-[1200px]">
             <thead>
               <tr className="bg-blue-50 dark:bg-blue-950/20">
-                <th className="border p-2 text-left font-semibold text-xs">Line Name</th>
+                <th className="border p-2 text-left font-semibold text-xs min-w-[150px]">Line Name</th>
                 <th className="border p-2 text-left font-semibold text-xs">Cable Type</th>
                 <th className="border p-2 text-left font-semibold text-xs">Length (ft)</th>
                 <th className="border p-2 text-left font-semibold text-xs">Unload (lbf)</th>

@@ -93,8 +93,8 @@ function OperatingSystemsTable({ systems, onUpdate, onImmediateSave }: Operating
           <table className="w-full border-collapse">
             <thead>
               <tr className="bg-blue-50 dark:bg-blue-950/20">
-                <th className="border p-3 text-left font-semibold text-sm">Element Name</th>
-                <th className="border p-3 text-left font-semibold text-sm">Operating System</th>
+                <th className="border p-3 text-left font-semibold text-sm min-w-[180px]">Element Name</th>
+                <th className="border p-3 text-left font-semibold text-sm min-w-[160px]">Operating System</th>
                 <th className="border p-3 text-left font-semibold text-sm w-48">Result</th>
                 <th className="border p-3 text-left font-semibold text-sm">Comments and/or Required Changes</th>
                 <th className="border p-3 text-center font-semibold text-sm w-16"></th>
