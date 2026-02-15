@@ -1,44 +1,36 @@
 
-
-# Fix Text Wrapping in Systems Area (Inspection Form)
+# Allow Tab Switching on Locked Completed Reports
 
 ## Problem
 
-The inspection form's navigation tabs and table columns in the "Systems - Ziplines" section suffer from text wrapping/truncation at certain viewport widths. Specifically:
-
-1. **Tab Navigation Bar**: Labels like "Systems - Ziplines" and "Operations Criteria" wrap awkwardly in the 2-column mobile grid layout
-2. **Operating Systems Table**: The "Element Name" and "Operating System" columns in the desktop table can compress, causing text to wrap or be clipped
-3. **Ziplines Table**: With 13 columns in the desktop view, all columns are extremely compressed, clipping "Line Name" and other content
+The four category tabs (Systems - Ziplines, Equipment, Operations Criteria, Summary) are rendered as `<button>` elements by Radix `TabsTrigger`. The click interceptor for locked reports matches `button:not([data-nav])`, which catches tab clicks and shows the "REPORT LOCKED" warning instead of letting the user switch tabs.
 
 ## Solution
 
-### 1. Tab Navigation Labels (InspectionForm.tsx, ~line 2208-2225)
+A one-line change in `src/pages/InspectionForm.tsx`: exclude `[role="tab"]` from the editable-field selector in `handleLockedFieldClick`. Radix TabsTrigger always renders with `role="tab"`, so this cleanly distinguishes navigation buttons from data-editing buttons.
 
-- Add `whitespace-nowrap` to each `TabsTrigger` to prevent label wrapping
-- Use clearer short labels on mobile: keep "Systems" and "Criteria" as-is (already shortened)
-- On desktop, keep full labels but ensure `min-w-0` and `text-center` for balanced distribution
+### Change
 
-### 2. Operating Systems Table (OperatingSystemsTable.tsx)
+**File: `src/pages/InspectionForm.tsx` (~line 138)**
 
-- Add `min-w-[180px]` to the "Element Name" column header and cells to guarantee enough space for names
-- Add `min-w-[160px]` to the "Operating System" column to prevent the select dropdown from being clipped
-- Change the table container from `overflow-x-auto` to ensure full visibility while still allowing horizontal scroll when needed on smaller desktop screens
+Update the selector from:
+```
+'input, textarea, select, [role="checkbox"], [role="combobox"], [contenteditable], .tiptap, button:not([data-nav])'
+```
+to:
+```
+'input, textarea, select, [role="checkbox"], [role="combobox"], [contenteditable], .tiptap, button:not([data-nav]):not([role="tab"])'
+```
 
-### 3. Ziplines Table (ZiplinesTable.tsx)
+This adds `:not([role="tab"])` to the button match, allowing all Radix tab triggers to pass through the interceptor untouched while still blocking clicks on other buttons (dropdowns, toggles, etc.).
 
-- Add `min-w-[150px]` to the "Line Name" column to prevent name truncation
-- Add `min-w-[1200px]` to the table element itself (inside the `overflow-x-auto` wrapper) to enforce a minimum table width and prevent column crushing
-- This creates a horizontally scrollable table on narrower screens rather than compressing columns
+## Why This Works
+
+- Radix `TabsTrigger` always renders `role="tab"` on its underlying button element
+- No other editable/data-modifying button in the form uses `role="tab"`
+- The `onValueChange` handler on `<Tabs>` will fire normally, switching the visible content
+- All actual data fields (inputs, selects, checkboxes) remain intercepted
 
 ## Files Changed
 
-1. **`src/pages/InspectionForm.tsx`** -- Add `whitespace-nowrap` to TabsTrigger elements in the category navigation bar
-2. **`src/components/inspection/OperatingSystemsTable.tsx`** -- Add `min-w` constraints to Element Name and Operating System columns
-3. **`src/components/inspection/ZiplinesTable.tsx`** -- Add `min-w` to Line Name column; set minimum table width to prevent column crushing
-
-## Technical Notes
-
-- The mobile card views for both tables are unaffected (they use full-width stacked layouts)
-- No logic or data changes -- purely CSS/layout adjustments
-- Horizontal scrolling is preferred over text truncation for data-dense inspection tables, as full text visibility is the priority
-
+1. **`src/pages/InspectionForm.tsx`** -- Update selector string in `handleLockedFieldClick` (1 line)
