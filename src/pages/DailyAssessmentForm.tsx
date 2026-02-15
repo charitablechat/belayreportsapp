@@ -60,7 +60,7 @@ export default function DailyAssessmentForm() {
   
   // Check edit permissions - Super Admins are view-only, only owners can edit
   const [inspectorId, setInspectorId] = useState<string | null>(null);
-  const { canEdit, isReadOnly, isSuperAdmin, readOnlyReason } = useReportEditPermission({
+  const { canEdit, isReadOnly, isOwner, isSuperAdmin, readOnlyReason } = useReportEditPermission({
     inspectorId,
     reportType: 'daily_assessment'
   });
@@ -254,7 +254,7 @@ export default function DailyAssessmentForm() {
   // Watches ALL data sections: Beginning/End of Day, Operating Systems, Equipment/Structure/Environment Checks
   // Also watches assessment-level fields like section comments
   useEffect(() => {
-    if (loading || !assessment) return;
+    if (loading || !assessment || !isOwner) return;
     
     // Skip internal/programmatic updates (initial load, server hydration)
     if (isInternalUpdateRef.current) return;
@@ -294,7 +294,7 @@ export default function DailyAssessmentForm() {
   // Backup auto-save interval (every 10 seconds)
   useEffect(() => {
     autoSaveIntervalRef.current = setInterval(() => {
-      if (hasUnsavedChanges && !saving && !loading) {
+      if (hasUnsavedChanges && !saving && !loading && isOwner) {
         if (import.meta.env.DEV) console.log('[DailyAssessment AutoSave] Interval save triggered');
         handleSaveProgress();
       }
