@@ -33,7 +33,7 @@ import {
 } from "@/lib/offline-storage";
 import { HtmlReportViewer } from "@/components/HtmlReportViewer";
 import { openHtmlReport } from "@/lib/html-report-viewer";
-import { triggerValentineConfetti } from "@/lib/confetti";
+import { triggerCompletionConfetti } from "@/lib/confetti";
 import { triggerHaptic } from "@/lib/haptics";
 import { useReportSync } from "@/hooks/useReportSync";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -906,9 +906,9 @@ export default function TrainingForm() {
       setTraining(completedTraining);
       setLastSaved(new Date());
       
-      // Trigger Valentine's celebration on first completion
+      // Trigger celebration on first completion
       if (!wasAlreadyCompleted) {
-        triggerValentineConfetti();
+        triggerCompletionConfetti();
         triggerHaptic('success');
       }
     } catch (error) {

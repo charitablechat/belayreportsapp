@@ -40,12 +40,8 @@ import { onSyncComplete, isSyncInProgress } from "@/lib/sync-events";
 import { InspectionsEmptyState, TrainingsEmptyState, DailyAssessmentsEmptyState } from "@/components/EmptyState";
 import { getUserWithCache, getSuperAdminStatusWithCache, invalidateSuperAdminCache, ensureValidSession, getOfflineUserId } from "@/lib/cached-auth";
 /* Holiday Theme Components */
-import { HolidayBanner } from "@/components/christmas/HolidayBanner";
 import { OlympicRings } from "@/components/christmas/OlympicRings";
 import { UserProfileDropdown } from "@/components/UserProfileDropdown";
-
-
-import { triggerValentineConfetti } from "@/lib/confetti";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -920,8 +916,7 @@ export default function Dashboard() {
         <div className="absolute inset-0 bg-gradient-to-br from-blue-900/80 via-sky-900/70 to-blue-900/80 hidden motion-reduce:block" />
       </div>
       <div className="relative z-10 min-h-screen">
-        {/* Holiday Banner */}
-        <HolidayBanner />
+        
         
         <header className="border-b bg-card/95 backdrop-blur-sm">
         <div className="container mx-auto px-1 md:px-4 py-3 md:py-4">
