@@ -136,13 +136,27 @@ export default function InspectionHeader({ inspection, userProfile, modifiedByPr
                   <PopoverTrigger asChild>
                     <Button
                       variant="outline"
-                      className={cn("w-full justify-start text-left font-normal bg-muted/50 cursor-not-allowed", !inspection?.inspection_date && "text-muted-foreground")}
-                      disabled
+                      className={cn("w-full justify-start text-left font-normal", isReadOnly && "bg-muted/50 cursor-not-allowed", !inspection?.inspection_date && "text-muted-foreground")}
+                      disabled={isReadOnly}
                     >
                       <CalendarIcon className="mr-2 h-4 w-4" />
                       {inspection?.inspection_date ? format(parseLocalDate(inspection.inspection_date)!, "PPP") : "Pick a date"}
                     </Button>
                   </PopoverTrigger>
+                  {!isReadOnly && (
+                    <PopoverContent className="w-auto p-0">
+                      <Calendar
+                        mode="single"
+                        selected={inspection?.inspection_date ? parseLocalDate(inspection.inspection_date) : undefined}
+                        onSelect={(date) => {
+                          onUpdate("inspection_date", date ? format(date, 'yyyy-MM-dd') : '');
+                          onImmediateSave?.();
+                        }}
+                        initialFocus
+                        className="pointer-events-auto"
+                      />
+                    </PopoverContent>
+                  )}
                 </Popover>
               </div>
               <div className="space-y-1.5 p-3 rounded-lg bg-muted/30 border border-border/50">
