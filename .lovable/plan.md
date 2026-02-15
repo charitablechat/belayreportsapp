@@ -1,124 +1,77 @@
 
+# Enable Date Field Editing Across All Report Forms
 
-# Admin Read-Only Enforcement: Disable Auto-Modifications for Non-Owner Admins
+## Overview
 
-## Problem
+All five date fields across three report forms are currently hardcoded as `disabled` with no calendar popover content. This plan re-enables them as editable fields with proper calendar selection, gated by the existing `isReadOnly` prop (which already respects completion lock and permission logic).
 
-When a Super Admin or Admin opens a report they do not own, the following automatic processes run unchecked and can silently modify the report data:
+## Changes by File
 
-1. **Debounced auto-save** (1.5s after any state change)
-2. **Backup interval auto-save** (every 10-30s)
-3. **Summary auto-populate** on initial load (fills empty summary fields)
-4. **Real-time summary auto-regeneration** (re-aggregates on status/comment changes)
-5. **`last_opened_at` timestamp update** (writes to server on every open)
-6. **ACCT number auto-fill** from inspector profile
+### 1. `src/components/inspection/InspectionHeader.tsx`
 
-These processes treat all users equally -- the `useReportEditPermission` hook currently returns `canEdit: true` for Super Admins, meaning no auto-process is gated.
+**Inspection Date (lines 133-146):**
+- Remove `disabled` from the Button; gate with `disabled={isReadOnly}` instead
+- Remove forced `bg-muted/50 cursor-not-allowed` classes; apply them conditionally only when `isReadOnly`
+- Add `PopoverContent` with a `Calendar` component (same pattern as existing End Date in TrainingHeader)
+- On date select, call `onUpdate("inspection_date", format(date, 'yyyy-MM-dd'))` and trigger `onImmediateSave`
 
-## Solution
+**Previous Inspection Date (lines 152-163):** Already editable via `PreviousInspectionDatePicker` -- no changes needed.
 
-Add an `isOwner` check to every automatic data-modification path across all three form pages. Only manual user interactions (clicking Save, editing a field, completing a report) should trigger writes for non-owners.
+### 2. `src/components/training/TrainingHeader.tsx`
 
-### Changes by File
+**Start Date (lines 58-74):**
+- Remove `disabled` from the Button; gate with `disabled={isReadOnly}`
+- Remove forced `bg-muted/50 cursor-not-allowed` classes; apply conditionally
+- Add `PopoverContent` with `Calendar` (matching the existing End Date pattern on lines 86-98)
+- On date select, call `onUpdate('start_date', format(date, 'yyyy-MM-dd'))`
 
----
+**End Date (lines 77-100):** Already editable -- no changes needed.
 
-### 1. `src/hooks/useReportEditPermission.tsx`
+### 3. `src/components/daily-assessment/DailyAssessmentHeader.tsx`
 
-Export the existing `isOwner` field (already present in the return type). No code change needed here -- the forms just need to destructure it.
+**Assessment Date (lines 38-57):**
+- Remove `disabled` from the Button; gate with `disabled={isReadOnly}`
+- Remove forced `bg-muted/50 cursor-not-allowed` classes; apply conditionally
+- Add `PopoverContent` with `Calendar`
+- On date select, call `onUpdate("assessment_date", format(date, 'yyyy-MM-dd'))`
 
----
-
-### 2. `src/pages/InspectionForm.tsx`
-
-**a) Destructure `isOwner`** from the permission hook (~line 71)
-
-**b) Gate debounced auto-save** (~line 447): Add `isOwner` to the guard condition. If `!isOwner`, skip setting the debounce timer entirely -- state changes from admin browsing will not trigger auto-persistence.
-
-```text
-if (!loading && !isInternalUpdateRef.current && isOwner) {
-```
-
-**c) Gate backup interval auto-save** (~line 473): Add `isOwner` to the interval's condition.
+## Implementation Pattern (same for all three)
 
 ```text
-if (hasUnsavedChanges && !saving && !autoSaving && isOwner) {
+Before:
+  <Button disabled className="bg-muted/50 cursor-not-allowed">
+    ...date display...
+  </Button>
+  (no PopoverContent)
+
+After:
+  <Button disabled={isReadOnly} className={cn(isReadOnly && "bg-muted/50 cursor-not-allowed")}>
+    ...date display...
+  </Button>
+  {!isReadOnly && (
+    <PopoverContent className="w-auto p-0">
+      <Calendar
+        mode="single"
+        selected={parsedDate}
+        onSelect={(date) => onUpdate(field, date ? format(date, 'yyyy-MM-dd') : '')}
+        initialFocus
+        className="pointer-events-auto"
+      />
+    </PopoverContent>
+  )}
 ```
 
-**d) Gate summary auto-populate** (~line 488): Skip auto-populating summary fields for non-owners. If an admin needs to regenerate the summary, they can click the "Regenerate Summary" button manually.
+## What Remains Unchanged
 
-```text
-if (!inspection || loading || !isOwner) return;
-```
-
-**e) Gate real-time summary auto-regeneration** (~line 546): Skip the signature-tracking effect for non-owners.
-
-```text
-if (loading || !inspection?.id || !isOwner) return;
-```
-
-**f) Gate `last_opened_at` update** (~line 869): Skip writing the timestamp for non-owners, since this modifies the record's metadata.
-
-```text
-if (isOnline && !id!.startsWith('temp-') && isOwner) {
-```
-
-**g) Gate ACCT number auto-fill** (~line 440): Skip for non-owners.
-
-```text
-if (inspection && inspectorProfile && !inspection.acct_number && inspectorProfile.acct_number && isOwner) {
-```
-
----
-
-### 3. `src/pages/TrainingForm.tsx`
-
-**a) Destructure `isOwner`** from the permission hook (~line 62)
-
-**b) Gate debounced auto-save** (~line 584): Add `isOwner` check.
-
-**c) Gate backup interval auto-save** (~line 629): Add `isOwner` check.
-
----
-
-### 4. `src/pages/DailyAssessmentForm.tsx`
-
-**a) Destructure `isOwner`** from the permission hook (~line 63)
-
-**b) Gate debounced auto-save** (~line 253): Add `isOwner` check.
-
-**c) Gate backup interval auto-save** (~line 296): Add `isOwner` check.
-
----
-
-## What Remains Enabled for Admins
-
-- **Manual Save button**: Still works when clicked explicitly
-- **Complete button**: Still works when clicked explicitly  
-- **Generate Report**: Still works when clicked explicitly
-- **Field editing**: Still allowed (controlled by existing `effectiveReadOnly` / completion lock)
-- **Navigation between tabs**: Unaffected
-- **Viewing and scrolling**: Unaffected
-
-## What This Prevents
-
-| Auto-Process | Owner | Admin (non-owner) |
-|---|---|---|
-| Debounced auto-save | Runs | **Blocked** |
-| Interval auto-save | Runs | **Blocked** |
-| Summary auto-populate | Runs | **Blocked** |
-| Summary auto-regenerate | Runs | **Blocked** |
-| `last_opened_at` write | Runs | **Blocked** |
-| ACCT auto-fill | Runs | **Blocked** |
-| Manual Save button | Works | Works |
-| Manual Complete | Works | Works |
-| Manual Regenerate Summary | Works | Works |
+- Auto-populate logic for dates on report creation
+- All data loss prevention (RLS, save/cancel, navigation blocking)
+- Completion lock field interception (`onClickCapture`)
+- `isReadOnly` gating from `useReportEditPermission`
+- The `PreviousInspectionDatePicker` component (already editable)
+- The Training End Date calendar (already editable)
 
 ## Files Changed
 
-1. `src/pages/InspectionForm.tsx` -- Gate 6 auto-processes behind `isOwner`
-2. `src/pages/TrainingForm.tsx` -- Gate 2 auto-processes behind `isOwner`
-3. `src/pages/DailyAssessmentForm.tsx` -- Gate 2 auto-processes behind `isOwner`
-
-No database, RLS, or edge function changes required.
-
+1. `src/components/inspection/InspectionHeader.tsx` -- Enable Inspection Date calendar
+2. `src/components/training/TrainingHeader.tsx` -- Enable Start Date calendar
+3. `src/components/daily-assessment/DailyAssessmentHeader.tsx` -- Enable Assessment Date calendar
