@@ -13,7 +13,7 @@ import { FileText, MoreVertical, Trash2, Download, Check, Cloud } from "lucide-r
 import { triggerHaptic } from "@/lib/haptics";
 import { parseLocalDate } from "@/lib/date-utils";
 import { OlympicRings } from "@/components/christmas/OlympicRings";
-import { triggerValentineBurst } from "@/lib/confetti";
+import { triggerSuccessConfetti } from "@/lib/confetti";
 import { useClickAndHoverSparkles, SparkleContainer } from "@/components/christmas/Sparkles";
 import { cn } from "@/lib/utils";
 
@@ -131,9 +131,9 @@ export function ReportCard({ report, type, onDelete, onClick, getStatusBadge }: 
       onClick={(e) => {
         triggerHaptic('light');
         triggerSparkles(e);
-        // Trigger Valentine's confetti for completed reports
+        // Trigger confetti for completed reports
         if (getReportStatus() === 'completed') {
-          triggerValentineBurst();
+          triggerSuccessConfetti();
         }
         onClick(report);
       }}
