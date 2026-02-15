@@ -68,7 +68,7 @@ export default function InspectionForm() {
   
   // Check edit permissions - Super Admins are view-only, only owners can edit
   const [inspectorId, setInspectorId] = useState<string | null>(null);
-  const { canEdit, isReadOnly, isSuperAdmin, readOnlyReason } = useReportEditPermission({
+  const { canEdit, isReadOnly, isOwner, isSuperAdmin, readOnlyReason } = useReportEditPermission({
     inspectorId,
     reportType: 'inspection'
   });
@@ -437,7 +437,7 @@ export default function InspectionForm() {
 
   // Auto-populate ACCT# from inspector profile (report owner)
   useEffect(() => {
-    if (inspection && inspectorProfile && !inspection.acct_number && inspectorProfile.acct_number) {
+    if (inspection && inspectorProfile && !inspection.acct_number && inspectorProfile.acct_number && isOwner) {
       isInternalUpdateRef.current = true;
       handleHeaderUpdate('acct_number', inspectorProfile.acct_number);
     }
@@ -445,7 +445,7 @@ export default function InspectionForm() {
 
   // Track changes to inspection data and trigger debounced auto-save
   useEffect(() => {
-    if (!loading && !isInternalUpdateRef.current) {
+    if (!loading && !isInternalUpdateRef.current && isOwner) {
       setHasUnsavedChanges(true);
       
       // Clear existing debounce timer using ref
@@ -471,7 +471,7 @@ export default function InspectionForm() {
   // Auto-save interval (every 10 seconds as backup)
   useEffect(() => {
     const autoSaveInterval = setInterval(() => {
-      if (hasUnsavedChanges && !saving && !autoSaving) {
+      if (hasUnsavedChanges && !saving && !autoSaving && isOwner) {
         autoSaveProgress();
       }
     }, 10000);
@@ -486,7 +486,7 @@ export default function InspectionForm() {
 
   // Auto-populate summary ONCE when inspection loads (only if fields are empty)
   useEffect(() => {
-    if (!inspection || loading) return;
+    if (!inspection || loading || !isOwner) return;
     
     // Only auto-populate once per inspection
     if (autoPopulatedRef.current === inspection.id) return;
@@ -545,7 +545,7 @@ export default function InspectionForm() {
   // Real-time summary auto-regeneration when fail/provisions items change
   useEffect(() => {
     // Skip during initial load
-    if (loading || !inspection?.id) return;
+    if (loading || !inspection?.id || !isOwner) return;
     
     // Build a signature of all fail/provisions items with their comments
     const getFailProvisionsSignature = () => {
@@ -866,7 +866,7 @@ export default function InspectionForm() {
 
       // If online, fetch from Supabase and update local cache
       // Skip server queries for temp-ID inspections (they only exist locally)
-      if (isOnline && !id!.startsWith('temp-')) {
+      if (isOnline && !id!.startsWith('temp-') && isOwner) {
         // Update last_opened_at timestamp (with 5s timeout)
         const now = new Date().toISOString();
         await withQueryTimeout(

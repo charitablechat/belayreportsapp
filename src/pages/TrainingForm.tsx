@@ -59,7 +59,7 @@ export default function TrainingForm() {
   
   // Check edit permissions - Super Admins are view-only, only owners can edit
   const [inspectorId, setInspectorId] = useState<string | null>(null);
-  const { canEdit, isReadOnly, isSuperAdmin, readOnlyReason } = useReportEditPermission({
+  const { canEdit, isReadOnly, isOwner, isSuperAdmin, readOnlyReason } = useReportEditPermission({
     inspectorId,
     reportType: 'training'
   });
@@ -583,7 +583,7 @@ export default function TrainingForm() {
 
   // Debounced auto-save on data changes (3-second debounce) - immediate persistence
   useEffect(() => {
-    if (isLoading || !training) return;
+    if (isLoading || !training || !isOwner) return;
     
     // Skip internal/programmatic updates (initial load, server hydration, auto-populate)
     if (isInternalUpdateRef.current) return;
@@ -627,7 +627,7 @@ export default function TrainingForm() {
     }
 
     autoSaveTimer.current = setInterval(() => {
-      if (hasUnsavedChanges && !isSaving && !isLoading && training) {
+      if (hasUnsavedChanges && !isSaving && !isLoading && training && isOwner) {
         if (import.meta.env.DEV) console.log('[Training AutoSave] Interval save triggered');
         saveTraining();
       }
