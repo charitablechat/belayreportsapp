@@ -1,57 +1,72 @@
 
 
-# Fix: Lock Dialog Invisible (Black-on-Black + Z-Index Stacking)
+# Fix: Lock Dialog Not Triggering (Dual-Mechanism Conflict)
 
-## Root Cause (Two Issues)
+## Root Cause
 
-### Issue 1: Background indistinguishable from overlay
-`bg-zinc-950` is `#09090b` — only 3 shades lighter than pure black. The modal overlay behind it is `bg-black/80`. At normal brightness, these are visually identical.
+There are **two competing click-interception mechanisms** that cancel each other out:
 
-### Issue 2: Scanline overlay covers text content
-The CRT scanline div uses `absolute inset-0 z-10`. The `AlertDialogHeader` and `AlertDialogFooter` are in normal document flow with no z-index (z-auto = 0). The scanline layer renders ABOVE the green text and buttons, adding a semi-transparent green tint that further reduces contrast of the already-too-dark content.
+1. **`onClickCapture` on `<main>`** (line 2195 in InspectionForm) - Fires in the capture phase and checks if `e.target` matches editable field selectors (`input, textarea, select, ...`)
 
-## Fix
+2. **`pointerEvents: 'none'` wrapper** (line 2261) + **overlay div** (line 2256-2259) - Blocks ALL pointer events on form children, with an overlay div meant to catch clicks instead
 
-### `src/components/CompletionLockDialog.tsx`
+The conflict: When `pointerEvents: 'none'` is active, clicks never reach the actual form elements (inputs, selects, textareas). Instead, `e.target` becomes the overlay div or wrapper div. The `onClickCapture` handler fires on `<main>`, but the target is NOT an `input`, `textarea`, or `select` -- it's a generic `div`. So `isEditableField` evaluates to `null`, and the dialog never opens.
 
-Three changes to this single file:
+The overlay's own `onClick` (line 2258) should work as a fallback, but because `onClickCapture` fires first in the capture phase and does NOT call `stopPropagation()` when it doesn't match, the event continues. However, the overlay only covers the `relative` parent's bounding box, which can be inconsistent with dynamically-sized tab content.
 
-1. **Background**: Change `bg-zinc-950` to `bg-zinc-900` (`#18181b`) — visibly distinct from the overlay
-2. **Glow**: Increase shadow from `0.4` to `0.6` opacity and `40px` to `60px` spread
-3. **Z-index fix**: Add `relative z-20` to `AlertDialogHeader` and `AlertDialogFooter` so text and buttons render ABOVE the z-10 scanline overlay
+**In summary**: `pointerEvents: 'none'` prevents the selector-based handler from identifying editable fields, and the overlay fallback has sizing gaps.
 
-Updated component:
+## Solution
 
-```tsx
-<AlertDialogContent className="bg-zinc-900 border-double border-4 border-green-500 font-mono max-w-md relative overflow-hidden shadow-[0_0_60px_rgba(34,197,94,0.6)]">
-  {/* CRT scanline overlay — z-10 */}
-  <div className="pointer-events-none absolute inset-0 z-10" style={{...}} />
+Remove the dual mechanism. Switch the `onClickCapture` handler to a **deny-list approach**: when `isCompletionLocked`, intercept ALL clicks unless the target is a tab trigger or navigation element. Remove the overlay div and `pointerEvents: 'none'` wrapper entirely.
 
-  {/* Content — z-20, above scanlines */}
-  <AlertDialogHeader className="relative z-20">
-    ...
-  </AlertDialogHeader>
-  <AlertDialogFooter className="gap-2 relative z-20">
-    ...
-  </AlertDialogFooter>
-</AlertDialogContent>
+## Changes
+
+### 1. `src/pages/InspectionForm.tsx`
+
+**Update `handleLockedFieldClick`** (lines 132-145):
+```typescript
+const handleLockedFieldClick = useCallback((e: React.MouseEvent) => {
+  if (!isCompletionLocked) return;
+  const target = e.target as HTMLElement;
+  // Allow only navigation elements to pass through
+  const isExempt = target.closest(
+    '[role="tab"], [data-nav], [data-lock-exempt], [role="tablist"]'
+  );
+  if (isExempt) return;
+  e.preventDefault();
+  e.stopPropagation();
+  setShowCompletionLockDialog(true);
+}, [isCompletionLocked]);
 ```
 
-No other files need to change. The lock mechanism, overlay click handling, and state management are all working correctly — this is purely a visual contrast issue.
+**Remove overlay and pointer-events wrapper** (lines 2254-2261):
+Remove the `<div className="relative">`, the `absolute inset-0 z-10` overlay div, and the `pointerEvents: 'none'` wrapper. The `TabsContent` elements should render directly without these wrappers.
 
-## What Changes
+### 2. `src/pages/TrainingForm.tsx`
 
-| Property | Before | After |
-|----------|--------|-------|
-| Background | `bg-zinc-950` (#09090b) | `bg-zinc-900` (#18181b) |
-| Shadow | `40px`, 0.4 opacity | `60px`, 0.6 opacity |
-| Header z-index | none (z-auto) | `relative z-20` |
-| Footer z-index | none (z-auto) | `relative z-20` |
+Same two changes:
+- Update `handleLockedFieldClick` (lines 98-111) to the deny-list approach
+- Remove the overlay/pointer-events wrapper (lines 1121-1128)
+
+### 3. `src/pages/DailyAssessmentForm.tsx`
+
+Same two changes:
+- Update `handleLockedFieldClick` (lines 101-114) to the deny-list approach
+- Remove the overlay/pointer-events wrapper (lines 1250-1257)
+
+## Why This Works
+
+- **Deny-list vs allow-list**: Instead of trying to match specific editable elements (which fails when `pointerEvents: 'none'` hides them), we block EVERYTHING except navigation tabs
+- **Single mechanism**: No competing overlay div or pointer-events wrapper
+- **Capture phase**: `onClickCapture` fires before any child handlers, so `stopPropagation()` prevents the click from reaching form controls
+- **Tab navigation preserved**: The `[role="tab"]` and `[role="tablist"]` exemptions allow switching between report sections
 
 ## What Does NOT Change
-- Lock mechanism and state management
-- `onClickCapture` handler and overlay approach in form pages
+
+- `CompletionLockDialog.tsx` (visual fix already applied)
+- Lock state derivation (`isCompletionLocked`, `completionLockOverridden`)
 - Lock banner styling
+- `useReportEditPermission` hook
 - Backend, edge functions, RLS policies
-- No auth tokens or secrets in frontend
 
