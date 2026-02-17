@@ -1,75 +1,53 @@
 
 
-# Fix Version Mismatch: PWA Cache Staleness + Retro-Tech Version Badge
+# Image Loading Optimization: Eliminate Layout Shift and Flashing
 
-## Root Cause
+## Root-Cause Analysis
 
-The version string (`2.5.1`) is correctly defined in `vite.config.ts` and injected at build time via Vite's `define` option. The `VersionBadge` and `VersionInfoModal` components read it correctly from `import.meta.env.APP_VERSION`.
+### 1. Layout Shift (CLS)
+The `OptimizedImage` component sets `containerClassName="h-48"` on the wrapper div but the inner `<img>` element has no explicit `width`/`height` attributes. When the image transitions from `opacity-0` to `opacity-1`, the browser may reflow surrounding content if the image's intrinsic dimensions differ from the container. The fix is to enforce `aspect-ratio: 4/3` on the container and ensure the `<img>` fills it with `object-fit: cover` and `w-full h-full`.
 
-The mismatch users see is caused by **PWA service worker caching**:
+### 2. Flash on Network Status Change (React Re-mount)
+`PhotoGallery.tsx` lists `isOnline` in its `useEffect` dependency array (line 92). Every time the network status toggles, `loadPhotos()` reruns, setting `loading=true`, which unmounts ALL photo elements and shows the spinner. When photos reload moments later, this creates a visible flash. The fix is to NOT reset `loading=true` on subsequent fetches -- only on initial mount.
 
-1. Workbox caches JS/CSS/HTML bundles (`globPatterns: ['**/*.{js,css,html,...}']`)
-2. `registerType: 'autoUpdate'` detects new SW versions but the cached JS bundle (containing the old version string) can persist until the new SW fully activates and the page reloads
-3. Users who keep the app open or navigate without a hard refresh continue seeing the stale version
+### 3. Lock Interceptors (NOT a cause)
+The `handleLockedFieldClick` handler returns immediately when `!isCompletionLocked` (line 134). It does not `preventDefault()` or `stopPropagation()` in the unlocked state, so it has zero impact on image loading, IntersectionObserver triggers, or the browser's image decoding thread. No changes needed.
+
+### 4. No Hardcoded Image URLs
+All photo URLs are generated via signed URL calls at runtime. No CDN endpoints or secrets are hardcoded. No changes needed.
 
 ## Changes
 
-### 1. Force Cache-Busting on SW Update (`vite-pwa-config.ts`)
+### 1. OptimizedImage -- Eliminate CLS and Add Brutalist Skeleton (`src/components/ui/optimized-image.tsx`)
 
-Add `skipWaiting: true` and `clientsClaim: true` to the Workbox config. This ensures the new service worker activates immediately on detection, replacing stale cached assets without waiting for all tabs to close.
+- Add `width` and `height` props (optional, default undefined) passed through to the `<img>` element for intrinsic sizing hints
+- Add `decoding="async"` to the `<img>` to prevent blocking the main thread during decode
+- Ensure `<img>` uses `w-full h-full` so it fills the container without reflow
+- Add `border-2 border-black dark:border-white` to the skeleton overlay to match Minimal Brutalist aesthetic while loading
 
-```
-workbox: {
-  skipWaiting: true,
-  clientsClaim: true,
-  // ...existing config
-}
-```
+### 2. PhotoGallery -- Eliminate Flash on Network Change (`src/components/PhotoGallery.tsx`)
 
-### 2. Auto-Reload on SW Controller Change (`src/components/pwa/UpdateNotification.tsx`)
+- Split the `useEffect` into two concerns:
+  - Initial load: runs once on mount with `loading=true`
+  - Network-triggered refresh: runs when `isOnline` changes but does NOT set `loading=true`, performing a silent background merge instead
+- This prevents the full unmount/remount flash when toggling between online and offline
 
-Add a `controllerchange` listener that automatically reloads the page when the new SW takes control. This eliminates the window where stale JS serves the old version:
+### 3. PhotoGallery Card -- Add Brutalist Border (`src/components/PhotoGallery.tsx`)
 
-```typescript
-useEffect(() => {
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.addEventListener('controllerchange', () => {
-      window.location.reload();
-    });
-  }
-}, []);
-```
-
-### 3. Retro-Tech Terminal Styling for VersionBadge (`src/components/VersionBadge.tsx`)
-
-Update the badge styling to match the Retro-Tech Terminal aesthetic:
-
-- Default state: `text-zinc-500 font-mono border-zinc-700` (low-contrast terminal text)
-- Hover state: `text-green-400 border-green-500/50 shadow-[0_0_8px_rgba(34,197,94,0.3)]` (green CRT glow)
-- Add a subtle CRT scanline overlay via a pseudo-element or inline background
-
-### 4. Retro-Tech Terminal Styling for VersionInfoModal (`src/components/VersionInfoModal.tsx`)
-
-Add CRT scanline overlay to the modal content area using the same green scanline pattern already defined in `index.css`:
-
-- Add a `::before` pseudo-element or an overlay div with the repeating green scanline gradient
-- Keep the existing Minimal Brutalist black/white/amber structure
-- Add a subtle green glow to the version number display: `text-shadow: 0 0 10px rgba(34,197,94,0.3)`
+- Add `border-2 border-black dark:border-white` to the photo `Card` wrapper to reinforce the Minimal Brutalist aesthetic and provide a strong visual boundary during load transitions
 
 ## Files Modified
 
 | File | Change |
 |------|--------|
-| `vite-pwa-config.ts` | Add `skipWaiting: true`, `clientsClaim: true` to Workbox config |
-| `src/components/pwa/UpdateNotification.tsx` | Add `controllerchange` auto-reload listener |
-| `src/components/VersionBadge.tsx` | Retro-Tech Terminal styling with green glow hover |
-| `src/components/VersionInfoModal.tsx` | CRT scanline overlay and green text-shadow on version |
+| `src/components/ui/optimized-image.tsx` | Add `decoding="async"`, `w-full h-full` on img, Brutalist border on skeleton |
+| `src/components/PhotoGallery.tsx` | Split useEffect to prevent flash on network change; add Brutalist card border |
 
 ## What Does NOT Change
 
-- `vite.config.ts` (version is already correct at 2.5.1)
-- Version calculation logic (`src/lib/version-calculator.ts`)
-- Form submission, auto-save, or data persistence logic
+- `onPointerDownCapture` / `onClickCapture` handlers (confirmed not a cause)
+- CRT shimmer CSS in `index.css` (already correct)
+- Photo caching, sync, or persistence logic
 - Backend, edge functions, RLS policies
 - No secrets or API keys affected
 
