@@ -1,70 +1,75 @@
 
 
-# Retro-Tech Skeleton Loader and Image Loading Optimization
+# Fix Version Mismatch: PWA Cache Staleness + Retro-Tech Version Badge
 
-## Current State (No Bugs Found)
+## Root Cause
 
-All photo network requests return HTTP 200. No console errors. The `pointer-events: none` wrappers were already removed in the previous fix, so no CSS is obstructing lazy-loading triggers or image requests. The reported "loading failures" are likely perceived latency from the generic shimmer skeleton that does not visually communicate loading progress in the Retro-Tech aesthetic.
+The version string (`2.5.1`) is correctly defined in `vite.config.ts` and injected at build time via Vite's `define` option. The `VersionBadge` and `VersionInfoModal` components read it correctly from `import.meta.env.APP_VERSION`.
+
+The mismatch users see is caused by **PWA service worker caching**:
+
+1. Workbox caches JS/CSS/HTML bundles (`globPatterns: ['**/*.{js,css,html,...}']`)
+2. `registerType: 'autoUpdate'` detects new SW versions but the cached JS bundle (containing the old version string) can persist until the new SW fully activates and the page reloads
+3. Users who keep the app open or navigate without a hard refresh continue seeing the stale version
 
 ## Changes
 
-### 1. Retro-Tech CRT Skeleton Loader (`src/components/ui/optimized-image.tsx`)
+### 1. Force Cache-Busting on SW Update (`vite-pwa-config.ts`)
 
-Replace the generic shimmer with a CRT-styled pulsing green skeleton that matches the Retro-Tech Terminal aesthetic:
+Add `skipWaiting: true` and `clientsClaim: true` to the Workbox config. This ensures the new service worker activates immediately on detection, replacing stale cached assets without waiting for all tabs to close.
 
-- Background: `bg-zinc-950` (near-black, matching the terminal look)
-- Pulse effect: pulsing green scanline overlay using `rgba(34,197,94, 0.15)` (`#22c55e`)
-- CRT scanlines: repeating-linear-gradient matching the `CompletionLockDialog` pattern
-- Add a `priority` prop: when true, skip `IntersectionObserver` and render the `<img>` immediately (for above-the-fold / hero images)
-
-```text
-+---------------------------------------------+
-|  OptimizedImage (priority=false, default)    |
-|                                              |
-|  [zinc-950 bg] + [green pulse scanlines]     |
-|         |                                    |
-|         v  IntersectionObserver fires        |
-|  <img loading="lazy" onLoad={fadeIn}>        |
-+---------------------------------------------+
-
-+---------------------------------------------+
-|  OptimizedImage (priority=true)              |
-|                                              |
-|  [zinc-950 bg] + [green pulse scanlines]     |
-|         |                                    |
-|         v  Rendered immediately (no IO)      |
-|  <img loading="eager" onLoad={fadeIn}>       |
-+---------------------------------------------+
+```
+workbox: {
+  skipWaiting: true,
+  clientsClaim: true,
+  // ...existing config
+}
 ```
 
-### 2. CRT Shimmer CSS (`src/index.css`)
+### 2. Auto-Reload on SW Controller Change (`src/components/pwa/UpdateNotification.tsx`)
 
-Replace the existing `.optimized-image-shimmer` keyframe with a Retro-Tech version:
+Add a `controllerchange` listener that automatically reloads the page when the new SW takes control. This eliminates the window where stale JS serves the old version:
 
-- New keyframe `@keyframes crt-pulse` using green channel pulsing
-- `.optimized-image-shimmer` updated to use `bg-zinc-950` base with green scanline overlay
-- Maintains the same class name so no downstream changes needed
+```typescript
+useEffect(() => {
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      window.location.reload();
+    });
+  }
+}, []);
+```
 
-### 3. PhotoGallery Integration (`src/components/PhotoGallery.tsx`)
+### 3. Retro-Tech Terminal Styling for VersionBadge (`src/components/VersionBadge.tsx`)
 
-No structural changes needed. The `OptimizedImage` component is already used correctly. The new skeleton styling will automatically apply.
+Update the badge styling to match the Retro-Tech Terminal aesthetic:
 
-### 4. Report Form Skeleton Cards
+- Default state: `text-zinc-500 font-mono border-zinc-700` (low-contrast terminal text)
+- Hover state: `text-green-400 border-green-500/50 shadow-[0_0_8px_rgba(34,197,94,0.3)]` (green CRT glow)
+- Add a subtle CRT scanline overlay via a pseudo-element or inline background
 
-No changes to `ReportCardSkeleton.tsx` -- the generic skeleton is appropriate for dashboard cards. The CRT treatment is specific to photo loading within report forms.
+### 4. Retro-Tech Terminal Styling for VersionInfoModal (`src/components/VersionInfoModal.tsx`)
+
+Add CRT scanline overlay to the modal content area using the same green scanline pattern already defined in `index.css`:
+
+- Add a `::before` pseudo-element or an overlay div with the repeating green scanline gradient
+- Keep the existing Minimal Brutalist black/white/amber structure
+- Add a subtle green glow to the version number display: `text-shadow: 0 0 10px rgba(34,197,94,0.3)`
 
 ## Files Modified
 
 | File | Change |
 |------|--------|
-| `src/components/ui/optimized-image.tsx` | Add `priority` prop, CRT skeleton markup |
-| `src/index.css` | Replace `.optimized-image-shimmer` with CRT-styled green pulse animation |
+| `vite-pwa-config.ts` | Add `skipWaiting: true`, `clientsClaim: true` to Workbox config |
+| `src/components/pwa/UpdateNotification.tsx` | Add `controllerchange` auto-reload listener |
+| `src/components/VersionBadge.tsx` | Retro-Tech Terminal styling with green glow hover |
+| `src/components/VersionInfoModal.tsx` | CRT scanline overlay and green text-shadow on version |
 
 ## What Does NOT Change
 
-- PhotoGallery.tsx (already uses OptimizedImage correctly)
-- Photo caching/fetch logic (no bugs found)
-- Lock interception handlers (working correctly)
+- `vite.config.ts` (version is already correct at 2.5.1)
+- Version calculation logic (`src/lib/version-calculator.ts`)
+- Form submission, auto-save, or data persistence logic
 - Backend, edge functions, RLS policies
 - No secrets or API keys affected
 
