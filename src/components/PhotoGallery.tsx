@@ -29,7 +29,7 @@ import {
   rectSortingStrategy,
 } from "@dnd-kit/sortable";
 
-type PhotoTableName = "inspection_photos" | "training_photos";
+type PhotoTableName = "inspection_photos" | "training_photos" | "daily_assessment_photos";
 
 interface PhotoGalleryProps {
   inspectionId: string;

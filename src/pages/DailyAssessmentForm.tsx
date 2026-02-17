@@ -6,7 +6,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { getUserWithCache, getOfflineUserId } from "@/lib/cached-auth";
 import { useFormConfiguration } from "@/hooks/useFormConfiguration";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Save, FileText, Loader2, WifiOff, Check, Sunrise, Sunset, Settings, Package, Building, Cloud, LogOut, User, CloudOff, CheckCircle } from "lucide-react";
+import { ArrowLeft, Save, FileText, Loader2, WifiOff, Check, Sunrise, Sunset, Settings, Package, Building, Cloud, LogOut, User, CloudOff, CheckCircle, Camera } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { AutoSaveIndicator } from "@/components/AutoSaveIndicator";
@@ -30,6 +30,8 @@ import OperatingSystemsSection from "@/components/daily-assessment/OperatingSyst
 import EquipmentChecksSection from "@/components/daily-assessment/EquipmentChecksSection";
 import StructureChecksSection from "@/components/daily-assessment/StructureChecksSection";
 import EnvironmentChecksSection from "@/components/daily-assessment/EnvironmentChecksSection";
+import PhotoCapture from "@/components/PhotoCapture";
+import PhotoGallery from "@/components/PhotoGallery";
 import { HtmlReportViewer } from "@/components/HtmlReportViewer";
 import { openHtmlReport } from "@/lib/html-report-viewer";
 import { triggerCompletionConfetti } from "@/lib/confetti";
@@ -91,6 +93,7 @@ export default function DailyAssessmentForm() {
   const [currentUserProfile, setCurrentUserProfile] = useState<any>(null);
   const [modifiedByProfile, setModifiedByProfile] = useState<any>(null);
   const [signingOut, setSigningOut] = useState(false);
+  const [photoRefreshKey, setPhotoRefreshKey] = useState(0);
   // Completion lock derived values (after report state is declared)
   const isCompletionLocked = assessment?.status === 'completed' && !completionLockOverridden;
   const effectiveReadOnly = isReadOnly || isCompletionLocked;
@@ -114,7 +117,7 @@ export default function DailyAssessmentForm() {
   
   // Tab navigation state
   const [currentTab, setCurrentTab] = useState("beginning");
-  const tabOrder = ["beginning", "end", "systems", "equipment", "structure", "environment"];
+  const tabOrder = ["beginning", "end", "systems", "equipment", "structure", "environment", "photos"];
 
   // Swipe navigation for mobile (swipe right on first tab navigates back)
   const isFirstTab = currentTab === tabOrder[0];
@@ -1212,7 +1215,7 @@ export default function DailyAssessmentForm() {
 
         <Tabs value={currentTab} onValueChange={setCurrentTab} className="w-full">
           <div ref={swipeContainerRef}>
-            <TabsList className="grid w-full grid-cols-3 lg:grid-cols-6 gap-1 lg:gap-0 h-auto p-1.5 lg:p-1">
+            <TabsList className="grid w-full grid-cols-4 lg:grid-cols-7 gap-1 lg:gap-0 h-auto p-1.5 lg:p-1">
               <TabsTrigger value="beginning" className="text-xs lg:text-sm py-2 flex flex-col lg:flex-row items-center gap-1 lg:gap-1.5">
                 <Sunrise className="h-3.5 w-3.5" />
                 <span>Beginning</span>
@@ -1236,6 +1239,10 @@ export default function DailyAssessmentForm() {
               <TabsTrigger value="environment" className="text-xs lg:text-sm py-2 flex flex-col lg:flex-row items-center gap-1 lg:gap-1.5">
                 <Cloud className="h-3.5 w-3.5" />
                 <span>Environment</span>
+              </TabsTrigger>
+              <TabsTrigger value="photos" className="text-xs lg:text-sm py-2 flex flex-col lg:flex-row items-center gap-1 lg:gap-1.5">
+                <Camera className="h-3.5 w-3.5" />
+                <span>Photos</span>
               </TabsTrigger>
             </TabsList>
           </div>
@@ -1286,6 +1293,33 @@ export default function DailyAssessmentForm() {
               sectionComments={assessment?.environment_comments || ''}
               onSectionCommentsChange={(value) => handleUpdateAssessment('environment_comments', value)}
             />
+          </TabsContent>
+
+          <TabsContent value="photos" className="space-y-4 mt-4">
+            <div className="border-2 border-foreground/20 bg-background p-6 rounded-md">
+              <h3 className="text-lg font-semibold font-mono tracking-tight mb-4">Assessment Photos</h3>
+              {!effectiveReadOnly && (
+                <div className="mb-4">
+                  <PhotoCapture
+                    inspectionId={id!}
+                    section="assessment"
+                    onPhotoAdded={() => setPhotoRefreshKey(prev => prev + 1)}
+                    tableName="daily_assessment_photos"
+                    foreignKeyColumn="assessment_id"
+                    storageBucket="daily-assessment-photos"
+                  />
+                </div>
+              )}
+              <PhotoGallery
+                key={`assessment-${photoRefreshKey}`}
+                inspectionId={id!}
+                section="assessment"
+                readOnly={effectiveReadOnly}
+                tableName="daily_assessment_photos"
+                foreignKeyColumn="assessment_id"
+                storageBucket="daily-assessment-photos"
+              />
+            </div>
           </TabsContent>
         </Tabs>
       </div>

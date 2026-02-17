@@ -252,6 +252,44 @@ export type Database = {
           },
         ]
       }
+      daily_assessment_photos: {
+        Row: {
+          assessment_id: string
+          caption: string | null
+          created_at: string | null
+          display_order: number | null
+          id: string
+          photo_section: string | null
+          photo_url: string
+        }
+        Insert: {
+          assessment_id: string
+          caption?: string | null
+          created_at?: string | null
+          display_order?: number | null
+          id?: string
+          photo_section?: string | null
+          photo_url: string
+        }
+        Update: {
+          assessment_id?: string
+          caption?: string | null
+          created_at?: string | null
+          display_order?: number | null
+          id?: string
+          photo_section?: string | null
+          photo_url?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "daily_assessment_photos_assessment_id_fkey"
+            columns: ["assessment_id"]
+            isOneToOne: false
+            referencedRelation: "daily_assessments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       daily_assessment_structure_checks: {
         Row: {
           assessment_id: string
@@ -1399,6 +1437,7 @@ export type Database = {
         Row: {
           caption: string | null
           created_at: string | null
+          display_order: number | null
           id: string
           photo_section: string | null
           photo_url: string
@@ -1407,6 +1446,7 @@ export type Database = {
         Insert: {
           caption?: string | null
           created_at?: string | null
+          display_order?: number | null
           id?: string
           photo_section?: string | null
           photo_url: string
@@ -1415,6 +1455,7 @@ export type Database = {
         Update: {
           caption?: string | null
           created_at?: string | null
+          display_order?: number | null
           id?: string
           photo_section?: string | null
           photo_url?: string
