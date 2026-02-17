@@ -7,6 +7,8 @@ interface OptimizedImageProps {
   className?: string;
   containerClassName?: string;
   priority?: boolean;
+  width?: number;
+  height?: number;
 }
 
 export function OptimizedImage({
@@ -15,6 +17,8 @@ export function OptimizedImage({
   className,
   containerClassName,
   priority = false,
+  width,
+  height,
 }: OptimizedImageProps) {
   const [loaded, setLoaded] = useState(false);
   const [inView, setInView] = useState(priority);
@@ -49,10 +53,10 @@ export function OptimizedImage({
       ref={containerRef}
       className={cn("relative overflow-hidden bg-zinc-950", containerClassName)}
     >
-      {/* CRT-styled skeleton — visible until image loads */}
+      {/* Brutalist skeleton — visible until image loads */}
       <div
         className={cn(
-          "absolute inset-0 optimized-image-shimmer transition-opacity duration-300 ease-in-out",
+          "absolute inset-0 optimized-image-shimmer border-2 border-black dark:border-white transition-opacity duration-300 ease-in-out",
           loaded ? "opacity-0" : "opacity-100"
         )}
         aria-hidden
@@ -62,10 +66,13 @@ export function OptimizedImage({
         <img
           src={src}
           alt={alt}
+          width={width}
+          height={height}
           loading={priority ? "eager" : "lazy"}
+          decoding="async"
           onLoad={handleLoad}
           className={cn(
-            "transition-opacity duration-300 ease-in-out",
+            "w-full h-full object-cover transition-opacity duration-300 ease-in-out",
             loaded ? "opacity-100" : "opacity-0",
             className
           )}

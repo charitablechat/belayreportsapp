@@ -79,7 +79,11 @@ export default function PhotoGallery({
     useSensor(KeyboardSensor)
   );
 
+  const initialLoadDone = useRef(false);
+
+  // Initial load — shows spinner
   useEffect(() => {
+    initialLoadDone.current = false;
     loadPhotos();
     
     // Cleanup: revoke all object URLs on unmount
@@ -89,11 +93,17 @@ export default function PhotoGallery({
       });
       objectUrlsRef.current = [];
     };
-  }, [inspectionId, section, isOnline]);
+  }, [inspectionId, section]);
 
-  const loadPhotos = async () => {
+  // Silent refresh on network change — no spinner
+  useEffect(() => {
+    if (!initialLoadDone.current) return;
+    loadPhotos(true);
+  }, [isOnline]);
+
+  const loadPhotos = async (silent = false) => {
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
       
       // Revoke old object URLs before creating new ones (prevent memory leak)
       objectUrlsRef.current.forEach(url => {
@@ -220,6 +230,7 @@ export default function PhotoGallery({
       console.error('[PhotoGallery] Failed to load photos:', error);
     } finally {
       setLoading(false);
+      initialLoadDone.current = true;
     }
   };
 
@@ -350,7 +361,7 @@ export default function PhotoGallery({
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
           {photos.map((photo) => (
             <DraggablePhotoItem key={photo.id} id={photo.id} disabled={readOnly}>
-              <Card className="relative group overflow-hidden flex flex-col">
+              <Card className="relative group overflow-hidden flex flex-col border-2 border-black dark:border-white">
                 <div className="relative">
                   <OptimizedImage
                     src={photo.photoUrl}
