@@ -10,10 +10,15 @@ import { compressImage } from "@/lib/image-compression";
 import { saveToDevice } from "@/lib/save-to-device";
 import { toast } from "sonner";
 
+type PhotoTableName = "inspection_photos" | "training_photos" | "daily_assessment_photos";
+
 interface PhotoCaptureProps {
   inspectionId: string;
   section: string;
   onPhotoAdded: () => void;
+  tableName?: PhotoTableName;
+  foreignKeyColumn?: string;
+  storageBucket?: string;
 }
 
 // Supported image types
@@ -25,7 +30,14 @@ const AUTH_TIMEOUT = 5000; // 5 seconds max for auth check
 const PROCESS_SAFETY_TIMEOUT = 12000; // 12 seconds max (auth 5s + compression 3s + save 4s)
 const PER_FILE_TIMEOUT = 10000; // 10 seconds per file
 
-export default function PhotoCapture({ inspectionId, section, onPhotoAdded }: PhotoCaptureProps) {
+export default function PhotoCapture({ 
+  inspectionId, 
+  section, 
+  onPhotoAdded,
+  tableName = "inspection_photos",
+  foreignKeyColumn = "inspection_id",
+  storageBucket = "inspection-photos",
+}: PhotoCaptureProps) {
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const uploadInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
@@ -71,16 +83,16 @@ export default function PhotoCapture({ inspectionId, section, onPhotoAdded }: Ph
       
       // Upload to Supabase storage
       const { error: uploadError } = await supabase.storage
-        .from('inspection-photos')
+        .from(storageBucket)
         .upload(fileName, processedFile);
 
       if (uploadError) throw uploadError;
 
       // Insert database record
-      const { error: dbError } = await supabase
-        .from('inspection_photos')
+      const { error: dbError } = await (supabase
+        .from(tableName) as any)
         .insert({
-          inspection_id: inspectionId,
+          [foreignKeyColumn]: inspectionId,
           photo_url: fileName,
           photo_section: section,
         });

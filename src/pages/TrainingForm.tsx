@@ -7,7 +7,7 @@ import { getUserWithCache, getOfflineUserId } from "@/lib/cached-auth";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Save, FileDown, FileText, ChevronLeft, WifiOff, Wifi, Mail, CheckCircle, Info, Users, Settings, AlertTriangle, ClipboardCheck, FileCheck, LogOut, User, CloudOff, ArrowLeft } from "lucide-react";
+import { Loader2, Save, FileDown, FileText, ChevronLeft, WifiOff, Wifi, Mail, CheckCircle, Info, Users, Settings, AlertTriangle, ClipboardCheck, FileCheck, LogOut, User, CloudOff, ArrowLeft, Camera } from "lucide-react";
 import { toast } from "@/components/ui/sonner";
 import ropeWorksLogo from "@/assets/rope-works-logo.png";
 
@@ -22,6 +22,8 @@ import OperatingSystemsSection from "@/components/training/OperatingSystemsSecti
 import ImmediateAttentionSection from "@/components/training/ImmediateAttentionSection";
 import VerifiableItemsSection from "@/components/training/VerifiableItemsSection";
 import TrainingSummarySection from "@/components/training/TrainingSummarySection";
+import PhotoCapture from "@/components/PhotoCapture";
+import PhotoGallery from "@/components/PhotoGallery";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { format } from "date-fns";
 import { 
@@ -88,6 +90,7 @@ export default function TrainingForm() {
   const [verifiableItems, setVerifiableItems] = useState<any[]>([]);
   const [systemsInPlace, setSystemsInPlace] = useState<any[]>([]);
   const [summary, setSummary] = useState<any>(null);
+  const [photoRefreshKey, setPhotoRefreshKey] = useState(0);
   // Completion lock derived values (after report state is declared)
   const isCompletionLocked = training?.status === 'completed' && !completionLockOverridden;
   const effectiveReadOnly = isReadOnly || isCompletionLocked;
@@ -119,7 +122,7 @@ export default function TrainingForm() {
   
   // Tab navigation state
   const [currentTab, setCurrentTab] = useState("info");
-  const tabOrder = ["info", "delivery", "systems", "attention", "verifiable", "summary"];
+  const tabOrder = ["info", "delivery", "systems", "attention", "verifiable", "summary", "photos"];
   
   // Swipe navigation for mobile (swipe right on first tab navigates back)
   const isFirstTab = currentTab === tabOrder[0];
@@ -1083,7 +1086,7 @@ export default function TrainingForm() {
 
         <Tabs value={currentTab} onValueChange={setCurrentTab} className="space-y-6">
           <div ref={swipeContainerRef}>
-            <TabsList className="grid w-full grid-cols-3 lg:grid-cols-6 gap-1 lg:gap-0 h-auto p-1.5 lg:p-1">
+            <TabsList className="grid w-full grid-cols-4 lg:grid-cols-7 gap-1 lg:gap-0 h-auto p-1.5 lg:p-1">
               <TabsTrigger value="info" className="text-xs lg:text-sm py-2 flex flex-col lg:flex-row items-center gap-1 lg:gap-1.5">
                 <Info className="h-3.5 w-3.5" />
                 <span>Info</span>
@@ -1107,6 +1110,10 @@ export default function TrainingForm() {
               <TabsTrigger value="summary" className="text-xs lg:text-sm py-2 flex flex-col lg:flex-row items-center gap-1 lg:gap-1.5">
                 <FileCheck className="h-3.5 w-3.5" />
                 <span>Summary</span>
+              </TabsTrigger>
+              <TabsTrigger value="photos" className="text-xs lg:text-sm py-2 flex flex-col lg:flex-row items-center gap-1 lg:gap-1.5">
+                <Camera className="h-3.5 w-3.5" />
+                <span>Photos</span>
               </TabsTrigger>
             </TabsList>
           </div>
@@ -1156,6 +1163,35 @@ export default function TrainingForm() {
               summary={summary} 
               onUpdate={updateSummaryField} 
             />
+          </TabsContent>
+
+          <TabsContent value="photos" className="space-y-6">
+            <div className="space-y-6">
+              <div className="border-2 border-foreground/20 bg-background p-6 rounded-md">
+                <h3 className="text-lg font-semibold font-mono tracking-tight mb-4">Training Photos</h3>
+                {!effectiveReadOnly && (
+                  <div className="mb-4">
+                    <PhotoCapture
+                      inspectionId={id!}
+                      section="training"
+                      onPhotoAdded={() => setPhotoRefreshKey(prev => prev + 1)}
+                      tableName="training_photos"
+                      foreignKeyColumn="training_id"
+                      storageBucket="training-photos"
+                    />
+                  </div>
+                )}
+                <PhotoGallery
+                  key={`training-${photoRefreshKey}`}
+                  inspectionId={id!}
+                  section="training"
+                  readOnly={effectiveReadOnly}
+                  tableName="training_photos"
+                  foreignKeyColumn="training_id"
+                  storageBucket="training-photos"
+                />
+              </div>
+            </div>
           </TabsContent>
         </Tabs>
       </div>
