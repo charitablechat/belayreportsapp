@@ -591,7 +591,7 @@ export default function InspectionForm() {
     const currentSignature = getFailProvisionsSignature();
     
     // Only regenerate if signature changed and there are items
-    if (currentSignature !== previousFailProvisionsRef.current && currentSignature.length > 0) {
+    if (currentSignature !== previousFailProvisionsRef.current) {
       // Clear any pending timer
       if (summaryRegenerateTimerRef.current) {
         clearTimeout(summaryRegenerateTimerRef.current);
