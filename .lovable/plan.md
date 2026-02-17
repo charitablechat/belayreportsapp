@@ -1,102 +1,95 @@
 
-# Stale Data Bug Audit -- Findings and Fixes
+# Audit Results: Offline-Mode, Date Fields, and Security
 
-## Bug 1: Stale `state.unsyncedCount` in `performSync` (useAutoSync.tsx, line 156)
+## Overall Assessment: Architecturally Sound with 3 Low-Severity Issues
 
-**File:** `src/hooks/useAutoSync.tsx`
-**Line:** 156
-**Severity:** Low (functional impact is limited to timeout calculation)
-
-**Mechanism:** `performSync` is created via `useCallback` with a dependency array that does NOT include `state.unsyncedCount` (line 285: `[queryClient, isMobileDevice, isIOSDevice]`). The `state.unsyncedCount` read on line 156 captures the value from the render when the callback was last created, not the current value. This means the dynamic timeout calculation (`batchSize = Math.min(state.unsyncedCount, MAX_BATCH_SIZE)`) may use a stale count.
-
-**Impact:** The timeout could be too short (defaulting to `BASE_SYNC_TIMEOUT` of 30s when unsyncedCount is stale at 0) or too long. In practice, the `MAX_BATCH_SIZE` cap of 5 limits the range to 30-70 seconds, and the safety timeout at `dynamicTimeout + 2000` provides a backstop, so this is unlikely to cause visible issues but is technically a stale closure.
-
-**Fix:** Use a ref to track unsyncedCount, or read `state.unsyncedCount` via functional state access. The simplest fix: add `state.unsyncedCount` to the dependency array, or (better) replace the read with a synchronous IndexedDB count fetched at sync time.
+The recent changes to InspectionForm (auth guard, isOwner deps, server fetch decoupling) are correctly implemented. The `useReportEditPermission` hook, `cached-auth.ts`, and offline auth system are robust. No critical vulnerabilities, data loss vectors, or security issues were found.
 
 ---
 
-## Bug 2: `currentUser` auth listener in InspectionForm clears user when offline (line 347)
+## 1. Offline State Integrity -- PASS (with notes)
 
-**File:** `src/pages/InspectionForm.tsx`
-**Line:** 345-348
-**Severity:** Medium
+**useReportEditPermission.tsx**: Correctly hardened.
+- Uses `getUserWithCache()` with `getOfflineUserId()` fallback (line 49)
+- Auth listener guards with `navigator.onLine` before clearing state (line 75)
+- Fast-path ownership check bypasses async super admin check (line 98)
+- No race condition for `isReadOnly` being incorrectly true for owners
 
-**Mechanism:** The `onAuthStateChange` callback unconditionally sets `currentUser` to `session?.user ?? null`. When offline, Supabase may emit auth events with a null session (e.g., due to token refresh failure), which clears `currentUser` to `null`. This is the same class of bug that was fixed in `useReportEditPermission` but was NOT applied to the InspectionForm's own `currentUser` state.
+**cached-auth.ts**: Correctly hardened.
+- 3-tier fallback: in-memory cache, localStorage, then network (lines 58-131)
+- Expired tokens are accepted when offline for identity extraction (line 246-250)
+- `getOfflineUserId()` parses localStorage directly as emergency fallback (line 281-289)
+- `ensureValidSession()` proactively refreshes tokens within 60s of expiry (line 339)
+- No sensitive data logged (confirmed via grep -- zero matches for token/password/secret logging)
 
-While `currentUser` is not directly used for the read-only gating (that's handled by `useReportEditPermission`), it IS used on line 1093-1094 to determine `last_modified_by` during saves. A null `currentUser` while offline means `last_modified_by` is never set, causing stale/missing audit trail data.
-
-**Fix:** Apply the same offline guard pattern:
-```
-const { data: { subscription } } = supabase.auth.onAuthStateChange(
-  (_event, session) => {
-    if (session?.user) {
-      setCurrentUser(session.user);
-    } else if (navigator.onLine) {
-      setCurrentUser(null);
-    }
-  }
-);
-```
+**Corrupted cache edge case**: If `localStorage` contains malformed JSON for the session key, `getCachedUserFromStorage()` catches the parse error (line 258-261) and returns `null`, which correctly falls through to the offline fallback path. No crash risk.
 
 ---
 
-## Bug 3: Auto-save `useEffect` dependency captures stale `isOwner` (line 448)
+## 2. Data Persistence (Save/Upload While Offline) -- PASS
 
-**File:** `src/pages/InspectionForm.tsx`
-**Line:** 448, dependency array line 461
-**Severity:** Low
+**InspectionForm `performSave`** (line 1084): Correctly authenticates via `getUserWithCache()` with offline fallback before saving. Saves to IndexedDB first, then attempts server sync. If offline, data is queued via `queueOperation` for background sync.
 
-**Mechanism:** The auto-save effect on line 447-461 references `isOwner` in the callback body but does NOT include it in the dependency array (`[systems, ziplines, equipment, standards, summary]`). If `isOwner` transitions from `false` to `true` (e.g., after async permission check completes), the effect still uses the stale `false` value from the initial render, potentially skipping valid auto-saves for a brief window until another tracked dependency changes.
+**TrainingForm and DailyAssessmentForm**: Follow the same pattern -- IndexedDB first, server sync second.
 
-**Impact:** Minimal in practice because `isOwner` resolves quickly and other dependencies (data arrays) change frequently. However, in an edge case where permission resolves after the initial data load, the first edit could fail to trigger auto-save.
-
-**Fix:** Add `isOwner` to the dependency array on line 461:
-```
-}, [systems, ziplines, equipment, standards, summary, isOwner]);
-```
+**Duplication prevention**: The atomic sync manager uses upsert operations (not delete-then-insert), and the `synced_at` timestamp is only updated after successful server commit. This prevents duplicates on reconnection.
 
 ---
 
-## Bug 4: Summary auto-regeneration effect missing `isOwner` dependency (line 624)
+## 3. Date Field Validation -- PASS (no regressions found)
 
-**File:** `src/pages/InspectionForm.tsx`
-**Line:** 548, dependency array line 624
-**Severity:** Low
+All three forms use `useReportEditPermission` and derive `effectiveReadOnly` from `isReadOnly || isCompletionLocked`. Date fields are rendered with the `disabled` or read-only prop bound to this value. The `parseLocalDate` utility (date-utils.ts) correctly handles special values ("N/A", "Unknown") by returning `undefined`, preventing parse errors.
 
-**Mechanism:** The real-time summary regeneration effect (line 546-624) checks `isOwner` on line 548 as a guard, but the dependency array on line 624 is `[equipment, systems, ziplines, loading, inspection?.id]`. If `isOwner` changes from `false` to `true` after mount, the effect uses the stale `false` value and skips regeneration until one of the tracked dependencies changes.
-
-**Fix:** Add `isOwner` to the dependency array on line 624:
-```
-}, [equipment, systems, ziplines, loading, inspection?.id, isOwner]);
-```
+No bypass path exists for manual date entry -- the Calendar/Popover components do not accept raw text input.
 
 ---
 
-## Bug 5: `loadInspection` captures stale `isOwner` for server fetch guard (line 869)
+## 4. Security -- PASS
 
-**File:** `src/pages/InspectionForm.tsx`
-**Line:** 869
-**Severity:** Medium
-
-**Mechanism:** The `loadInspection` function (defined inside the component) reads `isOwner` on line 869: `if (isOnline && !id!.startsWith('temp-') && isOwner)`. However, `loadInspection` is called from the `useEffect` on line 330 which runs on mount when `isOwner` is still `false` (permission check is async). This means the server data fetch is skipped on initial load for legitimate owners, and the form displays only IndexedDB data.
-
-This is partially mitigated because IndexedDB data is loaded first anyway, but it means:
-- Fresh server data (e.g., changes made from another device) is not fetched on first load
-- The `last_opened_at` timestamp is not updated
-- The `isLocalDataNewer` comparison never runs
-
-**Fix:** Remove the `isOwner` guard from the server fetch path, or restructure `loadInspection` to be called after permissions resolve. The `isOwner` check was likely added to prevent non-owners from triggering writes, but the `last_opened_at` update could be moved behind a separate owner check, while the data READ should always happen.
+- No auth tokens, passwords, or secrets are logged in production (`import.meta.env.DEV` gates all sensitive console output)
+- Offline password storage uses XOR obfuscation (not true encryption, but acceptable for temporary deferred verification with auto-cleanup)
+- `pending_credentials` are deleted immediately after verification succeeds or fails (offline-auth.ts lines 243, 249)
+- `clearOfflineAuth()` is called on sign-out (cached-auth.ts line 173)
 
 ---
 
-## Summary of Recommended Changes
+## 5. Three Low-Severity Issues Found (same class as previously fixed)
 
-| File | Line | Bug | Severity | Fix |
-|------|------|-----|----------|-----|
-| `src/hooks/useAutoSync.tsx` | 156/285 | Stale `unsyncedCount` in timeout calc | Low | Add to deps or use ref |
-| `src/pages/InspectionForm.tsx` | 347 | Auth listener clears user offline | Medium | Add `navigator.onLine` guard |
-| `src/pages/InspectionForm.tsx` | 448/461 | Missing `isOwner` in auto-save deps | Low | Add `isOwner` to deps |
-| `src/pages/InspectionForm.tsx` | 548/624 | Missing `isOwner` in summary regen deps | Low | Add `isOwner` to deps |
-| `src/pages/InspectionForm.tsx` | 869 | Server fetch skipped due to stale `isOwner` | Medium | Decouple read from owner check |
+### Issue A: TrainingForm -- Missing `isOwner` in auto-save dependency array
 
-The two medium-severity bugs (2 and 5) should be prioritized. Bug 2 is a quick one-line fix. Bug 5 requires separating the "read data" path from the "update last_opened_at" path.
+**File:** `src/pages/TrainingForm.tsx`, line 614
+**Current:** `[deliveryApproaches, operatingSystems, immediateAttention, verifiableItems, systemsInPlace, summary]`
+**Missing:** `isOwner`
+**Impact:** If `isOwner` resolves from `false` to `true` after mount, the first edit may not trigger auto-save until another tracked dependency changes. Same class as the bug fixed in InspectionForm.
+**Fix:** Add `isOwner` to the dependency array.
+
+### Issue B: TrainingForm -- Missing `isOwner` in backup interval dependency array
+
+**File:** `src/pages/TrainingForm.tsx`, line 641
+**Current:** `[hasUnsavedChanges, isSaving, isLoading, training]`
+**Missing:** `isOwner`
+**Fix:** Add `isOwner` to the dependency array.
+
+### Issue C: DailyAssessmentForm -- Missing `isOwner` in both auto-save dependency arrays
+
+**File:** `src/pages/DailyAssessmentForm.tsx`, line 285 and line 308
+**Current (line 285):** Watches data fields but not `isOwner`
+**Current (line 308):** `[hasUnsavedChanges, saving, loading]` -- missing `isOwner`
+**Fix:** Add `isOwner` to both dependency arrays.
+
+---
+
+## Summary
+
+| Area | Status | Details |
+|------|--------|---------|
+| Offline auth integrity | PASS | All edge cases handled (corrupted cache, expired tokens, offline fallback) |
+| Data persistence | PASS | IndexedDB-first with upsert sync prevents loss and duplication |
+| Date field validation | PASS | No regressions; `effectiveReadOnly` respected across all forms |
+| Security | PASS | No tokens/secrets logged; credentials cleaned up on verify/sign-out |
+| Stale `isOwner` deps (Training) | LOW | Two dependency arrays missing `isOwner` |
+| Stale `isOwner` deps (Daily) | LOW | Two dependency arrays missing `isOwner` |
+
+## Recommended Fix
+
+Add `isOwner` to four dependency arrays across TrainingForm and DailyAssessmentForm to match the hardening already applied to InspectionForm. This is a consistency fix -- the practical impact is minimal since `isOwner` resolves quickly and data dependencies change frequently.
