@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef } from "react";
+import { OptimizedImage } from "@/components/ui/optimized-image";
 import { supabase } from "@/integrations/supabase/client";
 import { getOfflinePhotos, updatePhotoDisplayOrder } from "@/lib/offline-storage";
 import { cachePhotoFromRemote, validateCachedPhoto } from "@/lib/photo-cache";
@@ -351,10 +352,11 @@ export default function PhotoGallery({
             <DraggablePhotoItem key={photo.id} id={photo.id} disabled={readOnly}>
               <Card className="relative group overflow-hidden flex flex-col">
                 <div className="relative">
-                  <img
+                  <OptimizedImage
                     src={photo.photoUrl}
                     alt={photo.caption || "Inspection photo"}
                     className="w-full h-48 object-cover"
+                    containerClassName="h-48"
                   />
                   <div className="absolute top-2 right-2 flex gap-2">
                     {!photo.uploaded && (
@@ -410,10 +412,11 @@ export default function PhotoGallery({
       <DragOverlay>
         {activePhoto && (
           <div className="shadow-2xl scale-105 rotate-2 rounded-lg overflow-hidden bg-background">
-            <img 
+            <OptimizedImage 
               src={activePhoto.photoUrl} 
               alt={activePhoto.caption || "Dragging photo"}
-              className="w-48 h-48 object-cover" 
+              className="w-48 h-48 object-cover"
+              containerClassName="w-48 h-48"
             />
           </div>
         )}
