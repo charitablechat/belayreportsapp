@@ -14,7 +14,8 @@ import { pwaConfig } from "./vite-pwa-config";
 // v2.5.3 - Image CLS fix (decoding=async, Brutalist skeletons), silent photo refresh
 // v2.5.4 - Photo flash fix: deferred object URL revocation, loaded state reset on src change
 // v2.5.5 - Photo soft-delete protection (60-day retention), stale upload warning
-   const APP_VERSION = "2.5.5";
+// v2.5.6 - Image CLS fix: smart cross-fade, deferred URL revocation, Retro-Tech scanline skeleton
+   const APP_VERSION = "2.5.6";
    const BUILD_DATE = "02-17-2026";
    const BUILD_TIMESTAMP = "02-17-2026 at 12:00 AM CST";
 
