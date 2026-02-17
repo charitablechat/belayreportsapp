@@ -282,7 +282,7 @@ export default function DailyAssessmentForm() {
         clearTimeout(autoSaveTimerRef.current);
       }
     };
-  }, [beginningOfDay, endOfDay, operatingSystems, equipmentChecks, structureChecks, environmentChecks, assessment?.structure_comments, assessment?.environment_comments, assessment?.systems_comments]);
+  }, [beginningOfDay, endOfDay, operatingSystems, equipmentChecks, structureChecks, environmentChecks, assessment?.structure_comments, assessment?.environment_comments, assessment?.systems_comments, isOwner]);
 
   // Reset internal update ref after the change tracker skips
   useEffect(() => {
@@ -305,7 +305,7 @@ export default function DailyAssessmentForm() {
         clearInterval(autoSaveIntervalRef.current);
       }
     };
-  }, [hasUnsavedChanges, saving, loading]);
+  }, [hasUnsavedChanges, saving, loading, isOwner]);
 
   const loadAssessment = async () => {
     try {
