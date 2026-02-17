@@ -344,7 +344,13 @@ export default function InspectionForm() {
     // Listen for auth state changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (_event, session) => {
-        setCurrentUser(session?.user ?? null);
+        if (session?.user) {
+          setCurrentUser(session.user);
+        } else if (navigator.onLine) {
+          // Only clear user on explicit sign-out while online
+          // Prevents losing currentUser when offline token refresh fails
+          setCurrentUser(null);
+        }
       }
     );
     
@@ -458,7 +464,7 @@ export default function InspectionForm() {
         autoSaveProgress();
       }, 1500);
     }
-  }, [systems, ziplines, equipment, standards, summary]);
+  }, [systems, ziplines, equipment, standards, summary, isOwner]);
 
   // Reset internal update flag AFTER the auto-save watcher above has run
   // React runs effects in declaration order, so this always executes after the watcher skips
@@ -621,7 +627,7 @@ export default function InspectionForm() {
         clearTimeout(summaryRegenerateTimerRef.current);
       }
     };
-  }, [equipment, systems, ziplines, loading, inspection?.id]);
+  }, [equipment, systems, ziplines, loading, inspection?.id, isOwner]);
 
   // Original manual regenerate handler wrapper (for button click)
   const handleManualRegenerateSummary = () => {
@@ -866,16 +872,18 @@ export default function InspectionForm() {
 
       // If online, fetch from Supabase and update local cache
       // Skip server queries for temp-ID inspections (they only exist locally)
-      if (isOnline && !id!.startsWith('temp-') && isOwner) {
-        // Update last_opened_at timestamp (with 5s timeout)
-        const now = new Date().toISOString();
-        await withQueryTimeout(
-          supabase
-            .from("inspections")
-            .update({ last_opened_at: now })
-            .eq("id", id),
-          5000
-        );
+      if (isOnline && !id!.startsWith('temp-')) {
+        // Update last_opened_at only for owners (write operation)
+        if (isOwner) {
+          const now = new Date().toISOString();
+          await withQueryTimeout(
+            supabase
+              .from("inspections")
+              .update({ last_opened_at: now })
+              .eq("id", id),
+            5000
+          ).catch(e => console.warn('[InspectionForm] last_opened_at update failed:', e));
+        }
 
         // PERFORMANCE: Parallel data loading - all queries run simultaneously
         const [
