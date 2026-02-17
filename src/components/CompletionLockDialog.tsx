@@ -19,7 +19,7 @@ interface CompletionLockDialogProps {
 export function CompletionLockDialog({ open, onOpenChange, onConfirm }: CompletionLockDialogProps) {
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent className="bg-zinc-950 border-double border-4 border-green-500 font-mono max-w-md relative overflow-hidden shadow-[0_0_40px_rgba(34,197,94,0.4)]">
+        <AlertDialogContent className="bg-zinc-900 border-double border-4 border-green-500 font-mono max-w-md relative overflow-hidden shadow-[0_0_60px_rgba(34,197,94,0.6)]">
         {/* CRT scanline overlay */}
         <div
           className="pointer-events-none absolute inset-0 z-10"
@@ -27,7 +27,7 @@ export function CompletionLockDialog({ open, onOpenChange, onConfirm }: Completi
             background: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,255,0,0.03) 2px, rgba(0,255,0,0.03) 4px)',
           }}
         />
-        <AlertDialogHeader>
+        <AlertDialogHeader className="relative z-20">
           <AlertDialogTitle className="text-green-500 flex items-center gap-2 text-lg tracking-wide">
             <Lock className="h-5 w-5" />
             REPORT LOCKED
@@ -36,7 +36,7 @@ export function CompletionLockDialog({ open, onOpenChange, onConfirm }: Completi
             This report has been completed. Editing will reopen it for modifications. Proceed?
           </AlertDialogDescription>
         </AlertDialogHeader>
-        <AlertDialogFooter className="gap-2">
+        <AlertDialogFooter className="gap-2 relative z-20">
           <AlertDialogCancel className="border-2 border-green-500/60 bg-transparent text-green-500 hover:bg-green-500/10 hover:text-green-400 font-mono">
             Cancel
           </AlertDialogCancel>
