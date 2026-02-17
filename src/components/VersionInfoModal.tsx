@@ -21,10 +21,18 @@ export function VersionInfoModal({ open, onOpenChange }: VersionInfoModalProps) 
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent 
         hideDefaultClose
-        className="bg-black border-2 border-white rounded-none shadow-none max-w-sm"
+        className="bg-black border-2 border-white rounded-none shadow-none max-w-sm overflow-hidden"
       >
+        {/* CRT scanline overlay */}
+        <div
+          className="pointer-events-none absolute inset-0 z-10"
+          style={{
+            backgroundImage: 'repeating-linear-gradient(0deg, rgba(34,197,94,0.06) 0px, rgba(34,197,94,0.06) 1px, transparent 1px, transparent 3px)',
+          }}
+        />
+
         {/* Custom brutalist close button */}
-        <DialogClose className="absolute right-3 top-3 p-1 border border-white/50 hover:border-white hover:bg-white/10 transition-colors">
+        <DialogClose className="absolute right-3 top-3 p-1 border border-white/50 hover:border-white hover:bg-white/10 transition-colors z-20">
           <X className="h-4 w-4 text-white" />
           <span className="sr-only">Close</span>
         </DialogClose>
@@ -35,10 +43,13 @@ export function VersionInfoModal({ open, onOpenChange }: VersionInfoModalProps) 
           </DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-6 py-4">
+        <div className="space-y-6 py-4 relative z-10">
           {/* Version Number - Hero Display */}
           <div className="text-center py-4">
-            <span className="font-mono text-4xl font-bold text-white tracking-tight">
+            <span
+              className="font-mono text-4xl font-bold text-white tracking-tight"
+              style={{ textShadow: '0 0 10px rgba(34,197,94,0.3)' }}
+            >
               v{version}
             </span>
           </div>

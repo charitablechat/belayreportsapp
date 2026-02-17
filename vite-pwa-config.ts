@@ -41,6 +41,8 @@ export const pwaConfig = VitePWA({
     ]
   },
   workbox: {
+    skipWaiting: true,
+    clientsClaim: true,
     globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
     navigateFallback: '/',
     navigateFallbackDenylist: [/^\/api/, /offline\.html$/],

@@ -8,6 +8,19 @@ export const UpdateNotification = () => {
   const hasShownUpdate = useRef(false);
   const hasShownOfflineReady = useRef(false);
 
+  // Auto-reload when new SW takes control to bust stale cached version strings
+  useEffect(() => {
+    if ('serviceWorker' in navigator) {
+      const handleControllerChange = () => {
+        window.location.reload();
+      };
+      navigator.serviceWorker.addEventListener('controllerchange', handleControllerChange);
+      return () => {
+        navigator.serviceWorker.removeEventListener('controllerchange', handleControllerChange);
+      };
+    }
+  }, []);
+
   useEffect(() => {
     if (needsUpdate && !hasShownUpdate.current) {
       hasShownUpdate.current = true;
