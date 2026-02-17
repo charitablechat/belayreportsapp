@@ -1,26 +1,49 @@
 
 
-# Remove N/A from Equipment Result Dropdown
+# Harden Inspection Comment Aggregation Pipeline
 
-## Summary
+## Current State
 
-The Equipment section's result dropdown currently shows "N/A" because the `ResultSelect` component is called with `includeNA` prop set to `true`. Removing this prop (which defaults to `false`) will hide the N/A option while keeping all other choices (Pass, Pass w/Provisions, Fail) intact.
+The comment-to-summary mapping logic already exists in `generateSummaryFromInspection()` (InspectionForm.tsx, lines 226-327) with the correct rules:
 
-## Changes
+- **fail** -> Critical Actions Required
+- **pass w/provisions** -> Future Considerations  
+- **pass** (with comments) -> Repairs, Alterations performed
 
-### File: `src/components/inspection/EquipmentTable.tsx`
+It processes Equipment, Operating Systems, and Ziplines. A real-time auto-regeneration effect (lines 545-624) watches for changes and re-triggers the aggregation with 800ms debounce.
 
-Two instances of `includeNA` need to be removed:
+## Bug Found
 
-1. **Desktop table view (line 267):** Remove `includeNA` from the `ResultSelect` usage
-2. **Mobile card view (line 440):** Remove `includeNA` from the `ResultSelect` usage
+There is a **stale data bug** in the real-time auto-regeneration effect (line 594):
 
-No validation or default-value logic is affected because:
-- New equipment items default to `result: "pass"`, not "na"
-- The `ResultSelect` component already handles unknown values gracefully via its default switch case
-- Existing records with "na" stored will display the raw value but users can re-select a valid option
+```
+if (currentSignature !== previousFailProvisionsRef.current && currentSignature.length > 0)
+```
 
-## No other files are modified
+The `currentSignature.length > 0` guard means: when a user **corrects** all fail/provisions items back to "pass" (without comments), the signature becomes an empty string and the regeneration is **skipped**. The summary retains stale critical actions or future considerations that no longer reflect the actual inspection data.
 
-The `ResultSelect` component itself remains unchanged -- its `includeNA` prop and N/A rendering logic stay in place for any other form sections that may use it.
+## Fix
+
+### File: `src/pages/InspectionForm.tsx`
+
+**Change 1 -- Remove the empty-signature guard (line 594)**
+
+Allow regeneration to fire when items are removed (signature goes from non-empty to empty). This clears stale summary content when all issues are resolved.
+
+Before:
+```
+if (currentSignature !== previousFailProvisionsRef.current && currentSignature.length > 0) {
+```
+
+After:
+```
+if (currentSignature !== previousFailProvisionsRef.current) {
+```
+
+This single-line change ensures:
+- Adding fail/provisions items populates the summary (existing behavior)
+- Changing a fail item to pass clears it from critical actions (previously broken)
+- Removing all flagged items clears all three summary sections (previously broken)
+
+No other files need changes. The mapping rules, HTML/PDF rendering, and the `generateSummaryFromInspection` function are all correctly implemented.
 
