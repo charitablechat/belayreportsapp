@@ -2194,7 +2194,7 @@ export default function InspectionForm() {
 
       <main onClickCapture={handleLockedFieldClick} className="container mx-auto px-4 py-8 max-w-6xl">
         {isCompletionLocked && (
-          <div className="border-2 border-amber-500/60 bg-black/90 text-amber-400 font-mono text-xs px-4 py-2 flex items-center gap-2 mb-4 rounded">
+          <div className="border-2 border-green-500/60 bg-black/90 text-green-500 font-mono text-xs px-4 py-2 flex items-center gap-2 mb-4 rounded">
             <Lock className="h-3.5 w-3.5" />
             <span>LOCKED — Click any field to unlock for editing</span>
           </div>
@@ -2251,164 +2251,174 @@ export default function InspectionForm() {
             </TabsList>
           </div>
 
-          <TabsContent value="details" className="space-y-6">
-            <OperatingSystemsTable systems={systems} onUpdate={setSystems} onImmediateSave={stableTriggerImmediateSave} />
-            <ZiplinesTable ziplines={ziplines} onUpdate={setZiplines} onImmediateSave={stableTriggerImmediateSave} />
-            
-            <div className="mt-8 border-t pt-6">
-              <h3 className="text-lg font-semibold mb-4">Photos - Systems & Ziplines</h3>
-              {!effectiveReadOnly && (
-                <PhotoCapture
-                  inspectionId={id!}
-                  section="systems"
-                  onPhotoAdded={() => setPhotoRefreshKey(prev => prev + 1)}
-                />
-              )}
-              <div className="mt-4">
-                <PhotoGallery
-                  key={`systems-${photoRefreshKey}`}
-                  inspectionId={id!}
-                  section="systems"
-                  readOnly={effectiveReadOnly}
-                />
-              </div>
-            </div>
-          </TabsContent>
-
-          <TabsContent value="equipment" className="space-y-6">
-            {/* PERFORMANCE: Lazy load - only render when tab has been visited */}
-            {visitedTabs.has('equipment') && (
-              <>
-                <EquipmentTable
-                  category="harnesses"
-                  displayName="Harnesses"
-                  equipment={equipment}
-                  onUpdate={setEquipment}
-                  onImmediateSave={stableTriggerImmediateSave}
-                />
-                <EquipmentTable
-                  category="helmets"
-                  displayName="Helmets"
-                  equipment={equipment}
-                  onUpdate={setEquipment}
-                  onImmediateSave={stableTriggerImmediateSave}
-                />
-                <EquipmentTable
-                  category="lanyards"
-                  displayName="Lanyards"
-                  equipment={equipment}
-                  onUpdate={setEquipment}
-                  onImmediateSave={stableTriggerImmediateSave}
-                />
-                <EquipmentTable
-                  category="connectors"
-                  displayName="Connectors (Carabiners & Quicklinks)"
-                  equipment={equipment}
-                  onUpdate={setEquipment}
-                  onImmediateSave={stableTriggerImmediateSave}
-                />
-                <EquipmentTable
-                  category="rope"
-                  displayName="Rope"
-                  typeOptions={["Dynamic Kernmantle", "Low-elongation Kernmantle", "Static Kernmantle", "Multi-Line"]}
-                  equipment={equipment}
-                  onUpdate={setEquipment}
-                  onImmediateSave={stableTriggerImmediateSave}
-                />
-                <EquipmentTable
-                  category="belay"
-                  displayName="Belay/Descent Device"
-                  equipment={equipment}
-                  onUpdate={setEquipment}
-                  onImmediateSave={stableTriggerImmediateSave}
-                />
-                <EquipmentTable
-                  category="trolleys"
-                  displayName="Trolleys and Pulleys"
-                  equipment={equipment}
-                  onUpdate={setEquipment}
-                  onImmediateSave={stableTriggerImmediateSave}
-                />
-                <EquipmentTable
-                  category="other"
-                  displayName="Other Equipment"
-                  equipment={equipment}
-                  onUpdate={setEquipment}
-                  onImmediateSave={stableTriggerImmediateSave}
-                />
+          <div className="relative">
+            {isCompletionLocked && (
+              <div
+                className="absolute inset-0 z-10 cursor-not-allowed"
+                onClick={() => setShowCompletionLockDialog(true)}
+              />
+            )}
+            <div style={isCompletionLocked ? { pointerEvents: 'none' } : undefined}>
+              <TabsContent value="details" className="space-y-6">
+                <OperatingSystemsTable systems={systems} onUpdate={setSystems} onImmediateSave={stableTriggerImmediateSave} />
+                <ZiplinesTable ziplines={ziplines} onUpdate={setZiplines} onImmediateSave={stableTriggerImmediateSave} />
                 
                 <div className="mt-8 border-t pt-6">
-                  <h3 className="text-lg font-semibold mb-4">Photos - Equipment</h3>
+                  <h3 className="text-lg font-semibold mb-4">Photos - Systems & Ziplines</h3>
                   {!effectiveReadOnly && (
                     <PhotoCapture
                       inspectionId={id!}
-                      section="equipment"
+                      section="systems"
                       onPhotoAdded={() => setPhotoRefreshKey(prev => prev + 1)}
                     />
                   )}
                   <div className="mt-4">
                     <PhotoGallery
-                      key={`equipment-${photoRefreshKey}`}
+                      key={`systems-${photoRefreshKey}`}
                       inspectionId={id!}
-                      section="equipment"
+                      section="systems"
                       readOnly={effectiveReadOnly}
                     />
                   </div>
                 </div>
-              </>
-            )}
-          </TabsContent>
+              </TabsContent>
 
-          <TabsContent value="standards" className="space-y-4">
-            <StandardsTable standards={standards} onUpdate={setStandards} onImmediateSave={stableTriggerImmediateSave} />
-            
-            <div className="mt-8 border-t pt-6">
-              <h3 className="text-lg font-semibold mb-4">Photos - Standards</h3>
-              {!effectiveReadOnly && (
-                <PhotoCapture
-                  inspectionId={id!}
-                  section="standards"
-                  onPhotoAdded={() => setPhotoRefreshKey(prev => prev + 1)}
-                />
-              )}
-              <div className="mt-4">
-                <PhotoGallery
-                  key={`standards-${photoRefreshKey}`}
-                  inspectionId={id!}
-                  section="standards"
-                  readOnly={effectiveReadOnly}
-                />
-              </div>
-            </div>
-          </TabsContent>
+              <TabsContent value="equipment" className="space-y-6">
+                {/* PERFORMANCE: Lazy load - only render when tab has been visited */}
+                {visitedTabs.has('equipment') && (
+                  <>
+                    <EquipmentTable
+                      category="harnesses"
+                      displayName="Harnesses"
+                      equipment={equipment}
+                      onUpdate={setEquipment}
+                      onImmediateSave={stableTriggerImmediateSave}
+                    />
+                    <EquipmentTable
+                      category="helmets"
+                      displayName="Helmets"
+                      equipment={equipment}
+                      onUpdate={setEquipment}
+                      onImmediateSave={stableTriggerImmediateSave}
+                    />
+                    <EquipmentTable
+                      category="lanyards"
+                      displayName="Lanyards"
+                      equipment={equipment}
+                      onUpdate={setEquipment}
+                      onImmediateSave={stableTriggerImmediateSave}
+                    />
+                    <EquipmentTable
+                      category="connectors"
+                      displayName="Connectors (Carabiners & Quicklinks)"
+                      equipment={equipment}
+                      onUpdate={setEquipment}
+                      onImmediateSave={stableTriggerImmediateSave}
+                    />
+                    <EquipmentTable
+                      category="rope"
+                      displayName="Rope"
+                      typeOptions={["Dynamic Kernmantle", "Low-elongation Kernmantle", "Static Kernmantle", "Multi-Line"]}
+                      equipment={equipment}
+                      onUpdate={setEquipment}
+                      onImmediateSave={stableTriggerImmediateSave}
+                    />
+                    <EquipmentTable
+                      category="belay"
+                      displayName="Belay/Descent Device"
+                      equipment={equipment}
+                      onUpdate={setEquipment}
+                      onImmediateSave={stableTriggerImmediateSave}
+                    />
+                    <EquipmentTable
+                      category="trolleys"
+                      displayName="Trolleys and Pulleys"
+                      equipment={equipment}
+                      onUpdate={setEquipment}
+                      onImmediateSave={stableTriggerImmediateSave}
+                    />
+                    <EquipmentTable
+                      category="other"
+                      displayName="Other Equipment"
+                      equipment={equipment}
+                      onUpdate={setEquipment}
+                      onImmediateSave={stableTriggerImmediateSave}
+                    />
+                    
+                    <div className="mt-8 border-t pt-6">
+                      <h3 className="text-lg font-semibold mb-4">Photos - Equipment</h3>
+                      {!effectiveReadOnly && (
+                        <PhotoCapture
+                          inspectionId={id!}
+                          section="equipment"
+                          onPhotoAdded={() => setPhotoRefreshKey(prev => prev + 1)}
+                        />
+                      )}
+                      <div className="mt-4">
+                        <PhotoGallery
+                          key={`equipment-${photoRefreshKey}`}
+                          inspectionId={id!}
+                          section="equipment"
+                          readOnly={effectiveReadOnly}
+                        />
+                      </div>
+                    </div>
+                  </>
+                )}
+              </TabsContent>
 
-          <TabsContent value="summary" className="space-y-4">
-            <SummarySection 
-              summary={summary} 
-              onUpdate={setSummary} 
-              onImmediateSave={stableTriggerImmediateSave}
-              onRegenerate={handleManualRegenerateSummary}
-            />
-            
-            <div className="mt-8 border-t pt-6">
-              <h3 className="text-lg font-semibold mb-4">Photos - Summary</h3>
-              {!effectiveReadOnly && (
-                <PhotoCapture
-                  inspectionId={id!}
-                  section="summary"
-                  onPhotoAdded={() => setPhotoRefreshKey(prev => prev + 1)}
+              <TabsContent value="standards" className="space-y-4">
+                <StandardsTable standards={standards} onUpdate={setStandards} onImmediateSave={stableTriggerImmediateSave} />
+                
+                <div className="mt-8 border-t pt-6">
+                  <h3 className="text-lg font-semibold mb-4">Photos - Standards</h3>
+                  {!effectiveReadOnly && (
+                    <PhotoCapture
+                      inspectionId={id!}
+                      section="standards"
+                      onPhotoAdded={() => setPhotoRefreshKey(prev => prev + 1)}
+                    />
+                  )}
+                  <div className="mt-4">
+                    <PhotoGallery
+                      key={`standards-${photoRefreshKey}`}
+                      inspectionId={id!}
+                      section="standards"
+                      readOnly={effectiveReadOnly}
+                    />
+                  </div>
+                </div>
+              </TabsContent>
+
+              <TabsContent value="summary" className="space-y-4">
+                <SummarySection 
+                  summary={summary} 
+                  onUpdate={setSummary} 
+                  onImmediateSave={stableTriggerImmediateSave}
+                  onRegenerate={handleManualRegenerateSummary}
                 />
-              )}
-              <div className="mt-4">
-                <PhotoGallery
-                  key={`summary-${photoRefreshKey}`}
-                  inspectionId={id!}
-                  section="summary"
-                  readOnly={effectiveReadOnly}
-                />
-              </div>
+                
+                <div className="mt-8 border-t pt-6">
+                  <h3 className="text-lg font-semibold mb-4">Photos - Summary</h3>
+                  {!effectiveReadOnly && (
+                    <PhotoCapture
+                      inspectionId={id!}
+                      section="summary"
+                      onPhotoAdded={() => setPhotoRefreshKey(prev => prev + 1)}
+                    />
+                  )}
+                  <div className="mt-4">
+                    <PhotoGallery
+                      key={`summary-${photoRefreshKey}`}
+                      inspectionId={id!}
+                      section="summary"
+                      readOnly={effectiveReadOnly}
+                    />
+                  </div>
+                </div>
+              </TabsContent>
             </div>
-          </TabsContent>
+          </div>
         </Tabs>
       </main>
       

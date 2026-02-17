@@ -1071,7 +1071,7 @@ export default function TrainingForm() {
       {/* Main Content */}
       <div onClickCapture={handleLockedFieldClick} className="container mx-auto px-4 py-8">
         {isCompletionLocked && (
-          <div className="border-2 border-amber-500/60 bg-black/90 text-amber-400 font-mono text-xs px-4 py-2 flex items-center gap-2 mb-4 rounded">
+          <div className="border-2 border-green-500/60 bg-black/90 text-green-500 font-mono text-xs px-4 py-2 flex items-center gap-2 mb-4 rounded">
             <Lock className="h-3.5 w-3.5" />
             <span>LOCKED — Click any field to unlock for editing</span>
           </div>
@@ -1118,81 +1118,91 @@ export default function TrainingForm() {
             </TabsList>
           </div>
 
-          <TabsContent value="info" className="space-y-6">
-            <TrainingHeader 
-              training={training} 
-              onUpdate={effectiveReadOnly ? () => {} : updateTrainingField} 
-              isReadOnly={effectiveReadOnly}
-              userProfile={inspectorProfile}
-              modifiedByProfile={modifiedByProfile}
-            />
-          </TabsContent>
+          <div className="relative">
+            {isCompletionLocked && (
+              <div
+                className="absolute inset-0 z-10 cursor-not-allowed"
+                onClick={() => setShowCompletionLockDialog(true)}
+              />
+            )}
+            <div style={isCompletionLocked ? { pointerEvents: 'none' } : undefined}>
+              <TabsContent value="info" className="space-y-6">
+                <TrainingHeader 
+                  training={training} 
+                  onUpdate={effectiveReadOnly ? () => {} : updateTrainingField} 
+                  isReadOnly={effectiveReadOnly}
+                  userProfile={inspectorProfile}
+                  modifiedByProfile={modifiedByProfile}
+                />
+              </TabsContent>
 
-          <TabsContent value="delivery" className="space-y-6">
-            <DeliveryApproachSection 
-              approaches={deliveryApproaches} 
-              onUpdate={setDeliveryApproaches} 
-            />
-          </TabsContent>
+              <TabsContent value="delivery" className="space-y-6">
+                <DeliveryApproachSection 
+                  approaches={deliveryApproaches} 
+                  onUpdate={setDeliveryApproaches} 
+                />
+              </TabsContent>
 
-          <TabsContent value="systems" className="space-y-6">
-            <OperatingSystemsSection 
-              systems={operatingSystems} 
-              onUpdate={setOperatingSystems} 
-            />
-          </TabsContent>
+              <TabsContent value="systems" className="space-y-6">
+                <OperatingSystemsSection 
+                  systems={operatingSystems} 
+                  onUpdate={setOperatingSystems} 
+                />
+              </TabsContent>
 
-          <TabsContent value="attention" className="space-y-6">
-            <ImmediateAttentionSection 
-              items={immediateAttention} 
-              onUpdate={setImmediateAttention} 
-            />
-          </TabsContent>
+              <TabsContent value="attention" className="space-y-6">
+                <ImmediateAttentionSection 
+                  items={immediateAttention} 
+                  onUpdate={setImmediateAttention} 
+                />
+              </TabsContent>
 
-          <TabsContent value="verifiable" className="space-y-6">
-            <VerifiableItemsSection 
-              items={verifiableItems} 
-              onUpdate={setVerifiableItems}
-              systemsInPlace={systemsInPlace}
-              onUpdateSystemsInPlace={setSystemsInPlace}
-            />
-          </TabsContent>
+              <TabsContent value="verifiable" className="space-y-6">
+                <VerifiableItemsSection 
+                  items={verifiableItems} 
+                  onUpdate={setVerifiableItems}
+                  systemsInPlace={systemsInPlace}
+                  onUpdateSystemsInPlace={setSystemsInPlace}
+                />
+              </TabsContent>
 
-          <TabsContent value="summary" className="space-y-6">
-            <TrainingSummarySection 
-              summary={summary} 
-              onUpdate={updateSummaryField} 
-            />
-          </TabsContent>
+              <TabsContent value="summary" className="space-y-6">
+                <TrainingSummarySection 
+                  summary={summary} 
+                  onUpdate={updateSummaryField} 
+                />
+              </TabsContent>
 
-          <TabsContent value="photos" className="space-y-6">
-            <div className="space-y-6">
-              <div className="border-2 border-foreground/20 bg-background p-6 rounded-md">
-                <h3 className="text-lg font-semibold font-mono tracking-tight mb-4">Training Photos</h3>
-                {!effectiveReadOnly && (
-                  <div className="mb-4">
-                    <PhotoCapture
+              <TabsContent value="photos" className="space-y-6">
+                <div className="space-y-6">
+                  <div className="border-2 border-foreground/20 bg-background p-6 rounded-md">
+                    <h3 className="text-lg font-semibold font-mono tracking-tight mb-4">Training Photos</h3>
+                    {!effectiveReadOnly && (
+                      <div className="mb-4">
+                        <PhotoCapture
+                          inspectionId={id!}
+                          section="training"
+                          onPhotoAdded={() => setPhotoRefreshKey(prev => prev + 1)}
+                          tableName="training_photos"
+                          foreignKeyColumn="training_id"
+                          storageBucket="training-photos"
+                        />
+                      </div>
+                    )}
+                    <PhotoGallery
+                      key={`training-${photoRefreshKey}`}
                       inspectionId={id!}
                       section="training"
-                      onPhotoAdded={() => setPhotoRefreshKey(prev => prev + 1)}
+                      readOnly={effectiveReadOnly}
                       tableName="training_photos"
                       foreignKeyColumn="training_id"
                       storageBucket="training-photos"
                     />
                   </div>
-                )}
-                <PhotoGallery
-                  key={`training-${photoRefreshKey}`}
-                  inspectionId={id!}
-                  section="training"
-                  readOnly={effectiveReadOnly}
-                  tableName="training_photos"
-                  foreignKeyColumn="training_id"
-                  storageBucket="training-photos"
-                />
-              </div>
+                </div>
+              </TabsContent>
             </div>
-          </TabsContent>
+          </div>
         </Tabs>
       </div>
       
