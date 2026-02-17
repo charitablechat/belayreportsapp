@@ -98,19 +98,18 @@ export default function DailyAssessmentForm() {
   const isCompletionLocked = assessment?.status === 'completed' && !completionLockOverridden;
   const effectiveReadOnly = isReadOnly || isCompletionLocked;
 
-  // Field-level click interception for locked reports
+  // Field-level click interception for locked reports (deny-list approach)
   const handleLockedFieldClick = useCallback((e: React.MouseEvent) => {
     if (!isCompletionLocked) return;
     const target = e.target as HTMLElement;
-    const isEditableField = target.closest(
-      'input, textarea, select, [role="checkbox"], [role="combobox"], ' +
-      '[contenteditable], .tiptap, button:not([data-nav]), img, .photo-item, [data-draggable-photo]'
+    // Allow only navigation elements to pass through
+    const isExempt = target.closest(
+      '[role="tab"], [data-nav], [data-lock-exempt], [role="tablist"]'
     );
-    if (isEditableField) {
-      e.preventDefault();
-      e.stopPropagation();
-      setShowCompletionLockDialog(true);
-    }
+    if (isExempt) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setShowCompletionLockDialog(true);
   }, [isCompletionLocked]);
 
   const isInternalUpdateRef = useRef(false);
@@ -1247,14 +1246,7 @@ export default function DailyAssessmentForm() {
             </TabsList>
           </div>
 
-          <div className="relative">
-            {isCompletionLocked && (
-              <div
-                className="absolute inset-0 z-10 cursor-not-allowed"
-                onClick={() => setShowCompletionLockDialog(true)}
-              />
-            )}
-            <div style={isCompletionLocked ? { pointerEvents: 'none' } : undefined}>
+          <div>
               <TabsContent value="beginning" className="space-y-4 mt-4">
                 <BeginningOfDaySection 
                   items={beginningOfDay} 
@@ -1329,7 +1321,6 @@ export default function DailyAssessmentForm() {
                   />
                 </div>
               </TabsContent>
-            </div>
           </div>
         </Tabs>
       </div>
