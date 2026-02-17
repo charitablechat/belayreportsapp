@@ -1,50 +1,70 @@
 
 
-# Version Bump: v2.4.19 to v2.5.1
+# Retro-Tech Skeleton Loader and Image Loading Optimization
 
-## Current State
+## Current State (No Bugs Found)
 
-| Field | Current Value |
-|-------|--------------|
-| APP_VERSION | 2.4.19 |
-| BUILD_DATE | 02-12-2026 |
-| BUILD_TIMESTAMP | 02-12-2026 at 12:00 AM CST |
+All photo network requests return HTTP 200. No console errors. The `pointer-events: none` wrappers were already removed in the previous fix, so no CSS is obstructing lazy-loading triggers or image requests. The reported "loading failures" are likely perceived latency from the generic shimmer skeleton that does not visually communicate loading progress in the Retro-Tech aesthetic.
 
-The version and build metadata are **manually maintained** in `vite.config.ts`. There is no automated version bump in the build pipeline.
+## Changes
 
-## What Needs to Change
+### 1. Retro-Tech CRT Skeleton Loader (`src/components/ui/optimized-image.tsx`)
 
-Update `vite.config.ts` with:
+Replace the generic shimmer with a CRT-styled pulsing green skeleton that matches the Retro-Tech Terminal aesthetic:
 
-| Field | New Value |
-|-------|-----------|
-| APP_VERSION | 2.5.1 |
-| BUILD_DATE | 02-17-2026 |
-| BUILD_TIMESTAMP | 02-17-2026 at 12:00 AM CST |
+- Background: `bg-zinc-950` (near-black, matching the terminal look)
+- Pulse effect: pulsing green scanline overlay using `rgba(34,197,94, 0.15)` (`#22c55e`)
+- CRT scanlines: repeating-linear-gradient matching the `CompletionLockDialog` pattern
+- Add a `priority` prop: when true, skip `IntersectionObserver` and render the `<img>` immediately (for above-the-fold / hero images)
 
-Per the project's rollover versioning scheme (patch resets to 1 when it exceeds 9), `2.4.19` rolls over to `2.5.1`.
+```text
++---------------------------------------------+
+|  OptimizedImage (priority=false, default)    |
+|                                              |
+|  [zinc-950 bg] + [green pulse scanlines]     |
+|         |                                    |
+|         v  IntersectionObserver fires        |
+|  <img loading="lazy" onLoad={fadeIn}>        |
++---------------------------------------------+
 
-## Why v2.5.1
-
-The MINOR version bump (4 to 5) is appropriate because the recent changes represent a behavioral architecture change (dual-layer event interception with `onPointerDownCapture`), not just a patch-level fix. The rollover scheme also mandates it since PATCH exceeded 9.
-
-## Changelog Context
-
-Add a version comment in `vite.config.ts` alongside the existing one:
-
++---------------------------------------------+
+|  OptimizedImage (priority=true)              |
+|                                              |
+|  [zinc-950 bg] + [green pulse scanlines]     |
+|         |                                    |
+|         v  Rendered immediately (no IO)      |
+|  <img loading="eager" onLoad={fadeIn}>       |
++---------------------------------------------+
 ```
-// v2.4.5 - Fixed equipment data loss: replaced object reference equality with ID-based matching
-// v2.5.1 - Dual-layer lock protection (onPointerDownCapture), Minimal Brutalist dialog styling
-```
+
+### 2. CRT Shimmer CSS (`src/index.css`)
+
+Replace the existing `.optimized-image-shimmer` keyframe with a Retro-Tech version:
+
+- New keyframe `@keyframes crt-pulse` using green channel pulsing
+- `.optimized-image-shimmer` updated to use `bg-zinc-950` base with green scanline overlay
+- Maintains the same class name so no downstream changes needed
+
+### 3. PhotoGallery Integration (`src/components/PhotoGallery.tsx`)
+
+No structural changes needed. The `OptimizedImage` component is already used correctly. The new skeleton styling will automatically apply.
+
+### 4. Report Form Skeleton Cards
+
+No changes to `ReportCardSkeleton.tsx` -- the generic skeleton is appropriate for dashboard cards. The CRT treatment is specific to photo loading within report forms.
 
 ## Files Modified
 
-- `vite.config.ts` -- Update APP_VERSION, BUILD_DATE, BUILD_TIMESTAMP, and add changelog comment
+| File | Change |
+|------|--------|
+| `src/components/ui/optimized-image.tsx` | Add `priority` prop, CRT skeleton markup |
+| `src/index.css` | Replace `.optimized-image-shimmer` with CRT-styled green pulse animation |
 
 ## What Does NOT Change
 
-- Version calculator logic (`src/lib/version-calculator.ts`)
-- VersionBadge or VersionInfoModal components
+- PhotoGallery.tsx (already uses OptimizedImage correctly)
+- Photo caching/fetch logic (no bugs found)
+- Lock interception handlers (working correctly)
 - Backend, edge functions, RLS policies
 - No secrets or API keys affected
 
