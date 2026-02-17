@@ -229,14 +229,24 @@ export default function PhotoGallery({
         const oldUrls = objectUrlsRef.current;
         objectUrlsRef.current = newObjectUrls;
         setPhotos(mergedPhotos);
-        oldUrls.forEach(url => URL.revokeObjectURL(url));
+        // Deferred revocation: wait for React commit + browser paint
+        requestAnimationFrame(() => {
+          setTimeout(() => {
+            oldUrls.forEach(url => URL.revokeObjectURL(url));
+          }, 0);
+        });
       } else {
         // Offline: show only cached photos sorted by display_order
         const sortedOffline = offlinePhotosList.sort((a, b) => a.display_order - b.display_order);
         const oldUrls = objectUrlsRef.current;
         objectUrlsRef.current = newObjectUrls;
         setPhotos(sortedOffline);
-        oldUrls.forEach(url => URL.revokeObjectURL(url));
+        // Deferred revocation: wait for React commit + browser paint
+        requestAnimationFrame(() => {
+          setTimeout(() => {
+            oldUrls.forEach(url => URL.revokeObjectURL(url));
+          }, 0);
+        });
       }
     } catch (error) {
       console.error('[PhotoGallery] Failed to load photos:', error);

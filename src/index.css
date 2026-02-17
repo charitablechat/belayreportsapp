@@ -429,7 +429,13 @@ button[title="Sync"],
   }
 }
 
+@keyframes scanline-sweep {
+  0% { transform: translateY(-100%); }
+  100% { transform: translateY(100%); }
+}
+
 .optimized-image-shimmer {
+  position: relative;
   background:
     repeating-linear-gradient(
       0deg,
@@ -441,6 +447,22 @@ button[title="Sync"],
     linear-gradient(180deg, rgba(34, 197, 94, 0.1) 0%, rgba(34, 197, 94, 0.02) 100%);
   background-color: #09090b; /* zinc-950 */
   animation: crt-pulse 2s ease-in-out infinite;
+}
+
+.optimized-image-shimmer::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    transparent 0%,
+    rgba(34, 197, 94, 0.15) 45%,
+    rgba(34, 197, 94, 0.3) 50%,
+    rgba(34, 197, 94, 0.15) 55%,
+    transparent 100%
+  );
+  animation: scanline-sweep 3s linear infinite;
+  pointer-events: none;
 }
 
 .shimmer-loading {
