@@ -611,7 +611,7 @@ export default function TrainingForm() {
         clearTimeout(saveDebounceTimerRef.current);
       }
     };
-  }, [deliveryApproaches, operatingSystems, immediateAttention, verifiableItems, systemsInPlace, summary]);
+  }, [deliveryApproaches, operatingSystems, immediateAttention, verifiableItems, systemsInPlace, summary, isOwner]);
 
   // Reset internal update ref after the change tracker skips
   useEffect(() => {
@@ -638,7 +638,7 @@ export default function TrainingForm() {
         clearInterval(autoSaveTimer.current);
       }
     };
-  }, [hasUnsavedChanges, isSaving, isLoading, training]);
+  }, [hasUnsavedChanges, isSaving, isLoading, training, isOwner]);
 
   const handleGeneratePDF = async () => {
     if (!id) return;
