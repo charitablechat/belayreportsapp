@@ -1,35 +1,63 @@
 
 
-# Fix: Lock Dialog Not Triggering (Dual-Mechanism Conflict)
+# Fix: Lock Dialog Positioning and Dropdown Bypass
 
-## Root Cause
+## Issue 1: Dialog Stuck at Bottom of Viewport
 
-There are **two competing click-interception mechanisms** that cancel each other out:
+**Root cause**: In `CompletionLockDialog.tsx` (line 22), the className includes `relative`:
 
-1. **`onClickCapture` on `<main>`** (line 2195 in InspectionForm) - Fires in the capture phase and checks if `e.target` matches editable field selectors (`input, textarea, select, ...`)
+```
+bg-zinc-900 border-double border-4 ... max-w-md relative overflow-hidden ...
+```
 
-2. **`pointerEvents: 'none'` wrapper** (line 2261) + **overlay div** (line 2256-2259) - Blocks ALL pointer events on form children, with an overlay div meant to catch clicks instead
+The base `AlertDialogContent` component applies `fixed left-[50%] top-[50%] translate-x-[-50%] translate-y-[-50%]` for viewport centering. The `relative` class **overrides `fixed`**, causing the dialog to render inline in the document flow instead of centered in the viewport. This is why it appears cut off at the bottom of the page.
 
-The conflict: When `pointerEvents: 'none'` is active, clicks never reach the actual form elements (inputs, selects, textareas). Instead, `e.target` becomes the overlay div or wrapper div. The `onClickCapture` handler fires on `<main>`, but the target is NOT an `input`, `textarea`, or `select` -- it's a generic `div`. So `isEditableField` evaluates to `null`, and the dialog never opens.
+**Fix**: Remove `relative` from `AlertDialogContent`'s className. The scanline overlay and z-20 content still work because the base component's `fixed` positioning creates a stacking context. Change the scanline div to also work within the fixed context.
 
-The overlay's own `onClick` (line 2258) should work as a fallback, but because `onClickCapture` fires first in the capture phase and does NOT call `stopPropagation()` when it doesn't match, the event continues. However, the overlay only covers the `relative` parent's bounding box, which can be inconsistent with dynamically-sized tab content.
+### `src/components/CompletionLockDialog.tsx`
 
-**In summary**: `pointerEvents: 'none'` prevents the selector-based handler from identifying editable fields, and the overlay fallback has sizing gaps.
+Replace the entire component with Minimal Brutalist styling per the user's spec:
 
-## Solution
+```tsx
+<AlertDialogContent className="bg-zinc-900 border-solid border-2 border-black font-mono max-w-md overflow-hidden shadow-[0_0_60px_rgba(34,197,94,0.6)] backdrop-blur-sm">
+  {/* CRT scanline overlay */}
+  <div
+    className="pointer-events-none absolute inset-0 z-10"
+    style={{
+      background: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,255,0,0.03) 2px, rgba(0,255,0,0.03) 4px)',
+    }}
+  />
+  <AlertDialogHeader className="relative z-20">
+    ...existing header content...
+  </AlertDialogHeader>
+  <AlertDialogFooter className="gap-2 relative z-20">
+    ...existing footer content...
+  </AlertDialogFooter>
+</AlertDialogContent>
+```
 
-Remove the dual mechanism. Switch the `onClickCapture` handler to a **deny-list approach**: when `isCompletionLocked`, intercept ALL clicks unless the target is a tab trigger or navigation element. Remove the overlay div and `pointerEvents: 'none'` wrapper entirely.
+Changes:
+- Remove `relative` (was overriding `fixed` from base component)
+- Change `border-double border-4 border-green-500` to `border-solid border-2 border-black` (stark black outlines per Minimal Brutalist spec)
+- Add `backdrop-blur-sm` for the subtle blur effect requested
+- Keep the green glow shadow for visibility contrast
 
-## Changes
+---
 
-### 1. `src/pages/InspectionForm.tsx`
+## Issue 2: Dropdown Menus Bypassing Lock
 
-**Update `handleLockedFieldClick`** (lines 132-145):
+**Root cause**: The `onClickCapture` handler on the main container catches clicks in React's capture phase. However, Radix UI `Select` triggers use `onPointerDown` internally, which fires **before** `onClick`. The capture-phase `onClick` handler runs after the pointer event has already been processed by Radix, allowing the dropdown to open.
+
+**Fix**: Add `onPointerDownCapture` alongside `onClickCapture` on the lock container in all three forms. Pointer events fire before click events, so intercepting at `onPointerDownCapture` blocks Radix from processing the interaction.
+
+### `src/pages/InspectionForm.tsx`, `src/pages/TrainingForm.tsx`, `src/pages/DailyAssessmentForm.tsx`
+
+Update the `handleLockedFieldClick` callback to also handle pointer events:
+
 ```typescript
-const handleLockedFieldClick = useCallback((e: React.MouseEvent) => {
+const handleLockedFieldClick = useCallback((e: React.MouseEvent | React.PointerEvent) => {
   if (!isCompletionLocked) return;
   const target = e.target as HTMLElement;
-  // Allow only navigation elements to pass through
   const isExempt = target.closest(
     '[role="tab"], [data-nav], [data-lock-exempt], [role="tablist"]'
   );
@@ -40,33 +68,32 @@ const handleLockedFieldClick = useCallback((e: React.MouseEvent) => {
 }, [isCompletionLocked]);
 ```
 
-**Remove overlay and pointer-events wrapper** (lines 2254-2261):
-Remove the `<div className="relative">`, the `absolute inset-0 z-10` overlay div, and the `pointerEvents: 'none'` wrapper. The `TabsContent` elements should render directly without these wrappers.
+And on the container element, add both capture handlers:
 
-### 2. `src/pages/TrainingForm.tsx`
+```tsx
+<main
+  onClickCapture={handleLockedFieldClick}
+  onPointerDownCapture={handleLockedFieldClick}
+  className="..."
+>
+```
 
-Same two changes:
-- Update `handleLockedFieldClick` (lines 98-111) to the deny-list approach
-- Remove the overlay/pointer-events wrapper (lines 1121-1128)
+This ensures that Radix Select triggers, custom dropdowns, and all other pointer-driven interactions are intercepted before they can open portals outside the capture container.
 
-### 3. `src/pages/DailyAssessmentForm.tsx`
+---
 
-Same two changes:
-- Update `handleLockedFieldClick` (lines 101-114) to the deny-list approach
-- Remove the overlay/pointer-events wrapper (lines 1250-1257)
+## Summary of Changes
 
-## Why This Works
-
-- **Deny-list vs allow-list**: Instead of trying to match specific editable elements (which fails when `pointerEvents: 'none'` hides them), we block EVERYTHING except navigation tabs
-- **Single mechanism**: No competing overlay div or pointer-events wrapper
-- **Capture phase**: `onClickCapture` fires before any child handlers, so `stopPropagation()` prevents the click from reaching form controls
-- **Tab navigation preserved**: The `[role="tab"]` and `[role="tablist"]` exemptions allow switching between report sections
+| File | Change |
+|------|--------|
+| `CompletionLockDialog.tsx` | Remove `relative`, update border to `2px solid black`, add `backdrop-blur-sm` |
+| `InspectionForm.tsx` | Add `onPointerDownCapture` to main container |
+| `TrainingForm.tsx` | Add `onPointerDownCapture` to main container |
+| `DailyAssessmentForm.tsx` | Add `onPointerDownCapture` to main container |
 
 ## What Does NOT Change
-
-- `CompletionLockDialog.tsx` (visual fix already applied)
-- Lock state derivation (`isCompletionLocked`, `completionLockOverridden`)
-- Lock banner styling
+- Lock state derivation logic
 - `useReportEditPermission` hook
+- Tab navigation exemptions
 - Backend, edge functions, RLS policies
-
+- No secrets or API keys exposed
