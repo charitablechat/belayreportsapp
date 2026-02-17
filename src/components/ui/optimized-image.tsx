@@ -22,6 +22,11 @@ export function OptimizedImage({
 }: OptimizedImageProps) {
   const [loaded, setLoaded] = useState(false);
   const [inView, setInView] = useState(priority);
+
+  // Reset loaded state when src changes (e.g., signed URL rotation)
+  useEffect(() => {
+    setLoaded(false);
+  }, [src]);
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
