@@ -10,7 +10,10 @@ import { pwaConfig } from "./vite-pwa-config";
 // See src/lib/version-calculator.ts for implementation
 // v2.4.5 - Fixed equipment data loss: replaced object reference equality with ID-based matching
 // v2.5.1 - Dual-layer lock protection (onPointerDownCapture), Minimal Brutalist dialog styling
-   const APP_VERSION = "2.5.1";
+// v2.5.2 - PWA cache-busting (skipWaiting/clientsClaim), Retro-Tech version badge
+// v2.5.3 - Image CLS fix (decoding=async, Brutalist skeletons), silent photo refresh
+// v2.5.4 - Photo flash fix: deferred object URL revocation, loaded state reset on src change
+   const APP_VERSION = "2.5.4";
    const BUILD_DATE = "02-17-2026";
    const BUILD_TIMESTAMP = "02-17-2026 at 12:00 AM CST";
 
