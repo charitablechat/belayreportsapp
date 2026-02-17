@@ -135,7 +135,7 @@ export default function InspectionForm() {
     const target = e.target as HTMLElement;
     const isEditableField = target.closest(
       'input, textarea, select, [role="checkbox"], [role="combobox"], ' +
-      '[contenteditable], .tiptap, button:not([data-nav]):not([role="tab"])'
+      '[contenteditable], .tiptap, button:not([data-nav]):not([role="tab"]), img, .photo-item, [data-draggable-photo]'
     );
     if (isEditableField) {
       e.preventDefault();
