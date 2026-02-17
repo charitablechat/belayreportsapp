@@ -51,6 +51,7 @@ import { useSaveShortcut } from "@/hooks/useKeyboardShortcuts";
 import { useReportEditPermission } from "@/hooks/useReportEditPermission";
 import { CompletionLockDialog } from "@/components/CompletionLockDialog";
 import { Lock } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 export default function DailyAssessmentForm() {
   const { id } = useParams();
@@ -98,15 +99,20 @@ export default function DailyAssessmentForm() {
   const isCompletionLocked = assessment?.status === 'completed' && !completionLockOverridden;
   const effectiveReadOnly = isReadOnly || isCompletionLocked;
 
-  // Field-level click interception for locked reports (deny-list approach)
+  // Field-level click interception for locked reports (allow-list: only block editable elements)
   const handleLockedFieldClick = useCallback((e: React.MouseEvent | React.PointerEvent) => {
     if (!isCompletionLocked) return;
     const target = e.target as HTMLElement;
-    // Allow only navigation elements to pass through
-    const isExempt = target.closest(
-      '[role="tab"], [data-nav], [data-lock-exempt], [role="tablist"]'
+
+    // Only intercept clicks on editable/interactive form elements
+    const isEditable = target.closest(
+      'input, textarea, select, [contenteditable="true"], ' +
+      '[role="combobox"], [role="listbox"], [role="switch"], [role="checkbox"], [role="radio"], [role="slider"], ' +
+      'button[data-editable], .tiptap, .ProseMirror'
     );
-    if (isExempt) return;
+
+    if (!isEditable) return; // Allow all non-editable interactions (scroll, expand, copy, navigate)
+
     e.preventDefault();
     e.stopPropagation();
     setShowCompletionLockDialog(true);
@@ -1188,7 +1194,7 @@ export default function DailyAssessmentForm() {
         </div>
       </header>
       
-      <div onClickCapture={handleLockedFieldClick} onPointerDownCapture={handleLockedFieldClick} className="container mx-auto px-4 py-4 lg:py-8 max-w-5xl">
+      <div onClickCapture={handleLockedFieldClick} onPointerDownCapture={handleLockedFieldClick} className={cn("container mx-auto px-4 py-4 lg:py-8 max-w-5xl", isCompletionLocked && "completion-locked")}>
         {isCompletionLocked && (
           <div className="border-2 border-green-500/60 bg-black/90 text-green-500 font-mono text-xs px-4 py-2 flex items-center gap-2 mb-4 rounded">
             <Lock className="h-3.5 w-3.5" />

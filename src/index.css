@@ -599,6 +599,21 @@ button[title="Sync"],
   animation: sparkle-burst 0.6s ease-out forwards;
 }
 
+/* Subtle visual lock indicator on editable fields in completed reports */
+.completion-locked input,
+.completion-locked textarea,
+.completion-locked select,
+.completion-locked [contenteditable="true"],
+.completion-locked .tiptap,
+.completion-locked .ProseMirror,
+.completion-locked [role="combobox"],
+.completion-locked [role="switch"],
+.completion-locked [role="checkbox"] {
+  opacity: 0.7;
+  cursor: not-allowed;
+  pointer-events: auto; /* Keep pointer events so our handler can intercept */
+}
+
 /* Hide number input spinner arrows globally */
 input[type="number"]::-webkit-inner-spin-button,
 input[type="number"]::-webkit-outer-spin-button {
