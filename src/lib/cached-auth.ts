@@ -82,8 +82,15 @@ export async function getUserWithCache(): Promise<CachedUser | null> {
     return pendingUserPromise;
   }
   
-  // If offline and no cached user, we can't authenticate
+  // If offline and no cached user, try last-resort fallback
   if (!navigator.onLine) {
+    const offlineId = getOfflineUserId();
+    if (offlineId) {
+      const fallbackUser: CachedUser = { id: offlineId };
+      cachedUser = fallbackUser;
+      cacheTimestamp = Date.now();
+      return fallbackUser;
+    }
     return null;
   }
   

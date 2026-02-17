@@ -47,7 +47,10 @@ export function useReportEditPermission({
         // Get current user
         const user = await getUserWithCache();
         const userId = user?.id ?? getOfflineUserId();
-        setCurrentUserId(userId ?? null);
+        // Only update if we actually got a userId - don't clear a known-good ID
+        if (userId) {
+          setCurrentUserId(userId);
+        }
 
         if (user) {
           // Use cached super admin status for performance
@@ -66,11 +69,19 @@ export function useReportEditPermission({
     // Listen for auth state changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (_event, session) => {
-        setCurrentUserId(session?.user?.id ?? null);
+        const newUserId = session?.user?.id;
+        if (newUserId) {
+          setCurrentUserId(newUserId);
+        } else if (navigator.onLine) {
+          // Only clear userId on explicit sign-out while online
+          setCurrentUserId(null);
+        }
+        // If offline and session is null, retain existing userId
+
         if (session?.user) {
           const superAdminStatus = await getSuperAdminStatusWithCache();
           setIsSuperAdmin(superAdminStatus);
-        } else {
+        } else if (navigator.onLine) {
           setIsSuperAdmin(false);
         }
       }
