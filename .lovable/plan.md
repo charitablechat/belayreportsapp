@@ -1,66 +1,32 @@
 
 
-# Fix Remaining Photo Flash: Object URL Revocation During Silent Refresh
+# Bump Version to v2.5.4
 
-## Root Cause
+## What Happened
 
-In `PhotoGallery.tsx`, lines 108-112 revoke ALL existing object URLs at the **start** of every `loadPhotos()` call, including silent refreshes. This means:
+The version in `vite.config.ts` stopped being incremented during recent edits. It has remained at `2.5.1` across three code changes:
 
-1. User is viewing photos (some rendered via object URLs from IndexedDB blobs)
-2. Network status toggles, triggering `loadPhotos(true)` (silent)
-3. All object URLs are immediately revoked -- images currently on screen break
-4. New URLs are generated and `setPhotos()` is called moments later
-5. User sees a brief blank/broken flash in the gap
+1. **v2.5.2** -- PWA cache-busting fix + Retro-Tech version badge styling
+2. **v2.5.3** -- Image loading optimization (CLS fix, Brutalist skeletons)
+3. **v2.5.4** -- Photo flash fix (deferred object URL revocation)
 
 ## Fix
 
-### 1. Defer Object URL Cleanup (`src/components/PhotoGallery.tsx`)
+Update `vite.config.ts` to reflect the current version `2.5.4` with today's date and a changelog comment summarizing the three changes.
 
-Instead of revoking old URLs at the start of `loadPhotos`, collect new URLs first, then swap the ref atomically after `setPhotos()`. Old URLs are revoked **after** the new ones are in place, eliminating the gap.
+### File: `vite.config.ts`
 
 ```
-const loadPhotos = async (silent = false) => {
-  try {
-    if (!silent) setLoading(true);
-    
-    // Collect new URLs in a separate array (don't revoke old ones yet)
-    const newObjectUrls: string[] = [];
-    
-    // ... build photos using newObjectUrls instead of objectUrlsRef ...
-    
-    // Swap: revoke old URLs AFTER new state is set
-    const oldUrls = objectUrlsRef.current;
-    objectUrlsRef.current = newObjectUrls;
-    setPhotos(mergedOrOfflinePhotos);
-    
-    // Now safe to revoke old URLs (React has the new ones queued)
-    oldUrls.forEach(url => URL.revokeObjectURL(url));
-  }
-};
+// v2.5.1 - Dual-layer lock protection (onPointerDownCapture), Minimal Brutalist dialog styling
+// v2.5.2 - PWA cache-busting (skipWaiting/clientsClaim), Retro-Tech version badge
+// v2.5.3 - Image CLS fix (decoding=async, Brutalist skeletons), silent photo refresh
+// v2.5.4 - Photo flash fix: deferred object URL revocation, loaded state reset on src change
+   const APP_VERSION = "2.5.4";
+   const BUILD_DATE = "02-17-2026";
+   const BUILD_TIMESTAMP = "02-17-2026 at 12:00 AM CST";
 ```
 
-### 2. Reset `loaded` State on `src` Change (`src/components/ui/optimized-image.tsx`)
+## Going Forward
 
-Add a `useEffect` that resets `loaded = false` when `src` changes. This ensures the skeleton-to-image crossfade plays correctly when a photo URL rotates (e.g., signed URL refresh), rather than showing a stale loaded state for a new image that hasn't decoded yet.
-
-```typescript
-useEffect(() => {
-  setLoaded(false);
-}, [src]);
-```
-
-## Files Modified
-
-| File | Change |
-|------|--------|
-| `src/components/PhotoGallery.tsx` | Defer object URL revocation until after new state is set |
-| `src/components/ui/optimized-image.tsx` | Reset `loaded` state when `src` prop changes |
-
-## What Does NOT Change
-
-- Photo caching, sync, or persistence logic
-- Drag-and-drop reordering
-- Caption editing
-- Brutalist styling (already applied)
-- Backend, edge functions, or RLS policies
+Every code edit must increment the version by one patch number following the rollover scheme before committing. This will be maintained in all future responses.
 
