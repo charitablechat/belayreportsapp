@@ -6,6 +6,7 @@ interface OptimizedImageProps {
   alt: string;
   className?: string;
   containerClassName?: string;
+  priority?: boolean;
 }
 
 export function OptimizedImage({
@@ -13,13 +14,14 @@ export function OptimizedImage({
   alt,
   className,
   containerClassName,
+  priority = false,
 }: OptimizedImageProps) {
   const [loaded, setLoaded] = useState(false);
-  const [inView, setInView] = useState(false);
+  const [inView, setInView] = useState(priority);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Intersection Observer for lazy loading fallback
   useEffect(() => {
+    if (priority) return;
     const el = containerRef.current;
     if (!el) return;
 
@@ -37,18 +39,17 @@ export function OptimizedImage({
       return () => observer.disconnect();
     }
 
-    // No IntersectionObserver — render immediately
     setInView(true);
-  }, []);
+  }, [priority]);
 
   const handleLoad = useCallback(() => setLoaded(true), []);
 
   return (
     <div
       ref={containerRef}
-      className={cn("relative overflow-hidden bg-foreground/5", containerClassName)}
+      className={cn("relative overflow-hidden bg-zinc-950", containerClassName)}
     >
-      {/* Shimmer skeleton — visible until image loads */}
+      {/* CRT-styled skeleton — visible until image loads */}
       <div
         className={cn(
           "absolute inset-0 optimized-image-shimmer transition-opacity duration-300 ease-in-out",
@@ -61,7 +62,7 @@ export function OptimizedImage({
         <img
           src={src}
           alt={alt}
-          loading="lazy"
+          loading={priority ? "eager" : "lazy"}
           onLoad={handleLoad}
           className={cn(
             "transition-opacity duration-300 ease-in-out",

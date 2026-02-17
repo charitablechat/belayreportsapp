@@ -419,16 +419,28 @@ button[title="Sync"],
   }
 }
 
-/* Optimized image progressive loading shimmer */
+/* CRT-styled skeleton loader for Retro-Tech Terminal aesthetic */
+@keyframes crt-pulse {
+  0%, 100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
 .optimized-image-shimmer {
-  background: linear-gradient(
-    90deg,
-    hsl(var(--muted)) 25%,
-    hsl(var(--muted-foreground) / 0.1) 50%,
-    hsl(var(--muted)) 75%
-  );
-  background-size: 200% 100%;
-  animation: shimmer 1.5s infinite;
+  background:
+    repeating-linear-gradient(
+      0deg,
+      rgba(34, 197, 94, 0.06) 0px,
+      rgba(34, 197, 94, 0.06) 1px,
+      transparent 1px,
+      transparent 3px
+    ),
+    linear-gradient(180deg, rgba(34, 197, 94, 0.1) 0%, rgba(34, 197, 94, 0.02) 100%);
+  background-color: #09090b; /* zinc-950 */
+  animation: crt-pulse 2s ease-in-out infinite;
 }
 
 .shimmer-loading {
