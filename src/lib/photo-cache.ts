@@ -73,6 +73,27 @@ export async function validateCachedPhoto(photoId: string): Promise<boolean> {
 }
 
 /**
+ * Batch validate multiple cached photos in a single IndexedDB transaction
+ * Returns a Set of photo IDs that have valid (non-expired) caches
+ */
+export async function batchValidateCachedPhotos(photoIds: string[]): Promise<Set<string>> {
+  const db = await getDB();
+  const validIds = new Set<string>();
+  const now = Date.now();
+  
+  const tx = db.transaction('photos', 'readonly');
+  for (const id of photoIds) {
+    const photo = await tx.store.get(id);
+    if (photo?.cachedAt && (now - photo.cachedAt) < CACHE_DURATION) {
+      validIds.add(id);
+    }
+  }
+  await tx.done;
+  
+  return validIds;
+}
+
+/**
  * Clean up stale cached photos
  */
 export async function cleanupStaleCachedPhotos(): Promise<number> {

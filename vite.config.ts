@@ -15,7 +15,8 @@ import { pwaConfig } from "./vite-pwa-config";
 // v2.5.4 - Photo flash fix: deferred object URL revocation, loaded state reset on src change
 // v2.5.5 - Photo soft-delete protection (60-day retention), stale upload warning
 // v2.5.6 - Image CLS fix: smart cross-fade, deferred URL revocation, Retro-Tech scanline skeleton
-   const APP_VERSION = "2.5.6";
+// v2.5.7 - Cache-first photo display: instant IndexedDB blobs, deferred background caching, batch validation
+   const APP_VERSION = "2.5.7";
    const BUILD_DATE = "02-17-2026";
    const BUILD_TIMESTAMP = "02-17-2026 at 12:00 AM CST";
 

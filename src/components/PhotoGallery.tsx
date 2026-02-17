@@ -2,7 +2,7 @@ import { useEffect, useState, useRef } from "react";
 import { OptimizedImage } from "@/components/ui/optimized-image";
 import { supabase } from "@/integrations/supabase/client";
 import { getOfflinePhotos, updatePhotoDisplayOrder } from "@/lib/offline-storage";
-import { cachePhotoFromRemote, validateCachedPhoto } from "@/lib/photo-cache";
+import { cachePhotoFromRemote, batchValidateCachedPhotos } from "@/lib/photo-cache";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -143,76 +143,65 @@ export default function PhotoGallery({
 
         if (error) throw error;
 
+        // Build a set of valid cached photo IDs in one batch IndexedDB read
+        const supabasePhotoIds = (data || []).map((p: any) => p.id);
+        const validCacheIds = await batchValidateCachedPhotos(supabasePhotoIds);
+
         const supabasePhotos: Photo[] = await Promise.all(
-          (data || []).map(async (photo, index) => {
-            // Get signed URL with 1 hour expiration for security
+          (data || []).map(async (photo: any, index: number) => {
+            // Check if we have a valid cached blob — use it instantly
+            const existingOfflinePhoto = offlinePhotos.find(
+              p => p.photoUrl === photo.photo_url
+            );
+
+            if (existingOfflinePhoto?.blob && validCacheIds.has(photo.id)) {
+              // INSTANT: Display from local IndexedDB blob — zero network latency
+              const objectUrl = URL.createObjectURL(existingOfflinePhoto.blob);
+              newObjectUrls.push(objectUrl);
+              return {
+                id: photo.id,
+                photoUrl: objectUrl,
+                uploaded: true,
+                caption: photo.caption,
+                display_order: photo.display_order ?? index,
+              };
+            }
+
+            // Not cached or expired — get signed URL for display
             const { data: signedUrlData, error: urlError } = await supabase.storage
               .from(storageBucket)
-              .createSignedUrl(photo.photo_url, 3600); // 1 hour = 3600 seconds
+              .createSignedUrl(photo.photo_url, 3600);
 
             if (urlError) {
               console.error('[PhotoGallery] Error creating signed URL:', urlError);
               return null;
             }
 
-            // Check if photo is already cached and still valid
-            const existingOfflinePhoto = offlinePhotos.find(
-              p => p.photoUrl === photo.photo_url
-            );
-            
-            if (existingOfflinePhoto) {
-              const isValid = await validateCachedPhoto(photo.id);
-              
-              if (isValid) {
-                // Use cached photo
-                return {
-                  id: photo.id,
-                  photoUrl: signedUrlData.signedUrl,
-                  uploaded: true,
-                  caption: photo.caption,
-                  display_order: photo.display_order ?? index,
-                };
-              }
-            }
-
-            // Cache photo blob for offline viewing (if not cached or expired)
-            try {
-              const response = await fetch(signedUrlData.signedUrl);
-              
-              if (!response.ok) {
-                console.error('[PhotoGallery] Failed to fetch photo:', {
-                  status: response.status,
-                  statusText: response.statusText,
-                  url: signedUrlData.signedUrl
-                });
-                // Return photo with URL but without caching
-                return {
-                  id: photo.id,
-                  photoUrl: signedUrlData.signedUrl,
-                  uploaded: true,
-                  caption: photo.caption,
-                  display_order: photo.display_order ?? index,
-                };
-              }
-              
-              const blob = await response.blob();
-              
-              // Save/update cache with timestamp
-              await cachePhotoFromRemote(
-                photo.id,
-                blob,
-                photo.photo_url,
-                inspectionId,
-                section
-              );
-            } catch (cacheError) {
-              console.error('[PhotoGallery] Failed to cache photo:', cacheError);
-              // Continue without caching - photo will still display from remote URL
+            // Queue background caching (non-blocking, fire-and-forget)
+            const signedUrl = signedUrlData.signedUrl;
+            const photoId = photo.id;
+            const storagePath = photo.photo_url;
+            const inspId = inspectionId;
+            const sec = section;
+            if (typeof requestIdleCallback === 'function') {
+              requestIdleCallback(() => {
+                fetch(signedUrl)
+                  .then(r => { if (r.ok) return r.blob(); throw new Error('fetch failed'); })
+                  .then(blob => cachePhotoFromRemote(photoId, blob, storagePath, inspId, sec))
+                  .catch(e => console.warn('[PhotoGallery] Background cache failed:', e));
+              });
+            } else {
+              setTimeout(() => {
+                fetch(signedUrl)
+                  .then(r => { if (r.ok) return r.blob(); throw new Error('fetch failed'); })
+                  .then(blob => cachePhotoFromRemote(photoId, blob, storagePath, inspId, sec))
+                  .catch(e => console.warn('[PhotoGallery] Background cache failed:', e));
+              }, 100);
             }
 
             return {
               id: photo.id,
-              photoUrl: signedUrlData.signedUrl,
+              photoUrl: signedUrl,
               uploaded: true,
               caption: photo.caption,
               display_order: photo.display_order ?? index,
