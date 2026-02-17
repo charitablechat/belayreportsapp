@@ -1,77 +1,100 @@
 
-# Enable Date Field Editing Across All Report Forms
 
-## Overview
+# Fix: Buttons Disappearing When Device Goes Offline
 
-All five date fields across three report forms are currently hardcoded as `disabled` with no calendar popover content. This plan re-enables them as editable fields with proper calendar selection, gated by the existing `isReadOnly` prop (which already respects completion lock and permission logic).
+## Root Cause
 
-## Changes by File
+When the device transitions to offline (or stays offline long enough for the auth cache to expire), the following chain causes buttons to vanish:
 
-### 1. `src/components/inspection/InspectionHeader.tsx`
+1. `getUserWithCache()` returns `null` when offline and no cached user exists in localStorage (auth cache TTL is 1 minute)
+2. `useReportEditPermission` sets `currentUserId = null`
+3. The permission hook's fallback path (lines 99-108) returns `isReadOnly: true` when `currentUserId` is null
+4. `effectiveReadOnly = isReadOnly || isCompletionLocked` becomes `true`
+5. All UI elements gated by `{!effectiveReadOnly && ...}` are hidden -- Save button, PhotoCapture (Take Photo / Upload), and Complete button
 
-**Inspection Date (lines 133-146):**
-- Remove `disabled` from the Button; gate with `disabled={isReadOnly}` instead
-- Remove forced `bg-muted/50 cursor-not-allowed` classes; apply them conditionally only when `isReadOnly`
-- Add `PopoverContent` with a `Calendar` component (same pattern as existing End Date in TrainingHeader)
-- On date select, call `onUpdate("inspection_date", format(date, 'yyyy-MM-dd'))` and trigger `onImmediateSave`
+The `getOfflineUserId()` fallback on line 49 of the hook only runs once during initial mount. If the user object later becomes null due to cache expiry while offline, the `currentUserId` state is overwritten to `null`.
 
-**Previous Inspection Date (lines 152-163):** Already editable via `PreviousInspectionDatePicker` -- no changes needed.
+## Fix Strategy
 
-### 2. `src/components/training/TrainingHeader.tsx`
+### 1. Harden `useReportEditPermission` against offline auth loss (primary fix)
 
-**Start Date (lines 58-74):**
-- Remove `disabled` from the Button; gate with `disabled={isReadOnly}`
-- Remove forced `bg-muted/50 cursor-not-allowed` classes; apply conditionally
-- Add `PopoverContent` with `Calendar` (matching the existing End Date pattern on lines 86-98)
-- On date select, call `onUpdate('start_date', format(date, 'yyyy-MM-dd'))`
+**File:** `src/hooks/useReportEditPermission.tsx`
 
-**End Date (lines 77-100):** Already editable -- no changes needed.
-
-### 3. `src/components/daily-assessment/DailyAssessmentHeader.tsx`
-
-**Assessment Date (lines 38-57):**
-- Remove `disabled` from the Button; gate with `disabled={isReadOnly}`
-- Remove forced `bg-muted/50 cursor-not-allowed` classes; apply conditionally
-- Add `PopoverContent` with `Calendar`
-- On date select, call `onUpdate("assessment_date", format(date, 'yyyy-MM-dd'))`
-
-## Implementation Pattern (same for all three)
+- In the `checkPermissions` function, ensure that if `getUserWithCache()` returns null, the hook always falls back to `getOfflineUserId()` before setting `currentUserId`
+- Store the resolved userId in a ref so that subsequent auth state changes that yield null (common when offline) do not overwrite a previously known good userId
+- Add a guard in the `onAuthStateChange` callback: if `session` is null but `navigator.onLine` is false, retain the current userId instead of clearing it
 
 ```text
-Before:
-  <Button disabled className="bg-muted/50 cursor-not-allowed">
-    ...date display...
-  </Button>
-  (no PopoverContent)
+Before (line 49):
+  const userId = user?.id ?? getOfflineUserId();
 
 After:
-  <Button disabled={isReadOnly} className={cn(isReadOnly && "bg-muted/50 cursor-not-allowed")}>
-    ...date display...
-  </Button>
-  {!isReadOnly && (
-    <PopoverContent className="w-auto p-0">
-      <Calendar
-        mode="single"
-        selected={parsedDate}
-        onSelect={(date) => onUpdate(field, date ? format(date, 'yyyy-MM-dd') : '')}
-        initialFocus
-        className="pointer-events-auto"
-      />
-    </PopoverContent>
-  )}
+  const userId = user?.id ?? getOfflineUserId();
+  // Only update if we actually got a userId - don't clear a known-good ID
+  if (userId) {
+    setCurrentUserId(userId);
+  }
+  // (remove the unconditional setCurrentUserId below)
 ```
+
+For the auth state change listener:
+```text
+Before (line 69):
+  setCurrentUserId(session?.user?.id ?? null);
+
+After:
+  const newUserId = session?.user?.id;
+  if (newUserId) {
+    setCurrentUserId(newUserId);
+  } else if (navigator.onLine) {
+    // Only clear userId on explicit sign-out while online
+    setCurrentUserId(null);
+  }
+  // If offline and session is null, retain existing userId
+```
+
+### 2. Prevent `getUserWithCache` from returning null when offline with valid localStorage data
+
+**File:** `src/lib/cached-auth.ts`
+
+The function already checks localStorage on line 64, but if the stored data has been cleared or corrupted, it falls through to the offline null-return on line 86-88. Add a final fallback using `getOfflineUserId()`:
+
+```text
+Before (lines 85-88):
+  if (!navigator.onLine) {
+    return null;
+  }
+
+After:
+  if (!navigator.onLine) {
+    // Last resort: construct minimal user object from offline ID
+    const offlineId = getOfflineUserId();
+    if (offlineId) {
+      const fallbackUser = { id: offlineId };
+      cachedUser = fallbackUser;
+      cacheTimestamp = Date.now();
+      return fallbackUser;
+    }
+    return null;
+  }
+```
+
+## What This Fixes
+
+- **Save button**: Gated by `!effectiveReadOnly` -- will now remain visible offline since `isReadOnly` stays false for report owners
+- **Take Photo / Upload buttons**: `PhotoCapture` is rendered conditionally via `{!effectiveReadOnly && <PhotoCapture ...>}` -- same fix
+- **Complete button**: Already correctly disabled (not hidden) when offline via `disabled={!isOnline}`, so it will remain visible but non-functional -- no change needed
 
 ## What Remains Unchanged
 
-- Auto-populate logic for dates on report creation
-- All data loss prevention (RLS, save/cancel, navigation blocking)
-- Completion lock field interception (`onClickCapture`)
-- `isReadOnly` gating from `useReportEditPermission`
-- The `PreviousInspectionDatePicker` component (already editable)
-- The Training End Date calendar (already editable)
+- All RLS policies and data loss prevention protocols
+- The local-first save architecture (IndexedDB writes work offline)
+- Photo capture's local-first flow (saves to IndexedDB, syncs later)
+- Completion lock and field interception logic
+- Auto-save debounce and interval patterns
 
-## Files Changed
+## Files Modified
 
-1. `src/components/inspection/InspectionHeader.tsx` -- Enable Inspection Date calendar
-2. `src/components/training/TrainingHeader.tsx` -- Enable Start Date calendar
-3. `src/components/daily-assessment/DailyAssessmentHeader.tsx` -- Enable Assessment Date calendar
+1. `src/hooks/useReportEditPermission.tsx` -- Harden against null userId when offline
+2. `src/lib/cached-auth.ts` -- Add offline fallback user construction
+
