@@ -98,7 +98,7 @@ export default function TrainingForm() {
     const target = e.target as HTMLElement;
     const isEditableField = target.closest(
       'input, textarea, select, [role="checkbox"], [role="combobox"], ' +
-      '[contenteditable], .tiptap, button:not([data-nav])'
+      '[contenteditable], .tiptap, button:not([data-nav]), img, .photo-item, [data-draggable-photo]'
     );
     if (isEditableField) {
       e.preventDefault();
