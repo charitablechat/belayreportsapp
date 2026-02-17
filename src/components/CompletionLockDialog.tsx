@@ -19,7 +19,7 @@ interface CompletionLockDialogProps {
 export function CompletionLockDialog({ open, onOpenChange, onConfirm }: CompletionLockDialogProps) {
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
-        <AlertDialogContent className="bg-zinc-900 border-double border-4 border-green-500 font-mono max-w-md relative overflow-hidden shadow-[0_0_60px_rgba(34,197,94,0.6)]">
+        <AlertDialogContent className="bg-zinc-900 border-solid border-2 border-black font-mono max-w-md overflow-hidden shadow-[0_0_60px_rgba(34,197,94,0.6)] backdrop-blur-sm">
         {/* CRT scanline overlay */}
         <div
           className="pointer-events-none absolute inset-0 z-10"

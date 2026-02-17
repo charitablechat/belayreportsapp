@@ -99,7 +99,7 @@ export default function DailyAssessmentForm() {
   const effectiveReadOnly = isReadOnly || isCompletionLocked;
 
   // Field-level click interception for locked reports (deny-list approach)
-  const handleLockedFieldClick = useCallback((e: React.MouseEvent) => {
+  const handleLockedFieldClick = useCallback((e: React.MouseEvent | React.PointerEvent) => {
     if (!isCompletionLocked) return;
     const target = e.target as HTMLElement;
     // Allow only navigation elements to pass through
@@ -1188,7 +1188,7 @@ export default function DailyAssessmentForm() {
         </div>
       </header>
       
-      <div onClickCapture={handleLockedFieldClick} className="container mx-auto px-4 py-4 lg:py-8 max-w-5xl">
+      <div onClickCapture={handleLockedFieldClick} onPointerDownCapture={handleLockedFieldClick} className="container mx-auto px-4 py-4 lg:py-8 max-w-5xl">
         {isCompletionLocked && (
           <div className="border-2 border-green-500/60 bg-black/90 text-green-500 font-mono text-xs px-4 py-2 flex items-center gap-2 mb-4 rounded">
             <Lock className="h-3.5 w-3.5" />
