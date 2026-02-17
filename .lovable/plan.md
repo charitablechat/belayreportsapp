@@ -1,134 +1,137 @@
 
-# Fix Slow Photo Loading on Mobile (v2.5.7)
 
-## Root Cause
+# Refine Completion Lock: Browse Freely, Block Only Edits
 
-After auditing the code, the primary bottleneck is a **double-fetch problem** in `PhotoGallery.tsx`. For every photo that isn't already cached in IndexedDB, the `loadPhotos` function:
+## Problem
 
-1. Generates a signed URL (network call)
-2. **Fetches the full image blob** via HTTP to cache it in IndexedDB (lines 180-207)
-3. Returns the signed URL so the `<img>` tag fetches it **again** from the browser
+The current "deny-list" approach intercepts **every click and pointer event** on the entire form container. This means:
+- Tapping to scroll on mobile triggers the lock dialog
+- Expanding/collapsing accordion sections triggers the lock dialog
+- Selecting text to copy triggers the lock dialog
+- Clicking anywhere that isn't explicitly marked `data-lock-exempt` is blocked
 
-On mobile with slower connections, this means **every photo is downloaded twice** -- once for caching, once for display. Additionally, when photos ARE already cached locally, the code ignores the cached blob and still uses the remote signed URL for display, missing the chance to show images instantly from local storage.
+Users cannot freely browse a completed report without constant interruptions.
 
-### Secondary Issues
+## Solution: Switch from Deny-List to Allow-List (Target Editable Elements Only)
 
-- **Cache validation is blocking**: `validateCachedPhoto` does 2 IndexedDB operations per photo (read + write) synchronously inside the `Promise.all`, adding latency.
-- **No cache-first display**: Even when a valid cached blob exists in IndexedDB, the component displays via the remote signed URL instead of an instant local object URL.
-- **Background caching blocks rendering**: The blob fetch + IndexedDB write happens before the photo list is returned to the UI, delaying the initial paint.
+Instead of blocking everything and exempting navigation, we **allow everything** and only intercept clicks on **editable elements** (inputs, textareas, selects, dropdowns, checkboxes, switches, buttons that trigger edits).
 
-## Planned Changes
+### UX Rationale
 
-### 1. Cache-First Display Strategy (`PhotoGallery.tsx`)
+- **Reading is the primary use case** for completed reports -- users review, reference, and audit content far more than they edit it.
+- The lock dialog should be a **speed bump for intentional edits**, not a barrier to viewing.
+- A persistent visual indicator (the green terminal banner) communicates locked status without interrupting flow.
 
-When a cached blob exists in IndexedDB and is still valid, create an object URL from the cached blob and use it for display instead of the remote signed URL. This makes cached photos appear **instantly** with zero network latency.
+## Technical Changes
 
-### 2. Deferred Background Caching (`PhotoGallery.tsx`)
+### 1. Replace deny-list handler with allow-list handler (all 3 form pages)
 
-Move the blob-fetch-for-caching logic out of the critical rendering path. Instead of awaiting the blob download before returning the photo to the UI:
-- Immediately return the photo with its signed URL for display
-- Queue the blob fetch + IndexedDB cache write as a non-blocking background task
-
-This eliminates the double-fetch bottleneck and lets photos appear as soon as signed URLs are ready.
-
-### 3. Batch Cache Validation (`photo-cache.ts`)
-
-Replace individual `validateCachedPhoto` calls (2 IndexedDB ops each) with a single batch function that reads all photos in one IndexedDB transaction, reducing I/O from 2N to 1.
-
-### 4. Version Bump to v2.5.7
-
-## Technical Details
-
-### PhotoGallery.tsx -- Cache-first + deferred caching
-
+**Current behavior** (deny-list -- blocks everything):
 ```typescript
-// For each photo from Supabase:
-const existingOfflinePhoto = offlinePhotos.find(p => p.photoUrl === photo.photo_url);
-
-if (existingOfflinePhoto && await isCachedPhotoValid(photo.id)) {
-  // INSTANT: Use cached blob directly -- zero network latency
-  const objectUrl = URL.createObjectURL(existingOfflinePhoto.blob);
-  newObjectUrls.push(objectUrl);
-  return {
-    id: photo.id,
-    photoUrl: objectUrl,  // Local blob URL instead of remote signed URL
-    uploaded: true,
-    caption: photo.caption,
-    display_order: photo.display_order ?? index,
-  };
-}
-
-// NOT CACHED: Return signed URL immediately for display
-// Cache the blob in the background (non-blocking)
-const signedUrl = signedUrlData.signedUrl;
-queueBackgroundCache(photo.id, signedUrl, photo.photo_url, inspectionId, section);
-
-return {
-  id: photo.id,
-  photoUrl: signedUrl,
-  uploaded: true,
-  caption: photo.caption,
-  display_order: photo.display_order ?? index,
-};
+const handleLockedFieldClick = useCallback((e) => {
+  if (!isCompletionLocked) return;
+  const target = e.target as HTMLElement;
+  const isExempt = target.closest('[role="tab"], [data-nav], [data-lock-exempt], [role="tablist"]');
+  if (isExempt) return;
+  e.preventDefault();
+  e.stopPropagation();
+  setShowCompletionLockDialog(true);
+}, [isCompletionLocked]);
 ```
 
-### Background cache queue
-
+**New behavior** (allow-list -- only blocks editable elements):
 ```typescript
-// Fire-and-forget: download blob and cache without blocking UI
-function queueBackgroundCache(photoId, signedUrl, storagePath, inspectionId, section) {
-  requestIdleCallback(() => {
-    fetch(signedUrl)
-      .then(r => r.blob())
-      .then(blob => cachePhotoFromRemote(photoId, blob, storagePath, inspectionId, section))
-      .catch(e => console.warn('[PhotoGallery] Background cache failed:', e));
-  });
+const handleLockedFieldClick = useCallback((e: React.MouseEvent | React.PointerEvent) => {
+  if (!isCompletionLocked) return;
+  const target = e.target as HTMLElement;
+
+  // Only intercept clicks on editable/interactive form elements
+  const isEditable = target.closest(
+    'input, textarea, select, [contenteditable="true"], ' +
+    '[role="combobox"], [role="listbox"], [role="switch"], [role="checkbox"], [role="radio"], [role="slider"], ' +
+    'button[data-editable], .tiptap, .ProseMirror'
+  );
+
+  if (!isEditable) return; // Allow all non-editable interactions (scroll, expand, copy, navigate)
+
+  e.preventDefault();
+  e.stopPropagation();
+  setShowCompletionLockDialog(true);
+}, [isCompletionLocked]);
+```
+
+This means:
+- Scrolling, tapping, text selection -- all pass through freely
+- Accordion/collapsible sections -- open and close without interruption
+- Tab navigation -- works as before
+- Photo gallery viewing -- unblocked
+- Clicking an input, dropdown, checkbox, rich text editor, or switch -- triggers the lock dialog
+
+### 2. Add visual "locked" styling to editable fields (CSS)
+
+When a report is completion-locked, editable fields should look visually muted/locked without needing a dialog. Add a CSS class that applies to form containers when locked:
+
+```css
+/* Subtle visual lock indicator on editable fields */
+.completion-locked input,
+.completion-locked textarea,
+.completion-locked select,
+.completion-locked [contenteditable="true"],
+.completion-locked .tiptap,
+.completion-locked [role="combobox"],
+.completion-locked [role="switch"],
+.completion-locked [role="checkbox"] {
+  opacity: 0.7;
+  cursor: not-allowed;
+  pointer-events: auto; /* Keep pointer events so our handler can intercept */
 }
 ```
 
-### photo-cache.ts -- Batch validation
+### 3. Add `completion-locked` class to form container (all 3 form pages)
 
-```typescript
-export async function batchValidateCachedPhotos(photoIds: string[]): Promise<Set<string>> {
-  const db = await getDB();
-  const validIds = new Set<string>();
-  const now = Date.now();
-  
-  // Single transaction for all reads
-  const tx = db.transaction('photos', 'readonly');
-  for (const id of photoIds) {
-    const photo = await tx.store.get(id);
-    if (photo?.cachedAt && (now - photo.cachedAt) < CACHE_DURATION) {
-      validIds.add(id);
-    }
-  }
-  
-  return validIds;
-}
+On the `div` that has `onClickCapture`, conditionally add the class:
+
+```tsx
+<div 
+  onClickCapture={handleLockedFieldClick} 
+  onPointerDownCapture={handleLockedFieldClick}
+  className={cn("container mx-auto px-4 py-8", isCompletionLocked && "completion-locked")}
+>
 ```
+
+### 4. Remove `data-lock-exempt` attributes that are no longer needed
+
+Since the new approach allows everything by default, explicit exemptions on navigation elements are no longer necessary. These can be cleaned up for code hygiene.
 
 ## Files Modified
 
 | File | Change |
 |------|--------|
-| `src/components/PhotoGallery.tsx` | Cache-first display with local blob URLs; deferred background caching; batch validation |
-| `src/lib/photo-cache.ts` | Add `batchValidateCachedPhotos` for single-transaction validation |
-| `vite.config.ts` | Bump to v2.5.7 |
-
-## Performance Impact
-
-| Metric | Before | After |
-|--------|--------|-------|
-| Cached photos | Fetched from remote (500ms+) | Instant from IndexedDB blob (~5ms) |
-| Uncached photos | Double-fetched (blob + img) | Single fetch (img only, cache in background) |
-| IndexedDB ops per photo | 2-3 sequential reads/writes | 1 batched read |
-| Time to first photo visible | Blocked by all blob downloads | Immediate after signed URL generation |
+| `src/pages/InspectionForm.tsx` | Replace deny-list handler with allow-list; add `completion-locked` class |
+| `src/pages/TrainingForm.tsx` | Same handler replacement and class addition |
+| `src/pages/DailyAssessmentForm.tsx` | Same handler replacement and class addition |
+| `src/index.css` | Add `.completion-locked` field styling |
 
 ## What Does NOT Change
 
-- Photo capture, compression, or upload logic
-- Soft-delete system (v2.5.5)
-- Cross-fade / skeleton behavior (v2.5.6)
-- Drag-and-drop reordering
-- Background sync pipeline
-- RLS policies
+- CompletionLockDialog component (same Retro-Tech Terminal aesthetic)
+- The green terminal banner at the top of locked reports
+- The unlock confirmation flow (dialog appears, user confirms, `completionLockOverridden` = true)
+- Navigation blocking for unsaved changes
+- Photo gallery, drag-and-drop, or soft-delete behavior
+- Report generation or sync logic
+
+## Interaction Matrix
+
+| Action | Before (Deny-List) | After (Allow-List) |
+|--------|--------------------|--------------------|
+| Scroll | Blocked (dialog) | Allowed |
+| Expand accordion | Blocked (dialog) | Allowed |
+| Switch tabs | Allowed | Allowed |
+| Select/copy text | Blocked (dialog) | Allowed |
+| View photos | Blocked (dialog) | Allowed |
+| Click input field | Blocked (dialog) | Blocked (dialog) |
+| Click dropdown | Blocked (dialog) | Blocked (dialog) |
+| Toggle checkbox | Blocked (dialog) | Blocked (dialog) |
+| Click rich text editor | Blocked (dialog) | Blocked (dialog) |
+
