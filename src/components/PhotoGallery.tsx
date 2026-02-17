@@ -105,11 +105,8 @@ export default function PhotoGallery({
     try {
       if (!silent) setLoading(true);
       
-      // Revoke old object URLs before creating new ones (prevent memory leak)
-      objectUrlsRef.current.forEach(url => {
-        URL.revokeObjectURL(url);
-      });
-      objectUrlsRef.current = [];
+      // Collect new object URLs separately — don't revoke old ones yet
+      const newObjectUrls: string[] = [];
       
       // Load from IndexedDB first (includes offline photos)
       const offlinePhotos = await getOfflinePhotos(inspectionId);
@@ -117,13 +114,13 @@ export default function PhotoGallery({
         .filter(p => p.section === section)
         .map((p, index) => {
           const objectUrl = URL.createObjectURL(p.blob);
-          objectUrlsRef.current.push(objectUrl);
+          newObjectUrls.push(objectUrl);
           return {
             id: p.id,
             photoUrl: objectUrl,
             blob: p.blob,
             uploaded: p.uploaded,
-            caption: null, // Offline photos don't have captions until synced
+            caption: null,
             display_order: p.display_order ?? index,
           };
         });
@@ -221,10 +218,18 @@ export default function PhotoGallery({
         const mergedPhotos = [...pendingPhotos, ...supabasePhotos].sort(
           (a, b) => a.display_order - b.display_order
         );
+        // Swap URLs atomically: set new state first, then revoke old URLs
+        const oldUrls = objectUrlsRef.current;
+        objectUrlsRef.current = newObjectUrls;
         setPhotos(mergedPhotos);
+        oldUrls.forEach(url => URL.revokeObjectURL(url));
       } else {
         // Offline: show only cached photos sorted by display_order
-        setPhotos(offlinePhotosList.sort((a, b) => a.display_order - b.display_order));
+        const sortedOffline = offlinePhotosList.sort((a, b) => a.display_order - b.display_order);
+        const oldUrls = objectUrlsRef.current;
+        objectUrlsRef.current = newObjectUrls;
+        setPhotos(sortedOffline);
+        oldUrls.forEach(url => URL.revokeObjectURL(url));
       }
     } catch (error) {
       console.error('[PhotoGallery] Failed to load photos:', error);
