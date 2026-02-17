@@ -1,85 +1,136 @@
 
 
-# Protect Photos from Data Loss
+# Fix Mobile Image Flashing and Layout Shift
 
-## Problem Found
+## Root Cause Analysis
 
-The equipment photo for the Druidia report was never persisted to the server database. It only existed in IndexedDB (local browser storage) and was lost when the cache expired or the device changed. The database confirms zero photos exist with `photo_section = 'equipment'` for this report.
+After auditing the code, I identified **three distinct causes** of the flashing/CLS on mobile:
 
-Additionally, the `inspection_photos` table has **no soft-delete protection** -- unlike reports (which have `deleted_at` and 60-day retention), photos are permanently deleted with no recovery path.
+### Cause 1: Aggressive `loaded` state reset (OptimizedImage.tsx, line 27-29)
+Every time the `src` prop changes (which happens on every silent refresh when signed URLs rotate), `setLoaded(false)` fires immediately. This hides the current image (opacity: 0) and shows the skeleton, even though the underlying photo content hasn't changed -- only the signed URL token rotated. On mobile with slower connections, this creates a visible flash every time the network status toggles.
 
-## Root Causes
+### Cause 2: Synchronous URL revocation (PhotoGallery.tsx, line 232)
+`oldUrls.forEach(url => URL.revokeObjectURL(url))` runs synchronously right after `setPhotos()`. React batches state updates, so the old object URLs can be revoked **before** the DOM actually updates to show the new URLs. This causes a brief broken-image flash on mobile where the browser tries to render the old (now-revoked) URL.
 
-1. **No soft-delete on photo tables**: `inspection_photos`, `training_photos`, and `daily_assessment_photos` lack `deleted_at`/`retention_until` columns, so any delete is permanent.
-2. **Silent upload failures**: If the initial upload fails (network timeout, auth expiry), the photo sits in IndexedDB marked as `uploaded = false` with no retry guarantee beyond the next background sync cycle.
-3. **No user notification of stuck photos**: There is no persistent warning when photos have been pending upload for an extended period.
+### Cause 3: No fixed aspect ratio on image containers
+The `h-48` class on the image container doesn't reserve space until the image loads. On mobile, the skeleton and image can cause a small layout shift (CLS) as the content reflows during the load-to-visible transition.
 
-## Recovery
+---
 
-Unfortunately, the equipment photo **cannot be recovered** -- it was never stored on the server and has since been cleared from IndexedDB. The photo will need to be retaken.
+## Planned Changes
 
-## Preventive Fixes
+### 1. OptimizedImage.tsx -- Smart cross-fade with previous-src tracking
 
-### 1. Add Soft-Delete to Photo Tables (Database Migration)
+- Add a `prevSrcRef` to track the previous `src` value
+- Only reset `loaded` to `false` if the image's **content identity** has actually changed (not just a URL token rotation). Since we can't easily distinguish content changes from URL rotations at this level, instead: **keep the old image visible while the new one loads** by deferring the skeleton display
+- Add an `onError` handler to gracefully fall back to the skeleton if the new URL fails
+- Add `aspect-ratio` support via the container to eliminate CLS
 
-Add `deleted_at` and `retention_until` columns to all three photo tables, matching the pattern used for reports. This ensures accidental deletes are recoverable for 60 days.
+### 2. PhotoGallery.tsx -- Deferred URL revocation with requestAnimationFrame
 
-```sql
-ALTER TABLE inspection_photos 
-  ADD COLUMN deleted_at timestamptz,
-  ADD COLUMN retention_until timestamptz;
+- Replace the synchronous `oldUrls.forEach(url => URL.revokeObjectURL(url))` with a deferred cleanup using `requestAnimationFrame` + `setTimeout(0)` to guarantee the DOM has committed the new URLs before revoking old ones
+- Memoize the `loadPhotos` function with `useCallback` to prevent stale closure issues
+- Add a guard to skip redundant silent refreshes if photos haven't changed (compare photo IDs)
 
-ALTER TABLE training_photos 
-  ADD COLUMN deleted_at timestamptz,
-  ADD COLUMN retention_until timestamptz;
+### 3. CSS -- Retro-Tech scanline skeleton with fixed aspect ratio
 
-ALTER TABLE daily_assessment_photos 
-  ADD COLUMN deleted_at timestamptz,
-  ADD COLUMN retention_until timestamptz;
-```
+- Update the `.optimized-image-shimmer` animation to include a horizontal scanline sweep effect matching the Retro-Tech Terminal aesthetic
+- Add a utility class for fixed aspect-ratio photo containers to prevent CLS
 
-### 2. Update PhotoGallery Delete to Soft-Delete (`src/components/PhotoGallery.tsx`)
+### 4. Version bump to v2.5.6
 
-Replace the hard `DELETE` in `handleDelete` with an `UPDATE` that sets `deleted_at` and `retention_until`:
+---
+
+## Technical Details
+
+### OptimizedImage.tsx changes
 
 ```typescript
-// Before: permanent delete
-.delete().eq('id', photo.id)
+// Track previous src to enable cross-fade without flash
+const prevSrcRef = useRef<string>(src);
+const [currentSrc, setCurrentSrc] = useState(src);
 
-// After: soft delete with 60-day retention
-.update({ 
-  deleted_at: new Date().toISOString(),
-  retention_until: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString()
-}).eq('id', photo.id)
+useEffect(() => {
+  if (src !== prevSrcRef.current) {
+    // New URL -- don't reset loaded yet; let new image load behind the old one
+    setCurrentSrc(src);
+    prevSrcRef.current = src;
+  }
+}, [src]);
+
+// Only show skeleton on initial mount, not on URL rotation
+const handleLoad = useCallback(() => setLoaded(true), []);
+const handleError = useCallback(() => {
+  setLoaded(false); // Show skeleton on error
+}, []);
 ```
 
-### 3. Filter Out Soft-Deleted Photos in Queries (`src/components/PhotoGallery.tsx`)
+The `img` element will use `currentSrc` and transition smoothly without flashing the skeleton on URL rotation.
 
-Add `.is('deleted_at', null)` to the `loadPhotos` query so soft-deleted photos are hidden from the UI but still recoverable.
+### PhotoGallery.tsx deferred revocation
 
-### 4. Add Stale Upload Warning (`src/components/PhotoGallery.tsx`)
+```typescript
+// Deferred revocation: wait for React commit + browser paint
+const oldUrls = objectUrlsRef.current;
+objectUrlsRef.current = newObjectUrls;
+setPhotos(mergedPhotos);
 
-Show a warning badge on photos that have been pending upload for more than 10 minutes, prompting the user to check their connection.
+// Revoke AFTER the DOM has painted the new URLs
+requestAnimationFrame(() => {
+  setTimeout(() => {
+    oldUrls.forEach(url => URL.revokeObjectURL(url));
+  }, 0);
+});
+```
 
-### 5. Bump Version to v2.5.5
+### CSS scanline skeleton (index.css)
 
-Update `vite.config.ts` with:
-- `APP_VERSION = "2.5.5"`
-- Changelog: "Photo soft-delete protection, stale upload warning"
+Add a horizontal scanline sweep to the existing `.optimized-image-shimmer`:
+
+```css
+@keyframes scanline-sweep {
+  0% { transform: translateY(-100%); }
+  100% { transform: translateY(100%); }
+}
+
+.optimized-image-shimmer::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    transparent 0%,
+    rgba(34, 197, 94, 0.15) 45%,
+    rgba(34, 197, 94, 0.3) 50%,
+    rgba(34, 197, 94, 0.15) 55%,
+    transparent 100%
+  );
+  animation: scanline-sweep 3s linear infinite;
+  pointer-events: none;
+}
+```
 
 ## Files Modified
 
 | File | Change |
 |------|--------|
-| Database migration | Add `deleted_at` and `retention_until` to all photo tables |
-| `src/components/PhotoGallery.tsx` | Soft-delete instead of hard delete; filter deleted photos; stale upload warning |
-| `vite.config.ts` | Bump to v2.5.5 |
+| `src/components/ui/optimized-image.tsx` | Smart cross-fade, error handling, aspect-ratio support |
+| `src/components/PhotoGallery.tsx` | Deferred URL revocation via rAF + setTimeout |
+| `src/index.css` | Scanline sweep animation on skeleton |
+| `vite.config.ts` | Bump to v2.5.6 |
 
 ## What Does NOT Change
 
 - Photo capture, compression, or offline storage logic
-- Background sync pipeline
-- Report soft-delete system
-- RLS policies (photos already protected)
 - Drag-and-drop reordering
+- Soft-delete system (v2.5.5)
+- Background sync pipeline
+- Signed URL generation (server-side, not exposed in frontend)
+- RLS policies
+
+## Security Audit
+
+- Signed URL generation uses `supabase.storage.createSignedUrl()` which is a server-side SDK call -- no API keys are exposed in frontend code
+- The anon key used by the Supabase client is a publishable key (safe for frontend)
+- No sensitive logic is exposed
 
