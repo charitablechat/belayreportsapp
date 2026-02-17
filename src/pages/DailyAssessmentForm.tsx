@@ -1191,7 +1191,7 @@ export default function DailyAssessmentForm() {
       
       <div onClickCapture={handleLockedFieldClick} className="container mx-auto px-4 py-4 lg:py-8 max-w-5xl">
         {isCompletionLocked && (
-          <div className="border-2 border-amber-500/60 bg-black/90 text-amber-400 font-mono text-xs px-4 py-2 flex items-center gap-2 mb-4 rounded">
+          <div className="border-2 border-green-500/60 bg-black/90 text-green-500 font-mono text-xs px-4 py-2 flex items-center gap-2 mb-4 rounded">
             <Lock className="h-3.5 w-3.5" />
             <span>LOCKED — Click any field to unlock for editing</span>
           </div>
@@ -1247,80 +1247,90 @@ export default function DailyAssessmentForm() {
             </TabsList>
           </div>
 
-          <TabsContent value="beginning" className="space-y-4 mt-4">
-            <BeginningOfDaySection 
-              items={beginningOfDay} 
-              onUpdate={handleBeginningOfDayUpdate} 
-            />
-          </TabsContent>
+          <div className="relative">
+            {isCompletionLocked && (
+              <div
+                className="absolute inset-0 z-10 cursor-not-allowed"
+                onClick={() => setShowCompletionLockDialog(true)}
+              />
+            )}
+            <div style={isCompletionLocked ? { pointerEvents: 'none' } : undefined}>
+              <TabsContent value="beginning" className="space-y-4 mt-4">
+                <BeginningOfDaySection 
+                  items={beginningOfDay} 
+                  onUpdate={handleBeginningOfDayUpdate} 
+                />
+              </TabsContent>
 
-          <TabsContent value="end" className="space-y-4 mt-4">
-            <EndOfDaySection 
-              items={endOfDay} 
-              onUpdate={handleEndOfDayUpdate} 
-            />
-          </TabsContent>
+              <TabsContent value="end" className="space-y-4 mt-4">
+                <EndOfDaySection 
+                  items={endOfDay} 
+                  onUpdate={handleEndOfDayUpdate} 
+                />
+              </TabsContent>
 
-          <TabsContent value="systems" className="space-y-4 mt-4">
-            <OperatingSystemsSection 
-              systems={operatingSystems} 
-              onUpdate={handleOperatingSystemsUpdate}
-              sectionComments={assessment?.systems_comments || ''}
-              onSectionCommentsChange={(value) => handleUpdateAssessment('systems_comments', value)}
-            />
-          </TabsContent>
+              <TabsContent value="systems" className="space-y-4 mt-4">
+                <OperatingSystemsSection 
+                  systems={operatingSystems} 
+                  onUpdate={handleOperatingSystemsUpdate}
+                  sectionComments={assessment?.systems_comments || ''}
+                  onSectionCommentsChange={(value) => handleUpdateAssessment('systems_comments', value)}
+                />
+              </TabsContent>
 
-          <TabsContent value="equipment" className="space-y-4 mt-4">
-            <EquipmentChecksSection 
-              checks={equipmentChecks} 
-              onUpdate={handleEquipmentChecksUpdate} 
-            />
-          </TabsContent>
+              <TabsContent value="equipment" className="space-y-4 mt-4">
+                <EquipmentChecksSection 
+                  checks={equipmentChecks} 
+                  onUpdate={handleEquipmentChecksUpdate} 
+                />
+              </TabsContent>
 
-          <TabsContent value="structure" className="space-y-4 mt-4">
-            <StructureChecksSection 
-              checks={structureChecks} 
-              onUpdate={handleStructureChecksUpdate}
-              sectionComments={assessment?.structure_comments || ''}
-              onSectionCommentsChange={(value) => handleUpdateAssessment('structure_comments', value)}
-            />
-          </TabsContent>
+              <TabsContent value="structure" className="space-y-4 mt-4">
+                <StructureChecksSection 
+                  checks={structureChecks} 
+                  onUpdate={handleStructureChecksUpdate}
+                  sectionComments={assessment?.structure_comments || ''}
+                  onSectionCommentsChange={(value) => handleUpdateAssessment('structure_comments', value)}
+                />
+              </TabsContent>
 
-          <TabsContent value="environment" className="space-y-4 mt-4">
-            <EnvironmentChecksSection 
-              checks={environmentChecks} 
-              onUpdate={handleEnvironmentChecksUpdate}
-              sectionComments={assessment?.environment_comments || ''}
-              onSectionCommentsChange={(value) => handleUpdateAssessment('environment_comments', value)}
-            />
-          </TabsContent>
+              <TabsContent value="environment" className="space-y-4 mt-4">
+                <EnvironmentChecksSection 
+                  checks={environmentChecks} 
+                  onUpdate={handleEnvironmentChecksUpdate}
+                  sectionComments={assessment?.environment_comments || ''}
+                  onSectionCommentsChange={(value) => handleUpdateAssessment('environment_comments', value)}
+                />
+              </TabsContent>
 
-          <TabsContent value="photos" className="space-y-4 mt-4">
-            <div className="border-2 border-foreground/20 bg-background p-6 rounded-md">
-              <h3 className="text-lg font-semibold font-mono tracking-tight mb-4">Assessment Photos</h3>
-              {!effectiveReadOnly && (
-                <div className="mb-4">
-                  <PhotoCapture
+              <TabsContent value="photos" className="space-y-4 mt-4">
+                <div className="border-2 border-foreground/20 bg-background p-6 rounded-md">
+                  <h3 className="text-lg font-semibold font-mono tracking-tight mb-4">Assessment Photos</h3>
+                  {!effectiveReadOnly && (
+                    <div className="mb-4">
+                      <PhotoCapture
+                        inspectionId={id!}
+                        section="assessment"
+                        onPhotoAdded={() => setPhotoRefreshKey(prev => prev + 1)}
+                        tableName="daily_assessment_photos"
+                        foreignKeyColumn="assessment_id"
+                        storageBucket="daily-assessment-photos"
+                      />
+                    </div>
+                  )}
+                  <PhotoGallery
+                    key={`assessment-${photoRefreshKey}`}
                     inspectionId={id!}
                     section="assessment"
-                    onPhotoAdded={() => setPhotoRefreshKey(prev => prev + 1)}
+                    readOnly={effectiveReadOnly}
                     tableName="daily_assessment_photos"
                     foreignKeyColumn="assessment_id"
                     storageBucket="daily-assessment-photos"
                   />
                 </div>
-              )}
-              <PhotoGallery
-                key={`assessment-${photoRefreshKey}`}
-                inspectionId={id!}
-                section="assessment"
-                readOnly={effectiveReadOnly}
-                tableName="daily_assessment_photos"
-                foreignKeyColumn="assessment_id"
-                storageBucket="daily-assessment-photos"
-              />
+              </TabsContent>
             </div>
-          </TabsContent>
+          </div>
         </Tabs>
       </div>
       </div>
