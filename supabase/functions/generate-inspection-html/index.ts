@@ -1477,7 +1477,7 @@ serve(async (req) => {
       }
     }
 
-    /* Photo Gallery Styles - allow natural flow across pages */
+    /* Photo Gallery Styles - Bento Grid with card containers */
     .photo-gallery {
       display: grid;
       grid-template-columns: repeat(2, 1fr);
@@ -1489,33 +1489,37 @@ serve(async (req) => {
     .photo-item {
       page-break-inside: avoid;
       break-inside: avoid;
-      overflow: visible;
+      overflow: hidden;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      background: #ffffff;
     }
 
     .inspection-photo {
       width: 100%;
-      height: auto;
-      max-width: 100%;
-      object-fit: contain;
-      border: 1px solid #ccc;
-      border-radius: 4px;
+      max-height: 300px;
+      object-fit: cover;
       display: block;
     }
 
     .photo-caption {
       font-size: 9pt;
-      color: #666;
-      margin-top: 5px;
-      text-align: center;
-      font-style: italic;
+      color: #475569;
+      padding: 8px 10px;
+      border-top: 1px solid #f1f5f9;
+      line-height: 1.4;
     }
 
     .photo-section-label {
-      font-size: 8pt;
+      font-size: 7pt;
       color: #1e40af;
       text-transform: uppercase;
-      margin-bottom: 3px;
-      font-weight: bold;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      padding: 3px 8px;
+      background: #eff6ff;
+      display: inline-block;
+      margin: 8px 0 0 8px;
     }
 
     @media print {
@@ -1526,8 +1530,8 @@ serve(async (req) => {
       }
 
       .inspection-photo {
-        height: auto !important;
-        max-height: none !important;
+        max-height: 300px !important;
+        object-fit: cover !important;
         display: block !important;
         visibility: visible !important;
         opacity: 1 !important;
@@ -1538,7 +1542,7 @@ serve(async (req) => {
       .photo-item {
         page-break-inside: avoid;
         break-inside: avoid;
-        overflow: visible !important;
+        overflow: hidden !important;
       }
     }
   </style>
@@ -2573,7 +2577,7 @@ serve(async (req) => {
           <div class="photo-item">
             ${photo.section ? `<div class="photo-section-label">${photo.section}</div>` : ""}
             <img src="${photo.dataUri}" alt="Inspection photo" class="inspection-photo">
-            ${photo.caption ? `<div class="photo-caption">${photo.caption}</div>` : ""}
+            ${photo.caption ? `<div class="photo-caption">${photo.caption}</div>` : `<div class="photo-caption" style="color:#94a3b8;">No caption</div>`}
           </div>
         `
           )
