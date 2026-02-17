@@ -97,6 +97,12 @@ export const useAutoSync = () => {
   /**
    * Perform the actual sync operation
    */
+  // Ref to track unsyncedCount for use inside performSync (avoids stale closure)
+  const unsyncedCountRef = useRef(state.unsyncedCount);
+  useEffect(() => {
+    unsyncedCountRef.current = state.unsyncedCount;
+  }, [state.unsyncedCount]);
+
   const performSync = useCallback(async (silent = true) => {
     // Skip if offline
     if (!navigator.onLine) {
@@ -153,7 +159,7 @@ export const useAutoSync = () => {
     
     // Calculate dynamic timeout based on BATCH size (not total unsynced)
     // With MAX_BATCH_SIZE=5: 30s + (5 x 8s) = 70s -- well within safe limits
-    const batchSize = Math.min(state.unsyncedCount, MAX_BATCH_SIZE);
+    const batchSize = Math.min(unsyncedCountRef.current, MAX_BATCH_SIZE);
     const dynamicTimeout = Math.min(
       BASE_SYNC_TIMEOUT + (batchSize * PER_ITEM_TIMEOUT_BUDGET),
       MAX_SYNC_TIMEOUT
@@ -170,7 +176,7 @@ export const useAutoSync = () => {
     
     try {
       if (import.meta.env.DEV) {
-        console.log('[AutoSync] Starting sync...', { unsyncedCount: state.unsyncedCount, timeout: dynamicTimeout });
+        console.log('[AutoSync] Starting sync...', { unsyncedCount: unsyncedCountRef.current, timeout: dynamicTimeout });
       }
       
       // Sync all data types in parallel with dynamic timeout protection
