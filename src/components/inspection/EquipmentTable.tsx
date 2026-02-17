@@ -264,7 +264,7 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
                     <ResultSelect
                       value={item.result}
                       onChange={(value) => updateEquipment(item, "result", value)}
-                      includeNA
+                      
                     />
                   </td>
                   <td className="border p-2">
@@ -437,7 +437,7 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
                     <ResultSelect
                       value={item.result}
                       onChange={(value) => updateEquipment(item, "result", value)}
-                      includeNA
+                      
                     />
                   </div>
                   
