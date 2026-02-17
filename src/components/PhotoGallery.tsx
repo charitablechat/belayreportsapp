@@ -7,7 +7,7 @@ import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { X, Cloud, CloudOff, Loader2 } from "lucide-react";
+import { X, Cloud, CloudOff, Loader2, AlertTriangle } from "lucide-react";
 import { triggerHaptic } from "@/lib/haptics";
 import PhotoCaptionInput from "./PhotoCaptionInput";
 import { DraggablePhotoItem } from "./DraggablePhotoItem";
@@ -47,6 +47,7 @@ interface Photo {
   uploaded: boolean;
   caption: string | null;
   display_order: number;
+  staleUpload?: boolean;
 }
 
 export default function PhotoGallery({ 
@@ -110,11 +111,15 @@ export default function PhotoGallery({
       
       // Load from IndexedDB first (includes offline photos)
       const offlinePhotos = await getOfflinePhotos(inspectionId);
+      const STALE_THRESHOLD_MS = 10 * 60 * 1000; // 10 minutes
+      const now = Date.now();
       const offlinePhotosList: Photo[] = offlinePhotos
         .filter(p => p.section === section)
         .map((p, index) => {
           const objectUrl = URL.createObjectURL(p.blob);
           newObjectUrls.push(objectUrl);
+          const createdAt = (p as any).createdAt || (p as any).created_at;
+          const isStale = !p.uploaded && createdAt && (now - new Date(createdAt).getTime() > STALE_THRESHOLD_MS);
           return {
             id: p.id,
             photoUrl: objectUrl,
@@ -122,16 +127,18 @@ export default function PhotoGallery({
             uploaded: p.uploaded,
             caption: null,
             display_order: p.display_order ?? index,
+            staleUpload: isStale,
           };
         });
 
       // If online, also load from Supabase
       if (isOnline) {
-        const { data, error } = await (supabase
+      const { data, error } = await (supabase
           .from(tableName) as any)
           .select('*')
           .eq(foreignKeyColumn, inspectionId)
           .eq('photo_section', section)
+          .is('deleted_at', null)
           .order('display_order', { ascending: true });
 
         if (error) throw error;
@@ -320,10 +327,13 @@ export default function PhotoGallery({
     triggerHaptic('warning');
     try {
       if (isOnline && photo.uploaded) {
-        // User-initiated delete only (explicit button click)
+        // Soft-delete with 60-day retention (recoverable)
         const { error } = await (supabase
           .from(tableName) as any)
-          .delete()
+          .update({ 
+            deleted_at: new Date().toISOString(),
+            retention_until: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString()
+          })
           .eq('id', photo.id);
 
         if (error) throw error;
@@ -375,7 +385,13 @@ export default function PhotoGallery({
                     containerClassName="h-48"
                   />
                   <div className="absolute top-2 right-2 flex gap-2">
-                    {!photo.uploaded && (
+                  {!photo.uploaded && photo.staleUpload && (
+                      <Badge variant="destructive" className="gap-1">
+                        <AlertTriangle className="w-3 h-3" />
+                        Stuck
+                      </Badge>
+                    )}
+                    {!photo.uploaded && !photo.staleUpload && (
                       <Badge variant="secondary" className="gap-1">
                         <CloudOff className="w-3 h-3" />
                         Pending

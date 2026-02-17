@@ -257,28 +257,34 @@ export type Database = {
           assessment_id: string
           caption: string | null
           created_at: string | null
+          deleted_at: string | null
           display_order: number | null
           id: string
           photo_section: string | null
           photo_url: string
+          retention_until: string | null
         }
         Insert: {
           assessment_id: string
           caption?: string | null
           created_at?: string | null
+          deleted_at?: string | null
           display_order?: number | null
           id?: string
           photo_section?: string | null
           photo_url: string
+          retention_until?: string | null
         }
         Update: {
           assessment_id?: string
           caption?: string | null
           created_at?: string | null
+          deleted_at?: string | null
           display_order?: number | null
           id?: string
           photo_section?: string | null
           photo_url?: string
+          retention_until?: string | null
         }
         Relationships: [
           {
@@ -701,29 +707,35 @@ export type Database = {
         Row: {
           caption: string | null
           created_at: string | null
+          deleted_at: string | null
           display_order: number | null
           id: string
           inspection_id: string
           photo_section: string | null
           photo_url: string
+          retention_until: string | null
         }
         Insert: {
           caption?: string | null
           created_at?: string | null
+          deleted_at?: string | null
           display_order?: number | null
           id?: string
           inspection_id: string
           photo_section?: string | null
           photo_url: string
+          retention_until?: string | null
         }
         Update: {
           caption?: string | null
           created_at?: string | null
+          deleted_at?: string | null
           display_order?: number | null
           id?: string
           inspection_id?: string
           photo_section?: string | null
           photo_url?: string
+          retention_until?: string | null
         }
         Relationships: [
           {
@@ -1437,28 +1449,34 @@ export type Database = {
         Row: {
           caption: string | null
           created_at: string | null
+          deleted_at: string | null
           display_order: number | null
           id: string
           photo_section: string | null
           photo_url: string
+          retention_until: string | null
           training_id: string
         }
         Insert: {
           caption?: string | null
           created_at?: string | null
+          deleted_at?: string | null
           display_order?: number | null
           id?: string
           photo_section?: string | null
           photo_url: string
+          retention_until?: string | null
           training_id: string
         }
         Update: {
           caption?: string | null
           created_at?: string | null
+          deleted_at?: string | null
           display_order?: number | null
           id?: string
           photo_section?: string | null
           photo_url?: string
+          retention_until?: string | null
           training_id?: string
         }
         Relationships: [
