@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isLocalDataNewer } from './local-data-guards';
+import { isLocalDataNewer, shouldPreserveLocalRecord } from './local-data-guards';
 
 describe('isLocalDataNewer', () => {
   it('returns false when offlineData is null', () => {
@@ -64,5 +64,51 @@ describe('isLocalDataNewer', () => {
       { updated_at: null, synced_at: '2025-01-01T00:00:00Z' },
       { updated_at: '2025-01-01T00:00:00Z' }
     )).toBe(false);
+  });
+});
+
+describe('shouldPreserveLocalRecord', () => {
+  it('returns false when localRecord is null', () => {
+    expect(shouldPreserveLocalRecord(null)).toBe(false);
+  });
+
+  it('returns false when localRecord is undefined', () => {
+    expect(shouldPreserveLocalRecord(undefined)).toBe(false);
+  });
+
+  it('returns true when synced_at is null (never synced)', () => {
+    expect(shouldPreserveLocalRecord({ synced_at: null, updated_at: '2025-01-01T00:00:00Z' })).toBe(true);
+  });
+
+  it('returns true when synced_at is undefined', () => {
+    expect(shouldPreserveLocalRecord({ updated_at: '2025-01-01T00:00:00Z' })).toBe(true);
+  });
+
+  it('returns true when updated_at is newer than synced_at', () => {
+    expect(shouldPreserveLocalRecord({
+      synced_at: '2025-01-01T00:00:00Z',
+      updated_at: '2025-01-02T00:00:00Z'
+    })).toBe(true);
+  });
+
+  it('returns false when updated_at equals synced_at', () => {
+    expect(shouldPreserveLocalRecord({
+      synced_at: '2025-01-01T00:00:00Z',
+      updated_at: '2025-01-01T00:00:00Z'
+    })).toBe(false);
+  });
+
+  it('returns false when updated_at is older than synced_at', () => {
+    expect(shouldPreserveLocalRecord({
+      synced_at: '2025-01-02T00:00:00Z',
+      updated_at: '2025-01-01T00:00:00Z'
+    })).toBe(false);
+  });
+
+  it('returns false when updated_at is null but synced_at exists', () => {
+    expect(shouldPreserveLocalRecord({
+      synced_at: '2025-01-01T00:00:00Z',
+      updated_at: null
+    })).toBe(false);
   });
 });
