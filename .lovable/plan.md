@@ -1,220 +1,144 @@
 
 
-# Zero-Data-Loss Strategy: Comprehensive Hardening Plan
+# Mobile-First Hard Data Protection: Immutable Local Backup System
 
-## Current Architecture Assessment
+## Problem Statement
 
-The application already has substantial data protection layers:
-- Local-first IndexedDB persistence with circuit breaker
-- Empty-array save guards on `saveRelatedDataOffline` and `saveAssessmentDataOffline`
-- `shouldPreserveLocalRecord` guard on Dashboard caching
-- `isLocalDataNewer` guard on form loading
-- Transaction manager blocklist preventing deletes on 28 report tables
-- Orphan cleanup with threshold guards, recency checks, and recovery logging
-- `beforeunload` warning for unsaved changes
+Reports are primarily created on mobile devices (phones/tablets, iOS and Android). Despite multiple existing safeguards, data can still be lost through several paths: browser cache clearing, IndexedDB eviction under storage pressure, sync operations overwriting local state with empty server responses, or orphan cleanup removing records. The user needs an absolute guarantee that once data is entered, it persists until the user explicitly deletes it.
+
+## Current Architecture (What Already Exists)
+
+The app already has substantial protection:
+- IndexedDB as primary local store (with circuit breaker, empty-array guards, temp-ID-only clear restrictions)
+- Transaction Manager blocklist preventing server-side deletes on 28 report tables
+- Emergency save on page hide/visibility change
+- Orphan cleanup with threshold guards, rate limiting, and recovery logs
 - Soft-delete pattern with 60-day retention
+- Photo receipt system in localStorage
 
-## Identified Data Loss Vectors (Remaining Gaps)
+**However**, all of these protections share a single point of failure: IndexedDB itself. If the browser clears IndexedDB (storage pressure, user clearing site data, browser update), ALL local data is gone.
 
-### Vector 1: Page Refresh Loses In-Memory State Before First Auto-Save
+## Solution: Dual-Layer Immutable Backup Architecture
 
-**Risk**: HIGH
-**Scenario**: User opens a report, types data into systems/equipment/ziplines, then accidentally refreshes the page within the 1.5-second auto-save debounce window. The data exists only in React state and has never been persisted to IndexedDB.
+### Layer 1 -- localStorage Snapshot Ledger (Survives IndexedDB Eviction)
 
-**Current mitigation**: `beforeunload` shows a browser warning, but the user can dismiss it. No emergency flush occurs.
+**Concept**: Every time a report is saved to IndexedDB, a compressed JSON snapshot of the complete report (parent + all child records) is also written to `localStorage` under a predictable key. localStorage is smaller but more persistent -- browsers are far less aggressive about clearing it compared to IndexedDB.
 
-**Fix**: Add a `visibilitychange` and `pagehide` listener in InspectionForm, TrainingForm, and DailyAssessmentForm that performs an **emergency synchronous-like save** to IndexedDB when the page is being hidden (covers both tab switching and refresh on iOS). Additionally, flush pending debounce timers in `beforeunload`.
+**New file: `src/lib/local-backup-ledger.ts`**
 
-### Vector 2: Server Returns Empty Child Arrays That Bypass the Guard
+- `saveReportSnapshot(reportType, reportId, parentData, childData)` -- Serializes and stores a complete report snapshot
+- `getReportSnapshot(reportType, reportId)` -- Retrieves a snapshot
+- `listAllSnapshots()` -- Returns all stored report IDs and their last-saved timestamps
+- `deleteReportSnapshot(reportType, reportId)` -- Only callable from explicit user-initiated delete
+- Storage budget: caps total snapshot storage at ~4MB (localStorage limit is typically 5-10MB), using LRU eviction of the oldest *synced* snapshots only. Unsynced snapshots are never evicted.
+- Each snapshot stores: report ID, type, timestamp, sync status, and a JSON blob of all parent + child data (excluding photo blobs -- photos use the existing receipt system)
 
-**Risk**: MEDIUM
-**Scenario**: When loading a report online, if the server returns an empty `systemsData` array (e.g., RLS misconfiguration, query timeout returning `null` that's coerced to `[]`), the form calls `setSystems([])` and then `saveRelatedDataOffline('systems', id, [])`. The empty-array guard in `saveRelatedDataOffline` blocks the IndexedDB write, but the React state is already set to `[]`, overwriting any data the user previously entered. The next auto-save then persists the empty state to IndexedDB.
+### Layer 2 -- IndexedDB Write-Ahead Log (WAL)
 
-**Fix**: In `loadInspection`, do NOT call `setSystems(serverData)` or `saveRelatedDataOffline` if the server returned empty data AND local IndexedDB already has non-empty data. Apply the same guard to all child data types across all three form types.
+**Concept**: Before any destructive operation (clear, delete, overwrite) in IndexedDB, write the current state of the affected records to a dedicated `_backup` object store. This creates an undo buffer internal to IndexedDB itself.
 
-### Vector 3: Empty Report Cleanup Soft-Deletes Reports With Unloaded Child Data
+**Modified file: `src/lib/offline-storage.ts`**
 
-**Risk**: MEDIUM
-**Scenario**: `useEmptyReportCleanup` evaluates `isInspectionEmpty()` using the current React state. If child data (systems, equipment) hasn't finished loading from IndexedDB yet (timeout, circuit breaker), the arrays are empty in state, causing `isInspectionEmpty` to return `true`. The cleanup soft-deletes a report that actually has data.
+- Add a new `report_backups` object store to the IndexedDB schema (version 7 upgrade)
+- Before `saveRelatedDataOffline` deletes existing records and replaces them, snapshot the current records into `report_backups`
+- Before `deleteOfflineInspection` / `deleteOfflineTraining` / `deleteOfflineDailyAssessment` removes a record, snapshot it
+- Backups are keyed by `{reportType}_{reportId}_{timestamp}` and keep the last 3 versions per report
+- A new `restoreFromBackup(reportType, reportId)` function retrieves the most recent backup
 
-**Fix**: Add a `dataFullyLoaded` flag that is only set to `true` after both IndexedDB and server data loading complete. Pass this to `useEmptyReportCleanup` as an additional guard. If data hasn't fully loaded, never clean up.
+### Layer 3 -- Desktop/Web Read-Only Guard
 
-### Vector 4: Dashboard Orphan Cleanup Deletes During RLS Policy Changes
+**Concept**: When a report is opened from a desktop/web browser and the report was last edited on a mobile device, the form enforces read-only mode unless the user explicitly clicks "Enable Editing". This prevents accidental overwrites from a desktop session that may have stale or incomplete data.
 
-**Risk**: LOW (mitigated but not eliminated)
-**Scenario**: If a user's RLS policy changes (e.g., admin removes access), the server returns fewer records. The 50% threshold guard catches large drops, but a gradual reduction (e.g., from 4 to 2 records) could still trigger orphan deletion.
+**Modified files: `src/pages/InspectionForm.tsx`, `TrainingForm.tsx`, `DailyAssessmentForm.tsx`**
 
-**Fix**: Increase the minimum record count threshold from 3 to 5, and add a `localStorage` timestamp check -- never run orphan cleanup more than once per hour.
+- Check if `last_modified_by` device was mobile (store device type during save)
+- If the current device is desktop and the last modifier was mobile, show a banner: "This report was last edited on a mobile device. View only -- click to enable editing."
+- This is a soft lock (user can override), not a hard block
 
-### Vector 5: Photo Blob Lost on IndexedDB Eviction
+### Layer 4 -- Recovery Dashboard Panel
 
-**Risk**: MEDIUM (browser-dependent)
-**Scenario**: On mobile browsers with storage pressure, the browser can evict IndexedDB data even with persistent storage requested (if the request was denied). Photo blobs in IndexedDB are large and high-priority eviction targets.
+**Concept**: Add a "Data Recovery" section to the existing admin tools that shows all localStorage snapshots and IndexedDB backups, allowing one-click restoration.
 
-**Fix**: After each successful photo save to IndexedDB, also save a lightweight metadata record to `localStorage` (photo ID, inspectionId, section, timestamp, uploadStatus). This acts as a "receipt" that a photo was captured. If the blob is evicted, the app can show a "Photo data lost -- please retake" warning instead of silently dropping it.
+**Modified file: `src/components/admin/DataRecoveryTool.tsx`**
 
-### Vector 6: Concurrent Save Operations Overwrite Each Other
+- Add a "Local Backups" tab showing all localStorage snapshots with timestamps
+- Each entry has a "Restore" button that writes the snapshot back into IndexedDB and triggers a sync
+- Shows diff between current IndexedDB state and backup (record counts per child table)
 
-**Risk**: LOW
-**Scenario**: Auto-save fires at the same time as a manual save or immediate save. Both read the same React state and write to IndexedDB, but if the auto-save reads state slightly before a user edit and writes after, the edit is lost.
+## Implementation Details
 
-**Fix**: The existing `anySaveInProgressRef` mutex prevents concurrent saves in InspectionForm. Verify the same pattern exists in TrainingForm and DailyAssessmentForm.
-
-## Implementation Plan
-
-### Phase 1: Emergency Save on Page Hide (Vector 1)
-
-**Files**: `src/pages/InspectionForm.tsx`, `src/pages/TrainingForm.tsx`, `src/pages/DailyAssessmentForm.tsx`
-
-Add a `useEffect` that listens for `visibilitychange` (state === 'hidden') and `pagehide` events. On trigger:
-1. Cancel any pending debounce timer
-2. Synchronously call `performSaveRef.current(true)` without awaiting (fire-and-forget, since the page is being torn down)
-3. Use `navigator.sendBeacon` as a fallback signal if the save didn't complete
-
-Also flush the debounce in `beforeunload`:
-```typescript
-useEffect(() => {
-  const handleEmergencySave = () => {
-    if (hasUnsavedChanges && !saving) {
-      // Cancel debounce and trigger immediate save
-      if (saveDebounceTimerRef.current) {
-        clearTimeout(saveDebounceTimerRef.current);
-        saveDebounceTimerRef.current = null;
-      }
-      // Fire-and-forget -- page is being hidden
-      performSaveRef.current?.(true);
-    }
-  };
-
-  const handleVisibilityChange = () => {
-    if (document.visibilityState === 'hidden') {
-      handleEmergencySave();
-    }
-  };
-
-  document.addEventListener('visibilitychange', handleVisibilityChange);
-  window.addEventListener('pagehide', handleEmergencySave);
-
-  return () => {
-    document.removeEventListener('visibilitychange', handleVisibilityChange);
-    window.removeEventListener('pagehide', handleEmergencySave);
-  };
-}, [hasUnsavedChanges, saving]);
-```
-
-### Phase 2: Server Empty-Data Guard on Form Loading (Vector 2)
-
-**Files**: `src/pages/InspectionForm.tsx` (lines ~1008-1060), `src/pages/TrainingForm.tsx`, `src/pages/DailyAssessmentForm.tsx`
-
-Wrap each server-to-state assignment with a "non-regression" check:
-
-```typescript
-// Before setting systems from server:
-if (systemsData && systemsData.length > 0) {
-  setSystems(normalizedSystems);
-  saveRelatedDataOffline('systems', id!, normalizedSystems).catch(...);
-} else if (offlineSystems.length > 0) {
-  // Server returned empty but local has data -- preserve local
-  console.warn('[InspectionForm] Server returned empty systems but local has data -- preserving local');
-  // Do NOT call setSystems or saveRelatedDataOffline
-}
-```
-
-Apply to all 5 child types (systems, ziplines, equipment, standards, summary) and to all 3 form types.
-
-### Phase 3: Data-Loaded Guard for Empty Report Cleanup (Vector 3)
-
-**Files**: `src/pages/InspectionForm.tsx`, `src/pages/TrainingForm.tsx`, `src/pages/DailyAssessmentForm.tsx`
-
-Add a `dataFullyLoaded` state flag:
-```typescript
-const [dataFullyLoaded, setDataFullyLoaded] = useState(false);
-```
-
-Set it to `true` at the end of `loadInspection` (in the `finally` block). Pass to `useEmptyReportCleanup`:
-```typescript
-const { cleanupEmptyReport } = useEmptyReportCleanup({
-  ...existing props,
-  hasUserInteracted: hasUserInteracted || !dataFullyLoaded,
-});
-```
-
-This ensures cleanup never runs before all data sources have been consulted.
-
-### Phase 4: Orphan Cleanup Rate Limiting (Vector 4)
-
-**File**: `src/pages/Dashboard.tsx`
-
-Add a rate limiter for orphan cleanup:
-```typescript
-const ORPHAN_CLEANUP_COOLDOWN = 3600000; // 1 hour
-const lastCleanupKey = 'lastOrphanCleanup';
-const lastCleanup = parseInt(localStorage.getItem(lastCleanupKey) || '0');
-if (Date.now() - lastCleanup < ORPHAN_CLEANUP_COOLDOWN) {
-  console.log('[Dashboard] Orphan cleanup on cooldown -- skipping');
-  return; // Skip cleanup entirely
-}
-localStorage.setItem(lastCleanupKey, String(Date.now()));
-```
-
-### Phase 5: Photo Metadata Receipts (Vector 5)
-
-**File**: `src/components/PhotoCapture.tsx`
-
-After saving a photo to IndexedDB, also write a receipt to `localStorage`:
-```typescript
-// After savePhotoOffline succeeds:
-try {
-  const receipts = JSON.parse(localStorage.getItem('photoReceipts') || '[]');
-  receipts.push({
-    id: photoId,
-    inspectionId,
-    section,
-    timestamp: Date.now(),
-    uploaded: false,
-  });
-  // Keep last 100 receipts
-  if (receipts.length > 100) receipts.splice(0, receipts.length - 100);
-  localStorage.setItem('photoReceipts', JSON.stringify(receipts));
-} catch {}
-```
-
-**File**: `src/components/PhotoGallery.tsx`
-
-On gallery load, cross-reference receipts against IndexedDB. If a receipt exists but the blob is missing, show a warning badge.
-
-### Phase 6: Verify Concurrent Save Protection (Vector 6)
-
-Audit `TrainingForm.tsx` and `DailyAssessmentForm.tsx` to confirm they have the same `anySaveInProgressRef` mutex pattern as InspectionForm.
-
-## Technical Summary
+### Phase 1: localStorage Snapshot Ledger
 
 ```text
-+------------------------------+----------+---------------------------+
-| Vector                       | Risk     | Fix                       |
-+------------------------------+----------+---------------------------+
-| Pre-debounce page refresh    | HIGH     | visibilitychange + pagehide emergency save |
-| Server empty array overwrite | MEDIUM   | Non-regression guard on load              |
-| Empty cleanup before load    | MEDIUM   | dataFullyLoaded flag                      |
-| Gradual orphan deletion      | LOW      | 1-hour cooldown rate limit                |
-| Photo blob eviction          | MEDIUM   | localStorage receipts                     |
-| Concurrent save race         | LOW      | Verify mutex in all forms                 |
-+------------------------------+----------+---------------------------+
+Key format: rw_backup_{type}_{id}
+Value: JSON { 
+  v: 1,                    // schema version
+  ts: 1708300000000,       // timestamp
+  synced: false,           // sync status at time of snapshot
+  device: "mobile",        // device type
+  parent: {...},           // parent record
+  children: {              // all child arrays
+    systems: [...],
+    equipment: [...],
+    ...
+  }
+}
 ```
+
+Integration points:
+- Called from `performSave` in each form (after successful IndexedDB write)
+- Called from `useEmergencySave` (emergency path)
+- Called from auto-save debounce completion
+
+### Phase 2: IndexedDB Write-Ahead Log
+
+New object store in schema version 7:
+```
+report_backups: { key: string, value: { id, reportType, reportId, timestamp, data } }
+```
+
+Integration points:
+- `saveRelatedDataOffline` -- snapshot before delete+replace
+- `deleteOfflineInspection/Training/Assessment` -- snapshot before delete
+- `clearRelatedDataOffline` -- snapshot before clear (even for temp-IDs)
+
+### Phase 3: Desktop Read-Only Guard
+
+- Add `last_device_type` field to saves (value: `isMobile() ? 'mobile' : 'desktop'`)
+- Store in both IndexedDB and server-side `inspections.metadata` (or a new column)
+- On form load, if `last_device_type === 'mobile'` and current device is desktop, set `isReadOnly = true` with override option
+
+### Phase 4: Recovery Dashboard
+
+- Extend existing `DataRecoveryTool.tsx` with a new "Local Snapshots" tab
+- List all `rw_backup_*` keys from localStorage
+- Show report type, organization name, last saved timestamp, sync status
+- "Restore" button: parse snapshot, write to IndexedDB, trigger sync
+- "Export" button: download snapshot as JSON file (ultimate last resort)
+
+## Files to Create/Modify
+
+| File | Action | Purpose |
+|------|--------|---------|
+| `src/lib/local-backup-ledger.ts` | CREATE | localStorage snapshot system |
+| `src/lib/offline-storage.ts` | MODIFY | Add report_backups store, WAL before destructive ops |
+| `src/pages/InspectionForm.tsx` | MODIFY | Integrate snapshot saves, device type tracking |
+| `src/pages/TrainingForm.tsx` | MODIFY | Same integration |
+| `src/pages/DailyAssessmentForm.tsx` | MODIFY | Same integration |
+| `src/components/admin/DataRecoveryTool.tsx` | MODIFY | Add local backup recovery UI |
+| `src/hooks/useEmergencySave.tsx` | MODIFY | Trigger snapshot on emergency save |
 
 ## Security
 
-- No API keys or secrets are involved in any of these changes
-- All fixes operate on local storage (IndexedDB, localStorage) and React state
-- No new network calls or database operations introduced
-- Console logs use truncated IDs only
+- No API keys or secrets are involved in any localStorage or IndexedDB operations
+- Snapshots contain report data only (no auth tokens, no credentials)
+- Recovery tool is gated behind existing super admin checks
+- Desktop read-only guard is a UI-level soft lock, not a security boundary
 
-## Files Modified
+## Risk Assessment
 
-1. `src/pages/InspectionForm.tsx` -- emergency save, server empty guard, dataFullyLoaded flag
-2. `src/pages/TrainingForm.tsx` -- same three fixes
-3. `src/pages/DailyAssessmentForm.tsx` -- same three fixes
-4. `src/pages/Dashboard.tsx` -- orphan cleanup rate limiter
-5. `src/components/PhotoCapture.tsx` -- photo receipt to localStorage
-6. `src/components/PhotoGallery.tsx` -- receipt cross-reference warning
+- **localStorage size**: Capped at ~4MB with LRU eviction of synced-only snapshots. A typical report snapshot is 2-10KB, allowing 400+ reports.
+- **IndexedDB version upgrade**: Bumping from v6 to v7 runs the upgrade handler which is additive-only (new store, no destructive changes).
+- **Performance**: Snapshot writes are fire-and-forget after successful IndexedDB save. No impact on save latency.
+- **Backward compatibility**: Existing data in IndexedDB v6 is preserved during upgrade. The backup store simply doesn't exist yet for older data.
 
