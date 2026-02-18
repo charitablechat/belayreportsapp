@@ -382,8 +382,14 @@ export default function Dashboard() {
           Promise.all(networkData.map(async (inspection) => {
             const localRecord = await getOfflineInspection(inspection.id);
             if (shouldPreserveLocalRecord(localRecord)) {
-              console.log('[Dashboard] Preserving unsynced local inspection:', inspection.id);
-              return;
+              // Exception: if server synced_at >= local updated_at, the data WAS synced -- allow overwrite
+              const serverSyncedAt = inspection.synced_at ? new Date(inspection.synced_at).getTime() : 0;
+              const localUpdatedAt = localRecord?.updated_at ? new Date(localRecord.updated_at).getTime() : 0;
+              if (serverSyncedAt < localUpdatedAt) {
+                console.log('[Dashboard] Preserving unsynced local inspection:', inspection.id);
+                return;
+              }
+              console.log('[Dashboard] Server synced_at >= local updated_at, allowing overwrite:', inspection.id);
             }
             return saveInspectionOffline({ ...inspection, synced_at: inspection.synced_at || now });
           }))
@@ -511,8 +517,13 @@ export default function Dashboard() {
           Promise.all(networkData.map(async (training) => {
             const localRecord = await getOfflineTraining(training.id);
             if (shouldPreserveLocalRecord(localRecord)) {
-              console.log('[Dashboard] Preserving unsynced local training:', training.id);
-              return;
+              const serverSyncedAt = training.synced_at ? new Date(training.synced_at).getTime() : 0;
+              const localUpdatedAt = localRecord?.updated_at ? new Date(localRecord.updated_at).getTime() : 0;
+              if (serverSyncedAt < localUpdatedAt) {
+                console.log('[Dashboard] Preserving unsynced local training:', training.id);
+                return;
+              }
+              console.log('[Dashboard] Server synced_at >= local updated_at, allowing overwrite:', training.id);
             }
             return saveTrainingOffline({ ...training, synced_at: training.synced_at || nowT });
           }))
@@ -637,8 +648,13 @@ export default function Dashboard() {
           Promise.all(networkData.map(async (assessment) => {
             const localRecord = await getOfflineDailyAssessment(assessment.id);
             if (shouldPreserveLocalRecord(localRecord)) {
-              console.log('[Dashboard] Preserving unsynced local daily assessment:', assessment.id);
-              return;
+              const serverSyncedAt = assessment.synced_at ? new Date(assessment.synced_at).getTime() : 0;
+              const localUpdatedAt = localRecord?.updated_at ? new Date(localRecord.updated_at).getTime() : 0;
+              if (serverSyncedAt < localUpdatedAt) {
+                console.log('[Dashboard] Preserving unsynced local daily assessment:', assessment.id);
+                return;
+              }
+              console.log('[Dashboard] Server synced_at >= local updated_at, allowing overwrite:', assessment.id);
             }
             return saveDailyAssessmentOffline({ ...assessment, synced_at: assessment.synced_at || nowA });
           }))
