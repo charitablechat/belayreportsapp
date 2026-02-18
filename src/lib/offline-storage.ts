@@ -606,7 +606,9 @@ export async function getUnsyncedInspections(userId?: string) {
       let unsynced = allInspections.filter(i => {
         if (!i.synced_at) return true;
         if (!i.updated_at) return false;
-        return new Date(i.updated_at).getTime() > new Date(i.synced_at).getTime();
+        // Tolerate up to 2 seconds of drift from server-side timestamp alignment
+        const drift = new Date(i.updated_at).getTime() - new Date(i.synced_at).getTime();
+        return drift > 2000;
       });
       
       if (userId) {
@@ -1063,7 +1065,9 @@ export async function getUnsyncedDailyAssessments(userId?: string) {
       let unsynced = allAssessments.filter(a => {
         if (!a.synced_at) return true;
         if (!a.updated_at) return false;
-        return new Date(a.updated_at).getTime() > new Date(a.synced_at).getTime();
+        // Tolerate up to 2 seconds of drift from server-side timestamp alignment
+        const drift = new Date(a.updated_at).getTime() - new Date(a.synced_at).getTime();
+        return drift > 2000;
       });
       
       if (userId) {
@@ -1336,7 +1340,9 @@ export async function getUnsyncedTrainings(userId?: string) {
       let unsynced = allTrainings.filter(t => {
         if (!t.synced_at) return true;
         if (!t.updated_at) return false;
-        return new Date(t.updated_at).getTime() > new Date(t.synced_at).getTime();
+        // Tolerate up to 2 seconds of drift from server-side timestamp alignment
+        const drift = new Date(t.updated_at).getTime() - new Date(t.synced_at).getTime();
+        return drift > 2000;
       });
       
       if (userId) {
