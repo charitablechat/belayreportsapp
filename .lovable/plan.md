@@ -1,138 +1,146 @@
 
-# Fix Sync Pipeline: Eliminate Perpetual Re-Sync Race Condition (v2.5.8)
+# Fix Persistent Sync Conflict Loop (v2.5.8 patch)
 
-## Root Cause Identified
+## Root Cause
 
-The **Druidia inspection** (`2cf180fd`) IS syncing to the server -- but it gets re-flagged as "unsynced" every cycle due to a **timestamp race condition** between the client and a database trigger.
+The unresolved conflict for **Twin Lakes Family YMCA - Cedar Park** (`f44d0658`) persists because of a gap in the `useConflicts` auto-resolution logic. Here's the exact cycle:
 
-### The Race
+1. The inspection has `synced_at = Feb 11` and `updated_at = Feb 17` on the server
+2. The sync pipeline sees `updated_at > synced_at` locally, so it attempts to sync
+3. During sync, `atomic-sync-manager` detects the remote `updated_at` (Feb 17) is newer than the local `updated_at` (Feb 13) -- a conflict
+4. A conflict record is created and the sync aborts with `{ success: true, conflict: true }`
+5. The `useConflicts` hook picks up the conflict and runs last-write-wins: remote wins (Feb 17 > Feb 13)
+6. **The bug**: When remote wins, the hook **only marks the conflict as `resolved = true`** -- it does NOT update the inspection's `synced_at` to match `updated_at`
+7. So the inspection still has `synced_at = Feb 11` and `updated_at = Feb 17` -- it still looks "unsynced"
+8. Next sync cycle: exact same thing happens, creating a new conflict (6 total for this inspection, 5 already resolved)
 
-1. Sync transaction step 7 runs: `UPDATE inspections SET synced_at = '03:46:47'` (client timestamp)
-2. The `update_updated_at_column` **database trigger** fires automatically, setting `updated_at = NOW()` on the server, which becomes `03:46:49` (server clock, ~2s later)
-3. The client saves locally with `synced_at = updated_at = '03:46:47'` (the client-generated timestamp)
-4. On the next sync cycle, the client reads from IndexedDB: `updated_at (03:46:47) > synced_at (03:46:47)` is false, so that's fine locally
-5. **BUT** when the dashboard reloads from the server, it pulls `updated_at = 03:46:49` (the trigger-bumped value) and saves it to IndexedDB
-6. Now IndexedDB has `updated_at = 03:46:49` but `synced_at = 03:46:47` -- the record looks "unsynced" again
-7. The next sync cycle re-syncs the same unchanged data, the trigger bumps `updated_at` again, and the loop continues forever
-
-This explains why the inspection appears to not persist -- it **does** persist, but it keeps re-syncing infinitely, consuming bandwidth and giving false "pending" counts.
-
-### Secondary Finding: Dashboard Query Timeouts
-
-The console shows 3x `[Dashboard] Network query timed out after 15000 ms` warnings. These are from the `withNetworkTimeout` wrapper racing against the Supabase queries. On slower connections, the dashboard data loading takes >15 seconds, causing fallback to cached data. This is a separate performance issue but not the sync bug.
-
-### Unresolved Sync Conflict
-
-There's also an unresolved sync conflict for `Twin Lakes Family YMCA - Cedar Park` (inspection `f44d0658`) where `local_updated_at` is Feb 13 but `remote_updated_at` is Feb 17. The `useConflicts` hook should auto-resolve this via last-write-wins, but the conflict record persists. This needs investigation but is separate from the main race condition.
-
----
+The v2.5.8 timestamp alignment fix doesn't help here because conflict detection happens BEFORE the transaction, so the post-transaction alignment code never runs.
 
 ## Fix Strategy
 
-### Fix 1: Exclude `synced_at`-only updates from the `updated_at` trigger (Database Migration)
+### 1. Align `synced_at` when remote wins (`useConflicts.tsx`)
 
-Modify the `update_updated_at_column()` function to skip bumping `updated_at` when only `synced_at` changed. This is the cleanest server-side fix.
-
-```sql
-CREATE OR REPLACE FUNCTION public.update_updated_at_column()
-RETURNS trigger
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path TO 'public'
-AS $function$
-BEGIN
-  -- Skip bumping updated_at if ONLY synced_at changed
-  -- This prevents the sync pipeline from creating a timestamp drift
-  -- that causes records to appear perpetually unsynced
-  IF (TG_TABLE_NAME IN ('inspections', 'trainings', 'daily_assessments')) THEN
-    -- Check if synced_at is the only column that changed
-    IF NEW.synced_at IS DISTINCT FROM OLD.synced_at 
-       AND ROW(NEW.*) IS NOT DISTINCT FROM ROW(OLD.* ) THEN
-      -- synced_at is handled separately, skip updated_at bump
-      RETURN NEW;
-    END IF;
-  END IF;
-  
-  NEW.updated_at = NOW();
-  RETURN NEW;
-END;
-$function$
-```
-
-**Problem**: The `ROW()` comparison doesn't work cleanly when `synced_at` itself differs. A simpler approach:
-
-### Fix 1 (Revised): Client-side alignment using server timestamp
-
-After the final `synced_at` update step, read back the server's `updated_at` and use THAT as the local `synced_at` and `updated_at`. This ensures perfect alignment.
-
-In `atomic-sync-manager.ts`, after `executeTransaction` succeeds:
+When the auto-resolve determines remote wins (which means the server already has the correct/newer data), the hook must update the inspection's `synced_at` to match the server's `updated_at`. This signals "this record is already synced" and stops the loop.
 
 ```typescript
-// After successful transaction, fetch the server's updated_at
-// to align local timestamps and prevent re-sync drift
+// When remote wins (useLocal = false):
+// The server already has the newer data, so align synced_at to stop re-sync loop
+const { data: serverRecord } = await supabase
+  .from('inspections')
+  .select('updated_at')
+  .eq('id', conflict.inspection_id)
+  .single();
+
+if (serverRecord) {
+  await supabase
+    .from('inspections')
+    .update({ synced_at: serverRecord.updated_at })
+    .eq('id', conflict.inspection_id);
+}
+```
+
+After this update, the `update_updated_at_column` trigger will bump `updated_at` again. But the v2.5.8 post-sync alignment in `atomic-sync-manager` won't apply here since this isn't a transaction-based sync. So we need to read back the server timestamp after the update and store it locally, OR use a different approach.
+
+**Better approach**: Instead of updating via the API (which triggers the `updated_at` bump), we skip the server update entirely and just align the LOCAL IndexedDB state. The server data is already correct -- only the local state is confused.
+
+```typescript
+// When remote wins: align local IndexedDB only
+// Server already has the correct data -- just fix local state
 const { data: serverRecord } = await supabase
   .from('inspections')
   .select('updated_at, synced_at')
-  .eq('id', inspectionId)
+  .eq('id', conflict.inspection_id)
   .single();
 
-const serverTimestamp = serverRecord?.updated_at || new Date().toISOString();
-
-await saveInspectionOffline({
-  ...inspection,
-  synced_at: serverTimestamp,   // Use server's updated_at as synced_at
-  updated_at: serverTimestamp,  // Align to prevent drift
-  inspector: inspectorProfile || { first_name: null, last_name: null, avatar_url: null },
-});
+if (serverRecord) {
+  // Import and use the offline storage to align local timestamps
+  const localInspection = await getInspectionFromOffline(conflict.inspection_id);
+  if (localInspection) {
+    await saveInspectionOffline({
+      ...localInspection,
+      updated_at: serverRecord.updated_at,
+      synced_at: serverRecord.updated_at, // Align to prevent re-sync
+    });
+  }
+}
 ```
 
-This adds 1 small SELECT per synced item but eliminates the infinite re-sync loop.
+Wait -- this introduces a dependency on offline storage functions in the hook, which complicates things. The cleanest fix is actually two-pronged:
 
-### Fix 2: Stale Upload Warning (5-minute threshold)
+**Prong 1**: In the `useConflicts` hook, when remote wins, update the server's `synced_at` to match `updated_at`. Yes, this bumps `updated_at` via the trigger, BUT we immediately read back the new `updated_at` and do a second `synced_at` update. This is the same race condition as before. 
 
-Add a stale upload detector in `useAutoSync.tsx` that warns users when items haven't synced for 5+ minutes while online.
+**Cleanest approach**: Update `synced_at` on the server using the server's OWN `updated_at` value in a single statement, then let the v2.5.8 alignment handle the rest on the next dashboard load.
 
-### Fix 3: "Pending Uploads" Chip in Dashboard Header
+Actually, the simplest and most robust fix is:
 
-Add an amber badge next to the SyncPulse showing the count of pending items.
+1. In `useConflicts`, when remote wins, set `synced_at = NOW()` on the server. The trigger bumps `updated_at = NOW()` at the same instant, so they're perfectly aligned (same transaction, same `NOW()`).
+2. Mark the conflict resolved.
 
-### Fix 4: BUILD_TIMESTAMP Audit Logging
+### 2. Also handle local IndexedDB alignment in the conflict resolver
 
-Log `APP_VERSION` and `BUILD_TIMESTAMP` after successful sync for production diagnostics.
+After resolving the conflict on the server, invalidate the inspections query so the dashboard re-fetches the aligned timestamps and stores them locally.
 
-### Fix 5: Version Bump to v2.5.8
+### 3. Clean up the existing stale conflict
 
----
+The conflict `c1646f09` is now over 24 hours old (created Feb 17 16:35, current date Feb 18). The 24-hour stale cleanup in the useEffect should catch it on the next Dashboard load. But the fix ensures no NEW conflicts form afterward.
+
+## Technical Changes
+
+### File: `src/hooks/useConflicts.tsx`
+
+**Change 1**: When remote wins in `autoResolveConflicts`, align `synced_at` on the server before marking resolved:
+
+```typescript
+if (useLocal) {
+  // Apply local version (existing logic)
+  // ...
+} else {
+  // Remote wins: align synced_at = NOW() on server
+  // NOW() in the same transaction as the trigger means updated_at and synced_at align perfectly
+  await supabase
+    .from('inspections')
+    .update({ synced_at: new Date().toISOString() })
+    .eq('id', conflict.inspection_id);
+}
+
+// Mark conflict as resolved
+await supabase
+  .from('sync_conflicts')
+  .update({ resolved: true })
+  .eq('id', conflict.id);
+```
+
+**Change 2**: After resolving conflicts, invalidate the inspections-related queries so dashboards and forms re-fetch aligned data:
+
+```typescript
+onSuccess: () => {
+  queryClient.invalidateQueries({ queryKey: ['sync-conflicts'] });
+  queryClient.invalidateQueries({ queryKey: ['inspections'] });
+},
+```
+
+**Change 3**: Reduce the stale cleanup threshold from 24 hours to 1 hour. Conflicts that sit unresolved for over an hour are almost certainly stale -- the auto-resolver runs every 60 seconds when the Dashboard is open.
 
 ## Files Modified
 
 | File | Change |
 |------|--------|
-| `src/lib/atomic-sync-manager.ts` | Post-sync server timestamp alignment for inspections, trainings, and daily assessments |
-| `src/hooks/useAutoSync.tsx` | Stale upload warning (5-min threshold), BUILD_TIMESTAMP logging, sync progress toast |
-| `src/pages/Dashboard.tsx` | "Pending Uploads" amber chip in header |
-| `vite.config.ts` | Bump to v2.5.8 with changelog |
+| `src/hooks/useConflicts.tsx` | Align `synced_at` when remote wins; invalidate inspection queries on resolve; reduce stale threshold to 1 hour |
 
 ## What Does NOT Change
 
-- Database trigger (`update_updated_at_column`) -- the fix is client-side, no migration needed
-- Transaction manager logic
-- Service worker sync (`sw-sync.js`)
+- Atomic sync manager conflict detection logic
+- Transaction manager
+- Service worker sync
 - Photo sync pipeline
-- RLS policies
-- Soft-delete/retention system
+- CompletionLockDialog or form pages
+- Database triggers or RLS policies
 
-## Performance Impact
+## Why This Prevents Future Occurrences
 
-| Metric | Before | After |
-|--------|--------|-------|
-| Redundant re-syncs per item | Infinite (every cycle) | 0 |
-| Extra SELECT per sync | 0 | 1 small query per item |
-| Bandwidth waste | Re-uploads entire inspection every 30-60s | Zero after first successful sync |
-| "Pending" count accuracy | Inflated by ghost re-syncs | Accurate |
+The conflict loop requires ALL of these conditions:
+1. `synced_at < updated_at` locally (looks unsynced)
+2. Remote `updated_at` is newer than local (conflict detected)
+3. Conflict resolver doesn't fix the timestamp gap
 
-## Security
-
-- No new API keys or secrets
-- The additional SELECT uses existing RLS policies
-- No changes to authentication flow
+After this fix, condition 3 is eliminated: the resolver aligns `synced_at` when remote wins. Combined with the v2.5.8 post-transaction alignment for normal syncs, both conflict and non-conflict sync paths now properly align timestamps.
