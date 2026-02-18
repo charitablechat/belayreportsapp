@@ -1,44 +1,54 @@
 
 
-# Fix: Re-Align Drifted Timestamps for Trainings and Daily Assessments
+# Fix: Ensure align_synced_at RPC Calls Execute in Production
 
-## Problem
+## Current Status
 
-The previous migration successfully fixed inspections (0 drifted), but **all 9 synced trainings** and **3 of 4 synced daily assessments** still have `updated_at > synced_at` on the server. This causes the same perpetual re-sync loop that plagued the Druidia inspection -- but across every training and most daily assessments.
+The `align_synced_at` RPC code exists in `atomic-sync-manager.ts` (lines 443, 984, 1440 for inspections, trainings, and daily assessments respectively), but the **currently running build** does not include it. Evidence:
 
-**Why the first fix missed them:** The migration ran the alignment SQL, but the auto-sync cycle (running on the old client build without `align_synced_at` RPC calls) re-synced these records immediately after, re-introducing the drift. The new trigger was active, but the sync transaction updates data fields alongside `synced_at`, so the trigger correctly bumps `updated_at`. Without the post-sync `align_synced_at` call (which the old build lacked), the drift persists.
+- Zero `align_synced_at` network requests observed
+- Zero "align" console log entries
+- Sync is still using direct PATCH requests to set `synced_at` independently from `updated_at`
 
-## Fix
+The auto-sync cycle on the old build re-introduced drift for all 9 trainings and 3 daily assessments after our manual SQL alignment.
 
-### Database Migration
+## What Needs to Happen
 
-A single SQL statement to re-align all drifted records:
+### 1. No code changes required
 
-```sql
--- Re-align trainings (9 records, all drifted)
-UPDATE trainings 
-SET synced_at = updated_at 
-WHERE synced_at IS NOT NULL 
-  AND deleted_at IS NULL 
-  AND updated_at > synced_at;
+The `align_synced_at` RPC calls are already correctly implemented in `atomic-sync-manager.ts` at three locations. Once the current build finishes deploying, they will start executing.
 
--- Re-align daily assessments (3 records drifted)
-UPDATE daily_assessments 
-SET synced_at = updated_at 
-WHERE synced_at IS NOT NULL 
-  AND deleted_at IS NULL 
-  AND updated_at > synced_at;
+### 2. Add a console log to confirm RPC execution (optional but recommended)
+
+Currently the `align_synced_at` calls have no logging on success. Adding a brief log line after each RPC call would make future verification trivial without needing to inspect network requests.
+
+**File: `src/lib/atomic-sync-manager.ts`**
+
+After line 447 (inspections), after line 988 (trainings), and after line 1444 (daily assessments), add:
+```typescript
+console.log('[Atomic Sync] align_synced_at result:', inspectionId, serverTimestamp);
 ```
 
-The updated trigger (already deployed) will preserve `updated_at` during this operation since only `synced_at` is changing. No drift will be re-introduced.
+### 3. One-time server re-alignment after build deploys
 
-### No Client-Side Changes Needed
+Once the new build is live and confirmed (via the new console log), run the alignment SQL one final time to clean up the drift re-introduced by the old build:
 
-The `align_synced_at` RPC calls are already in `atomic-sync-manager.ts` for all three report types (inspections at line 443, trainings at line 984, daily assessments at the equivalent location). Once the current build deploys, future syncs will self-align. This migration is a one-time cleanup for records that drifted before the client code was deployed.
+```sql
+UPDATE trainings SET synced_at = updated_at 
+WHERE synced_at IS NOT NULL AND deleted_at IS NULL AND updated_at > synced_at;
 
-## Impact
+UPDATE daily_assessments SET synced_at = updated_at 
+WHERE synced_at IS NOT NULL AND deleted_at IS NULL AND updated_at > synced_at;
+```
 
-- **Scope:** 12 records total (9 trainings + 3 daily assessments)
-- **Risk:** Zero. Sets `synced_at = updated_at` on already-synced records. No data modification.
-- **Result:** Eliminates all remaining perpetual re-sync loops across the entire database.
+After this, the combination of:
+- Smart triggers (already deployed) preventing `updated_at` bumps on metadata-only changes
+- `align_synced_at` RPC (deploying with current build) ensuring `synced_at = updated_at` post-sync
+- `Date` object comparison (already deployed) in `offline-storage.ts` as a safety net
+
+...will permanently eliminate re-sync loops for all report types.
+
+## Risk
+
+- Very low. Adding console logs has zero functional impact. The SQL re-alignment is the same safe operation we ran before.
 
