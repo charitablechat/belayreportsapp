@@ -435,19 +435,16 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
     // 6. Get cached inspector profile to attach to offline data
     const inspectorProfile = await getCachedProfile(user.id);
     
-    // CRITICAL FIX (v2.5.8): Fetch server's updated_at to align local timestamps
-    // The update_updated_at_column trigger bumps updated_at on every UPDATE,
-    // including the synced_at step. If we use a client timestamp, the server's
-    // updated_at will be ~2s ahead, causing the record to appear "unsynced"
-    // when the dashboard reloads from the server. This creates an infinite re-sync loop.
+    // POST-SYNC ALIGNMENT: Call align_synced_at RPC to set synced_at = updated_at on server
+    // The updated trigger now preserves updated_at for metadata-only changes,
+    // and this RPC ensures synced_at >= updated_at, eliminating the re-sync race condition.
     let serverTimestamp: string;
     try {
-      const { data: serverRecord } = await supabase
-        .from('inspections')
-        .select('updated_at')
-        .eq('id', inspectionId)
-        .single();
-      serverTimestamp = serverRecord?.updated_at || new Date().toISOString();
+      const { data: aligned } = await supabase.rpc('align_synced_at', {
+        p_table_name: 'inspections',
+        p_record_id: inspectionId,
+      });
+      serverTimestamp = (aligned as any)?.updated_at || new Date().toISOString();
     } catch {
       serverTimestamp = new Date().toISOString();
     }
@@ -981,16 +978,14 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
     // 6. Get cached inspector profile to attach to offline data
     const inspectorProfile = await getCachedProfile(user.id);
     
-    // CRITICAL FIX (v2.5.8): Fetch server's updated_at to align local timestamps
-    // Prevents infinite re-sync loop caused by update_updated_at_column trigger drift
+    // POST-SYNC ALIGNMENT: Call align_synced_at RPC to set synced_at = updated_at on server
     let serverTimestamp: string;
     try {
-      const { data: serverRecord } = await supabase
-        .from('trainings')
-        .select('updated_at')
-        .eq('id', trainingId)
-        .single();
-      serverTimestamp = serverRecord?.updated_at || new Date().toISOString();
+      const { data: aligned } = await supabase.rpc('align_synced_at', {
+        p_table_name: 'trainings',
+        p_record_id: trainingId,
+      });
+      serverTimestamp = (aligned as any)?.updated_at || new Date().toISOString();
     } catch {
       serverTimestamp = new Date().toISOString();
     }
@@ -1439,16 +1434,14 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
     // 6. Get cached inspector profile to attach to offline data
     const inspectorProfile = await getCachedProfile(user.id);
     
-    // CRITICAL FIX (v2.5.8): Fetch server's updated_at to align local timestamps
-    // Prevents infinite re-sync loop caused by update_updated_at_column trigger drift
+    // POST-SYNC ALIGNMENT: Call align_synced_at RPC to set synced_at = updated_at on server
     let serverTimestamp: string;
     try {
-      const { data: serverRecord } = await supabase
-        .from('daily_assessments')
-        .select('updated_at')
-        .eq('id', assessmentId)
-        .single();
-      serverTimestamp = serverRecord?.updated_at || new Date().toISOString();
+      const { data: aligned } = await supabase.rpc('align_synced_at', {
+        p_table_name: 'daily_assessments',
+        p_record_id: assessmentId,
+      });
+      serverTimestamp = (aligned as any)?.updated_at || new Date().toISOString();
     } catch {
       serverTimestamp = new Date().toISOString();
     }
