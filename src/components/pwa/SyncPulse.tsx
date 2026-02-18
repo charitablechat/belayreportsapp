@@ -130,6 +130,15 @@ export const SyncPulse = ({ className }: { className?: string }) => {
               <span className="text-green-400">{formatLastSync(lastSyncTime)}</span>
             </div>
 
+            {/* Last aligned */}
+            <div className="flex items-center justify-between text-green-300/80">
+              <span>LAST_ALIGNED</span>
+              <span className="text-green-400">
+                {lastSyncTime ? formatLastSync(lastSyncTime) : '—'}
+                {isSyncing && <span className="inline-block w-1.5 h-3 ml-1 bg-green-400 animate-[blink-cursor_1s_step-end_infinite]" />}
+              </span>
+            </div>
+
             {/* Pending reports */}
             {unsyncedCount > 0 && (
               <div className="space-y-1.5 border-t border-green-900/40 pt-2">

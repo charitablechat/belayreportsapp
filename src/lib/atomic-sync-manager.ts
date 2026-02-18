@@ -445,7 +445,12 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
         p_record_id: inspectionId,
       });
       serverTimestamp = (aligned as any)?.updated_at || new Date().toISOString();
-      console.log('[Atomic Sync] align_synced_at result:', inspectionId, serverTimestamp);
+      console.log(
+        '%c[SYNC_TERMINAL] align_synced_at CONFIRMED %c%s',
+        'color: #4ade80; font-family: monospace; font-weight: bold',
+        'color: #86efac; font-family: monospace',
+        `| table=inspections | id=${inspectionId.substring(0,8)}... | ts=${serverTimestamp}`
+      );
     } catch {
       serverTimestamp = new Date().toISOString();
     }
@@ -987,7 +992,12 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
         p_record_id: trainingId,
       });
       serverTimestamp = (aligned as any)?.updated_at || new Date().toISOString();
-      console.log('[Atomic Sync] align_synced_at result:', trainingId, serverTimestamp);
+      console.log(
+        '%c[SYNC_TERMINAL] align_synced_at CONFIRMED %c%s',
+        'color: #4ade80; font-family: monospace; font-weight: bold',
+        'color: #86efac; font-family: monospace',
+        `| table=trainings | id=${trainingId.substring(0,8)}... | ts=${serverTimestamp}`
+      );
     } catch {
       serverTimestamp = new Date().toISOString();
     }
@@ -1444,7 +1454,12 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
         p_record_id: assessmentId,
       });
       serverTimestamp = (aligned as any)?.updated_at || new Date().toISOString();
-      console.log('[Atomic Sync] align_synced_at result:', assessmentId, serverTimestamp);
+      console.log(
+        '%c[SYNC_TERMINAL] align_synced_at CONFIRMED %c%s',
+        'color: #4ade80; font-family: monospace; font-weight: bold',
+        'color: #86efac; font-family: monospace',
+        `| table=daily_assessments | id=${assessmentId.substring(0,8)}... | ts=${serverTimestamp}`
+      );
     } catch {
       serverTimestamp = new Date().toISOString();
     }
