@@ -54,6 +54,7 @@ import { Check } from "lucide-react";
 import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
 import { UnsavedChangesDialog } from "@/components/UnsavedChangesDialog";
 import { useEmergencySave } from "@/hooks/useEmergencySave";
+import { saveReportSnapshot } from "@/lib/local-backup-ledger";
 import { useSaveShortcut } from "@/hooks/useKeyboardShortcuts";
 import { useReportEditPermission } from "@/hooks/useReportEditPermission";
 import { CompletionLockDialog } from "@/components/CompletionLockDialog";
@@ -219,6 +220,13 @@ export default function InspectionForm() {
     saveDebounceTimerRef,
     performSaveRef,
     formName: 'InspectionForm',
+    onEmergencySnapshot: () => {
+      if (inspection && id) {
+        saveReportSnapshot('inspection', id, inspection, {
+          systems, ziplines, equipment, standards, summary: [summary],
+        }, !!inspection.synced_at);
+      }
+    },
   });
 
   const safeGoBack = useCallback(() => {
@@ -1221,6 +1229,15 @@ export default function InspectionForm() {
         ]);
         localSaveSucceeded = true;
         console.log('[InspectionForm Save] Offline storage completed');
+
+        // Layer 1: localStorage snapshot backup (survives IndexedDB eviction)
+        try {
+          saveReportSnapshot('inspection', id!, inspectionToSave, {
+            systems, ziplines, equipment, standards, summary: [summary],
+          }, !!inspectionToSave.synced_at);
+        } catch {
+          // Never let snapshot failure block the save
+        }
       } catch (offlineError) {
         console.warn('[InspectionForm Save] Offline storage failed:', offlineError);
       }

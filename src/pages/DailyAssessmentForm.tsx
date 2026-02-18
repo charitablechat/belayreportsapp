@@ -53,6 +53,7 @@ import { CompletionLockDialog } from "@/components/CompletionLockDialog";
 import { Lock } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useEmergencySave } from "@/hooks/useEmergencySave";
+import { saveReportSnapshot } from "@/lib/local-backup-ledger";
 
 export default function DailyAssessmentForm() {
   const { id } = useParams();
@@ -182,6 +183,18 @@ export default function DailyAssessmentForm() {
     saveDebounceTimerRef: autoSaveTimerRef,
     performSaveRef: handleSaveProgressRef as React.MutableRefObject<((silent?: boolean) => Promise<void>) | undefined>,
     formName: 'DailyAssessmentForm',
+    onEmergencySnapshot: () => {
+      if (assessment && id) {
+        saveReportSnapshot('daily_assessment', id, assessment, {
+          beginning_of_day: beginningOfDay,
+          end_of_day: endOfDay,
+          operating_systems: operatingSystems,
+          equipment_checks: equipmentChecks,
+          structure_checks: structureChecks,
+          environment_checks: environmentChecks,
+        }, !!assessment.synced_at);
+      }
+    },
   });
 
   // Auto-retry on network reconnect is now handled by useAutoSync hook
@@ -541,6 +554,17 @@ export default function DailyAssessmentForm() {
           offlineStorage.saveAssessmentDataOffline('environment_checks', id!, environmentChecks),
         ]).then(() => {
           if (import.meta.env.DEV) console.log('[Save] Offline storage completed');
+          // Layer 1: localStorage snapshot backup
+          try {
+            saveReportSnapshot('daily_assessment', id!, assessment, {
+              beginning_of_day: beginningOfDay,
+              end_of_day: endOfDay,
+              operating_systems: operatingSystems,
+              equipment_checks: equipmentChecks,
+              structure_checks: structureChecks,
+              environment_checks: environmentChecks,
+            }, false);
+          } catch {}
         }).catch((offlineError) => {
           console.warn('[Save] Offline storage failed:', offlineError);
         });

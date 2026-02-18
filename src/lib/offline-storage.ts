@@ -152,6 +152,18 @@ interface InspectionDB extends DBSchema {
     value: any;
     indexes: { 'by-training': string };
   };
+  report_backups: {
+    key: string;
+    value: {
+      id: string;
+      reportType: string;
+      reportId: string;
+      reportKey: string;
+      timestamp: number;
+      data: any;
+    };
+    indexes: { 'by-report': string; 'by-timestamp': number };
+  };
 }
 
 let dbPromise: Promise<IDBPDatabase<InspectionDB>> | null = null;
@@ -369,39 +381,34 @@ export async function getDB() {
     await ensureStorage();
     
     // Wrap the entire DB opening process in a timeout to prevent hanging
-    const openDBWithTimeout = async () => {
-      return openDB<InspectionDB>('rope-works-inspections', 6, {
+    // Apply 5-second timeout to the entire DB opening process
+    // If IndexedDB hangs, we'll reject and the app can proceed with network-only mode
+    // Version 7: Add report_backups store for WAL (Write-Ahead Log)
+    const openDBV7WithTimeout = async () => {
+      return openDB<InspectionDB>('rope-works-inspections', 7, {
         upgrade(db, oldVersion, newVersion, transaction) {
+          // === All existing v6 upgrade logic ===
           let inspectionStore;
           
-          // Create or get the inspections store
           if (!db.objectStoreNames.contains('inspections')) {
-            inspectionStore = db.createObjectStore('inspections', {
-              keyPath: 'id',
-            });
+            inspectionStore = db.createObjectStore('inspections', { keyPath: 'id' });
             inspectionStore.createIndex('by-status', 'status');
             inspectionStore.createIndex('by-synced', 'synced_at');
           } else {
             inspectionStore = transaction.objectStore('inspections');
-            // Add new index if it doesn't exist
             if (!inspectionStore.indexNames.contains('by-synced')) {
               inspectionStore.createIndex('by-synced', 'synced_at');
             }
           }
           
-          // Create operations store if it doesn't exist
           if (!db.objectStoreNames.contains('operations')) {
             db.createObjectStore('operations', { autoIncrement: true });
           }
-          
-          // Create photos store if it doesn't exist
           if (!db.objectStoreNames.contains('photos')) {
             const photoStore = db.createObjectStore('photos', { keyPath: 'id' });
             photoStore.createIndex('by-inspection', 'inspectionId');
             photoStore.createIndex('by-uploaded', 'uploaded');
           }
-          
-          // Create related data stores
           if (!db.objectStoreNames.contains('inspection_systems')) {
             const store = db.createObjectStore('inspection_systems', { keyPath: 'id' });
             store.createIndex('by-inspection', 'inspection_id');
@@ -422,20 +429,14 @@ export async function getDB() {
             const store = db.createObjectStore('inspection_summary', { keyPath: 'id' });
             store.createIndex('by-inspection', 'inspection_id');
           }
-          
-          // Daily assessments store
           if (!db.objectStoreNames.contains('daily_assessments')) {
             const assessmentStore = db.createObjectStore('daily_assessments', { keyPath: 'id' });
             assessmentStore.createIndex('by-status', 'status');
             assessmentStore.createIndex('by-synced', 'synced_at');
           }
-          
-          // Assessment operations store
           if (!db.objectStoreNames.contains('assessment_operations')) {
             db.createObjectStore('assessment_operations', { autoIncrement: true });
           }
-          
-          // Daily assessment related data stores
           if (!db.objectStoreNames.contains('daily_assessment_beginning_of_day')) {
             const store = db.createObjectStore('daily_assessment_beginning_of_day', { keyPath: 'id' });
             store.createIndex('by-assessment', 'assessment_id');
@@ -460,18 +461,14 @@ export async function getDB() {
             const store = db.createObjectStore('daily_assessment_environment_checks', { keyPath: 'id' });
             store.createIndex('by-assessment', 'assessment_id');
           }
-          
-          // Training stores
           if (!db.objectStoreNames.contains('trainings')) {
             const trainingStore = db.createObjectStore('trainings', { keyPath: 'id' });
             trainingStore.createIndex('by-status', 'status');
             trainingStore.createIndex('by-synced', 'synced_at');
           }
-          
           if (!db.objectStoreNames.contains('training_operations')) {
             db.createObjectStore('training_operations', { autoIncrement: true });
           }
-          
           if (!db.objectStoreNames.contains('training_delivery_approaches')) {
             const store = db.createObjectStore('training_delivery_approaches', { keyPath: 'id' });
             store.createIndex('by-training', 'training_id');
@@ -496,14 +493,22 @@ export async function getDB() {
             const store = db.createObjectStore('training_summary', { keyPath: 'id' });
             store.createIndex('by-training', 'training_id');
           }
+
+          // === NEW in v7: report_backups WAL store ===
+          if (!db.objectStoreNames.contains('report_backups')) {
+            const backupStore = db.createObjectStore('report_backups', { keyPath: 'id' });
+            backupStore.createIndex('by-report', 'reportKey');
+            backupStore.createIndex('by-timestamp', 'timestamp');
+            if (import.meta.env.DEV) {
+              console.log('[Offline Storage] Created report_backups store (v7 upgrade)');
+            }
+          }
         },
       });
     };
-    
-    // Apply 5-second timeout to the entire DB opening process
-    // If IndexedDB hangs, we'll reject and the app can proceed with network-only mode
+
     dbPromise = Promise.race([
-      openDBWithTimeout(),
+      openDBV7WithTimeout(),
       new Promise<never>((_, reject) => 
         setTimeout(() => {
           console.error('[Offline Storage] IndexedDB open timed out after 5 seconds');
@@ -1544,5 +1549,110 @@ export async function clearTrainingDataOffline(
     },
     undefined,
     `clearTrainingDataOffline:${type}`
+  );
+}
+
+// ============= WRITE-AHEAD LOG (WAL) BACKUP FUNCTIONS =============
+// Before destructive operations, snapshot current data into report_backups store.
+// Keeps last 3 versions per report for recovery.
+
+const MAX_BACKUPS_PER_REPORT = 3;
+
+/**
+ * Create a WAL backup of a report's current state before destructive operations.
+ */
+export async function createReportBackup(
+  reportType: string,
+  reportId: string,
+  data: any
+): Promise<void> {
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      const reportKey = `${reportType}_${reportId}`;
+      const backupId = `${reportKey}_${Date.now()}`;
+      
+      // Write the new backup
+      await db.put('report_backups', {
+        id: backupId,
+        reportType,
+        reportId,
+        reportKey,
+        timestamp: Date.now(),
+        data,
+      });
+      
+      // Prune old backups (keep last MAX_BACKUPS_PER_REPORT)
+      const tx = db.transaction('report_backups', 'readwrite');
+      const index = tx.store.index('by-report');
+      const allBackups = await index.getAll(reportKey);
+      
+      if (allBackups.length > MAX_BACKUPS_PER_REPORT) {
+        // Sort by timestamp descending, delete the oldest
+        allBackups.sort((a, b) => b.timestamp - a.timestamp);
+        const toDelete = allBackups.slice(MAX_BACKUPS_PER_REPORT);
+        for (const old of toDelete) {
+          await tx.store.delete(old.id);
+        }
+      }
+      
+      await tx.done;
+      
+      if (import.meta.env.DEV) {
+        console.log(`[WAL Backup] Created backup for ${reportType}:`, reportId.substring(0, 8));
+      }
+    },
+    undefined,
+    `createReportBackup:${reportType}`
+  );
+}
+
+/**
+ * Restore the most recent backup for a report.
+ */
+export async function restoreFromBackup(
+  reportType: string,
+  reportId: string
+): Promise<any | null> {
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      const reportKey = `${reportType}_${reportId}`;
+      const index = db.transaction('report_backups').store.index('by-report');
+      const backups = await index.getAll(reportKey);
+      
+      if (backups.length === 0) return null;
+      
+      // Return the most recent backup
+      backups.sort((a, b) => b.timestamp - a.timestamp);
+      return backups[0].data;
+    },
+    null,
+    `restoreFromBackup:${reportType}`
+  );
+}
+
+/**
+ * List all available WAL backups (for recovery dashboard).
+ */
+export async function listAllBackups(): Promise<Array<{
+  id: string;
+  reportType: string;
+  reportId: string;
+  timestamp: number;
+}>> {
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      const allBackups = await db.getAll('report_backups');
+      return allBackups.map(b => ({
+        id: b.id,
+        reportType: b.reportType,
+        reportId: b.reportId,
+        timestamp: b.timestamp,
+      })).sort((a, b) => b.timestamp - a.timestamp);
+    },
+    [],
+    'listAllBackups'
   );
 }

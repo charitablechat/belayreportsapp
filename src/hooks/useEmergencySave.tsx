@@ -9,6 +9,8 @@ interface UseEmergencySaveOptions {
   performSaveRef: React.MutableRefObject<((silent?: boolean) => Promise<void>) | undefined>;
   /** Label for debug logging */
   formName: string;
+  /** Optional callback to trigger localStorage snapshot on emergency save */
+  onEmergencySnapshot?: () => void;
 }
 
 /**
@@ -29,6 +31,7 @@ export function useEmergencySave({
   saveDebounceTimerRef,
   performSaveRef,
   formName,
+  onEmergencySnapshot,
 }: UseEmergencySaveOptions) {
   // Use refs to avoid stale closures in event listeners
   const hasUnsavedRef = useRef(hasUnsavedChanges);
@@ -51,6 +54,13 @@ export function useEmergencySave({
 
       // Fire-and-forget — page is being torn down
       performSaveRef.current?.(true);
+
+      // Also trigger localStorage snapshot as a backup
+      try {
+        onEmergencySnapshot?.();
+      } catch {
+        // Never let snapshot failure block emergency save
+      }
 
       if (import.meta.env.DEV) {
         console.log(`[${formName}] Emergency save triggered (page hide/unload)`);
