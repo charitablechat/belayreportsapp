@@ -1,176 +1,159 @@
 
 
-# Mobile-First Bulletproof Data Persistence: Append-Only Versioning + Sync Shield
+# Audit: Remaining Data Loss Vectors
 
-## Overview
+After a thorough code review across all form pages, sync managers, offline storage, and dashboard logic, I identified **7 remaining gaps** where inputted data can still be lost.
 
-This plan adds three major capabilities on top of the existing zero-data-loss infrastructure:
+---
 
-1. **Append-Only Version History** in IndexedDB -- every save creates a new immutable snapshot instead of overwriting, keeping a recoverable trail of all edits
-2. **Desktop Read-Only Sync Shield** -- server-side and client-side guards that prevent web/desktop sessions from overwriting mobile-origin data
-3. **Retro-Tech Terminal UI** for data integrity status indicators (Matrix Green `#00FF41` on Deep Black `#0D0D0D`) with "Hard-Saved" toasts and a "Sync Shield" toggle
+## Finding 1: Pre-Sync Version Snapshot Missing for Trainings and Daily Assessments
 
-## What Already Exists (No Rework Needed)
+**Risk: HIGH**
 
-The current system already has strong protections that this plan builds on top of, not replaces:
+The `syncInspectionAtomic()` function (line 312-333 of `atomic-sync-manager.ts`) includes both a **pre-sync version snapshot** (`appendVersion`) and a **field-count regression guard** that blocks sync if data drops by more than 50%. However, `syncTrainingAtomic()` and `syncDailyAssessmentAtomic()` have **neither of these safeguards**.
 
-- IndexedDB as primary local store with circuit breaker, empty-array save guards, and temp-ID-only clear restrictions
-- localStorage backup ledger (`local-backup-ledger.ts`) with LRU eviction of synced snapshots
-- WAL backup store (`report_backups`) in IndexedDB v7
-- Emergency save on `visibilitychange`/`pagehide` events
-- Transaction Manager blocklist preventing server deletes on 28 report tables
-- Atomic sync with deferred `synced_at` marking and empty-local-guard
-- Orphan cleanup with threshold guards, rate limiting, and recovery logs
+This means a training or daily assessment with corrupted/empty IndexedDB data can sync to the server and overwrite valid server data with empty child records -- the exact scenario the guards were designed to prevent.
 
-## Phase 1: Append-Only Version History in IndexedDB
+**Fix:** Add the same `appendVersion()` call and `calculateFieldCount`/`getLatestFieldCount` regression check to `syncTrainingAtomic()` (before line 871) and `syncDailyAssessmentAtomic()` (before line 1339) in `atomic-sync-manager.ts`.
 
-### New Object Store: `report_versions` (IndexedDB v8)
+---
 
-Rather than overwriting the single record in `report_backups` on every save, we add a dedicated `report_versions` store that accumulates immutable snapshots.
+## Finding 2: `isInternalUpdateRef` Reset Has No Dependency Array (TrainingForm)
 
-**Schema:**
-```
-report_versions: {
-  key: string (auto-generated UUID)
-  value: {
-    id: string,
-    reportType: 'inspection' | 'training' | 'daily_assessment',
-    reportId: string,
-    versionNumber: number,
-    timestamp: number,
-    device: 'mobile' | 'desktop',
-    parentData: Record<string, any>,
-    childrenData: Record<string, any[]>,
-    trigger: 'auto_save' | 'manual_save' | 'emergency_save' | 'pre_sync',
-    fieldCount: number  // quick integrity check
+**Risk: MEDIUM**
+
+In `TrainingForm.tsx` (line 706-710), the `useEffect` that resets `isInternalUpdateRef.current = false` has **no dependency array**:
+```typescript
+useEffect(() => {
+  if (isInternalUpdateRef.current) {
+    isInternalUpdateRef.current = false;
   }
-  indexes: {
-    'by-report': reportId,
-    'by-timestamp': timestamp,
-    'by-report-version': [reportId, versionNumber]
-  }
-}
+}); // <-- runs on EVERY render
 ```
 
-**Retention policy:** Keep the last 10 versions per report. Pruning happens asynchronously after a new version is saved -- never blocks the save path.
+In `InspectionForm.tsx`, the equivalent effect correctly depends on `[systems, ziplines, equipment, standards, summary]`. The TrainingForm's version runs on every render, meaning it can reset the flag prematurely before the auto-save watcher (which depends on the same state) has a chance to read it. This creates a race condition where a programmatic update (e.g., server data hydration) is incorrectly treated as a user edit, triggering an unnecessary auto-save that can overwrite the loaded data.
 
-**File:** `src/lib/offline-storage.ts`
-- Bump schema to v8
-- Add `report_versions` object store in the upgrade handler
-- New exported functions: `saveReportVersion()`, `getReportVersions()`, `getLatestVersion()`, `restoreFromVersion()`
+**Fix:** Add the correct dependency array to the TrainingForm reset effect:
+```typescript
+useEffect(() => {
+  if (isInternalUpdateRef.current) {
+    isInternalUpdateRef.current = false;
+  }
+}, [deliveryApproaches, operatingSystems, immediateAttention, verifiableItems, systemsInPlace, summary]);
+```
+Verify `DailyAssessmentForm.tsx` has the same pattern.
 
-### Integration Points
+---
 
-**File:** `src/lib/report-version-manager.ts` (NEW)
-- `appendVersion(reportType, reportId, parentData, childData, trigger)` -- creates an immutable version entry
-- `getVersionHistory(reportType, reportId)` -- lists all versions with metadata
-- `restoreVersion(reportType, reportId, versionId)` -- restores a specific version to the active store
-- Auto-increments `versionNumber` per report
-- Calculates `fieldCount` (sum of non-empty fields across parent + children) for quick integrity comparison
+## Finding 3: `handleHeaderUpdate` Writes Directly to Server Without Save Mutex
 
-**Files:** `src/pages/InspectionForm.tsx`, `TrainingForm.tsx`, `DailyAssessmentForm.tsx`
-- After every successful `saveRelatedDataOffline` call, fire `appendVersion()` with trigger `'auto_save'` or `'manual_save'`
-- In `useEmergencySave`, fire with trigger `'emergency_save'`
-- Before sync in `atomic-sync-manager.ts`, fire with trigger `'pre_sync'`
+**Risk: MEDIUM**
 
-## Phase 2: Desktop Sync Shield (One-Way Protection)
+In `InspectionForm.tsx` (line 719-765), `handleHeaderUpdate` performs an immediate server write (`supabase.from("inspections").update(...)`) **outside** the `performSave` function and without checking `anySaveInProgressRef`. If a user changes a header field (organization, location) while an auto-save is in flight, two concurrent writes can race:
 
-### Client-Side: Device Origin Tracking
+1. Auto-save writes the full inspection object with the old header value
+2. `handleHeaderUpdate` writes just the single header field
 
-**File:** `src/lib/offline-storage.ts`
-- When saving inspection/training/assessment offline, stamp a `last_device_type: 'mobile' | 'desktop'` field on the record using `isMobile()`
+The auto-save's `updated_at` may be older than `handleHeaderUpdate`'s, causing the server to end up with mixed state. More critically, the `saveInspectionOffline` call inside `handleHeaderUpdate` (line 730) saves the inspection object **without the latest child data state**, meaning the next auto-save may read a stale inspection from IndexedDB.
 
-**Files:** `src/pages/InspectionForm.tsx`, `TrainingForm.tsx`, `DailyAssessmentForm.tsx`
-- On form load, check if the report's `last_device_type === 'mobile'` AND current device is desktop
-- If so, show a **Sync Shield Banner** (Retro-Tech Terminal style) warning that edits from desktop are restricted
-- User can override with an explicit "I understand -- enable editing" confirmation
-- State tracked via `desktopEditOverride` ref (not persisted -- resets on reload for safety)
+**Fix:** Route header updates through the same debounced save path instead of bypassing it. Or at minimum, add `anySaveInProgressRef` check and await any in-flight save before proceeding.
 
-### Server-Side: Empty-Payload Rejection in Atomic Sync
+---
 
-**File:** `src/lib/atomic-sync-manager.ts`
-- Already has `empty_local_guard` that blocks sync when local is empty but server has data
-- Add a new **field-count regression guard**: before syncing, compare `fieldCount` of local data vs. the last known `fieldCount` from the version history. If local field count dropped by more than 50%, block the sync and log a warning
-- This catches the scenario where a desktop session loaded stale/partial data and attempts to push it to the server
+## Finding 4: Server-Deleted Records Delete Local Data Without Backup
 
-### Sync Manager Enhancement
+**Risk: MEDIUM**
 
-**File:** `src/lib/atomic-sync-manager.ts`
-- In `syncInspectionAtomic()`, before building transaction steps, call `appendVersion()` with trigger `'pre_sync'` to snapshot the pre-sync state
-- This means even if the sync overwrites something, the pre-sync version is recoverable from `report_versions`
+In `atomic-sync-manager.ts`, when a remote record is detected as soft-deleted (lines 227-244, 840-856, 1308-1324), the local IndexedDB copy is immediately deleted via `deleteOfflineInspection`/`deleteOfflineTraining`/`deleteOfflineDailyAssessment` **without first creating a backup or version snapshot**.
 
-## Phase 3: Retro-Tech Terminal UI Components
+If a super admin accidentally soft-deletes a report, the user's local data is silently destroyed during the next sync cycle. The localStorage backup ledger might have a snapshot, but it is not guaranteed to be current (it only updates on saves, not on sync).
 
-### Data Integrity Badge Component
+**Fix:** Before calling `deleteOffline*` in these blocks, call `appendVersion()` with trigger `'pre_delete'` and `saveReportSnapshot()` to ensure the data is recoverable from both version history and the localStorage ledger.
 
-**File:** `src/components/ui/data-integrity-badge.tsx` (NEW)
+---
 
-A compact status indicator using the Matrix Green aesthetic:
-- **HARD-SAVED**: Green glow -- data committed to IndexedDB + localStorage backup
-- **PENDING**: Amber pulse -- data in React state, debounce timer active
-- **SYNCED**: Cyan -- data confirmed on server
-- **SHIELD ACTIVE**: Green border -- desktop sync protection enabled
+## Finding 5: Orphan Cleanup Deletes Child Data Without Cleanup
 
-Style: `bg-[#0D0D0D] text-[#00FF41] font-mono text-xs border border-[#00FF41]/30 shadow-[0_0_8px_rgba(0,255,65,0.3)]`
+**Risk: LOW-MEDIUM**
 
-### Hard-Saved Toast Notification
+When the Dashboard orphan cleanup removes a local inspection/training/assessment (e.g., line 439: `deleteOfflineInspection(local.id)`), it only deletes the **parent record** from IndexedDB. The child records (systems, equipment, ziplines, etc.) remain orphaned in their respective object stores, consuming storage.
 
-**File:** `src/lib/toast-helpers.ts` (MODIFY)
-- Add a `showHardSavedToast()` function that displays a brief toast with the Retro-Tech Terminal style
-- Shows version number and field count for the saved snapshot
-- Only shown on manual saves (not on every auto-save to avoid noise)
+More importantly, if the parent is later re-fetched from the server (e.g., user goes online), the orphaned child data from IndexedDB will be loaded and could conflict with fresh server data, causing duplicate or stale rows.
 
-### Sync Shield Toggle
+**Fix:** When deleting an orphaned parent, also clear its child stores. Add calls like:
+```typescript
+await clearRelatedDataOffline('systems', local.id);
+await clearRelatedDataOffline('ziplines', local.id);
+// etc.
+```
+Note: `clearRelatedDataOffline` currently blocks non-temp IDs (safety guard). This guard needs a new bypass parameter for orphan cleanup specifically.
 
-**Files:** `src/pages/InspectionForm.tsx`, `TrainingForm.tsx`, `DailyAssessmentForm.tsx`
-- Add a small toggle icon in the form header (shield icon from Lucide)
-- When active (desktop viewing mobile-origin report), shows a green-bordered shield with "SYNC SHIELD" label
-- Clicking the shield shows version history in a slide-out panel
+---
 
-### Version History Panel
+## Finding 6: `withTimeout` Fallback Silently Returns Empty Data
 
-**File:** `src/components/admin/VersionHistoryPanel.tsx` (NEW)
-- Slide-out panel showing all immutable versions for the current report
-- Each entry shows: version number, timestamp, device type, trigger type, field count
-- "Restore" button per version -- writes that version's data back to the active IndexedDB stores
-- Retro-Tech Terminal aesthetic: monospace, scanline overlay, green-on-black
+**Risk: LOW-MEDIUM**
 
-### Recovery Dashboard Extension
+The `withTimeout` helper in `offline-storage.ts` (line 257-262) resolves with `fallbackValue` on timeout instead of rejecting. This means when IndexedDB is slow (common on mobile under memory pressure), operations like `getOfflineInspection` silently return `null` and `getRelatedDataOffline` silently returns `[]`.
 
-**File:** `src/components/admin/DataRecoveryTool.tsx` (MODIFY)
-- Add a "Version History" tab alongside the existing "Local Backups" tab
-- Lists all reports with version counts
-- Drill into any report to see full version timeline
+In `InspectionForm.loadInspection()`, if IndexedDB times out, `offlineSystems` etc. are `[]`. Then if the server also returns empty (e.g., RLS issue), the form loads with no data. The non-regression guard (Vector 2) only protects server-empty-vs-local-has-data, but if **both** are empty due to timeout, data appears lost.
 
-## Files to Create/Modify Summary
+**Fix:** Track whether the offline load actually completed vs. timed out. If it timed out, log a warning and potentially retry once before proceeding with server-only data. At minimum, never run the "server empty, local empty" path if the offline load timed out.
 
-| File | Action | Purpose |
-|------|--------|---------|
-| `src/lib/report-version-manager.ts` | CREATE | Append-only version history logic |
-| `src/components/ui/data-integrity-badge.tsx` | CREATE | Retro-Tech Terminal status badge |
-| `src/components/admin/VersionHistoryPanel.tsx` | CREATE | Version history slide-out panel |
-| `src/lib/offline-storage.ts` | MODIFY | v8 schema with report_versions store, device stamp |
-| `src/lib/atomic-sync-manager.ts` | MODIFY | Pre-sync version snapshot, field-count regression guard |
-| `src/pages/InspectionForm.tsx` | MODIFY | Version saves, sync shield banner, badge integration |
-| `src/pages/TrainingForm.tsx` | MODIFY | Same as InspectionForm |
-| `src/pages/DailyAssessmentForm.tsx` | MODIFY | Same as InspectionForm |
-| `src/lib/toast-helpers.ts` | MODIFY | Hard-saved toast with terminal style |
-| `src/components/admin/DataRecoveryTool.tsx` | MODIFY | Version History tab |
-| `src/hooks/useEmergencySave.tsx` | MODIFY | Pass version trigger type |
-| `src/index.css` | MODIFY | Add retro-terminal utility classes |
+---
+
+## Finding 7: `deleteOfflineInspection` Has No WAL Backup Guard
+
+**Risk: LOW**
+
+The plan called for `report_backups` (WAL) to snapshot data before any destructive IndexedDB operation. However, `deleteOfflineInspection`, `deleteOfflineTraining`, and `deleteOfflineDailyAssessment` (lines 618-631, 1081-1090, 1356-1365 of `offline-storage.ts`) perform a raw `db.delete()` without any pre-delete backup. The `createReportBackup` function exists but is never called before these deletes.
+
+**Fix:** Before each `db.delete()` call, read the current record and write it to the `report_backups` store. This provides a last-resort recovery path within IndexedDB itself.
+
+---
+
+## Summary Table
+
+```text
++----+------------------------------------------------+--------+-------------------------------+
+| #  | Vector                                         | Risk   | Fix Location                  |
++----+------------------------------------------------+--------+-------------------------------+
+| 1  | No pre-sync snapshot/regression guard for       | HIGH   | atomic-sync-manager.ts        |
+|    | trainings and daily assessments                 |        | (syncTrainingAtomic,          |
+|    |                                                 |        |  syncDailyAssessmentAtomic)   |
++----+------------------------------------------------+--------+-------------------------------+
+| 2  | isInternalUpdateRef reset runs every render      | MEDIUM | TrainingForm.tsx (line 706)   |
+|    | (missing dependency array)                       |        | DailyAssessmentForm.tsx       |
++----+------------------------------------------------+--------+-------------------------------+
+| 3  | handleHeaderUpdate bypasses save mutex            | MEDIUM | InspectionForm.tsx (line 719) |
++----+------------------------------------------------+--------+-------------------------------+
+| 4  | Server-deleted records destroy local data         | MEDIUM | atomic-sync-manager.ts        |
+|    | without backup                                   |        | (3 locations)                 |
++----+------------------------------------------------+--------+-------------------------------+
+| 5  | Orphan cleanup leaves child data orphaned         | LOW-   | Dashboard.tsx (3 cleanup      |
+|    |                                                  | MED    | blocks)                       |
++----+------------------------------------------------+--------+-------------------------------+
+| 6  | IndexedDB timeout silently returns empty data     | LOW-   | InspectionForm.tsx,           |
+|    |                                                  | MED    | offline-storage.ts            |
++----+------------------------------------------------+--------+-------------------------------+
+| 7  | deleteOffline* has no WAL backup                  | LOW    | offline-storage.ts            |
++----+------------------------------------------------+--------+-------------------------------+
+```
+
+## Files to Modify
+
+| File | Changes |
+|------|---------|
+| `src/lib/atomic-sync-manager.ts` | Add pre-sync snapshot + regression guard to training and assessment sync; add pre-delete backup before local cleanup of server-deleted records |
+| `src/pages/TrainingForm.tsx` | Fix `isInternalUpdateRef` reset dependency array |
+| `src/pages/DailyAssessmentForm.tsx` | Verify/fix same dependency array issue |
+| `src/pages/InspectionForm.tsx` | Add mutex check to `handleHeaderUpdate` |
+| `src/pages/Dashboard.tsx` | Add child data cleanup to orphan removal blocks; add `clearRelatedDataOffline` bypass for non-temp orphans |
+| `src/lib/offline-storage.ts` | Add WAL backup before `deleteOffline*` calls; add timeout-aware flag to `withTimeout`; add orphan-cleanup bypass to `clearRelatedDataOffline` |
 
 ## Security
 
-- No API keys or database credentials stored in frontend code
-- All version data stays in client-side IndexedDB/localStorage only
-- Desktop sync shield is a UI-level guard (soft lock with user override), not a security boundary
-- Server-side RLS policies remain unchanged -- the field-count regression guard is an additional client-side safety net
-- Console logs use truncated IDs (first 8 chars) only
-
-## Risk Assessment
-
-- **IndexedDB v8 upgrade**: Additive only (new store). Existing v7 data is fully preserved.
-- **Version storage growth**: Capped at 10 versions per report. A typical version is 5-15KB, so 100 reports x 10 versions = ~10MB maximum, well within IndexedDB quotas.
-- **Performance**: Version writes are fire-and-forget after the primary save completes. Pruning is async. Zero impact on save latency.
-- **Backward compatibility**: Reports without version history simply show "No versions available" in the panel.
+- No API keys, secrets, or credentials are involved in any of these changes
+- All fixes operate on client-side storage (IndexedDB, localStorage) and React state
+- No new server-side calls or database schema changes required
 
