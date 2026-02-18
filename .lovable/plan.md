@@ -1,137 +1,138 @@
 
+# Fix Sync Pipeline: Eliminate Perpetual Re-Sync Race Condition (v2.5.8)
 
-# Refine Completion Lock: Browse Freely, Block Only Edits
+## Root Cause Identified
 
-## Problem
+The **Druidia inspection** (`2cf180fd`) IS syncing to the server -- but it gets re-flagged as "unsynced" every cycle due to a **timestamp race condition** between the client and a database trigger.
 
-The current "deny-list" approach intercepts **every click and pointer event** on the entire form container. This means:
-- Tapping to scroll on mobile triggers the lock dialog
-- Expanding/collapsing accordion sections triggers the lock dialog
-- Selecting text to copy triggers the lock dialog
-- Clicking anywhere that isn't explicitly marked `data-lock-exempt` is blocked
+### The Race
 
-Users cannot freely browse a completed report without constant interruptions.
+1. Sync transaction step 7 runs: `UPDATE inspections SET synced_at = '03:46:47'` (client timestamp)
+2. The `update_updated_at_column` **database trigger** fires automatically, setting `updated_at = NOW()` on the server, which becomes `03:46:49` (server clock, ~2s later)
+3. The client saves locally with `synced_at = updated_at = '03:46:47'` (the client-generated timestamp)
+4. On the next sync cycle, the client reads from IndexedDB: `updated_at (03:46:47) > synced_at (03:46:47)` is false, so that's fine locally
+5. **BUT** when the dashboard reloads from the server, it pulls `updated_at = 03:46:49` (the trigger-bumped value) and saves it to IndexedDB
+6. Now IndexedDB has `updated_at = 03:46:49` but `synced_at = 03:46:47` -- the record looks "unsynced" again
+7. The next sync cycle re-syncs the same unchanged data, the trigger bumps `updated_at` again, and the loop continues forever
 
-## Solution: Switch from Deny-List to Allow-List (Target Editable Elements Only)
+This explains why the inspection appears to not persist -- it **does** persist, but it keeps re-syncing infinitely, consuming bandwidth and giving false "pending" counts.
 
-Instead of blocking everything and exempting navigation, we **allow everything** and only intercept clicks on **editable elements** (inputs, textareas, selects, dropdowns, checkboxes, switches, buttons that trigger edits).
+### Secondary Finding: Dashboard Query Timeouts
 
-### UX Rationale
+The console shows 3x `[Dashboard] Network query timed out after 15000 ms` warnings. These are from the `withNetworkTimeout` wrapper racing against the Supabase queries. On slower connections, the dashboard data loading takes >15 seconds, causing fallback to cached data. This is a separate performance issue but not the sync bug.
 
-- **Reading is the primary use case** for completed reports -- users review, reference, and audit content far more than they edit it.
-- The lock dialog should be a **speed bump for intentional edits**, not a barrier to viewing.
-- A persistent visual indicator (the green terminal banner) communicates locked status without interrupting flow.
+### Unresolved Sync Conflict
 
-## Technical Changes
+There's also an unresolved sync conflict for `Twin Lakes Family YMCA - Cedar Park` (inspection `f44d0658`) where `local_updated_at` is Feb 13 but `remote_updated_at` is Feb 17. The `useConflicts` hook should auto-resolve this via last-write-wins, but the conflict record persists. This needs investigation but is separate from the main race condition.
 
-### 1. Replace deny-list handler with allow-list handler (all 3 form pages)
+---
 
-**Current behavior** (deny-list -- blocks everything):
+## Fix Strategy
+
+### Fix 1: Exclude `synced_at`-only updates from the `updated_at` trigger (Database Migration)
+
+Modify the `update_updated_at_column()` function to skip bumping `updated_at` when only `synced_at` changed. This is the cleanest server-side fix.
+
+```sql
+CREATE OR REPLACE FUNCTION public.update_updated_at_column()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $function$
+BEGIN
+  -- Skip bumping updated_at if ONLY synced_at changed
+  -- This prevents the sync pipeline from creating a timestamp drift
+  -- that causes records to appear perpetually unsynced
+  IF (TG_TABLE_NAME IN ('inspections', 'trainings', 'daily_assessments')) THEN
+    -- Check if synced_at is the only column that changed
+    IF NEW.synced_at IS DISTINCT FROM OLD.synced_at 
+       AND ROW(NEW.*) IS NOT DISTINCT FROM ROW(OLD.* ) THEN
+      -- synced_at is handled separately, skip updated_at bump
+      RETURN NEW;
+    END IF;
+  END IF;
+  
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$function$
+```
+
+**Problem**: The `ROW()` comparison doesn't work cleanly when `synced_at` itself differs. A simpler approach:
+
+### Fix 1 (Revised): Client-side alignment using server timestamp
+
+After the final `synced_at` update step, read back the server's `updated_at` and use THAT as the local `synced_at` and `updated_at`. This ensures perfect alignment.
+
+In `atomic-sync-manager.ts`, after `executeTransaction` succeeds:
+
 ```typescript
-const handleLockedFieldClick = useCallback((e) => {
-  if (!isCompletionLocked) return;
-  const target = e.target as HTMLElement;
-  const isExempt = target.closest('[role="tab"], [data-nav], [data-lock-exempt], [role="tablist"]');
-  if (isExempt) return;
-  e.preventDefault();
-  e.stopPropagation();
-  setShowCompletionLockDialog(true);
-}, [isCompletionLocked]);
+// After successful transaction, fetch the server's updated_at
+// to align local timestamps and prevent re-sync drift
+const { data: serverRecord } = await supabase
+  .from('inspections')
+  .select('updated_at, synced_at')
+  .eq('id', inspectionId)
+  .single();
+
+const serverTimestamp = serverRecord?.updated_at || new Date().toISOString();
+
+await saveInspectionOffline({
+  ...inspection,
+  synced_at: serverTimestamp,   // Use server's updated_at as synced_at
+  updated_at: serverTimestamp,  // Align to prevent drift
+  inspector: inspectorProfile || { first_name: null, last_name: null, avatar_url: null },
+});
 ```
 
-**New behavior** (allow-list -- only blocks editable elements):
-```typescript
-const handleLockedFieldClick = useCallback((e: React.MouseEvent | React.PointerEvent) => {
-  if (!isCompletionLocked) return;
-  const target = e.target as HTMLElement;
+This adds 1 small SELECT per synced item but eliminates the infinite re-sync loop.
 
-  // Only intercept clicks on editable/interactive form elements
-  const isEditable = target.closest(
-    'input, textarea, select, [contenteditable="true"], ' +
-    '[role="combobox"], [role="listbox"], [role="switch"], [role="checkbox"], [role="radio"], [role="slider"], ' +
-    'button[data-editable], .tiptap, .ProseMirror'
-  );
+### Fix 2: Stale Upload Warning (5-minute threshold)
 
-  if (!isEditable) return; // Allow all non-editable interactions (scroll, expand, copy, navigate)
+Add a stale upload detector in `useAutoSync.tsx` that warns users when items haven't synced for 5+ minutes while online.
 
-  e.preventDefault();
-  e.stopPropagation();
-  setShowCompletionLockDialog(true);
-}, [isCompletionLocked]);
-```
+### Fix 3: "Pending Uploads" Chip in Dashboard Header
 
-This means:
-- Scrolling, tapping, text selection -- all pass through freely
-- Accordion/collapsible sections -- open and close without interruption
-- Tab navigation -- works as before
-- Photo gallery viewing -- unblocked
-- Clicking an input, dropdown, checkbox, rich text editor, or switch -- triggers the lock dialog
+Add an amber badge next to the SyncPulse showing the count of pending items.
 
-### 2. Add visual "locked" styling to editable fields (CSS)
+### Fix 4: BUILD_TIMESTAMP Audit Logging
 
-When a report is completion-locked, editable fields should look visually muted/locked without needing a dialog. Add a CSS class that applies to form containers when locked:
+Log `APP_VERSION` and `BUILD_TIMESTAMP` after successful sync for production diagnostics.
 
-```css
-/* Subtle visual lock indicator on editable fields */
-.completion-locked input,
-.completion-locked textarea,
-.completion-locked select,
-.completion-locked [contenteditable="true"],
-.completion-locked .tiptap,
-.completion-locked [role="combobox"],
-.completion-locked [role="switch"],
-.completion-locked [role="checkbox"] {
-  opacity: 0.7;
-  cursor: not-allowed;
-  pointer-events: auto; /* Keep pointer events so our handler can intercept */
-}
-```
+### Fix 5: Version Bump to v2.5.8
 
-### 3. Add `completion-locked` class to form container (all 3 form pages)
-
-On the `div` that has `onClickCapture`, conditionally add the class:
-
-```tsx
-<div 
-  onClickCapture={handleLockedFieldClick} 
-  onPointerDownCapture={handleLockedFieldClick}
-  className={cn("container mx-auto px-4 py-8", isCompletionLocked && "completion-locked")}
->
-```
-
-### 4. Remove `data-lock-exempt` attributes that are no longer needed
-
-Since the new approach allows everything by default, explicit exemptions on navigation elements are no longer necessary. These can be cleaned up for code hygiene.
+---
 
 ## Files Modified
 
 | File | Change |
 |------|--------|
-| `src/pages/InspectionForm.tsx` | Replace deny-list handler with allow-list; add `completion-locked` class |
-| `src/pages/TrainingForm.tsx` | Same handler replacement and class addition |
-| `src/pages/DailyAssessmentForm.tsx` | Same handler replacement and class addition |
-| `src/index.css` | Add `.completion-locked` field styling |
+| `src/lib/atomic-sync-manager.ts` | Post-sync server timestamp alignment for inspections, trainings, and daily assessments |
+| `src/hooks/useAutoSync.tsx` | Stale upload warning (5-min threshold), BUILD_TIMESTAMP logging, sync progress toast |
+| `src/pages/Dashboard.tsx` | "Pending Uploads" amber chip in header |
+| `vite.config.ts` | Bump to v2.5.8 with changelog |
 
 ## What Does NOT Change
 
-- CompletionLockDialog component (same Retro-Tech Terminal aesthetic)
-- The green terminal banner at the top of locked reports
-- The unlock confirmation flow (dialog appears, user confirms, `completionLockOverridden` = true)
-- Navigation blocking for unsaved changes
-- Photo gallery, drag-and-drop, or soft-delete behavior
-- Report generation or sync logic
+- Database trigger (`update_updated_at_column`) -- the fix is client-side, no migration needed
+- Transaction manager logic
+- Service worker sync (`sw-sync.js`)
+- Photo sync pipeline
+- RLS policies
+- Soft-delete/retention system
 
-## Interaction Matrix
+## Performance Impact
 
-| Action | Before (Deny-List) | After (Allow-List) |
-|--------|--------------------|--------------------|
-| Scroll | Blocked (dialog) | Allowed |
-| Expand accordion | Blocked (dialog) | Allowed |
-| Switch tabs | Allowed | Allowed |
-| Select/copy text | Blocked (dialog) | Allowed |
-| View photos | Blocked (dialog) | Allowed |
-| Click input field | Blocked (dialog) | Blocked (dialog) |
-| Click dropdown | Blocked (dialog) | Blocked (dialog) |
-| Toggle checkbox | Blocked (dialog) | Blocked (dialog) |
-| Click rich text editor | Blocked (dialog) | Blocked (dialog) |
+| Metric | Before | After |
+|--------|--------|-------|
+| Redundant re-syncs per item | Infinite (every cycle) | 0 |
+| Extra SELECT per sync | 0 | 1 small query per item |
+| Bandwidth waste | Re-uploads entire inspection every 30-60s | Zero after first successful sync |
+| "Pending" count accuracy | Inflated by ghost re-syncs | Accurate |
 
+## Security
+
+- No new API keys or secrets
+- The additional SELECT uses existing RLS policies
+- No changes to authentication flow
