@@ -1,54 +1,59 @@
 
+# Fix: Rocky River Ranch (and Similar Reports) Missing `synced_at` on Server
 
-# Fix: Ensure align_synced_at RPC Calls Execute in Production
+## Root Cause
 
-## Current Status
+When inspections are created or saved **while online**, the code saves data directly to the server but **never sets `synced_at` on the server** -- it only sets `synced_at` in local IndexedDB.
 
-The `align_synced_at` RPC code exists in `atomic-sync-manager.ts` (lines 443, 984, 1440 for inspections, trainings, and daily assessments respectively), but the **currently running build** does not include it. Evidence:
+**Affected code paths:**
 
-- Zero `align_synced_at` network requests observed
-- Zero "align" console log entries
-- Sync is still using direct PATCH requests to set `synced_at` independently from `updated_at`
+1. **`NewInspection.tsx` (line 181-189)**: Inserts inspection to server without `synced_at`. Then sets `synced_at` locally only (line 197-200).
+2. **`InspectionForm.tsx` (line 1235-1238)**: Updates inspection on server without `synced_at`. Then sets `synced_at` locally only (line 1405-1410).
+3. **`NewDailyAssessment.tsx` (line 152-156)**: Same pattern -- server insert lacks `synced_at`, local gets it.
+4. **`DailyAssessmentForm.tsx` (line 454-458, 636-646)**: Same pattern.
 
-The auto-sync cycle on the old build re-introduced drift for all 9 trainings and 3 daily assessments after our manual SQL alignment.
+**Note:** `TrainingForm.tsx` (line 476-480) actually DOES include `synced_at` in the server update, so trainings are not affected.
 
-## What Needs to Happen
+**Why the auto-sync doesn't catch it:** The auto-sync only picks up records where local `updated_at > synced_at`. Since the direct save path sets them equal locally, the auto-sync never queues these records, leaving the server's `synced_at` permanently NULL.
 
-### 1. No code changes required
+**Result:** The admin sees `synced_at = NULL` and reports it as "not synced," even though the data is fully present on the server.
 
-The `align_synced_at` RPC calls are already correctly implemented in `atomic-sync-manager.ts` at three locations. Once the current build finishes deploying, they will start executing.
+## Fix
 
-### 2. Add a console log to confirm RPC execution (optional but recommended)
+### 1. `NewInspection.tsx` -- Include `synced_at` in server INSERT
 
-Currently the `align_synced_at` calls have no logging on success. Adding a brief log line after each RPC call would make future verification trivial without needing to inspect network requests.
+Add `synced_at: new Date().toISOString()` to the `.insert()` call on the server (alongside the existing local set).
 
-**File: `src/lib/atomic-sync-manager.ts`**
+### 2. `InspectionForm.tsx` -- Include `synced_at` in server UPDATE
 
-After line 447 (inspections), after line 988 (trainings), and after line 1444 (daily assessments), add:
-```typescript
-console.log('[Atomic Sync] align_synced_at result:', inspectionId, serverTimestamp);
-```
+After the `sanitizeInspection()` call, include `synced_at: new Date().toISOString()` in the `.update()` payload sent to the server.
 
-### 3. One-time server re-alignment after build deploys
+### 3. `NewDailyAssessment.tsx` -- Include `synced_at` in server INSERT
 
-Once the new build is live and confirmed (via the new console log), run the alignment SQL one final time to clean up the drift re-introduced by the old build:
+Add `synced_at` to the data inserted into the `daily_assessments` table.
+
+### 4. `DailyAssessmentForm.tsx` -- Include `synced_at` in server UPDATEs
+
+Add `synced_at` to the update payloads in all three save paths (auto-save, manual save, and submit/complete).
+
+### 5. One-time data fix -- Align existing records
+
+Run SQL to set `synced_at` for all records that exist on the server but have `synced_at = NULL` and are not deleted. These records were successfully synced (data is present) but never had the timestamp set:
 
 ```sql
-UPDATE trainings SET synced_at = updated_at 
-WHERE synced_at IS NOT NULL AND deleted_at IS NULL AND updated_at > synced_at;
+-- Inspections created/saved online without synced_at
+UPDATE inspections
+SET synced_at = updated_at
+WHERE synced_at IS NULL AND deleted_at IS NULL;
 
-UPDATE daily_assessments SET synced_at = updated_at 
-WHERE synced_at IS NOT NULL AND deleted_at IS NULL AND updated_at > synced_at;
+-- Daily assessments created/saved online without synced_at
+UPDATE daily_assessments
+SET synced_at = updated_at
+WHERE synced_at IS NULL AND deleted_at IS NULL;
 ```
 
-After this, the combination of:
-- Smart triggers (already deployed) preventing `updated_at` bumps on metadata-only changes
-- `align_synced_at` RPC (deploying with current build) ensuring `synced_at = updated_at` post-sync
-- `Date` object comparison (already deployed) in `offline-storage.ts` as a safety net
+## Impact
 
-...will permanently eliminate re-sync loops for all report types.
-
-## Risk
-
-- Very low. Adding console logs has zero functional impact. The SQL re-alignment is the same safe operation we ran before.
-
+- **Rocky River Ranch** and **Twin Cedars**: Will immediately show as synced after the SQL fix
+- **All future** online-created/edited inspections and daily assessments: Will correctly set `synced_at` on the server
+- **Risk**: Very low. Any record that exists on the server was either created online or synced -- in both cases, setting `synced_at = updated_at` is correct
