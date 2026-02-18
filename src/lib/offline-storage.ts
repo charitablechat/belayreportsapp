@@ -603,7 +603,11 @@ export async function getUnsyncedInspections(userId?: string) {
     async () => {
       const db = await getDB();
       const allInspections = await db.getAll('inspections');
-      let unsynced = allInspections.filter(i => !i.synced_at || i.updated_at > i.synced_at);
+      let unsynced = allInspections.filter(i => {
+        if (!i.synced_at) return true;
+        if (!i.updated_at) return false;
+        return new Date(i.updated_at).getTime() > new Date(i.synced_at).getTime();
+      });
       
       if (userId) {
         const owned = unsynced.filter(i => i.inspector_id === userId);
@@ -1056,7 +1060,11 @@ export async function getUnsyncedDailyAssessments(userId?: string) {
     async () => {
       const db = await getDB();
       const allAssessments = await db.getAll('daily_assessments');
-      let unsynced = allAssessments.filter(a => !a.synced_at || a.updated_at > a.synced_at);
+      let unsynced = allAssessments.filter(a => {
+        if (!a.synced_at) return true;
+        if (!a.updated_at) return false;
+        return new Date(a.updated_at).getTime() > new Date(a.synced_at).getTime();
+      });
       
       if (userId) {
         const owned = unsynced.filter(a => a.inspector_id === userId);
@@ -1325,7 +1333,11 @@ export async function getUnsyncedTrainings(userId?: string) {
     async () => {
       const db = await getDB();
       const allTrainings = await db.getAll('trainings');
-      let unsynced = allTrainings.filter(t => !t.synced_at || t.updated_at > t.synced_at);
+      let unsynced = allTrainings.filter(t => {
+        if (!t.synced_at) return true;
+        if (!t.updated_at) return false;
+        return new Date(t.updated_at).getTime() > new Date(t.synced_at).getTime();
+      });
       
       if (userId) {
         const owned = unsynced.filter(t => t.inspector_id === userId);
