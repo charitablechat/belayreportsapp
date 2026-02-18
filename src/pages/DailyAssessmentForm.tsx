@@ -330,7 +330,7 @@ export default function DailyAssessmentForm() {
     if (isInternalUpdateRef.current) {
       isInternalUpdateRef.current = false;
     }
-  });
+  }, [beginningOfDay, endOfDay, operatingSystems, equipmentChecks, structureChecks, environmentChecks]);
 
   // Backup auto-save interval (every 10 seconds)
   useEffect(() => {

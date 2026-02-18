@@ -9,7 +9,7 @@
 import { isMobile } from './mobile-detection';
 
 export type ReportType = 'inspection' | 'training' | 'daily_assessment';
-export type VersionTrigger = 'auto_save' | 'manual_save' | 'emergency_save' | 'pre_sync';
+export type VersionTrigger = 'auto_save' | 'manual_save' | 'emergency_save' | 'pre_sync' | 'pre_delete';
 
 export interface ReportVersion {
   id: string;

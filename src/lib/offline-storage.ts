@@ -257,7 +257,10 @@ export function getCircuitBreakerStatus(): { open: boolean; failureCount: number
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, fallbackValue: T): Promise<T> {
   return Promise.race([
     promise,
-    new Promise<T>((resolve) => setTimeout(() => resolve(fallbackValue), timeoutMs))
+    new Promise<T>((resolve) => setTimeout(() => {
+      console.warn(`[Offline Storage] Operation timed out after ${timeoutMs}ms, returning fallback`);
+      resolve(fallbackValue);
+    }, timeoutMs))
   ]);
 }
 
@@ -619,6 +622,17 @@ export async function deleteOfflineInspection(id: string) {
   return withIndexedDBErrorBoundary(
     async () => {
       const db = await getDB();
+      
+      // WAL BACKUP: Snapshot before delete for recovery
+      try {
+        const record = await db.get('inspections', id);
+        if (record) {
+          await createReportBackup('inspection', id, record);
+        }
+      } catch (backupErr) {
+        console.warn('[Offline Storage] Pre-delete backup failed for inspection:', backupErr);
+      }
+      
       await db.delete('inspections', id);
       
       if (import.meta.env.DEV) {
@@ -991,10 +1005,12 @@ export async function getRelatedDataOffline(
 
 export async function clearRelatedDataOffline(
   type: RelatedDataType,
-  inspectionId: string
+  inspectionId: string,
+  options?: { bypassTempGuard?: boolean }
 ) {
   // SAFETY: Only allow clearing data for temp-IDs (used during temp-to-permanent ID migration)
-  if (!inspectionId.startsWith('temp-')) {
+  // Unless explicitly bypassed for orphan cleanup
+  if (!inspectionId.startsWith('temp-') && !options?.bypassTempGuard) {
     console.error(`[SAFETY] Blocked clear ${type} operation on non-temp ID:`, inspectionId);
     return;
   }
@@ -1082,6 +1098,17 @@ export async function deleteOfflineDailyAssessment(id: string) {
   return withIndexedDBErrorBoundary(
     async () => {
       const db = await getDB();
+      
+      // WAL BACKUP: Snapshot before delete for recovery
+      try {
+        const record = await db.get('daily_assessments', id);
+        if (record) {
+          await createReportBackup('daily_assessment', id, record);
+        }
+      } catch (backupErr) {
+        console.warn('[Offline Storage] Pre-delete backup failed for assessment:', backupErr);
+      }
+      
       await db.delete('daily_assessments', id);
     },
     undefined,
@@ -1266,10 +1293,12 @@ export async function getAssessmentDataOffline(
 
 export async function clearAssessmentDataOffline(
   type: AssessmentDataType,
-  assessmentId: string
+  assessmentId: string,
+  options?: { bypassTempGuard?: boolean }
 ) {
   // SAFETY: Only allow clearing data for temp-IDs (used during temp-to-permanent ID migration)
-  if (!assessmentId.startsWith('temp-')) {
+  // Unless explicitly bypassed for orphan cleanup
+  if (!assessmentId.startsWith('temp-') && !options?.bypassTempGuard) {
     console.error(`[SAFETY] Blocked clear ${type} operation on non-temp ID:`, assessmentId);
     return;
   }
@@ -1357,6 +1386,17 @@ export async function deleteOfflineTraining(id: string) {
   return withIndexedDBErrorBoundary(
     async () => {
       const db = await getDB();
+      
+      // WAL BACKUP: Snapshot before delete for recovery
+      try {
+        const record = await db.get('trainings', id);
+        if (record) {
+          await createReportBackup('training', id, record);
+        }
+      } catch (backupErr) {
+        console.warn('[Offline Storage] Pre-delete backup failed for training:', backupErr);
+      }
+      
       await db.delete('trainings', id);
     },
     undefined,
@@ -1545,10 +1585,12 @@ export async function getTrainingDataOffline(
 
 export async function clearTrainingDataOffline(
   type: TrainingDataType,
-  trainingId: string
+  trainingId: string,
+  options?: { bypassTempGuard?: boolean }
 ) {
   // SAFETY: Only allow clearing data for temp-IDs (used during temp-to-permanent ID migration)
-  if (!trainingId.startsWith('temp-')) {
+  // Unless explicitly bypassed for orphan cleanup
+  if (!trainingId.startsWith('temp-') && !options?.bypassTempGuard) {
     console.error(`[SAFETY] Blocked clear ${type} operation on non-temp ID:`, trainingId);
     return;
   }

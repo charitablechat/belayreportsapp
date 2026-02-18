@@ -718,6 +718,23 @@ export default function InspectionForm() {
 
   const handleHeaderUpdate = async (field: string, value: string) => {
     try {
+      // MUTEX: Wait for any in-flight save to complete before proceeding
+      if (anySaveInProgressRef.current) {
+        if (import.meta.env.DEV) {
+          console.log('[InspectionForm] Header update waiting for in-flight save to complete');
+        }
+        // Wait up to 3 seconds for save to finish
+        await new Promise<void>((resolve) => {
+          const check = setInterval(() => {
+            if (!anySaveInProgressRef.current) {
+              clearInterval(check);
+              resolve();
+            }
+          }, 100);
+          setTimeout(() => { clearInterval(check); resolve(); }, 3000);
+        });
+      }
+
       const updatedInspection = {
         ...inspection,
         [field]: value,
@@ -725,42 +742,18 @@ export default function InspectionForm() {
       };
 
       setInspection(updatedInspection);
+      setHasUnsavedChanges(true);
 
-      // Save offline
-      await saveInspectionOffline(updatedInspection);
-
-      if (isOnline) {
-        // Update in Supabase
-        const { error } = await supabase
-          .from("inspections")
-          .update({ [field]: value, updated_at: new Date().toISOString() })
-          .eq("id", id);
-
-        if (error) throw error;
-        
-        setHasUnsavedChanges(false);
-        if (import.meta.env.DEV) {
-          console.log('[InspectionForm] Header field updated:', field, value);
-        }
-      } else {
-        // Queue for later sync
-        await queueOperation('update', id!, updatedInspection);
-        setHasUnsavedChanges(false);
-        
-        if (import.meta.env.DEV) {
-          console.log('[InspectionForm] Header field queued for sync:', field, value);
-        }
+      // Trigger the debounced auto-save instead of bypassing it
+      // This ensures header updates go through the same save path as other changes
+      if (saveDebounceTimerRef.current) {
+        clearTimeout(saveDebounceTimerRef.current);
       }
+      saveDebounceTimerRef.current = setTimeout(() => {
+        performSaveRef.current?.(true);
+      }, 500); // Short debounce for header fields
     } catch (error: any) {
-      console.error("Error updating field:", error);
-      // Queue for retry so the change isn't lost
-      if (id) {
-        queueOperation('update', id, {
-          ...inspection,
-          [field]: value,
-          updated_at: new Date().toISOString(),
-        }).catch(() => {});
-      }
+      console.error("Error updating header field:", error);
     }
   };
 

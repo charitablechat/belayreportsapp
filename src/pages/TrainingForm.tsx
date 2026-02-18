@@ -707,7 +707,7 @@ export default function TrainingForm() {
     if (isInternalUpdateRef.current) {
       isInternalUpdateRef.current = false;
     }
-  });
+  }, [deliveryApproaches, operatingSystems, immediateAttention, verifiableItems, systemsInPlace, summary]);
 
   // Backup auto-save interval (every 30 seconds) - fallback only
   useEffect(() => {
