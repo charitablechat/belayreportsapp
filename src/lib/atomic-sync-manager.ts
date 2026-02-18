@@ -445,6 +445,7 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
         p_record_id: inspectionId,
       });
       serverTimestamp = (aligned as any)?.updated_at || new Date().toISOString();
+      console.log('[Atomic Sync] align_synced_at result:', inspectionId, serverTimestamp);
     } catch {
       serverTimestamp = new Date().toISOString();
     }
@@ -986,6 +987,7 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
         p_record_id: trainingId,
       });
       serverTimestamp = (aligned as any)?.updated_at || new Date().toISOString();
+      console.log('[Atomic Sync] align_synced_at result:', trainingId, serverTimestamp);
     } catch {
       serverTimestamp = new Date().toISOString();
     }
@@ -1442,6 +1444,7 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
         p_record_id: assessmentId,
       });
       serverTimestamp = (aligned as any)?.updated_at || new Date().toISOString();
+      console.log('[Atomic Sync] align_synced_at result:', assessmentId, serverTimestamp);
     } catch {
       serverTimestamp = new Date().toISOString();
     }
