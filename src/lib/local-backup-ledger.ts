@@ -17,6 +17,14 @@ const MAX_STORAGE_BYTES = 4 * 1024 * 1024; // 4MB budget
 
 export type ReportType = 'inspection' | 'training' | 'daily_assessment';
 
+export interface PhotoMetadataEntry {
+  id: string;
+  caption?: string | null;
+  photo_section?: string | null;
+  display_order?: number | null;
+  uploaded?: boolean;
+}
+
 export interface ReportSnapshot {
   v: number;
   ts: number;
@@ -24,6 +32,7 @@ export interface ReportSnapshot {
   device: 'mobile' | 'desktop';
   parent: Record<string, any>;
   children: Record<string, any[]>;
+  photoMetadata?: PhotoMetadataEntry[];
 }
 
 function makeKey(type: ReportType, id: string): string {
@@ -101,7 +110,8 @@ export function saveReportSnapshot(
   reportId: string,
   parentData: Record<string, any>,
   childData: Record<string, any[]>,
-  isSynced: boolean = false
+  isSynced: boolean = false,
+  photoMetadata?: PhotoMetadataEntry[]
 ): void {
   try {
     const snapshot: ReportSnapshot = {
@@ -111,6 +121,7 @@ export function saveReportSnapshot(
       device: isMobile() ? 'mobile' : 'desktop',
       parent: parentData,
       children: childData,
+      photoMetadata,
     };
 
     const key = makeKey(reportType, reportId);

@@ -53,7 +53,7 @@ import { CompletionLockDialog } from "@/components/CompletionLockDialog";
 import { Lock } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useEmergencySave } from "@/hooks/useEmergencySave";
-import { saveReportSnapshot } from "@/lib/local-backup-ledger";
+import { saveReportSnapshot, getReportSnapshot } from "@/lib/local-backup-ledger";
 import { appendVersion } from "@/lib/report-version-manager";
 import { showHardSavedToast } from "@/lib/toast-helpers";
 import { DataIntegrityBadge, type IntegrityStatus } from "@/components/ui/data-integrity-badge";
@@ -196,14 +196,35 @@ export default function TrainingForm() {
     formName: 'TrainingForm',
     onEmergencySnapshot: () => {
       if (training && id) {
-        saveReportSnapshot('training', id, training, {
-          delivery_approaches: deliveryApproaches,
-          operating_systems: operatingSystems,
-          immediate_attention: immediateAttention,
-          verifiable_items: verifiableItems,
-          systems_in_place: systemsInPlace,
-          summary: summary ? [summary] : [],
-        }, !!training.synced_at);
+        // Include photo metadata (IDs, captions) but NOT blobs
+        import('@/lib/offline-storage').then(({ getOfflinePhotos }) => {
+          getOfflinePhotos(id).then(photos => {
+            const photoMeta = photos.map((p: any) => ({
+              id: p.id,
+              caption: p.caption,
+              photo_section: p.section,
+              display_order: p.display_order,
+              uploaded: p.uploaded,
+            }));
+            saveReportSnapshot('training', id, training, {
+              delivery_approaches: deliveryApproaches,
+              operating_systems: operatingSystems,
+              immediate_attention: immediateAttention,
+              verifiable_items: verifiableItems,
+              systems_in_place: systemsInPlace,
+              summary: summary ? [summary] : [],
+            }, !!training.synced_at, photoMeta);
+          }).catch(() => {
+            saveReportSnapshot('training', id, training, {
+              delivery_approaches: deliveryApproaches,
+              operating_systems: operatingSystems,
+              immediate_attention: immediateAttention,
+              verifiable_items: verifiableItems,
+              systems_in_place: systemsInPlace,
+              summary: summary ? [summary] : [],
+            }, !!training.synced_at);
+          });
+        });
       }
     },
   });
@@ -357,6 +378,36 @@ export default function TrainingForm() {
             id: crypto.randomUUID(),
             training_id: id 
           });
+        } else if (!id.startsWith('temp-')) {
+          // Finding 6: Auto-restore from localStorage backup if IndexedDB was evicted
+          const backup = getReportSnapshot('training', id);
+          if (backup) {
+            console.log('[TrainingForm] IndexedDB empty but localStorage backup found — auto-restoring');
+            isInternalUpdateRef.current = true;
+            const { saveTrainingOffline, saveTrainingDataOffline } = await import('@/lib/offline-storage');
+            saveTrainingOffline(backup.parent).catch(() => {});
+            setTraining(backup.parent);
+            setInspectorId(backup.parent.inspector_id);
+            if (backup.children) {
+              for (const [childType, childData] of Object.entries(backup.children)) {
+                if (Array.isArray(childData) && childData.length > 0) {
+                  saveTrainingDataOffline(childType as any, id, childData).catch(() => {});
+                }
+              }
+              setDeliveryApproaches(backup.children.delivery_approaches || []);
+              setOperatingSystems(backup.children.operating_systems || []);
+              setImmediateAttention(backup.children.immediate_attention || []);
+              setVerifiableItems(backup.children.verifiable_items || []);
+              setSystemsInPlace(backup.children.systems_in_place || []);
+              const summaryArr = backup.children.summary;
+              setSummary(summaryArr?.[0] || { id: crypto.randomUUID(), training_id: id });
+            }
+            toast.info("Restored from local backup", {
+              description: backup.photoMetadata?.some(p => !p.uploaded)
+                ? "Some photos may need to be re-captured."
+                : "Your data has been recovered.",
+            });
+          }
         }
 
         // If online and not a temp-ID, fetch from Supabase and update offline storage

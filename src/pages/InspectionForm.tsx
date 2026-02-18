@@ -27,7 +27,8 @@ import {
   getOfflineInspection, 
   queueOperation,
   saveRelatedDataOffline,
-  getRelatedDataOffline
+  getRelatedDataOffline,
+  getOfflinePhotos
 } from "@/lib/offline-storage";
 import { validateInspectionPackage } from "@/lib/validation-schemas";
 import { cn } from "@/lib/utils";
@@ -54,7 +55,7 @@ import { Check } from "lucide-react";
 import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
 import { UnsavedChangesDialog } from "@/components/UnsavedChangesDialog";
 import { useEmergencySave } from "@/hooks/useEmergencySave";
-import { saveReportSnapshot } from "@/lib/local-backup-ledger";
+import { saveReportSnapshot, getReportSnapshot } from "@/lib/local-backup-ledger";
 import { useSaveShortcut } from "@/hooks/useKeyboardShortcuts";
 import { useReportEditPermission } from "@/hooks/useReportEditPermission";
 import { CompletionLockDialog } from "@/components/CompletionLockDialog";
@@ -230,9 +231,24 @@ export default function InspectionForm() {
     formName: 'InspectionForm',
     onEmergencySnapshot: () => {
       if (inspection && id) {
-        saveReportSnapshot('inspection', id, inspection, {
-          systems, ziplines, equipment, standards, summary: [summary],
-        }, !!inspection.synced_at);
+        // Include photo metadata (IDs, captions) but NOT blobs for localStorage budget
+        getOfflinePhotos(id).then(photos => {
+          const photoMeta = photos.map((p: any) => ({
+            id: p.id,
+            caption: p.caption,
+            photo_section: p.section,
+            display_order: p.display_order,
+            uploaded: p.uploaded,
+          }));
+          saveReportSnapshot('inspection', id, inspection, {
+            systems, ziplines, equipment, standards, summary: [summary],
+          }, !!inspection.synced_at, photoMeta);
+        }).catch(() => {
+          // Fallback: save without photo metadata
+          saveReportSnapshot('inspection', id, inspection, {
+            systems, ziplines, equipment, standards, summary: [summary],
+          }, !!inspection.synced_at);
+        });
       }
     },
   });
@@ -834,6 +850,32 @@ export default function InspectionForm() {
         
         if (import.meta.env.DEV) {
           console.log('[InspectionForm] Loaded inspection from offline storage');
+        }
+      } else if (!id!.startsWith('temp-')) {
+        // Finding 6: Auto-restore from localStorage backup if IndexedDB was evicted
+        const backup = getReportSnapshot('inspection', id!);
+        if (backup) {
+          console.log('[InspectionForm] IndexedDB empty but localStorage backup found — auto-restoring');
+          const restoredParent = backup.parent;
+          // Restore parent to IndexedDB (fire-and-forget)
+          saveInspectionOffline(restoredParent).catch(() => {});
+          setInspection(restoredParent);
+          setInspectorId(restoredParent.inspector_id);
+          
+          // Restore children to IndexedDB
+          if (backup.children) {
+            for (const [childType, childData] of Object.entries(backup.children)) {
+              if (Array.isArray(childData) && childData.length > 0) {
+                saveRelatedDataOffline(childType as any, id!, childData).catch(() => {});
+              }
+            }
+          }
+          
+          toast.info("Restored from local backup", {
+            description: backup.photoMetadata?.some(p => !p.uploaded)
+              ? "Some photos may need to be re-captured."
+              : "Your data has been recovered.",
+          });
         }
       }
 
