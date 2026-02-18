@@ -54,6 +54,11 @@ import { Lock } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useEmergencySave } from "@/hooks/useEmergencySave";
 import { saveReportSnapshot } from "@/lib/local-backup-ledger";
+import { appendVersion } from "@/lib/report-version-manager";
+import { showHardSavedToast } from "@/lib/toast-helpers";
+import { DataIntegrityBadge, type IntegrityStatus } from "@/components/ui/data-integrity-badge";
+import { VersionHistoryPanel } from "@/components/admin/VersionHistoryPanel";
+import { Shield as ShieldIcon } from "lucide-react";
 
 export default function DailyAssessmentForm() {
   const { id } = useParams();
@@ -100,6 +105,9 @@ export default function DailyAssessmentForm() {
   // Completion lock derived values (after report state is declared)
   const isCompletionLocked = assessment?.status === 'completed' && !completionLockOverridden;
   const effectiveReadOnly = isReadOnly || isCompletionLocked;
+  const [versionPanelOpen, setVersionPanelOpen] = useState(false);
+  const [lastVersionNumber, setLastVersionNumber] = useState<number | undefined>(undefined);
+  const [lastFieldCount, setLastFieldCount] = useState<number | undefined>(undefined);
 
   // Field-level click interception for locked reports (allow-list: only block editable elements)
   const handleLockedFieldClick = useCallback((e: React.MouseEvent | React.PointerEvent) => {
@@ -554,17 +562,32 @@ export default function DailyAssessmentForm() {
           offlineStorage.saveAssessmentDataOffline('environment_checks', id!, environmentChecks),
         ]).then(() => {
           if (import.meta.env.DEV) console.log('[Save] Offline storage completed');
-          // Layer 1: localStorage snapshot backup
-          try {
-            saveReportSnapshot('daily_assessment', id!, assessment, {
-              beginning_of_day: beginningOfDay,
-              end_of_day: endOfDay,
-              operating_systems: operatingSystems,
-              equipment_checks: equipmentChecks,
-              structure_checks: structureChecks,
-              environment_checks: environmentChecks,
-            }, false);
-          } catch {}
+           // Layer 1: localStorage snapshot backup
+           try {
+             saveReportSnapshot('daily_assessment', id!, assessment, {
+               beginning_of_day: beginningOfDay,
+               end_of_day: endOfDay,
+               operating_systems: operatingSystems,
+               equipment_checks: equipmentChecks,
+               structure_checks: structureChecks,
+               environment_checks: environmentChecks,
+             }, false);
+           } catch {}
+
+           // Layer 2: Append-only version history
+           appendVersion('daily_assessment', id!, assessment, {
+             beginning_of_day: beginningOfDay,
+             end_of_day: endOfDay,
+             operating_systems: operatingSystems,
+             equipment_checks: equipmentChecks,
+             structure_checks: structureChecks,
+             environment_checks: environmentChecks,
+           }, 'auto_save').then((v) => {
+             if (v) {
+               setLastVersionNumber(v.versionNumber);
+               setLastFieldCount(v.fieldCount);
+             }
+           }).catch(() => {});
         }).catch((offlineError) => {
           console.warn('[Save] Offline storage failed:', offlineError);
         });

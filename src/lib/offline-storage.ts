@@ -164,6 +164,22 @@ interface InspectionDB extends DBSchema {
     };
     indexes: { 'by-report': string; 'by-timestamp': number };
   };
+  report_versions: {
+    key: string;
+    value: {
+      id: string;
+      reportType: string;
+      reportId: string;
+      versionNumber: number;
+      timestamp: number;
+      device: string;
+      parentData: Record<string, any>;
+      childrenData: Record<string, any[]>;
+      trigger: string;
+      fieldCount: number;
+    };
+    indexes: { 'by-report': string; 'by-timestamp': number; 'by-report-version': [string, number] };
+  };
 }
 
 let dbPromise: Promise<IDBPDatabase<InspectionDB>> | null = null;
@@ -383,9 +399,9 @@ export async function getDB() {
     // Wrap the entire DB opening process in a timeout to prevent hanging
     // Apply 5-second timeout to the entire DB opening process
     // If IndexedDB hangs, we'll reject and the app can proceed with network-only mode
-    // Version 7: Add report_backups store for WAL (Write-Ahead Log)
-    const openDBV7WithTimeout = async () => {
-      return openDB<InspectionDB>('rope-works-inspections', 7, {
+    // Version 8: Add report_versions store for append-only versioning
+    const openDBV8WithTimeout = async () => {
+      return openDB<InspectionDB>('rope-works-inspections', 8, {
         upgrade(db, oldVersion, newVersion, transaction) {
           // === All existing v6 upgrade logic ===
           let inspectionStore;
@@ -503,12 +519,23 @@ export async function getDB() {
               console.log('[Offline Storage] Created report_backups store (v7 upgrade)');
             }
           }
+
+          // === NEW in v8: report_versions append-only store ===
+          if (!db.objectStoreNames.contains('report_versions')) {
+            const versionStore = db.createObjectStore('report_versions', { keyPath: 'id' });
+            versionStore.createIndex('by-report', 'reportId');
+            versionStore.createIndex('by-timestamp', 'timestamp');
+            versionStore.createIndex('by-report-version', ['reportId', 'versionNumber']);
+            if (import.meta.env.DEV) {
+              console.log('[Offline Storage] Created report_versions store (v8 upgrade)');
+            }
+          }
         },
       });
     };
 
     dbPromise = Promise.race([
-      openDBV7WithTimeout(),
+      openDBV8WithTimeout(),
       new Promise<never>((_, reject) => 
         setTimeout(() => {
           console.error('[Offline Storage] IndexedDB open timed out after 5 seconds');

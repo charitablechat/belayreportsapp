@@ -39,6 +39,7 @@ import {
   deleteOfflineTraining,
   deleteOfflineDailyAssessment,
 } from "./offline-storage";
+import { appendVersion, getLatestFieldCount, calculateFieldCount } from "./report-version-manager";
 
 /**
  * Maximum number of items to process per sync cycle.
@@ -308,6 +309,29 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
         }
       }
     }
+    // PRE-SYNC VERSION SNAPSHOT — capture immutable state before sync
+    appendVersion('inspection', inspectionId, inspection, {
+      systems, ziplines, equipment, standards, summary: summary ? [summary] : [],
+    }, 'pre_sync').catch(() => {});
+
+    // FIELD-COUNT REGRESSION GUARD — block sync if local data regressed significantly
+    const currentFieldCount = calculateFieldCount(inspection, {
+      systems, ziplines, equipment, standards, summary: summary ? [summary] : [],
+    });
+    const previousFieldCount = await getLatestFieldCount(inspectionId);
+    if (previousFieldCount !== null && previousFieldCount > 0) {
+      const dropPercent = ((previousFieldCount - currentFieldCount) / previousFieldCount) * 100;
+      if (dropPercent > 50) {
+        console.error('[SAFETY] Blocked inspection sync: field count regression >50%', {
+          inspectionId: inspectionId.substring(0, 8),
+          previousFieldCount,
+          currentFieldCount,
+          dropPercent: dropPercent.toFixed(1),
+        });
+        return { success: false, skipped: true, reason: 'field_count_regression' };
+      }
+    }
+
     // 4. Build transaction steps
     const steps: TransactionStep[] = [];
     
