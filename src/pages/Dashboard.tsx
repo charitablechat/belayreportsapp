@@ -841,22 +841,6 @@ export default function Dashboard() {
           </Badge>
         )}
         
-        {/* Synced badge */}
-        {!isCurrentlySyncing && inspection.synced_at && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Badge variant="outline" className="gap-1 cursor-help text-xs px-2 py-0">
-                <Check className="w-3 h-3" />
-                <span className="hidden sm:inline">Synced</span>
-              </Badge>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p className="text-xs">
-                Last synced: {format(new Date(inspection.synced_at), "PPp")}
-              </p>
-            </TooltipContent>
-          </Tooltip>
-        )}
         
         {/* Unsynced photos count */}
         {unsyncedPhotosCount > 0 && (
