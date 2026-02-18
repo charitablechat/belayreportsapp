@@ -17,7 +17,7 @@ import { pwaConfig } from "./vite-pwa-config";
 // v2.5.6 - Image CLS fix: smart cross-fade, deferred URL revocation, Retro-Tech scanline skeleton
 // v2.5.7 - Cache-first photo display: instant IndexedDB blobs, deferred background caching, batch validation
 // v2.5.8 - Sync pipeline fix: server timestamp alignment eliminates infinite re-sync loop, stale upload warnings (5-min), pending uploads chip, BUILD_TIMESTAMP audit logging
-   const APP_VERSION = "2.5.8";
+   const APP_VERSION = "2.5.9";
    const BUILD_DATE = "02-18-2026";
    const BUILD_TIMESTAMP = "02-18-2026 at 12:00 AM CST";
 
