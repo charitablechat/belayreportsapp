@@ -34,7 +34,8 @@ import { SyncPulse } from "@/components/pwa/SyncPulse";
 import { useConflicts } from "@/hooks/useConflicts";
 import { usePWA } from "@/hooks/usePWA";
 import { usePullToRefresh } from "@/hooks/usePullToRefresh";
-import { getOfflineInspections, deleteOfflineInspection, queueOperation, saveInspectionOffline, getOfflineTrainings, saveTrainingOffline, deleteOfflineTraining, getOfflineDailyAssessments, saveDailyAssessmentOffline, deleteOfflineDailyAssessment } from "@/lib/offline-storage";
+import { getOfflineInspections, deleteOfflineInspection, queueOperation, saveInspectionOffline, getOfflineTrainings, saveTrainingOffline, deleteOfflineTraining, getOfflineDailyAssessments, saveDailyAssessmentOffline, deleteOfflineDailyAssessment, getOfflineInspection, getOfflineTraining, getOfflineDailyAssessment } from "@/lib/offline-storage";
+import { shouldPreserveLocalRecord } from "@/lib/local-data-guards";
 import { ContactDeveloperSheet } from "@/components/ContactDeveloperSheet";
 import { onSyncComplete, isSyncInProgress } from "@/lib/sync-events";
 import { InspectionsEmptyState, TrainingsEmptyState, DailyAssessmentsEmptyState } from "@/components/EmptyState";
@@ -378,7 +379,14 @@ export default function Dashboard() {
           // Background save to offline storage (fire-and-forget)
           // Stamp synced_at so localIsNewer guard knows this is server-sourced data
           const now = new Date().toISOString();
-          Promise.all(networkData.map(inspection => saveInspectionOffline({ ...inspection, synced_at: inspection.synced_at || now })))
+          Promise.all(networkData.map(async (inspection) => {
+            const localRecord = await getOfflineInspection(inspection.id);
+            if (shouldPreserveLocalRecord(localRecord)) {
+              console.log('[Dashboard] Preserving unsynced local inspection:', inspection.id);
+              return;
+            }
+            return saveInspectionOffline({ ...inspection, synced_at: inspection.synced_at || now });
+          }))
             .then(async () => {
               // ORPHAN CLEANUP with threshold guard: protect against incomplete server responses
               try {
@@ -500,7 +508,14 @@ export default function Dashboard() {
           setTrainings(networkData);
           
           const nowT = new Date().toISOString();
-          Promise.all(networkData.map(training => saveTrainingOffline({ ...training, synced_at: training.synced_at || nowT })))
+          Promise.all(networkData.map(async (training) => {
+            const localRecord = await getOfflineTraining(training.id);
+            if (shouldPreserveLocalRecord(localRecord)) {
+              console.log('[Dashboard] Preserving unsynced local training:', training.id);
+              return;
+            }
+            return saveTrainingOffline({ ...training, synced_at: training.synced_at || nowT });
+          }))
             .then(async () => {
               // ORPHAN CLEANUP with threshold guard
               try {
@@ -619,7 +634,14 @@ export default function Dashboard() {
           setDailyAssessments(networkData);
           
           const nowA = new Date().toISOString();
-          Promise.all(networkData.map(assessment => saveDailyAssessmentOffline({ ...assessment, synced_at: assessment.synced_at || nowA })))
+          Promise.all(networkData.map(async (assessment) => {
+            const localRecord = await getOfflineDailyAssessment(assessment.id);
+            if (shouldPreserveLocalRecord(localRecord)) {
+              console.log('[Dashboard] Preserving unsynced local daily assessment:', assessment.id);
+              return;
+            }
+            return saveDailyAssessmentOffline({ ...assessment, synced_at: assessment.synced_at || nowA });
+          }))
             .then(async () => {
               // ORPHAN CLEANUP with threshold guard
               try {
