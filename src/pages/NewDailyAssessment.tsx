@@ -145,14 +145,15 @@ export default function NewDailyAssessment() {
 
       if (isOnline) {
         try {
+          // Set synced_at before server insert so server also has it
+          newAssessment.synced_at = new Date().toISOString();
           const { error } = await supabase
             .from('daily_assessments')
             .upsert([newAssessment], { onConflict: 'id' });
 
           if (error) throw error;
 
-          // Phase 4: Update synced_at - don't queue since online sync succeeded
-          newAssessment.synced_at = new Date().toISOString();
+          // Update local copy with synced_at
           await saveDailyAssessmentOffline(newAssessment);
           // Note: No queueAssessmentOperation here since sync was successful
         } catch (error) {

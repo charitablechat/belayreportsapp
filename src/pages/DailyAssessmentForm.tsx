@@ -446,15 +446,16 @@ export default function DailyAssessmentForm() {
       await saveDailyAssessmentOffline(updatedAssessment);
 
       if (navigator.onLine) {
+        const syncTimestamp = new Date().toISOString();
         const { error } = await supabase
           .from('daily_assessments')
-          .update({ [field]: value, updated_at: updatedAssessment.updated_at })
+          .update({ [field]: value, updated_at: updatedAssessment.updated_at, synced_at: syncTimestamp })
           .eq('id', id);
 
         if (error) throw error;
 
-        // Update synced_at
-        updatedAssessment.synced_at = new Date().toISOString();
+        // Update synced_at locally
+        updatedAssessment.synced_at = syncTimestamp;
         await saveDailyAssessmentOffline(updatedAssessment);
         setLastSaved(new Date());
       } else {
@@ -624,9 +625,10 @@ export default function DailyAssessmentForm() {
           if (import.meta.env.DEV) console.log('[Save] Child tables synced successfully');
 
           // Update assessment (keep current status)
+          const saveSyncTimestamp = new Date().toISOString();
           const { error: assessmentError } = await supabase
             .from('daily_assessments')
-            .update({ updated_at: updatedAssessment.updated_at })
+            .update({ updated_at: updatedAssessment.updated_at, synced_at: saveSyncTimestamp })
             .eq('id', id);
 
           if (assessmentError) {
@@ -854,9 +856,10 @@ export default function DailyAssessmentForm() {
           console.log('[Submit] Child tables synced');
 
           // Update status to completed
+          const submitSyncTimestamp = new Date().toISOString();
           await supabase
             .from('daily_assessments')
-            .update({ status: 'completed', updated_at: completedAssessment.updated_at })
+            .update({ status: 'completed', updated_at: completedAssessment.updated_at, synced_at: submitSyncTimestamp })
             .eq('id', id);
           console.log('[Submit] Assessment status updated');
 

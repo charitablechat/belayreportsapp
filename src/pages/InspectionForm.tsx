@@ -1231,10 +1231,11 @@ export default function InspectionForm() {
               };
             };
 
-            // Update main inspection record
+            // Update main inspection record (include synced_at so server reflects sync status)
+            const sanitized = sanitizeInspection(inspectionToSave);
             const { error: inspectionError } = await supabase
               .from("inspections")
-              .update(sanitizeInspection(inspectionToSave))
+              .update({ ...sanitized, synced_at: new Date().toISOString() })
               .eq("id", id);
             
             if (inspectionError) {
