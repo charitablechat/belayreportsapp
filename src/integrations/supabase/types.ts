@@ -1854,6 +1854,10 @@ export type Database = {
       }
     }
     Functions: {
+      align_synced_at: {
+        Args: { p_record_id: string; p_table_name: string }
+        Returns: Json
+      }
       backup_table: {
         Args: { p_schema_name?: string; p_table_name: string }
         Returns: string

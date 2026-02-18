@@ -650,3 +650,28 @@ input[type="number"] {
     @apply p-4 relative border-l-4 border-l-primary/20 rounded-lg bg-muted/30 border border-border;
   }
 }
+
+/* Retro-Tech Terminal — SyncPulse sheet */
+@keyframes blink-cursor {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+.crt-scanlines {
+  position: relative;
+}
+
+.crt-scanlines::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 0, 0, 0.03) 2px,
+    rgba(0, 0, 0, 0.03) 4px
+  );
+  pointer-events: none;
+  border-radius: inherit;
+}

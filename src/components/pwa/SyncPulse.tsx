@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { usePWA } from '@/hooks/usePWA';
-import { isMobile, isIOS } from '@/lib/mobile-detection';
+import { isIOS } from '@/lib/mobile-detection';
 import { cn } from '@/lib/utils';
 import {
   Sheet,
@@ -14,7 +14,7 @@ type Phase = 'idle' | 'syncing' | 'synced' | 'unsynced' | 'error';
 
 /**
  * SyncPulse — minimal dot-based sync indicator.
- * Tappable to open a detail sheet with sync status info.
+ * Tappable to open a retro-tech terminal detail sheet with sync status info.
  */
 export const SyncPulse = ({ className }: { className?: string }) => {
   const {
@@ -67,11 +67,11 @@ export const SyncPulse = ({ className }: { className?: string }) => {
   };
 
   const statusLabel =
-    phase === 'syncing' ? 'Syncing...'
-    : phase === 'error' ? (isOnline ? 'Sync Failed' : 'Offline')
-    : phase === 'unsynced' ? `${totalUnsynced} Unsynced`
-    : phase === 'synced' ? 'Synced'
-    : 'All Synced';
+    phase === 'syncing' ? 'SYNCING...'
+    : phase === 'error' ? (isOnline ? 'SYNC FAILED' : 'OFFLINE')
+    : phase === 'unsynced' ? `${totalUnsynced} PENDING`
+    : phase === 'synced' ? 'SYNCED'
+    : 'ALL SYNCED';
 
   return (
     <>
@@ -99,53 +99,61 @@ export const SyncPulse = ({ className }: { className?: string }) => {
       </button>
 
       <Sheet open={open} onOpenChange={setOpen}>
-        <SheetContent side="bottom" className="rounded-t-xl max-h-[70vh] overflow-y-auto">
-          <SheetHeader className="pb-2">
-            <SheetTitle className="text-base">Sync Status</SheetTitle>
+        <SheetContent side="bottom" className="rounded-t-xl max-h-[70vh] overflow-y-auto bg-[hsl(160,20%,6%)] border-t border-green-900/50 p-0">
+          <SheetHeader className="px-4 pt-4 pb-2">
+            <SheetTitle className="text-sm font-mono uppercase tracking-widest text-green-400">
+              ▸ Sync Terminal
+            </SheetTitle>
             <SheetDescription className="sr-only">Details about data synchronization</SheetDescription>
           </SheetHeader>
 
-          <div className="space-y-4 text-sm px-1 pb-4">
+          <div className="crt-scanlines space-y-3 text-xs font-mono px-4 pb-5">
             {/* Status row */}
-            <div className="flex items-center justify-between">
-              <span className="text-muted-foreground">Status</span>
-              <span className="font-medium">{statusLabel}</span>
+            <div className="flex items-center justify-between text-green-300/80">
+              <span>STATUS</span>
+              <span className={cn(
+                'font-bold px-2 py-0.5 rounded text-[10px] uppercase tracking-wider',
+                phase === 'syncing' && 'bg-blue-900/50 text-blue-300',
+                phase === 'error' && 'bg-red-900/50 text-red-300',
+                phase === 'unsynced' && 'bg-amber-900/50 text-amber-300',
+                phase === 'synced' && 'bg-green-900/50 text-green-300',
+                phase === 'idle' && 'bg-green-900/50 text-green-300',
+              )}>
+                {statusLabel}
+                {phase === 'syncing' && <span className="inline-block w-1.5 h-3 ml-1 bg-blue-300 animate-[blink-cursor_1s_step-end_infinite]" />}
+              </span>
             </div>
 
             {/* Last sync */}
-            <div className="flex items-center justify-between">
-              <span className="text-muted-foreground">Last sync</span>
-              <span className="font-medium">{formatLastSync(lastSyncTime)}</span>
+            <div className="flex items-center justify-between text-green-300/80">
+              <span>LAST_SYNC</span>
+              <span className="text-green-400">{formatLastSync(lastSyncTime)}</span>
             </div>
 
             {/* Pending reports */}
             {unsyncedCount > 0 && (
-              <div className="space-y-2">
-                <p className="font-medium">Pending reports ({unsyncedCount})</p>
-                <div className="space-y-1.5 max-h-48 overflow-y-auto">
+              <div className="space-y-1.5 border-t border-green-900/40 pt-2">
+                <p className="text-green-400 text-[10px] uppercase tracking-wider">
+                  ▸ Pending reports ({unsyncedCount})
+                </p>
+                <div className="space-y-1 max-h-48 overflow-y-auto">
                   {unsyncedInspections.map((item) => (
-                    <div key={item.id} className="pl-3 border-l-2 border-blue-400 flex items-start gap-2">
-                      <span className="shrink-0 mt-0.5 text-[10px] font-semibold uppercase tracking-wide bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 rounded px-1.5 py-0.5">Inspection</span>
-                      <div className="min-w-0">
-                        <p className="font-medium text-foreground truncate">{item.organization || 'Untitled'}</p>
-                        {item.location && <p className="text-muted-foreground text-xs truncate">{item.location}</p>}
-                      </div>
+                    <div key={item.id} className="pl-3 border-l border-blue-500/50 text-green-300/70">
+                      <span className="text-[9px] font-bold uppercase tracking-wider text-blue-400 mr-1.5">INS</span>
+                      <span className="truncate">{item.organization || 'Untitled'}</span>
+                      {item.location && <span className="text-green-600 ml-1">@ {item.location}</span>}
                     </div>
                   ))}
                   {unsyncedTrainings.map((item) => (
-                    <div key={item.id} className="pl-3 border-l-2 border-purple-400 flex items-start gap-2">
-                      <span className="shrink-0 mt-0.5 text-[10px] font-semibold uppercase tracking-wide bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300 rounded px-1.5 py-0.5">Training</span>
-                      <div className="min-w-0">
-                        <p className="font-medium text-foreground truncate">{item.organization || 'Untitled'}</p>
-                      </div>
+                    <div key={item.id} className="pl-3 border-l border-purple-500/50 text-green-300/70">
+                      <span className="text-[9px] font-bold uppercase tracking-wider text-purple-400 mr-1.5">TRN</span>
+                      <span className="truncate">{item.organization || 'Untitled'}</span>
                     </div>
                   ))}
                   {unsyncedAssessments.map((item) => (
-                    <div key={item.id} className="pl-3 border-l-2 border-amber-400 flex items-start gap-2">
-                      <span className="shrink-0 mt-0.5 text-[10px] font-semibold uppercase tracking-wide bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 rounded px-1.5 py-0.5">Assessment</span>
-                      <div className="min-w-0">
-                        <p className="font-medium text-foreground truncate">{item.organization || item.site || 'Untitled'}</p>
-                      </div>
+                    <div key={item.id} className="pl-3 border-l border-amber-500/50 text-green-300/70">
+                      <span className="text-[9px] font-bold uppercase tracking-wider text-amber-400 mr-1.5">ASM</span>
+                      <span className="truncate">{item.organization || item.site || 'Untitled'}</span>
                     </div>
                   ))}
                 </div>
@@ -154,26 +162,28 @@ export const SyncPulse = ({ className }: { className?: string }) => {
 
             {/* Pending photos */}
             {unsyncedPhotoCount > 0 && (
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">Pending photos</span>
-                <span className="font-medium">{unsyncedPhotoCount}</span>
+              <div className="flex items-center justify-between text-green-300/80">
+                <span>PENDING_PHOTOS</span>
+                <span className="text-amber-400">{unsyncedPhotoCount}</span>
               </div>
             )}
 
             {/* Error */}
             {syncError && (
-              <p className="text-destructive text-xs bg-destructive/10 rounded-md p-2">{syncError}</p>
+              <p className="text-red-400 text-[10px] bg-red-950/40 rounded px-2 py-1.5 border border-red-900/40">
+                ERR: {syncError}
+              </p>
             )}
 
             {/* Offline notice */}
             {!isOnline && (
-              <p className="text-muted-foreground text-xs">Changes will sync when back online.</p>
+              <p className="text-green-600 text-[10px]">▸ Changes will sync when back online.</p>
             )}
 
             {/* Info footer */}
-            <p className="text-muted-foreground text-xs italic pt-1 border-t border-border">
-              Sync happens automatically in the background.
-              {isIOSDevice && ' On iOS, auto-sync runs on visibility change and every 30 seconds.'}
+            <p className="text-green-700 text-[10px] italic pt-1 border-t border-green-900/40">
+              Auto-sync runs in background.
+              {isIOSDevice && ' iOS: visibility change + 30s interval.'}
             </p>
           </div>
         </SheetContent>
