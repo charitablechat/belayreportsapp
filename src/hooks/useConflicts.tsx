@@ -93,10 +93,10 @@ export const useConflicts = () => {
         }
       }
       
-      // Auto-resolve conflicts older than 24 hours as stale
+      // Auto-resolve conflicts older than 1 hour as stale
       const conflictAge = now - new Date(conflict.created_at).getTime();
-      const twentyFourHours = 24 * 60 * 60 * 1000;
-      if (conflictAge > twentyFourHours) {
+      const oneHour = 60 * 60 * 1000;
+      if (conflictAge > oneHour) {
         staleConflictIds.push(conflict.id);
         continue;
       }
@@ -148,6 +148,14 @@ export const useConflicts = () => {
               })
               .eq('id', conflict.inspection_id);
           }
+        } else {
+          // Remote wins: align synced_at = NOW() on server
+          // The trigger bumps updated_at = NOW() at the same instant,
+          // so they're perfectly aligned and the record won't look "unsynced"
+          await supabase
+            .from('inspections')
+            .update({ synced_at: new Date().toISOString() })
+            .eq('id', conflict.inspection_id);
         }
         
         // Mark conflict as resolved
@@ -159,6 +167,7 @@ export const useConflicts = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sync-conflicts'] });
+      queryClient.invalidateQueries({ queryKey: ['inspections'] });
     },
     onError: (error: Error) => {
       console.error('Failed to auto-resolve conflicts:', error);
