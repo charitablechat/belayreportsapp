@@ -249,6 +249,14 @@ export default function InspectionForm() {
 
   const handleSignOut = async () => {
     setSigningOut(true);
+    // Flush any pending unsaved changes before signing out (Finding 1: data loss prevention)
+    if (hasUnsavedChanges) {
+      try {
+        await performSaveRef.current?.(true);
+      } catch (e) {
+        console.warn('[InspectionForm] Failed to flush save before sign-out:', e);
+      }
+    }
     await supabase.auth.signOut();
     navigate("/");
   };

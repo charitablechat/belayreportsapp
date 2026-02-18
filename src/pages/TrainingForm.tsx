@@ -279,6 +279,14 @@ export default function TrainingForm() {
 
   const handleSignOut = async () => {
     setSigningOut(true);
+    // Flush any pending unsaved changes before signing out (Finding 1: data loss prevention)
+    if (hasUnsavedChanges) {
+      try {
+        await saveTrainingRef.current?.();
+      } catch (e) {
+        console.warn('[TrainingForm] Failed to flush save before sign-out:', e);
+      }
+    }
     await supabase.auth.signOut();
     navigate("/");
   };

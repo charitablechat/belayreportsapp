@@ -335,7 +335,7 @@ export default function PhotoGallery({
   const handleDelete = async (photo: Photo) => {
     triggerHaptic('warning');
     try {
-      if (isOnline && photo.uploaded) {
+      if (photo.uploaded && isOnline) {
         // Soft-delete with 60-day retention (recoverable)
         const { error } = await (supabase
           .from(tableName) as any)
@@ -346,6 +346,20 @@ export default function PhotoGallery({
           .eq('id', photo.id);
 
         if (error) throw error;
+      } else if (photo.uploaded && !isOnline) {
+        // Finding 3: Queue server soft-delete for replay when connectivity returns
+        const { queueOperation } = await import('@/lib/offline-storage');
+        await queueOperation('update', photo.id, {
+          id: photo.id,
+          deleted_at: new Date().toISOString(),
+          retention_until: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString(),
+        });
+      }
+      
+      // Finding 3: For local-only photos, delete from IndexedDB directly
+      if (!photo.uploaded) {
+        const { deleteOfflinePhoto } = await import('@/lib/offline-storage');
+        await deleteOfflinePhoto(photo.id);
       }
 
       // Always refresh to show updated list
