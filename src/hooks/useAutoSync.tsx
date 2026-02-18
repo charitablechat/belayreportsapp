@@ -26,6 +26,7 @@ const MAX_BATCH_SIZE = 5; // Must match atomic-sync-manager.ts
 const ACCELERATED_SYNC_DELAY = 5000; // 5s between cycles when draining a queue
 const STALE_UPLOAD_THRESHOLD = 5 * 60 * 1000; // 5 minutes - warn if data hasn't synced
 const STALE_CHECK_INTERVAL = 60 * 1000; // Check every 60 seconds
+const POST_SYNC_COOLDOWN = 10000; // 10s cooldown after sync completes to ignore self-triggered Realtime events
 
 /**
  * Helper to wrap promises with a timeout
@@ -96,6 +97,7 @@ export const useAutoSync = () => {
   const periodicSyncIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const staleWarningShownRef = useRef(false);
+  const lastSyncCompletedAtRef = useRef<number>(0);
   
   /**
    * Perform the actual sync operation
@@ -300,6 +302,7 @@ export const useAutoSync = () => {
     } finally {
       syncInProgressRef.current = false;
       setSyncInProgress(false);
+      lastSyncCompletedAtRef.current = Date.now();
       // CRITICAL: Always reset isSyncing state in finally block to prevent stuck spinner
       setState(prev => ({ ...prev, isSyncing: false }));
     }
@@ -403,12 +406,19 @@ export const useAutoSync = () => {
     // Only trigger sync if we're NOT currently syncing -- prevents the loop where
     // align_synced_at RPC fires a Realtime UPDATE that re-triggers sync
     if (!syncInProgressRef.current) {
-      // Also skip if a sync just completed within the cooldown window
-      const msSinceLastSync = Date.now() - lastSyncAttemptRef.current;
-      if (msSinceLastSync > MIN_SYNC_INTERVAL) {
+      // Skip if a sync just completed within the extended cooldown window
+      // This prevents self-triggered Realtime events (from our own writes) from
+      // causing unnecessary IndexedDB reads and redundant syncs
+      const msSinceLastComplete = Date.now() - lastSyncCompletedAtRef.current;
+      const msSinceLastAttempt = Date.now() - lastSyncAttemptRef.current;
+      if (msSinceLastComplete < POST_SYNC_COOLDOWN) {
+        if (import.meta.env.DEV) {
+          console.log('[AutoSync] Skipping Realtime-triggered sync (post-sync cooldown)', { msSinceLastComplete });
+        }
+      } else if (msSinceLastAttempt > MIN_SYNC_INTERVAL) {
         triggerDebouncedSync();
       } else if (import.meta.env.DEV) {
-        console.log('[AutoSync] Skipping Realtime-triggered sync (cooldown)', { msSinceLastSync });
+        console.log('[AutoSync] Skipping Realtime-triggered sync (min interval cooldown)', { msSinceLastAttempt });
       }
     } else if (import.meta.env.DEV) {
       console.log('[AutoSync] Skipping Realtime-triggered sync (sync in progress)');

@@ -1116,6 +1116,12 @@ export default function InspectionForm() {
   };
 
   const performSave = async (silent: boolean = false) => {
+    // Mutex guard: prevent concurrent saves from auto-save, emergency save, and interval timer
+    if (anySaveInProgressRef.current) {
+      if (import.meta.env.DEV) console.log('[InspectionForm] performSave skipped - another save in progress');
+      return;
+    }
+    anySaveInProgressRef.current = true;
     try {
       // Verify user is authenticated before saving (with offline fallback)
       let user = await getUserWithCache();
@@ -1358,8 +1364,8 @@ export default function InspectionForm() {
               );
               
               // Replace temp items in-place, preserving position (no reordering)
-              // Deferred to avoid blocking UI during save
-              setTimeout(() => {
+              // Use queueMicrotask to stay within the same React render cycle
+              queueMicrotask(() => {
                 isInternalUpdateRef.current = true;
                 setSystems(prev => prev.map(s => {
                   if (s.id && s.id.startsWith('temp-') && systemTempToNewMap.has(s.id)) {
@@ -1367,7 +1373,7 @@ export default function InspectionForm() {
                   }
                   return s;
                 }));
-              }, 100);
+              });
             }
             
             // Ziplines operations
@@ -1390,7 +1396,7 @@ export default function InspectionForm() {
               );
               
               // Replace temp items in-place, preserving position (no reordering)
-              setTimeout(() => {
+              queueMicrotask(() => {
                 isInternalUpdateRef.current = true;
                 setZiplines(prev => prev.map(z => {
                   if (z.id && z.id.startsWith('temp-') && ziplineTempToNewMap.has(z.id)) {
@@ -1398,7 +1404,7 @@ export default function InspectionForm() {
                   }
                   return z;
                 }));
-              }, 100);
+              });
             }
             
             // Equipment operations
@@ -1421,7 +1427,7 @@ export default function InspectionForm() {
               );
               
               // Replace temp items in-place, preserving position (no reordering)
-              setTimeout(() => {
+              queueMicrotask(() => {
                 isInternalUpdateRef.current = true;
                 setEquipment(prev => prev.map(e => {
                   if (e.id && e.id.startsWith('temp-') && equipmentTempToNewMap.has(e.id)) {
@@ -1429,8 +1435,7 @@ export default function InspectionForm() {
                   }
                   return e;
                 }));
-                
-              }, 100);
+              });
             }
             
             // Standards - use upsert instead of delete+insert for atomicity
@@ -1524,6 +1529,8 @@ export default function InspectionForm() {
       console.error('[InspectionForm] Save error:', error);
       setSaveError(error.message || 'Failed to save');
       throw error;
+    } finally {
+      anySaveInProgressRef.current = false;
     }
   };
 
