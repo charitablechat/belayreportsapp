@@ -400,8 +400,19 @@ export const useAutoSync = () => {
       queryClient.invalidateQueries({ queryKey: ['daily-assessments'] });
     }
     
-    // Trigger a sync to reconcile any local changes
-    triggerDebouncedSync();
+    // Only trigger sync if we're NOT currently syncing -- prevents the loop where
+    // align_synced_at RPC fires a Realtime UPDATE that re-triggers sync
+    if (!syncInProgressRef.current) {
+      // Also skip if a sync just completed within the cooldown window
+      const msSinceLastSync = Date.now() - lastSyncAttemptRef.current;
+      if (msSinceLastSync > MIN_SYNC_INTERVAL) {
+        triggerDebouncedSync();
+      } else if (import.meta.env.DEV) {
+        console.log('[AutoSync] Skipping Realtime-triggered sync (cooldown)', { msSinceLastSync });
+      }
+    } else if (import.meta.env.DEV) {
+      console.log('[AutoSync] Skipping Realtime-triggered sync (sync in progress)');
+    }
   }, [queryClient, triggerDebouncedSync]);
   
   // Initialize sync system
