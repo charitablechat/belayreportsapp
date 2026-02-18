@@ -53,6 +53,7 @@ import { CompletionLockDialog } from "@/components/CompletionLockDialog";
 import { Lock } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useEmergencySave } from "@/hooks/useEmergencySave";
+import { saveReportSnapshot } from "@/lib/local-backup-ledger";
 
 export default function TrainingForm() {
   const { id } = useParams();
@@ -185,6 +186,18 @@ export default function TrainingForm() {
     saveDebounceTimerRef: autoSaveTimer,
     performSaveRef: saveTrainingRef as React.MutableRefObject<((silent?: boolean) => Promise<void>) | undefined>,
     formName: 'TrainingForm',
+    onEmergencySnapshot: () => {
+      if (training && id) {
+        saveReportSnapshot('training', id, training, {
+          delivery_approaches: deliveryApproaches,
+          operating_systems: operatingSystems,
+          immediate_attention: immediateAttention,
+          verifiable_items: verifiableItems,
+          systems_in_place: systemsInPlace,
+          summary: summary ? [summary] : [],
+        }, !!training.synced_at);
+      }
+    },
   });
 
   // Auto-retry on network reconnect is now handled by useAutoSync hook
@@ -500,6 +513,17 @@ export default function TrainingForm() {
         summary && saveTrainingDataOffline('summary', id, summary)
       ]).then(() => {
         if (import.meta.env.DEV) console.log('[Training Save] Offline storage completed');
+        // Layer 1: localStorage snapshot backup
+        try {
+          saveReportSnapshot('training', id, updatedTraining, {
+            delivery_approaches: deliveryApproaches,
+            operating_systems: operatingSystems,
+            immediate_attention: immediateAttention,
+            verifiable_items: verifiableItems,
+            systems_in_place: systemsInPlace,
+            summary: summary ? [summary] : [],
+          }, false);
+        } catch {}
       }).catch((offlineError) => {
         console.warn('[Training Save] Offline storage failed:', offlineError);
       });
