@@ -44,7 +44,26 @@ export function useEmergencySave({
 
   useEffect(() => {
     const handleEmergencySave = () => {
-      if (!hasUnsavedRef.current || savingRef.current) return;
+      if (!hasUnsavedRef.current) return;
+
+      // Always trigger localStorage snapshot FIRST — it's synchronous and
+      // survives even if the browser kills the page before IndexedDB finishes.
+      // This runs even when a save is already in progress, because that
+      // in-flight save may be interrupted before completing all stores.
+      try {
+        onEmergencySnapshot?.();
+      } catch {
+        // Never let snapshot failure block emergency save
+      }
+
+      // If a save is already running, the localStorage snapshot above is our
+      // safety net. Don't start a second concurrent IndexedDB write.
+      if (savingRef.current) {
+        if (import.meta.env.DEV) {
+          console.log(`[${formName}] Emergency snapshot taken (save already in progress)`);
+        }
+        return;
+      }
 
       // Cancel pending debounce — we're saving NOW
       if (saveDebounceTimerRef.current) {
@@ -54,13 +73,6 @@ export function useEmergencySave({
 
       // Fire-and-forget — page is being torn down
       performSaveRef.current?.(true);
-
-      // Also trigger localStorage snapshot as a backup
-      try {
-        onEmergencySnapshot?.();
-      } catch {
-        // Never let snapshot failure block emergency save
-      }
 
       if (import.meta.env.DEV) {
         console.log(`[${formName}] Emergency save triggered (page hide/unload)`);
