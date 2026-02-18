@@ -53,7 +53,7 @@ import { CompletionLockDialog } from "@/components/CompletionLockDialog";
 import { Lock } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useEmergencySave } from "@/hooks/useEmergencySave";
-import { saveReportSnapshot } from "@/lib/local-backup-ledger";
+import { saveReportSnapshot, getReportSnapshot } from "@/lib/local-backup-ledger";
 import { appendVersion } from "@/lib/report-version-manager";
 import { showHardSavedToast } from "@/lib/toast-helpers";
 import { DataIntegrityBadge, type IntegrityStatus } from "@/components/ui/data-integrity-badge";
@@ -193,14 +193,35 @@ export default function DailyAssessmentForm() {
     formName: 'DailyAssessmentForm',
     onEmergencySnapshot: () => {
       if (assessment && id) {
-        saveReportSnapshot('daily_assessment', id, assessment, {
-          beginning_of_day: beginningOfDay,
-          end_of_day: endOfDay,
-          operating_systems: operatingSystems,
-          equipment_checks: equipmentChecks,
-          structure_checks: structureChecks,
-          environment_checks: environmentChecks,
-        }, !!assessment.synced_at);
+        // Include photo metadata (IDs, captions) but NOT blobs
+        import('@/lib/offline-storage').then(({ getOfflinePhotos }) => {
+          getOfflinePhotos(id).then(photos => {
+            const photoMeta = photos.map((p: any) => ({
+              id: p.id,
+              caption: p.caption,
+              photo_section: p.section,
+              display_order: p.display_order,
+              uploaded: p.uploaded,
+            }));
+            saveReportSnapshot('daily_assessment', id, assessment, {
+              beginning_of_day: beginningOfDay,
+              end_of_day: endOfDay,
+              operating_systems: operatingSystems,
+              equipment_checks: equipmentChecks,
+              structure_checks: structureChecks,
+              environment_checks: environmentChecks,
+            }, !!assessment.synced_at, photoMeta);
+          }).catch(() => {
+            saveReportSnapshot('daily_assessment', id, assessment, {
+              beginning_of_day: beginningOfDay,
+              end_of_day: endOfDay,
+              operating_systems: operatingSystems,
+              equipment_checks: equipmentChecks,
+              structure_checks: structureChecks,
+              environment_checks: environmentChecks,
+            }, !!assessment.synced_at);
+          });
+        });
       }
     },
   });
@@ -387,6 +408,36 @@ export default function DailyAssessmentForm() {
         
         if (import.meta.env.DEV) {
           console.log('[DailyAssessmentForm] Loaded from offline storage');
+        }
+      } else if (!id!.startsWith('temp-')) {
+        // Finding 6: Auto-restore from localStorage backup if IndexedDB was evicted
+        const backup = getReportSnapshot('daily_assessment', id!);
+        if (backup) {
+          console.log('[DailyAssessmentForm] IndexedDB empty but localStorage backup found — auto-restoring');
+          const { saveDailyAssessmentOffline, saveAssessmentDataOffline } = await import('@/lib/offline-storage');
+          saveDailyAssessmentOffline(backup.parent).catch(() => {});
+          isInternalUpdateRef.current = true;
+          setAssessment(backup.parent);
+          setInspectorId(backup.parent.inspector_id);
+          if (backup.children) {
+            for (const [childType, childData] of Object.entries(backup.children)) {
+              if (Array.isArray(childData) && childData.length > 0) {
+                saveAssessmentDataOffline(childType as any, id!, childData).catch(() => {});
+              }
+            }
+            setBeginningOfDay(backup.children.beginning_of_day || []);
+            setEndOfDay(backup.children.end_of_day || []);
+            setOperatingSystems(backup.children.operating_systems || []);
+            setEquipmentChecks(backup.children.equipment_checks || []);
+            setStructureChecks(backup.children.structure_checks || []);
+            setEnvironmentChecks(backup.children.environment_checks || []);
+          }
+          setLoading(false);
+          toast.info("Restored from local backup", {
+            description: backup.photoMetadata?.some(p => !p.uploaded)
+              ? "Some photos may need to be re-captured."
+              : "Your data has been recovered.",
+          });
         }
       }
 

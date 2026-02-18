@@ -992,10 +992,12 @@ const ensureValidUUID = (id: string | undefined): string => {
 export async function saveRelatedDataOffline(
   type: RelatedDataType,
   inspectionId: string,
-  data: any[]
+  data: any[],
+  options?: { allowEmpty?: boolean }
 ) {
   // SAFETY: Never overwrite existing IndexedDB data with an empty array
-  if (data.length === 0) {
+  // UNLESS allowEmpty is explicitly set (user deliberately cleared all items)
+  if (data.length === 0 && !options?.allowEmpty) {
     console.warn(`[Offline Storage] Blocked save of empty ${type} array for ${inspectionId} -- preserving existing data`);
     return;
   }
@@ -1278,10 +1280,12 @@ const assessmentStoreNameMap: Record<AssessmentDataType, AssessmentStoreNames> =
 export async function saveAssessmentDataOffline(
   type: AssessmentDataType,
   assessmentId: string,
-  data: any[]
+  data: any[],
+  options?: { allowEmpty?: boolean }
 ) {
   // SAFETY: Never overwrite existing IndexedDB data with an empty array
-  if (data.length === 0) {
+  // UNLESS allowEmpty is explicitly set (user deliberately cleared all items)
+  if (data.length === 0 && !options?.allowEmpty) {
     console.warn(`[Offline Storage] Blocked save of empty ${type} array for ${assessmentId} -- preserving existing data`);
     return;
   }
@@ -1566,11 +1570,13 @@ const trainingStoreNameMap: Record<TrainingDataType, TrainingStoreNames> = {
 export async function saveTrainingDataOffline(
   type: TrainingDataType,
   trainingId: string,
-  data: any[] | any
+  data: any[] | any,
+  options?: { allowEmpty?: boolean }
 ) {
   // SAFETY: Never overwrite existing IndexedDB data with an empty array
+  // UNLESS allowEmpty is explicitly set (user deliberately cleared all items)
   const items = Array.isArray(data) ? data : [data];
-  if (items.length === 0) {
+  if (items.length === 0 && !options?.allowEmpty) {
     console.warn(`[Offline Storage] Blocked save of empty ${type} array for ${trainingId} -- preserving existing data`);
     return;
   }
@@ -1679,16 +1685,20 @@ const MAX_BACKUPS_PER_REPORT = 3;
 
 /**
  * Create a WAL backup of a report's current state before destructive operations.
+ * @param backupCategory - Optional category prefix to separate WAL (pre-delete) from version snapshots.
+ *   'wal' = pre-delete snapshots, 'ver' = version snapshots. Default: 'wal'.
+ *   Each category has its own 3-slot limit, preventing pre-delete backups from evicting version snapshots.
  */
 export async function createReportBackup(
   reportType: string,
   reportId: string,
-  data: any
+  data: any,
+  backupCategory: 'wal' | 'ver' = 'wal'
 ): Promise<void> {
   return withIndexedDBErrorBoundary(
     async () => {
       const db = await getDB();
-      const reportKey = `${reportType}_${reportId}`;
+      const reportKey = `${backupCategory}_${reportType}_${reportId}`;
       const backupId = `${reportKey}_${Date.now()}`;
       
       // Write the new backup
@@ -1736,15 +1746,24 @@ export async function restoreFromBackup(
   return withIndexedDBErrorBoundary(
     async () => {
       const db = await getDB();
-      const reportKey = `${reportType}_${reportId}`;
+      // Search both WAL and version backup categories
+      const walKey = `wal_${reportType}_${reportId}`;
+      const verKey = `ver_${reportType}_${reportId}`;
+      const legacyKey = `${reportType}_${reportId}`; // Backward compat with pre-category backups
       const index = db.transaction('report_backups').store.index('by-report');
-      const backups = await index.getAll(reportKey);
       
-      if (backups.length === 0) return null;
+      const [walBackups, verBackups, legacyBackups] = await Promise.all([
+        index.getAll(walKey),
+        index.getAll(verKey),
+        index.getAll(legacyKey),
+      ]);
       
-      // Return the most recent backup
-      backups.sort((a, b) => b.timestamp - a.timestamp);
-      return backups[0].data;
+      const allBackups = [...walBackups, ...verBackups, ...legacyBackups];
+      if (allBackups.length === 0) return null;
+      
+      // Return the most recent backup across all categories
+      allBackups.sort((a, b) => b.timestamp - a.timestamp);
+      return allBackups[0].data;
     },
     null,
     `restoreFromBackup:${reportType}`

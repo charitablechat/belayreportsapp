@@ -12,6 +12,7 @@ import { addSyncNotification } from '@/lib/notification-center';
 import { emitSyncComplete, setSyncInProgress } from '@/lib/sync-events';
 import { clearPendingSyncs } from '@/lib/background-sync';
 import { toast } from '@/components/ui/sonner';
+import { markSnapshotSynced } from '@/lib/local-backup-ledger';
 
 // Sync configuration with mobile optimization
 const DEBOUNCE_DELAY = 3000; // 3 seconds after local changes
@@ -263,6 +264,21 @@ export const useAutoSync = () => {
           // Prevents reload loop when all syncs are skipped due to session timeouts
           if (anySuccess) {
             emitSyncComplete();
+            
+            // Finding 7: Update localStorage backup ledger sync status
+            // Mark all previously-unsynced snapshots as synced to keep backup ledger accurate
+            try {
+              const { listAllSnapshots } = await import('@/lib/local-backup-ledger');
+              const snapshots = listAllSnapshots();
+              for (const snap of snapshots) {
+                if (!snap.synced) {
+                  markSnapshotSynced(snap.reportType, snap.reportId);
+                }
+              }
+            } catch (e) {
+              // Non-critical — backup ledger sync status is cosmetic
+              if (import.meta.env.DEV) console.warn('[AutoSync] Failed to update backup ledger sync status:', e);
+            }
           }
           
           // iOS: Clear pending sync flags after successful sync (fixes N3 - storage accumulation)
