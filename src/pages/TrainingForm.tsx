@@ -54,6 +54,11 @@ import { Lock } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useEmergencySave } from "@/hooks/useEmergencySave";
 import { saveReportSnapshot } from "@/lib/local-backup-ledger";
+import { appendVersion } from "@/lib/report-version-manager";
+import { showHardSavedToast } from "@/lib/toast-helpers";
+import { DataIntegrityBadge, type IntegrityStatus } from "@/components/ui/data-integrity-badge";
+import { VersionHistoryPanel } from "@/components/admin/VersionHistoryPanel";
+import { Shield as ShieldIcon } from "lucide-react";
 
 export default function TrainingForm() {
   const { id } = useParams();
@@ -97,6 +102,9 @@ export default function TrainingForm() {
   // Completion lock derived values (after report state is declared)
   const isCompletionLocked = training?.status === 'completed' && !completionLockOverridden;
   const effectiveReadOnly = isReadOnly || isCompletionLocked;
+  const [versionPanelOpen, setVersionPanelOpen] = useState(false);
+  const [lastVersionNumber, setLastVersionNumber] = useState<number | undefined>(undefined);
+  const [lastFieldCount, setLastFieldCount] = useState<number | undefined>(undefined);
 
   // Field-level click interception for locked reports (allow-list: only block editable elements)
   const handleLockedFieldClick = useCallback((e: React.MouseEvent | React.PointerEvent) => {
@@ -524,6 +532,21 @@ export default function TrainingForm() {
             summary: summary ? [summary] : [],
           }, false);
         } catch {}
+
+        // Layer 2: Append-only version history
+        appendVersion('training', id, updatedTraining, {
+          delivery_approaches: deliveryApproaches,
+          operating_systems: operatingSystems,
+          immediate_attention: immediateAttention,
+          verifiable_items: verifiableItems,
+          systems_in_place: systemsInPlace,
+          summary: summary ? [summary] : [],
+        }, 'auto_save').then((v) => {
+          if (v) {
+            setLastVersionNumber(v.versionNumber);
+            setLastFieldCount(v.fieldCount);
+          }
+        }).catch(() => {});
       }).catch((offlineError) => {
         console.warn('[Training Save] Offline storage failed:', offlineError);
       });

@@ -59,6 +59,11 @@ import { useSaveShortcut } from "@/hooks/useKeyboardShortcuts";
 import { useReportEditPermission } from "@/hooks/useReportEditPermission";
 import { CompletionLockDialog } from "@/components/CompletionLockDialog";
 import { Lock } from "lucide-react";
+import { appendVersion } from "@/lib/report-version-manager";
+import { showHardSavedToast } from "@/lib/toast-helpers";
+import { DataIntegrityBadge, type IntegrityStatus } from "@/components/ui/data-integrity-badge";
+import { VersionHistoryPanel } from "@/components/admin/VersionHistoryPanel";
+import { Shield as ShieldIcon } from "lucide-react";
 
 export default function InspectionForm() {
   const { id } = useParams();
@@ -93,6 +98,9 @@ export default function InspectionForm() {
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [photoRefreshKey, setPhotoRefreshKey] = useState(0);
+  const [versionPanelOpen, setVersionPanelOpen] = useState(false);
+  const [lastVersionNumber, setLastVersionNumber] = useState<number | undefined>(undefined);
+  const [lastFieldCount, setLastFieldCount] = useState<number | undefined>(undefined);
   const [saveError, setSaveError] = useState<string | null>(null);
   const saveDebounceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const isInternalUpdateRef = useRef(false);
@@ -1238,6 +1246,17 @@ export default function InspectionForm() {
         } catch {
           // Never let snapshot failure block the save
         }
+
+        // Layer 2: Append-only version history (fire-and-forget)
+        appendVersion('inspection', id!, inspectionToSave, {
+          systems, ziplines, equipment, standards, summary: [summary],
+        }, silent ? 'auto_save' : 'manual_save').then((v) => {
+          if (v) {
+            setLastVersionNumber(v.versionNumber);
+            setLastFieldCount(v.fieldCount);
+            if (!silent) showHardSavedToast(v.versionNumber, v.fieldCount);
+          }
+        }).catch(() => {});
       } catch (offlineError) {
         console.warn('[InspectionForm Save] Offline storage failed:', offlineError);
       }
