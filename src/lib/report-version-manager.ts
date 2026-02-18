@@ -26,6 +26,9 @@ export interface ReportVersion {
 
 const MAX_VERSIONS_PER_REPORT = 10;
 
+// In-memory monotonic counter per report — eliminates async read-before-write race
+const versionCounters = new Map<string, number>();
+
 /**
  * Count non-empty fields across parent + children for integrity checking
  */
@@ -90,22 +93,27 @@ export async function appendVersion(
       return null;
     }
 
-    // Get next version number
-    const tx = db.transaction('report_versions', 'readonly');
-    const store = tx.objectStore('report_versions');
-    const index = store.index('by-report');
-    const existingVersions = await index.getAll(reportId);
-    await tx.done;
-
-    const maxVersion = existingVersions.reduce(
-      (max, v) => Math.max(max, v.versionNumber || 0), 0
-    );
+    // Use in-memory counter to avoid async read race; seed from IndexedDB on first call
+    let nextVersion: number;
+    if (versionCounters.has(reportId)) {
+      nextVersion = versionCounters.get(reportId)! + 1;
+    } else {
+      const tx = db.transaction('report_versions', 'readonly');
+      const index = tx.objectStore('report_versions').index('by-report');
+      const existingVersions = await index.getAll(reportId);
+      await tx.done;
+      const maxVersion = existingVersions.reduce(
+        (max, v) => Math.max(max, v.versionNumber || 0), 0
+      );
+      nextVersion = maxVersion + 1;
+    }
+    versionCounters.set(reportId, nextVersion);
 
     const version: ReportVersion = {
       id: crypto.randomUUID(),
       reportType,
       reportId,
-      versionNumber: maxVersion + 1,
+      versionNumber: nextVersion,
       timestamp: Date.now(),
       device: isMobile() ? 'mobile' : 'desktop',
       parentData,
