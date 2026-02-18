@@ -1,54 +1,44 @@
 
 
-# Fix: Druidia Perpetual Re-Sync -- String Comparison Bug in getUnsyncedInspections
+# Fix: Re-Align Drifted Timestamps for Trainings and Daily Assessments
 
-## Root Cause Found
+## Problem
 
-The Druidia inspection is properly synced on the server (`synced_at` is 767 seconds ahead of `updated_at`). The problem is in the **local IndexedDB filter** that determines what needs syncing.
+The previous migration successfully fixed inspections (0 drifted), but **all 9 synced trainings** and **3 of 4 synced daily assessments** still have `updated_at > synced_at` on the server. This causes the same perpetual re-sync loop that plagued the Druidia inspection -- but across every training and most daily assessments.
 
-**File: `src/lib/offline-storage.ts`, line 606:**
-```typescript
-let unsynced = allInspections.filter(i => !i.synced_at || i.updated_at > i.synced_at);
-```
-
-This uses **JavaScript string comparison**, not date comparison. When timestamps have different formats or microsecond precision from the server (e.g., `"2026-02-18T04:37:21.091403+00:00"` vs `"2026-02-18T04:50:08.911+00:00"`), string comparison works coincidentally for most cases -- but breaks when:
-
-- Timestamps come from different sources (RPC vs Supabase JS client vs `new Date().toISOString()`)
-- Timezone offset format differs (`+00:00` vs `+00` vs `Z`)
-- Microsecond precision varies (6 digits vs 3 digits vs none)
-
-The `isLocalDataNewer` and `shouldPreserveLocalRecord` guards in `local-data-guards.ts` correctly use `new Date()` parsing. But `getUnsyncedInspections`, `getUnsyncedTrainings`, and `getUnsyncedDailyAssessments` all use raw string comparison.
-
-Additionally, the `align_synced_at` RPC call was added to `atomic-sync-manager.ts` but the preview build may not include these changes yet. Network logs confirm zero `align_synced_at` calls were made during the session. Even once deployed, the string comparison bug in `getUnsyncedInspections` would remain a ticking time bomb.
+**Why the first fix missed them:** The migration ran the alignment SQL, but the auto-sync cycle (running on the old client build without `align_synced_at` RPC calls) re-synced these records immediately after, re-introducing the drift. The new trigger was active, but the sync transaction updates data fields alongside `synced_at`, so the trigger correctly bumps `updated_at`. Without the post-sync `align_synced_at` call (which the old build lacked), the drift persists.
 
 ## Fix
 
-### 1. `src/lib/offline-storage.ts` -- Fix string comparison in three functions
+### Database Migration
 
-**getUnsyncedInspections (line 606):**
-```typescript
-// Before (string comparison -- unreliable):
-let unsynced = allInspections.filter(i => !i.synced_at || i.updated_at > i.synced_at);
+A single SQL statement to re-align all drifted records:
 
-// After (proper date comparison):
-let unsynced = allInspections.filter(i => {
-  if (!i.synced_at) return true;
-  if (!i.updated_at) return false;
-  return new Date(i.updated_at).getTime() > new Date(i.synced_at).getTime();
-});
+```sql
+-- Re-align trainings (9 records, all drifted)
+UPDATE trainings 
+SET synced_at = updated_at 
+WHERE synced_at IS NOT NULL 
+  AND deleted_at IS NULL 
+  AND updated_at > synced_at;
+
+-- Re-align daily assessments (3 records drifted)
+UPDATE daily_assessments 
+SET synced_at = updated_at 
+WHERE synced_at IS NOT NULL 
+  AND deleted_at IS NULL 
+  AND updated_at > synced_at;
 ```
 
-Apply the identical fix to:
-- **getUnsyncedTrainings** (same pattern, different function)
-- **getUnsyncedDailyAssessments** (same pattern, different function)
+The updated trigger (already deployed) will preserve `updated_at` during this operation since only `synced_at` is changing. No drift will be re-introduced.
 
-### 2. Verify `align_synced_at` RPC is being called
+### No Client-Side Changes Needed
 
-After the build deploys, verify via console logs that the RPC call at `atomic-sync-manager.ts:443` is executing. If it fails, the catch block at line 448 falls back to `new Date().toISOString()` which still aligns both timestamps -- but the server-side alignment wouldn't happen, potentially causing re-sync on the next Dashboard load.
+The `align_synced_at` RPC calls are already in `atomic-sync-manager.ts` for all three report types (inspections at line 443, trainings at line 984, daily assessments at the equivalent location). Once the current build deploys, future syncs will self-align. This migration is a one-time cleanup for records that drifted before the client code was deployed.
 
 ## Impact
 
-- **Scope:** Three filter functions in `offline-storage.ts`
-- **Risk:** Very low. Changing string comparison to date comparison is strictly more correct. No behavior change for properly formatted ISO strings where string comparison happens to work.
-- **Fixes:** The immediate Druidia re-sync loop, and prevents future timestamp format mismatches from causing phantom unsynced records across all report types.
+- **Scope:** 12 records total (9 trainings + 3 daily assessments)
+- **Risk:** Zero. Sets `synced_at = updated_at` on already-synced records. No data modification.
+- **Result:** Eliminates all remaining perpetual re-sync loops across the entire database.
 
