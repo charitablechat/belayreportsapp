@@ -227,8 +227,25 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
     if (recordStatus?.record_exists && recordStatus?.is_deleted) {
       console.warn('[Atomic Sync] Remote record was soft-deleted - cleaning up local copy:', inspectionId);
       
-      // Mark the local record as deleted to match remote state
-      // This prevents repeated sync attempts for orphaned local data
+      // PRE-DELETE BACKUP: Snapshot before destroying local data
+      try {
+        const localData = await getOfflineInspection(inspectionId);
+        if (localData) {
+          const [sys, zips, equip, stds, summ] = await Promise.all([
+            getRelatedDataOffline('systems', inspectionId),
+            getRelatedDataOffline('ziplines', inspectionId),
+            getRelatedDataOffline('equipment', inspectionId),
+            getRelatedDataOffline('standards', inspectionId),
+            getRelatedDataOffline('summary', inspectionId),
+          ]);
+          appendVersion('inspection', inspectionId, localData, {
+            systems: sys, ziplines: zips, equipment: equip, standards: stds, summary: summ,
+          }, 'pre_delete').catch(() => {});
+        }
+      } catch (backupErr) {
+        console.warn('[Atomic Sync] Pre-delete backup failed:', backupErr);
+      }
+      
       try {
         await deleteOfflineInspection(inspectionId);
         console.log('[Atomic Sync] Cleaned up orphaned local inspection:', inspectionId);
@@ -840,6 +857,27 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
     if (recordStatus?.record_exists && recordStatus?.is_deleted) {
       console.warn('[Atomic Sync] Remote training was soft-deleted - cleaning up local copy:', trainingId);
       
+      // PRE-DELETE BACKUP: Snapshot before destroying local data
+      try {
+        const localData = await getOfflineTraining(trainingId);
+        if (localData) {
+          const [da, os, ia, vi, sip, summ] = await Promise.all([
+            getTrainingDataOffline('delivery_approaches', trainingId),
+            getTrainingDataOffline('operating_systems', trainingId),
+            getTrainingDataOffline('immediate_attention', trainingId),
+            getTrainingDataOffline('verifiable_items', trainingId),
+            getTrainingDataOffline('systems_in_place', trainingId),
+            getTrainingDataOffline('summary', trainingId),
+          ]);
+          appendVersion('training', trainingId, localData, {
+            delivery_approaches: da, operating_systems: os, immediate_attention: ia,
+            verifiable_items: vi, systems_in_place: sip, summary: summ,
+          }, 'pre_delete').catch(() => {});
+        }
+      } catch (backupErr) {
+        console.warn('[Atomic Sync] Pre-delete training backup failed:', backupErr);
+      }
+      
       try {
         await deleteOfflineTraining(trainingId);
         console.log('[Atomic Sync] Cleaned up orphaned local training:', trainingId);
@@ -868,6 +906,31 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
       }
     }
     
+    // PRE-SYNC VERSION SNAPSHOT — capture immutable state before sync
+    appendVersion('training', trainingId, training, {
+      delivery_approaches, operating_systems, immediate_attention,
+      verifiable_items, systems_in_place, summary: summary ? [summary] : [],
+    }, 'pre_sync').catch(() => {});
+
+    // FIELD-COUNT REGRESSION GUARD — block sync if local data regressed significantly
+    const currentFieldCount = calculateFieldCount(training, {
+      delivery_approaches, operating_systems, immediate_attention,
+      verifiable_items, systems_in_place, summary: summary ? [summary] : [],
+    });
+    const previousFieldCount = await getLatestFieldCount(trainingId);
+    if (previousFieldCount !== null && previousFieldCount > 0) {
+      const dropPercent = ((previousFieldCount - currentFieldCount) / previousFieldCount) * 100;
+      if (dropPercent > 50) {
+        console.error('[SAFETY] Blocked training sync: field count regression >50%', {
+          trainingId: trainingId.substring(0, 8),
+          previousFieldCount,
+          currentFieldCount,
+          dropPercent: dropPercent.toFixed(1),
+        });
+        return { success: false, skipped: true, reason: 'field_count_regression' };
+      }
+    }
+
     // 4. Build transaction steps
     const steps: TransactionStep[] = [];
     
@@ -1308,6 +1371,27 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
     if (recordStatus?.record_exists && recordStatus?.is_deleted) {
       console.warn('[Atomic Sync] Remote assessment was soft-deleted - cleaning up local copy:', assessmentId);
       
+      // PRE-DELETE BACKUP: Snapshot before destroying local data
+      try {
+        const localData = await getOfflineDailyAssessment(assessmentId);
+        if (localData) {
+          const [bod, eod, os, eq, st, env] = await Promise.all([
+            getAssessmentDataOffline('beginning_of_day', assessmentId),
+            getAssessmentDataOffline('end_of_day', assessmentId),
+            getAssessmentDataOffline('operating_systems', assessmentId),
+            getAssessmentDataOffline('equipment_checks', assessmentId),
+            getAssessmentDataOffline('structure_checks', assessmentId),
+            getAssessmentDataOffline('environment_checks', assessmentId),
+          ]);
+          appendVersion('daily_assessment', assessmentId, localData, {
+            beginning_of_day: bod, end_of_day: eod, operating_systems: os,
+            equipment_checks: eq, structure_checks: st, environment_checks: env,
+          }, 'pre_delete').catch(() => {});
+        }
+      } catch (backupErr) {
+        console.warn('[Atomic Sync] Pre-delete assessment backup failed:', backupErr);
+      }
+      
       try {
         await deleteOfflineDailyAssessment(assessmentId);
         console.log('[Atomic Sync] Cleaned up orphaned local assessment:', assessmentId);
@@ -1336,6 +1420,31 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
       }
     }
     
+    // PRE-SYNC VERSION SNAPSHOT — capture immutable state before sync
+    appendVersion('daily_assessment', assessmentId, assessment, {
+      beginning_of_day, end_of_day, operating_systems,
+      equipment_checks, structure_checks, environment_checks,
+    }, 'pre_sync').catch(() => {});
+
+    // FIELD-COUNT REGRESSION GUARD — block sync if local data regressed significantly
+    const currentFieldCount = calculateFieldCount(assessment, {
+      beginning_of_day, end_of_day, operating_systems,
+      equipment_checks, structure_checks, environment_checks,
+    });
+    const previousFieldCount = await getLatestFieldCount(assessmentId);
+    if (previousFieldCount !== null && previousFieldCount > 0) {
+      const dropPercent = ((previousFieldCount - currentFieldCount) / previousFieldCount) * 100;
+      if (dropPercent > 50) {
+        console.error('[SAFETY] Blocked assessment sync: field count regression >50%', {
+          assessmentId: assessmentId.substring(0, 8),
+          previousFieldCount,
+          currentFieldCount,
+          dropPercent: dropPercent.toFixed(1),
+        });
+        return { success: false, skipped: true, reason: 'field_count_regression' };
+      }
+    }
+
     // 4. Build transaction steps
     const steps: TransactionStep[] = [];
     

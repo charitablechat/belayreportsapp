@@ -34,7 +34,7 @@ import { SyncPulse } from "@/components/pwa/SyncPulse";
 import { useConflicts } from "@/hooks/useConflicts";
 import { usePWA } from "@/hooks/usePWA";
 import { usePullToRefresh } from "@/hooks/usePullToRefresh";
-import { getOfflineInspections, deleteOfflineInspection, queueOperation, saveInspectionOffline, getOfflineTrainings, saveTrainingOffline, deleteOfflineTraining, getOfflineDailyAssessments, saveDailyAssessmentOffline, deleteOfflineDailyAssessment, getOfflineInspection, getOfflineTraining, getOfflineDailyAssessment } from "@/lib/offline-storage";
+import { getOfflineInspections, deleteOfflineInspection, queueOperation, saveInspectionOffline, getOfflineTrainings, saveTrainingOffline, deleteOfflineTraining, getOfflineDailyAssessments, saveDailyAssessmentOffline, deleteOfflineDailyAssessment, getOfflineInspection, getOfflineTraining, getOfflineDailyAssessment, clearRelatedDataOffline, clearTrainingDataOffline, clearAssessmentDataOffline } from "@/lib/offline-storage";
 import { shouldPreserveLocalRecord } from "@/lib/local-data-guards";
 import { ContactDeveloperSheet } from "@/components/ContactDeveloperSheet";
 import { onSyncComplete, isSyncInProgress } from "@/lib/sync-events";
@@ -437,6 +437,15 @@ export default function Dashboard() {
                       } catch {}
                       if (import.meta.env.DEV) console.log('[Dashboard] Removing orphaned local inspection:', local.id);
                       await deleteOfflineInspection(local.id);
+                      // Clean up orphaned child data
+                      const bypassOpt = { bypassTempGuard: true };
+                      await Promise.all([
+                        clearRelatedDataOffline('systems', local.id, bypassOpt),
+                        clearRelatedDataOffline('ziplines', local.id, bypassOpt),
+                        clearRelatedDataOffline('equipment', local.id, bypassOpt),
+                        clearRelatedDataOffline('standards', local.id, bypassOpt),
+                        clearRelatedDataOffline('summary', local.id, bypassOpt),
+                      ]).catch(() => {});
                     }
                   }
                   localStorage.setItem(lastCleanupKey, String(Date.now()));
@@ -576,6 +585,16 @@ export default function Dashboard() {
                       } catch {}
                       if (import.meta.env.DEV) console.log('[Dashboard] Removing orphaned local training:', local.id);
                       await deleteOfflineTraining(local.id);
+                      // Clean up orphaned child data
+                      const bypassOpt = { bypassTempGuard: true };
+                      await Promise.all([
+                        clearTrainingDataOffline('delivery_approaches', local.id, bypassOpt),
+                        clearTrainingDataOffline('operating_systems', local.id, bypassOpt),
+                        clearTrainingDataOffline('immediate_attention', local.id, bypassOpt),
+                        clearTrainingDataOffline('verifiable_items', local.id, bypassOpt),
+                        clearTrainingDataOffline('systems_in_place', local.id, bypassOpt),
+                        clearTrainingDataOffline('summary', local.id, bypassOpt),
+                      ]).catch(() => {});
                     }
                   }
                   localStorage.setItem(lastCleanupKey, String(Date.now()));
@@ -715,6 +734,16 @@ export default function Dashboard() {
                       } catch {}
                       if (import.meta.env.DEV) console.log('[Dashboard] Removing orphaned local assessment:', local.id);
                       await deleteOfflineDailyAssessment(local.id);
+                      // Clean up orphaned child data
+                      const bypassOpt = { bypassTempGuard: true };
+                      await Promise.all([
+                        clearAssessmentDataOffline('beginning_of_day', local.id, bypassOpt),
+                        clearAssessmentDataOffline('end_of_day', local.id, bypassOpt),
+                        clearAssessmentDataOffline('operating_systems', local.id, bypassOpt),
+                        clearAssessmentDataOffline('equipment_checks', local.id, bypassOpt),
+                        clearAssessmentDataOffline('structure_checks', local.id, bypassOpt),
+                        clearAssessmentDataOffline('environment_checks', local.id, bypassOpt),
+                      ]).catch(() => {});
                     }
                   }
                   localStorage.setItem(lastCleanupKey, String(Date.now()));
