@@ -2156,7 +2156,7 @@ serve(async (req) => {
                     <tr>
                       <td>${eq.equipment_type || "N/A"}</td>
                       <td style="text-align: center;">${eq.quantity || "N/A"}</td>
-                      <td style="text-align: center;">${eq.production_year || "N/A"}</td>
+                      <td style="text-align: center;">${eq.production_year === "0" ? "N/A" : eq.production_year || "N/A"}</td>
                       <td style="${resultData.cellStyle}">${resultData.html}</td>
                       <td style="font-size: 9pt;">${formattedComments}</td>
                     </tr>
@@ -2286,7 +2286,7 @@ serve(async (req) => {
                   <tr>
                     <td>${eq.equipment_type}</td>
                     <td style="text-align: center;">${eq.quantity || "N/A"}</td>
-                    <td style="text-align: center;">${eq.production_year || "N/A"}</td>
+                    <td style="text-align: center;">${eq.production_year === "0" ? "N/A" : eq.production_year || "N/A"}</td>
                     <td style="${resultData.cellStyle}">${resultData.html}</td>
                     <td style="font-size: 9pt;">${formattedComments}</td>
                   </tr>

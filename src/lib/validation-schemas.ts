@@ -64,7 +64,7 @@ export const equipmentSchema = z.object({
   inspection_id: flexibleUUID,
   equipment_type: z.string().optional().nullable(),
   equipment_category: z.string().optional().nullable(),
-  production_year: z.number().int().refine(val => val === 0 || (val >= 1900 && val <= 2100), { message: "Must be a valid year or N/A" }).optional().nullable(),
+  production_year: z.string().regex(/^(0|\d{4}(-\d{4})?)$/, "Must be a valid year, year range, or N/A").optional().nullable(),
   quantity: z.string().regex(/^\d+\+?$/, "Must be a number, optionally followed by +").optional().nullable(),
   result: z.enum(['pass', 'pass w/provisions', 'fail', 'na']),
   comments: z.string().max(2000).optional().nullable(),

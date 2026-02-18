@@ -422,7 +422,7 @@ serve(async (req) => {
           body: items.map(eq => [
             stripHtml(eq.equipment_type) || 'N/A',
             eq.quantity?.toString() || 'N/A',
-            eq.production_year?.toString() || 'N/A',
+            eq.production_year === "0" ? "N/A" : eq.production_year?.toString() || 'N/A',
             eq.result || 'N/A',
             formatCommentsForPdf(eq.comments)
           ]),

@@ -194,7 +194,7 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
                   </td>
                   <td className="border p-2">
                     <div className="flex items-center gap-1">
-                      {item.production_year === 0 ? (
+                      {item.production_year === "0" ? (
                         <div className="flex items-center gap-1 px-2 py-1 bg-muted rounded text-sm flex-1">
                           <span className="text-muted-foreground font-medium">N/A</span>
                           <Button
@@ -210,18 +210,18 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
                         <>
                           <Input
                             type="text"
-                            inputMode="numeric"
-                            pattern="[0-9]*"
+                            inputMode="text"
                             value={item.production_year || ""}
-                          onChange={(e) => {
+                            onChange={(e) => {
                               const raw = e.target.value;
                               if (raw === "") { updateEquipment(item, "production_year", null); return; }
-                              if (/^\d{0,4}$/.test(raw)) {
-                                updateEquipment(item, "production_year", parseInt(raw, 10));
+                              if (/^\d{0,4}(-\d{0,4})?$/.test(raw)) {
+                                updateEquipment(item, "production_year", raw);
                               }
                             }}
                             onBlur={() => {
-                              if (item.production_year && (item.production_year < 1900 || item.production_year > 2100)) {
+                              const val = item.production_year;
+                              if (val && !/^(0|\d{4}(-\d{4})?)$/.test(val)) {
                                 updateEquipment(item, "production_year", null);
                               }
                               onImmediateSave?.();
@@ -234,7 +234,7 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
                             variant="outline"
                             size="sm"
                             className="h-7 px-2 text-xs shrink-0"
-                            onClick={() => { updateEquipment(item, "production_year", 0); onImmediateSave?.(); }}
+                            onClick={() => { updateEquipment(item, "production_year", "0"); onImmediateSave?.(); }}
                           >
                             N/A
                           </Button>
@@ -363,7 +363,7 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
                     <div>
                       <Label className="text-xs text-muted-foreground">Production Year</Label>
                       <div className="flex items-center gap-1">
-                        {item.production_year === 0 ? (
+                        {item.production_year === "0" ? (
                           <div className="flex items-center gap-1 px-2 py-1 bg-muted rounded text-sm flex-1 h-10">
                             <span className="text-muted-foreground font-medium">N/A</span>
                             <Button
@@ -379,18 +379,18 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
                           <>
                             <Input
                               type="text"
-                              inputMode="numeric"
-                              pattern="[0-9]*"
+                              inputMode="text"
                               value={item.production_year || ""}
                               onChange={(e) => {
                                 const raw = e.target.value;
                                 if (raw === "") { updateEquipment(item, "production_year", null); return; }
-                                if (/^\d{0,4}$/.test(raw)) {
-                                  updateEquipment(item, "production_year", parseInt(raw, 10));
+                                if (/^\d{0,4}(-\d{0,4})?$/.test(raw)) {
+                                  updateEquipment(item, "production_year", raw);
                                 }
                               }}
                               onBlur={() => {
-                                if (item.production_year && (item.production_year < 1900 || item.production_year > 2100)) {
+                                const val = item.production_year;
+                                if (val && !/^(0|\d{4}(-\d{4})?)$/.test(val)) {
                                   updateEquipment(item, "production_year", null);
                                 }
                                 onImmediateSave?.();
@@ -403,7 +403,7 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
                               variant="outline"
                               size="sm"
                               className="h-10 px-2 text-xs shrink-0"
-                              onClick={() => { updateEquipment(item, "production_year", 0); onImmediateSave?.(); }}
+                              onClick={() => { updateEquipment(item, "production_year", "0"); onImmediateSave?.(); }}
                             >
                               N/A
                             </Button>
