@@ -320,6 +320,16 @@ async function ensureStorage(): Promise<void> {
     if (!isPersisted && !storageWarningShown) {
       console.warn('[Offline Storage] Persistent storage not granted - data may be cleared by browser');
       storageWarningShown = true;
+      // Finding 5: Surface storage eviction risk to user (one-time banner)
+      if (typeof window !== 'undefined' && !localStorage.getItem('storage-eviction-warned')) {
+        localStorage.setItem('storage-eviction-warned', 'true');
+        import('@/hooks/use-toast').then(({ toast }) => {
+          toast({
+            title: "Offline storage not guaranteed",
+            description: "Your browser may clear offline data under storage pressure. Stay connected to sync your work.",
+          });
+        }).catch(() => {});
+      }
     }
 
     // Check storage quota
@@ -353,6 +363,28 @@ async function withIndexedDBErrorBoundary<T>(
   if (isCircuitBreakerOpen()) {
     if (import.meta.env.DEV) {
       console.log(`[Offline Storage] Circuit breaker open, returning fallback for ${operationName}`);
+    }
+    // Finding 2: Surface user-visible warning when write operations are silently dropped
+    const isWriteOp = operationName.toLowerCase().includes('save') || 
+                      operationName.toLowerCase().includes('put') || 
+                      operationName.toLowerCase().includes('delete') ||
+                      operationName.toLowerCase().includes('queue') ||
+                      operationName.toLowerCase().includes('update');
+    if (isWriteOp && typeof window !== 'undefined') {
+      const cbWarningKey = 'circuit-breaker-warning-shown';
+      if (!sessionStorage.getItem(cbWarningKey)) {
+        sessionStorage.setItem(cbWarningKey, 'true');
+        // Dynamic import to avoid circular deps
+        import('@/hooks/use-toast').then(({ toast }) => {
+          toast({
+            title: "Storage temporarily unavailable",
+            description: "Your changes may not be saved locally. Stay connected to sync your work.",
+            variant: "destructive",
+          });
+        }).catch(() => {});
+        // Clear after circuit breaker reset window (60s)
+        setTimeout(() => sessionStorage.removeItem(cbWarningKey), 61000);
+      }
     }
     return fallbackValue;
   }
@@ -865,6 +897,24 @@ export async function markPhotoAsUploaded(id: string, photoUrl: string) {
 
 export async function deleteOfflinePhoto(id: string) {
   const db = await getDB();
+  
+  // Finding 4: WAL backup — snapshot photo before deleting (especially important for unuploaded photos)
+  try {
+    const photo = await db.get('photos', id);
+    if (photo && !photo.uploaded && db.objectStoreNames.contains('report_backups')) {
+      await db.put('report_backups', {
+        id: `photo_backup_${id}_${Date.now()}`,
+        reportType: 'photo',
+        reportId: id,
+        reportKey: `photo_${id}`,
+        timestamp: Date.now(),
+        data: photo,
+      });
+    }
+  } catch (e) {
+    console.warn('[Offline Storage] Non-critical: failed to backup photo before delete:', e);
+  }
+  
   await db.delete('photos', id);
   
   if (import.meta.env.DEV) {

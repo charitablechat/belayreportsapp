@@ -276,6 +276,14 @@ export default function DailyAssessmentForm() {
 
   const handleSignOut = async () => {
     setSigningOut(true);
+    // Flush any pending unsaved changes before signing out (Finding 1: data loss prevention)
+    if (hasUnsavedChanges) {
+      try {
+        await handleSaveProgressRef.current?.();
+      } catch (e) {
+        console.warn('[DailyAssessmentForm] Failed to flush save before sign-out:', e);
+      }
+    }
     await supabase.auth.signOut();
     navigate("/");
   };
