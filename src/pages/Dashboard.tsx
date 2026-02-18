@@ -931,6 +931,14 @@ export default function Dashboard() {
               {/* Minimal dot-based sync indicator */}
               <SyncPulse />
               
+              {/* Pending uploads chip - visible when items are queued */}
+              {unsyncedCount > 0 && !isSyncing && (
+                <Badge variant="outline" className="bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30 font-mono text-xs gap-1">
+                  <Cloud className="w-3 h-3" />
+                  {unsyncedCount} pending
+                </Badge>
+              )}
+              
               <NetworkQualityIndicator />
               
               {/* Visible Force Sync button for quick access */}
