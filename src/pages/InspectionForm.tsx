@@ -53,6 +53,7 @@ import { UserProfileDropdown } from "@/components/UserProfileDropdown";
 import { Check } from "lucide-react";
 import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
 import { UnsavedChangesDialog } from "@/components/UnsavedChangesDialog";
+import { useEmergencySave } from "@/hooks/useEmergencySave";
 import { useSaveShortcut } from "@/hooks/useKeyboardShortcuts";
 import { useReportEditPermission } from "@/hooks/useReportEditPermission";
 import { CompletionLockDialog } from "@/components/CompletionLockDialog";
@@ -209,6 +210,15 @@ export default function InspectionForm() {
     hasUnsavedChanges: hasUnsavedChanges && (inspection?.status !== 'completed' || completionLockOverridden),
     message: "You have unsaved changes to this inspection. Are you sure you want to leave?",
     onSaveAndLeave: async () => { await saveBeforeLeaveRef.current?.(); },
+  });
+
+  // Emergency save on page hide/refresh (Vector 1: zero-data-loss)
+  useEmergencySave({
+    hasUnsavedChanges,
+    saving,
+    saveDebounceTimerRef,
+    performSaveRef,
+    formName: 'InspectionForm',
   });
 
   const safeGoBack = useCallback(() => {
@@ -1002,10 +1012,11 @@ export default function InspectionForm() {
           }
 
           // Process all fetched related data
+          // Vector 2: Non-regression guard — don't overwrite local data with empty server arrays
           const { data: systemsData } = systemsResult;
           // Mark as internal update to prevent change tracker from firing
           isInternalUpdateRef.current = true;
-          if (systemsData) {
+          if (systemsData && systemsData.length > 0) {
             const normalizedSystems = systemsData.map(item => ({
               ...item,
               result: normalizeResultValue(item.result)
@@ -1014,10 +1025,12 @@ export default function InspectionForm() {
             saveRelatedDataOffline('systems', id!, normalizedSystems).catch(e =>
               console.warn('[InspectionForm] Non-critical: failed to cache systems', e)
             );
+          } else if (offlineSystems.length > 0) {
+            console.warn('[InspectionForm] Server returned empty systems but local has data -- preserving local');
           }
 
           const { data: ziplinesData } = ziplinesResult;
-          if (ziplinesData) {
+          if (ziplinesData && ziplinesData.length > 0) {
             const normalizedZiplines = ziplinesData.map(item => ({
               ...item,
               result: normalizeResultValue(item.result),
@@ -1029,10 +1042,12 @@ export default function InspectionForm() {
             saveRelatedDataOffline('ziplines', id!, normalizedZiplines).catch(e =>
               console.warn('[InspectionForm] Non-critical: failed to cache ziplines', e)
             );
+          } else if (offlineZiplines.length > 0) {
+            console.warn('[InspectionForm] Server returned empty ziplines but local has data -- preserving local');
           }
 
           const { data: equipmentData } = equipmentResult;
-          if (equipmentData) {
+          if (equipmentData && equipmentData.length > 0) {
             const normalizedEquipment = equipmentData.map(item => ({
               ...item,
               result: normalizeResultValue(item.result)
@@ -1041,6 +1056,8 @@ export default function InspectionForm() {
             saveRelatedDataOffline('equipment', id!, normalizedEquipment).catch(e =>
               console.warn('[InspectionForm] Non-critical: failed to cache equipment', e)
             );
+          } else if (offlineEquipment.length > 0) {
+            console.warn('[InspectionForm] Server returned empty equipment but local has data -- preserving local');
           }
 
           const { data: standardsData } = standardsResult;
@@ -1049,6 +1066,8 @@ export default function InspectionForm() {
             saveRelatedDataOffline('standards', id!, standardsData).catch(e =>
               console.warn('[InspectionForm] Non-critical: failed to cache standards', e)
             );
+          } else if (offlineStandards.length > 0) {
+            console.warn('[InspectionForm] Server returned empty standards but local has data -- preserving local');
           }
 
           const { data: summaryData } = summaryResult;
@@ -1057,6 +1076,8 @@ export default function InspectionForm() {
             saveRelatedDataOffline('summary', id!, [summaryData]).catch(e =>
               console.warn('[InspectionForm] Non-critical: failed to cache summary', e)
             );
+          } else if (offlineSummary.length > 0) {
+            console.warn('[InspectionForm] Server returned empty summary but local has data -- preserving local');
           }
 
           if (import.meta.env.DEV) {

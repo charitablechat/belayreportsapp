@@ -52,6 +52,7 @@ import { useReportEditPermission } from "@/hooks/useReportEditPermission";
 import { CompletionLockDialog } from "@/components/CompletionLockDialog";
 import { Lock } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useEmergencySave } from "@/hooks/useEmergencySave";
 
 export default function TrainingForm() {
   const { id } = useParams();
@@ -174,6 +175,16 @@ export default function TrainingForm() {
     hasUnsavedChanges: hasUnsavedChanges && (training?.status !== 'completed' || completionLockOverridden),
     message: "You have unsaved changes to this training report. Are you sure you want to leave?",
     onSaveAndLeave: async () => { await saveBeforeLeaveRef.current?.(); },
+  });
+
+  // Emergency save on page hide/refresh (Vector 1: zero-data-loss)
+  // Note: uses autoSaveTimer (declared above) since saveDebounceTimerRef is declared later
+  useEmergencySave({
+    hasUnsavedChanges,
+    saving: isSaving,
+    saveDebounceTimerRef: autoSaveTimer,
+    performSaveRef: saveTrainingRef as React.MutableRefObject<((silent?: boolean) => Promise<void>) | undefined>,
+    formName: 'TrainingForm',
   });
 
   // Auto-retry on network reconnect is now handled by useAutoSync hook
@@ -375,29 +386,52 @@ export default function TrainingForm() {
               supabase.from('training_summary').select('*').eq('training_id', id).maybeSingle()
             ]);
 
+            // Vector 2: Non-regression guard — don't overwrite local data with empty server arrays
             isInternalUpdateRef.current = true;
-            setDeliveryApproaches(approachData || []);
-            setOperatingSystems(systemData || []);
-            setImmediateAttention(attentionData || []);
-            setVerifiableItems(verifiableData || []);
-            setSystemsInPlace(systemsPlaceData || []);
-            // Initialize summary with a proper UUID if not exists
-            setSummary(summaryResult || { 
-              id: crypto.randomUUID(),
-              training_id: id 
-            });
-
-            // Non-blocking cache updates for related data
-            Promise.all([
-              saveTrainingDataOffline('delivery_approaches', id, approachData || []),
-              saveTrainingDataOffline('operating_systems', id, systemData || []),
-              saveTrainingDataOffline('immediate_attention', id, attentionData || []),
-              saveTrainingDataOffline('verifiable_items', id, verifiableData || []),
-              saveTrainingDataOffline('systems_in_place', id, systemsPlaceData || []),
-              summaryResult && saveTrainingDataOffline('summary', id, summaryResult)
-            ]).catch(e =>
-              console.warn('[TrainingForm] Non-critical: failed to cache related data', e)
-            );
+            if (approachData && approachData.length > 0) {
+              setDeliveryApproaches(approachData);
+              saveTrainingDataOffline('delivery_approaches', id, approachData).catch(e =>
+                console.warn('[TrainingForm] Non-critical: failed to cache delivery_approaches', e));
+            } else if (delivery_approaches.length > 0) {
+              console.warn('[TrainingForm] Server returned empty delivery_approaches but local has data -- preserving local');
+            }
+            if (systemData && systemData.length > 0) {
+              setOperatingSystems(systemData);
+              saveTrainingDataOffline('operating_systems', id, systemData).catch(e =>
+                console.warn('[TrainingForm] Non-critical: failed to cache operating_systems', e));
+            } else if (operating_systems.length > 0) {
+              console.warn('[TrainingForm] Server returned empty operating_systems but local has data -- preserving local');
+            }
+            if (attentionData && attentionData.length > 0) {
+              setImmediateAttention(attentionData);
+              saveTrainingDataOffline('immediate_attention', id, attentionData).catch(e =>
+                console.warn('[TrainingForm] Non-critical: failed to cache immediate_attention', e));
+            } else if (immediate_attention.length > 0) {
+              console.warn('[TrainingForm] Server returned empty immediate_attention but local has data -- preserving local');
+            }
+            if (verifiableData && verifiableData.length > 0) {
+              setVerifiableItems(verifiableData);
+              saveTrainingDataOffline('verifiable_items', id, verifiableData).catch(e =>
+                console.warn('[TrainingForm] Non-critical: failed to cache verifiable_items', e));
+            } else if (verifiable_items.length > 0) {
+              console.warn('[TrainingForm] Server returned empty verifiable_items but local has data -- preserving local');
+            }
+            if (systemsPlaceData && systemsPlaceData.length > 0) {
+              setSystemsInPlace(systemsPlaceData);
+              saveTrainingDataOffline('systems_in_place', id, systemsPlaceData).catch(e =>
+                console.warn('[TrainingForm] Non-critical: failed to cache systems_in_place', e));
+            } else if (systems_in_place.length > 0) {
+              console.warn('[TrainingForm] Server returned empty systems_in_place but local has data -- preserving local');
+            }
+            // Summary: always take server data if available, otherwise keep local
+            if (summaryResult) {
+              setSummary(summaryResult);
+              saveTrainingDataOffline('summary', id, summaryResult).catch(e =>
+                console.warn('[TrainingForm] Non-critical: failed to cache summary', e));
+            } else if (!summaryData) {
+              // Initialize summary with a proper UUID if not exists anywhere
+              setSummary({ id: crypto.randomUUID(), training_id: id });
+            }
           }
         } else if (!offlineTraining) {
           // Offline and no cached data

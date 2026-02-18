@@ -3,6 +3,7 @@ import { OptimizedImage } from "@/components/ui/optimized-image";
 import { supabase } from "@/integrations/supabase/client";
 import { getOfflinePhotos, updatePhotoDisplayOrder } from "@/lib/offline-storage";
 import { cachePhotoFromRemote, batchValidateCachedPhotos } from "@/lib/photo-cache";
+import { getPhotoReceipts } from "@/lib/photo-receipts";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -48,6 +49,8 @@ interface Photo {
   caption: string | null;
   display_order: number;
   staleUpload?: boolean;
+  /** True if a receipt exists but the blob was evicted from IndexedDB */
+  blobEvicted?: boolean;
 }
 
 export default function PhotoGallery({ 
@@ -63,6 +66,7 @@ export default function PhotoGallery({
   const [activeId, setActiveId] = useState<string | null>(null);
   const { isOnline } = useNetworkStatus();
   const objectUrlsRef = useRef<string[]>([]);
+  const [evictedCount, setEvictedCount] = useState(0);
 
   // Desktop-first sensor configuration with mobile support
   const sensors = useSensors(
@@ -130,6 +134,12 @@ export default function PhotoGallery({
             staleUpload: isStale,
           };
         });
+
+      // Vector 5: Cross-reference photo receipts against IndexedDB to detect evicted blobs
+      const receipts = getPhotoReceipts(inspectionId, section);
+      const offlinePhotoIds = new Set(offlinePhotos.filter(p => p.section === section).map(p => p.id));
+      const evictedPhotos = receipts.filter(r => !r.uploaded && !offlinePhotoIds.has(r.id));
+      setEvictedCount(evictedPhotos.length);
 
       // If online, also load from Supabase
       if (isOnline) {
@@ -355,7 +365,7 @@ export default function PhotoGallery({
     );
   }
 
-  if (photos.length === 0) {
+  if (photos.length === 0 && evictedCount === 0) {
     return (
       <div className="text-center p-8 text-muted-foreground">
         No photos yet. Add photos using the button above.
@@ -364,6 +374,17 @@ export default function PhotoGallery({
   }
 
   return (
+    <>
+      {/* Vector 5: Warning banner for evicted photo blobs */}
+      {evictedCount > 0 && (
+        <div className="mb-4 p-3 border-2 border-destructive rounded-lg bg-destructive/10 flex items-center gap-2">
+          <AlertTriangle className="w-5 h-5 text-destructive flex-shrink-0" />
+          <p className="text-sm text-destructive font-medium">
+            {evictedCount} photo{evictedCount > 1 ? 's were' : ' was'} lost from local storage (browser storage pressure). 
+            Please retake {evictedCount > 1 ? 'these photos' : 'this photo'}.
+          </p>
+        </div>
+      )}
     <DndContext
       sensors={sensors}
       collisionDetection={closestCenter}
@@ -453,5 +474,6 @@ export default function PhotoGallery({
         )}
       </DragOverlay>
     </DndContext>
+    </>
   );
 }

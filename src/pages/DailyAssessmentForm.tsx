@@ -52,6 +52,7 @@ import { useReportEditPermission } from "@/hooks/useReportEditPermission";
 import { CompletionLockDialog } from "@/components/CompletionLockDialog";
 import { Lock } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useEmergencySave } from "@/hooks/useEmergencySave";
 
 export default function DailyAssessmentForm() {
   const { id } = useParams();
@@ -119,6 +120,9 @@ export default function DailyAssessmentForm() {
   }, [isCompletionLocked]);
 
   const isInternalUpdateRef = useRef(false);
+  // Auto-save debounce timer (declared early for useEmergencySave)
+  const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const autoSaveIntervalRef = useRef<NodeJS.Timeout | null>(null);
   
   // Tab navigation state
   const [currentTab, setCurrentTab] = useState("beginning");
@@ -169,6 +173,15 @@ export default function DailyAssessmentForm() {
     hasUnsavedChanges: hasUnsavedChanges && (assessment?.status !== 'completed' || completionLockOverridden),
     message: "You have unsaved changes to this assessment. Are you sure you want to leave?",
     onSaveAndLeave: async () => { await saveBeforeLeaveRef.current?.(); },
+  });
+
+  // Emergency save on page hide/refresh (Vector 1: zero-data-loss)
+  useEmergencySave({
+    hasUnsavedChanges,
+    saving,
+    saveDebounceTimerRef: autoSaveTimerRef,
+    performSaveRef: handleSaveProgressRef as React.MutableRefObject<((silent?: boolean) => Promise<void>) | undefined>,
+    formName: 'DailyAssessmentForm',
   });
 
   // Auto-retry on network reconnect is now handled by useAutoSync hook
@@ -251,8 +264,7 @@ export default function DailyAssessmentForm() {
   useSaveShortcut(() => saveRef.current?.(), hasUnsavedChanges && !saving);
 
   // Auto-save debounce timer
-  const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const autoSaveIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  // autoSaveTimerRef and autoSaveIntervalRef declared above (near isInternalUpdateRef)
 
   useEffect(() => {
     loadAssessment();
@@ -395,29 +407,32 @@ export default function DailyAssessmentForm() {
             supabase.from('daily_assessment_environment_checks').select('*').eq('assessment_id', id),
           ]);
 
+          // Vector 2: Non-regression guard — don't overwrite local data with empty server arrays
           isInternalUpdateRef.current = true;
-          setBeginningOfDay(bodData.data || []);
-          setEndOfDay(eodData.data || []);
-          setOperatingSystems(osData.data || []);
-          setEquipmentChecks(eqData.data || []);
-          setStructureChecks(stData.data || []);
-          setEnvironmentChecks(envData.data || []);
-          
-          // Non-blocking cache updates - don't await to prevent loading freeze
           const { saveDailyAssessmentOffline, saveAssessmentDataOffline } = await import('@/lib/offline-storage');
           saveDailyAssessmentOffline({ ...assessmentData, synced_at: assessmentData.synced_at || new Date().toISOString() }).catch(e =>
             console.warn('[DailyAssessmentForm] Non-critical: failed to cache assessment', e)
           );
-          Promise.all([
-            saveAssessmentDataOffline('beginning_of_day', id!, bodData.data || []),
-            saveAssessmentDataOffline('end_of_day', id!, eodData.data || []),
-            saveAssessmentDataOffline('operating_systems', id!, osData.data || []),
-            saveAssessmentDataOffline('equipment_checks', id!, eqData.data || []),
-            saveAssessmentDataOffline('structure_checks', id!, stData.data || []),
-            saveAssessmentDataOffline('environment_checks', id!, envData.data || []),
-          ]).catch(e =>
-            console.warn('[DailyAssessmentForm] Non-critical: failed to cache related data', e)
-          );
+
+          // Helper: only set state & cache if server returned data, otherwise preserve local
+          const guardedSet = (serverData: any[] | null, localData: any[], setter: (d: any[]) => void, key: string) => {
+            if (serverData && serverData.length > 0) {
+              setter(serverData);
+              saveAssessmentDataOffline(key as any, id!, serverData).catch(e =>
+                console.warn(`[DailyAssessmentForm] Non-critical: failed to cache ${key}`, e));
+            } else if (localData.length > 0) {
+              console.warn(`[DailyAssessmentForm] Server returned empty ${key} but local has data -- preserving local`);
+            } else {
+              setter(serverData || []);
+            }
+          };
+
+          guardedSet(bodData.data, bodData.data?.length ? [] : beginningOfDay, setBeginningOfDay, 'beginning_of_day');
+          guardedSet(eodData.data, eodData.data?.length ? [] : endOfDay, setEndOfDay, 'end_of_day');
+          guardedSet(osData.data, osData.data?.length ? [] : operatingSystems, setOperatingSystems, 'operating_systems');
+          guardedSet(eqData.data, eqData.data?.length ? [] : equipmentChecks, setEquipmentChecks, 'equipment_checks');
+          guardedSet(stData.data, stData.data?.length ? [] : structureChecks, setStructureChecks, 'structure_checks');
+          guardedSet(envData.data, envData.data?.length ? [] : environmentChecks, setEnvironmentChecks, 'environment_checks');
         }
       } else if (!offlineAssessment) {
         // Offline and no cached data
