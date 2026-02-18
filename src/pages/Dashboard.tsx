@@ -394,15 +394,22 @@ export default function Dashboard() {
             return saveInspectionOffline({ ...inspection, synced_at: inspection.synced_at || now });
           }))
             .then(async () => {
-              // ORPHAN CLEANUP with threshold guard: protect against incomplete server responses
+              // ORPHAN CLEANUP with threshold guard + rate limiting (Vector 4)
               try {
+                // Rate limit: only run orphan cleanup once per hour
+                const ORPHAN_CLEANUP_COOLDOWN = 3600000; // 1 hour
+                const lastCleanupKey = 'lastOrphanCleanup_inspections';
+                const lastCleanup = parseInt(localStorage.getItem(lastCleanupKey) || '0');
+                if (Date.now() - lastCleanup < ORPHAN_CLEANUP_COOLDOWN) {
+                  if (import.meta.env.DEV) console.log('[Dashboard] Inspection orphan cleanup on cooldown -- skipping');
+                } else {
                 const serverIds = new Set(networkData.map((i: any) => i.id));
                 const localInspections = await getOfflineInspections(userId);
                 const nonTempLocals = localInspections.filter(l => !l.id.startsWith('temp-'));
                 
                 // SAFETY: If server returned far fewer records than local, skip cleanup
-                // This prevents data loss from partial responses, query limits, or RLS changes
-                if (networkData.length < nonTempLocals.length * 0.5 && nonTempLocals.length > 3) {
+                // Increased threshold from 3 to 5 for additional safety
+                if (networkData.length < nonTempLocals.length * 0.5 && nonTempLocals.length > 5) {
                   console.warn('[Dashboard] Server returned far fewer inspections than local -- skipping orphan cleanup', {
                     server: networkData.length,
                     local: nonTempLocals.length,
@@ -432,6 +439,8 @@ export default function Dashboard() {
                       await deleteOfflineInspection(local.id);
                     }
                   }
+                  localStorage.setItem(lastCleanupKey, String(Date.now()));
+                }
                 }
               } catch (cleanupErr) {
                 console.warn('[Dashboard] Orphan cleanup failed:', cleanupErr);
@@ -528,13 +537,19 @@ export default function Dashboard() {
             return saveTrainingOffline({ ...training, synced_at: training.synced_at || nowT });
           }))
             .then(async () => {
-              // ORPHAN CLEANUP with threshold guard
+              // ORPHAN CLEANUP with threshold guard + rate limiting (Vector 4)
               try {
+                const ORPHAN_CLEANUP_COOLDOWN = 3600000;
+                const lastCleanupKey = 'lastOrphanCleanup_trainings';
+                const lastCleanup = parseInt(localStorage.getItem(lastCleanupKey) || '0');
+                if (Date.now() - lastCleanup < ORPHAN_CLEANUP_COOLDOWN) {
+                  if (import.meta.env.DEV) console.log('[Dashboard] Training orphan cleanup on cooldown -- skipping');
+                } else {
                 const serverIds = new Set(networkData.map((t: any) => t.id));
                 const localTrainings = await getOfflineTrainings(userId);
                 const nonTempLocals = localTrainings.filter(l => !l.id.startsWith('temp-'));
                 
-                if (networkData.length < nonTempLocals.length * 0.5 && nonTempLocals.length > 3) {
+                if (networkData.length < nonTempLocals.length * 0.5 && nonTempLocals.length > 5) {
                   console.warn('[Dashboard] Server returned far fewer trainings than local -- skipping orphan cleanup', {
                     server: networkData.length,
                     local: nonTempLocals.length,
@@ -563,6 +578,8 @@ export default function Dashboard() {
                       await deleteOfflineTraining(local.id);
                     }
                   }
+                  localStorage.setItem(lastCleanupKey, String(Date.now()));
+                }
                 }
               } catch (cleanupErr) {
                 console.warn('[Dashboard] Training orphan cleanup failed:', cleanupErr);
@@ -659,13 +676,19 @@ export default function Dashboard() {
             return saveDailyAssessmentOffline({ ...assessment, synced_at: assessment.synced_at || nowA });
           }))
             .then(async () => {
-              // ORPHAN CLEANUP with threshold guard
+              // ORPHAN CLEANUP with threshold guard + rate limiting (Vector 4)
               try {
+                const ORPHAN_CLEANUP_COOLDOWN = 3600000;
+                const lastCleanupKey = 'lastOrphanCleanup_assessments';
+                const lastCleanup = parseInt(localStorage.getItem(lastCleanupKey) || '0');
+                if (Date.now() - lastCleanup < ORPHAN_CLEANUP_COOLDOWN) {
+                  if (import.meta.env.DEV) console.log('[Dashboard] Assessment orphan cleanup on cooldown -- skipping');
+                } else {
                 const serverIds = new Set(networkData.map((a: any) => a.id));
                 const localAssessments = await getOfflineDailyAssessments(userId);
                 const nonTempLocals = localAssessments.filter(l => !l.id.startsWith('temp-'));
                 
-                if (networkData.length < nonTempLocals.length * 0.5 && nonTempLocals.length > 3) {
+                if (networkData.length < nonTempLocals.length * 0.5 && nonTempLocals.length > 5) {
                   console.warn('[Dashboard] Server returned far fewer assessments than local -- skipping orphan cleanup', {
                     server: networkData.length,
                     local: nonTempLocals.length,
@@ -694,6 +717,8 @@ export default function Dashboard() {
                       await deleteOfflineDailyAssessment(local.id);
                     }
                   }
+                  localStorage.setItem(lastCleanupKey, String(Date.now()));
+                }
                 }
               } catch (cleanupErr) {
                 console.warn('[Dashboard] Assessment orphan cleanup failed:', cleanupErr);

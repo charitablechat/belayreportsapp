@@ -4,6 +4,7 @@ import { Camera, Upload, CloudOff, ImagePlus } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { getUserWithCache } from "@/lib/cached-auth";
 import { savePhotoOffline, markPhotoAsUploaded } from "@/lib/offline-storage";
+import { savePhotoReceipt } from "@/lib/photo-receipts";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { triggerHaptic } from "@/lib/haptics";
 import { compressImage } from "@/lib/image-compression";
@@ -163,8 +164,17 @@ export default function PhotoCapture({
       uploaded: false,
     });
     
+    // Vector 5: Save lightweight receipt to localStorage (survives IndexedDB eviction)
+    savePhotoReceipt({
+      id: photoId,
+      inspectionId,
+      section,
+      timestamp: Date.now(),
+      uploaded: false,
+    });
+    
     if (import.meta.env.DEV) {
-      console.log('[PhotoCapture] Photo saved locally:', photoId);
+      console.log('[PhotoCapture] Photo saved locally with receipt:', photoId);
     }
 
     // IMMEDIATELY refresh gallery (user sees photo with "Pending" badge)
