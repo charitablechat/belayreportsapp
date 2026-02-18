@@ -178,12 +178,14 @@ export default function NewInspection() {
           });
         }
         
+        const syncTimestamp = new Date().toISOString();
         const { data, error } = await supabase
           .from("inspections")
           .insert({
             ...cleanedFormData,
             inspector_id: user.id,
             status: "draft",
+            synced_at: syncTimestamp,
           })
           .select()
           .single();
