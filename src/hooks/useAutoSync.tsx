@@ -24,6 +24,8 @@ const PER_ITEM_TIMEOUT_BUDGET = 8000; // 8 seconds budget per unsynced item
 const MAX_SYNC_TIMEOUT = 300000; // 5 minute absolute maximum
 const MAX_BATCH_SIZE = 5; // Must match atomic-sync-manager.ts
 const ACCELERATED_SYNC_DELAY = 5000; // 5s between cycles when draining a queue
+const STALE_UPLOAD_THRESHOLD = 5 * 60 * 1000; // 5 minutes - warn if data hasn't synced
+const STALE_CHECK_INTERVAL = 60 * 1000; // Check every 60 seconds
 
 /**
  * Helper to wrap promises with a timeout
@@ -93,6 +95,7 @@ export const useAutoSync = () => {
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const periodicSyncIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const staleWarningShownRef = useRef(false);
   
   /**
    * Perform the actual sync operation
@@ -240,6 +243,18 @@ export const useAutoSync = () => {
             const remainingMsg = totalRemaining > 0 ? ` (${totalRemaining} more queued)` : '';
             toast.success(`Data synced successfully (${totalSynced} items)${remainingMsg}`);
             addSyncNotification(`Data synced successfully (${totalSynced} items)${remainingMsg}`);
+            
+            // Reset stale warning flag on successful sync
+            staleWarningShownRef.current = false;
+            
+            // BUILD_TIMESTAMP audit logging for production diagnostics
+            console.log('[AutoSync] Sync confirmed', {
+              version: import.meta.env.APP_VERSION,
+              build: import.meta.env.BUILD_TIMESTAMP,
+              itemsSynced: totalSynced,
+              remaining: totalRemaining,
+              timestamp: new Date().toISOString(),
+            });
           }
           
           // Only emit sync complete when items were actually synced
@@ -492,6 +507,32 @@ export const useAutoSync = () => {
     const interval = setInterval(updateUnsyncedCounts, 30000);
     return () => clearInterval(interval);
   }, [updateUnsyncedCounts]);
+  
+  // Stale upload detection: warn if items haven't synced for 5+ minutes while online
+  useEffect(() => {
+    const checkStale = () => {
+      if (!navigator.onLine) return;
+      if (unsyncedCountRef.current === 0) {
+        staleWarningShownRef.current = false;
+        return;
+      }
+      
+      const lastSync = state.lastSyncTime?.getTime() || 0;
+      const elapsed = Date.now() - lastSync;
+      
+      if (elapsed > STALE_UPLOAD_THRESHOLD && !staleWarningShownRef.current) {
+        staleWarningShownRef.current = true;
+        toast.warning(`${unsyncedCountRef.current} item(s) haven't synced in over 5 minutes`, {
+          description: 'Check your connection or try force-syncing.',
+          duration: 10000,
+        });
+        addSyncNotification(`Stale upload warning: ${unsyncedCountRef.current} items pending for 5+ minutes`);
+      }
+    };
+    
+    const interval = setInterval(checkStale, STALE_CHECK_INTERVAL);
+    return () => clearInterval(interval);
+  }, [state.lastSyncTime]);
   
   return {
     ...state,

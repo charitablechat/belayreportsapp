@@ -435,13 +435,27 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
     // 6. Get cached inspector profile to attach to offline data
     const inspectorProfile = await getCachedProfile(user.id);
     
-    // Update local storage with sync timestamp and inspector profile
-    // CRITICAL: Align updated_at = synced_at to prevent re-queuing due to timestamp race
-    const syncTimestamp = new Date().toISOString();
+    // CRITICAL FIX (v2.5.8): Fetch server's updated_at to align local timestamps
+    // The update_updated_at_column trigger bumps updated_at on every UPDATE,
+    // including the synced_at step. If we use a client timestamp, the server's
+    // updated_at will be ~2s ahead, causing the record to appear "unsynced"
+    // when the dashboard reloads from the server. This creates an infinite re-sync loop.
+    let serverTimestamp: string;
+    try {
+      const { data: serverRecord } = await supabase
+        .from('inspections')
+        .select('updated_at')
+        .eq('id', inspectionId)
+        .single();
+      serverTimestamp = serverRecord?.updated_at || new Date().toISOString();
+    } catch {
+      serverTimestamp = new Date().toISOString();
+    }
+    
     await saveInspectionOffline({
       ...inspection,
-      synced_at: syncTimestamp,
-      updated_at: syncTimestamp,
+      synced_at: serverTimestamp,
+      updated_at: serverTimestamp,
       inspector: inspectorProfile || { first_name: null, last_name: null, avatar_url: null },
     });
     
@@ -967,13 +981,24 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
     // 6. Get cached inspector profile to attach to offline data
     const inspectorProfile = await getCachedProfile(user.id);
     
-    // Update local storage with sync timestamp and inspector profile
-    // CRITICAL: Align updated_at = synced_at to prevent re-queuing due to timestamp race
-    const syncTimestamp = new Date().toISOString();
+    // CRITICAL FIX (v2.5.8): Fetch server's updated_at to align local timestamps
+    // Prevents infinite re-sync loop caused by update_updated_at_column trigger drift
+    let serverTimestamp: string;
+    try {
+      const { data: serverRecord } = await supabase
+        .from('trainings')
+        .select('updated_at')
+        .eq('id', trainingId)
+        .single();
+      serverTimestamp = serverRecord?.updated_at || new Date().toISOString();
+    } catch {
+      serverTimestamp = new Date().toISOString();
+    }
+    
     await saveTrainingOffline({
       ...training,
-      synced_at: syncTimestamp,
-      updated_at: syncTimestamp,
+      synced_at: serverTimestamp,
+      updated_at: serverTimestamp,
       inspector: inspectorProfile || { first_name: null, last_name: null, avatar_url: null },
     });
     
@@ -1414,13 +1439,24 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
     // 6. Get cached inspector profile to attach to offline data
     const inspectorProfile = await getCachedProfile(user.id);
     
-    // Update local storage with sync timestamp and inspector profile
-    // CRITICAL: Align updated_at = synced_at to prevent re-queuing due to timestamp race
-    const syncTimestamp = new Date().toISOString();
+    // CRITICAL FIX (v2.5.8): Fetch server's updated_at to align local timestamps
+    // Prevents infinite re-sync loop caused by update_updated_at_column trigger drift
+    let serverTimestamp: string;
+    try {
+      const { data: serverRecord } = await supabase
+        .from('daily_assessments')
+        .select('updated_at')
+        .eq('id', assessmentId)
+        .single();
+      serverTimestamp = serverRecord?.updated_at || new Date().toISOString();
+    } catch {
+      serverTimestamp = new Date().toISOString();
+    }
+    
     await saveDailyAssessmentOffline({
       ...assessment,
-      synced_at: syncTimestamp,
-      updated_at: syncTimestamp,
+      synced_at: serverTimestamp,
+      updated_at: serverTimestamp,
       inspector: inspectorProfile || { first_name: null, last_name: null, avatar_url: null },
     });
     
