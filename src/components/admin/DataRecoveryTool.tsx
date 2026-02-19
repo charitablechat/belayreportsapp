@@ -234,6 +234,15 @@ export function IndexedDBRecoveryPanel({ allowDelete = true }: IndexedDBPanelPro
     } catch (error) {
       console.error("[Data Recovery] Error loading local data:", error);
       toast.error("Failed to load local data");
+      // Set empty defaults so the UI doesn't crash on null access
+      setLocalData({
+        trainings: [],
+        dailyAssessments: [],
+        inspections: [],
+        queuedOperations: [],
+        queuedAssessmentOperations: [],
+        queuedTrainingOperations: [],
+      });
     } finally {
       setLoading(false);
     }
