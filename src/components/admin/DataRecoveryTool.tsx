@@ -561,7 +561,7 @@ export function IndexedDBRecoveryPanel({ allowDelete = true }: IndexedDBPanelPro
     }
   };
 
-  if (loading && !localData) {
+  if (!localData) {
     return (
       <Card>
         <CardContent className="flex items-center justify-center py-12">
