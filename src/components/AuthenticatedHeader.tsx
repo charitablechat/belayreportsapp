@@ -4,6 +4,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { useQuery } from "@tanstack/react-query";
 import { getUserWithCache } from "@/lib/cached-auth";
 import { UserProfileDropdown } from "@/components/UserProfileDropdown";
+import { usePWA } from "@/hooks/usePWA";
+import { toast } from "sonner";
 
 const PUBLIC_ROUTES = ["/", "/welcome"];
 
@@ -102,9 +104,24 @@ export function AuthenticatedHeader() {
     enabled: !!currentUser,
   });
 
+  const { unsyncedCount, forceSync } = usePWA();
+
   const handleSignOut = async () => {
     setSigningOut(true);
     try {
+      if (navigator.onLine && unsyncedCount > 0) {
+        toast.loading('Syncing data before sign-out...', { id: 'sign-out-sync' });
+        try {
+          await Promise.race([
+            forceSync(),
+            new Promise(resolve => setTimeout(resolve, 8000)),
+          ]);
+        } catch (syncError) {
+          console.warn('[SignOut] Sync failed, proceeding with sign-out:', syncError);
+        } finally {
+          toast.dismiss('sign-out-sync');
+        }
+      }
       await supabase.auth.signOut();
     } catch (error) {
       console.error("Error signing out:", error);

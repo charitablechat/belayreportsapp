@@ -8,6 +8,16 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { usePWA } from '@/hooks/usePWA';
 import { triggerHaptic } from '@/lib/haptics';
 import { toast } from 'sonner';
@@ -17,6 +27,7 @@ const UPDATE_FLAG_KEY = 'pwa-update-pending';
 export const ManualUpdateButton = () => {
   const { needsUpdate, updateAndReload } = usePWA();
   const [checking, setChecking] = useState(false);
+  const [showForceRefreshDialog, setShowForceRefreshDialog] = useState(false);
   const previousNeedsUpdate = useRef(needsUpdate);
 
   // Check if app was just updated after reload
@@ -51,10 +62,8 @@ export const ManualUpdateButton = () => {
         const registration = await navigator.serviceWorker.ready;
         await registration.update();
         
-        // Wait a bit to see if an update was found
         await new Promise(resolve => setTimeout(resolve, 2000));
         
-        // Check if there's a waiting service worker (update found)
         if (registration.waiting || registration.installing) {
           toast.dismiss('update-check');
           toast.success('Update found!', { 
@@ -90,28 +99,20 @@ export const ManualUpdateButton = () => {
   };
 
   const handleForceRefresh = async () => {
+    setShowForceRefreshDialog(false);
     toast.loading('Clearing cache...', { id: 'force-refresh' });
     
     try {
-      // Unregister all service workers
       if ('serviceWorker' in navigator) {
         const registrations = await navigator.serviceWorker.getRegistrations();
         await Promise.all(registrations.map(reg => reg.unregister()));
       }
       
-      // Clear all caches
       if ('caches' in window) {
         const cacheNames = await caches.keys();
         await Promise.all(cacheNames.map(name => caches.delete(name)));
       }
       
-      // Clear IndexedDB (optional - be careful with this)
-      if ('indexedDB' in window) {
-        // Only clear specific databases if needed, not all user data
-        // For now, we'll skip this to preserve user data
-      }
-      
-      // Reload the page after a brief delay
       toast.dismiss('force-refresh');
       toast.success('Cache cleared!', { description: 'Reloading app...' });
       triggerHaptic('success');
@@ -128,45 +129,67 @@ export const ManualUpdateButton = () => {
   };
 
   return (
-    <div className="flex items-center gap-1">
-      <Button
-        variant={needsUpdate ? "default" : "outline"}
-        size="sm"
-        onClick={handleCheckForUpdates}
-        disabled={checking}
-        className="gap-2"
-      >
-        {needsUpdate ? (
-          <>
-            <RefreshCw className="w-4 h-4" />
-            <span>Update App</span>
-          </>
-        ) : (
-          <>
-            <Smartphone className={`w-4 h-4 ${checking ? 'animate-pulse' : ''}`} />
-            <span>Check for Updates</span>
-          </>
-        )}
-      </Button>
-      
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="outline" size="sm" className="px-2">
-            <MoreVertical className="w-4 h-4" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          <DropdownMenuItem onClick={handleCheckForUpdates} disabled={checking}>
-            <RefreshCw className="w-4 h-4 mr-2" />
-            Check for Updates
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={handleForceRefresh} className="text-destructive">
-            <Trash2 className="w-4 h-4 mr-2" />
-            Force Refresh (Clear Cache)
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-    </div>
+    <>
+      <div className="flex items-center gap-1">
+        <Button
+          variant={needsUpdate ? "default" : "outline"}
+          size="sm"
+          onClick={handleCheckForUpdates}
+          disabled={checking}
+          className="gap-2"
+        >
+          {needsUpdate ? (
+            <>
+              <RefreshCw className="w-4 h-4" />
+              <span>Update App</span>
+            </>
+          ) : (
+            <>
+              <Smartphone className={`w-4 h-4 ${checking ? 'animate-pulse' : ''}`} />
+              <span>Check for Updates</span>
+            </>
+          )}
+        </Button>
+        
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="sm" className="px-2">
+              <MoreVertical className="w-4 h-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={handleCheckForUpdates} disabled={checking}>
+              <RefreshCw className="w-4 h-4 mr-2" />
+              Check for Updates
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              onClick={() => setShowForceRefreshDialog(true)}
+              className="text-destructive"
+            >
+              <Trash2 className="w-4 h-4 mr-2" />
+              Force Refresh (Clear Cache)
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+
+      <AlertDialog open={showForceRefreshDialog} onOpenChange={setShowForceRefreshDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Force Refresh</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will clear all cached data and make the app unavailable offline until you reconnect to the internet. Your report data will be preserved.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleForceRefresh}>
+              Clear Cache & Reload
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 };
