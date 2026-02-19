@@ -13,6 +13,8 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { ArrowLeft, Save, CheckCircle, Loader2, WifiOff, CloudOff, LogOut, User, FileText, Settings, Package, ClipboardList, FileCheck, RefreshCw } from "lucide-react";
 import { AutoSaveIndicator } from "@/components/AutoSaveIndicator";
+import { useActiveTimer } from "@/hooks/useActiveTimer";
+import { ActiveTimerDisplay } from "@/components/ActiveTimerDisplay";
 import ropeWorksLogo from "@/assets/rope-works-logo.png";
 import InspectionHeader from "@/components/inspection/InspectionHeader";
 import OperatingSystemsTable from "@/components/inspection/OperatingSystemsTable";
@@ -138,6 +140,12 @@ export default function InspectionForm() {
 
   // Completion lock derived values (after report state is declared)
   const isCompletionLocked = inspection?.status === 'completed' && !completionLockOverridden;
+  // Active-usage timer: only tracks time when user is actively editing
+  const { elapsedSeconds, isActive: timerActive, isPaused: timerPaused, getElapsedSeconds } = useActiveTimer({
+    initialSeconds: inspection?.active_duration_seconds || 0,
+    enabled: canEdit && !isReadOnly && !isCompletionLocked,
+  });
+
   const effectiveReadOnly = isReadOnly || isCompletionLocked;
 
   // Field-level click interception for locked reports (allow-list: only block editable elements)
@@ -1182,6 +1190,7 @@ export default function InspectionForm() {
       const inspectionToSave = {
         ...inspection,
         updated_at: new Date().toISOString(),
+        active_duration_seconds: getElapsedSeconds(),
         // Track who modified the report if current user is not the owner
         ...(currentUser?.id && currentUser.id !== inspection.inspector_id 
           ? { last_modified_by: currentUser.id } 
@@ -2197,6 +2206,12 @@ export default function InspectionForm() {
                 hasUnsavedChanges={hasUnsavedChanges}
                 error={saveError}
                 className="hidden sm:flex"
+              />
+              <ActiveTimerDisplay
+                elapsedSeconds={elapsedSeconds}
+                isActive={timerActive}
+                isPaused={timerPaused}
+                isReadOnly={effectiveReadOnly}
               />
             </div>
             

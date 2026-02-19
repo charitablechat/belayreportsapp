@@ -13,6 +13,8 @@ import ropeWorksLogo from "@/assets/rope-works-logo.png";
 
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AutoSaveIndicator } from "@/components/AutoSaveIndicator";
+import { useActiveTimer } from "@/hooks/useActiveTimer";
+import { ActiveTimerDisplay } from "@/components/ActiveTimerDisplay";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -101,6 +103,12 @@ export default function TrainingForm() {
   const [photoRefreshKey, setPhotoRefreshKey] = useState(0);
   // Completion lock derived values (after report state is declared)
   const isCompletionLocked = training?.status === 'completed' && !completionLockOverridden;
+  // Active-usage timer: only tracks time when user is actively editing
+  const { elapsedSeconds, isActive: timerActive, isPaused: timerPaused, getElapsedSeconds } = useActiveTimer({
+    initialSeconds: training?.active_duration_seconds || 0,
+    enabled: canEdit && !isReadOnly && !isCompletionLocked,
+  });
+
   const effectiveReadOnly = isReadOnly || isCompletionLocked;
   const [versionPanelOpen, setVersionPanelOpen] = useState(false);
   const [lastVersionNumber, setLastVersionNumber] = useState<number | undefined>(undefined);
@@ -552,6 +560,7 @@ export default function TrainingForm() {
       const updatedTraining = {
         ...training,
         updated_at: new Date().toISOString(),
+        active_duration_seconds: getElapsedSeconds(),
         // Track who modified the report if current user is not the owner
         ...(currentUser?.id && currentUser.id !== training.inspector_id 
           ? { last_modified_by: currentUser.id } 
@@ -1136,6 +1145,12 @@ export default function TrainingForm() {
                 isSaving={isSaving}
                 hasUnsavedChanges={hasUnsavedChanges}
                 className="hidden sm:flex"
+              />
+              <ActiveTimerDisplay
+                elapsedSeconds={elapsedSeconds}
+                isActive={timerActive}
+                isPaused={timerPaused}
+                isReadOnly={effectiveReadOnly}
               />
             </div>
             
