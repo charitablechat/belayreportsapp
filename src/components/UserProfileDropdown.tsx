@@ -10,7 +10,7 @@
    DropdownMenuSeparator,
    DropdownMenuTrigger,
  } from "@/components/ui/dropdown-menu";
- import { LogOut, User, Bell, Settings, FileText, Download, MessageCircle, Loader2, Shield, Monitor, MoreVertical } from "lucide-react";
+ import { LogOut, User, Bell, Settings, FileText, Download, MessageCircle, Loader2, Shield, Monitor, MoreVertical, Database } from "lucide-react";
  import { UserAvatar } from "@/components/ui/user-avatar";
 import { usePWAInstall } from "@/hooks/usePWAInstall";
 import { usePWA } from "@/hooks/usePWA";
@@ -18,8 +18,9 @@ import { usePWA } from "@/hooks/usePWA";
  import { ForceSyncButton } from "@/components/pwa/ForceSyncButton";
  import { NotificationCenter } from "@/components/pwa/NotificationCenter";
  import { PushNotificationManager } from "@/components/pwa/PushNotificationManager";
- import { ContactDeveloperSheet } from "@/components/ContactDeveloperSheet";
- import { VersionBadge } from "@/components/VersionBadge";
+import { ContactDeveloperSheet } from "@/components/ContactDeveloperSheet";
+import { UserDataRecoverySheet } from "@/components/UserDataRecoverySheet";
+import { VersionBadge } from "@/components/VersionBadge";
  import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
  
  interface UserProfileDropdownProps {
@@ -40,8 +41,9 @@ import { usePWA } from "@/hooks/usePWA";
    const navigate = useNavigate();
     const { isInstallable, isInstalled, promptInstall } = usePWAInstall();
     const { unsyncedCount } = usePWA();
-   const [notificationsDialogOpen, setNotificationsDialogOpen] = useState(false);
-   const [contactSheetOpen, setContactSheetOpen] = useState(false);
+  const [notificationsDialogOpen, setNotificationsDialogOpen] = useState(false);
+  const [contactSheetOpen, setContactSheetOpen] = useState(false);
+  const [dataRecoveryOpen, setDataRecoveryOpen] = useState(false);
  
    return (
      <>
@@ -58,11 +60,17 @@ import { usePWA } from "@/hooks/usePWA";
          </DialogContent>
        </Dialog>
  
-       {/* Contact Developer Sheet */}
-       <ContactDeveloperSheet 
-         open={contactSheetOpen} 
-         onOpenChange={setContactSheetOpen} 
-       />
+        {/* Contact Developer Sheet */}
+        <ContactDeveloperSheet 
+          open={contactSheetOpen} 
+          onOpenChange={setContactSheetOpen} 
+        />
+
+        {/* Data Recovery Sheet */}
+        <UserDataRecoverySheet
+          open={dataRecoveryOpen}
+          onOpenChange={setDataRecoveryOpen}
+        />
  
        <DropdownMenu>
          <DropdownMenuTrigger asChild>
@@ -123,10 +131,16 @@ import { usePWA } from "@/hooks/usePWA";
               Contact Developer
             </DropdownMenuItem>
             
-             {/* Force Sync Now */}
-             <DropdownMenuItem asChild>
-               <ForceSyncButton variant="menu-item" unsyncedCount={unsyncedCount} />
-             </DropdownMenuItem>
+              {/* Force Sync Now */}
+              <DropdownMenuItem asChild>
+                <ForceSyncButton variant="menu-item" unsyncedCount={unsyncedCount} />
+              </DropdownMenuItem>
+              
+              {/* Data Recovery */}
+              <DropdownMenuItem onClick={() => setDataRecoveryOpen(true)}>
+                <Database className="w-4 h-4 mr-2" />
+                Data Recovery
+              </DropdownMenuItem>
              
               <DropdownMenuSeparator />
               <div className="flex items-center justify-between px-2 py-1.5">

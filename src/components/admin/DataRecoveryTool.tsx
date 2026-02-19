@@ -40,7 +40,11 @@ export function DataRecoveryTool() {
   );
 }
 
-function LocalSnapshotsPanel() {
+interface SnapshotsPanelProps {
+  allowDelete?: boolean;
+}
+
+export function LocalSnapshotsPanel({ allowDelete = true }: SnapshotsPanelProps) {
   const snapshots = listAllSnapshots();
   const storageInfo = getBackupStorageInfo();
 
@@ -156,12 +160,16 @@ function LocalSnapshotsPanel() {
                         <Button size="sm" variant="outline" onClick={() => handleRestore(s.reportType, s.reportId)} title="Restore to IndexedDB">
                           <RotateCcw className="h-4 w-4" />
                         </Button>
-                        <Button size="sm" variant="outline" onClick={() => handleExport(s.reportType, s.reportId)} title="Export as JSON">
-                          <Download className="h-4 w-4" />
-                        </Button>
-                        <Button size="sm" variant="ghost" className="text-destructive" onClick={() => handleDelete(s.reportType, s.reportId)} title="Delete snapshot">
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                        {allowDelete && (
+                          <>
+                            <Button size="sm" variant="outline" onClick={() => handleExport(s.reportType, s.reportId)} title="Export as JSON">
+                              <Download className="h-4 w-4" />
+                            </Button>
+                            <Button size="sm" variant="ghost" className="text-destructive" onClick={() => handleDelete(s.reportType, s.reportId)} title="Delete snapshot">
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </>
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>
@@ -175,7 +183,11 @@ function LocalSnapshotsPanel() {
   );
 }
 
-function IndexedDBRecoveryPanel() {
+interface IndexedDBPanelProps {
+  allowDelete?: boolean;
+}
+
+export function IndexedDBRecoveryPanel({ allowDelete = true }: IndexedDBPanelProps) {
   const [localData, setLocalData] = useState<LocalData | null>(null);
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState<string | null>(null);
@@ -223,7 +235,6 @@ function IndexedDBRecoveryPanel() {
   const syncTrainingToDatabase = async (training: any) => {
     setSyncing(training.id);
     try {
-      // Prepare training data for insert
       const trainingData = {
         id: training.id,
         inspector_id: training.inspector_id,
@@ -242,7 +253,6 @@ function IndexedDBRecoveryPanel() {
       };
 
       const { error } = await supabase.from("trainings").upsert(trainingData);
-
       if (error) throw error;
 
       toast.success("Training synced successfully");
@@ -275,7 +285,6 @@ function IndexedDBRecoveryPanel() {
       };
 
       const { error } = await supabase.from("daily_assessments").upsert(assessmentData);
-
       if (error) throw error;
 
       toast.success("Daily assessment synced successfully");
@@ -312,7 +321,6 @@ function IndexedDBRecoveryPanel() {
       };
 
       const { error } = await supabase.from("inspections").upsert(inspectionData);
-
       if (error) throw error;
 
       toast.success("Inspection synced successfully");
@@ -486,7 +494,7 @@ function IndexedDBRecoveryPanel() {
         </TabsList>
 
         <TabsContent value="snapshots">
-          <LocalSnapshotsPanel />
+          <LocalSnapshotsPanel allowDelete={allowDelete} />
         </TabsContent>
 
         <TabsContent value="trainings">
@@ -558,14 +566,16 @@ function IndexedDBRecoveryPanel() {
                                     )}
                                   </Button>
                                 )}
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  className="text-destructive hover:text-destructive"
-                                  onClick={() => setDeleteConfirm({ type: "training", id: training.id })}
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                </Button>
+                                {allowDelete && (
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="text-destructive hover:text-destructive"
+                                    onClick={() => setDeleteConfirm({ type: "training", id: training.id })}
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                )}
                               </div>
                             </TableCell>
                           </TableRow>
@@ -646,14 +656,16 @@ function IndexedDBRecoveryPanel() {
                                     )}
                                   </Button>
                                 )}
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  className="text-destructive hover:text-destructive"
-                                  onClick={() => setDeleteConfirm({ type: "dailyAssessment", id: assessment.id })}
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                </Button>
+                                {allowDelete && (
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="text-destructive hover:text-destructive"
+                                    onClick={() => setDeleteConfirm({ type: "dailyAssessment", id: assessment.id })}
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                )}
                               </div>
                             </TableCell>
                           </TableRow>
@@ -734,14 +746,16 @@ function IndexedDBRecoveryPanel() {
                                     )}
                                   </Button>
                                 )}
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  className="text-destructive hover:text-destructive"
-                                  onClick={() => setDeleteConfirm({ type: "inspection", id: inspection.id })}
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                </Button>
+                                {allowDelete && (
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="text-destructive hover:text-destructive"
+                                    onClick={() => setDeleteConfirm({ type: "inspection", id: inspection.id })}
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                )}
                               </div>
                             </TableCell>
                           </TableRow>
@@ -878,24 +892,26 @@ function IndexedDBRecoveryPanel() {
         </TabsContent>
       </Tabs>
 
-      {/* Delete Confirmation Dialog */}
-      <AlertDialog open={!!deleteConfirm} onOpenChange={() => setDeleteConfirm(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete from Local Storage?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will permanently delete this record from the browser's local storage.
-              If it was never synced to the database, this data will be lost forever.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {/* Delete Confirmation Dialog - only render when allowDelete is true */}
+      {allowDelete && (
+        <AlertDialog open={!!deleteConfirm} onOpenChange={() => setDeleteConfirm(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete from Local Storage?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This will permanently delete this record from the browser's local storage.
+                If it was never synced to the database, this data will be lost forever.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                Delete
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
     </div>
   );
 }
