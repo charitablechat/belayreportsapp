@@ -294,13 +294,15 @@ export default function SuperAdminDashboard() {
       
       if (!data || data.length === 0) return { avg: 0, count: 0, min: 0, max: 0 };
       
-      const durations = data.map((inspection) => {
-        const startTime = inspection.started_at 
-          ? new Date(inspection.started_at).getTime()
-          : new Date(inspection.created_at!).getTime();
-        const endTime = new Date(inspection.updated_at!).getTime();
-        return (endTime - startTime) / (1000 * 60 * 60);
-      }).filter(h => h > 0);
+      const durations = data
+        .filter(i => i.created_at)
+        .map((inspection) => {
+          const startTime = inspection.started_at 
+            ? new Date(inspection.started_at).getTime()
+            : new Date(inspection.created_at!).getTime();
+          const endTime = new Date(inspection.updated_at!).getTime();
+          return (endTime - startTime) / (1000 * 60 * 60);
+        }).filter(h => h > 0 && h < 8760);
       
       if (durations.length === 0) return { avg: 0, count: 0, min: 0, max: 0 };
       
