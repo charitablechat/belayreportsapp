@@ -153,6 +153,8 @@ async function syncInspectionWithTransaction(inspection, systems, ziplines, equi
     ]);
     
     // Step 3: ONLY NOW mark as synced on the server (deferred synced_at)
+    // Set synced_at = updated_at to match atomic-sync-manager's align pattern
+    const now = new Date().toISOString();
     const syncStampResponse = await fetch(`${supabaseUrl}/rest/v1/inspections?id=eq.${inspection.id}`, {
       method: 'PATCH',
       headers: {
@@ -161,12 +163,12 @@ async function syncInspectionWithTransaction(inspection, systems, ziplines, equi
         'Authorization': `Bearer ${supabaseKey}`,
         'Prefer': 'return=representation'
       },
-      body: JSON.stringify({ synced_at: new Date().toISOString() })
+      body: JSON.stringify({ synced_at: now, updated_at: now })
     });
     
     if (!syncStampResponse.ok) throw new Error('Sync stamp failed -- children committed but parent not marked synced, will retry');
     
-    return true;
+    return now; // Return the aligned timestamp for local IndexedDB update
     
   } catch (error) {
     console.error('[SW Transaction] Failed:', error);
@@ -207,13 +209,15 @@ async function syncInspectionsAtomic() {
         }
         
         // Sync using upsert-only transaction (no deletes)
-        const success = await syncInspectionWithTransaction(
+        const syncTimestamp = await syncInspectionWithTransaction(
           inspection, systems, ziplines, equipment, standards, summary
         );
         
-        if (success) {
-          // Mark as synced
-          inspection.synced_at = new Date().toISOString();
+        if (syncTimestamp) {
+          // Align local timestamps: set both synced_at AND updated_at to match server
+          // This prevents re-sync loops caused by updated_at > synced_at drift
+          inspection.synced_at = syncTimestamp;
+          inspection.updated_at = syncTimestamp;
           await updateInStore(db, 'inspections', inspection);
           syncedCount++;
           console.log('[SW Atomic Sync] Synced:', inspection.id);
