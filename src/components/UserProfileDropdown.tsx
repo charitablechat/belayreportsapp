@@ -74,7 +74,7 @@ import { VersionBadge } from "@/components/VersionBadge";
  
        <DropdownMenu>
          <DropdownMenuTrigger asChild>
-           <Button variant="ghost" size="icon" className="rounded-full">
+           <Button variant="ghost" size="icon" className="rounded-full p-0 bg-transparent hover:bg-transparent">
              <UserAvatar 
                userEmail={currentUser?.email ?? null}
                avatarUrl={userProfile?.avatar_url ?? null}
