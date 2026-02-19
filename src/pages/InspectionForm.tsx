@@ -935,16 +935,22 @@ export default function InspectionForm() {
       // If online, fetch from Supabase and update local cache
       // Skip server queries for temp-ID inspections (they only exist locally)
       if (isOnline && !id!.startsWith('temp-')) {
-        // Update last_opened_at only for owners (write operation)
+        // Update last_opened_at and started_at (if null) only for owners (write operation)
         if (isOwner) {
           const now = new Date().toISOString();
+          // Set started_at on first open to enable accurate completion time tracking
+          const updateFields: Record<string, string> = { last_opened_at: now };
+          const currentInspection = offlineData || inspection;
+          if (currentInspection && !currentInspection.started_at) {
+            updateFields.started_at = now;
+          }
           await withQueryTimeout(
             supabase
               .from("inspections")
-              .update({ last_opened_at: now })
+              .update(updateFields)
               .eq("id", id),
             5000
-          ).catch(e => console.warn('[InspectionForm] last_opened_at update failed:', e));
+          ).catch(e => console.warn('[InspectionForm] last_opened_at/started_at update failed:', e));
         }
 
         // PERFORMANCE: Parallel data loading - all queries run simultaneously

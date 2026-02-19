@@ -278,7 +278,7 @@ export default function SuperAdminDashboard() {
   });
 
   // Average completion time query (last 30 days only, uses started_at if available)
-  const { data: avgCompletionTime } = useQuery({
+  const { data: avgCompletionTimeData } = useQuery({
     queryKey: ["avg-completion-time"],
     queryFn: async () => {
       const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
@@ -288,26 +288,33 @@ export default function SuperAdminDashboard() {
         .select("created_at, started_at, updated_at")
         .eq("status", "completed")
         .not("updated_at", "is", null)
-        .not("started_at", "is", null)
         .gte("updated_at", thirtyDaysAgo);
       
       if (error) throw error;
       
-      if (!data || data.length === 0) return 0;
+      if (!data || data.length === 0) return { avg: 0, count: 0, min: 0, max: 0 };
       
-      const totalHours = data.reduce((sum, inspection) => {
-        // Use started_at if available, otherwise fall back to created_at
+      const durations = data.map((inspection) => {
         const startTime = inspection.started_at 
           ? new Date(inspection.started_at).getTime()
-          : new Date(inspection.created_at).getTime();
-        const endTime = new Date(inspection.updated_at).getTime();
-        return sum + (endTime - startTime) / (1000 * 60 * 60);
-      }, 0);
+          : new Date(inspection.created_at!).getTime();
+        const endTime = new Date(inspection.updated_at!).getTime();
+        return (endTime - startTime) / (1000 * 60 * 60);
+      }).filter(h => h > 0);
       
-      return totalHours / data.length;
+      if (durations.length === 0) return { avg: 0, count: 0, min: 0, max: 0 };
+      
+      const total = durations.reduce((s, h) => s + h, 0);
+      return {
+        avg: total / durations.length,
+        count: durations.length,
+        min: Math.min(...durations),
+        max: Math.max(...durations),
+      };
     },
     enabled: !loading,
   });
+  const avgCompletionTime = avgCompletionTimeData?.avg ?? 0;
 
   // Inspections this month query
   const { data: inspectionsThisMonth } = useQuery({
@@ -653,11 +660,14 @@ export default function SuperAdminDashboard() {
           description="Average time to complete"
           hoverContent={{
             title: "Inspection Duration",
-            description: "Average time from inspection creation to completion.",
+            description: "Average time from inspection creation to completion (last 30 days).",
             details: [
               { label: "Average", value: avgCompletionTime ? `${avgCompletionTime.toFixed(1)} hours` : "N/A" },
+              { label: "Fastest", value: avgCompletionTimeData?.min ? `${avgCompletionTimeData.min.toFixed(1)} hours` : "N/A" },
+              { label: "Slowest", value: avgCompletionTimeData?.max ? `${avgCompletionTimeData.max.toFixed(1)} hours` : "N/A" },
+              { label: "Sample size", value: avgCompletionTimeData?.count ?? 0 },
             ],
-            tip: "Based on completed inspections only"
+            tip: "Based on completed inspections in the last 30 days. Uses active start time when available, otherwise creation time."
           }}
         />
         <StatCard
