@@ -1,67 +1,96 @@
 
 
-# UI/UX Polish: Minimal Brutalist + Glassmorphism Aesthetic
+# Active-Usage Timer: High-Precision Completion Tracking
 
 ## Overview
-Apply a comprehensive visual refresh across the SuperAdmin Dashboard and Data Recovery Tool using a Minimal Brutalist aesthetic combined with Glassmorphism. Uses a Slate 900 / Indigo 500 / Emerald 400 palette for status indicators. All changes are purely visual -- zero modifications to data logic, sync patterns, IndexedDB error boundaries, or offline storage.
+Replace the current wall-clock completion time metric (started_at -> updated_at) with an **active-duration tracker** that only counts time when users are actively working on a report. This includes a retro-tech terminal display widget and a database schema update.
+
+## Architecture
+
+### 1. Database Migration: Add `active_duration_seconds` column
+Add an integer column to `inspections`, `trainings`, and `daily_assessments` tables:
+```sql
+ALTER TABLE inspections ADD COLUMN active_duration_seconds integer DEFAULT 0;
+ALTER TABLE trainings ADD COLUMN active_duration_seconds integer DEFAULT 0;
+ALTER TABLE daily_assessments ADD COLUMN active_duration_seconds integer DEFAULT 0;
+```
+- Nullable: No, default 0
+- No foreign keys, no RLS changes needed (existing per-user and super-admin policies already cover UPDATE/SELECT)
+
+### 2. New Hook: `src/hooks/useActiveTimer.tsx`
+A custom hook managing active usage tracking with the following logic:
+
+- **State**: `elapsedSeconds` (accumulated), `isActive` (currently tracking), `isPaused` (idle timeout hit)
+- **Initialization**: Accepts `initialSeconds` (from DB) and `enabled` flag. Starts on mount when `enabled=true`.
+- **Activity Detection**: Listens for `keydown`, `mousedown`, `touchstart`, `input`, `change` events on `document`. Each event resets a 30-second idle debounce timer.
+- **Idle Logic**: If no activity for 30 seconds, pause the internal interval. Resume immediately on next detected activity.
+- **Window Focus**: Pause when `document.visibilityState === 'hidden'`; resume tracking on focus return (with activity).
+- **Tick**: Uses a 1-second `setInterval` that only increments `elapsedSeconds` when `isActive && !isPaused`.
+- **Persistence Callback**: Exposes `getElapsedSeconds()` for the parent form to include in its save payload. Does NOT perform its own DB writes -- piggybacks on existing save logic.
+- **Cleanup**: Removes all listeners and clears interval on unmount.
+- **No sensitive data**: The hook only deals with a numeric counter. No auth tokens or session data.
+
+Returns: `{ elapsedSeconds, isActive, isPaused, getElapsedSeconds, reset }`
+
+### 3. New Component: `src/components/ActiveTimerDisplay.tsx`
+A retro-tech terminal-style timer display:
+
+- **Placement**: Rendered inside each report form (InspectionForm, TrainingForm, DailyAssessmentForm), positioned in the top area near the existing save indicator.
+- **Styling**:
+  - Monospaced font: `font-mono` (system monospace; JetBrains Mono as a nice-to-have via Google Fonts import in index.css)
+  - Lime green text `text-[#32CD32]` on dark charcoal background `bg-[#1a1a1a]`
+  - Rounded pill shape with subtle border `border-[#32CD32]/30`
+  - Compact size to not disrupt existing layout
+- **Content**: `HH:MM:SS` formatted elapsed time
+- **Status Badge**: A small "REC" indicator dot that pulses/blinks when active, dims when paused
+- **Blinking Cursor**: A `_` character after the time with a CSS blink animation
+- **Read-Only Mode**: When `isReadOnly`, show the stored duration without ticking
+
+### 4. Integration into Report Forms
+For each form (`InspectionForm.tsx`, `TrainingForm.tsx`, `DailyAssessmentForm.tsx`):
+
+- **Load**: Read `active_duration_seconds` from the fetched report data and pass as `initialSeconds` to `useActiveTimer`.
+- **Save**: Include `active_duration_seconds: getElapsedSeconds()` in the existing save payload (both local IndexedDB save and remote upsert). This piggybacks on the existing auto-save and manual save flows -- no new save operations.
+- **Enable Condition**: Only track when `canEdit && !isReadOnly` (owners editing their own reports).
+- **Render**: Add `<ActiveTimerDisplay>` near the existing `<AutoSaveIndicator>`.
+
+### 5. SuperAdmin Dashboard Update (`src/pages/SuperAdminDashboard.tsx`)
+Update the "Avg Completion Time" query to prefer `active_duration_seconds` when available:
+
+- If `active_duration_seconds > 0`, use it directly (convert to hours).
+- Otherwise, fall back to the existing `started_at -> updated_at` wall-clock calculation.
+- Update the hover tooltip to indicate "active time" vs "wall-clock time" distinction.
+
+### 6. CSS Addition (`src/index.css`)
+Add a blink keyframe animation for the cursor effect:
+```css
+@keyframes terminal-blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+```
+
+## Files to Create
+1. `src/hooks/useActiveTimer.tsx` -- the active-usage tracking hook
+2. `src/components/ActiveTimerDisplay.tsx` -- the retro terminal timer widget
 
 ## Files to Modify
+1. `src/index.css` -- add terminal-blink keyframe + optional JetBrains Mono import
+2. `src/pages/InspectionForm.tsx` -- integrate hook + display component + include in save payload
+3. `src/pages/TrainingForm.tsx` -- same integration
+4. `src/pages/DailyAssessmentForm.tsx` -- same integration
+5. `src/pages/SuperAdminDashboard.tsx` -- update avg completion time query to prefer active_duration_seconds
 
-### 1. `src/components/admin/StatCard.tsx`
-**Glassmorphism + Bento Grid card styling**
-- Replace the default `Card` with glassmorphism classes: `backdrop-blur-md bg-white/10 dark:bg-slate-900/40 border-white/20`
-- Add hover lift: `hover:-translate-y-1 transition-all duration-300`
-- Make the metric value use oversized type: `text-4xl font-black tracking-tight` (expressive/brutalist)
-- Use the Slate 900 / Indigo 500 / Emerald 400 palette for icon color accents
+## Database Migration
+- Add `active_duration_seconds` (integer, default 0) to 3 tables
 
-### 2. `src/pages/SuperAdminDashboard.tsx`
-**Bento Grid layout + spacing**
-- Increase container padding from `p-6` to `p-8`
-- Change stat card grids from `gap-4` to `gap-6` for breathable spacing
-- Add oversized type for the page title: `text-4xl font-black` (brutalist heading)
-- Apply frosted glass background to the stats grid wrapper sections
-- Update status badges throughout (inspections, trainings, daily assessments) to use the new palette:
-  - `completed` -> Emerald 400 badge (`bg-emerald-400/15 text-emerald-400 border-emerald-400/30`)
-  - `draft` -> Slate badge (`bg-slate-500/15 text-slate-400 border-slate-400/30`)
-  - `in_progress` -> Indigo badge (`bg-indigo-500/15 text-indigo-400 border-indigo-500/30`)
-- Apply `hover:-translate-y-0.5 transition-all` to interactive table rows
+## Security Notes
+- No auth tokens, session IDs, or API keys are used or exposed in the timer hook or display component
+- The `active_duration_seconds` field is protected by existing RLS policies (owner-only UPDATE, super-admin SELECT)
+- The hook is purely a numeric counter with DOM event listeners -- no network calls of its own
 
-### 3. `src/components/admin/AdminTabsSection.tsx` + `AdminTab.tsx`
-**Frosted glass tab list**
-- Add glassmorphism to the `TabsList` container: `backdrop-blur-md bg-white/5 border border-white/10 rounded-xl`
-- Add subtle lift transition to each tab trigger on hover
-
-### 4. `src/components/admin/DataRecoveryTool.tsx`
-**Premium Data Recovery cards**
-- Apply glassmorphism to the main Card wrappers in both `LocalSnapshotsPanel` and `IndexedDBRecoveryPanel`
-- Update the 4 mini-stat boxes (Trainings, Daily Assessments, Inspections, Queued Operations) to use the palette:
-  - Synced/healthy counts -> Emerald 400
-  - Unsynced badges -> `bg-indigo-500/15 text-indigo-400` instead of destructive red
-  - Queued -> Slate 400 muted indicator
-- Make the metric numbers oversized: `text-3xl font-black`
-- Add hover lift to action buttons
-- Apply rounded badge styling to the age indicators (already partially done)
-
-### 5. `src/components/UserDataRecoverySheet.tsx`
-**Premium high-contrast modal**
-- Apply glassmorphism to the `SheetContent`: `backdrop-blur-xl bg-slate-900/95 border-white/10`
-- Use high-contrast text: `text-slate-100` for title, `text-slate-400` for description
-- The existing success toast on restore (`toast.success("Snapshot restored to local storage")` in DataRecoveryTool.tsx) is already in place -- no change needed
-
-### 6. `src/index.css`
-**Utility classes**
-- Add a reusable `.glass-card` utility class under `@layer components`:
-  ```
-  backdrop-blur-md bg-white/10 dark:bg-slate-900/40 border border-white/20 shadow-lg
-  ```
-- Add `.brutalist-metric` for oversized type: `text-4xl font-black tracking-tight`
-- Add `.card-lift` for the hover effect: `hover:-translate-y-1 transition-all duration-300`
-
-## Technical Notes
-
-- **Font**: Inter is already the default Tailwind sans-serif font. No font import needed.
-- **No logic changes**: All existing IndexedDB error boundaries, `RecoveryErrorBoundary`, sync patterns, `handleBatchDelete`, `loadLocalData`, and offline storage remain untouched.
-- **Responsive**: All grid layouts use existing `md:` and `lg:` breakpoints. Glass effects degrade gracefully on older browsers (backdrop-filter is widely supported).
-- **Accessibility**: Color contrast ratios for Emerald 400 on dark backgrounds and Indigo 500 on light backgrounds meet WCAG AA. All existing `aria-` attributes and keyboard navigation preserved.
-- **Security**: No secrets, API keys, or auth tokens are touched or exposed in any of these changes.
+## Data Safety
+- Existing IndexedDB persistence, emergency save, and WAL snapshot patterns are untouched
+- The new field is simply added to the existing save payloads
+- Backward compatible: `DEFAULT 0` means all existing reports start with 0 active seconds and fall back to wall-clock calculation
 
