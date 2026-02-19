@@ -1,50 +1,73 @@
 
 
-# Fix: IndexedDB Recovery Panel Crash on Initial Render
+# Batch Selection for Deleted Records
 
-## Root Cause
+Add checkbox-based multi-select to the Deleted Records Recovery table, enabling batch permanent deletion of selected records.
 
-The `IndexedDBRecoveryPanel` component has a render guard on line 564:
+## Changes
 
+### File: `src/hooks/useSoftDelete.tsx`
+
+Add a `batchPermanentDelete` function that loops through an array of `{ table, recordId }` entries, calling `permanentDelete` for each. Returns a summary of successes and failures.
+
+### File: `src/components/admin/DeletedRecordsRecovery.tsx`
+
+**State additions:**
+- `selectedIds: Set<string>` -- tracks selected record IDs (using `table_name-record_id` composite keys)
+
+**UI additions:**
+1. A new checkbox column as the first column in the table header and each row
+2. A "Select All" checkbox in the header that toggles all visible records in the current tab
+3. A floating action bar (or inline toolbar) that appears when 1+ records are selected, showing:
+   - Count of selected records (e.g., "3 selected")
+   - "Delete Selected" button (destructive) that opens a confirmation dialog
+   - "Clear Selection" button
+4. A new `batch-delete` confirmation dialog type
+
+**Selection logic:**
+- "Select All" only selects records visible in the active tab (All, Inspections, Trainings, or Assessments)
+- Switching tabs preserves selection across tabs (composite keys ensure uniqueness)
+- After batch delete completes, clear selection and reload records
+
+**Batch delete handler:**
+- Maps selected IDs back to `{ table_name, record_id }` pairs from the `deletedRecords` array
+- Calls `permanentDelete` for each selected record
+- Shows a toast with the result count (e.g., "Permanently deleted 5 records")
+- Clears selection and refreshes the list
+
+## Technical Details
+
+### State shape
 ```typescript
-if (loading && !localData) {
-  return <LoadingSpinner />;
-}
+const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+const makeKey = (r: DeletedRecord) => `${r.table_name}-${r.record_id}`;
 ```
 
-This guard requires **both** `loading === true` AND `localData === null` to show the loading state. But on the very first render:
-- `loading` = `false` (initial `useState` value)
-- `localData` = `null` (initial `useState` value)
-
-Since `loading` is `false`, the guard is skipped. The component attempts to render the full UI, which includes non-null assertions like `localData!.queuedOperations` (lines 1012, 1068, 1125) in the Queued Ops tab's checkbox logic. This crashes with `Cannot read properties of null`.
-
-The `useEffect` that calls `loadLocalData()` runs **after** the first render, so data loading hasn't even started yet when the crash occurs.
-
-## Fix
-
-**File: `src/components/admin/DataRecoveryTool.tsx`**
-
-One-line change -- update the guard condition from `loading && !localData` to just `!localData`:
-
+### Select All logic (scoped to current tab)
 ```typescript
-// Before (line 564):
-if (loading && !localData) {
-
-// After:
-if (!localData) {
+const toggleSelectAll = (records: DeletedRecord[]) => {
+  const keys = records.map(makeKey);
+  const allSelected = keys.every(k => selectedIds.has(k));
+  setSelectedIds(prev => {
+    const next = new Set(prev);
+    if (allSelected) {
+      keys.forEach(k => next.delete(k));
+    } else {
+      keys.forEach(k => next.add(k));
+    }
+    return next;
+  });
+};
 ```
 
-This ensures the loading/empty state is shown whenever `localData` hasn't been populated yet, regardless of the `loading` flag. Once `loadLocalData` completes (success or failure), it always sets `localData` to either real data or empty arrays, so the full UI only renders when it's safe.
+### Batch delete confirmation dialog
+A new `confirmDialog` type value `'batch-delete'` triggers a dialog showing how many records will be permanently deleted, with the standard destructive styling and "cannot be undone" warning.
 
 ## What This Does NOT Change
 
-- No data safety protocols are modified
-- No IndexedDB error boundaries or circuit breaker logic is touched
-- No persistence, sync, backup, or WAL logic is affected
-- The `RecoveryErrorBoundary` wrapper remains as a safety net for any future render errors
-- All existing RLS policies and access controls are untouched
-
-## Why the Error Boundary Catches It
-
-The `RecoveryErrorBoundary` wrapping `IndexedDBRecoveryPanel` correctly catches this synchronous render crash and shows "This section failed to load." Clicking "Retry" resets the boundary, which remounts the component -- but the same crash happens again on the fresh first render, creating an infinite crash loop.
+- No modifications to soft-delete logic, retention periods, or RLS policies
+- The existing single-record restore and delete flows remain unchanged
+- No changes to the `permanentDelete` function itself -- batch just calls it in a loop
+- All existing data safety protocols (60-day retention, super-admin-only access) stay intact
 
