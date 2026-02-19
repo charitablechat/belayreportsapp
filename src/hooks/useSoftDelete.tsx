@@ -245,10 +245,33 @@ export function useSoftDelete() {
     }
   }, []);
 
+  /**
+   * Batch permanently delete multiple records
+   * Returns a summary of successes and failures
+   */
+  const batchPermanentDelete = useCallback(async (
+    entries: { table: SoftDeleteTable; recordId: string }[]
+  ): Promise<{ succeeded: number; failed: number }> => {
+    let succeeded = 0;
+    let failed = 0;
+
+    for (const entry of entries) {
+      const { success } = await permanentDelete(entry.table, entry.recordId);
+      if (success) {
+        succeeded++;
+      } else {
+        failed++;
+      }
+    }
+
+    return { succeeded, failed };
+  }, [permanentDelete]);
+
   return {
     softDelete,
     restoreRecord,
     permanentDelete,
+    batchPermanentDelete,
     getDeletedRecords,
     runCleanup,
     getRetentionBadge,
