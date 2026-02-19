@@ -1,5 +1,5 @@
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { LocalSnapshotsPanel, IndexedDBRecoveryPanel } from "@/components/admin/DataRecoveryTool";
+import { LocalSnapshotsPanel, IndexedDBRecoveryPanel, RecoveryErrorBoundary } from "@/components/admin/DataRecoveryTool";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
 interface UserDataRecoverySheetProps {
@@ -19,8 +19,12 @@ export function UserDataRecoverySheet({ open, onOpenChange }: UserDataRecoverySh
         </SheetHeader>
         <ScrollArea className="h-[calc(85vh-100px)] px-6 pb-6">
           <div className="space-y-6 pt-2">
-            <LocalSnapshotsPanel allowDelete={false} />
-            <IndexedDBRecoveryPanel allowDelete={false} />
+            <RecoveryErrorBoundary panelName="Local Backup Snapshots">
+              <LocalSnapshotsPanel allowDelete={false} />
+            </RecoveryErrorBoundary>
+            <RecoveryErrorBoundary panelName="IndexedDB Recovery">
+              <IndexedDBRecoveryPanel allowDelete={false} />
+            </RecoveryErrorBoundary>
           </div>
         </ScrollArea>
       </SheetContent>
