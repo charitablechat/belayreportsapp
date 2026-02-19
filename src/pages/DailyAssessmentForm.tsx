@@ -39,7 +39,7 @@ import { triggerHaptic } from "@/lib/haptics";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useSwipeNavigation } from "@/hooks/useSwipeNavigation";
 import { SwipeBackIndicator } from "@/components/SwipeBackIndicator";
-import { UserProfileDropdown } from "@/components/UserProfileDropdown";
+// UserProfileDropdown moved to AuthenticatedHeader (global)
 import { toast } from "@/components/ui/sonner";
 import { isMobile } from "@/lib/mobile-detection";
 import { addSyncNotification, addSaveNotification, addNotification } from "@/lib/notification-center";
@@ -100,7 +100,7 @@ export default function DailyAssessmentForm() {
   const [inspectorProfile, setInspectorProfile] = useState<any>(null);
   const [currentUserProfile, setCurrentUserProfile] = useState<any>(null);
   const [modifiedByProfile, setModifiedByProfile] = useState<any>(null);
-  const [signingOut, setSigningOut] = useState(false);
+  // signingOut removed — sign-out handled by global AuthenticatedHeader
   const [photoRefreshKey, setPhotoRefreshKey] = useState(0);
   // Completion lock derived values (after report state is declared)
   const isCompletionLocked = assessment?.status === 'completed' && !completionLockOverridden;
@@ -295,19 +295,8 @@ export default function DailyAssessmentForm() {
     fetchModifiedByProfile();
   }, [assessment?.last_modified_by, assessment?.inspector_id]);
 
-  const handleSignOut = async () => {
-    setSigningOut(true);
-    // Flush any pending unsaved changes before signing out (Finding 1: data loss prevention)
-    if (hasUnsavedChanges) {
-      try {
-        await handleSaveProgressRef.current?.();
-      } catch (e) {
-        console.warn('[DailyAssessmentForm] Failed to flush save before sign-out:', e);
-      }
-    }
-    await supabase.auth.signOut();
-    navigate("/");
-  };
+  // handleSignOut removed — sign-out handled by global AuthenticatedHeader
+  // Emergency save via useEmergencySave handles data preservation on navigation
 
   // Keyboard shortcut ref for save (actual function set later)  
   const saveRef = useRef<(() => void) | null>(null);
@@ -1235,13 +1224,7 @@ export default function DailyAssessmentForm() {
               <img src={ropeWorksLogo} alt="Rope Works" className="h-8 sm:h-10 w-auto object-contain" />
             </div>
             
-            <UserProfileDropdown
-              currentUser={currentUser}
-              userProfile={currentUserProfile}
-              isSuperAdmin={isSuperAdmin}
-              onSignOut={handleSignOut}
-              signingOut={signingOut}
-            />
+            {/* UserProfileDropdown is now in the global AuthenticatedHeader */}
           </div>
           
           {/* Bottom row - Status indicators and action buttons */}

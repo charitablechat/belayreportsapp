@@ -42,7 +42,7 @@ import { InspectionsEmptyState, TrainingsEmptyState, DailyAssessmentsEmptyState 
 import { getUserWithCache, getSuperAdminStatusWithCache, invalidateSuperAdminCache, ensureValidSession, getOfflineUserId } from "@/lib/cached-auth";
 /* Holiday Theme Components */
 import { OlympicRings } from "@/components/christmas/OlympicRings";
-import { UserProfileDropdown } from "@/components/UserProfileDropdown";
+// UserProfileDropdown moved to AuthenticatedHeader (global)
 import {
   AlertDialog,
   AlertDialogAction,
@@ -75,7 +75,6 @@ export default function Dashboard() {
   const [trainings, setTrainings] = useState<any[]>([]);
   const [dailyAssessments, setDailyAssessments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [signingOut, setSigningOut] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [inspectionToDelete, setInspectionToDelete] = useState<any>(null);
   const [reportToDelete, setReportToDelete] = useState<any>(null);
@@ -771,15 +770,7 @@ export default function Dashboard() {
     }
   };
 
-  const handleSignOut = async () => {
-    setSigningOut(true);
-    try {
-      await supabase.auth.signOut();
-    } catch (error) {
-      console.error("Error signing out:", error);
-      setSigningOut(false);
-    }
-  };
+  // Sign-out is now handled globally by AuthenticatedHeader
 
   const handleDeleteClick = (e: React.MouseEvent, inspection: any) => {
     e.stopPropagation();
@@ -1028,13 +1019,7 @@ export default function Dashboard() {
               )}
             </div>
             
-            <UserProfileDropdown
-              currentUser={currentUser}
-              userProfile={userProfile}
-              isSuperAdmin={isSuperAdmin}
-              onSignOut={handleSignOut}
-              signingOut={signingOut}
-            />
+            {/* UserProfileDropdown is now in the global AuthenticatedHeader */}
           </div>
         </div>
       </header>

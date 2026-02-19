@@ -41,7 +41,7 @@ import { useReportSync } from "@/hooks/useReportSync";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useSwipeNavigation } from "@/hooks/useSwipeNavigation";
 import { SwipeBackIndicator } from "@/components/SwipeBackIndicator";
-import { UserProfileDropdown } from "@/components/UserProfileDropdown";
+// UserProfileDropdown moved to AuthenticatedHeader (global)
 import { useQuery } from "@tanstack/react-query";
 
 import { Check } from "lucide-react";
@@ -133,7 +133,7 @@ export default function TrainingForm() {
   const [inspectorProfile, setInspectorProfile] = useState<any>(null);
   const [currentUserProfile, setCurrentUserProfile] = useState<any>(null);
   const [modifiedByProfile, setModifiedByProfile] = useState<any>(null);
-  const [signingOut, setSigningOut] = useState(false);
+  // signingOut removed — sign-out handled by global AuthenticatedHeader
   
   // Tab navigation state
   const [currentTab, setCurrentTab] = useState("info");
@@ -298,19 +298,8 @@ export default function TrainingForm() {
     fetchModifiedByProfile();
   }, [training?.last_modified_by, training?.inspector_id]);
 
-  const handleSignOut = async () => {
-    setSigningOut(true);
-    // Flush any pending unsaved changes before signing out (Finding 1: data loss prevention)
-    if (hasUnsavedChanges) {
-      try {
-        await saveTrainingRef.current?.();
-      } catch (e) {
-        console.warn('[TrainingForm] Failed to flush save before sign-out:', e);
-      }
-    }
-    await supabase.auth.signOut();
-    navigate("/");
-  };
+  // handleSignOut removed — sign-out handled by global AuthenticatedHeader
+  // Emergency save via useEmergencySave handles data preservation on navigation
 
   // Keyboard shortcut for save (Ctrl/Cmd+S)
   useSaveShortcut(() => saveTraining(), hasUnsavedChanges && !isSaving);
@@ -1130,13 +1119,7 @@ export default function TrainingForm() {
               <img src={ropeWorksLogo} alt="Rope Works" className="h-8 sm:h-10 w-auto object-contain" />
             </div>
             
-            <UserProfileDropdown
-              currentUser={currentUser}
-              userProfile={currentUserProfile}
-              isSuperAdmin={isSuperAdmin}
-              onSignOut={handleSignOut}
-              signingOut={signingOut}
-            />
+            {/* UserProfileDropdown is now in the global AuthenticatedHeader */}
           </div>
           
           {/* Bottom row - Status indicators and action buttons */}
