@@ -25,6 +25,7 @@ import AdminLogoManagement from "./pages/AdminLogoManagement";
 import { InstallBanner } from "@/components/pwa/InstallBanner";
 import { UpdateNotification } from "@/components/pwa/UpdateNotification";
 import { InstallSuccessNotification } from "@/components/pwa/InstallSuccessNotification";
+import { AuthenticatedHeader } from "@/components/AuthenticatedHeader";
 import { NetworkStatusIndicator } from "@/components/pwa/NetworkStatusIndicator";
 import { SyncStatusIndicator } from "@/components/pwa/SyncStatusIndicator";
 import { PWAProvider } from "@/components/pwa/PWAProvider";
@@ -97,6 +98,7 @@ const RootLayout = () => {
       <InstallBanner />
       <UpdateNotification />
       <InstallSuccessNotification />
+      <AuthenticatedHeader />
       <Outlet />
     </>
   );

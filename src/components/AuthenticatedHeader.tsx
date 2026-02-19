@@ -1,0 +1,133 @@
+import { useState, useEffect } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
+import { supabase } from "@/integrations/supabase/client";
+import { useQuery } from "@tanstack/react-query";
+import { getUserWithCache } from "@/lib/cached-auth";
+import { UserProfileDropdown } from "@/components/UserProfileDropdown";
+
+const PUBLIC_ROUTES = ["/", "/welcome"];
+
+export function AuthenticatedHeader() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [userProfile, setUserProfile] = useState<any>(null);
+  const [signingOut, setSigningOut] = useState(false);
+
+  // Hide on public routes
+  const isPublicRoute = PUBLIC_ROUTES.includes(location.pathname);
+
+  // Fetch current user
+  useEffect(() => {
+    const fetchUser = async () => {
+      const user = await getUserWithCache();
+      setCurrentUser(user);
+
+      if (user && navigator.onLine) {
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("avatar_url")
+          .eq("id", user.id)
+          .maybeSingle();
+        setUserProfile(profile);
+      }
+    };
+
+    fetchUser();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (event, session) => {
+        if (session?.user) {
+          setCurrentUser(session.user);
+        }
+        if (event === "SIGNED_OUT" && navigator.onLine) {
+          setCurrentUser(null);
+          setUserProfile(null);
+          navigate("/", { replace: true });
+        }
+      }
+    );
+
+    return () => subscription.unsubscribe();
+  }, [navigate]);
+
+  // Refetch profile when user changes
+  useEffect(() => {
+    const fetchProfile = async () => {
+      if (!currentUser?.id || !navigator.onLine) return;
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("avatar_url")
+        .eq("id", currentUser.id)
+        .maybeSingle();
+      setUserProfile(profile);
+    };
+    fetchProfile();
+  }, [currentUser?.id]);
+
+  // Check super admin status
+  const { data: isSuperAdmin } = useQuery({
+    queryKey: ["is-super-admin-global"],
+    queryFn: async () => {
+      const cachedValue = localStorage.getItem("cached-super-admin-status");
+
+      if (!navigator.onLine) return cachedValue === "true";
+
+      const user = await getUserWithCache();
+      if (!user) {
+        localStorage.setItem("cached-super-admin-status", "false");
+        return false;
+      }
+
+      try {
+        const { data: roles, error } = await supabase
+          .from("user_roles")
+          .select("role")
+          .eq("user_id", user.id)
+          .eq("role", "super_admin");
+
+        if (error) return cachedValue === "true";
+
+        const isAdmin = roles && roles.length > 0;
+        localStorage.setItem("cached-super-admin-status", isAdmin.toString());
+        return isAdmin;
+      } catch {
+        return cachedValue === "true";
+      }
+    },
+    staleTime: 2 * 60 * 1000,
+    retry: 2,
+    retryDelay: 1000,
+    placeholderData: () => localStorage.getItem("cached-super-admin-status") === "true",
+    enabled: !!currentUser,
+  });
+
+  const handleSignOut = async () => {
+    setSigningOut(true);
+    try {
+      await supabase.auth.signOut();
+    } catch (error) {
+      console.error("Error signing out:", error);
+      setSigningOut(false);
+    }
+  };
+
+  // Don't render on public routes or when not authenticated
+  if (isPublicRoute || !currentUser) return null;
+
+  return (
+    <div
+      className="fixed top-3 right-3 z-50"
+      role="navigation"
+      aria-label="User menu"
+    >
+      <UserProfileDropdown
+        currentUser={currentUser}
+        userProfile={userProfile}
+        isSuperAdmin={isSuperAdmin ?? false}
+        onSignOut={handleSignOut}
+        signingOut={signingOut}
+      />
+    </div>
+  );
+}

@@ -49,7 +49,7 @@ import { triggerHaptic } from "@/lib/haptics";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useSwipeNavigation } from "@/hooks/useSwipeNavigation";
 import { SwipeBackIndicator } from "@/components/SwipeBackIndicator";
-import { UserProfileDropdown } from "@/components/UserProfileDropdown";
+// UserProfileDropdown moved to AuthenticatedHeader (global)
 
 import { Check } from "lucide-react";
 import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
@@ -111,7 +111,7 @@ export default function InspectionForm() {
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [inspectorProfile, setInspectorProfile] = useState<any>(null);
   const [currentUserProfile, setCurrentUserProfile] = useState<any>(null);
-  const [signingOut, setSigningOut] = useState(false);
+  // signingOut removed — sign-out handled by global AuthenticatedHeader
   const [htmlViewerOpen, setHtmlViewerOpen] = useState(false);
   const [reportHtml, setReportHtml] = useState<string>('');
   const [inspection, setInspection] = useState<any>(null);
@@ -263,19 +263,8 @@ export default function InspectionForm() {
   const saveRef = useRef<(() => void) | null>(null);
   useSaveShortcut(() => saveRef.current?.(), hasUnsavedChanges && !saving);
 
-  const handleSignOut = async () => {
-    setSigningOut(true);
-    // Flush any pending unsaved changes before signing out (Finding 1: data loss prevention)
-    if (hasUnsavedChanges) {
-      try {
-        await performSaveRef.current?.(true);
-      } catch (e) {
-        console.warn('[InspectionForm] Failed to flush save before sign-out:', e);
-      }
-    }
-    await supabase.auth.signOut();
-    navigate("/");
-  };
+  // handleSignOut removed — sign-out handled by global AuthenticatedHeader
+  // Emergency save via useEmergencySave handles data preservation on navigation
 
   const generateSummaryFromInspection = () => {
     const criticalActions: string[] = [];
@@ -2147,13 +2136,7 @@ export default function InspectionForm() {
               <img src={ropeWorksLogo} alt="Rope Works" className="h-8 sm:h-10 w-auto object-contain" />
             </div>
             
-            <UserProfileDropdown
-              currentUser={currentUser}
-              userProfile={currentUserProfile}
-              isSuperAdmin={isSuperAdmin}
-              onSignOut={handleSignOut}
-              signingOut={signingOut}
-            />
+            {/* UserProfileDropdown is now in the global AuthenticatedHeader */}
           </div>
           
           {/* Bottom row - Status indicators and action buttons */}
