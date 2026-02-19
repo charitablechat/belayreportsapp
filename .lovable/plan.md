@@ -1,85 +1,121 @@
 
 
-# Data Loss Audit: Remaining Findings
+# Data Integrity Audit: Findings and Remediation Plan
 
-After a comprehensive review of the sync, persistence, offline storage, dashboard caching, emergency save, and service worker code, the system is already heavily hardened. Three remaining low-severity vectors were identified.
+## Audit Summary
 
----
-
-## Finding 1: Service Worker Only Syncs Inspections (Not Trainings or Daily Assessments)
-
-**Risk**: LOW -- background sync via the Service Worker (`sw-sync.js`) only handles inspections and photos. If the browser kills the main thread before `useAutoSync` processes trainings or daily assessments, those records will not sync until the user reopens the app.
-
-**Where**: `public/sw-sync.js` -- the `sync` event listener only handles `inspection-sync` and `photo-sync` tags. There is no `training-sync` or `assessment-sync` handler.
-
-**Fix**: Add `syncTrainingsAtomic()` and `syncDailyAssessmentsAtomic()` functions to `sw-sync.js` mirroring the existing `syncInspectionsAtomic()` pattern, and register new sync event tags for them.
+After a comprehensive review of the offline storage layer, data recovery tool, metric calculations, and form persistence logic, I identified **5 actionable findings** across 4 files. The system is already very well-hardened, but these gaps could cause hangs, silent data loss, or incorrect admin metrics under specific conditions.
 
 ---
 
-## Finding 2: Orphan Cleanup Can Delete Records Hidden by RLS Pagination
+## Finding 1: Unprotected IndexedDB Operations in `offline-storage.ts`
 
-**Risk**: LOW -- The Dashboard orphan cleanup compares local IndexedDB records against server results. However, Supabase has a default 1000-row query limit. If a super admin has more than 1000 active inspections/trainings/assessments, server results will be truncated. Local records beyond the 1000-row boundary will appear as "orphans" and be deleted from IndexedDB.
+**Risk: MEDIUM** -- Six functions directly call `getDB()` and perform IndexedDB operations without the `withIndexedDBErrorBoundary` wrapper. If IndexedDB hangs (common on mobile Safari), these calls will never resolve, causing the UI to freeze indefinitely.
 
-**Where**: `src/pages/Dashboard.tsx` lines ~396-451, ~548-600, ~696-750 -- the Supabase queries do not specify a `.limit()` or paginate, so they default to 1000 rows.
+**Affected functions (lines 769-799):**
+- `removeQueuedOperation(id)` -- line 769
+- `clearAllQueuedOperations()` -- line 778
+- `clearAllQueuedAssessmentOperations()` -- line 786
+- `clearAllQueuedTrainingOperations()` -- line 794
 
-**Fix**: Add `.limit(10000)` to all three dashboard Supabase queries (inspections, trainings, daily assessments) to ensure the orphan cleanup comparison set is complete. This is a one-line change per query.
-
----
-
-## Finding 3: `withTimeout` Silently Returns Empty Fallback on IndexedDB Timeout (Already Mitigated)
-
-**Risk**: INFORMATIONAL -- The `withTimeout` wrapper in `offline-storage.ts` resolves with `fallbackValue` (usually `[]` or `null`) on timeout, rather than rejecting. For **read** operations this is safe (callers handle empty gracefully). For **write** operations, the `withIndexedDBErrorBoundary` wrapper returns `undefined` on timeout, and callers treat `undefined` returns as no-ops. Console warnings already fire.
-
-No code change needed -- this is documented for awareness only. The 10x timeout warnings in the console logs confirm this is happening on the user's device and the system recovers correctly on the next cycle.
+**Fix:** Wrap each function body in `withIndexedDBErrorBoundary(...)` with `undefined` as the fallback value, matching the pattern used everywhere else in the file.
 
 ---
 
-## What Was NOT Found (Already Protected)
+## Finding 2: Data Recovery Tool Sync Functions Set `synced_at` Prematurely
 
-These potential vectors were investigated and confirmed to be already hardened:
+**Risk: MEDIUM** -- The manual sync functions in `DataRecoveryTool.tsx` (`syncTrainingToDatabase`, `syncDailyAssessmentToDatabase`, `syncInspectionToDatabase`) set `synced_at` in the same upsert as the parent data. This violates the deferred `synced_at` pattern used by `atomic-sync-manager.ts` and `sw-sync.js`. If child data (delivery approaches, equipment, etc.) fails to sync afterward, the parent will be marked as synced but incomplete.
 
-- **Empty array overwrite**: Blocked by `data.length === 0 && !options?.allowEmpty` guards in all save functions
-- **Server overwrites unsynced local data**: Protected by `shouldPreserveLocalRecord` in Dashboard caching
-- **Sync marks parent as synced before children commit**: Deferred `synced_at` pattern in both `atomic-sync-manager.ts` and `sw-sync.js`
-- **Stale server deleting rich local data**: `empty_local_guard` in `atomic-sync-manager.ts` blocks sync when server has children but local is empty
-- **Photo loss on IndexedDB eviction**: localStorage receipts and WAL backups capture metadata
-- **Emergency save gap (tab close before debounce)**: `useEmergencySave` covers `visibilitychange` and `pagehide` with localStorage snapshot
-- **Circuit breaker swallowing QuotaExceededError**: Already fixed in previous change
-- **Orphan cleanup during active sync**: `isSyncInProgress()` guard + 60s/5min recency windows
-- **Transaction rollback on partial sync failure**: `transaction-manager.ts` rolls back in reverse order
-- **Delete operations on report tables**: Blocked by `REPORT_TABLE_BLOCKLIST` in transaction manager
-- **Soft-deleted records reappearing**: `deleted_at IS NULL` filter on all dashboard queries and IndexedDB getters
+**Affected lines:** ~425-523 in DataRecoveryTool.tsx
+
+**Fix:** Split each sync function into the 3-step deferred pattern:
+1. Upsert parent data WITHOUT `synced_at`
+2. Upsert all child data
+3. Final PATCH to set `synced_at` and `updated_at`
+
+---
+
+## Finding 3: Completion Time Metric Can Produce NaN/Infinity
+
+**Risk: LOW** -- In `SuperAdminDashboard.tsx` (line 297-303), the avg completion time calculation uses `created_at!` with a non-null assertion. If `created_at` is somehow null (edge case with old records), `new Date(null!).getTime()` returns `0` (epoch), producing an artificially large duration. The `.filter(h => h > 0)` guard catches negative values but not absurdly large ones (e.g., 480,000+ hours for a record from epoch).
+
+**Fix:** Add an upper-bound filter to exclude durations over a reasonable maximum (e.g., 8760 hours = 1 year), and add a null guard on `created_at`:
+
+```typescript
+const durations = data
+  .filter(i => i.created_at) // guard against null created_at
+  .map((inspection) => {
+    const startTime = inspection.started_at
+      ? new Date(inspection.started_at).getTime()
+      : new Date(inspection.created_at!).getTime();
+    const endTime = new Date(inspection.updated_at!).getTime();
+    return (endTime - startTime) / (1000 * 60 * 60);
+  })
+  .filter(h => h > 0 && h < 8760); // exclude negatives AND impossibly long durations
+```
+
+---
+
+## Finding 4: Recovery Tool `handleBatchDelete` Has No Timeout
+
+**Risk: LOW** -- The `handleBatchDelete` function (line 367-387) calls `Promise.all(promises)` on an unbounded array of `removeQueuedOperation` calls. Since `removeQueuedOperation` itself lacks the error boundary (Finding 1), a single hung operation will block the entire batch indefinitely.
+
+**Fix:** This is resolved transitively by Finding 1 (wrapping the remove functions). Additionally, add a 10-second `Promise.race` timeout around the batch `Promise.all` as a safety net:
+
+```typescript
+await Promise.race([
+  Promise.all(promises),
+  new Promise((_, reject) =>
+    setTimeout(() => reject(new Error('Batch delete timeout')), 10000)
+  ),
+]);
+```
+
+---
+
+## Finding 5: Hardcoded Anon Key in `sw-sync.js` (Informational)
+
+**Risk: INFORMATIONAL** -- The Supabase anon key is hardcoded in `public/sw-sync.js` (lines 126, 269, 351, 454). This is the **publishable** anon key (not a secret), and Service Workers cannot access `import.meta.env` or `.env` files, so hardcoding is the only option. RLS policies protect the data. **No action needed** -- documented for awareness.
 
 ---
 
 ## Implementation Plan
 
-### File 1: `public/sw-sync.js`
+### File 1: `src/lib/offline-storage.ts`
 
-Add two new sync functions mirroring `syncInspectionsAtomic()`:
+Wrap 4 functions with `withIndexedDBErrorBoundary`:
+- `removeQueuedOperation` (line 769)
+- `clearAllQueuedOperations` (line 778)
+- `clearAllQueuedAssessmentOperations` (line 786)
+- `clearAllQueuedTrainingOperations` (line 794)
 
-1. `syncTrainings()` -- reads from IndexedDB `trainings` store, validates, upserts to server via fetch, aligns timestamps
-2. `syncDailyAssessments()` -- reads from IndexedDB `daily_assessments` store with its child stores, validates, upserts, aligns timestamps
-3. Register `training-sync` and `assessment-sync` tags in the `sync` event listener
+### File 2: `src/components/admin/DataRecoveryTool.tsx`
 
-### File 2: `src/pages/Dashboard.tsx`
+Refactor 3 sync functions to use deferred `synced_at` pattern:
+- `syncTrainingToDatabase` (~line 425)
+- `syncDailyAssessmentToDatabase` (~line 458)
+- `syncInspectionToDatabase` (~line 490)
 
-Add `.limit(10000)` to the three Supabase queries:
-- Line ~333: inspections query
-- Line ~491: trainings query  
-- Line ~640: daily assessments query
+Each becomes a 3-step process: upsert parent (no synced_at) -> upsert children -> final PATCH with synced_at + updated_at.
 
-### File 3: `src/lib/background-sync.ts`
+### File 3: `src/pages/SuperAdminDashboard.tsx`
 
-Add `registerTrainingSync()` and `registerAssessmentSync()` functions to register the new SW sync tags when trainings/assessments are saved offline.
+Update the avg completion time calculation (line 297-303):
+- Add null guard on `created_at`
+- Add upper-bound filter (`h < 8760`) to exclude impossible durations
+
+### File 4: `src/components/admin/DataRecoveryTool.tsx`
+
+Add 10-second timeout to `handleBatchDelete` `Promise.all` (line 377-379).
 
 ---
 
-## Technical Notes
+## What Was NOT Found (Already Protected)
 
-- Finding 1 is the most actionable -- it closes the gap where the SW background sync cannot recover training/assessment data if the app is killed
-- Finding 2 is unlikely to affect current users (would need 1000+ active reports) but is a one-line fix
-- All changes maintain the existing upsert-only, deferred-synced_at, empty-array-guarded patterns
-- No database migrations required
-- No RLS policy changes required
+- **getQueued*Operations**: Already wrapped in `withIndexedDBErrorBoundary` -- confirmed safe
+- **loadLocalData timeout**: Already has a 10-second `Promise.race` timeout (line 264-276) -- confirmed safe
+- **InspectionForm loadInspection**: Already has 15-second safety timeout + per-query 8-second timeouts -- confirmed safe
+- **localStorage snapshot restore**: Uses synchronous `getReportSnapshot` -- cannot hang
+- **Empty array overwrites**: Blocked by `data.length === 0 && !options?.allowEmpty` guards in all save functions
+- **Sensitive secrets in frontend**: Only the publishable anon key exists (required for client-side SDK); no service role keys or other secrets found
 
