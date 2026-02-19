@@ -1,56 +1,56 @@
 
 
-# Add "Data Recovery" to Profile Dropdown for All Users
+# Clear Stale Queued Operations -- with Batch Select and Delete
 
 ## Overview
-Add a "Data Recovery" menu item in the UserProfileDropdown (under "Check for Updates" / "Force Sync Now") that opens a sheet/dialog showing localStorage snapshots and IndexedDB backups. Regular users get **view + restore only** access (no delete, no export). The existing `DataRecoveryTool` component is reused with a permission-aware mode.
+Enhance the "Queued Ops" tab in the Super Admin Data Recovery Tool so admins can inspect operation age, delete individual operations, select multiple operations via checkboxes, and batch-delete the selection. Also add a "Clear All" master button with confirmation.
 
 ## What Changes
 
-### 1. Create a lightweight wrapper: `src/components/UserDataRecoverySheet.tsx`
-- A Sheet (bottom drawer on mobile) triggered from the dropdown
-- Renders a simplified version of the existing `LocalSnapshotsPanel` and `IndexedDBRecoveryPanel`
-- **No delete buttons** -- only Restore actions
-- **No export buttons** -- keeps UI simple for regular users
-- Shows snapshot count, sync status, organization name, and one-click restore
-- Uses existing functions from `local-backup-ledger.ts` and `offline-storage.ts`
+### 1. New bulk-clear functions in `src/lib/offline-storage.ts`
+Add three new exported functions that wipe all entries from each operations store:
+- `clearAllQueuedOperations()` -- clears the `operations` IndexedDB store
+- `clearAllQueuedAssessmentOperations()` -- clears `assessment_operations`
+- `clearAllQueuedTrainingOperations()` -- clears `training_operations`
 
-### 2. Modify `src/components/admin/DataRecoveryTool.tsx`
-- Extract `LocalSnapshotsPanel` and `IndexedDBRecoveryPanel` into exported components
-- Add an `allowDelete?: boolean` prop (defaults to `true` for backward compatibility in the admin dashboard)
-- When `allowDelete` is `false`, hide the Delete and Export buttons, showing only the Restore button
+These use the existing `getDB()` helper and call `.clear()` on the store inside a transaction.
 
-### 3. Modify `src/components/UserProfileDropdown.tsx`
-- Add a "Data Recovery" menu item with a `Database` icon after "Force Sync Now"
-- Clicking it opens the `UserDataRecoverySheet`
-- Available to **all authenticated users** (not just super admins)
+### 2. Enhanced "Queued Ops" tab in `src/components/admin/DataRecoveryTool.tsx`
 
-## Technical Details
+#### a) Age indicator column
+Each row gets a color-coded "Age" badge:
+- Green: queued less than 1 hour ago
+- Amber: 1--24 hours
+- Red: more than 24 hours
 
-### Data Recovery Sheet component structure
-```
-UserDataRecoverySheet (Sheet component)
-  -> LocalSnapshotsPanel (allowDelete=false)
-     - Lists all localStorage backup snapshots
-     - Shows: type, organization, sync status, last saved, size
-     - Action: Restore only (writes snapshot back into IndexedDB)
-  -> IndexedDBRecoveryPanel (allowDelete=false)
-     - Shows all IndexedDB records with sync status
-     - Action: Force-sync individual unsynced records to the server
-     - No delete capability
-```
+#### b) Per-row delete button
+A trash icon on each row that calls the existing `removeQueuedOperation` / `removeQueuedAssessmentOperation` / `removeQueuedTrainingOperation` (keyed by the operation's auto-increment `id`).
 
-### Security considerations
-- No new database tables or RLS changes needed -- this reads only local device storage (localStorage + IndexedDB)
-- No server-side data is exposed that isn't already accessible to the authenticated user
-- Delete capability remains exclusive to the Super Admin dashboard
-- Restore only writes data back into the user's own local IndexedDB stores
+#### c) Checkbox selection for batch delete
+- A checkbox in each table header row to "select all" within that section
+- A checkbox on each operation row to toggle selection
+- State tracked as `Set<string>` using a composite key like `"inspection-3"` or `"assessment-12"`
 
-### Files changed
+#### d) "Delete Selected" button
+Appears in each section header when 1+ items are selected. Triggers an AlertDialog confirmation, then deletes all selected operations and refreshes.
+
+#### e) Master "Clear All Queued Operations" button
+At the top of the Queued Ops card, a destructive button that opens an AlertDialog and clears all three stores at once, then refreshes.
+
+#### f) Per-section "Clear All" button
+Next to each section heading (e.g., "Inspection Operations (5)"), a small "Clear All" button to flush just that section's store.
+
+### Files Modified
 
 | File | Change |
 |------|--------|
-| `src/components/admin/DataRecoveryTool.tsx` | Export `LocalSnapshotsPanel` and `IndexedDBRecoveryPanel` with `allowDelete` prop |
-| `src/components/UserDataRecoverySheet.tsx` | New file -- Sheet wrapper rendering both panels with `allowDelete=false` |
-| `src/components/UserProfileDropdown.tsx` | Add "Data Recovery" dropdown item that opens the sheet |
+| `src/lib/offline-storage.ts` | Add 3 bulk-clear functions |
+| `src/components/admin/DataRecoveryTool.tsx` | Add imports for new clear functions + existing remove functions, add selection state, checkboxes, age badges, delete/batch-delete buttons, and confirmation dialogs |
+
+### Technical Notes
+
+- The queued operations use auto-increment keys (`key: number`), so each operation has an `id` field. The existing `removeQueuedOperation(id)` already accepts this numeric key.
+- Selection state is local React state (`useState<Set<string>>`), reset after any delete action.
+- After any delete/clear, `loadLocalData()` is called to refresh all counts and tables.
+- No database or RLS changes needed -- this is purely local IndexedDB management.
 
