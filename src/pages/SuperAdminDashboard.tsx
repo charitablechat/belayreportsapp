@@ -583,24 +583,24 @@ export default function SuperAdminDashboard() {
   }
 
   return (
-    <div className="container mx-auto p-8 space-y-8">
+    <div className="container mx-auto px-6 py-10 md:px-10 space-y-10 max-w-7xl">
       <div className="flex items-start gap-4">
         <Button
           variant="ghost"
           size="icon"
           onClick={() => navigate('/dashboard')}
-          className="mt-1"
+          className="mt-1 hover:bg-white/5 transition-colors"
         >
           <ArrowLeft className="h-5 w-5" />
         </Button>
         <div className="flex-1">
-          <h1 className="text-4xl font-black tracking-tight mb-2">Super Admin Dashboard</h1>
-          <p className="text-muted-foreground">Manage all organizations, users, and inspections</p>
+          <h1 className="text-4xl md:text-5xl font-black tracking-tight mb-2">Super Admin Dashboard</h1>
+          <p className="text-muted-foreground/70 text-sm tracking-wide">Manage all organizations, users, and inspections</p>
         </div>
       </div>
 
       {/* Overview Stats - Row 1 */}
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
         <StatCard
           title="Organizations"
           value={stats?.organizations || 0}
@@ -651,7 +651,7 @@ export default function SuperAdminDashboard() {
       </div>
 
       {/* Overview Stats - Row 2 */}
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
         <StatCard
           title="Training Reports"
           value={stats?.trainings || 0}
@@ -701,7 +701,7 @@ export default function SuperAdminDashboard() {
       </div>
 
       {/* Overview Stats - Row 3 */}
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
         <StatCard
           title="Avg Completion Time"
           value={avgCompletionTime ? `${avgCompletionTime.toFixed(1)}h` : "0h"}
@@ -726,7 +726,7 @@ export default function SuperAdminDashboard() {
               <Button
                 variant="outline"
                 size="sm"
-                className="h-7 px-2 text-xs font-mono bg-[#0a0a0a] text-[#00ff41] border-[#00ff41]/30 hover:bg-[#00ff41]/10 hover:text-[#00ff41]"
+                className="h-7 px-2 text-xs font-mono bg-background/50 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/10 hover:text-emerald-300 transition-colors"
                 onClick={(e) => {
                   e.stopPropagation();
                   setResetMetricDialogOpen(true);
@@ -736,7 +736,7 @@ export default function SuperAdminDashboard() {
                 RESET
               </Button>
               {resetTimestamp?.updated_at && resetTimestamp.value !== '1970-01-01T00:00:00Z' && (
-                <Badge className="h-5 text-[10px] font-mono bg-[#0a0a0a] text-[#00ff41] border-[#00ff41]/30 hover:bg-[#0a0a0a]">
+                <Badge className="h-5 text-[10px] font-mono bg-background/50 text-emerald-400 border-emerald-500/30 hover:bg-background/50">
                   RST {format(new Date(resetTimestamp.updated_at), "MM/dd HH:mm")}
                 </Badge>
               )}
@@ -760,7 +760,7 @@ export default function SuperAdminDashboard() {
       </div>
 
       {/* Tabs for different sections */}
-      <Tabs defaultValue="organizations" className="space-y-4">
+      <Tabs defaultValue="organizations" className="space-y-6">
         <AdminTabsSection />
 
         <TabsContent value="organizations" className="space-y-4">

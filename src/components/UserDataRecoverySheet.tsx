@@ -10,10 +10,10 @@ interface UserDataRecoverySheetProps {
 export function UserDataRecoverySheet({ open, onOpenChange }: UserDataRecoverySheetProps) {
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="bottom" className="h-[85vh] p-0 backdrop-blur-xl bg-slate-900/95 border-white/10">
+      <SheetContent side="bottom" className="h-[85vh] p-0 backdrop-blur-xl bg-background/95 dark:bg-slate-950/95 border-t border-white/10">
         <SheetHeader className="px-6 pt-6 pb-2">
-          <SheetTitle className="text-slate-100">Data Recovery</SheetTitle>
-          <SheetDescription className="text-slate-400">
+          <SheetTitle className="text-foreground font-black tracking-tight">Data Recovery</SheetTitle>
+          <SheetDescription className="text-muted-foreground/70">
             View and restore local backups stored on this device. Only restore actions are available.
           </SheetDescription>
         </SheetHeader>

@@ -40,7 +40,7 @@ export const AdminTabsSection = ({ children }: AdminTabsSectionProps) => {
 
   return (
     <TooltipProvider delayDuration={300}>
-      <TabsList className="flex flex-col h-auto w-full items-stretch backdrop-blur-md bg-white/5 dark:bg-slate-900/30 border border-white/10 rounded-xl p-1">
+      <TabsList className="flex flex-col h-auto w-full items-stretch backdrop-blur-md bg-white/[0.03] dark:bg-white/[0.02] border border-white/10 dark:border-white/[0.06] rounded-xl p-1.5 shadow-lg shadow-black/5">
         {tabs.map((tab) => (
           <AdminTab
             key={tab.value}
@@ -52,11 +52,11 @@ export const AdminTabsSection = ({ children }: AdminTabsSectionProps) => {
         ))}
         
         {/* Dark/Light Mode Toggle */}
-        <div className="mt-2 pt-2 border-t border-border/30 px-1">
+        <div className="mt-2 pt-2 border-t border-white/[0.06] px-1">
           <Button
             variant="ghost"
             size="sm"
-            className="w-full justify-start gap-2 text-muted-foreground hover:text-foreground"
+            className="w-full justify-start gap-2 text-muted-foreground/70 hover:text-foreground hover:bg-white/5 transition-colors duration-200"
             onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
           >
             {theme === "dark" ? (

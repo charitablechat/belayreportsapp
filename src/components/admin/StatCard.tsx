@@ -44,24 +44,31 @@ export const StatCard = ({ title, value, icon: Icon, description, onClick, hover
 
   const cardContent = (
     <Card 
-      className={`glass-card card-lift ${onClick || (isMobile && hoverContent) ? "cursor-pointer" : ""}`}
+      className={`
+        backdrop-blur-md bg-white/5 dark:bg-white/[0.03] 
+        border border-white/10 dark:border-white/[0.06]
+        shadow-lg shadow-black/5
+        rounded-xl
+        transition-all duration-300 ease-out
+        ${onClick || (isMobile && hoverContent) ? "cursor-pointer hover:-translate-y-0.5 hover:bg-white/10 dark:hover:bg-white/[0.06] hover:shadow-xl hover:border-white/20" : ""}
+      `}
       onClick={handleCardClick}
     >
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-        <CardTitle className="text-sm font-medium tracking-wide uppercase text-muted-foreground">{title}</CardTitle>
+        <CardTitle className="text-xs font-semibold tracking-widest uppercase text-muted-foreground/80">{title}</CardTitle>
         <div className="flex items-center gap-1.5">
           {hoverContent && (
-            <Info className="h-3.5 w-3.5 text-muted-foreground/50" />
+            <Info className="h-3.5 w-3.5 text-muted-foreground/40" />
           )}
-          <Icon className="h-5 w-5 text-indigo-500" />
+          <Icon className="h-5 w-5 text-primary" />
         </div>
       </CardHeader>
       <CardContent>
-        <div className="brutalist-metric">{value}</div>
+        <div className="text-4xl font-black tracking-tight font-mono tabular-nums">{value}</div>
         {description && (
-          <p className="text-xs text-muted-foreground mt-1">{description}</p>
+          <p className="text-xs text-muted-foreground/70 mt-1.5">{description}</p>
         )}
-        {actions && <div className="mt-2">{actions}</div>}
+        {actions && <div className="mt-3">{actions}</div>}
       </CardContent>
     </Card>
   );
