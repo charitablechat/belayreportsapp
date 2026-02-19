@@ -335,6 +335,214 @@ async function syncPhotos() {
   }
 }
 
+// Sync trainings atomically (mirrors syncInspectionsAtomic pattern)
+async function syncTrainingsAtomic() {
+  console.log('[SW Atomic Sync] Starting atomic training sync...');
+  
+  try {
+    const db = await openDB('rope-works-inspections', 4);
+    const allTrainings = await getAllFromStore(db, 'trainings');
+    const unsynced = allTrainings.filter(t => !t.synced_at || new Date(t.updated_at) > new Date(t.synced_at));
+    
+    console.log('[SW Atomic Sync] Found', unsynced.length, 'unsynced trainings');
+    if (unsynced.length === 0) return;
+    
+    const supabaseUrl = 'https://ssgzcgvygnsrqalisshx.supabase.co';
+    const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNzZ3pjZ3Z5Z25zcnFhbGlzc2h4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIyMzM5NjksImV4cCI6MjA3NzgwOTk2OX0.buTFy44tZdRIlRSFIm5BqeOGb4nX3ARuHawWA9hZN54';
+    
+    let syncedCount = 0;
+    
+    for (const training of unsynced) {
+      try {
+        // Gather child data
+        const deliveryApproaches = await getAllRelatedData(db, 'training_delivery_approaches', training.id).catch(() => []);
+        const operatingSystems = await getAllRelatedData(db, 'training_operating_systems', training.id).catch(() => []);
+        const immediateAttention = await getAllRelatedData(db, 'training_immediate_attention', training.id).catch(() => []);
+        const verifiableItems = await getAllRelatedData(db, 'training_verifiable_items', training.id).catch(() => []);
+        const systemsInPlace = await getAllRelatedData(db, 'training_systems_in_place', training.id).catch(() => []);
+        const summaryArray = await getAllRelatedData(db, 'training_summary', training.id).catch(() => []);
+        
+        // Step 1: Upsert training WITHOUT synced_at (deferred marking)
+        const trainingData = { ...training };
+        delete trainingData.synced_at;
+        
+        const response = await fetch(`${supabaseUrl}/rest/v1/trainings?id=eq.${training.id}`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': supabaseKey,
+            'Authorization': `Bearer ${supabaseKey}`,
+            'Prefer': 'return=representation'
+          },
+          body: JSON.stringify(trainingData)
+        });
+        
+        if (!response.ok) {
+          console.error('[SW Atomic Sync] Training sync failed:', await response.text());
+          continue;
+        }
+        
+        // Step 2: Upsert all children (no deletes)
+        await Promise.all([
+          upsertRelatedData(supabaseUrl, supabaseKey, 'training_delivery_approaches', deliveryApproaches),
+          upsertRelatedData(supabaseUrl, supabaseKey, 'training_operating_systems', operatingSystems),
+          upsertRelatedData(supabaseUrl, supabaseKey, 'training_immediate_attention', immediateAttention),
+          upsertRelatedData(supabaseUrl, supabaseKey, 'training_verifiable_items', verifiableItems),
+          upsertRelatedData(supabaseUrl, supabaseKey, 'training_systems_in_place', systemsInPlace),
+          summaryArray.length > 0 ? upsertRelatedData(supabaseUrl, supabaseKey, 'training_summary', summaryArray) : Promise.resolve(true),
+        ]);
+        
+        // Step 3: NOW mark as synced (deferred synced_at)
+        const now = new Date().toISOString();
+        const syncStampResponse = await fetch(`${supabaseUrl}/rest/v1/trainings?id=eq.${training.id}`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': supabaseKey,
+            'Authorization': `Bearer ${supabaseKey}`,
+            'Prefer': 'return=representation'
+          },
+          body: JSON.stringify({ synced_at: now, updated_at: now })
+        });
+        
+        if (!syncStampResponse.ok) {
+          console.error('[SW Atomic Sync] Training sync stamp failed -- will retry');
+          continue;
+        }
+        
+        // Align local timestamps
+        training.synced_at = now;
+        training.updated_at = now;
+        await updateInStore(db, 'trainings', training);
+        syncedCount++;
+        console.log('[SW Atomic Sync] Synced training:', training.id);
+        
+      } catch (error) {
+        console.error('[SW Atomic Sync] Failed to sync training:', training.id, error);
+      }
+    }
+    
+    // Notify clients
+    const clients = await self.clients.matchAll();
+    clients.forEach(client => {
+      client.postMessage({
+        type: 'SYNC_COMPLETED',
+        tag: 'training-sync',
+        success: true,
+        count: syncedCount
+      });
+    });
+    
+  } catch (error) {
+    console.error('[SW Atomic Sync] Training sync failed:', error);
+    throw error;
+  }
+}
+
+// Sync daily assessments atomically (mirrors syncInspectionsAtomic pattern)
+async function syncDailyAssessmentsAtomic() {
+  console.log('[SW Atomic Sync] Starting atomic daily assessment sync...');
+  
+  try {
+    const db = await openDB('rope-works-inspections', 4);
+    const allAssessments = await getAllFromStore(db, 'daily_assessments');
+    const unsynced = allAssessments.filter(a => !a.synced_at || new Date(a.updated_at) > new Date(a.synced_at));
+    
+    console.log('[SW Atomic Sync] Found', unsynced.length, 'unsynced daily assessments');
+    if (unsynced.length === 0) return;
+    
+    const supabaseUrl = 'https://ssgzcgvygnsrqalisshx.supabase.co';
+    const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNzZ3pjZ3Z5Z25zcnFhbGlzc2h4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIyMzM5NjksImV4cCI6MjA3NzgwOTk2OX0.buTFy44tZdRIlRSFIm5BqeOGb4nX3ARuHawWA9hZN54';
+    
+    let syncedCount = 0;
+    
+    for (const assessment of unsynced) {
+      try {
+        // Gather child data
+        const beginningOfDay = await getAllRelatedData(db, 'daily_assessment_beginning_of_day', assessment.id).catch(() => []);
+        const endOfDay = await getAllRelatedData(db, 'daily_assessment_end_of_day', assessment.id).catch(() => []);
+        const environmentChecks = await getAllRelatedData(db, 'daily_assessment_environment_checks', assessment.id).catch(() => []);
+        const equipmentChecks = await getAllRelatedData(db, 'daily_assessment_equipment_checks', assessment.id).catch(() => []);
+        const structureChecks = await getAllRelatedData(db, 'daily_assessment_structure_checks', assessment.id).catch(() => []);
+        const operatingSystems = await getAllRelatedData(db, 'daily_assessment_operating_systems', assessment.id).catch(() => []);
+        
+        // Step 1: Upsert assessment WITHOUT synced_at (deferred marking)
+        const assessmentData = { ...assessment };
+        delete assessmentData.synced_at;
+        
+        const response = await fetch(`${supabaseUrl}/rest/v1/daily_assessments?id=eq.${assessment.id}`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': supabaseKey,
+            'Authorization': `Bearer ${supabaseKey}`,
+            'Prefer': 'return=representation'
+          },
+          body: JSON.stringify(assessmentData)
+        });
+        
+        if (!response.ok) {
+          console.error('[SW Atomic Sync] Assessment sync failed:', await response.text());
+          continue;
+        }
+        
+        // Step 2: Upsert all children (no deletes)
+        await Promise.all([
+          upsertRelatedData(supabaseUrl, supabaseKey, 'daily_assessment_beginning_of_day', beginningOfDay),
+          upsertRelatedData(supabaseUrl, supabaseKey, 'daily_assessment_end_of_day', endOfDay),
+          upsertRelatedData(supabaseUrl, supabaseKey, 'daily_assessment_environment_checks', environmentChecks),
+          upsertRelatedData(supabaseUrl, supabaseKey, 'daily_assessment_equipment_checks', equipmentChecks),
+          upsertRelatedData(supabaseUrl, supabaseKey, 'daily_assessment_structure_checks', structureChecks),
+          upsertRelatedData(supabaseUrl, supabaseKey, 'daily_assessment_operating_systems', operatingSystems),
+        ]);
+        
+        // Step 3: NOW mark as synced (deferred synced_at)
+        const now = new Date().toISOString();
+        const syncStampResponse = await fetch(`${supabaseUrl}/rest/v1/daily_assessments?id=eq.${assessment.id}`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': supabaseKey,
+            'Authorization': `Bearer ${supabaseKey}`,
+            'Prefer': 'return=representation'
+          },
+          body: JSON.stringify({ synced_at: now, updated_at: now })
+        });
+        
+        if (!syncStampResponse.ok) {
+          console.error('[SW Atomic Sync] Assessment sync stamp failed -- will retry');
+          continue;
+        }
+        
+        // Align local timestamps
+        assessment.synced_at = now;
+        assessment.updated_at = now;
+        await updateInStore(db, 'daily_assessments', assessment);
+        syncedCount++;
+        console.log('[SW Atomic Sync] Synced assessment:', assessment.id);
+        
+      } catch (error) {
+        console.error('[SW Atomic Sync] Failed to sync assessment:', assessment.id, error);
+      }
+    }
+    
+    // Notify clients
+    const clients = await self.clients.matchAll();
+    clients.forEach(client => {
+      client.postMessage({
+        type: 'SYNC_COMPLETED',
+        tag: 'assessment-sync',
+        success: true,
+        count: syncedCount
+      });
+    });
+    
+  } catch (error) {
+    console.error('[SW Atomic Sync] Assessment sync failed:', error);
+    throw error;
+  }
+}
+
 // Handle sync events
 self.addEventListener('sync', async (event) => {
   console.log('[SW Sync] Sync event triggered:', event.tag);
@@ -343,6 +551,10 @@ self.addEventListener('sync', async (event) => {
     event.waitUntil(syncInspectionsAtomic());
   } else if (event.tag === 'photo-sync') {
     event.waitUntil(syncPhotos());
+  } else if (event.tag === 'training-sync') {
+    event.waitUntil(syncTrainingsAtomic());
+  } else if (event.tag === 'assessment-sync') {
+    event.waitUntil(syncDailyAssessmentsAtomic());
   }
 });
 
@@ -354,10 +566,12 @@ self.addEventListener('periodicsync', async (event) => {
     event.waitUntil(
       Promise.all([
         syncInspectionsAtomic(),
-        syncPhotos()
+        syncPhotos(),
+        syncTrainingsAtomic(),
+        syncDailyAssessmentsAtomic()
       ])
     );
   }
 });
 
-console.log('[SW Sync] Background sync worker with upsert-only operations loaded');
+console.log('[SW Sync] Background sync worker with upsert-only operations loaded (inspections, trainings, assessments)');
