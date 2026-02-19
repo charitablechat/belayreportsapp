@@ -134,7 +134,8 @@ export function AuthenticatedHeader() {
 
   return (
     <div
-      className="fixed top-3 right-3 z-50"
+      className="fixed top-3 right-3 z-50 rounded-full bg-white/10 dark:bg-black/20 backdrop-blur-[12px] border border-white/10 transition-transform duration-300 ease-in-out hover:scale-105"
+      style={{ boxShadow: '0 4px 24px -4px rgba(0,0,0,0.12), 0 1px 4px -1px rgba(0,0,0,0.08), 0 0 0 1px rgba(255,255,255,0.05) inset' }}
       role="navigation"
       aria-label="User menu"
     >
