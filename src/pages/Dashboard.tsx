@@ -997,7 +997,7 @@ export default function Dashboard() {
               <img src={acctLogo} alt="ACCT Accredited Vendor" className="h-8 md:h-12 w-auto object-contain" />
             </div>
             
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 mr-14">
               {/* Minimal dot-based sync indicator */}
               <SyncPulse />
               
@@ -1015,7 +1015,7 @@ export default function Dashboard() {
               <ForceSyncButton variant="icon" className="h-8 w-8" />
               
               {isSuperAdmin && (
-                <Badge variant="default" className="bg-warning text-warning-foreground border-warning/50 shadow-lg shadow-warning/20 animate-pulse hidden sm:flex items-center gap-1">
+                <Badge variant="default" className="bg-warning/90 text-warning-foreground border border-warning/50 backdrop-blur-[12px] shadow-lg shadow-warning/20 animate-pulse hidden sm:flex items-center gap-1">
                   <Shield className="w-3 h-3" />
                   Super Admin
                 </Badge>
