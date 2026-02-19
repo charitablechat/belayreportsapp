@@ -1,49 +1,32 @@
 
 
-# Auto-Increment Version on Every Build
+# Glassmorphism Profile Button Refinement
 
-## Problem
-The version number (`v2.6.1`) is hardcoded in `vite.config.ts` and must be manually updated. The user wants it to automatically increment by one patch step (following the existing rollover scheme) every time the app rebuilds -- which in Lovable happens on every code edit.
+## Overview
+Apply a premium glassmorphism aesthetic to the floating user profile trigger button, with layered shadows, a hover scale transition, and an enhanced avatar ring -- all purely visual CSS changes with zero impact on data or auth logic.
 
-## How It Works Today
-- `APP_VERSION`, `BUILD_DATE`, and `BUILD_TIMESTAMP` are static strings on lines 20-22 of `vite.config.ts`
-- The rollover logic already exists in `src/lib/version-calculator.ts` but is never called at build time
+## Changes
 
-## Solution: Vite Plugin + JSON Version File
+### 1. `src/components/AuthenticatedHeader.tsx` (lines 136-139)
+Replace the plain `fixed top-3 right-3 z-50` wrapper with a glassmorphism container:
+- `backdrop-blur-[12px]` for the frosted glass effect
+- Translucent background: `bg-white/10 dark:bg-black/20`
+- Subtle 1px border: `border border-white/10`
+- Multi-layered soft shadow: inline `style` with compound `box-shadow`
+- `rounded-full` to match the circular avatar
+- Hover: `scale(1.05)` with `transition-transform duration-300 ease-in-out`
 
-Create a small Vite plugin that runs at build start, reads the current version from a dedicated JSON file, increments it using the existing `version-calculator` logic, writes it back, and injects the new version + timestamp into `import.meta.env`.
+### 2. `src/components/UserProfileDropdown.tsx` (line 77)
+Remove existing padding/sizing from the ghost trigger `Button` so the glassmorphism container handles all visual chrome. Change to `variant="ghost" size="icon" className="rounded-full p-0 bg-transparent hover:bg-transparent"`.
 
-A **debounce guard** (timestamp file) prevents double-increments when Vite's file watcher triggers multiple rebuilds in quick succession (< 5 seconds apart).
+### 3. `src/components/ui/user-avatar.tsx` (lines 23-29)
+- Add a subtle inner glow ring to all avatars (not just super admins): `ring-1 ring-white/20 shadow-inner`
+- Keep the existing super-admin amber ring as an additive layer on top
+- Ensure the `User` fallback icon remains as the high-quality fallback
 
-### New File: `version.json`
-A single-purpose file storing the current version. This is the source of truth -- `vite.config.ts` no longer hardcodes the version string.
-
-```json
-{ "version": "2.6.1" }
-```
-
-### New File: `vite-auto-version.ts`
-A Vite plugin that:
-1. Reads `version.json`
-2. Checks a `.version-timestamp` marker to skip if last increment was < 5 seconds ago (prevents infinite rebuild loops)
-3. Increments using the rollover scheme (2.6.1 -> 2.6.2, 2.6.9 -> 2.7.1, 2.9.9 -> 3.1.1)
-4. Writes the new version back to `version.json`
-5. Returns `define` values for `APP_VERSION`, `BUILD_DATE`, and `BUILD_TIMESTAMP`
-
-### Modified File: `vite.config.ts`
-- Remove the hardcoded `APP_VERSION`, `BUILD_DATE`, `BUILD_TIMESTAMP` constants (lines 20-22)
-- Remove the `define` block entries (lines 30-34)
-- Import and use the new `vite-auto-version` plugin which handles both
-
-## Technical Details
-
-- The version-calculator functions (`parseVersion`, `getNextVersion`, `formatVersion`) are pure TypeScript with no browser dependencies, so they work in Node/Vite context via direct import
-- The 5-second debounce prevents the write-to-`version.json` from triggering a Vite file-watch rebuild that would increment again
-- `BUILD_TIMESTAMP` is generated dynamically using `Intl.DateTimeFormat` for CST timezone formatting, matching the current format ("MM-DD-YYYY at HH:MM AM/PM CST")
-- The `.version-timestamp` marker file is added to `.gitignore`
-
-## Rollover Scheme (unchanged)
-- Patch increments by 1 each build: 2.6.1 -> 2.6.2 -> ... -> 2.6.9
-- Patch 9 rolls over: 2.6.9 -> 2.7.1
-- Minor 9 rolls over: 2.9.9 -> 3.1.1
+## Technical Notes
+- All changes are CSS-only on three existing files
+- No new state, hooks, network calls, or data access is introduced
+- The `currentUser` and `userProfile` prop interfaces remain unchanged -- no sensitive metadata is added or exposed
+- Data safety protocols (IndexedDB, sync, backups) are entirely unaffected
 
