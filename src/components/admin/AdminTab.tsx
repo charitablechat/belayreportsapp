@@ -17,7 +17,7 @@ export const AdminTab = ({ value, icon: Icon, title, description }: AdminTabProp
   const tabContent = (
     <TabsTrigger 
       value={value} 
-      className="justify-start gap-3 w-full overflow-hidden group hover:bg-accent/50 data-[state=active]:bg-accent"
+      className="justify-start gap-3 w-full overflow-hidden group hover:bg-accent/50 hover:-translate-y-0.5 transition-all duration-200 data-[state=active]:bg-accent data-[state=active]:shadow-sm"
     >
       <Icon className="h-4 w-4 shrink-0 text-muted-foreground transition-colors group-hover:text-primary group-data-[state=active]:text-primary" />
       <span className="shrink-0">{title}</span>

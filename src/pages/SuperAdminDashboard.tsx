@@ -536,7 +536,7 @@ export default function SuperAdminDashboard() {
   }
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
+    <div className="container mx-auto p-8 space-y-8">
       <div className="flex items-start gap-4">
         <Button
           variant="ghost"
@@ -547,13 +547,13 @@ export default function SuperAdminDashboard() {
           <ArrowLeft className="h-5 w-5" />
         </Button>
         <div className="flex-1">
-          <h1 className="text-3xl font-bold mb-2">Super Admin Dashboard</h1>
+          <h1 className="text-4xl font-black tracking-tight mb-2">Super Admin Dashboard</h1>
           <p className="text-muted-foreground">Manage all organizations, users, and inspections</p>
         </div>
       </div>
 
       {/* Overview Stats - Row 1 */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
         <StatCard
           title="Organizations"
           value={stats?.organizations || 0}
@@ -604,7 +604,7 @@ export default function SuperAdminDashboard() {
       </div>
 
       {/* Overview Stats - Row 2 */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
         <StatCard
           title="Training Reports"
           value={stats?.trainings || 0}
@@ -654,7 +654,7 @@ export default function SuperAdminDashboard() {
       </div>
 
       {/* Overview Stats - Row 3 */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
         <StatCard
           title="Avg Completion Time"
           value={avgCompletionTime ? `${avgCompletionTime.toFixed(1)}h` : "0h"}
@@ -884,7 +884,11 @@ export default function SuperAdminDashboard() {
                   <TableCell>{inspection.organizations?.name}</TableCell>
                   <TableCell>{inspection.location}</TableCell>
                   <TableCell>
-                    <Badge variant={inspection.status === "completed" ? "default" : "secondary"}>
+                    <Badge className={
+                      inspection.status === "completed" ? "bg-emerald-400/15 text-emerald-400 border-emerald-400/30" :
+                      inspection.status === "in_progress" ? "bg-indigo-500/15 text-indigo-400 border-indigo-500/30" :
+                      "bg-slate-500/15 text-slate-400 border-slate-400/30"
+                    }>
                       {inspection.status}
                     </Badge>
                   </TableCell>
@@ -927,7 +931,11 @@ export default function SuperAdminDashboard() {
                       : training.trainer_of_record || 'Unknown'}
                   </TableCell>
                   <TableCell>
-                    <Badge variant={training.status === "completed" ? "default" : "secondary"}>
+                    <Badge className={
+                      training.status === "completed" ? "bg-emerald-400/15 text-emerald-400 border-emerald-400/30" :
+                      training.status === "in_progress" ? "bg-indigo-500/15 text-indigo-400 border-indigo-500/30" :
+                      "bg-slate-500/15 text-slate-400 border-slate-400/30"
+                    }>
                       {training.status}
                     </Badge>
                   </TableCell>
@@ -967,7 +975,11 @@ export default function SuperAdminDashboard() {
                       : assessment.trainer_of_record || 'Unknown'}
                   </TableCell>
                   <TableCell>
-                    <Badge variant={assessment.status === "completed" ? "default" : "secondary"}>
+                    <Badge className={
+                      assessment.status === "completed" ? "bg-emerald-400/15 text-emerald-400 border-emerald-400/30" :
+                      assessment.status === "in_progress" ? "bg-indigo-500/15 text-indigo-400 border-indigo-500/30" :
+                      "bg-slate-500/15 text-slate-400 border-slate-400/30"
+                    }>
                       {assessment.status}
                     </Badge>
                   </TableCell>
