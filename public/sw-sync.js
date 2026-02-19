@@ -126,7 +126,10 @@ async function syncInspectionWithTransaction(inspection, systems, ziplines, equi
   const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNzZ3pjZ3Z5Z25zcnFhbGlzc2h4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIyMzM5NjksImV4cCI6MjA3NzgwOTk2OX0.buTFy44tZdRIlRSFIm5BqeOGb4nX3ARuHawWA9hZN54';
   
   try {
-    // 1. Upsert inspection
+    // Step 1: Upsert inspection data WITHOUT synced_at (deferred marking pattern)
+    const inspData = { ...inspection };
+    delete inspData.synced_at; // Don't mark as synced yet
+    
     const inspResponse = await fetch(`${supabaseUrl}/rest/v1/inspections?id=eq.${inspection.id}`, {
       method: 'PATCH',
       headers: {
@@ -135,12 +138,12 @@ async function syncInspectionWithTransaction(inspection, systems, ziplines, equi
         'Authorization': `Bearer ${supabaseKey}`,
         'Prefer': 'return=representation'
       },
-      body: JSON.stringify({ ...inspection, synced_at: new Date().toISOString() })
+      body: JSON.stringify(inspData)
     });
     
     if (!inspResponse.ok) throw new Error('Inspection sync failed');
     
-    // 2. Upsert all related data (NO deletes -- upsert-only for zero data loss)
+    // Step 2: Upsert all child data (NO deletes -- upsert-only for zero data loss)
     await Promise.all([
       upsertRelatedData(supabaseUrl, supabaseKey, 'inspection_systems', systems),
       upsertRelatedData(supabaseUrl, supabaseKey, 'inspection_ziplines', ziplines),
@@ -148,6 +151,20 @@ async function syncInspectionWithTransaction(inspection, systems, ziplines, equi
       upsertRelatedData(supabaseUrl, supabaseKey, 'inspection_standards', standards),
       summary ? upsertRelatedData(supabaseUrl, supabaseKey, 'inspection_summary', [summary]) : Promise.resolve(true),
     ]);
+    
+    // Step 3: ONLY NOW mark as synced on the server (deferred synced_at)
+    const syncStampResponse = await fetch(`${supabaseUrl}/rest/v1/inspections?id=eq.${inspection.id}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': supabaseKey,
+        'Authorization': `Bearer ${supabaseKey}`,
+        'Prefer': 'return=representation'
+      },
+      body: JSON.stringify({ synced_at: new Date().toISOString() })
+    });
+    
+    if (!syncStampResponse.ok) throw new Error('Sync stamp failed -- children committed but parent not marked synced, will retry');
     
     return true;
     
