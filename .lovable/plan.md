@@ -1,76 +1,118 @@
 
 
-# Production Year: Support Date Ranges (e.g., "2019-2021")
+# Fix Two MEDIUM Data Integrity Vulnerabilities
 
-**Version bump: v2.5.9 → v2.6.0**
+**Version bump: v2.6.0 → v2.6.1**
 
-## Problem
-The `production_year` column in `inspection_equipment` is an `integer`, which only allows single year values like `2023`. Users need to enter date ranges like `2019-2021` for equipment that spans multiple production years.
+## Finding 1: Silent QuotaExceededError on First Failures
 
-## Approach
-Migrate `production_year` from `integer` to `text`, following the same pattern used for the `quantity` field (which was previously migrated from integer to text to support "10+" values).
+**Problem:** When `saveInspectionOffline` or `savePhotoOffline` hits a `QuotaExceededError`, the inner `throw` propagates to `withIndexedDBErrorBoundary`, which catches it in the generic `catch` block (line 420-426). This records a failure and returns `fallbackValue` (which is `undefined`). The caller receives `undefined` with no user notification. The user only sees a toast after **3 consecutive failures** trip the circuit breaker -- meaning the first 2 failed saves are completely silent.
 
-## Changes
+**Fix:** Inside the `catch` block of `withIndexedDBErrorBoundary` (line 420), detect `QuotaExceededError` specifically and immediately surface a destructive toast to the user, regardless of circuit breaker state. This ensures the very first quota failure is visible.
 
-### 1. Database Migration
-Alter the `inspection_equipment` table to change `production_year` from `integer` to `text`. Existing integer values (e.g., `2023`) will be automatically cast to text (`"2023"`). The sentinel value `0` for N/A becomes `"0"`.
+### File: `src/lib/offline-storage.ts`
+In the `catch` block of `withIndexedDBErrorBoundary` (around line 420-426), add a check before returning the fallback:
 
-```sql
-ALTER TABLE inspection_equipment
-  ALTER COLUMN production_year TYPE text
-  USING production_year::text;
+```typescript
+} catch (error: any) {
+  console.error(`[Offline Storage] Error in ${operationName}:`, error);
+  dbConnectionVerified = false;
+  recordIndexedDBFailure();
+
+  // IMMEDIATE user notification for QuotaExceededError (don't wait for circuit breaker)
+  if (error?.name === 'QuotaExceededError' || error?.message?.includes('QuotaExceeded')) {
+    if (typeof window !== 'undefined') {
+      import('@/hooks/use-toast').then(({ toast }) => {
+        toast({
+          title: "Storage full",
+          description: "Device storage is full. Please sync your data and clear old reports.",
+          variant: "destructive",
+        });
+      }).catch(() => {});
+    }
+  }
+
+  return fallbackValue;
+}
 ```
 
-### 2. Validation Schema (`src/lib/validation-schemas.ts`)
-Update the `equipmentSchema` to validate `production_year` as a string matching either:
-- A single year: `2023`
-- A year range: `2019-2021`
-- The N/A sentinel: `0`
+---
 
-New regex pattern: `/^(0|\d{4}(-\d{4})?)$/`
+## Finding 2: Service Worker Premature `synced_at` Marking
 
-### 3. Equipment Table UI (`src/components/inspection/EquipmentTable.tsx`)
-**Desktop view (lines 210-241) and Mobile view (lines 378-409):**
-- Change `inputMode` from `"numeric"` to `"text"` to allow the hyphen character
-- Update `onChange` regex from `/^\d{0,4}$/` to `/^\d{0,4}(-\d{0,4})?$/` to accept partial range input
-- Update `onBlur` validation: instead of checking numeric bounds, validate completed input matches the full year/range pattern
-- Store as string instead of `parseInt()`
-- N/A sentinel comparison changes from `=== 0` to `=== "0"` (string)
-- N/A button sets value to `"0"` (string) instead of `0` (number)
+**Problem:** In `sw-sync.js`, the `syncInspectionWithTransaction` function sets `synced_at` on the parent inspection PATCH request (line 138) **before** child data (systems, ziplines, equipment, standards, summary) is upserted. If the SW process is killed mid-sync (e.g., browser kills it after the parent PATCH succeeds but before all children commit), the parent is marked `synced_at` on the server, but child data remains unsynced. The local IndexedDB also gets `synced_at` stamped (line 199), so background sync considers the record "done" and never retries the children.
 
-### 4. New Equipment Default (`addEquipment` callback, line 84)
-Change `production_year: null` — no change needed, null remains valid.
+**Fix:** Use the **deferred `synced_at` pattern** from `atomic-sync-manager.ts`:
+1. PATCH the parent inspection **without** `synced_at` first (just the data fields).
+2. Upsert all child data.
+3. Only after all children succeed, PATCH the parent again with **just** `synced_at`.
+4. Only after step 3 succeeds, update local IndexedDB `synced_at`.
 
-### 5. HTML Report (`supabase/functions/generate-inspection-html/index.ts`)
-Lines 2159 and 2289: The existing `${eq.production_year || "N/A"}` logic works correctly for text values. The sentinel `"0"` is falsy in JS so it renders as "N/A" — **wait, "0" is truthy as a string**. Need to add explicit check:
+### File: `public/sw-sync.js`
+Rewrite `syncInspectionWithTransaction` to defer the `synced_at` stamp:
+
+```javascript
+async function syncInspectionWithTransaction(inspection, systems, ziplines, equipment, standards, summary) {
+  const supabaseUrl = '...';
+  const supabaseKey = '...';
+  
+  try {
+    // Step 1: Upsert inspection data WITHOUT synced_at
+    const inspData = { ...inspection };
+    delete inspData.synced_at; // Don't mark as synced yet
+    
+    const inspResponse = await fetch(`${supabaseUrl}/rest/v1/inspections?id=eq.${inspection.id}`, {
+      method: 'PATCH',
+      headers: { ... },
+      body: JSON.stringify(inspData)
+    });
+    if (!inspResponse.ok) throw new Error('Inspection sync failed');
+    
+    // Step 2: Upsert all child data
+    await Promise.all([
+      upsertRelatedData(supabaseUrl, supabaseKey, 'inspection_systems', systems),
+      upsertRelatedData(supabaseUrl, supabaseKey, 'inspection_ziplines', ziplines),
+      upsertRelatedData(supabaseUrl, supabaseKey, 'inspection_equipment', equipment),
+      upsertRelatedData(supabaseUrl, supabaseKey, 'inspection_standards', standards),
+      summary ? upsertRelatedData(supabaseUrl, supabaseKey, 'inspection_summary', [summary]) : Promise.resolve(true),
+    ]);
+    
+    // Step 3: ONLY NOW mark as synced on the server (deferred synced_at)
+    const syncStampResponse = await fetch(`${supabaseUrl}/rest/v1/inspections?id=eq.${inspection.id}`, {
+      method: 'PATCH',
+      headers: { ... },
+      body: JSON.stringify({ synced_at: new Date().toISOString() })
+    });
+    if (!syncStampResponse.ok) throw new Error('Sync stamp failed');
+    
+    return true;
+  } catch (error) {
+    console.error('[SW Transaction] Failed:', error);
+    return false;
+  }
+}
 ```
-${eq.production_year === "0" ? "N/A" : eq.production_year || "N/A"}
-```
 
-### 6. PDF Report (`supabase/functions/generate-inspection-pdf/index.ts`)
-Line 425: Same fix needed:
-```
-eq.production_year === "0" ? "N/A" : eq.production_year?.toString() || 'N/A'
-```
+This ensures that if the SW is killed after step 1 or during step 2, the server still has `synced_at = null` (or old value), and the next sync cycle will retry the entire package.
 
-### 7. Version Bump (`vite.config.ts`)
-- `APP_VERSION`: `"2.5.9"` → `"2.6.0"`
+---
+
+## Version Bump
+
+### File: `vite.config.ts`
+- `APP_VERSION`: `"2.6.0"` --> `"2.6.1"`
 - `BUILD_TIMESTAMP`: updated to current date/time
 
-## What Does NOT Change
-- All data protection and backup systems remain untouched
-- The N/A button behavior stays the same (just uses string `"0"` instead of integer `0`)
-- Photo handling, sync logic, WAL backups — all unaffected
-- All other form types (training, daily assessment) — unaffected
-
-## Technical Details
+## Summary
 
 | File | Change |
 |------|--------|
-| Database migration | `ALTER COLUMN production_year TYPE text` |
-| `src/lib/validation-schemas.ts` | Regex validation for year or year-range string |
-| `src/components/inspection/EquipmentTable.tsx` | Text input, string comparisons, range-aware regex |
-| `supabase/functions/generate-inspection-html/index.ts` | `"0"` sentinel check for N/A display |
-| `supabase/functions/generate-inspection-pdf/index.ts` | `"0"` sentinel check for N/A display |
-| `vite.config.ts` | Version bump to v2.6.0 |
+| `src/lib/offline-storage.ts` | Immediate toast on first `QuotaExceededError` |
+| `public/sw-sync.js` | Deferred `synced_at` pattern (3-step: data, children, stamp) |
+| `vite.config.ts` | Version bump to v2.6.1 |
+
+## What Does NOT Change
+- All existing data safety guards, blocklists, WAL backups, and soft-delete logic remain untouched
+- Circuit breaker behavior remains the same (these changes add an earlier notification, not replace the breaker)
+- Photo sync in `sw-sync.js` is unaffected (photos don't have the parent-child relationship issue)
 
