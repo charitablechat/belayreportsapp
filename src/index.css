@@ -697,3 +697,9 @@ input[type="number"] {
 .integrity-glow {
   animation: integrity-pulse 2s ease-in-out infinite;
 }
+
+/* Active Timer — terminal blink for cursor and REC dot */
+@keyframes terminal-blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}

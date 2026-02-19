@@ -333,6 +333,7 @@ export type Database = {
       }
       daily_assessments: {
         Row: {
+          active_duration_seconds: number | null
           assessment_date: string
           created_at: string
           deleted_at: string | null
@@ -359,6 +360,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          active_duration_seconds?: number | null
           assessment_date?: string
           created_at?: string
           deleted_at?: string | null
@@ -385,6 +387,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          active_duration_seconds?: number | null
           assessment_date?: string
           created_at?: string
           deleted_at?: string | null
@@ -964,6 +967,7 @@ export type Database = {
       inspections: {
         Row: {
           acct_number: string | null
+          active_duration_seconds: number | null
           course_history: string | null
           created_at: string | null
           deleted_at: string | null
@@ -992,6 +996,7 @@ export type Database = {
         }
         Insert: {
           acct_number?: string | null
+          active_duration_seconds?: number | null
           course_history?: string | null
           created_at?: string | null
           deleted_at?: string | null
@@ -1020,6 +1025,7 @@ export type Database = {
         }
         Update: {
           acct_number?: string | null
+          active_duration_seconds?: number | null
           course_history?: string | null
           created_at?: string | null
           deleted_at?: string | null
@@ -1628,6 +1634,7 @@ export type Database = {
       }
       trainings: {
         Row: {
+          active_duration_seconds: number | null
           created_at: string
           deleted_at: string | null
           deleted_by: string | null
@@ -1652,6 +1659,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          active_duration_seconds?: number | null
           created_at?: string
           deleted_at?: string | null
           deleted_by?: string | null
@@ -1676,6 +1684,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          active_duration_seconds?: number | null
           created_at?: string
           deleted_at?: string | null
           deleted_by?: string | null

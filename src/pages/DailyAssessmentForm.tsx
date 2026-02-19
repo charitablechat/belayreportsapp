@@ -10,6 +10,8 @@ import { ArrowLeft, Save, FileText, Loader2, WifiOff, Check, Sunrise, Sunset, Se
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { AutoSaveIndicator } from "@/components/AutoSaveIndicator";
+import { useActiveTimer } from "@/hooks/useActiveTimer";
+import { ActiveTimerDisplay } from "@/components/ActiveTimerDisplay";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -104,6 +106,12 @@ export default function DailyAssessmentForm() {
   const [photoRefreshKey, setPhotoRefreshKey] = useState(0);
   // Completion lock derived values (after report state is declared)
   const isCompletionLocked = assessment?.status === 'completed' && !completionLockOverridden;
+  // Active-usage timer: only tracks time when user is actively editing
+  const { elapsedSeconds, isActive: timerActive, isPaused: timerPaused, getElapsedSeconds } = useActiveTimer({
+    initialSeconds: assessment?.active_duration_seconds || 0,
+    enabled: canEdit && !isReadOnly && !isCompletionLocked,
+  });
+
   const effectiveReadOnly = isReadOnly || isCompletionLocked;
   const [versionPanelOpen, setVersionPanelOpen] = useState(false);
   const [lastVersionNumber, setLastVersionNumber] = useState<number | undefined>(undefined);
@@ -645,6 +653,7 @@ export default function DailyAssessmentForm() {
       const updatedAssessment = { 
         ...assessment, 
         updated_at: new Date().toISOString(),
+        active_duration_seconds: getElapsedSeconds(),
         // Track who modified the report if current user is not the owner
         ...(currentUser?.id && currentUser.id !== assessment.inspector_id 
           ? { last_modified_by: currentUser.id } 
@@ -1241,6 +1250,12 @@ export default function DailyAssessmentForm() {
                 isSaving={saving}
                 hasUnsavedChanges={hasUnsavedChanges}
                 className="hidden sm:flex"
+              />
+              <ActiveTimerDisplay
+                elapsedSeconds={elapsedSeconds}
+                isActive={timerActive}
+                isPaused={timerPaused}
+                isReadOnly={effectiveReadOnly}
               />
             </div>
             

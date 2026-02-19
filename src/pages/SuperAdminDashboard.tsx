@@ -285,18 +285,25 @@ export default function SuperAdminDashboard() {
       
       const { data, error } = await supabase
         .from("inspections")
-        .select("created_at, started_at, updated_at")
+        .select("created_at, started_at, updated_at, active_duration_seconds")
         .eq("status", "completed")
         .not("updated_at", "is", null)
         .gte("updated_at", thirtyDaysAgo);
       
       if (error) throw error;
       
-      if (!data || data.length === 0) return { avg: 0, count: 0, min: 0, max: 0 };
+      if (!data || data.length === 0) return { avg: 0, count: 0, min: 0, max: 0, activeCount: 0 };
       
+      let activeCount = 0;
       const durations = data
         .filter(i => i.created_at)
         .map((inspection) => {
+          // Prefer active_duration_seconds when available
+          if (inspection.active_duration_seconds && inspection.active_duration_seconds > 0) {
+            activeCount++;
+            return inspection.active_duration_seconds / 3600; // convert to hours
+          }
+          // Fall back to wall-clock calculation
           const startTime = inspection.started_at 
             ? new Date(inspection.started_at).getTime()
             : new Date(inspection.created_at!).getTime();
@@ -304,7 +311,7 @@ export default function SuperAdminDashboard() {
           return (endTime - startTime) / (1000 * 60 * 60);
         }).filter(h => h > 0 && h < 8760);
       
-      if (durations.length === 0) return { avg: 0, count: 0, min: 0, max: 0 };
+      if (durations.length === 0) return { avg: 0, count: 0, min: 0, max: 0, activeCount: 0 };
       
       const total = durations.reduce((s, h) => s + h, 0);
       return {
@@ -312,6 +319,7 @@ export default function SuperAdminDashboard() {
         count: durations.length,
         min: Math.min(...durations),
         max: Math.max(...durations),
+        activeCount,
       };
     },
     enabled: !loading,
@@ -662,14 +670,17 @@ export default function SuperAdminDashboard() {
           description="Average time to complete"
           hoverContent={{
             title: "Inspection Duration",
-            description: "Average time from inspection creation to completion (last 30 days).",
+            description: avgCompletionTimeData?.activeCount 
+              ? `Uses active editing time for ${avgCompletionTimeData.activeCount} report(s); wall-clock for the rest (last 30 days).`
+              : "Average time from inspection creation to completion (last 30 days).",
             details: [
               { label: "Average", value: avgCompletionTime ? `${avgCompletionTime.toFixed(1)} hours` : "N/A" },
               { label: "Fastest", value: avgCompletionTimeData?.min ? `${avgCompletionTimeData.min.toFixed(1)} hours` : "N/A" },
               { label: "Slowest", value: avgCompletionTimeData?.max ? `${avgCompletionTimeData.max.toFixed(1)} hours` : "N/A" },
               { label: "Sample size", value: avgCompletionTimeData?.count ?? 0 },
+              { label: "Active-tracked", value: avgCompletionTimeData?.activeCount ?? 0 },
             ],
-            tip: "Based on completed inspections in the last 30 days. Uses active start time when available, otherwise creation time."
+            tip: "Active time tracks only when users are editing. Older reports use wall-clock time as fallback."
           }}
         />
         <StatCard
