@@ -93,8 +93,10 @@ export function hasPendingSyncs(): boolean {
   
   const pendingInspections = localStorage.getItem('pending-inspection-sync');
   const pendingPhotos = localStorage.getItem('pending-photo-sync');
+  const pendingTrainings = localStorage.getItem('pending-training-sync');
+  const pendingAssessments = localStorage.getItem('pending-assessment-sync');
   
-  return !!(pendingInspections || pendingPhotos);
+  return !!(pendingInspections || pendingPhotos || pendingTrainings || pendingAssessments);
 }
 
 /**
@@ -105,6 +107,8 @@ export function clearPendingSyncs(): void {
   try {
     localStorage.removeItem('pending-inspection-sync');
     localStorage.removeItem('pending-photo-sync');
+    localStorage.removeItem('pending-training-sync');
+    localStorage.removeItem('pending-assessment-sync');
     
     if (import.meta.env.DEV) {
       console.log('[Background Sync] Cleared pending sync flags');
@@ -136,6 +140,56 @@ export function onSyncComplete(callback: (data: any) => void): () => void {
   return () => {
     navigator.serviceWorker.removeEventListener('message', handler);
   };
+}
+
+/**
+ * Register background sync for training data
+ * DISABLED: SW sync uses anon key without user JWT, failing RLS policies
+ * Falls back to localStorage flag on iOS for polling-based sync
+ */
+export async function registerTrainingSync(): Promise<boolean> {
+  if (isIOS()) {
+    try {
+      localStorage.setItem('pending-training-sync', Date.now().toString());
+      if (import.meta.env.DEV) {
+        console.log('[Background Sync] iOS: Marked trainings for sync');
+      }
+      return true;
+    } catch (error) {
+      console.error('[Background Sync] iOS: Failed to mark for sync:', error);
+      return false;
+    }
+  }
+  
+  if (import.meta.env.DEV) {
+    console.log('[Background Sync] SW sync disabled - using main thread sync');
+  }
+  return false;
+}
+
+/**
+ * Register background sync for daily assessment data
+ * DISABLED: SW sync uses anon key without user JWT, failing RLS policies
+ * Falls back to localStorage flag on iOS for polling-based sync
+ */
+export async function registerAssessmentSync(): Promise<boolean> {
+  if (isIOS()) {
+    try {
+      localStorage.setItem('pending-assessment-sync', Date.now().toString());
+      if (import.meta.env.DEV) {
+        console.log('[Background Sync] iOS: Marked assessments for sync');
+      }
+      return true;
+    } catch (error) {
+      console.error('[Background Sync] iOS: Failed to mark for sync:', error);
+      return false;
+    }
+  }
+  
+  if (import.meta.env.DEV) {
+    console.log('[Background Sync] SW sync disabled - using main thread sync');
+  }
+  return false;
 }
 
 /**
