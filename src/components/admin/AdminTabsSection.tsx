@@ -34,7 +34,7 @@ interface AdminTabsSectionProps {
 export const AdminTabsSection = ({ children }: AdminTabsSectionProps) => {
   return (
     <TooltipProvider delayDuration={300}>
-      <TabsList className="flex flex-col h-auto w-full items-stretch">
+      <TabsList className="flex flex-col h-auto w-full items-stretch backdrop-blur-md bg-white/5 dark:bg-slate-900/30 border border-white/10 rounded-xl p-1">
         {tabs.map((tab) => (
           <AdminTab
             key={tab.value}

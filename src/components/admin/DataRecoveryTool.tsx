@@ -160,12 +160,12 @@ export function LocalSnapshotsPanel({ allowDelete = true }: SnapshotsPanelProps)
   };
 
   return (
-    <Card>
+    <Card className="glass-card">
       <CardHeader>
         <div className="flex items-center justify-between">
           <div>
             <CardTitle className="flex items-center gap-2">
-              <Shield className="h-5 w-5" />
+              <Shield className="h-5 w-5 text-emerald-400" />
               Local Backup Snapshots
             </CardTitle>
             <CardDescription className="mt-2">
@@ -614,12 +614,12 @@ export function IndexedDBRecoveryPanel({ allowDelete = true }: IndexedDBPanelPro
 
   return (
     <div className="space-y-6">
-      <Card>
+    <Card className="glass-card">
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
               <CardTitle className="flex items-center gap-2">
-                <HardDrive className="h-5 w-5" />
+                <HardDrive className="h-5 w-5 text-indigo-500" />
                 Local Data Recovery Tool
               </CardTitle>
               <CardDescription className="mt-2">
@@ -635,57 +635,57 @@ export function IndexedDBRecoveryPanel({ allowDelete = true }: IndexedDBPanelPro
         </CardHeader>
         <CardContent>
           <div className="grid gap-4 md:grid-cols-4">
-            <div className="rounded-lg border p-4">
+            <div className="glass-card rounded-lg p-4">
               <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-                <Database className="h-4 w-4" />
+                <Database className="h-4 w-4 text-emerald-400" />
                 Trainings
               </div>
               <div className="mt-2 flex items-baseline gap-2">
-                <span className="text-2xl font-bold">{localData?.trainings.length || 0}</span>
+                <span className="text-3xl font-black">{localData?.trainings.length || 0}</span>
                 {unsyncedTrainings.length > 0 && (
-                  <Badge variant="destructive" className="text-xs">
+                  <Badge className="text-xs bg-indigo-500/15 text-indigo-400 border-indigo-500/30">
                     {unsyncedTrainings.length} unsynced
                   </Badge>
                 )}
               </div>
             </div>
-            <div className="rounded-lg border p-4">
+            <div className="glass-card rounded-lg p-4">
               <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-                <Database className="h-4 w-4" />
+                <Database className="h-4 w-4 text-emerald-400" />
                 Daily Assessments
               </div>
               <div className="mt-2 flex items-baseline gap-2">
-                <span className="text-2xl font-bold">{localData?.dailyAssessments.length || 0}</span>
+                <span className="text-3xl font-black">{localData?.dailyAssessments.length || 0}</span>
                 {unsyncedAssessments.length > 0 && (
-                  <Badge variant="destructive" className="text-xs">
+                  <Badge className="text-xs bg-indigo-500/15 text-indigo-400 border-indigo-500/30">
                     {unsyncedAssessments.length} unsynced
                   </Badge>
                 )}
               </div>
             </div>
-            <div className="rounded-lg border p-4">
+            <div className="glass-card rounded-lg p-4">
               <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-                <Database className="h-4 w-4" />
+                <Database className="h-4 w-4 text-emerald-400" />
                 Inspections
               </div>
               <div className="mt-2 flex items-baseline gap-2">
-                <span className="text-2xl font-bold">{localData?.inspections.length || 0}</span>
+                <span className="text-3xl font-black">{localData?.inspections.length || 0}</span>
                 {unsyncedInspections.length > 0 && (
-                  <Badge variant="destructive" className="text-xs">
+                  <Badge className="text-xs bg-indigo-500/15 text-indigo-400 border-indigo-500/30">
                     {unsyncedInspections.length} unsynced
                   </Badge>
                 )}
               </div>
             </div>
-            <div className="rounded-lg border p-4">
+            <div className="glass-card rounded-lg p-4">
               <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-                <Clock className="h-4 w-4" />
+                <Clock className="h-4 w-4 text-slate-400" />
                 Queued Operations
               </div>
               <div className="mt-2 flex items-baseline gap-2">
-                <span className="text-2xl font-bold">{totalQueued}</span>
+                <span className="text-3xl font-black">{totalQueued}</span>
                 {totalQueued > 0 && (
-                  <Badge variant="secondary" className="text-xs">
+                  <Badge className="text-xs bg-slate-500/15 text-slate-400 border-slate-400/30">
                     pending sync
                   </Badge>
                 )}

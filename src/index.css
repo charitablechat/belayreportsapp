@@ -304,6 +304,18 @@ All colors MUST be HSL.
 }
 
 @layer components {
+  .glass-card {
+    @apply backdrop-blur-md bg-white/10 dark:bg-slate-900/40 border border-white/20 shadow-lg rounded-lg;
+  }
+
+  .brutalist-metric {
+    @apply text-4xl font-black tracking-tight;
+  }
+
+  .card-lift {
+    @apply hover:-translate-y-1 transition-all duration-300;
+  }
+
   .gradient-button {
     @apply relative appearance-none cursor-pointer;
     background: radial-gradient(
