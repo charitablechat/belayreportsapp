@@ -42,6 +42,7 @@ export default function SuperAdminDashboard() {
   const [isOrgsListOpen, setIsOrgsListOpen] = useState(false);
   const [isInspectionsListOpen, setIsInspectionsListOpen] = useState(false);
   const [isCleaningUp, setIsCleaningUp] = useState(false);
+  const [resetMetricDialogOpen, setResetMetricDialogOpen] = useState(false);
   
   // Organization edit/delete states
   const [editOrgDialogOpen, setEditOrgDialogOpen] = useState(false);
@@ -277,18 +278,36 @@ export default function SuperAdminDashboard() {
     enabled: !loading,
   });
 
-  // Average completion time query (last 30 days only, uses started_at if available)
+  // Fetch reset timestamp from admin_settings
+  const { data: resetTimestamp } = useQuery({
+    queryKey: ["admin-settings", "avg_completion_time_reset_at"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("admin_settings" as any)
+        .select("value, updated_at")
+        .eq("key", "avg_completion_time_reset_at")
+        .single() as any;
+      
+      if (error) return { value: '1970-01-01T00:00:00Z', updated_at: null };
+      return data as { value: string; updated_at: string | null };
+    },
+    enabled: !loading,
+  });
+
+  // Average completion time query (respects reset timestamp)
   const { data: avgCompletionTimeData } = useQuery({
-    queryKey: ["avg-completion-time"],
+    queryKey: ["avg-completion-time", resetTimestamp?.value],
     queryFn: async () => {
       const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+      const resetAt = resetTimestamp?.value || '1970-01-01T00:00:00Z';
+      const lowerBound = resetAt > thirtyDaysAgo ? resetAt : thirtyDaysAgo;
       
       const { data, error } = await supabase
         .from("inspections")
         .select("created_at, started_at, updated_at, active_duration_seconds")
         .eq("status", "completed")
         .not("updated_at", "is", null)
-        .gte("updated_at", thirtyDaysAgo);
+        .gte("updated_at", lowerBound);
       
       if (error) throw error;
       
@@ -301,7 +320,7 @@ export default function SuperAdminDashboard() {
           // Prefer active_duration_seconds when available
           if (inspection.active_duration_seconds && inspection.active_duration_seconds > 0) {
             activeCount++;
-            return inspection.active_duration_seconds / 3600; // convert to hours
+            return inspection.active_duration_seconds / 3600;
           }
           // Fall back to wall-clock calculation
           const startTime = inspection.started_at 
@@ -322,7 +341,7 @@ export default function SuperAdminDashboard() {
         activeCount,
       };
     },
-    enabled: !loading,
+    enabled: !loading && resetTimestamp !== undefined,
   });
   const avgCompletionTime = avgCompletionTimeData?.avg ?? 0;
 
@@ -457,6 +476,26 @@ export default function SuperAdminDashboard() {
     } catch (error: any) {
       console.error('Error toggling super admin:', error);
       toast.error(error?.message || 'Failed to update super admin status');
+    }
+  };
+
+  // Reset avg completion time metric
+  const handleResetCompletionTime = async () => {
+    try {
+      const { error } = await (supabase
+        .from("admin_settings" as any)
+        .update({ value: new Date().toISOString(), updated_at: new Date().toISOString() } as any)
+        .eq("key", "avg_completion_time_reset_at") as any);
+      
+      if (error) throw error;
+      
+      toast.success("Metric reset — tracking starts from now");
+      setResetMetricDialogOpen(false);
+      queryClient.invalidateQueries({ queryKey: ["admin-settings"] });
+      queryClient.invalidateQueries({ queryKey: ["avg-completion-time"] });
+    } catch (error: any) {
+      console.error("Error resetting metric:", error);
+      toast.error(error?.message || "Failed to reset metric");
     }
   };
 
@@ -671,8 +710,8 @@ export default function SuperAdminDashboard() {
           hoverContent={{
             title: "Inspection Duration",
             description: avgCompletionTimeData?.activeCount 
-              ? `Uses active editing time for ${avgCompletionTimeData.activeCount} report(s); wall-clock for the rest (last 30 days).`
-              : "Average time from inspection creation to completion (last 30 days).",
+              ? `Uses active editing time for ${avgCompletionTimeData.activeCount} report(s); wall-clock for the rest.`
+              : "Average time from inspection creation to completion.",
             details: [
               { label: "Average", value: avgCompletionTime ? `${avgCompletionTime.toFixed(1)} hours` : "N/A" },
               { label: "Fastest", value: avgCompletionTimeData?.min ? `${avgCompletionTimeData.min.toFixed(1)} hours` : "N/A" },
@@ -682,6 +721,27 @@ export default function SuperAdminDashboard() {
             ],
             tip: "Active time tracks only when users are editing. Older reports use wall-clock time as fallback."
           }}
+          actions={
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 px-2 text-xs font-mono bg-[#0a0a0a] text-[#00ff41] border-[#00ff41]/30 hover:bg-[#00ff41]/10 hover:text-[#00ff41]"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setResetMetricDialogOpen(true);
+                }}
+              >
+                <RotateCcw className="h-3 w-3 mr-1" />
+                RESET
+              </Button>
+              {resetTimestamp?.updated_at && resetTimestamp.value !== '1970-01-01T00:00:00Z' && (
+                <Badge className="h-5 text-[10px] font-mono bg-[#0a0a0a] text-[#00ff41] border-[#00ff41]/30 hover:bg-[#0a0a0a]">
+                  RST {format(new Date(resetTimestamp.updated_at), "MM/dd HH:mm")}
+                </Badge>
+              )}
+            </div>
+          }
         />
         <StatCard
           title="This Month"
@@ -1418,6 +1478,31 @@ export default function SuperAdminDashboard() {
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               Delete Organization
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Reset Metric Confirmation Dialog */}
+      <AlertDialog open={resetMetricDialogOpen} onOpenChange={setResetMetricDialogOpen}>
+        <AlertDialogContent className="bg-[#0a0a0a] border-[#00ff41]/30 text-[#00ff41] font-mono">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-[#00ff41] font-mono">
+              &gt; RESET_METRIC_CONFIRM
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-[#00ff41]/70 font-mono text-sm">
+              This will reset the Avg Completion Time metric to 0h. All future calculations will start from this timestamp. No data will be deleted — legacy records are preserved but excluded from the metric.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="font-mono border-[#00ff41]/30 text-[#00ff41] hover:bg-[#00ff41]/10 hover:text-[#00ff41] bg-transparent">
+              ABORT
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleResetCompletionTime}
+              className="font-mono bg-[#00ff41] text-[#0a0a0a] hover:bg-[#00ff41]/80"
+            >
+              EXECUTE RESET
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
