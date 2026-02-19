@@ -417,11 +417,25 @@ async function withIndexedDBErrorBoundary<T>(
     recordIndexedDBSuccess();
     
     return result;
-  } catch (error) {
+  } catch (error: any) {
     console.error(`[Offline Storage] Error in ${operationName}:`, error);
     // Reset verification on error so next operation re-checks
     dbConnectionVerified = false;
     recordIndexedDBFailure();
+
+    // IMMEDIATE user notification for QuotaExceededError (don't wait for circuit breaker)
+    if (error?.name === 'QuotaExceededError' || error?.message?.includes('QuotaExceeded')) {
+      if (typeof window !== 'undefined') {
+        import('@/hooks/use-toast').then(({ toast }) => {
+          toast({
+            title: "Storage full",
+            description: "Device storage is full. Please sync your data and clear old reports.",
+            variant: "destructive",
+          });
+        }).catch(() => {});
+      }
+    }
+
     return fallbackValue;
   }
 }
