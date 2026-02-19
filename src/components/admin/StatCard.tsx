@@ -19,9 +19,10 @@ interface StatCardProps {
   description?: string;
   onClick?: () => void;
   hoverContent?: StatCardHoverContent;
+  actions?: React.ReactNode;
 }
 
-export const StatCard = ({ title, value, icon: Icon, description, onClick, hoverContent }: StatCardProps) => {
+export const StatCard = ({ title, value, icon: Icon, description, onClick, hoverContent, actions }: StatCardProps) => {
   const isMobile = useIsMobile();
   const [sheetOpen, setSheetOpen] = useState(false);
 
@@ -60,6 +61,7 @@ export const StatCard = ({ title, value, icon: Icon, description, onClick, hover
         {description && (
           <p className="text-xs text-muted-foreground mt-1">{description}</p>
         )}
+        {actions && <div className="mt-2">{actions}</div>}
       </CardContent>
     </Card>
   );
