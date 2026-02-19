@@ -16,18 +16,15 @@ export function VersionBadge({ compact = false }: VersionBadgeProps) {
           type="button"
           onClick={() => setModalOpen(true)}
           className="
-            font-mono text-xs px-3 py-1 rounded-sm
-            border border-zinc-700 text-zinc-500
-            bg-transparent
+            font-sans text-xs px-3 py-1 rounded-md
+            border border-white/20 text-muted-foreground
+            bg-white/10 backdrop-blur-md
             transition-all duration-300
-            hover:text-green-400 hover:border-green-500/50
-            hover:shadow-[0_0_8px_rgba(34,197,94,0.3)]
-            focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-green-500/50
+            hover:bg-white/20 hover:text-foreground hover:border-white/30
+            hover:shadow-lg
+            focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50
             relative overflow-hidden
           "
-          style={{
-            backgroundImage: 'repeating-linear-gradient(0deg, rgba(34,197,94,0.04) 0px, rgba(34,197,94,0.04) 1px, transparent 1px, transparent 3px)',
-          }}
         >
           v{version}
         </button>

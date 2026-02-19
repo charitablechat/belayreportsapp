@@ -21,7 +21,7 @@ export function VersionInfoModal({ open, onOpenChange }: VersionInfoModalProps) 
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent 
         hideDefaultClose
-        className="bg-black border-2 border-white rounded-none shadow-none max-w-sm overflow-hidden"
+        className="bg-black/90 backdrop-blur-xl border border-white/20 rounded-lg shadow-2xl max-w-sm overflow-hidden"
       >
         {/* CRT scanline overlay */}
         <div

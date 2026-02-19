@@ -3,6 +3,10 @@ import path from 'path';
 import type { Plugin } from 'vite';
 import { parseVersion, getNextVersion, formatVersion } from './src/lib/version-calculator';
 
+// NOTE: In the Lovable Cloud build environment, fs.writeFileSync does NOT persist
+// between builds. The write-back to version.json is ephemeral—each build reads the
+// committed version and increments +1 patch in memory only. To bump the version,
+// manually update version.json and commit. Each build then displays that value + 1.
 const VERSION_FILE = path.resolve(__dirname, 'version.json');
 const TIMESTAMP_MARKER = path.resolve(__dirname, '.version-timestamp');
 const DEBOUNCE_MS = 5000;
