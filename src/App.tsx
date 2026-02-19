@@ -1,6 +1,7 @@
 import { MobileAwareToaster, MobileAwareSonner } from "@/components/ui/mobile-aware-toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { ThemeProvider } from "next-themes";
 import { createBrowserRouter, RouterProvider, useNavigate, Outlet, useLocation } from "react-router-dom";
 import { useEffect, useRef } from "react";
 import { trackNavigation } from "@/lib/navigation";
@@ -131,15 +132,17 @@ const router = createBrowserRouter([
 ]);
 
 const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <PWAProvider>
-      <TooltipProvider>
-        <MobileAwareToaster />
-        <MobileAwareSonner />
-        <RouterProvider router={router} />
-      </TooltipProvider>
-    </PWAProvider>
-  </QueryClientProvider>
+  <ThemeProvider attribute="class" defaultTheme="light" enableSystem>
+    <QueryClientProvider client={queryClient}>
+      <PWAProvider>
+        <TooltipProvider>
+          <MobileAwareToaster />
+          <MobileAwareSonner />
+          <RouterProvider router={router} />
+        </TooltipProvider>
+      </PWAProvider>
+    </QueryClientProvider>
+  </ThemeProvider>
 );
 
 export default App;

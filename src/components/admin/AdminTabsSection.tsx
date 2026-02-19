@@ -11,8 +11,12 @@ import {
   Bell, 
   RotateCcw, 
   UserCog, 
-  Wrench 
+  Wrench,
+  Sun,
+  Moon,
 } from "lucide-react";
+import { useTheme } from "next-themes";
+import { Button } from "@/components/ui/button";
 
 const tabs = [
   { value: "organizations", icon: Building2, title: "Organizations", description: "Manage client facilities and companies" },
@@ -32,6 +36,8 @@ interface AdminTabsSectionProps {
 }
 
 export const AdminTabsSection = ({ children }: AdminTabsSectionProps) => {
+  const { theme, setTheme } = useTheme();
+
   return (
     <TooltipProvider delayDuration={300}>
       <TabsList className="flex flex-col h-auto w-full items-stretch backdrop-blur-md bg-white/5 dark:bg-slate-900/30 border border-white/10 rounded-xl p-1">
@@ -44,6 +50,23 @@ export const AdminTabsSection = ({ children }: AdminTabsSectionProps) => {
             description={tab.description}
           />
         ))}
+        
+        {/* Dark/Light Mode Toggle */}
+        <div className="mt-2 pt-2 border-t border-border/30 px-1">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="w-full justify-start gap-2 text-muted-foreground hover:text-foreground"
+            onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+          >
+            {theme === "dark" ? (
+              <Sun className="w-4 h-4" />
+            ) : (
+              <Moon className="w-4 h-4" />
+            )}
+            {theme === "dark" ? "Light Mode" : "Dark Mode"}
+          </Button>
+        </div>
       </TabsList>
     </TooltipProvider>
   );
