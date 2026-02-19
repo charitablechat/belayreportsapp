@@ -5,7 +5,8 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { RefreshCw, Trash2, RotateCcw, Clock, AlertTriangle, FileText, GraduationCap, ClipboardCheck, Loader2, Calendar, User } from "lucide-react";
+import { RefreshCw, Trash2, RotateCcw, Clock, AlertTriangle, FileText, GraduationCap, ClipboardCheck, Loader2, Calendar, User, X } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { useSoftDelete, DeletedRecord, SoftDeleteTable } from "@/hooks/useSoftDelete";
@@ -15,8 +16,9 @@ export function DeletedRecordsRecovery() {
   const [deletedRecords, setDeletedRecords] = useState<DeletedRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [confirmDialog, setConfirmDialog] = useState<{ 
-    type: 'restore' | 'permanent-delete' | 'cleanup'; 
+    type: 'restore' | 'permanent-delete' | 'cleanup' | 'batch-delete'; 
     record?: DeletedRecord;
   } | null>(null);
   const [cleanupResult, setCleanupResult] = useState<{
@@ -25,7 +27,61 @@ export function DeletedRecordsRecovery() {
     daily_assessments: number;
   } | null>(null);
 
-  const { getDeletedRecords, restoreRecord, permanentDelete, runCleanup, getRetentionBadge } = useSoftDelete();
+  const { getDeletedRecords, restoreRecord, permanentDelete, batchPermanentDelete, runCleanup, getRetentionBadge } = useSoftDelete();
+
+  const makeKey = (r: DeletedRecord) => `${r.table_name}-${r.record_id}`;
+
+  const toggleSelect = (record: DeletedRecord) => {
+    const key = makeKey(record);
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  };
+
+  const toggleSelectAll = (records: DeletedRecord[]) => {
+    const keys = records.map(makeKey);
+    const allSelected = keys.length > 0 && keys.every(k => selectedIds.has(k));
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (allSelected) {
+        keys.forEach(k => next.delete(k));
+      } else {
+        keys.forEach(k => next.add(k));
+      }
+      return next;
+    });
+  };
+
+  const handleBatchDelete = async () => {
+    const entries = deletedRecords
+      .filter(r => selectedIds.has(makeKey(r)))
+      .map(r => ({ table: r.table_name as SoftDeleteTable, recordId: r.record_id }));
+
+    if (entries.length === 0) return;
+
+    setActionLoading('batch-delete');
+    try {
+      const { succeeded, failed } = await batchPermanentDelete(entries);
+      if (failed > 0) {
+        toast.error(`Deleted ${succeeded} records, ${failed} failed`);
+      } else {
+        toast.success(`Permanently deleted ${succeeded} records`);
+      }
+      setSelectedIds(new Set());
+      await loadDeletedRecords();
+    } catch (error: any) {
+      toast.error(error.message || "Batch delete failed");
+    } finally {
+      setActionLoading(null);
+      setConfirmDialog(null);
+    }
+  };
 
   const loadDeletedRecords = useCallback(async () => {
     setLoading(true);
@@ -288,10 +344,40 @@ export function DeletedRecordsRecovery() {
                 records = deletedRecords;
             }
 
+            const tabKeys = records.map(makeKey);
+            const allSelected = tabKeys.length > 0 && tabKeys.every(k => selectedIds.has(k));
+            const someSelected = tabKeys.some(k => selectedIds.has(k));
+
             return (
               <TabsContent key={tabValue} value={tabValue}>
                 <Card>
                   <CardContent className="pt-6">
+                    {selectedIds.size > 0 && (
+                      <div className="flex items-center gap-3 mb-4 p-3 rounded-lg border bg-muted/50">
+                        <span className="text-sm font-medium">{selectedIds.size} selected</span>
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          onClick={() => setConfirmDialog({ type: 'batch-delete' })}
+                          disabled={actionLoading === 'batch-delete'}
+                        >
+                          {actionLoading === 'batch-delete' ? (
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          ) : (
+                            <Trash2 className="h-4 w-4 mr-2" />
+                          )}
+                          Delete Selected
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => setSelectedIds(new Set())}
+                        >
+                          <X className="h-4 w-4 mr-1" />
+                          Clear
+                        </Button>
+                      </div>
+                    )}
                     {records.length === 0 ? (
                       <div className="text-center py-8 text-muted-foreground">
                         No deleted records in this category
@@ -301,6 +387,13 @@ export function DeletedRecordsRecovery() {
                         <Table>
                           <TableHeader>
                             <TableRow>
+                              <TableHead className="w-10">
+                                <Checkbox
+                                  checked={allSelected}
+                                  onCheckedChange={() => toggleSelectAll(records)}
+                                  aria-label="Select all"
+                                />
+                              </TableHead>
                               <TableHead>Type</TableHead>
                               <TableHead>Organization</TableHead>
                               <TableHead>Date</TableHead>
@@ -314,9 +407,17 @@ export function DeletedRecordsRecovery() {
                             {records.map((record) => {
                               const badge = getRetentionBadge(record.days_remaining);
                               const isExpired = record.days_remaining <= 0;
+                              const key = makeKey(record);
                               
                               return (
-                                <TableRow key={`${record.table_name}-${record.record_id}`}>
+                                <TableRow key={key} data-state={selectedIds.has(key) ? "selected" : undefined}>
+                                  <TableCell>
+                                    <Checkbox
+                                      checked={selectedIds.has(key)}
+                                      onCheckedChange={() => toggleSelect(record)}
+                                      aria-label={`Select ${record.organization}`}
+                                    />
+                                  </TableCell>
                                   <TableCell>
                                     <div className="flex items-center gap-2">
                                       {getTableIcon(record.table_name)}
@@ -459,7 +560,31 @@ export function DeletedRecordsRecovery() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Cleanup Confirmation Dialog */}
+      {/* Batch Delete Confirmation Dialog */}
+      <AlertDialog 
+        open={confirmDialog?.type === 'batch-delete'} 
+        onOpenChange={() => setConfirmDialog(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-destructive">Permanently Delete {selectedIds.size} Records?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will <strong>permanently delete {selectedIds.size} selected records</strong> and all their associated data.
+              <br /><br />
+              <strong className="text-destructive">This action cannot be undone.</strong>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleBatchDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete {selectedIds.size} Records
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <AlertDialog 
         open={confirmDialog?.type === 'cleanup'} 
         onOpenChange={() => setConfirmDialog(null)}
