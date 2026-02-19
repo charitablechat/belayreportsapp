@@ -766,6 +766,30 @@ export async function removeQueuedOperation(id: number) {
   }
 }
 
+export async function clearAllQueuedOperations() {
+  const db = await getDB();
+  const tx = db.transaction('operations', 'readwrite');
+  await tx.store.clear();
+  await tx.done;
+  console.log('[Offline Storage] Cleared all queued operations');
+}
+
+export async function clearAllQueuedAssessmentOperations() {
+  const db = await getDB();
+  const tx = db.transaction('assessment_operations', 'readwrite');
+  await tx.store.clear();
+  await tx.done;
+  console.log('[Offline Storage] Cleared all queued assessment operations');
+}
+
+export async function clearAllQueuedTrainingOperations() {
+  const db = await getDB();
+  const tx = db.transaction('training_operations', 'readwrite');
+  await tx.store.clear();
+  await tx.done;
+  console.log('[Offline Storage] Cleared all queued training operations');
+}
+
 export async function incrementOperationRetry(id: number) {
   const db = await getDB();
   const operation = await db.get('operations', id);

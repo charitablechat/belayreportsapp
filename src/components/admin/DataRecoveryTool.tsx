@@ -1,13 +1,14 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { RefreshCw, Upload, Trash2, AlertTriangle, Database, HardDrive, CheckCircle2, XCircle, Clock, Loader2, Download, RotateCcw, Shield } from "lucide-react";
 import { toast } from "sonner";
-import { format } from "date-fns";
+import { format, formatDistanceToNow } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
 import { listAllSnapshots, getReportSnapshot, deleteReportSnapshot, getBackupStorageInfo, type ReportType } from "@/lib/local-backup-ledger";
 import {
@@ -20,6 +21,12 @@ import {
   deleteOfflineTraining,
   deleteOfflineDailyAssessment,
   deleteOfflineInspection,
+  removeQueuedOperation,
+  removeQueuedAssessmentOperation,
+  removeQueuedTrainingOperation,
+  clearAllQueuedOperations,
+  clearAllQueuedAssessmentOperations,
+  clearAllQueuedTrainingOperations,
 } from "@/lib/offline-storage";
 
 interface LocalData {
@@ -192,6 +199,10 @@ export function IndexedDBRecoveryPanel({ allowDelete = true }: IndexedDBPanelPro
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{ type: string; id: string } | null>(null);
+  const [selectedOps, setSelectedOps] = useState<Set<string>>(new Set());
+  const [clearAllDialogOpen, setClearAllDialogOpen] = useState(false);
+  const [clearSectionDialog, setClearSectionDialog] = useState<string | null>(null);
+  const [batchDeleteDialog, setBatchDeleteDialog] = useState(false);
 
   const loadLocalData = async () => {
     setLoading(true);
@@ -231,6 +242,117 @@ export function IndexedDBRecoveryPanel({ allowDelete = true }: IndexedDBPanelPro
   useEffect(() => {
     loadLocalData();
   }, []);
+
+  const getAgeBadge = (timestamp: number) => {
+    const ageMs = Date.now() - timestamp;
+    const ageHours = ageMs / (1000 * 60 * 60);
+    const ageLabel = formatDistanceToNow(new Date(timestamp), { addSuffix: true });
+    if (ageHours < 1) {
+      return <Badge className="bg-emerald-500/15 text-emerald-700 border-emerald-500/30 hover:bg-emerald-500/20">{ageLabel}</Badge>;
+    } else if (ageHours < 24) {
+      return <Badge className="bg-amber-500/15 text-amber-700 border-amber-500/30 hover:bg-amber-500/20">{ageLabel}</Badge>;
+    } else {
+      return <Badge className="bg-destructive/15 text-destructive border-destructive/30 hover:bg-destructive/20">{ageLabel}</Badge>;
+    }
+  };
+
+  const toggleSelection = (key: string) => {
+    setSelectedOps(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = (prefix: string, ops: any[]) => {
+    setSelectedOps(prev => {
+      const next = new Set(prev);
+      const keys = ops.map((op, idx) => `${prefix}-${op.id ?? idx}`);
+      const allSelected = keys.every(k => next.has(k));
+      if (allSelected) {
+        keys.forEach(k => next.delete(k));
+      } else {
+        keys.forEach(k => next.add(k));
+      }
+      return next;
+    });
+  };
+
+  const getSelectedCount = (prefix: string) => {
+    return Array.from(selectedOps).filter(k => k.startsWith(`${prefix}-`)).length;
+  };
+
+  const handleDeleteSingleOp = async (prefix: string, id: number) => {
+    try {
+      if (prefix === 'inspection') await removeQueuedOperation(id);
+      else if (prefix === 'assessment') await removeQueuedAssessmentOperation(id);
+      else if (prefix === 'training') await removeQueuedTrainingOperation(id);
+      toast.success("Operation removed");
+      setSelectedOps(prev => { const n = new Set(prev); n.delete(`${prefix}-${id}`); return n; });
+      await loadLocalData();
+    } catch (e) {
+      toast.error("Failed to remove operation");
+    }
+  };
+
+  const handleBatchDelete = async () => {
+    try {
+      const promises: Promise<void>[] = [];
+      for (const key of selectedOps) {
+        const [prefix, idStr] = key.split('-');
+        const id = parseInt(idStr, 10);
+        if (isNaN(id)) continue;
+        if (prefix === 'inspection') promises.push(removeQueuedOperation(id));
+        else if (prefix === 'assessment') promises.push(removeQueuedAssessmentOperation(id));
+        else if (prefix === 'training') promises.push(removeQueuedTrainingOperation(id));
+      }
+      await Promise.all(promises);
+      toast.success(`Deleted ${selectedOps.size} operations`);
+      setSelectedOps(new Set());
+      await loadLocalData();
+    } catch (e) {
+      toast.error("Failed to delete selected operations");
+    } finally {
+      setBatchDeleteDialog(false);
+    }
+  };
+
+  const handleClearSection = async (section: string) => {
+    try {
+      if (section === 'inspection') await clearAllQueuedOperations();
+      else if (section === 'assessment') await clearAllQueuedAssessmentOperations();
+      else if (section === 'training') await clearAllQueuedTrainingOperations();
+      toast.success("Section cleared");
+      setSelectedOps(prev => {
+        const next = new Set(prev);
+        for (const k of next) { if (k.startsWith(`${section}-`)) next.delete(k); }
+        return next;
+      });
+      await loadLocalData();
+    } catch (e) {
+      toast.error("Failed to clear section");
+    } finally {
+      setClearSectionDialog(null);
+    }
+  };
+
+  const handleClearAll = async () => {
+    try {
+      await Promise.all([
+        clearAllQueuedOperations(),
+        clearAllQueuedAssessmentOperations(),
+        clearAllQueuedTrainingOperations(),
+      ]);
+      toast.success("All queued operations cleared");
+      setSelectedOps(new Set());
+      await loadLocalData();
+    } catch (e) {
+      toast.error("Failed to clear all operations");
+    } finally {
+      setClearAllDialogOpen(false);
+    }
+  };
 
   const syncTrainingToDatabase = async (training: any) => {
     setSyncing(training.id);
@@ -772,19 +894,44 @@ export function IndexedDBRecoveryPanel({ allowDelete = true }: IndexedDBPanelPro
         <TabsContent value="queued">
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <AlertTriangle className="h-5 w-5 text-amber-500" />
-                Queued Operations
-              </CardTitle>
-              <CardDescription>
-                Pending operations waiting to be synced. These will be processed automatically when online.
-              </CardDescription>
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <AlertTriangle className="h-5 w-5 text-amber-500" />
+                    Queued Operations
+                  </CardTitle>
+                  <CardDescription>
+                    Pending operations waiting to be synced. These will be processed automatically when online.
+                  </CardDescription>
+                </div>
+                <div className="flex gap-2 flex-wrap">
+                  {selectedOps.size > 0 && (
+                    <Button variant="destructive" size="sm" onClick={() => setBatchDeleteDialog(true)}>
+                      <Trash2 className="h-4 w-4 mr-1" />
+                      Delete Selected ({selectedOps.size})
+                    </Button>
+                  )}
+                  {totalQueued > 0 && (
+                    <Button variant="destructive" size="sm" onClick={() => setClearAllDialogOpen(true)}>
+                      <Trash2 className="h-4 w-4 mr-1" />
+                      Clear All ({totalQueued})
+                    </Button>
+                  )}
+                </div>
+              </div>
             </CardHeader>
             <CardContent>
               <div className="space-y-6">
                 {/* Inspection Operations */}
                 <div>
-                  <h4 className="font-medium mb-2">Inspection Operations ({localData?.queuedOperations.length || 0})</h4>
+                  <div className="flex items-center justify-between mb-2">
+                    <h4 className="font-medium">Inspection Operations ({localData?.queuedOperations.length || 0})</h4>
+                    {(localData?.queuedOperations.length || 0) > 0 && (
+                      <Button variant="outline" size="sm" className="text-destructive" onClick={() => setClearSectionDialog('inspection')}>
+                        Clear All
+                      </Button>
+                    )}
+                  </div>
                   {localData?.queuedOperations.length === 0 ? (
                     <div className="text-sm text-muted-foreground">No pending inspection operations</div>
                   ) : (
@@ -792,25 +939,39 @@ export function IndexedDBRecoveryPanel({ allowDelete = true }: IndexedDBPanelPro
                       <Table>
                         <TableHeader>
                           <TableRow>
+                            <TableHead className="w-10">
+                              <Checkbox
+                                checked={localData!.queuedOperations.length > 0 && localData!.queuedOperations.every((op, idx) => selectedOps.has(`inspection-${op.id ?? idx}`))}
+                                onCheckedChange={() => toggleSelectAll('inspection', localData!.queuedOperations)}
+                              />
+                            </TableHead>
                             <TableHead>Type</TableHead>
                             <TableHead>Inspection ID</TableHead>
-                            <TableHead>Timestamp</TableHead>
+                            <TableHead>Age</TableHead>
                             <TableHead>Retries</TableHead>
+                            <TableHead className="w-10"></TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {localData?.queuedOperations.map((op, idx) => (
-                            <TableRow key={idx}>
-                              <TableCell>
-                                <Badge variant="outline">{op.type}</Badge>
-                              </TableCell>
-                              <TableCell className="font-mono text-xs">{op.inspectionId}</TableCell>
-                              <TableCell className="text-sm">
-                                {formatDate(new Date(op.timestamp).toISOString())}
-                              </TableCell>
-                              <TableCell>{op.retries}</TableCell>
-                            </TableRow>
-                          ))}
+                          {localData?.queuedOperations.map((op, idx) => {
+                            const key = `inspection-${op.id ?? idx}`;
+                            return (
+                              <TableRow key={key}>
+                                <TableCell>
+                                  <Checkbox checked={selectedOps.has(key)} onCheckedChange={() => toggleSelection(key)} />
+                                </TableCell>
+                                <TableCell><Badge variant="outline">{op.type}</Badge></TableCell>
+                                <TableCell className="font-mono text-xs">{op.inspectionId}</TableCell>
+                                <TableCell>{getAgeBadge(op.timestamp)}</TableCell>
+                                <TableCell>{op.retries}</TableCell>
+                                <TableCell>
+                                  <Button size="sm" variant="ghost" className="text-destructive h-8 w-8 p-0" onClick={() => handleDeleteSingleOp('inspection', op.id ?? idx)}>
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })}
                         </TableBody>
                       </Table>
                     </div>
@@ -819,7 +980,14 @@ export function IndexedDBRecoveryPanel({ allowDelete = true }: IndexedDBPanelPro
 
                 {/* Assessment Operations */}
                 <div>
-                  <h4 className="font-medium mb-2">Assessment Operations ({localData?.queuedAssessmentOperations.length || 0})</h4>
+                  <div className="flex items-center justify-between mb-2">
+                    <h4 className="font-medium">Assessment Operations ({localData?.queuedAssessmentOperations.length || 0})</h4>
+                    {(localData?.queuedAssessmentOperations.length || 0) > 0 && (
+                      <Button variant="outline" size="sm" className="text-destructive" onClick={() => setClearSectionDialog('assessment')}>
+                        Clear All
+                      </Button>
+                    )}
+                  </div>
                   {localData?.queuedAssessmentOperations.length === 0 ? (
                     <div className="text-sm text-muted-foreground">No pending assessment operations</div>
                   ) : (
@@ -827,25 +995,39 @@ export function IndexedDBRecoveryPanel({ allowDelete = true }: IndexedDBPanelPro
                       <Table>
                         <TableHeader>
                           <TableRow>
+                            <TableHead className="w-10">
+                              <Checkbox
+                                checked={localData!.queuedAssessmentOperations.length > 0 && localData!.queuedAssessmentOperations.every((op, idx) => selectedOps.has(`assessment-${op.id ?? idx}`))}
+                                onCheckedChange={() => toggleSelectAll('assessment', localData!.queuedAssessmentOperations)}
+                              />
+                            </TableHead>
                             <TableHead>Type</TableHead>
                             <TableHead>Assessment ID</TableHead>
-                            <TableHead>Timestamp</TableHead>
+                            <TableHead>Age</TableHead>
                             <TableHead>Retries</TableHead>
+                            <TableHead className="w-10"></TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {localData?.queuedAssessmentOperations.map((op, idx) => (
-                            <TableRow key={idx}>
-                              <TableCell>
-                                <Badge variant="outline">{op.type}</Badge>
-                              </TableCell>
-                              <TableCell className="font-mono text-xs">{op.assessmentId}</TableCell>
-                              <TableCell className="text-sm">
-                                {formatDate(new Date(op.timestamp).toISOString())}
-                              </TableCell>
-                              <TableCell>{op.retries}</TableCell>
-                            </TableRow>
-                          ))}
+                          {localData?.queuedAssessmentOperations.map((op, idx) => {
+                            const key = `assessment-${op.id ?? idx}`;
+                            return (
+                              <TableRow key={key}>
+                                <TableCell>
+                                  <Checkbox checked={selectedOps.has(key)} onCheckedChange={() => toggleSelection(key)} />
+                                </TableCell>
+                                <TableCell><Badge variant="outline">{op.type}</Badge></TableCell>
+                                <TableCell className="font-mono text-xs">{op.assessmentId}</TableCell>
+                                <TableCell>{getAgeBadge(op.timestamp)}</TableCell>
+                                <TableCell>{op.retries}</TableCell>
+                                <TableCell>
+                                  <Button size="sm" variant="ghost" className="text-destructive h-8 w-8 p-0" onClick={() => handleDeleteSingleOp('assessment', op.id ?? idx)}>
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })}
                         </TableBody>
                       </Table>
                     </div>
@@ -854,7 +1036,14 @@ export function IndexedDBRecoveryPanel({ allowDelete = true }: IndexedDBPanelPro
 
                 {/* Training Operations */}
                 <div>
-                  <h4 className="font-medium mb-2">Training Operations ({localData?.queuedTrainingOperations.length || 0})</h4>
+                  <div className="flex items-center justify-between mb-2">
+                    <h4 className="font-medium">Training Operations ({localData?.queuedTrainingOperations.length || 0})</h4>
+                    {(localData?.queuedTrainingOperations.length || 0) > 0 && (
+                      <Button variant="outline" size="sm" className="text-destructive" onClick={() => setClearSectionDialog('training')}>
+                        Clear All
+                      </Button>
+                    )}
+                  </div>
                   {localData?.queuedTrainingOperations.length === 0 ? (
                     <div className="text-sm text-muted-foreground">No pending training operations</div>
                   ) : (
@@ -862,25 +1051,39 @@ export function IndexedDBRecoveryPanel({ allowDelete = true }: IndexedDBPanelPro
                       <Table>
                         <TableHeader>
                           <TableRow>
+                            <TableHead className="w-10">
+                              <Checkbox
+                                checked={localData!.queuedTrainingOperations.length > 0 && localData!.queuedTrainingOperations.every((op, idx) => selectedOps.has(`training-${op.id ?? idx}`))}
+                                onCheckedChange={() => toggleSelectAll('training', localData!.queuedTrainingOperations)}
+                              />
+                            </TableHead>
                             <TableHead>Type</TableHead>
                             <TableHead>Training ID</TableHead>
-                            <TableHead>Timestamp</TableHead>
+                            <TableHead>Age</TableHead>
                             <TableHead>Retries</TableHead>
+                            <TableHead className="w-10"></TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {localData?.queuedTrainingOperations.map((op, idx) => (
-                            <TableRow key={idx}>
-                              <TableCell>
-                                <Badge variant="outline">{op.type}</Badge>
-                              </TableCell>
-                              <TableCell className="font-mono text-xs">{op.trainingId}</TableCell>
-                              <TableCell className="text-sm">
-                                {formatDate(new Date(op.timestamp).toISOString())}
-                              </TableCell>
-                              <TableCell>{op.retries}</TableCell>
-                            </TableRow>
-                          ))}
+                          {localData?.queuedTrainingOperations.map((op, idx) => {
+                            const key = `training-${op.id ?? idx}`;
+                            return (
+                              <TableRow key={key}>
+                                <TableCell>
+                                  <Checkbox checked={selectedOps.has(key)} onCheckedChange={() => toggleSelection(key)} />
+                                </TableCell>
+                                <TableCell><Badge variant="outline">{op.type}</Badge></TableCell>
+                                <TableCell className="font-mono text-xs">{op.trainingId}</TableCell>
+                                <TableCell>{getAgeBadge(op.timestamp)}</TableCell>
+                                <TableCell>{op.retries}</TableCell>
+                                <TableCell>
+                                  <Button size="sm" variant="ghost" className="text-destructive h-8 w-8 p-0" onClick={() => handleDeleteSingleOp('training', op.id ?? idx)}>
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })}
                         </TableBody>
                       </Table>
                     </div>
@@ -912,6 +1115,60 @@ export function IndexedDBRecoveryPanel({ allowDelete = true }: IndexedDBPanelPro
           </AlertDialogContent>
         </AlertDialog>
       )}
+
+      {/* Clear All Dialog */}
+      <AlertDialog open={clearAllDialogOpen} onOpenChange={setClearAllDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Clear All Queued Operations?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently remove all {totalQueued} queued operations from all three stores (inspections, assessments, trainings). This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleClearAll} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Clear All
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Clear Section Dialog */}
+      <AlertDialog open={!!clearSectionDialog} onOpenChange={() => setClearSectionDialog(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Clear All {clearSectionDialog} Operations?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently remove all queued {clearSectionDialog} operations. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => clearSectionDialog && handleClearSection(clearSectionDialog)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Clear Section
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Batch Delete Dialog */}
+      <AlertDialog open={batchDeleteDialog} onOpenChange={setBatchDeleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {selectedOps.size} Selected Operations?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently remove the selected queued operations. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleBatchDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Delete Selected
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
