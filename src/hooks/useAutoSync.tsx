@@ -185,15 +185,21 @@ export const useAutoSync = () => {
         console.log('[AutoSync] Starting sync...', { unsyncedCount: unsyncedCountRef.current, timeout: dynamicTimeout });
       }
       
-      // Sync all data types in parallel with dynamic timeout protection
-      // Each operation has its own catch to prevent one failure from blocking others
+      // Sync data types SEQUENTIALLY with UI thread yields between each
+      // This prevents sync from blocking typing and other user interactions
+      const yieldToUI = () => new Promise<void>(r => setTimeout(r, 0));
+      
       const syncResult = await withSyncTimeout(
-        Promise.all([
-          syncAllInspectionsAtomic().catch(e => { console.error('[AutoSync] Inspections sync failed:', e); return null; }),
-          syncAllTrainingsAtomic().catch(e => { console.error('[AutoSync] Trainings sync failed:', e); return null; }),
-          syncAllDailyAssessmentsAtomic().catch(e => { console.error('[AutoSync] Assessments sync failed:', e); return null; }),
-          syncPhotos().catch(e => { console.error('[AutoSync] Photos sync failed:', e); return null; }),
-        ]),
+        (async () => {
+          const inspResult = await syncAllInspectionsAtomic().catch(e => { console.error('[AutoSync] Inspections sync failed:', e); return null; });
+          await yieldToUI();
+          const trainResult = await syncAllTrainingsAtomic().catch(e => { console.error('[AutoSync] Trainings sync failed:', e); return null; });
+          await yieldToUI();
+          const assessResult = await syncAllDailyAssessmentsAtomic().catch(e => { console.error('[AutoSync] Assessments sync failed:', e); return null; });
+          await yieldToUI();
+          const photoResult = await syncPhotos().catch(e => { console.error('[AutoSync] Photos sync failed:', e); return null; });
+          return [inspResult, trainResult, assessResult, photoResult];
+        })(),
         dynamicTimeout
       );
       
