@@ -1,84 +1,54 @@
 
 
-# Global Persistent User Profile Dropdown
+# Fix Sign-Out Data Flush and Force Refresh Safety
 
-## Problem
-The `UserProfileDropdown` is currently duplicated across 4 pages (Dashboard, InspectionForm, TrainingForm, DailyAssessmentForm), each managing its own `currentUser`, `userProfile`, `isSuperAdmin`, and `signingOut` state independently. Some pages (Profile, SuperAdminDashboard, Install, Capabilities) don't have it at all.
+## Issue 1: Sign-out doesn't flush unsynced data
 
-## Solution
-Create a global layout component that provides the user profile dropdown on every authenticated page, eliminating duplicated auth/profile state and ensuring consistent access to all user actions.
+The global `AuthenticatedHeader` calls `supabase.auth.signOut()` directly without first syncing any pending IndexedDB operations. If a user has unsynced reports and signs out, those records become orphaned if a different user logs in on the same device.
 
-## Architecture
+### Fix
+Before calling `signOut()`, trigger a force sync attempt via the PWA context's `forceSync()` method. This reuses the existing `useAutoSync.performSync(false)` pipeline which processes all three operation types (inspections, trainings, assessments).
 
-**Approach: Auth-aware Layout wrapper in `RootLayout`**
+**Changes to `src/components/AuthenticatedHeader.tsx`:**
+- Import and use `usePWA()` to access `forceSync` and `unsyncedCount`
+- In `handleSignOut`: if online and `unsyncedCount > 0`, await `forceSync()` (with a safety timeout of ~8 seconds) before calling `signOut()`
+- If offline or sync fails, proceed with sign-out anyway (data stays safely in IndexedDB for the same user's next login)
+- Show a brief toast: "Syncing data before sign-out..." when flushing
 
-Rather than adding a React Context (overkill for this), the cleanest approach is:
+## Issue 2: Force Refresh destroys offline PWA shell
 
-1. Create an `AuthenticatedHeader` component that self-manages its auth state using existing hooks/utilities
-2. Render it inside the existing `RootLayout` in `App.tsx`  
-3. Only show it on authenticated routes (hide on `/`, `/welcome`)
-4. Remove the duplicated `UserProfileDropdown` usage from individual pages
+`handleForceRefresh` in `ManualUpdateButton.tsx` deletes ALL Cache Storage entries and unregisters service workers. This means if the user goes offline afterward, the app won't load at all since the precached shell is gone.
 
-## What Changes
+### Fix
+Add a confirmation warning that explicitly tells the user this will make the app unavailable offline until they reconnect.
 
-### 1. New file: `src/components/AuthenticatedHeader.tsx`
-A self-contained header component that:
-- Fetches `currentUser` via `getUserWithCache()`
-- Fetches `userProfile` from the `profiles` table
-- Checks `isSuperAdmin` via `user_roles` query (with localStorage cache for offline)
-- Manages `signingOut` state
-- Renders the `UserProfileDropdown` in a fixed/sticky position (top-right)
-- Includes ARIA labels on the trigger button
-- Returns `null` on unauthenticated routes (`/`, `/welcome`)
-- Responsive: consistent positioning across all viewports
+**Changes to `src/components/pwa/ManualUpdateButton.tsx`:**
+- Replace the immediate `handleForceRefresh` call with an `AlertDialog` confirmation
+- The dialog text warns: "This will clear all cached data and make the app unavailable offline until you reconnect to the internet. Your report data will be preserved."
+- Only proceed if confirmed
 
-### 2. Edit: `src/App.tsx`
-- Import and render `AuthenticatedHeader` inside `RootLayout`, above `<Outlet />`
-- The header persists across route changes without re-mounting since `RootLayout` is the parent of all routes
-
-### 3. Edit: `src/pages/Dashboard.tsx`
-- Remove the `UserProfileDropdown` import and usage from the header section
-- Remove `currentUser`, `userProfile`, `signingOut`, `handleSignOut` state that was only used for the dropdown (keep any state used elsewhere in the page)
-- Keep the page-specific header content (logos, sync buttons, badges) but remove the dropdown from it
-
-### 4. Edit: `src/pages/InspectionForm.tsx`
-- Remove `UserProfileDropdown` import and usage
-- Remove `signingOut`/`handleSignOut` state (the `currentUser` and `currentUserProfile` state are still used for form logic, so those stay)
-
-### 5. Edit: `src/pages/TrainingForm.tsx`
-- Same cleanup as InspectionForm
-
-### 6. Edit: `src/pages/DailyAssessmentForm.tsx`
-- Same cleanup as InspectionForm
-
-## Permission-Based Rendering
-The dropdown already handles permissions dynamically:
-- **Admin Dashboard** menu item: only shown when `isSuperAdmin === true`
-- **Install App** option: only shown when `isInstallable && !isInstalled`
-- **Sign Out**: always available when authenticated
-- The entire header is hidden on public routes (`/`, `/welcome`)
-
-No changes needed to this logic -- it already works correctly inside `UserProfileDropdown`.
-
-## Technical Details
-
-### AuthenticatedHeader positioning
-The component will render as a fixed-position element (top-right corner) with a high `z-index` so it floats above page content on all routes. This avoids needing to modify each page's header layout. Pages that already have their own headers (Dashboard with logos, form pages with back buttons) keep their layout -- the profile dropdown just appears consistently in the top-right.
-
-### State management
-- Uses `useQuery` for `isSuperAdmin` (same pattern as Dashboard) with `staleTime: 2min` and localStorage placeholder
-- Uses `useState` + `useEffect` for `currentUser` and `userProfile` via `getUserWithCache()`
-- Listens to `onAuthStateChange` to react to sign-in/sign-out events
-- No global context needed -- the component is a singleton rendered once in `RootLayout`
-
-### Files modified
+## Files Modified
 
 | File | Change |
 |------|--------|
-| `src/components/AuthenticatedHeader.tsx` | **New** -- self-contained auth-aware header with `UserProfileDropdown` |
-| `src/App.tsx` | Import + render `AuthenticatedHeader` in `RootLayout` |
-| `src/pages/Dashboard.tsx` | Remove `UserProfileDropdown` usage and related sign-out state |
-| `src/pages/InspectionForm.tsx` | Remove `UserProfileDropdown` usage and `signingOut`/`handleSignOut` |
-| `src/pages/TrainingForm.tsx` | Same cleanup |
-| `src/pages/DailyAssessmentForm.tsx` | Same cleanup |
+| `src/components/AuthenticatedHeader.tsx` | Add `usePWA()`, flush sync before sign-out with timeout |
+| `src/components/pwa/ManualUpdateButton.tsx` | Add AlertDialog confirmation for Force Refresh with offline warning |
+
+## Technical Details
+
+### AuthenticatedHeader sync-before-signout
+```
+handleSignOut:
+  1. setSigningOut(true)
+  2. if (navigator.onLine && unsyncedCount > 0):
+       show toast "Syncing data..."
+       await Promise.race([forceSync(), timeout(8000)])
+  3. await supabase.auth.signOut()
+  4. catch: setSigningOut(false)
+```
+
+The 8-second timeout prevents the sign-out from hanging indefinitely if sync stalls. This matches the existing non-blocking save timeout pattern used across the app.
+
+### Force Refresh AlertDialog
+The dropdown menu item for "Force Refresh (Clear Cache)" will open a confirmation dialog instead of executing immediately. The dialog uses the existing `AlertDialog` component from the UI library (already imported elsewhere in the app). State is managed with a simple `useState<boolean>` for dialog visibility.
 
