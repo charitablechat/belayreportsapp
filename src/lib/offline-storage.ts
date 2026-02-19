@@ -767,45 +767,75 @@ export async function getQueuedOperations() {
 }
 
 export async function removeQueuedOperation(id: number) {
-  const db = await getDB();
-  await db.delete('operations', id);
-  
-  if (import.meta.env.DEV) {
-    console.log('[Offline Storage] Removed queued operation:', id);
-  }
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      await db.delete('operations', id);
+      
+      if (import.meta.env.DEV) {
+        console.log('[Offline Storage] Removed queued operation:', id);
+      }
+    },
+    undefined,
+    'removeQueuedOperation'
+  );
 }
 
 export async function clearAllQueuedOperations() {
-  const db = await getDB();
-  const tx = db.transaction('operations', 'readwrite');
-  await tx.store.clear();
-  await tx.done;
-  console.log('[Offline Storage] Cleared all queued operations');
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      const tx = db.transaction('operations', 'readwrite');
+      await tx.store.clear();
+      await tx.done;
+      console.log('[Offline Storage] Cleared all queued operations');
+    },
+    undefined,
+    'clearAllQueuedOperations'
+  );
 }
 
 export async function clearAllQueuedAssessmentOperations() {
-  const db = await getDB();
-  const tx = db.transaction('assessment_operations', 'readwrite');
-  await tx.store.clear();
-  await tx.done;
-  console.log('[Offline Storage] Cleared all queued assessment operations');
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      const tx = db.transaction('assessment_operations', 'readwrite');
+      await tx.store.clear();
+      await tx.done;
+      console.log('[Offline Storage] Cleared all queued assessment operations');
+    },
+    undefined,
+    'clearAllQueuedAssessmentOperations'
+  );
 }
 
 export async function clearAllQueuedTrainingOperations() {
-  const db = await getDB();
-  const tx = db.transaction('training_operations', 'readwrite');
-  await tx.store.clear();
-  await tx.done;
-  console.log('[Offline Storage] Cleared all queued training operations');
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      const tx = db.transaction('training_operations', 'readwrite');
+      await tx.store.clear();
+      await tx.done;
+      console.log('[Offline Storage] Cleared all queued training operations');
+    },
+    undefined,
+    'clearAllQueuedTrainingOperations'
+  );
 }
 
 export async function incrementOperationRetry(id: number) {
-  const db = await getDB();
-  const operation = await db.get('operations', id);
-  if (operation) {
-    operation.retries += 1;
-    await db.put('operations', operation);
-  }
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      const operation = await db.get('operations', id);
+      if (operation) {
+        operation.retries += 1;
+        await db.put('operations', operation);
+      }
+    },
+    undefined,
+    'incrementOperationRetry'
+  );
 }
 
 // Photo functions
@@ -1287,33 +1317,43 @@ export async function getQueuedAssessmentOperations() {
 }
 
 export async function removeQueuedAssessmentOperation(id: number | undefined | null) {
-  // Guard against undefined/null IDs to prevent IndexedDB errors
   if (id === undefined || id === null) {
     console.warn('[Offline Storage] Cannot remove assessment operation with undefined/null ID');
     return;
   }
   
-  const db = await getDB();
-  await db.delete('assessment_operations', id);
-  
-  if (import.meta.env.DEV) {
-    console.log('[Offline Storage] Removed queued assessment operation:', id);
-  }
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      await db.delete('assessment_operations', id);
+      
+      if (import.meta.env.DEV) {
+        console.log('[Offline Storage] Removed queued assessment operation:', id);
+      }
+    },
+    undefined,
+    'removeQueuedAssessmentOperation'
+  );
 }
 
 export async function incrementAssessmentOperationRetry(id: number | undefined | null) {
-  // Guard against undefined/null IDs to prevent IndexedDB errors
   if (id === undefined || id === null) {
     console.warn('[Offline Storage] Cannot increment retry for assessment operation with undefined/null ID');
     return;
   }
   
-  const db = await getDB();
-  const operation = await db.get('assessment_operations', id);
-  if (operation) {
-    operation.retries += 1;
-    await db.put('assessment_operations', operation);
-  }
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      const operation = await db.get('assessment_operations', id);
+      if (operation) {
+        operation.retries += 1;
+        await db.put('assessment_operations', operation);
+      }
+    },
+    undefined,
+    'incrementAssessmentOperationRetry'
+  );
 }
 
 type AssessmentDataType = 'beginning_of_day' | 'end_of_day' | 'operating_systems' | 'equipment_checks' | 'structure_checks' | 'environment_checks';
@@ -1581,33 +1621,43 @@ export async function getQueuedTrainingOperations() {
 }
 
 export async function removeQueuedTrainingOperation(id: number | undefined | null) {
-  // Guard against undefined/null IDs to prevent IndexedDB errors
   if (id === undefined || id === null) {
     console.warn('[Offline Storage] Cannot remove training operation with undefined/null ID');
     return;
   }
   
-  const db = await getDB();
-  await db.delete('training_operations', id);
-  
-  if (import.meta.env.DEV) {
-    console.log('[Offline Storage] Removed queued training operation:', id);
-  }
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      await db.delete('training_operations', id);
+      
+      if (import.meta.env.DEV) {
+        console.log('[Offline Storage] Removed queued training operation:', id);
+      }
+    },
+    undefined,
+    'removeQueuedTrainingOperation'
+  );
 }
 
 export async function incrementTrainingOperationRetry(id: number | undefined | null) {
-  // Guard against undefined/null IDs to prevent IndexedDB errors
   if (id === undefined || id === null) {
     console.warn('[Offline Storage] Cannot increment retry for training operation with undefined/null ID');
     return;
   }
   
-  const db = await getDB();
-  const operation = await db.get('training_operations', id);
-  if (operation) {
-    operation.retries += 1;
-    await db.put('training_operations', operation);
-  }
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      const operation = await db.get('training_operations', id);
+      if (operation) {
+        operation.retries += 1;
+        await db.put('training_operations', operation);
+      }
+    },
+    undefined,
+    'incrementTrainingOperationRetry'
+  );
 }
 
 type TrainingDataType = 'delivery_approaches' | 'operating_systems' | 'immediate_attention' | 'verifiable_items' | 'systems_in_place' | 'summary';

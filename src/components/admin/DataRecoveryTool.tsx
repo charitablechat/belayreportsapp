@@ -375,12 +375,17 @@ export function IndexedDBRecoveryPanel({ allowDelete = true }: IndexedDBPanelPro
         else if (prefix === 'assessment') promises.push(removeQueuedAssessmentOperation(id));
         else if (prefix === 'training') promises.push(removeQueuedTrainingOperation(id));
       }
-      await Promise.all(promises);
+      await Promise.race([
+        Promise.all(promises),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Batch delete timeout after 10s')), 10000)
+        ),
+      ]);
       toast.success(`Deleted ${selectedOps.size} operations`);
       setSelectedOps(new Set());
       await loadLocalData();
-    } catch (e) {
-      toast.error("Failed to delete selected operations");
+    } catch (e: any) {
+      toast.error(e?.message?.includes('timeout') ? "Operation timed out — some items may not have been deleted" : "Failed to delete selected operations");
     } finally {
       setBatchDeleteDialog(false);
     }
@@ -425,6 +430,7 @@ export function IndexedDBRecoveryPanel({ allowDelete = true }: IndexedDBPanelPro
   const syncTrainingToDatabase = async (training: any) => {
     setSyncing(training.id);
     try {
+      // Step 1: Upsert parent WITHOUT synced_at
       const trainingData = {
         id: training.id,
         inspector_id: training.inspector_id,
@@ -439,11 +445,19 @@ export function IndexedDBRecoveryPanel({ allowDelete = true }: IndexedDBPanelPro
         longitude: training.longitude,
         created_at: training.created_at,
         updated_at: training.updated_at,
-        synced_at: new Date().toISOString(),
       };
 
       const { error } = await supabase.from("trainings").upsert(trainingData);
       if (error) throw error;
+
+      // Step 2: Child data would be synced here if recovery tool had access
+
+      // Step 3: Final PATCH to set synced_at + updated_at
+      const now = new Date().toISOString();
+      const { error: patchError } = await supabase.from("trainings")
+        .update({ synced_at: now, updated_at: now })
+        .eq("id", training.id);
+      if (patchError) throw patchError;
 
       toast.success("Training synced successfully");
       await loadLocalData();
@@ -458,6 +472,7 @@ export function IndexedDBRecoveryPanel({ allowDelete = true }: IndexedDBPanelPro
   const syncDailyAssessmentToDatabase = async (assessment: any) => {
     setSyncing(assessment.id);
     try {
+      // Step 1: Upsert parent WITHOUT synced_at
       const assessmentData = {
         id: assessment.id,
         inspector_id: assessment.inspector_id,
@@ -471,11 +486,19 @@ export function IndexedDBRecoveryPanel({ allowDelete = true }: IndexedDBPanelPro
         longitude: assessment.longitude,
         created_at: assessment.created_at,
         updated_at: assessment.updated_at,
-        synced_at: new Date().toISOString(),
       };
 
       const { error } = await supabase.from("daily_assessments").upsert(assessmentData);
       if (error) throw error;
+
+      // Step 2: Child data would be synced here if recovery tool had access
+
+      // Step 3: Final PATCH to set synced_at + updated_at
+      const now = new Date().toISOString();
+      const { error: patchError } = await supabase.from("daily_assessments")
+        .update({ synced_at: now, updated_at: now })
+        .eq("id", assessment.id);
+      if (patchError) throw patchError;
 
       toast.success("Daily assessment synced successfully");
       await loadLocalData();
@@ -490,6 +513,7 @@ export function IndexedDBRecoveryPanel({ allowDelete = true }: IndexedDBPanelPro
   const syncInspectionToDatabase = async (inspection: any) => {
     setSyncing(inspection.id);
     try {
+      // Step 1: Upsert parent WITHOUT synced_at
       const inspectionData = {
         id: inspection.id,
         inspector_id: inspection.inspector_id,
@@ -507,11 +531,19 @@ export function IndexedDBRecoveryPanel({ allowDelete = true }: IndexedDBPanelPro
         longitude: inspection.longitude,
         created_at: inspection.created_at,
         updated_at: inspection.updated_at,
-        synced_at: new Date().toISOString(),
       };
 
       const { error } = await supabase.from("inspections").upsert(inspectionData);
       if (error) throw error;
+
+      // Step 2: Child data would be synced here if recovery tool had access
+
+      // Step 3: Final PATCH to set synced_at + updated_at
+      const now = new Date().toISOString();
+      const { error: patchError } = await supabase.from("inspections")
+        .update({ synced_at: now, updated_at: now })
+        .eq("id", inspection.id);
+      if (patchError) throw patchError;
 
       toast.success("Inspection synced successfully");
       await loadLocalData();
