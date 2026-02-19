@@ -1,54 +1,60 @@
 
 
-# Fix Sign-Out Data Flush and Force Refresh Safety
+# Fix: Avg Completion Time Card Showing "0h"
 
-## Issue 1: Sign-out doesn't flush unsynced data
+## Root Cause
 
-The global `AuthenticatedHeader` calls `supabase.auth.signOut()` directly without first syncing any pending IndexedDB operations. If a user has unsynced reports and signs out, those records become orphaned if a different user logs in on the same device.
+The query on line 291 of `SuperAdminDashboard.tsx` filters with `.not("started_at", "is", null)`, requiring `started_at` to be non-null. However, **zero completed inspections** in the database have a `started_at` value populated. The column exists but is never written to during normal usage. This causes the query to return an empty dataset, resulting in `0`.
 
-### Fix
-Before calling `signOut()`, trigger a force sync attempt via the PWA context's `forceSync()` method. This reuses the existing `useAutoSync.performSync(false)` pipeline which processes all three operation types (inspections, trainings, assessments).
+## Solution
 
-**Changes to `src/components/AuthenticatedHeader.tsx`:**
-- Import and use `usePWA()` to access `forceSync` and `unsyncedCount`
-- In `handleSignOut`: if online and `unsyncedCount > 0`, await `forceSync()` (with a safety timeout of ~8 seconds) before calling `signOut()`
-- If offline or sync fails, proceed with sign-out anyway (data stays safely in IndexedDB for the same user's next login)
-- Show a brief toast: "Syncing data before sign-out..." when flushing
+### 1. Fix the query to use available data (immediate)
 
-## Issue 2: Force Refresh destroys offline PWA shell
+**File: `src/pages/SuperAdminDashboard.tsx` (lines 280-310)**
 
-`handleForceRefresh` in `ManualUpdateButton.tsx` deletes ALL Cache Storage entries and unregisters service workers. This means if the user goes offline afterward, the app won't load at all since the precached shell is gone.
+Remove the `.not("started_at", "is", null)` filter and fall back to `created_at` when `started_at` is null (which is always, currently). The calculation becomes: `updated_at - created_at` for completed inspections, measuring wall-clock time from creation to completion.
 
-### Fix
-Add a confirmation warning that explicitly tells the user this will make the app unavailable offline until they reconnect.
+```
+// Before (broken):
+.not("started_at", "is", null)
 
-**Changes to `src/components/pwa/ManualUpdateButton.tsx`:**
-- Replace the immediate `handleForceRefresh` call with an `AlertDialog` confirmation
-- The dialog text warns: "This will clear all cached data and make the app unavailable offline until you reconnect to the internet. Your report data will be preserved."
-- Only proceed if confirmed
+// After (works with existing data):
+// Remove that filter entirely. The reduce already handles the fallback.
+```
+
+Also include trainings and daily assessments in the metric for a more holistic view, or at minimum note that it only covers inspections.
+
+### 2. Populate `started_at` going forward (recommended)
+
+**File: `src/pages/InspectionForm.tsx`**
+
+When the inspection form is first opened/loaded, set `started_at = NOW()` if it is currently null. This creates a meaningful "active start" timestamp for future inspections, enabling more accurate duration tracking later.
+
+### 3. Improve the hover content to show detail breakdown
+
+Update the StatCard's `hoverContent.details` to show:
+- Number of completed inspections used in the calculation
+- Time window (last 30 days)
+- Shortest and longest completion times
+
+### 4. Active usage time (future consideration)
+
+True "active usage time" (excluding idle/closed periods) would require session heartbeat tracking -- writing a `last_active_at` timestamp periodically while the form is open, and accumulating active session durations. This is a significant feature addition and is **not part of this fix**. The plan focuses on making the existing metric work correctly with available data.
 
 ## Files Modified
 
 | File | Change |
 |------|--------|
-| `src/components/AuthenticatedHeader.tsx` | Add `usePWA()`, flush sync before sign-out with timeout |
-| `src/components/pwa/ManualUpdateButton.tsx` | Add AlertDialog confirmation for Force Refresh with offline warning |
+| `src/pages/SuperAdminDashboard.tsx` | Remove `.not("started_at", "is", null)` filter; enhance hover details with count and range |
+| `src/pages/InspectionForm.tsx` | Set `started_at = NOW()` on first form load if null (for future accuracy) |
 
-## Technical Details
+## Why It Was Blank
 
-### AuthenticatedHeader sync-before-signout
-```
-handleSignOut:
-  1. setSigningOut(true)
-  2. if (navigator.onLine && unsyncedCount > 0):
-       show toast "Syncing data..."
-       await Promise.race([forceSync(), timeout(8000)])
-  3. await supabase.auth.signOut()
-  4. catch: setSigningOut(false)
-```
+The query chain was:
+1. `.eq("status", "completed")` -- 7 rows match
+2. `.not("updated_at", "is", null)` -- still 7 rows
+3. `.not("started_at", "is", null)` -- **0 rows** (no inspection has `started_at` set)
+4. Empty array returned, function returns `0`, card displays "0h"
 
-The 8-second timeout prevents the sign-out from hanging indefinitely if sync stalls. This matches the existing non-blocking save timeout pattern used across the app.
-
-### Force Refresh AlertDialog
-The dropdown menu item for "Force Refresh (Clear Cache)" will open a confirmation dialog instead of executing immediately. The dialog uses the existing `AlertDialog` component from the UI library (already imported elsewhere in the app). State is managed with a simple `useState<boolean>` for dialog visibility.
+The fix removes the impossible filter, making the metric immediately functional with the 7 completed inspections in the database.
 
