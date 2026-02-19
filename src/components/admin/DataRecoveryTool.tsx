@@ -214,13 +214,18 @@ export function IndexedDBRecoveryPanel({ allowDelete = true }: IndexedDBPanelPro
         queuedOperations,
         queuedAssessmentOperations,
         queuedTrainingOperations,
-      ] = await Promise.all([
-        getOfflineTrainings(),
-        getOfflineDailyAssessments(),
-        getOfflineInspections(),
-        getQueuedOperations(),
-        getQueuedAssessmentOperations(),
-        getQueuedTrainingOperations(),
+      ] = await Promise.race([
+        Promise.all([
+          getOfflineTrainings(),
+          getOfflineDailyAssessments(),
+          getOfflineInspections(),
+          getQueuedOperations(),
+          getQueuedAssessmentOperations(),
+          getQueuedTrainingOperations(),
+        ]),
+        new Promise<[any[], any[], any[], any[], any[], any[]]>((_, reject) =>
+          setTimeout(() => reject(new Error('Data recovery load timeout after 10s')), 10000)
+        ),
       ]);
 
       setLocalData({
