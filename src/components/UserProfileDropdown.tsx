@@ -10,7 +10,8 @@
    DropdownMenuSeparator,
    DropdownMenuTrigger,
  } from "@/components/ui/dropdown-menu";
- import { LogOut, User, Bell, Settings, FileText, Download, MessageCircle, Loader2, Shield, Monitor, MoreVertical, Database } from "lucide-react";
+import { LogOut, User, Bell, Settings, FileText, Download, MessageCircle, Loader2, Shield, Monitor, MoreVertical, Database, Sun, Moon } from "lucide-react";
+import { useTheme } from "next-themes";
  import { UserAvatar } from "@/components/ui/user-avatar";
 import { usePWAInstall } from "@/hooks/usePWAInstall";
 import { usePWA } from "@/hooks/usePWA";
@@ -41,6 +42,7 @@ import { VersionBadge } from "@/components/VersionBadge";
    const navigate = useNavigate();
     const { isInstallable, isInstalled, promptInstall } = usePWAInstall();
     const { unsyncedCount } = usePWA();
+    const { theme, setTheme } = useTheme();
   const [notificationsDialogOpen, setNotificationsDialogOpen] = useState(false);
   const [contactSheetOpen, setContactSheetOpen] = useState(false);
   const [dataRecoveryOpen, setDataRecoveryOpen] = useState(false);
@@ -193,8 +195,20 @@ import { VersionBadge } from "@/components/VersionBadge";
            
            <DropdownMenuSeparator />
            
-           {/* Sign Out */}
-           <DropdownMenuItem onClick={onSignOut} disabled={signingOut}>
+            {/* Dark/Light Mode Toggle */}
+            <DropdownMenuItem onClick={() => setTheme(theme === "dark" ? "light" : "dark")}>
+              {theme === "dark" ? (
+                <Sun className="w-4 h-4 mr-2" />
+              ) : (
+                <Moon className="w-4 h-4 mr-2" />
+              )}
+              {theme === "dark" ? "Light Mode" : "Dark Mode"}
+            </DropdownMenuItem>
+
+            <DropdownMenuSeparator />
+            
+            {/* Sign Out */}
+            <DropdownMenuItem onClick={onSignOut} disabled={signingOut}>
              {signingOut ? (
                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
              ) : (
