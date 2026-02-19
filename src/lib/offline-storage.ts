@@ -747,14 +747,18 @@ export async function queueOperation(type: 'create' | 'update' | 'delete', inspe
 }
 
 export async function getQueuedOperations() {
-  const db = await getDB();
-  const operations = await db.getAll('operations');
-  
-  if (import.meta.env.DEV) {
-    console.log('[Offline Storage] Queued operations:', operations.length);
-  }
-  
-  return operations;
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      const operations = await db.getAll('operations');
+      if (import.meta.env.DEV) {
+        console.log('[Offline Storage] Queued operations:', operations.length);
+      }
+      return operations;
+    },
+    [],
+    'getQueuedOperations'
+  );
 }
 
 export async function removeQueuedOperation(id: number) {
@@ -1263,14 +1267,18 @@ export async function queueAssessmentOperation(type: 'create' | 'update' | 'dele
 }
 
 export async function getQueuedAssessmentOperations() {
-  const db = await getDB();
-  const operations = await db.getAll('assessment_operations');
-  
-  if (import.meta.env.DEV) {
-    console.log('[Offline Storage] Queued assessment operations:', operations.length);
-  }
-  
-  return operations;
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      const operations = await db.getAll('assessment_operations');
+      if (import.meta.env.DEV) {
+        console.log('[Offline Storage] Queued assessment operations:', operations.length);
+      }
+      return operations;
+    },
+    [],
+    'getQueuedAssessmentOperations'
+  );
 }
 
 export async function removeQueuedAssessmentOperation(id: number | undefined | null) {
@@ -1553,14 +1561,18 @@ export async function queueTrainingOperation(type: 'create' | 'update' | 'delete
 }
 
 export async function getQueuedTrainingOperations() {
-  const db = await getDB();
-  const operations = await db.getAll('training_operations');
-  
-  if (import.meta.env.DEV) {
-    console.log('[Offline Storage] Queued training operations:', operations.length);
-  }
-  
-  return operations;
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      const operations = await db.getAll('training_operations');
+      if (import.meta.env.DEV) {
+        console.log('[Offline Storage] Queued training operations:', operations.length);
+      }
+      return operations;
+    },
+    [],
+    'getQueuedTrainingOperations'
+  );
 }
 
 export async function removeQueuedTrainingOperation(id: number | undefined | null) {
