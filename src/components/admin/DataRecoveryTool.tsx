@@ -53,7 +53,7 @@ export class RecoveryErrorBoundary extends Component<RecoveryErrorBoundaryProps,
   render() {
     if (this.state.hasError) {
       return (
-        <Card>
+        <Card className="backdrop-blur-md bg-white/5 dark:bg-white/[0.03] border border-white/10 rounded-xl">
           <CardContent className="py-8">
             <div className="flex flex-col items-center gap-3 text-center">
               <AlertTriangle className="h-8 w-8 text-destructive" />
@@ -160,7 +160,7 @@ export function LocalSnapshotsPanel({ allowDelete = true }: SnapshotsPanelProps)
   };
 
   return (
-    <Card className="glass-card">
+    <Card className="backdrop-blur-md bg-white/5 dark:bg-white/[0.03] border border-white/10 rounded-xl shadow-lg shadow-black/5">
       <CardHeader>
         <div className="flex items-center justify-between">
           <div>
