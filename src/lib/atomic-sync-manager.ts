@@ -11,10 +11,12 @@ import {
   saveTrainingOffline,
   getOfflineTraining,
   getTrainingDataOffline,
+  saveTrainingDataOffline,
   getUnsyncedDailyAssessments,
   saveDailyAssessmentOffline,
   getOfflineDailyAssessment,
   getAssessmentDataOffline,
+  saveAssessmentDataOffline,
   relinkPhotosToNewInspectionId,
 } from "./offline-storage";
 import { 
@@ -396,7 +398,7 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
         equipment.length === 0 && standards.length === 0 && !summary;
       
       if (serverHasChildData && localIsCompletelyEmpty) {
-        console.error('[SAFETY] Blocked inspection sync: server has child data but local is completely empty', {
+        console.warn('[SAFETY] empty_local_guard: server has child data but local is empty', {
           inspectionId,
           serverCounts: {
             systems: existingSystems.length,
@@ -406,6 +408,34 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
             summary: existingSummary.length,
           },
         });
+        
+        // RECOVERY: If this record was previously synced, pull server data into local
+        // cache and re-align timestamps to stop the infinite retry loop
+        if (inspection.synced_at) {
+          console.log('[SAFETY] Recovering: pulling server child data into local cache and re-aligning timestamps');
+          try {
+            await Promise.all([
+              existingSystems.length > 0 ? saveRelatedDataOffline('systems', inspectionId, existingSystems) : Promise.resolve(),
+              existingZiplines.length > 0 ? saveRelatedDataOffline('ziplines', inspectionId, existingZiplines) : Promise.resolve(),
+              existingEquipment.length > 0 ? saveRelatedDataOffline('equipment', inspectionId, existingEquipment) : Promise.resolve(),
+              existingStandards.length > 0 ? saveRelatedDataOffline('standards', inspectionId, existingStandards) : Promise.resolve(),
+              existingSummary.length > 0 ? saveRelatedDataOffline('summary', inspectionId, existingSummary) : Promise.resolve(),
+            ]);
+            
+            // Re-align local timestamps so it stops appearing as unsynced
+            const alignedTimestamp = recordStatus.updated_at || new Date().toISOString();
+            await saveInspectionOffline({
+              ...inspection,
+              synced_at: alignedTimestamp,
+              updated_at: alignedTimestamp,
+            });
+            
+            console.log('[SAFETY] Recovery complete: local cache restored from server, timestamps aligned');
+          } catch (recoveryError) {
+            console.error('[SAFETY] Recovery failed:', recoveryError);
+          }
+        }
+        
         return { success: false, skipped: true, reason: 'empty_local_guard' };
       }
     }
@@ -982,7 +1012,7 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
         systems_in_place.length === 0 && !summary;
       
       if (serverHasChildData && localIsCompletelyEmpty) {
-        console.error('[SAFETY] Blocked training sync: server has child data but local is completely empty', {
+        console.warn('[SAFETY] empty_local_guard: training server has child data but local is empty', {
           trainingId,
           serverCounts: {
             approaches: existingApproaches.length,
@@ -993,6 +1023,27 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
             summary: existingSummary.length,
           },
         });
+        
+        // RECOVERY: Pull server data into local cache and re-align timestamps
+        if (training.synced_at) {
+          console.log('[SAFETY] Recovering training: pulling server child data into local cache');
+          try {
+            await Promise.all([
+              existingApproaches.length > 0 ? saveTrainingDataOffline('delivery_approaches', trainingId, existingApproaches) : Promise.resolve(),
+              existingSystems.length > 0 ? saveTrainingDataOffline('operating_systems', trainingId, existingSystems) : Promise.resolve(),
+              existingAttention.length > 0 ? saveTrainingDataOffline('immediate_attention', trainingId, existingAttention) : Promise.resolve(),
+              existingVerifiable.length > 0 ? saveTrainingDataOffline('verifiable_items', trainingId, existingVerifiable) : Promise.resolve(),
+              existingSystemsInPlace.length > 0 ? saveTrainingDataOffline('systems_in_place', trainingId, existingSystemsInPlace) : Promise.resolve(),
+              existingSummary.length > 0 ? saveTrainingDataOffline('summary', trainingId, existingSummary) : Promise.resolve(),
+            ]);
+            const alignedTimestamp = recordStatus.updated_at || new Date().toISOString();
+            await saveTrainingOffline({ ...training, synced_at: alignedTimestamp, updated_at: alignedTimestamp });
+            console.log('[SAFETY] Training recovery complete');
+          } catch (recoveryError) {
+            console.error('[SAFETY] Training recovery failed:', recoveryError);
+          }
+        }
+        
         return { success: false, skipped: true, reason: 'empty_local_guard' };
       }
     }
@@ -1496,7 +1547,7 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
         structure_checks.length === 0 && environment_checks.length === 0;
       
       if (serverHasChildData && localIsCompletelyEmpty) {
-        console.error('[SAFETY] Blocked assessment sync: server has child data but local is completely empty', {
+        console.warn('[SAFETY] empty_local_guard: assessment server has child data but local is empty', {
           assessmentId,
           serverCounts: {
             beginning: existingBeginning.length,
@@ -1507,6 +1558,27 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
             environment: existingEnvironment.length,
           },
         });
+        
+        // RECOVERY: Pull server data into local cache and re-align timestamps
+        if (assessment.synced_at) {
+          console.log('[SAFETY] Recovering assessment: pulling server child data into local cache');
+          try {
+            await Promise.all([
+              existingBeginning.length > 0 ? saveAssessmentDataOffline('beginning_of_day', assessmentId, existingBeginning) : Promise.resolve(),
+              existingEnd.length > 0 ? saveAssessmentDataOffline('end_of_day', assessmentId, existingEnd) : Promise.resolve(),
+              existingSystems.length > 0 ? saveAssessmentDataOffline('operating_systems', assessmentId, existingSystems) : Promise.resolve(),
+              existingEquipment.length > 0 ? saveAssessmentDataOffline('equipment_checks', assessmentId, existingEquipment) : Promise.resolve(),
+              existingStructure.length > 0 ? saveAssessmentDataOffline('structure_checks', assessmentId, existingStructure) : Promise.resolve(),
+              existingEnvironment.length > 0 ? saveAssessmentDataOffline('environment_checks', assessmentId, existingEnvironment) : Promise.resolve(),
+            ]);
+            const alignedTimestamp = recordStatus.updated_at || new Date().toISOString();
+            await saveDailyAssessmentOffline({ ...assessment, synced_at: alignedTimestamp, updated_at: alignedTimestamp });
+            console.log('[SAFETY] Assessment recovery complete');
+          } catch (recoveryError) {
+            console.error('[SAFETY] Assessment recovery failed:', recoveryError);
+          }
+        }
+        
         return { success: false, skipped: true, reason: 'empty_local_guard' };
       }
     }
