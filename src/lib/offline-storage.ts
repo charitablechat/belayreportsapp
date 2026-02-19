@@ -421,10 +421,15 @@ async function withIndexedDBErrorBoundary<T>(
     console.error(`[Offline Storage] Error in ${operationName}:`, error);
     // Reset verification on error so next operation re-checks
     dbConnectionVerified = false;
-    recordIndexedDBFailure();
 
-    // IMMEDIATE user notification for QuotaExceededError (don't wait for circuit breaker)
-    if (error?.name === 'QuotaExceededError' || error?.message?.includes('QuotaExceeded')) {
+    // QuotaExceededError is NOT an IndexedDB health issue — don't count toward circuit breaker
+    const isQuotaError = error?.name === 'QuotaExceededError' || error?.message?.includes('QuotaExceeded');
+    if (!isQuotaError) {
+      recordIndexedDBFailure();
+    }
+
+    // IMMEDIATE user notification for QuotaExceededError on FIRST occurrence
+    if (isQuotaError) {
       if (typeof window !== 'undefined') {
         import('@/hooks/use-toast').then(({ toast }) => {
           toast({
