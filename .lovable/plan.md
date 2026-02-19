@@ -1,55 +1,55 @@
 
 
-# Reset Avg Completion Time Metric
+# Fix Auto-Versioning and Refresh Badge Aesthetic
 
-## Overview
-The "Avg Completion Time" metric is computed dynamically from the `inspections` table (no stored cumulative value). To implement a "reset", we store a cutoff timestamp in a new `admin_settings` table. The query then ignores all data completed before that timestamp. A reset button in the dashboard lets super admins trigger this.
+## Root Cause
 
-## Database
+The `vite-auto-version.ts` plugin reads `version.json` (currently `"2.6.1"`), increments it in memory to `2.6.2`, and attempts to write the new value back to `version.json` via `fs.writeFileSync`. However, in the Lovable Cloud build environment, **file system writes do not persist between builds**. This means:
 
-### New table: `admin_settings`
-A simple key-value config table for admin-level settings, protected by super-admin-only RLS.
+- Every build reads the stale `"2.6.1"` from disk.
+- The plugin increments it to `"2.6.2"` in memory and injects it as `APP_VERSION`.
+- The write-back to `version.json` is lost, so the next build repeats the same cycle.
 
-```sql
-CREATE TABLE admin_settings (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  key text UNIQUE NOT NULL,
-  value text NOT NULL,
-  updated_at timestamptz DEFAULT now(),
-  updated_by uuid
-);
--- RLS: super_admin only for all operations
-```
+The version has been stuck at `v2.6.2` for all recent deployments.
 
-Seed it with: `INSERT INTO admin_settings (key, value) VALUES ('avg_completion_time_reset_at', '1970-01-01T00:00:00Z');`
+## Fix Strategy
 
-## Files to Modify
+Since the file-write-back mechanism cannot work in this environment, the solution is:
 
-### 1. `src/pages/SuperAdminDashboard.tsx`
-- Add a new query to fetch `avg_completion_time_reset_at` from `admin_settings`.
-- Update the `avgCompletionTimeData` query to use `MAX(resetTimestamp, thirtyDaysAgo)` as the lower bound filter, so it ignores all legacy data before the reset.
-- Add a "Reset Metric" button (with confirmation dialog) on the Avg Completion Time stat card. On confirm, upsert the `admin_settings` row with `NOW()` and invalidate the query.
-- Style the reset button and confirmation with the Retro-Tech Terminal aesthetic:
-  - Dark background `bg-[#0a0a0a]`, green accent `text-[#00ff41]`, `font-mono` for values.
-  - CRT scanline overlay using the existing `.crt-scanlines` class.
-  - The metric value uses `font-mono tabular-nums` for the numeric display.
+1. **Manually bump `version.json`** to `"2.8.1"` to account for the 15+ significant changes since `2.6.1` (active timer, admin settings, dark mode, dashboard polish, etc.).
+2. **Accept the +1 increment model**: each build will always show the version stored in `version.json` + 1 patch. Future version bumps are done by updating `version.json` directly when shipping milestone features.
+3. **Upgrade the VersionBadge** to use the Glassmorphism aesthetic (`backdrop-blur-md`, `bg-white/10`, Inter font) to match the current design system.
 
-### 2. `src/components/admin/StatCard.tsx`
-- Add an optional `actions` prop (ReactNode) rendered below the metric value, allowing the parent to inject a reset button without breaking the generic card API.
+## Changes
 
-### 3. `src/index.css`
-- No new classes needed; existing `.crt-scanlines`, `.glass-card`, and `.brutalist-metric` cover the aesthetic. The terminal styling is applied inline via Tailwind on the specific card.
+### 1. `version.json`
+Update from `"2.6.1"` to `"2.8.1"`. The next build will display `v2.8.2`.
 
-## Technical Details
+### 2. `src/components/VersionBadge.tsx`
+Restyle the badge button with the Minimal Glassmorphism aesthetic:
+- Replace the retro-green terminal look with `backdrop-blur-md`, `bg-white/10`, `border-white/20`.
+- Use `font-sans` (Inter) for the version text instead of `font-mono`.
+- Maintain dark mode compatibility with `dark:` variants.
+- Keep the click-to-open modal behavior intact.
 
-- **Query logic**: The reset timestamp acts as a floor. `gte("updated_at", Math.max(resetAt, thirtyDaysAgo))` ensures only post-reset, recent data is included.
-- **No data deletion**: Legacy records remain intact in the database. The reset is purely a filter adjustment.
-- **Security**: The `admin_settings` table uses restrictive RLS (super_admin only). No secrets or API keys are involved.
-- **UI feedback**: After reset, a success toast confirms the action. The metric immediately shows "0h" until new completions accumulate.
-- **Retro-Tech badge**: The stat card for Avg Completion Time gets a small `RESET` badge with timestamp showing when the last reset occurred, styled with `font-mono text-[#00ff41] bg-[#0a0a0a]`.
+### 3. `src/components/VersionInfoModal.tsx`
+Upgrade the modal to Glassmorphism:
+- Replace `bg-black border-2 border-white rounded-none` with `bg-black/90 backdrop-blur-xl border-white/20 rounded-lg`.
+- Keep the CRT scanline overlay for the retro-tech character.
+- Ensure the version number, build date, and timestamp remain clearly readable.
 
-## Files Summary
-- **New migration**: Create `admin_settings` table + seed row + RLS policies
-- **Modify**: `src/pages/SuperAdminDashboard.tsx` (reset button, updated query filter)
-- **Modify**: `src/components/admin/StatCard.tsx` (optional actions slot)
+### 4. `vite-auto-version.ts`
+Add a comment documenting the persistence limitation and the manual-bump workflow so future developers understand the pattern.
+
+## Files Modified
+- `version.json` -- bump to 2.8.1
+- `src/components/VersionBadge.tsx` -- glassmorphism badge styling
+- `src/components/VersionInfoModal.tsx` -- glassmorphism modal styling
+- `vite-auto-version.ts` -- documentation comment
+
+## No Impact On
+- IndexedDB recovery guards (unrelated code path)
+- localStorage snapshotting (unrelated)
+- Auth logic in `AuthenticatedHeader.tsx` / `UserProfileDropdown.tsx` (badge is a leaf component, no auth coupling)
+- No secrets or API keys involved
 
