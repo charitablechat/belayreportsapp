@@ -1,56 +1,84 @@
 
 
-# Clear Stale Queued Operations -- with Batch Select and Delete
+# Global Persistent User Profile Dropdown
 
-## Overview
-Enhance the "Queued Ops" tab in the Super Admin Data Recovery Tool so admins can inspect operation age, delete individual operations, select multiple operations via checkboxes, and batch-delete the selection. Also add a "Clear All" master button with confirmation.
+## Problem
+The `UserProfileDropdown` is currently duplicated across 4 pages (Dashboard, InspectionForm, TrainingForm, DailyAssessmentForm), each managing its own `currentUser`, `userProfile`, `isSuperAdmin`, and `signingOut` state independently. Some pages (Profile, SuperAdminDashboard, Install, Capabilities) don't have it at all.
+
+## Solution
+Create a global layout component that provides the user profile dropdown on every authenticated page, eliminating duplicated auth/profile state and ensuring consistent access to all user actions.
+
+## Architecture
+
+**Approach: Auth-aware Layout wrapper in `RootLayout`**
+
+Rather than adding a React Context (overkill for this), the cleanest approach is:
+
+1. Create an `AuthenticatedHeader` component that self-manages its auth state using existing hooks/utilities
+2. Render it inside the existing `RootLayout` in `App.tsx`  
+3. Only show it on authenticated routes (hide on `/`, `/welcome`)
+4. Remove the duplicated `UserProfileDropdown` usage from individual pages
 
 ## What Changes
 
-### 1. New bulk-clear functions in `src/lib/offline-storage.ts`
-Add three new exported functions that wipe all entries from each operations store:
-- `clearAllQueuedOperations()` -- clears the `operations` IndexedDB store
-- `clearAllQueuedAssessmentOperations()` -- clears `assessment_operations`
-- `clearAllQueuedTrainingOperations()` -- clears `training_operations`
+### 1. New file: `src/components/AuthenticatedHeader.tsx`
+A self-contained header component that:
+- Fetches `currentUser` via `getUserWithCache()`
+- Fetches `userProfile` from the `profiles` table
+- Checks `isSuperAdmin` via `user_roles` query (with localStorage cache for offline)
+- Manages `signingOut` state
+- Renders the `UserProfileDropdown` in a fixed/sticky position (top-right)
+- Includes ARIA labels on the trigger button
+- Returns `null` on unauthenticated routes (`/`, `/welcome`)
+- Responsive: consistent positioning across all viewports
 
-These use the existing `getDB()` helper and call `.clear()` on the store inside a transaction.
+### 2. Edit: `src/App.tsx`
+- Import and render `AuthenticatedHeader` inside `RootLayout`, above `<Outlet />`
+- The header persists across route changes without re-mounting since `RootLayout` is the parent of all routes
 
-### 2. Enhanced "Queued Ops" tab in `src/components/admin/DataRecoveryTool.tsx`
+### 3. Edit: `src/pages/Dashboard.tsx`
+- Remove the `UserProfileDropdown` import and usage from the header section
+- Remove `currentUser`, `userProfile`, `signingOut`, `handleSignOut` state that was only used for the dropdown (keep any state used elsewhere in the page)
+- Keep the page-specific header content (logos, sync buttons, badges) but remove the dropdown from it
 
-#### a) Age indicator column
-Each row gets a color-coded "Age" badge:
-- Green: queued less than 1 hour ago
-- Amber: 1--24 hours
-- Red: more than 24 hours
+### 4. Edit: `src/pages/InspectionForm.tsx`
+- Remove `UserProfileDropdown` import and usage
+- Remove `signingOut`/`handleSignOut` state (the `currentUser` and `currentUserProfile` state are still used for form logic, so those stay)
 
-#### b) Per-row delete button
-A trash icon on each row that calls the existing `removeQueuedOperation` / `removeQueuedAssessmentOperation` / `removeQueuedTrainingOperation` (keyed by the operation's auto-increment `id`).
+### 5. Edit: `src/pages/TrainingForm.tsx`
+- Same cleanup as InspectionForm
 
-#### c) Checkbox selection for batch delete
-- A checkbox in each table header row to "select all" within that section
-- A checkbox on each operation row to toggle selection
-- State tracked as `Set<string>` using a composite key like `"inspection-3"` or `"assessment-12"`
+### 6. Edit: `src/pages/DailyAssessmentForm.tsx`
+- Same cleanup as InspectionForm
 
-#### d) "Delete Selected" button
-Appears in each section header when 1+ items are selected. Triggers an AlertDialog confirmation, then deletes all selected operations and refreshes.
+## Permission-Based Rendering
+The dropdown already handles permissions dynamically:
+- **Admin Dashboard** menu item: only shown when `isSuperAdmin === true`
+- **Install App** option: only shown when `isInstallable && !isInstalled`
+- **Sign Out**: always available when authenticated
+- The entire header is hidden on public routes (`/`, `/welcome`)
 
-#### e) Master "Clear All Queued Operations" button
-At the top of the Queued Ops card, a destructive button that opens an AlertDialog and clears all three stores at once, then refreshes.
+No changes needed to this logic -- it already works correctly inside `UserProfileDropdown`.
 
-#### f) Per-section "Clear All" button
-Next to each section heading (e.g., "Inspection Operations (5)"), a small "Clear All" button to flush just that section's store.
+## Technical Details
 
-### Files Modified
+### AuthenticatedHeader positioning
+The component will render as a fixed-position element (top-right corner) with a high `z-index` so it floats above page content on all routes. This avoids needing to modify each page's header layout. Pages that already have their own headers (Dashboard with logos, form pages with back buttons) keep their layout -- the profile dropdown just appears consistently in the top-right.
+
+### State management
+- Uses `useQuery` for `isSuperAdmin` (same pattern as Dashboard) with `staleTime: 2min` and localStorage placeholder
+- Uses `useState` + `useEffect` for `currentUser` and `userProfile` via `getUserWithCache()`
+- Listens to `onAuthStateChange` to react to sign-in/sign-out events
+- No global context needed -- the component is a singleton rendered once in `RootLayout`
+
+### Files modified
 
 | File | Change |
 |------|--------|
-| `src/lib/offline-storage.ts` | Add 3 bulk-clear functions |
-| `src/components/admin/DataRecoveryTool.tsx` | Add imports for new clear functions + existing remove functions, add selection state, checkboxes, age badges, delete/batch-delete buttons, and confirmation dialogs |
-
-### Technical Notes
-
-- The queued operations use auto-increment keys (`key: number`), so each operation has an `id` field. The existing `removeQueuedOperation(id)` already accepts this numeric key.
-- Selection state is local React state (`useState<Set<string>>`), reset after any delete action.
-- After any delete/clear, `loadLocalData()` is called to refresh all counts and tables.
-- No database or RLS changes needed -- this is purely local IndexedDB management.
+| `src/components/AuthenticatedHeader.tsx` | **New** -- self-contained auth-aware header with `UserProfileDropdown` |
+| `src/App.tsx` | Import + render `AuthenticatedHeader` in `RootLayout` |
+| `src/pages/Dashboard.tsx` | Remove `UserProfileDropdown` usage and related sign-out state |
+| `src/pages/InspectionForm.tsx` | Remove `UserProfileDropdown` usage and `signingOut`/`handleSignOut` |
+| `src/pages/TrainingForm.tsx` | Same cleanup |
+| `src/pages/DailyAssessmentForm.tsx` | Same cleanup |
 
