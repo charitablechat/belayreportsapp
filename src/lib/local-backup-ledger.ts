@@ -173,63 +173,68 @@ export function listAllSnapshots(): Array<{
   sizeBytes: number;
   organization?: string;
 }> {
-  const results: Array<{
-    key: string;
-    reportType: ReportType;
-    reportId: string;
-    timestamp: number;
-    synced: boolean;
-    device: string;
-    sizeBytes: number;
-    organization?: string;
-  }> = [];
+  try {
+    const results: Array<{
+      key: string;
+      reportType: ReportType;
+      reportId: string;
+      timestamp: number;
+      synced: boolean;
+      device: string;
+      sizeBytes: number;
+      organization?: string;
+    }> = [];
 
-  for (let i = 0; i < localStorage.length; i++) {
-    const key = localStorage.key(i);
-    if (!key?.startsWith(BACKUP_PREFIX)) continue;
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (!key?.startsWith(BACKUP_PREFIX)) continue;
 
-    try {
-      const raw = localStorage.getItem(key);
-      if (!raw) continue;
-      
-      const snapshot: ReportSnapshot = JSON.parse(raw);
-      const suffix = key.slice(BACKUP_PREFIX.length);
-      
-      // Parse type and id from key: {type}_{uuid}
-      let reportType: ReportType;
-      let reportId: string;
-      
-      if (suffix.startsWith('inspection_')) {
-        reportType = 'inspection';
-        reportId = suffix.slice('inspection_'.length);
-      } else if (suffix.startsWith('training_')) {
-        reportType = 'training';
-        reportId = suffix.slice('training_'.length);
-      } else if (suffix.startsWith('daily_assessment_')) {
-        reportType = 'daily_assessment';
-        reportId = suffix.slice('daily_assessment_'.length);
-      } else {
-        continue;
+      try {
+        const raw = localStorage.getItem(key);
+        if (!raw) continue;
+        
+        const snapshot: ReportSnapshot = JSON.parse(raw);
+        const suffix = key.slice(BACKUP_PREFIX.length);
+        
+        // Parse type and id from key: {type}_{uuid}
+        let reportType: ReportType;
+        let reportId: string;
+        
+        if (suffix.startsWith('inspection_')) {
+          reportType = 'inspection';
+          reportId = suffix.slice('inspection_'.length);
+        } else if (suffix.startsWith('training_')) {
+          reportType = 'training';
+          reportId = suffix.slice('training_'.length);
+        } else if (suffix.startsWith('daily_assessment_')) {
+          reportType = 'daily_assessment';
+          reportId = suffix.slice('daily_assessment_'.length);
+        } else {
+          continue;
+        }
+
+        results.push({
+          key,
+          reportType,
+          reportId,
+          timestamp: snapshot.ts,
+          synced: snapshot.synced,
+          device: snapshot.device,
+          sizeBytes: raw.length * 2,
+          organization: snapshot.parent?.organization,
+        });
+      } catch {
+        // Skip corrupt entries
       }
-
-      results.push({
-        key,
-        reportType,
-        reportId,
-        timestamp: snapshot.ts,
-        synced: snapshot.synced,
-        device: snapshot.device,
-        sizeBytes: raw.length * 2,
-        organization: snapshot.parent?.organization,
-      });
-    } catch {
-      // Skip corrupt entries
     }
-  }
 
-  // Sort by timestamp descending (newest first)
-  results.sort((a, b) => b.timestamp - a.timestamp);
-  return results;
+    // Sort by timestamp descending (newest first)
+    results.sort((a, b) => b.timestamp - a.timestamp);
+    return results;
+  } catch (error) {
+    console.error('[Backup Ledger] Failed to list snapshots:', error);
+    return [];
+  }
 }
 
 /**
@@ -275,24 +280,29 @@ export function getBackupStorageInfo(): {
   snapshotCount: number;
   unsyncedCount: number;
 } {
-  let totalBytes = 0;
-  let snapshotCount = 0;
-  let unsyncedCount = 0;
+  try {
+    let totalBytes = 0;
+    let snapshotCount = 0;
+    let unsyncedCount = 0;
 
-  for (let i = 0; i < localStorage.length; i++) {
-    const key = localStorage.key(i);
-    if (!key?.startsWith(BACKUP_PREFIX)) continue;
-    
-    const raw = localStorage.getItem(key);
-    if (raw) {
-      totalBytes += (key.length + raw.length) * 2;
-      snapshotCount++;
-      try {
-        const snapshot: ReportSnapshot = JSON.parse(raw);
-        if (!snapshot.synced) unsyncedCount++;
-      } catch {}
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (!key?.startsWith(BACKUP_PREFIX)) continue;
+      
+      const raw = localStorage.getItem(key);
+      if (raw) {
+        totalBytes += (key.length + raw.length) * 2;
+        snapshotCount++;
+        try {
+          const snapshot: ReportSnapshot = JSON.parse(raw);
+          if (!snapshot.synced) unsyncedCount++;
+        } catch {}
+      }
     }
-  }
 
-  return { totalBytes, snapshotCount, unsyncedCount };
+    return { totalBytes, snapshotCount, unsyncedCount };
+  } catch (error) {
+    console.error('[Backup Ledger] Failed to get storage info:', error);
+    return { totalBytes: 0, snapshotCount: 0, unsyncedCount: 0 };
+  }
 }

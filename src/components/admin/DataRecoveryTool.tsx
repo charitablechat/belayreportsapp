@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, Component, type ReactNode } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -29,6 +29,49 @@ import {
   clearAllQueuedTrainingOperations,
 } from "@/lib/offline-storage";
 
+// Error Boundary to isolate panel crashes
+interface RecoveryErrorBoundaryProps {
+  children: ReactNode;
+  panelName: string;
+}
+
+interface RecoveryErrorBoundaryState {
+  hasError: boolean;
+}
+
+export class RecoveryErrorBoundary extends Component<RecoveryErrorBoundaryProps, RecoveryErrorBoundaryState> {
+  state: RecoveryErrorBoundaryState = { hasError: false };
+
+  static getDerivedStateFromError(): RecoveryErrorBoundaryState {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: Error, info: React.ErrorInfo) {
+    console.error(`[RecoveryErrorBoundary] ${this.props.panelName} crashed:`, error, info);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <Card>
+          <CardContent className="py-8">
+            <div className="flex flex-col items-center gap-3 text-center">
+              <AlertTriangle className="h-8 w-8 text-destructive" />
+              <p className="font-medium">This section failed to load</p>
+              <p className="text-sm text-muted-foreground">{this.props.panelName} encountered an error.</p>
+              <Button variant="outline" size="sm" onClick={() => this.setState({ hasError: false })}>
+                <RotateCcw className="h-4 w-4 mr-2" />
+                Retry
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 interface LocalData {
   trainings: any[];
   dailyAssessments: any[];
@@ -41,8 +84,12 @@ interface LocalData {
 export function DataRecoveryTool() {
   return (
     <div className="space-y-6">
-      <LocalSnapshotsPanel />
-      <IndexedDBRecoveryPanel />
+      <RecoveryErrorBoundary panelName="Local Backup Snapshots">
+        <LocalSnapshotsPanel />
+      </RecoveryErrorBoundary>
+      <RecoveryErrorBoundary panelName="IndexedDB Recovery">
+        <IndexedDBRecoveryPanel />
+      </RecoveryErrorBoundary>
     </div>
   );
 }
@@ -258,15 +305,22 @@ export function IndexedDBRecoveryPanel({ allowDelete = true }: IndexedDBPanelPro
   }, []);
 
   const getAgeBadge = (timestamp: number) => {
-    const ageMs = Date.now() - timestamp;
-    const ageHours = ageMs / (1000 * 60 * 60);
-    const ageLabel = formatDistanceToNow(new Date(timestamp), { addSuffix: true });
-    if (ageHours < 1) {
-      return <Badge className="bg-emerald-500/15 text-emerald-700 border-emerald-500/30 hover:bg-emerald-500/20">{ageLabel}</Badge>;
-    } else if (ageHours < 24) {
-      return <Badge className="bg-amber-500/15 text-amber-700 border-amber-500/30 hover:bg-amber-500/20">{ageLabel}</Badge>;
-    } else {
-      return <Badge className="bg-destructive/15 text-destructive border-destructive/30 hover:bg-destructive/20">{ageLabel}</Badge>;
+    if (!timestamp || isNaN(timestamp)) {
+      return <Badge variant="outline">Unknown age</Badge>;
+    }
+    try {
+      const ageMs = Date.now() - timestamp;
+      const ageHours = ageMs / (1000 * 60 * 60);
+      const ageLabel = formatDistanceToNow(new Date(timestamp), { addSuffix: true });
+      if (ageHours < 1) {
+        return <Badge className="bg-emerald-500/15 text-emerald-700 border-emerald-500/30 hover:bg-emerald-500/20">{ageLabel}</Badge>;
+      } else if (ageHours < 24) {
+        return <Badge className="bg-amber-500/15 text-amber-700 border-amber-500/30 hover:bg-amber-500/20">{ageLabel}</Badge>;
+      } else {
+        return <Badge className="bg-destructive/15 text-destructive border-destructive/30 hover:bg-destructive/20">{ageLabel}</Badge>;
+      }
+    } catch {
+      return <Badge variant="outline">Unknown age</Badge>;
     }
   };
 
