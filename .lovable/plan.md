@@ -1,85 +1,35 @@
 
-## Add "Complete Report" Confirmation Dialog to All Three Report Types
+## Align "New Training Report" Form to Match "New Daily Assessment" Layout
 
-### What the user sees today
-- **Daily Assessment**: Clicking "Complete" already shows a confirmation dialog ("Submit Assessment" / "Are you sure...") before finalizing.
-- **Inspection Report**: Clicking "Complete Report" immediately fires `completeInspection()` — no confirmation step.
-- **Training Report**: Clicking "Complete" immediately fires `completeTraining()` — no confirmation step.
+### What Changes
 
-### Goal
-Every report type must show an identical "Submit [Report Type]" confirmation dialog before marking it as complete.
+The New Training form is restructured to match the Daily Assessment form exactly, both in field order and in how the location/GPS works.
 
----
+### Field Order (after change)
+1. Organization * (unchanged)
+2. Site / Location — text input + "Get Location" button inline (same row), GPS auto-fills the text field with address, coordinates shown below with info note
+3. Trainer of Record (plain text display, moved below location)
+4. Buttons: "Create Training" / "Create Locally" + Cancel
 
-### Changes Required
+### Specific Changes to `src/pages/NewTraining.tsx`
 
-#### 1. `src/pages/InspectionForm.tsx`
+**State rename**: `location` → `site` in `formData` to match Daily Assessment's naming convention and make GPS auto-fill the text field (currently GPS only saves coordinates but doesn't fill in the text box).
 
-**State** — add one new state variable:
-```tsx
-const [showCompleteDialog, setShowCompleteDialog] = useState(false);
-```
+**`handleLocationCapture`**: When GPS succeeds, also set `site: position.address` — exactly as Daily Assessment does — so the text field auto-populates with the resolved address name.
 
-**Imports** — add `AlertDialog` components (not currently imported):
-```tsx
-import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel,
-  AlertDialogContent, AlertDialogDescription,
-  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-```
+**Remove the separate "GPS Coordinates (Optional)" section**: Merge the "Get Location" button inline with the text input, side-by-side like Daily Assessment.
 
-**Button** (line 2249) — change `onClick={completeInspection}` to `onClick={() => setShowCompleteDialog(true)}`
+**Remove the separate GPS coordinates display below the button**: Move it below the inline row, same as Daily Assessment.
 
-**Dialog** — add the `AlertDialog` block just before the closing `</> ` of the return statement:
-```tsx
-<AlertDialog open={showCompleteDialog} onOpenChange={setShowCompleteDialog}>
-  <AlertDialogContent>
-    <AlertDialogHeader>
-      <AlertDialogTitle>Complete Inspection Report</AlertDialogTitle>
-      <AlertDialogDescription>
-        Are you sure you want to mark this inspection as complete? This will lock the report. You can still edit it afterward if needed.
-      </AlertDialogDescription>
-    </AlertDialogHeader>
-    <AlertDialogFooter>
-      <AlertDialogCancel>Cancel</AlertDialogCancel>
-      <AlertDialogAction onClick={completeInspection}>
-        Complete
-      </AlertDialogAction>
-    </AlertDialogFooter>
-  </AlertDialogContent>
-</AlertDialog>
-```
+**Reorder fields**: Move "Trainer of Record" below the combined Site/Location row.
 
----
+**Remove the `X` clear button for GPS**: Daily Assessment keeps it but only when coordinates exist — keep same behavior.
 
-#### 2. `src/pages/TrainingForm.tsx`
+**Remove GPS-only label ("GPS Coordinates (Optional)")**: The combined row's label becomes "Site / Location" (matching Daily Assessment). Mark it required (*) to match Daily Assessment, or keep it optional — since trainings only require organization, keep it optional (no asterisk) to preserve existing validation logic.
 
-Same pattern:
+**Database column**: The `trainings` table column is called `location` (not `site`) — the state variable rename is internal only; the submit handler continues to write `formData.site` → `location` column.
 
-**State** — add:
-```tsx
-const [showCompleteDialog, setShowCompleteDialog] = useState(false);
-```
-
-**Imports** — add `AlertDialog` components (not currently imported).
-
-**Button** (line 1193) — change `onClick={completeTraining}` to `onClick={() => setShowCompleteDialog(true)}`
-
-**Dialog** — add the same `AlertDialog` block before the return's closing fragment, with label "Complete Training Report".
-
----
-
-#### 3. `src/pages/DailyAssessmentForm.tsx`
-
-No changes needed — this file already has the `showSubmitDialog` state, the `AlertDialog`, and the button correctly wired to `setShowSubmitDialog(true)`.
-
----
-
-### Technical Notes
-
-- No backend changes required.
-- No new components — uses the existing `AlertDialog` from `@radix-ui/react-alert-dialog` (already installed, already used in DailyAssessmentForm).
-- The actual `completeInspection` / `completeTraining` functions are not modified — they remain the source of truth for save logic, confetti, and haptic feedback.
-- The dialog's "Cancel" button simply closes the dialog without side effects.
-- The styling of the dialog will match the existing default system dialog style (same as Daily Assessment — clean white modal with Cancel / Complete buttons).
+### No other files change
+- `TrainingHeader.tsx` is unaffected (it already has an independent location input for editing inside the report)
+- No database migrations needed
+- No backend changes needed
