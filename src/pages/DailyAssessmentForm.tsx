@@ -110,7 +110,7 @@ export default function DailyAssessmentForm() {
   // Active-usage timer: only tracks time when user is actively editing
   const { elapsedSeconds, isActive: timerActive, isPaused: timerPaused, getElapsedSeconds } = useActiveTimer({
     initialSeconds: assessment?.active_duration_seconds || 0,
-    enabled: canEdit && !isReadOnly && !isCompletionLocked,
+    enabled: canEdit && !isReadOnly && !isCompletionLocked && !isSuperAdmin,
   });
 
   const effectiveReadOnly = isReadOnly || isCompletionLocked;
