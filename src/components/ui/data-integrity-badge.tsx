@@ -58,7 +58,7 @@ export function DataIntegrityBadge({ status, versionNumber, fieldCount, classNam
     <div
       className={cn(
         'inline-flex items-center gap-1.5 px-2 py-1 rounded',
-        'bg-white/10 dark:bg-black/20 backdrop-blur-[12px]',
+        'bg-white/15 dark:bg-black/30 backdrop-blur-xl shadow-md shadow-black/5',
         'font-mono text-[10px] leading-none',
         'border shadow-sm',
         config.borderClass,

@@ -23,7 +23,7 @@ export const ActiveTimerDisplay = memo(function ActiveTimerDisplay({
   const recording = isActive && !isPaused && !isReadOnly;
 
   return (
-    <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/10 dark:bg-black/20 backdrop-blur-[12px] border border-white/15 shadow-sm font-mono text-xs select-none">
+    <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/15 dark:bg-black/30 backdrop-blur-xl border border-white/20 shadow-md shadow-black/5 font-mono text-xs select-none">
       {/* REC indicator */}
       <span className="flex items-center gap-1">
         <span
