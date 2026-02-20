@@ -1,38 +1,29 @@
 
 
-# Restyle "Save Before Leave" Dialog to Brutalist Glassmorphism Spec
+# Fix Data Recovery Sheet Mobile Layout
 
-## Current State
-The `SaveBeforeLeaveDialog` and `UnsavedChangesDialog` components already exist and are wired into all three report forms. The back button, swipe-right, and browser back/forward navigation all trigger confirmation prompts. **No new wiring is needed.**
+## Problem
+The Data Recovery panel uses a wide HTML `Table` with 7 columns that doesn't fit on mobile screens. The table overflows, hiding the "Restore" button and cutting off text. The bottom sheet's `ScrollArea` only scrolls vertically, not horizontally.
 
-This plan updates the visual presentation and copy to match the requested spec.
+## Solution
+Replace the table layout with a mobile-friendly **stacked card layout** inside the `LocalSnapshotsPanel` when rendered in the user-facing sheet. Each snapshot becomes a vertical card showing all fields with proper text wrapping and clearly visible action buttons.
 
 ## Changes
 
-### 1. Update `SaveBeforeLeaveDialog.tsx` (Restyle + New Copy)
-- **Title**: Change from "Save before leaving?" to "Unsaved Changes Detected"
-- **Body**: Update to "You have unsaved progress in this report. Do you want to Save and Exit or Discard Changes and Exit?"
-- **Save button**: Apply Emerald 400 styling (`bg-emerald-500 hover:bg-emerald-400 text-white`) for high visibility
-- **Discard button**: Keep destructive red variant
-- **Cancel button**: Keep outline variant
-- **Container**: Add sharp `border border-white/20`, `backdrop-blur-xl`, `bg-slate-900/95`, and `shadow-2xl` for the frosted Brutalist look
-- **Icon**: Add `AlertTriangle` icon in the title for visual emphasis
+### 1. Modify `LocalSnapshotsPanel` in `src/components/admin/DataRecoveryTool.tsx`
+- Replace the `<Table>` with a responsive layout:
+  - On mobile (`md:hidden`): render each snapshot as a stacked card with labeled rows (Type, Organization, Device, Sync status, Last Saved, Size) and full-width action buttons at the bottom
+  - On desktop (`hidden md:block`): keep the existing table unchanged for the admin view
+- Ensure text wrapping with `break-words` and `min-w-0` on all text containers
+- Make the Restore button full-width and prominent on mobile cards
 
-### 2. Update `UnsavedChangesDialog.tsx` (Matching Restyle)
-Apply the same Brutalist Glassmorphism treatment so both dialogs (back-button triggered and browser-navigation triggered) look consistent:
-- Same frosted glass container styling
-- Emerald 400 for the "Save and Leave" button
-- Matching typography and border treatment
-
-### What Does NOT Change
-- No form logic changes
-- No save/persistence logic changes
-- No navigation wiring changes
-- No changes to `useBlocker` or `useUnsavedChanges` hooks
+### 2. Adjust `UserDataRecoverySheet.tsx`
+- Reduce horizontal padding on mobile (`px-3 sm:px-6`) so cards use more screen width
+- Adjust the `ScrollArea` height calculation to account for the header properly
 
 ## Files Modified
 | File | Change |
 |------|--------|
-| `src/components/SaveBeforeLeaveDialog.tsx` | Restyle + update copy |
-| `src/components/UnsavedChangesDialog.tsx` | Matching restyle for consistency |
+| `src/components/admin/DataRecoveryTool.tsx` | Add responsive card layout alongside existing table |
+| `src/components/UserDataRecoverySheet.tsx` | Tighten mobile padding |
 
