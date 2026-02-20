@@ -2133,10 +2133,12 @@ export default function InspectionForm() {
         onSave={async () => {
           await handleSaveAndLeave();
           setShowLeaveDialog(false);
+          setHasUnsavedChanges(false);
           goBack(navigate);
         }}
         onLeave={() => {
           setShowLeaveDialog(false);
+          setHasUnsavedChanges(false);
           goBack(navigate);
         }}
         onCancel={() => setShowLeaveDialog(false)}
