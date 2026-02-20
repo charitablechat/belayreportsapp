@@ -18,6 +18,8 @@ import {
   getAssessmentDataOffline,
   saveAssessmentDataOffline,
   relinkPhotosToNewInspectionId,
+  clearTrainingDataOffline,
+  clearAssessmentDataOffline,
 } from "./offline-storage";
 import { 
   validateInspectionPackage,
@@ -794,11 +796,28 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
     throw new Error("Cannot sync while offline");
   }
   
+  // Track temp-to-UUID mapping for post-sync IndexedDB cleanup
+  let trainingIdMapping: { oldId: string; newId: string } | null = null;
+  
   try {
     // 1. Gather all data for this training
     const training = await getOfflineTraining(trainingId);
     if (!training) {
       throw new Error("Training not found in local storage");
+    }
+    
+    // Detect and replace temp training IDs with real UUIDs before validation
+    if (training.id.startsWith('temp-')) {
+      const newId = crypto.randomUUID();
+      trainingIdMapping = { oldId: training.id, newId };
+      
+      console.log('[Atomic Sync] Replacing temp training ID with real UUID:', {
+        oldId: training.id,
+        newId,
+      });
+      
+      training.id = newId;
+      trainingId = newId;
     }
     
     // Use pre-validated user from batch caller, or validate session if called individually
@@ -826,16 +845,32 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
       }
     }
     
+    // Fetch child records using the ORIGINAL ID (before temp-to-UUID swap)
+    // because they are stored in IndexedDB under the original training_id
+    const fetchId = trainingIdMapping ? trainingIdMapping.oldId : trainingId;
+    
     const [rawDeliveryApproaches, rawOperatingSystems, rawImmediateAttention, rawVerifiableItems, rawSystemsInPlace, summaryArray] = await Promise.all([
-      getTrainingDataOffline('delivery_approaches', trainingId),
-      getTrainingDataOffline('operating_systems', trainingId),
-      getTrainingDataOffline('immediate_attention', trainingId),
-      getTrainingDataOffline('verifiable_items', trainingId),
-      getTrainingDataOffline('systems_in_place', trainingId),
-      getTrainingDataOffline('summary', trainingId),
+      getTrainingDataOffline('delivery_approaches', fetchId),
+      getTrainingDataOffline('operating_systems', fetchId),
+      getTrainingDataOffline('immediate_attention', fetchId),
+      getTrainingDataOffline('verifiable_items', fetchId),
+      getTrainingDataOffline('systems_in_place', fetchId),
+      getTrainingDataOffline('summary', fetchId),
     ]);
     
-    const rawSummary = summaryArray[0] || null;
+    let rawSummary = summaryArray[0] || null;
+    
+    // If we swapped the training ID, propagate new ID to all child records
+    if (trainingIdMapping) {
+      rawDeliveryApproaches.forEach(item => item.training_id = trainingIdMapping!.newId);
+      rawOperatingSystems.forEach(item => item.training_id = trainingIdMapping!.newId);
+      rawImmediateAttention.forEach(item => item.training_id = trainingIdMapping!.newId);
+      rawVerifiableItems.forEach(item => item.training_id = trainingIdMapping!.newId);
+      rawSystemsInPlace.forEach(item => item.training_id = trainingIdMapping!.newId);
+      if (rawSummary) {
+        rawSummary = { ...rawSummary, training_id: trainingIdMapping.newId };
+      }
+    }
     
     // Transform temp- IDs to valid UUIDs before validation
     const delivery_approaches = transformTempIds(rawDeliveryApproaches);
@@ -1147,6 +1182,30 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
       inspector: inspectorProfile || { first_name: null, last_name: null, avatar_url: null },
     });
     
+    // 7. If we swapped a temp ID, clean up old IndexedDB entries
+    if (trainingIdMapping) {
+      console.log('[Atomic Sync] Cleaning up old temp-ID entries from IndexedDB:', trainingIdMapping.oldId);
+      
+      // Delete old training entry keyed by temp ID
+      await deleteOfflineTraining(trainingIdMapping.oldId);
+      
+      // Clean up child record stores that were keyed under the old temp training_id
+      const childStores = ['delivery_approaches', 'operating_systems', 'immediate_attention', 'verifiable_items', 'systems_in_place', 'summary'] as const;
+      for (const store of childStores) {
+        await clearTrainingDataOffline(store, trainingIdMapping.oldId);
+      }
+      
+      // Save child records under the new UUID
+      await Promise.all([
+        delivery_approaches.length > 0 ? saveTrainingDataOffline('delivery_approaches', trainingIdMapping.newId, delivery_approaches) : Promise.resolve(),
+        operating_systems.length > 0 ? saveTrainingDataOffline('operating_systems', trainingIdMapping.newId, operating_systems) : Promise.resolve(),
+        immediate_attention.length > 0 ? saveTrainingDataOffline('immediate_attention', trainingIdMapping.newId, immediate_attention) : Promise.resolve(),
+        verifiable_items.length > 0 ? saveTrainingDataOffline('verifiable_items', trainingIdMapping.newId, verifiable_items) : Promise.resolve(),
+        systems_in_place.length > 0 ? saveTrainingDataOffline('systems_in_place', trainingIdMapping.newId, systems_in_place) : Promise.resolve(),
+        summary ? saveTrainingDataOffline('summary', trainingIdMapping.newId, [summary]) : Promise.resolve(),
+      ]);
+    }
+    
     if (import.meta.env.DEV) {
       console.log('[Atomic Sync] Successfully synced training with related data:', {
         trainingId,
@@ -1333,11 +1392,28 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
     throw new Error("Cannot sync while offline");
   }
   
+  // Track temp-to-UUID mapping for post-sync IndexedDB cleanup
+  let assessmentIdMapping: { oldId: string; newId: string } | null = null;
+  
   try {
     // 1. Gather all data for this assessment
     const assessment = await getOfflineDailyAssessment(assessmentId);
     if (!assessment) {
       throw new Error("Daily assessment not found in local storage");
+    }
+    
+    // Detect and replace temp assessment IDs with real UUIDs before validation
+    if (assessment.id.startsWith('temp-')) {
+      const newId = crypto.randomUUID();
+      assessmentIdMapping = { oldId: assessment.id, newId };
+      
+      console.log('[Atomic Sync] Replacing temp assessment ID with real UUID:', {
+        oldId: assessment.id,
+        newId,
+      });
+      
+      assessment.id = newId;
+      assessmentId = newId;
     }
     
     // Use pre-validated user from batch caller, or validate session if called individually
@@ -1365,14 +1441,28 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
       }
     }
     
+    // Fetch child records using the ORIGINAL ID (before temp-to-UUID swap)
+    // because they are stored in IndexedDB under the original assessment_id
+    const fetchId = assessmentIdMapping ? assessmentIdMapping.oldId : assessmentId;
+    
     const [rawBeginningOfDay, rawEndOfDay, rawOperatingSystems, rawEquipmentChecks, rawStructureChecks, rawEnvironmentChecks] = await Promise.all([
-      getAssessmentDataOffline('beginning_of_day', assessmentId),
-      getAssessmentDataOffline('end_of_day', assessmentId),
-      getAssessmentDataOffline('operating_systems', assessmentId),
-      getAssessmentDataOffline('equipment_checks', assessmentId),
-      getAssessmentDataOffline('structure_checks', assessmentId),
-      getAssessmentDataOffline('environment_checks', assessmentId),
+      getAssessmentDataOffline('beginning_of_day', fetchId),
+      getAssessmentDataOffline('end_of_day', fetchId),
+      getAssessmentDataOffline('operating_systems', fetchId),
+      getAssessmentDataOffline('equipment_checks', fetchId),
+      getAssessmentDataOffline('structure_checks', fetchId),
+      getAssessmentDataOffline('environment_checks', fetchId),
     ]);
+    
+    // If we swapped the assessment ID, propagate new ID to all child records
+    if (assessmentIdMapping) {
+      rawBeginningOfDay.forEach(item => item.assessment_id = assessmentIdMapping!.newId);
+      rawEndOfDay.forEach(item => item.assessment_id = assessmentIdMapping!.newId);
+      rawOperatingSystems.forEach(item => item.assessment_id = assessmentIdMapping!.newId);
+      rawEquipmentChecks.forEach(item => item.assessment_id = assessmentIdMapping!.newId);
+      rawStructureChecks.forEach(item => item.assessment_id = assessmentIdMapping!.newId);
+      rawEnvironmentChecks.forEach(item => item.assessment_id = assessmentIdMapping!.newId);
+    }
     
     // Transform temp- IDs to valid UUIDs before validation
     const beginning_of_day = transformTempIds(rawBeginningOfDay);
@@ -1675,6 +1765,30 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
       updated_at: serverTimestamp,
       inspector: inspectorProfile || { first_name: null, last_name: null, avatar_url: null },
     });
+    
+    // 7. If we swapped a temp ID, clean up old IndexedDB entries
+    if (assessmentIdMapping) {
+      console.log('[Atomic Sync] Cleaning up old temp-ID entries from IndexedDB:', assessmentIdMapping.oldId);
+      
+      // Delete old assessment entry keyed by temp ID
+      await deleteOfflineDailyAssessment(assessmentIdMapping.oldId);
+      
+      // Clean up child record stores that were keyed under the old temp assessment_id
+      const childStores = ['beginning_of_day', 'end_of_day', 'operating_systems', 'equipment_checks', 'structure_checks', 'environment_checks'] as const;
+      for (const store of childStores) {
+        await clearAssessmentDataOffline(store, assessmentIdMapping.oldId);
+      }
+      
+      // Save child records under the new UUID
+      await Promise.all([
+        beginning_of_day.length > 0 ? saveAssessmentDataOffline('beginning_of_day', assessmentIdMapping.newId, beginning_of_day) : Promise.resolve(),
+        end_of_day.length > 0 ? saveAssessmentDataOffline('end_of_day', assessmentIdMapping.newId, end_of_day) : Promise.resolve(),
+        operating_systems.length > 0 ? saveAssessmentDataOffline('operating_systems', assessmentIdMapping.newId, operating_systems) : Promise.resolve(),
+        equipment_checks.length > 0 ? saveAssessmentDataOffline('equipment_checks', assessmentIdMapping.newId, equipment_checks) : Promise.resolve(),
+        structure_checks.length > 0 ? saveAssessmentDataOffline('structure_checks', assessmentIdMapping.newId, structure_checks) : Promise.resolve(),
+        environment_checks.length > 0 ? saveAssessmentDataOffline('environment_checks', assessmentIdMapping.newId, environment_checks) : Promise.resolve(),
+      ]);
+    }
     
     if (import.meta.env.DEV) {
       console.log('[Atomic Sync] Successfully synced daily assessment with related data:', {
