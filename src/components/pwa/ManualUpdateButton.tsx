@@ -59,7 +59,12 @@ export const ManualUpdateButton = () => {
     
     try {
       if ('serviceWorker' in navigator) {
-        const registration = await navigator.serviceWorker.ready;
+        const registration = await Promise.race([
+          navigator.serviceWorker.ready,
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('Service worker not available')), 5000)
+          )
+        ]) as ServiceWorkerRegistration;
         await registration.update();
         
         await new Promise(resolve => setTimeout(resolve, 2000));

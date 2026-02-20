@@ -14,13 +14,17 @@ export const usePWAUpdate = (): PWAUpdateStatus => {
   useEffect(() => {
     if ('serviceWorker' in navigator) {
       // Get the service worker registration
-      navigator.serviceWorker.ready.then((reg) => {
+      Promise.race([
+        navigator.serviceWorker.ready,
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('SW timeout')), 5000)
+        )
+      ]).then((reg: ServiceWorkerRegistration) => {
         if (import.meta.env.DEV) {
           console.log('[PWA Update] Service Worker ready');
         }
         setRegistration(reg);
         
-        // Check if there's already an update waiting
         if (reg.waiting) {
           setNeedRefresh(true);
           if (import.meta.env.DEV) {
@@ -28,24 +32,20 @@ export const usePWAUpdate = (): PWAUpdateStatus => {
           }
         }
         
-        // Set offline ready
         if (!offlineReady) {
           setOfflineReady(true);
         }
 
-        // Check for updates every hour
         const intervalId = setInterval(() => {
           if (import.meta.env.DEV) {
             console.log('[PWA Update] Auto-checking for updates...');
           }
           reg.update();
-        }, 60 * 60 * 1000); // 1 hour
+        }, 60 * 60 * 1000);
 
         return () => clearInterval(intervalId);
-      }).catch((error) => {
-        if (import.meta.env.DEV) {
-          console.error('[PWA Update] Service Worker registration error:', error);
-        }
+      }).catch(() => {
+        // SW unavailable in this environment (e.g. preview iframe)
       });
 
       // Listen for new service worker waiting to activate
@@ -59,7 +59,12 @@ export const usePWAUpdate = (): PWAUpdateStatus => {
       navigator.serviceWorker.addEventListener('controllerchange', handleControllerChange);
 
       // Listen for updatefound events
-      navigator.serviceWorker.ready.then((reg) => {
+      Promise.race([
+        navigator.serviceWorker.ready,
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('SW timeout')), 5000)
+        )
+      ]).then((reg: ServiceWorkerRegistration) => {
         reg.addEventListener('updatefound', () => {
           const newWorker = reg.installing;
           if (newWorker) {
@@ -73,6 +78,8 @@ export const usePWAUpdate = (): PWAUpdateStatus => {
             });
           }
         });
+      }).catch(() => {
+        // SW unavailable in this environment
       });
 
       return () => {
