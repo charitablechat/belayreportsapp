@@ -1,105 +1,67 @@
 
-## Fix: Back Navigation Blocked in Training Form (and All Three Report Forms)
+## Fix: localStorage Backup Snapshots Always Show "Unsynced" After a Successful Online Save
 
-### Root Cause
+### The Problem
 
-All three report forms (Training, Inspection, Daily Assessment) have two separate navigation-guard systems running simultaneously:
+The "Unsynced" badge in the Local Backup Snapshots panel is misleading. A report that is fully synced to the server (confirmed by the "Synced" badge on the dashboard card) still shows "Unsynced" in the Data Recovery panel.
 
-1. **`useBlocker` (from `useUnsavedChanges`)** — intercepts ALL programmatic `navigate()` calls when `hasUnsavedChanges` is `true`. This is a React Router-level blocker that catches every SPA navigation.
+These are two separate systems:
 
-2. **`SaveBeforeLeaveDialog`** — a manual confirmation modal opened when the user clicks the back arrow or swipes right on the first tab.
+1. **Dashboard "Synced" badge** — reads from `synced_at` on the cloud database record. Accurate.
+2. **Data Recovery "Unsynced" badge** — reads from the `synced` boolean inside the `localStorage` snapshot. Inaccurate.
 
-**The conflict:** When the user clicks "Save & Exit" or "Discard & Exit" in the `SaveBeforeLeaveDialog`, the handlers call `goBack(navigate)` → `navigate(-1)`. At that instant, `hasUnsavedChanges` is still `true`, so the `useBlocker` intercepts the `navigate(-1)` call and blocks it. The navigation never completes — the user is stuck on the page with no visible feedback.
+**Root cause:** When a save completes and the localStorage snapshot is written (`saveReportSnapshot()`), the `synced_at` field on the local data object is still `null` at that point — the Supabase sync happens asynchronously afterward. So `!!updatedTraining.synced_at` evaluates to `false`, and the snapshot is stamped as unsynced.
 
-This is the same bug in all three forms:
-- `src/pages/TrainingForm.tsx` → `onSave` / `onLeave` call `goBack(navigate)` while blocker is active
-- `src/pages/InspectionForm.tsx` → same pattern
-- `src/pages/DailyAssessmentForm.tsx` → same pattern
-
-### Scope
-
-The bug affects:
-- Back arrow button in all three report form headers
-- Swipe-right-on-first-tab gesture in all three forms (all trigger `setShowLeaveDialog(true)`)
-
-The **"New" creation screens** (NewTraining, NewInspection, NewDailyAssessment) are NOT affected — they use the simpler `DiscardDraftDialog` without `useBlocker`.
-
----
+The `useAutoSync` hook does call `markSnapshotSynced()` later, but only during a background sweep that runs every 30 minutes. If the user closes the app or navigates away before that sweep, the snapshot never gets corrected.
 
 ### The Fix
 
-The fix is simple and identical for all three files. In the `SaveBeforeLeaveDialog`'s callbacks, `hasUnsavedChanges` must be set to `false` **before** calling `goBack(navigate)`, so the `useBlocker` releases its hold before the navigation fires.
+After a successful online save (when the Supabase upsert returns without error), explicitly call `markSnapshotSynced()` to update the localStorage snapshot's flag immediately — without waiting for the 30-minute background cycle.
 
-**For the "Save & Exit" path:** `handleSaveAndLeave()` already calls `setHasUnsavedChanges(false)` internally at the end. But the navigation call happens in the dialog callback (`onSave`) after awaiting it — at this point the state update may not have flushed yet in the same render cycle. The fix: explicitly call `setHasUnsavedChanges(false)` synchronously right before `goBack(navigate)`.
-
-**For the "Discard & Exit" path:** `hasUnsavedChanges` is never cleared, so the blocker intercepts the navigation. The fix: call `setHasUnsavedChanges(false)` before `goBack(navigate)`.
+This fix applies to all three report forms.
 
 ---
 
-### Changes Required
+### Files to Change
 
-All three changes are mechanically identical — only the file differs.
+#### `src/pages/TrainingForm.tsx`
 
-#### `src/pages/TrainingForm.tsx` (lines ~1107–1121)
+- Import `markSnapshotSynced` from `@/lib/local-backup-ledger` (already imports `saveReportSnapshot` from the same file).
+- After the successful Supabase upsert of the training (`synced_at` confirmed), call `markSnapshotSynced('training', id)`.
 
-```tsx
-// BEFORE
-<SaveBeforeLeaveDialog
-  open={showLeaveDialog}
-  onOpenChange={setShowLeaveDialog}
-  onSave={async () => {
-    await handleSaveAndLeave();
-    setShowLeaveDialog(false);
-    goBack(navigate);
-  }}
-  onLeave={() => {
-    setShowLeaveDialog(false);
-    goBack(navigate);
-  }}
-  ...
-/>
+#### `src/pages/InspectionForm.tsx`
 
-// AFTER
-<SaveBeforeLeaveDialog
-  open={showLeaveDialog}
-  onOpenChange={setShowLeaveDialog}
-  onSave={async () => {
-    await handleSaveAndLeave();
-    setShowLeaveDialog(false);
-    setHasUnsavedChanges(false);   // ← release blocker BEFORE navigate
-    goBack(navigate);
-  }}
-  onLeave={() => {
-    setShowLeaveDialog(false);
-    setHasUnsavedChanges(false);   // ← release blocker BEFORE navigate
-    goBack(navigate);
-  }}
-  ...
-/>
+- Import `markSnapshotSynced` (same module already imported).
+- After the final Supabase `PATCH` that sets `synced_at` on the inspection, call `markSnapshotSynced('inspection', id)`.
+
+#### `src/pages/DailyAssessmentForm.tsx`
+
+- Same — call `markSnapshotSynced('daily_assessment', id)` after confirmed server sync.
+
+---
+
+### Where Exactly to Insert the Call
+
+Each form follows the 3-step deferred `synced_at` pattern (from architectural memory). The final step is a PATCH to set `synced_at` on the parent record. That is the correct insertion point — after this PATCH succeeds, we know the server has confirmed the sync, so we immediately mark the localStorage snapshot.
+
+**Example (TrainingForm — conceptual):**
 ```
-
-#### `src/pages/InspectionForm.tsx` (lines ~2130–2144)
-
-Same `setHasUnsavedChanges(false)` added before `goBack(navigate)` in both `onSave` and `onLeave`.
-
-**Note:** In `InspectionForm`, the state setter is also named `setHasUnsavedChanges` — confirmed in the file.
-
-#### `src/pages/DailyAssessmentForm.tsx` (lines ~1205–1219)
-
-Same fix. The state variable is also `hasUnsavedChanges` / `setHasUnsavedChanges`.
-
----
-
-### Why This Works
-
-React Router's `useBlocker` evaluates its condition (the `hasUnsavedChanges` value) at the time the navigation is dispatched. By calling `setHasUnsavedChanges(false)` synchronously before `goBack(navigate)`, React batches the state update so that when `navigate(-1)` fires in the same event handler, the blocker's condition evaluates to `false` and allows the navigation through. No dialog conflict occurs.
+Step 1: Upsert training data (no synced_at)
+Step 2: Upsert child records
+Step 3: PATCH synced_at on training  ← insert markSnapshotSynced('training', id) here
+```
 
 ---
 
 ### No Other Files Need Changing
 
-- `useUnsavedChanges.tsx` — no change
-- `SaveBeforeLeaveDialog.tsx` — no change  
-- `navigation.ts` — no change
-- `App.tsx` — no change
-- New-report screens — not affected (they don't use `useBlocker`)
+- `local-backup-ledger.ts` — `markSnapshotSynced()` already exists and works correctly.
+- `useAutoSync.tsx` — its 30-min sweep continues to serve as a safety net for any cases missed.
+- `DataRecoveryTool.tsx` — no UI change needed; the badge renders correctly once the flag is `true`.
+- No database changes. No migrations.
+
+---
+
+### Result
+
+After this fix, a report that successfully syncs to the server will immediately show "Synced" in both the dashboard card AND the Data Recovery panel — eliminating the confusing discrepancy.
