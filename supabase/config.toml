@@ -9,6 +9,9 @@ verify_jwt = false
 [functions.send-notification-email]
 verify_jwt = false
 
+[functions.check-overdue-reports]
+verify_jwt = false
+
 [functions.generate-inspection-pdf]
 verify_jwt = true
 

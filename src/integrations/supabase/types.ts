@@ -1164,10 +1164,12 @@ export type Database = {
           created_at: string | null
           email_inspection_completed: boolean | null
           email_notifications_enabled: boolean | null
+          email_report_overdue: boolean | null
           email_sync_conflicts: boolean | null
           email_training_completed: boolean | null
           id: string
           inspection_completed: boolean | null
+          report_overdue: boolean | null
           sync_conflicts: boolean | null
           training_completed: boolean | null
           updated_at: string | null
@@ -1177,10 +1179,12 @@ export type Database = {
           created_at?: string | null
           email_inspection_completed?: boolean | null
           email_notifications_enabled?: boolean | null
+          email_report_overdue?: boolean | null
           email_sync_conflicts?: boolean | null
           email_training_completed?: boolean | null
           id?: string
           inspection_completed?: boolean | null
+          report_overdue?: boolean | null
           sync_conflicts?: boolean | null
           training_completed?: boolean | null
           updated_at?: string | null
@@ -1190,10 +1194,12 @@ export type Database = {
           created_at?: string | null
           email_inspection_completed?: boolean | null
           email_notifications_enabled?: boolean | null
+          email_report_overdue?: boolean | null
           email_sync_conflicts?: boolean | null
           email_training_completed?: boolean | null
           id?: string
           inspection_completed?: boolean | null
+          report_overdue?: boolean | null
           sync_conflicts?: boolean | null
           training_completed?: boolean | null
           updated_at?: string | null
