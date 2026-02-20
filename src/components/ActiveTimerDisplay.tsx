@@ -23,19 +23,19 @@ export const ActiveTimerDisplay = memo(function ActiveTimerDisplay({
   const recording = isActive && !isPaused && !isReadOnly;
 
   return (
-    <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#1a1a1a] border border-[#32CD32]/30 font-mono text-xs select-none">
+    <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/10 dark:bg-black/20 backdrop-blur-[12px] border border-white/15 shadow-sm font-mono text-xs select-none">
       {/* REC indicator */}
       <span className="flex items-center gap-1">
         <span
           className={`inline-block w-1.5 h-1.5 rounded-full ${
             recording
-              ? "bg-[#32CD32] animate-[terminal-blink_1s_step-end_infinite]"
-              : "bg-[#32CD32]/30"
+              ? "bg-emerald-400 animate-pulse-soft"
+              : "bg-muted-foreground/30"
           }`}
         />
         <span
           className={`text-[10px] font-semibold tracking-wider ${
-            recording ? "text-[#32CD32]" : "text-[#32CD32]/40"
+            recording ? "text-emerald-400" : "text-muted-foreground/40"
           }`}
         >
           REC
@@ -43,12 +43,7 @@ export const ActiveTimerDisplay = memo(function ActiveTimerDisplay({
       </span>
 
       {/* Time display */}
-      <span className="text-[#32CD32] tabular-nums">{formatTime(elapsedSeconds)}</span>
-
-      {/* Blinking cursor */}
-      {!isReadOnly && (
-        <span className="text-[#32CD32] animate-[terminal-blink_1s_step-end_infinite]">_</span>
-      )}
+      <span className="text-foreground/80 tabular-nums">{formatTime(elapsedSeconds)}</span>
     </div>
   );
 });
