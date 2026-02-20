@@ -1,4 +1,9 @@
 import { useEffect, useState, useRef, useCallback } from "react";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel,
+  AlertDialogContent, AlertDialogDescription,
+  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { toast } from "@/components/ui/sonner";
 import { addSaveNotification, addSyncNotification } from "@/lib/notification-center";
 import { onSyncComplete } from "@/lib/sync-events";
@@ -88,6 +93,7 @@ export default function InspectionForm() {
   const [completionLockOverridden, setCompletionLockOverridden] = useState(false);
   const [showCompletionLockDialog, setShowCompletionLockDialog] = useState(false);
   const [showLeaveDialog, setShowLeaveDialog] = useState(false);
+  const [showCompleteDialog, setShowCompleteDialog] = useState(false);
   // Enable keyboard avoidance for mobile
   useKeyboardAvoidance();
   
@@ -2246,7 +2252,7 @@ export default function InspectionForm() {
               {!effectiveReadOnly && (
                 <Button 
                   size={isMobileView ? "default" : "sm"} 
-                  onClick={completeInspection} 
+                  onClick={() => setShowCompleteDialog(true)} 
                   disabled={saving || autoSaving || !isOnline}
                   className={isMobileView ? "min-w-[100px] h-10 text-sm font-medium" : ""}
                   title={!isOnline ? "Must be online to complete inspection" : undefined}
@@ -2559,6 +2565,23 @@ export default function InspectionForm() {
       />
 
       </div>
+
+      <AlertDialog open={showCompleteDialog} onOpenChange={setShowCompleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Complete Inspection Report</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to mark this inspection as complete? This will lock the report. You can still edit it afterward if needed.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={completeInspection}>
+              Complete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }
