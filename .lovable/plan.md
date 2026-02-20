@@ -1,54 +1,56 @@
 
 
-# Restyle ActiveTimerDisplay: Glassmorphism Clock Badge
+# Convert Remaining Black & Green Components to Glassmorphism
 
-## Problem
-The `ActiveTimerDisplay` component uses a hard-coded black background (`#1a1a1a`) with neon green (`#32CD32`) text -- a "Matrix terminal" look that clashes with the application's established Minimal Brutalist + Glassmorphism aesthetic.
+## Components to Update
 
-## New Design Direction
-Replace the opaque black/green scheme with a **frosted glass pill** that matches existing UI elements like the `AuthenticatedHeader` and `AutoSaveIndicator`:
+Two components still use the "Matrix terminal" black-and-green aesthetic and need to match the glassmorphism style already applied to `ActiveTimerDisplay` and `AutoSaveIndicator`.
 
-- **Background**: `bg-white/10 dark:bg-black/20` with `backdrop-blur-[12px]`
-- **Border**: `border border-white/15`
-- **Text**: `text-foreground/80` for the time, muted tones for "REC" label
-- **Recording dot**: Subtle `bg-emerald-400` (Emerald 400 from the status palette) instead of neon green
-- **Typography**: Keep `font-mono` and `tabular-nums` for the timer digits -- monospaced is correct for a clock
-- **Cursor**: Remove the blinking terminal cursor (`_`) -- it reinforces the terminal look that is being removed
+### 1. `src/components/ui/data-integrity-badge.tsx`
 
-## Single File Change
+**Current**: Deep black background (`bg-[hsl(0,0%,5%)]`), neon green text (`hsl(120,100%,56%)`), green glow borders, `crt-scanlines` overlay.
 
-### `src/components/ActiveTimerDisplay.tsx`
+**New styling**:
+- Container: `bg-white/10 dark:bg-black/20 backdrop-blur-[12px] border border-white/15 shadow-sm` (matching the clock badge)
+- Remove `crt-scanlines` class
+- Status colors shift to theme-aware equivalents:
+  - **hard-saved**: `text-emerald-400`, `border-emerald-400/20`
+  - **pending**: `text-amber-400`, `border-amber-400/20`
+  - **synced**: `text-sky-400`, `border-sky-400/20`
+  - **shield-active**: `text-emerald-400`, `border-emerald-400/30`
+- Remove neon glow `box-shadow` effects
+- Keep `font-mono`, `text-[10px]`, `tracking-wider`, and all functional logic unchanged
 
-**Outer container** (line 26):
-```
-Before: bg-[#1a1a1a] border border-[#32CD32]/30
-After:  bg-white/10 dark:bg-black/20 backdrop-blur-[12px] border border-white/15 shadow-sm
-```
+### 2. `src/components/admin/VersionHistoryPanel.tsx`
 
-**REC dot** (lines 30-34):
-```
-Before: bg-[#32CD32] / bg-[#32CD32]/30
-After:  bg-emerald-400 / bg-muted-foreground/30
-```
+**Current**: Full black sheet background (`bg-[hsl(0,0%,5%)]`), green borders, green text throughout, `crt-scanlines`.
 
-**REC text** (lines 37-39):
-```
-Before: text-[#32CD32] / text-[#32CD32]/40
-After:  text-emerald-400 / text-muted-foreground/40
-```
+**New styling**:
+- Sheet background: `bg-background/95 backdrop-blur-xl border-l border-white/15` (frosted panel)
+- Remove `crt-scanlines` from sheet container
+- Title/description: `text-foreground` / `text-muted-foreground` instead of green
+- Version cards: `bg-white/5 dark:bg-black/10 border border-white/10` instead of black with green borders
+- Version number: `text-emerald-400 font-bold` (keep emerald accent for version labels)
+- Trigger badge: `border-white/15 text-muted-foreground`
+- Restore button: `text-muted-foreground hover:text-foreground hover:bg-white/10`
+- Metadata row: `text-muted-foreground/60`
+- Loading/empty states: `text-muted-foreground/40`
 
-**Time digits** (line 46):
-```
-Before: text-[#32CD32]
-After:  text-foreground/80
-```
+### 3. `src/index.css` (cleanup)
 
-**Blinking cursor** (lines 49-51): Remove entirely.
+- Remove the `.crt-scanlines` CSS class and `integrity-pulse` / `.integrity-glow` keyframe since they are no longer used anywhere after the above changes
+
+## Files Modified
+
+| File | Change |
+|------|--------|
+| `src/components/ui/data-integrity-badge.tsx` | Replace black/green with glassmorphism pill |
+| `src/components/admin/VersionHistoryPanel.tsx` | Replace terminal sheet with frosted glass panel |
+| `src/index.css` | Remove `.crt-scanlines` and `.integrity-glow` CSS |
 
 ## What Does NOT Change
-- `formatTime` logic
-- `memo` wrapper
-- Props interface
-- Timer hook usage in InspectionForm, TrainingForm, DailyAssessmentForm
-- No other files modified
+- All functional logic (version loading, restoring, status mapping)
+- Component props and interfaces
+- `ActiveTimerDisplay` and `AutoSaveIndicator` (already converted)
+- Any backend or edge function code
 
