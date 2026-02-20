@@ -54,6 +54,18 @@ export default function TrainingHeader({ training, onUpdate, isReadOnly = false,
           />
         </div>
 
+        <div className="space-y-2">
+          <Label htmlFor="location">Location</Label>
+          <VoiceNameInput
+            id="location"
+            value={training.location || ''}
+            onValueChange={(value) => onUpdate('location', value)}
+            onChange={(e) => onUpdate('location', e.target.value)}
+            placeholder="e.g. Camp Thunderbird, Lake Wylie, SC"
+            disabled={isReadOnly}
+          />
+        </div>
+
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="space-y-2">
             <Label>Start Date *</Label>

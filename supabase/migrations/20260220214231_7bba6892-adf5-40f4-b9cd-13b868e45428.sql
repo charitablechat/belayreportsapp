@@ -1,0 +1,1 @@
+ALTER TABLE public.trainings ADD COLUMN location text NOT NULL DEFAULT '';
