@@ -1265,7 +1265,7 @@ export default function DailyAssessmentForm() {
                 lastSaved={lastSaved}
                 isSaving={saving}
                 hasUnsavedChanges={hasUnsavedChanges}
-                className="hidden sm:flex"
+                className="flex"
               />
               <ActiveTimerDisplay
                 elapsedSeconds={elapsedSeconds}

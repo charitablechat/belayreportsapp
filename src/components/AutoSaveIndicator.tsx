@@ -35,10 +35,13 @@ export function AutoSaveIndicator({
     return format(date, "h:mm:ss a");
   };
 
+  // Glassmorphism pill on mobile, plain inline on desktop
+  const mobilePill = "sm:bg-transparent sm:backdrop-blur-none sm:border-0 sm:rounded-none sm:px-0 sm:py-0 bg-slate-900/60 backdrop-blur-sm border border-white/10 rounded-sm px-2 py-0.5";
+
   // Special handling for "pending_sync" - show non-alarming state
   if (error === 'pending_sync') {
     return (
-      <div className={cn("flex items-center gap-1.5 text-xs text-muted-foreground", className)}>
+      <div className={cn("flex items-center gap-1.5 text-xs font-mono text-muted-foreground", mobilePill, className)}>
         <CloudOff className="w-3 h-3" />
         <span className="hidden sm:inline">Saved locally • will sync</span>
         <span className="sm:hidden">Pending</span>
@@ -49,7 +52,7 @@ export function AutoSaveIndicator({
   // Regular error state (for validation errors, etc.)
   if (error) {
     return (
-      <div className={cn("flex items-center gap-1.5 text-xs text-destructive", className)}>
+      <div className={cn("flex items-center gap-1.5 text-xs font-mono text-destructive", mobilePill, className)}>
         <AlertCircle className="w-3 h-3" />
         <span className="hidden sm:inline">{error}</span>
         <span className="sm:hidden">Error</span>
@@ -68,7 +71,7 @@ export function AutoSaveIndicator({
 
   if (isSaving) {
     return (
-      <div className={cn("flex items-center gap-1.5 text-xs text-primary", className)}>
+      <div className={cn("flex items-center gap-1.5 text-xs font-mono text-primary", mobilePill, className)}>
         <Loader2 className="w-3 h-3 animate-spin" />
         <span className="hidden sm:inline">Saving...</span>
       </div>
@@ -77,7 +80,7 @@ export function AutoSaveIndicator({
 
   if (lastSaved) {
     return (
-      <div className={cn("flex items-center gap-1.5 text-xs text-green-600 dark:text-green-400", className)}>
+      <div className={cn("flex items-center gap-1.5 text-xs font-mono text-green-600 dark:text-green-400", mobilePill, className)}>
         <CheckCircle className="w-3 h-3" />
         <span className="hidden sm:inline">Saved {formatTime(lastSaved)}</span>
         <span className="sm:hidden">Saved</span>
@@ -87,7 +90,7 @@ export function AutoSaveIndicator({
 
   if (hasUnsavedChanges) {
     return (
-      <div className={cn("flex items-center gap-1.5 text-xs text-yellow-600 dark:text-yellow-400", className)}>
+      <div className={cn("flex items-center gap-1.5 text-xs font-mono text-yellow-600 dark:text-yellow-400", mobilePill, className)}>
         <Clock className="w-3 h-3" />
         <span className="hidden sm:inline">Unsaved changes</span>
         <span className="sm:hidden">Unsaved</span>

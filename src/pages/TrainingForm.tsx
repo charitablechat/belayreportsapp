@@ -1160,7 +1160,7 @@ export default function TrainingForm() {
                 lastSaved={lastSaved}
                 isSaving={isSaving}
                 hasUnsavedChanges={hasUnsavedChanges}
-                className="hidden sm:flex"
+                className="flex"
               />
               <ActiveTimerDisplay
                 elapsedSeconds={elapsedSeconds}
