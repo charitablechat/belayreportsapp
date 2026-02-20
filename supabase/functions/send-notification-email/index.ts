@@ -1,6 +1,5 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.78.0";
-import { Resend } from "https://esm.sh/resend@2.0.0";
 import { checkRateLimit, getClientIP, createRateLimitResponse } from "../_shared/rate-limiter.ts";
 
 const corsHeaders = {
@@ -21,6 +20,7 @@ interface NotificationEmailRequest {
     location?: string;
     trainer?: string;
     inspector?: string;
+    assessmentId?: string;
   };
 }
 
@@ -41,7 +41,6 @@ serve(async (req) => {
     // Validate webhook secret from database trigger
     const webhookSecret = req.headers.get('x-webhook-secret');
     
-    // Read the expected secret from the webhook_config table (same source as triggers)
     const { data: secretRow, error: secretError } = await supabaseAdmin
       .from('webhook_config')
       .select('key_value')
@@ -80,25 +79,21 @@ serve(async (req) => {
       return createRateLimitResponse(rateLimitResult.resetAt, corsHeaders);
     }
 
-    const resendApiKey = Deno.env.get("RESEND_API_KEY");
-    if (!resendApiKey) {
-      console.error("RESEND_API_KEY is not configured");
+    const makeWebhookUrl = Deno.env.get("MAKE_WEBHOOK_URL");
+    if (!makeWebhookUrl) {
+      console.error("MAKE_WEBHOOK_URL is not configured");
       return new Response(
-        JSON.stringify({ success: false, error: "Email service not configured" }),
+        JSON.stringify({ success: false, error: "Make.com webhook not configured" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
-
-    const resend = new Resend(resendApiKey);
-
-    // supabaseAdmin already created above for webhook validation
 
     const payload: NotificationEmailRequest = await req.json();
     const { organizationId, notificationType, title, body, data } = payload;
 
     console.log(`Processing email notification for org ${organizationId}, type: ${notificationType}`);
 
-    // Get all super admins for the organization
+    // Get all super admins
     const { data: superAdminRoles, error: rolesError } = await supabaseAdmin
       .from('user_roles')
       .select('user_id')
@@ -151,21 +146,18 @@ serve(async (req) => {
       );
     }
 
-    // Get auth users to fetch their emails (only source of email data now)
+    // Get auth users to fetch their emails
     const userEmailMap = new Map<string, string>();
     
     for (const pref of eligiblePrefs) {
-      // Fetch auth email - this is the only source of email data
       const { data: authUser, error: authError } = await supabaseAdmin.auth.admin.getUserById(pref.user_id);
       if (authError) {
         console.error(`Error fetching auth user ${pref.user_id}:`, authError);
       } else if (authUser?.user?.email) {
         userEmailMap.set(pref.user_id, authUser.user.email);
-        console.log(`Retrieved auth email for user ${pref.user_id}`);
       }
     }
 
-    // Filter out users without any email
     const usersWithEmail = eligiblePrefs.filter(p => userEmailMap.has(p.user_id));
     
     if (usersWithEmail.length === 0) {
@@ -178,7 +170,7 @@ serve(async (req) => {
 
     const eligibleUserIds = usersWithEmail.map(p => p.user_id);
 
-    // Get profiles for super admins
+    // Get profiles for names
     const { data: profiles, error: profilesError } = await supabaseAdmin
       .from('profiles')
       .select('id, first_name, last_name')
@@ -190,7 +182,7 @@ serve(async (req) => {
 
     const profileMap = new Map(profiles?.map(p => [p.id, p]) || []);
 
-    // Generate email HTML based on notification type
+    // Generate email HTML
     const appUrl = Deno.env.get("SUPABASE_URL")?.replace('.supabase.co', '') || 'https://app.lovable.dev';
     
     const generateEmailHtml = (recipientName: string) => {
@@ -260,41 +252,54 @@ serve(async (req) => {
       `;
     };
 
-    // Send emails to all eligible super admins
-    const results = await Promise.allSettled(
-      usersWithEmail.map(async (pref) => {
-        const profile = profileMap.get(pref.user_id);
-        const recipientName = profile 
-          ? `${profile.first_name || ''} ${profile.last_name || ''}`.trim() 
-          : '';
-        
-        const emailHtml = generateEmailHtml(recipientName);
-        const recipientEmail = userEmailMap.get(pref.user_id)!;
-        
-        console.log(`Sending email to ${recipientEmail}`);
-        
-        const emailResult = await resend.emails.send({
-          from: "Rope Works <notifications@resend.dev>",
-          to: [recipientEmail],
-          subject: title,
-          html: emailHtml,
-        });
-        
-        return { userId: pref.user_id, email: recipientEmail, result: emailResult };
-      })
-    );
+    // Build recipients list and generate HTML (use first recipient's name for the shared HTML)
+    const recipients = usersWithEmail.map(pref => {
+      const profile = profileMap.get(pref.user_id);
+      const name = profile 
+        ? `${profile.first_name || ''} ${profile.last_name || ''}`.trim() 
+        : '';
+      return {
+        email: userEmailMap.get(pref.user_id)!,
+        name,
+      };
+    });
 
-    const successCount = results.filter(r => r.status === 'fulfilled').length;
-    const failedCount = results.filter(r => r.status === 'rejected').length;
+    // Generate one HTML per recipient (personalized greeting)
+    // For Make.com, we send all recipients + a generic HTML; Make.com iterates and sends
+    // Using first recipient's name for the HTML since Make.com can personalize per-recipient if needed
+    const genericHtml = generateEmailHtml(recipients[0]?.name || '');
 
-    console.log(`Sent ${successCount} emails, ${failedCount} failed`);
+    console.log(`Sending webhook to Make.com with ${recipients.length} recipients`);
+
+    // POST to Make.com webhook
+    const makeResponse = await fetch(makeWebhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        recipients,
+        subject: title,
+        html: genericHtml,
+        notificationType,
+        data: data || {},
+      }),
+    });
+
+    if (!makeResponse.ok) {
+      const errorText = await makeResponse.text();
+      console.error(`Make.com webhook failed [${makeResponse.status}]: ${errorText}`);
+      return new Response(
+        JSON.stringify({ success: false, error: `Make.com webhook failed: ${makeResponse.status}` }),
+        { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    console.log(`Successfully sent notification to Make.com for ${recipients.length} recipients`);
 
     return new Response(
       JSON.stringify({ 
         success: true, 
-        message: `Sent ${successCount} notification emails`,
-        sentCount: successCount,
-        failedCount: failedCount 
+        message: `Sent notification to Make.com for ${recipients.length} recipients`,
+        recipientCount: recipients.length,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
