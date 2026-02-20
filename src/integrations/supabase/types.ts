@@ -1676,6 +1676,7 @@ export type Database = {
           latest_report_generated_at: string | null
           latest_report_html: string | null
           latitude: number | null
+          location: string
           longitude: number | null
           organization: string
           organization_id: string | null
@@ -1701,6 +1702,7 @@ export type Database = {
           latest_report_generated_at?: string | null
           latest_report_html?: string | null
           latitude?: number | null
+          location?: string
           longitude?: number | null
           organization: string
           organization_id?: string | null
@@ -1726,6 +1728,7 @@ export type Database = {
           latest_report_generated_at?: string | null
           latest_report_html?: string | null
           latitude?: number | null
+          location?: string
           longitude?: number | null
           organization?: string
           organization_id?: string | null

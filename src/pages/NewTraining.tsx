@@ -9,6 +9,7 @@ import { ArrowLeft, CloudOff, Info, Loader2, MapPin, X } from "lucide-react";
 import ropeWorksLogo from "@/assets/rope-works-logo.png";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { OrganizationAutocomplete } from "@/components/OrganizationAutocomplete";
+import { Input } from "@/components/ui/input";
 import { getCurrentLocationWithAddress, getGeolocationErrorMessage } from "@/lib/geolocation";
 import { getUserWithCache, getCachedUser } from "@/lib/cached-auth";
 import { triggerHaptic } from "@/lib/haptics";
@@ -23,6 +24,7 @@ export default function NewTraining() {
   const [trainerName, setTrainerName] = useState("");
   const [formData, setFormData] = useState({
     organization: "",
+    location: "",
     latitude: null as number | null,
     longitude: null as number | null,
   });
@@ -115,6 +117,7 @@ export default function NewTraining() {
         id: tempId,
         inspector_id: user.id,
         organization: formData.organization,
+        location: formData.location,
         start_date: now.split('T')[0],
         end_date: now.split('T')[0],
         status: 'draft',
@@ -132,6 +135,7 @@ export default function NewTraining() {
           .insert([{
             inspector_id: user.id,
             organization: formData.organization,
+            location: formData.location,
             start_date: now.split('T')[0],
             end_date: now.split('T')[0],
             status: 'draft',
@@ -220,7 +224,20 @@ export default function NewTraining() {
               </div>
 
               <div className="space-y-2">
-                <label className="text-sm font-medium">Location (Optional)</label>
+                <label htmlFor="location" className="text-sm font-medium">
+                  Location
+                </label>
+                <Input
+                  id="location"
+                  value={formData.location}
+                  onChange={(e) => setFormData(prev => ({ ...prev, location: e.target.value }))}
+                  placeholder="e.g. Camp Thunderbird, Lake Wylie, SC"
+                  disabled={loading}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium">GPS Coordinates (Optional)</label>
                 <div className="flex gap-2">
                   <Button 
                     type="button" 
