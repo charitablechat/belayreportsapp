@@ -121,7 +121,7 @@ export function VersionHistoryPanel({
             versions.map((v) => (
               <div
                 key={v.id}
-                className="rounded border border-white/10 bg-white/5 dark:bg-black/10 p-3 font-mono text-xs"
+                className="rounded border border-white/15 bg-white/10 dark:bg-black/20 p-3 font-mono text-xs"
               >
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
