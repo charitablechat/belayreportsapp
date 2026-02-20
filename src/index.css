@@ -688,15 +688,6 @@ input[type="number"] {
   border-radius: inherit;
 }
 
-/* Retro-Tech Terminal — Data Integrity Badge glow pulse */
-@keyframes integrity-pulse {
-  0%, 100% { box-shadow: 0 0 4px hsl(120, 100%, 50%, 0.2); }
-  50% { box-shadow: 0 0 12px hsl(120, 100%, 50%, 0.4); }
-}
-
-.integrity-glow {
-  animation: integrity-pulse 2s ease-in-out infinite;
-}
 
 /* Active Timer — terminal blink for cursor and REC dot */
 @keyframes terminal-blink {

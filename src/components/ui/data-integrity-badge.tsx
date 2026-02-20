@@ -1,8 +1,8 @@
 /**
- * Data Integrity Badge — Retro-Tech Terminal status indicator
+ * Data Integrity Badge — Glassmorphism status indicator
  * 
  * Compact badge showing the current data persistence state
- * using the Matrix Green (#00FF41) on Deep Black (#0D0D0D) aesthetic.
+ * using the frosted glass aesthetic with theme-aware status colors.
  */
 
 import { cn } from "@/lib/utils";
@@ -20,32 +20,32 @@ interface DataIntegrityBadgeProps {
 const statusConfig: Record<IntegrityStatus, {
   label: string;
   icon: typeof Shield;
-  glowClass: string;
+  borderClass: string;
   textClass: string;
 }> = {
   'hard-saved': {
     label: 'HARD-SAVED',
     icon: HardDrive,
-    glowClass: 'shadow-[0_0_8px_hsl(120,100%,50%,0.3)] border-[hsl(120,100%,50%,0.3)]',
-    textClass: 'text-[hsl(120,100%,56%)]',
+    borderClass: 'border-emerald-400/20',
+    textClass: 'text-emerald-400',
   },
   'pending': {
     label: 'PENDING',
     icon: Loader2,
-    glowClass: 'shadow-[0_0_8px_hsl(38,92%,50%,0.3)] border-[hsl(38,92%,50%,0.3)]',
-    textClass: 'text-[hsl(38,92%,50%)]',
+    borderClass: 'border-amber-400/20',
+    textClass: 'text-amber-400',
   },
   'synced': {
     label: 'SYNCED',
     icon: Cloud,
-    glowClass: 'shadow-[0_0_8px_hsl(190,90%,50%,0.3)] border-[hsl(190,90%,50%,0.3)]',
-    textClass: 'text-[hsl(190,90%,50%)]',
+    borderClass: 'border-sky-400/20',
+    textClass: 'text-sky-400',
   },
   'shield-active': {
     label: 'SYNC SHIELD',
     icon: Shield,
-    glowClass: 'shadow-[0_0_8px_hsl(120,100%,50%,0.3)] border-[hsl(120,100%,50%,0.5)]',
-    textClass: 'text-[hsl(120,100%,56%)]',
+    borderClass: 'border-emerald-400/30',
+    textClass: 'text-emerald-400',
   },
 };
 
@@ -58,9 +58,10 @@ export function DataIntegrityBadge({ status, versionNumber, fieldCount, classNam
     <div
       className={cn(
         'inline-flex items-center gap-1.5 px-2 py-1 rounded',
-        'bg-[hsl(0,0%,5%)] font-mono text-[10px] leading-none',
-        'border crt-scanlines',
-        config.glowClass,
+        'bg-white/10 dark:bg-black/20 backdrop-blur-[12px]',
+        'font-mono text-[10px] leading-none',
+        'border shadow-sm',
+        config.borderClass,
         config.textClass,
         className
       )}
