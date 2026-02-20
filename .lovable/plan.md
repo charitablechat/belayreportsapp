@@ -1,41 +1,56 @@
 
 
-# Fix Data Recovery Sheet Mobile Text Wrapping and Button Visibility
+# Show Auto-Save Feedback on Mobile Viewports
 
-## Root Cause
-The mobile layout suffers from excessive nested padding and missing overflow controls:
-- The `UserDataRecoverySheet` adds `px-3` padding
-- Inside it, `LocalSnapshotsPanel` renders a `Card` with `CardHeader` (`p-6`) and `CardContent` (`p-6 pt-0`)
-- That is ~36px sheet padding + 48px card padding = 84px+ of horizontal space lost on each side
-- The `ScrollArea` viewport lacks `overflow-wrap: anywhere`, so long organization names and device strings break the layout
-- The `CardDescription` text about "Immutable localStorage backups..." is a long unbroken sentence that overflows on narrow screens
+## Findings
 
-## Changes
+### Auto-Save Logic (Already Working -- No Changes Needed)
+The auto-save system is already optimized and fully operational on all screen sizes:
 
-### 1. `src/components/admin/DataRecoveryTool.tsx` -- LocalSnapshotsPanel mobile fixes
-- Reduce `CardHeader` padding on mobile: add `px-3 md:px-6 py-4 md:p-6` classes
-- Reduce `CardContent` padding on mobile: add `px-3 md:px-6 pb-4 md:p-6 md:pt-0` classes
-- Add `overflow-hidden` to the outer `Card` to prevent any content from escaping
-- Add `break-words` and `overflow-wrap: anywhere` to the `CardDescription` so the stats text wraps
-- On mobile snapshot cards: add `overflow-hidden` and ensure value spans use `overflow-wrap: anywhere` via inline style or a utility class, covering edge cases where `break-words` alone is insufficient (e.g., long device identifiers or UUIDs)
-- Make the date text wrap properly by adding `break-words` to the "Last Saved" value span
+- **Trigger**: 1.5-second debounce after any data change, plus a 10-second interval backup
+- **Persistence**: IndexedDB (local-first), then background sync to the cloud
+- **Emergency save**: Fires on `visibilitychange` / `pagehide` (tab switch, app close)
+- **Safety timeout**: 8-second max to prevent stuck "saving" states
 
-### 2. `src/components/UserDataRecoverySheet.tsx` -- ScrollArea and layout fixes
-- Add `overflow-hidden` to the outer `SheetContent` to prevent horizontal scroll at the sheet level
-- Add `[&>div]:!overflow-x-hidden` or equivalent override on `ScrollArea` to ensure the Radix viewport does not allow horizontal scroll
-- Reduce the ScrollArea height calc to `h-[calc(85vh-120px)]` to give slightly more breathing room for the header, preventing the last Restore button from being clipped at the bottom edge
+No changes to save logic, timing, or persistence method are needed.
 
-### 3. Retro-Tech Terminal aesthetic alignment
-- Add `font-mono` to the mobile snapshot cards for consistency with the established terminal aesthetic
-- Use `text-xs` on value spans for a tighter, more terminal-like feel on mobile
+### The Bug: No Visual Feedback on Mobile
+All three report forms pass `className="hidden sm:flex"` to `AutoSaveIndicator`, making it completely invisible below 640px. Mobile users get no confirmation that their data is being saved.
 
-## What Does NOT Change
-- Desktop table layout remains identical
-- No data recovery logic or API calls are modified
-- No changes to the `LocalSnapshotsPanel` restore/export/delete handlers
+## Plan
+
+### 1. Update `AutoSaveIndicator` for Mobile-Friendly Display
+Restyle the component to show a compact, icon-only indicator on mobile (already partially implemented with `sm:hidden` / `hidden sm:inline` spans inside the component). The issue is the **parent** hides the entire component.
+
+### 2. Remove `hidden sm:flex` from All Three Forms
+Change the className from `"hidden sm:flex"` to `"flex"` in:
+
+| File | Line |
+|------|------|
+| `src/pages/InspectionForm.tsx` | ~2224 |
+| `src/pages/TrainingForm.tsx` | ~1163 |
+| `src/pages/DailyAssessmentForm.tsx` | ~1268 |
+
+The component already has responsive internal behavior (icon-only on mobile, icon+text on desktop via `hidden sm:inline` / `sm:hidden` spans), so simply unhiding the wrapper is sufficient.
+
+### 3. Apply Brutalist Glassmorphism Styling to the AutoSaveIndicator
+Update `src/components/AutoSaveIndicator.tsx` to add a subtle frosted-glass pill on mobile that matches the Slate 900 / Emerald 400 aesthetic:
+
+- Add `bg-slate-900/60 backdrop-blur-sm border border-white/10 rounded-sm px-2 py-0.5` wrapper on mobile for the terminal look
+- Keep the existing desktop inline style unchanged (no background pill)
+- Use `font-mono` for the terminal aesthetic consistency
 
 ## Files Modified
 | File | Change |
 |------|--------|
-| `src/components/admin/DataRecoveryTool.tsx` | Tighten mobile padding on Card/CardHeader/CardContent, add overflow and word-wrap controls, add font-mono |
-| `src/components/UserDataRecoverySheet.tsx` | Add overflow-hidden, adjust ScrollArea height, prevent horizontal scroll |
+| `src/components/AutoSaveIndicator.tsx` | Add Brutalist glassmorphism mobile styling |
+| `src/pages/InspectionForm.tsx` | Change `hidden sm:flex` to `flex` |
+| `src/pages/TrainingForm.tsx` | Change `hidden sm:flex` to `flex` |
+| `src/pages/DailyAssessmentForm.tsx` | Change `hidden sm:flex` to `flex` |
+
+## What Does NOT Change
+- Auto-save debounce timing (1.5s)
+- IndexedDB persistence logic
+- Emergency save behavior
+- Background sync system
+- Desktop layout
