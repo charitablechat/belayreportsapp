@@ -2221,7 +2221,7 @@ export default function InspectionForm() {
                 isSaving={autoSaving}
                 hasUnsavedChanges={hasUnsavedChanges}
                 error={saveError}
-                className="hidden sm:flex"
+                className="flex"
               />
               <ActiveTimerDisplay
                 elapsedSeconds={elapsedSeconds}
