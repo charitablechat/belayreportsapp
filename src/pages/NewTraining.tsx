@@ -24,7 +24,7 @@ export default function NewTraining() {
   const [trainerName, setTrainerName] = useState("");
   const [formData, setFormData] = useState({
     organization: "",
-    location: "",
+    site: "",
     latitude: null as number | null,
     longitude: null as number | null,
   });
@@ -63,13 +63,14 @@ export default function NewTraining() {
       const position = await getCurrentLocationWithAddress();
       setFormData(prev => ({
         ...prev,
+        site: position.address,
         latitude: position.latitude,
         longitude: position.longitude,
       }));
       
       triggerHaptic('success');
       toast.success("Location captured", {
-        description: `${position.latitude.toFixed(4)}, ${position.longitude.toFixed(4)}`
+        description: position.address
       });
     } catch (error: any) {
       console.error("Failed to get location:", error);
@@ -117,7 +118,7 @@ export default function NewTraining() {
         id: tempId,
         inspector_id: user.id,
         organization: formData.organization,
-        location: formData.location,
+        location: formData.site,
         start_date: now.split('T')[0],
         end_date: now.split('T')[0],
         status: 'draft',
@@ -135,7 +136,7 @@ export default function NewTraining() {
           .insert([{
             inspector_id: user.id,
             organization: formData.organization,
-            location: formData.location,
+            location: formData.site,
             start_date: now.split('T')[0],
             end_date: now.split('T')[0],
             status: 'draft',
@@ -148,7 +149,6 @@ export default function NewTraining() {
 
         if (error) throw error;
 
-        // Cache offline
         await saveTrainingOffline({
           ...data,
           synced_at: new Date().toISOString(),
@@ -156,7 +156,6 @@ export default function NewTraining() {
 
         navigate(`/training/${data.id}`, { replace: true });
       } else {
-        // Create offline only
         await saveTrainingOffline(newTraining);
         await queueTrainingOperation('create', tempId, newTraining);
 
@@ -205,6 +204,7 @@ export default function NewTraining() {
             )}
             
             <form onSubmit={handleSubmit} className="space-y-6">
+              {/* Organization */}
               <div className="space-y-2">
                 <label htmlFor="organization" className="text-sm font-medium">
                   Organization *
@@ -216,69 +216,61 @@ export default function NewTraining() {
                 />
               </div>
 
+              {/* Site / Location — inline text + GPS button */}
               <div className="space-y-2">
-                <label className="text-sm font-medium">Trainer of Record</label>
-                <p className="text-sm text-muted-foreground">
-                  {trainerName || "Will be set from your profile"}
-                </p>
-              </div>
-
-              <div className="space-y-2">
-                <label htmlFor="location" className="text-sm font-medium">
-                  Location
+                <label htmlFor="site" className="text-sm font-medium">
+                  Site / Location
                 </label>
-                <Input
-                  id="location"
-                  value={formData.location}
-                  onChange={(e) => setFormData(prev => ({ ...prev, location: e.target.value }))}
-                  placeholder="e.g. Camp Thunderbird, Lake Wylie, SC"
-                  disabled={loading}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium">GPS Coordinates (Optional)</label>
                 <div className="flex gap-2">
-                  <Button 
-                    type="button" 
-                    variant="outline" 
-                    onClick={handleLocationCapture} 
-                    disabled={locationLoading}
+                  <Input
+                    id="site"
+                    value={formData.site}
+                    onChange={(e) => setFormData(prev => ({ ...prev, site: e.target.value }))}
+                    placeholder="e.g. Camp Thunderbird, Lake Wylie, SC"
+                    disabled={loading}
                     className="flex-1"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleLocationCapture}
+                    disabled={locationLoading || loading}
+                    className="shrink-0"
                   >
                     {locationLoading ? (
-                      <>
-                        <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                        <span>Getting GPS...</span>
-                      </>
-                    ) : formData.latitude && formData.longitude ? (
-                      <>
-                        <MapPin className="w-4 h-4 text-green-600 mr-2" />
-                        <span>Location Captured</span>
-                      </>
+                      <Loader2 className="w-4 h-4 animate-spin" />
                     ) : (
-                      <>
-                        <MapPin className="w-4 h-4 mr-2" />
-                        <span>Capture Location</span>
-                      </>
+                      <MapPin className={formData.latitude && formData.longitude ? "w-4 h-4 text-success" : "w-4 h-4"} />
                     )}
+                    <span className="ml-2 hidden sm:inline">
+                      {locationLoading ? "Getting GPS..." : formData.latitude && formData.longitude ? "Location Captured" : "Get Location"}
+                    </span>
                   </Button>
                   {formData.latitude && formData.longitude && (
-                    <Button 
-                      type="button" 
-                      variant="outline" 
-                      onClick={handleClearLocation} 
-                      className="text-destructive hover:text-destructive"
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={handleClearLocation}
+                      className="shrink-0 text-destructive hover:text-destructive"
                     >
                       <X className="w-4 h-4" />
                     </Button>
                   )}
                 </div>
                 {formData.latitude && formData.longitude && (
-                  <p className="text-sm text-muted-foreground">
-                    Coordinates: {formData.latitude.toFixed(6)}, {formData.longitude.toFixed(6)}
+                  <p className="text-xs text-muted-foreground flex items-center gap-1">
+                    <Info className="w-3 h-3" />
+                    GPS: {formData.latitude.toFixed(6)}, {formData.longitude.toFixed(6)}
                   </p>
                 )}
+              </div>
+
+              {/* Trainer of Record */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Trainer of Record</label>
+                <p className="text-sm text-muted-foreground">
+                  {trainerName || "Will be set from your profile"}
+                </p>
               </div>
 
               {!isOnline && (
