@@ -1,8 +1,8 @@
 /**
- * Version History Panel — Retro-Tech Terminal slide-out
+ * Version History Panel — Glassmorphism slide-out
  * 
  * Shows all immutable versions for a report with restore capability.
- * Matrix Green on Deep Black aesthetic with CRT scanlines.
+ * Frosted glass aesthetic matching the broader UI design system.
  */
 
 import { useState, useEffect } from "react";
@@ -94,43 +94,43 @@ export function VersionHistoryPanel({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         side="right"
-        className="w-full sm:w-[420px] bg-[hsl(0,0%,5%)] border-l border-[hsl(120,100%,50%,0.2)] crt-scanlines"
+        className="w-full sm:w-[420px] bg-background/95 backdrop-blur-xl border-l border-white/15"
       >
-        <SheetHeader className="border-b border-[hsl(120,100%,50%,0.15)] pb-4">
-          <SheetTitle className="font-mono text-[hsl(120,100%,56%)] flex items-center gap-2">
+        <SheetHeader className="border-b border-white/10 pb-4">
+          <SheetTitle className="font-mono text-foreground flex items-center gap-2">
             <Database className="h-4 w-4" />
             VERSION HISTORY
           </SheetTitle>
-          <SheetDescription className="font-mono text-[hsl(120,100%,56%,0.5)] text-xs">
+          <SheetDescription className="font-mono text-muted-foreground text-xs">
             {versions.length} immutable snapshots • {reportType.replace('_', ' ')}
           </SheetDescription>
         </SheetHeader>
 
         <div className="mt-4 space-y-2 overflow-y-auto max-h-[calc(100vh-140px)] pr-1">
           {loading ? (
-            <div className="text-center py-8 font-mono text-[hsl(120,100%,56%,0.4)] text-xs">
+            <div className="text-center py-8 font-mono text-muted-foreground/40 text-xs">
               LOADING VERSIONS...
             </div>
           ) : versions.length === 0 ? (
-            <div className="text-center py-8 font-mono text-[hsl(120,100%,56%,0.4)] text-xs">
+            <div className="text-center py-8 font-mono text-muted-foreground/40 text-xs">
               NO VERSIONS AVAILABLE
               <br />
-              <span className="text-[hsl(120,100%,56%,0.25)]">Versions are created on each save</span>
+              <span className="text-muted-foreground/25">Versions are created on each save</span>
             </div>
           ) : (
             versions.map((v) => (
               <div
                 key={v.id}
-                className="rounded border border-[hsl(120,100%,50%,0.15)] bg-[hsl(0,0%,7%)] p-3 font-mono text-xs"
+                className="rounded border border-white/10 bg-white/5 dark:bg-black/10 p-3 font-mono text-xs"
               >
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
-                    <span className="text-[hsl(120,100%,56%)] font-bold">
+                    <span className="text-emerald-400 font-bold">
                       v{v.versionNumber}
                     </span>
                     <Badge
                       variant="outline"
-                      className="text-[8px] px-1.5 py-0 border-[hsl(120,100%,50%,0.3)] text-[hsl(120,100%,56%,0.7)] bg-transparent"
+                      className="text-[8px] px-1.5 py-0 border-white/15 text-muted-foreground bg-transparent"
                     >
                       {triggerLabels[v.trigger] || v.trigger}
                     </Badge>
@@ -138,7 +138,7 @@ export function VersionHistoryPanel({
                   <Button
                     size="sm"
                     variant="ghost"
-                    className="h-6 px-2 text-[hsl(120,100%,56%,0.7)] hover:text-[hsl(120,100%,56%)] hover:bg-[hsl(120,100%,50%,0.1)]"
+                    className="h-6 px-2 text-muted-foreground hover:text-foreground hover:bg-white/10"
                     onClick={() => handleRestore(v)}
                     disabled={restoring === v.id}
                   >
@@ -147,7 +147,7 @@ export function VersionHistoryPanel({
                   </Button>
                 </div>
 
-                <div className="flex items-center gap-3 text-[hsl(120,100%,56%,0.5)]">
+                <div className="flex items-center gap-3 text-muted-foreground/60">
                   <span className="flex items-center gap-1">
                     <Clock className="h-3 w-3" />
                     {formatTimestamp(v.timestamp)}
