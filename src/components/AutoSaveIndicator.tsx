@@ -36,7 +36,7 @@ export function AutoSaveIndicator({
   };
 
   // Glassmorphism pill on mobile, plain inline on desktop
-  const mobilePill = "sm:bg-transparent sm:backdrop-blur-none sm:border-0 sm:rounded-none sm:px-0 sm:py-0 bg-slate-900/60 backdrop-blur-sm border border-white/10 rounded-sm px-2 py-0.5";
+  const mobilePill = "sm:bg-transparent sm:backdrop-blur-none sm:border-0 sm:rounded-none sm:px-0 sm:py-0 sm:shadow-none bg-white/15 dark:bg-black/30 backdrop-blur-xl border border-white/20 shadow-md shadow-black/5 rounded-full px-2.5 py-1";
 
   // Special handling for "pending_sync" - show non-alarming state
   if (error === 'pending_sync') {
@@ -80,7 +80,7 @@ export function AutoSaveIndicator({
 
   if (lastSaved) {
     return (
-      <div className={cn("flex items-center gap-1.5 text-xs font-mono text-green-600 dark:text-green-400", mobilePill, className)}>
+      <div className={cn("flex items-center gap-1.5 text-xs font-mono text-emerald-400", mobilePill, className)}>
         <CheckCircle className="w-3 h-3" />
         <span className="hidden sm:inline">Saved {formatTime(lastSaved)}</span>
         <span className="sm:hidden">Saved</span>
@@ -90,7 +90,7 @@ export function AutoSaveIndicator({
 
   if (hasUnsavedChanges) {
     return (
-      <div className={cn("flex items-center gap-1.5 text-xs font-mono text-yellow-600 dark:text-yellow-400", mobilePill, className)}>
+      <div className={cn("flex items-center gap-1.5 text-xs font-mono text-amber-400", mobilePill, className)}>
         <Clock className="w-3 h-3" />
         <span className="hidden sm:inline">Unsaved changes</span>
         <span className="sm:hidden">Unsaved</span>
