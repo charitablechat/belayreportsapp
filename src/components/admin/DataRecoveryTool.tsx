@@ -160,22 +160,22 @@ export function LocalSnapshotsPanel({ allowDelete = true }: SnapshotsPanelProps)
   };
 
   return (
-    <Card className="backdrop-blur-md bg-white/5 dark:bg-white/[0.03] border border-white/10 rounded-xl shadow-lg shadow-black/5">
-      <CardHeader>
+    <Card className="backdrop-blur-md bg-white/5 dark:bg-white/[0.03] border border-white/10 rounded-xl shadow-lg shadow-black/5 overflow-hidden">
+      <CardHeader className="px-3 md:px-6 py-4 md:p-6">
         <div className="flex items-center justify-between">
-          <div>
+          <div className="min-w-0">
             <CardTitle className="flex items-center gap-2">
-              <Shield className="h-5 w-5 text-emerald-400" />
+              <Shield className="h-5 w-5 text-emerald-400 shrink-0" />
               Local Backup Snapshots
             </CardTitle>
-            <CardDescription className="mt-2">
+            <CardDescription className="mt-2 break-words" style={{ overflowWrap: 'anywhere' }}>
               Immutable localStorage backups that survive browser cache clearing. {storageInfo.snapshotCount} snapshots ({(storageInfo.totalBytes / 1024).toFixed(1)} KB).
               {storageInfo.unsyncedCount > 0 && <Badge variant="destructive" className="ml-2">{storageInfo.unsyncedCount} unsynced</Badge>}
             </CardDescription>
           </div>
         </div>
       </CardHeader>
-      <CardContent>
+      <CardContent className="px-3 md:px-6 pb-4 md:pb-6 pt-0">
         {snapshots.length === 0 ? (
           <div className="text-center py-8 text-muted-foreground">
             No local backup snapshots found. Snapshots are created automatically when you save reports.
@@ -185,7 +185,7 @@ export function LocalSnapshotsPanel({ allowDelete = true }: SnapshotsPanelProps)
             {/* Mobile card layout */}
             <div className="md:hidden space-y-3">
               {snapshots.map((s) => (
-                <div key={s.key} className="rounded-lg border border-white/10 bg-white/5 dark:bg-white/[0.02] p-4 space-y-3 min-w-0">
+                <div key={s.key} className="rounded-lg border border-white/10 bg-white/5 dark:bg-white/[0.02] p-3 space-y-2.5 min-w-0 overflow-hidden font-mono">
                   <div className="flex items-center justify-between gap-2 flex-wrap">
                     <Badge variant="outline" className="text-xs">{s.reportType.replace('_', ' ')}</Badge>
                     <Badge variant={s.synced ? "default" : "destructive"} className="text-xs">
@@ -193,25 +193,25 @@ export function LocalSnapshotsPanel({ allowDelete = true }: SnapshotsPanelProps)
                     </Badge>
                   </div>
                   <div className="space-y-1.5 min-w-0">
-                    <div className="flex justify-between gap-2 text-sm">
-                      <span className="text-muted-foreground shrink-0">Organization</span>
-                      <span className="font-medium text-right break-words min-w-0">{s.organization || "N/A"}</span>
+                    <div className="flex justify-between gap-2 text-xs">
+                      <span className="text-muted-foreground shrink-0">Org</span>
+                      <span className="font-medium text-right min-w-0 break-words" style={{ overflowWrap: 'anywhere' }}>{s.organization || "N/A"}</span>
                     </div>
-                    <div className="flex justify-between gap-2 text-sm">
+                    <div className="flex justify-between gap-2 text-xs">
                       <span className="text-muted-foreground shrink-0">Device</span>
-                      <span>{s.device}</span>
+                      <span className="text-right min-w-0 break-words" style={{ overflowWrap: 'anywhere' }}>{s.device}</span>
                     </div>
-                    <div className="flex justify-between gap-2 text-sm">
-                      <span className="text-muted-foreground shrink-0">Last Saved</span>
-                      <span className="text-right text-muted-foreground">{formatDate(s.timestamp)}</span>
+                    <div className="flex justify-between gap-2 text-xs">
+                      <span className="text-muted-foreground shrink-0">Saved</span>
+                      <span className="text-right text-muted-foreground break-words" style={{ overflowWrap: 'anywhere' }}>{formatDate(s.timestamp)}</span>
                     </div>
-                    <div className="flex justify-between gap-2 text-sm">
+                    <div className="flex justify-between gap-2 text-xs">
                       <span className="text-muted-foreground shrink-0">Size</span>
                       <span>{(s.sizeBytes / 1024).toFixed(1)} KB</span>
                     </div>
                   </div>
                   <div className="flex gap-2 pt-1">
-                    <Button size="sm" variant="outline" className="flex-1" onClick={() => handleRestore(s.reportType, s.reportId)}>
+                    <Button size="sm" variant="outline" className="flex-1 w-full" onClick={() => handleRestore(s.reportType, s.reportId)}>
                       <RotateCcw className="h-4 w-4 mr-1.5" />
                       Restore
                     </Button>
