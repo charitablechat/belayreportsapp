@@ -1,15 +1,13 @@
 import {
   AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { AlertTriangle, Save, LogOut, X } from "lucide-react";
 
 interface UnsavedChangesDialogProps {
   isOpen: boolean;
@@ -24,34 +22,46 @@ export function UnsavedChangesDialog({
   onConfirm,
   onCancel,
   onSaveAndLeave,
-  message = "You have unsaved changes that will be lost if you leave this page.",
+  message = "You have unsaved progress in this report. Do you want to Save and Exit or Discard Changes and Exit?",
 }: UnsavedChangesDialogProps) {
   return (
     <AlertDialog open={isOpen} onOpenChange={(open) => !open && onCancel()}>
-      <AlertDialogContent>
+      <AlertDialogContent className="bg-slate-900/95 backdrop-blur-xl border border-white/20 shadow-2xl max-w-sm rounded-none sm:rounded-none">
         <AlertDialogHeader>
-          <AlertDialogTitle className="flex items-center gap-2">
-            <AlertTriangle className="h-5 w-5 text-destructive" />
-            Unsaved Changes
+          <AlertDialogTitle className="text-lg flex items-center gap-2 text-white font-bold tracking-tight">
+            <AlertTriangle className="h-5 w-5 text-amber-400" />
+            Unsaved Changes Detected
           </AlertDialogTitle>
-          <AlertDialogDescription>{message}</AlertDialogDescription>
+          <AlertDialogDescription className="text-slate-300">
+            {message}
+          </AlertDialogDescription>
         </AlertDialogHeader>
-        <AlertDialogFooter className="flex-col sm:flex-row gap-2">
-          <AlertDialogCancel onClick={onCancel}>Stay on Page</AlertDialogCancel>
+        <AlertDialogFooter className="flex-col gap-2 sm:flex-col">
           {onSaveAndLeave && (
             <Button
-              variant="default"
               onClick={onSaveAndLeave}
+              className="w-full bg-emerald-500 hover:bg-emerald-400 text-white border-0 rounded-none font-semibold"
             >
-              Save &amp; Leave
+              <Save className="w-4 h-4 mr-2" />
+              Save & Exit
             </Button>
           )}
-          <AlertDialogAction
+          <Button
+            variant="destructive"
             onClick={onConfirm}
-            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            className="w-full rounded-none font-semibold"
           >
-            Leave Without Saving
-          </AlertDialogAction>
+            <LogOut className="w-4 h-4 mr-2" />
+            Discard & Exit
+          </Button>
+          <Button
+            variant="outline"
+            onClick={onCancel}
+            className="w-full rounded-none border-white/20 text-slate-300 hover:bg-white/10 hover:text-white"
+          >
+            <X className="w-4 h-4 mr-2" />
+            Stay on Page
+          </Button>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
