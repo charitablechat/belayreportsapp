@@ -36,7 +36,7 @@ export function AutoSaveIndicator({
   };
 
   // Glassmorphism pill on mobile, plain inline on desktop
-  const mobilePill = "sm:bg-transparent sm:backdrop-blur-none sm:border-0 sm:rounded-none sm:px-0 sm:py-0 sm:shadow-none bg-white/15 dark:bg-black/30 backdrop-blur-xl border border-white/20 shadow-md shadow-black/5 rounded-full px-2.5 py-1";
+  const mobilePill = "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/15 dark:bg-black/30 backdrop-blur-xl border border-white/20 shadow-md shadow-black/5";
 
   // Special handling for "pending_sync" - show non-alarming state
   if (error === 'pending_sync') {
