@@ -1,35 +1,79 @@
 
-## Align "New Training Report" Form to Match "New Daily Assessment" Layout
+## Add Unsaved-Changes Guard to All Three "New Report" Screens
 
-### What Changes
+### The Problem
 
-The New Training form is restructured to match the Daily Assessment form exactly, both in field order and in how the location/GPS works.
+All three report-creation screens — New Daily Assessment, New Training, and New Inspection — currently call `goBack(navigate)` directly with no guard. If a user has started filling in fields and accidentally taps the back button (or uses a browser/native back gesture), all entered data is silently discarded.
 
-### Field Order (after change)
-1. Organization * (unchanged)
-2. Site / Location — text input + "Get Location" button inline (same row), GPS auto-fills the text field with address, coordinates shown below with info note
-3. Trainer of Record (plain text display, moved below location)
-4. Buttons: "Create Training" / "Create Locally" + Cancel
+The Cancel button in each form also navigates to `/dashboard` with no guard.
 
-### Specific Changes to `src/pages/NewTraining.tsx`
+### The Fix
 
-**State rename**: `location` → `site` in `formData` to match Daily Assessment's naming convention and make GPS auto-fill the text field (currently GPS only saves coordinates but doesn't fill in the text box).
+Wire a lightweight "Discard Unsaved Changes?" confirmation dialog into all three screens. Because these are *creation* screens (no record exists yet), there is nothing to "Save & Exit" — the only two actions are "Stay on Page" or "Discard & Go Back". This is simpler than the `SaveBeforeLeaveDialog` used in the full report forms.
 
-**`handleLocationCapture`**: When GPS succeeds, also set `site: position.address` — exactly as Daily Assessment does — so the text field auto-populates with the resolved address name.
+A new shared component `DiscardDraftDialog` will be created — or the existing `SaveBeforeLeaveDialog` reused without the Save button — and integrated into all three screens.
 
-**Remove the separate "GPS Coordinates (Optional)" section**: Merge the "Get Location" button inline with the text input, side-by-side like Daily Assessment.
+---
 
-**Remove the separate GPS coordinates display below the button**: Move it below the inline row, same as Daily Assessment.
+### Files to Change
 
-**Reorder fields**: Move "Trainer of Record" below the combined Site/Location row.
+#### 1. `src/components/DiscardDraftDialog.tsx` — NEW component
 
-**Remove the `X` clear button for GPS**: Daily Assessment keeps it but only when coordinates exist — keep same behavior.
+A dedicated dialog for creation screens. Matches the existing glassmorphism aesthetic exactly:
+- Dark frosted glass background: `bg-slate-900/95 backdrop-blur-xl border border-white/20`
+- Title: "Discard Unsaved Changes?" with amber warning icon
+- Body: "Any information you've entered will be lost."
+- **Primary action**: "Stay on Page" — dark/neutral button (keeps the user on the page)
+- **Secondary action**: "Discard & Go Back" — destructive/muted border button (confirms discarding)
 
-**Remove GPS-only label ("GPS Coordinates (Optional)")**: The combined row's label becomes "Site / Location" (matching Daily Assessment). Mark it required (*) to match Daily Assessment, or keep it optional — since trainings only require organization, keep it optional (no asterisk) to preserve existing validation logic.
+No "Save" button because there is no persisted record to save yet.
 
-**Database column**: The `trainings` table column is called `location` (not `site`) — the state variable rename is internal only; the submit handler continues to write `formData.site` → `location` column.
+#### 2. `src/pages/NewDailyAssessment.tsx`
 
-### No other files change
-- `TrainingHeader.tsx` is unaffected (it already has an independent location input for editing inside the report)
-- No database migrations needed
-- No backend changes needed
+- Add `showDiscardDialog` boolean state.
+- Compute `hasChanges` = `formData.organization.trim() || formData.site.trim()`.
+- Change back button `onClick` from `() => goBack(navigate)` to a guarded handler:
+  - If `hasChanges` → `setShowDiscardDialog(true)`
+  - Else → `goBack(navigate)`
+- Change Cancel button the same way.
+- Render `<DiscardDraftDialog>` at the bottom of the return, passing `onDiscard={() => goBack(navigate)}`.
+
+#### 3. `src/pages/NewTraining.tsx`
+
+- Same pattern as above.
+- `hasChanges` = `formData.organization.trim() || formData.site.trim()`
+- Guard both back button and Cancel button.
+- Render `<DiscardDraftDialog>`.
+
+#### 4. `src/pages/NewInspection.tsx`
+
+- Same pattern.
+- `hasChanges` = any of: `formData.organization`, `formData.location`, `formData.onsite_contact`, `formData.course_history`, `formData.previous_inspector` having a non-empty value.
+- Guard both back button and Cancel button.
+- Render `<DiscardDraftDialog>`.
+
+---
+
+### Dialog Design (matching existing glassmorphism style)
+
+```
+┌─────────────────────────────────────────┐
+│ ⚠  Discard Unsaved Changes?             │  ← amber icon, white bold text
+│                                         │
+│ Any information you've entered will     │
+│ be lost if you go back now.             │  ← slate-300 body text
+│                                         │
+│ [     Stay on Page      ]               │  ← full-width, dark neutral
+│ [   Discard & Go Back   ]               │  ← full-width, destructive
+└─────────────────────────────────────────┘
+```
+
+---
+
+### Technical Notes
+
+- No backend changes. No migrations. No new dependencies.
+- `DiscardDraftDialog` reuses `AlertDialog` from `@radix-ui/react-alert-dialog` already installed and used throughout the app.
+- The guard only activates when `hasChanges` is truthy — users who haven't typed anything can still navigate back instantly.
+- The `useBlocker` hook from React Router is NOT used here because these screens don't have unsaved edits of a persisted record; the simpler state-driven dialog is sufficient and avoids the complexity of the blocker for creation flows.
+- `goBack(navigate)` is preserved as the actual navigation call so the `navigationDepth` tracker continues to work correctly.
