@@ -61,7 +61,7 @@ import { SaveBeforeLeaveDialog } from "@/components/SaveBeforeLeaveDialog";
 import { Lock } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useEmergencySave } from "@/hooks/useEmergencySave";
-import { saveReportSnapshot, getReportSnapshot } from "@/lib/local-backup-ledger";
+import { saveReportSnapshot, getReportSnapshot, markSnapshotSynced } from "@/lib/local-backup-ledger";
 import { appendVersion } from "@/lib/report-version-manager";
 import { showHardSavedToast } from "@/lib/toast-helpers";
 import { DataIntegrityBadge, type IntegrityStatus } from "@/components/ui/data-integrity-badge";
@@ -703,6 +703,7 @@ export default function TrainingForm() {
             ...updatedTraining,
             synced_at: new Date().toISOString()
           });
+          markSnapshotSynced('training', id);
           if (import.meta.env.DEV) console.log('[Training Save] Synced to database');
         } catch (error) {
           if (import.meta.env.DEV) console.log('[Training Save] Failed to sync, queuing operation:', error);
@@ -1047,6 +1048,7 @@ export default function TrainingForm() {
             ...completedTraining,
             synced_at: new Date().toISOString()
           });
+          markSnapshotSynced('training', id);
         } catch (error) {
           console.warn('[Offline] Failed to sync, queuing operation');
           await queueTrainingOperation('update', id, completedTraining);

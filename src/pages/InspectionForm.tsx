@@ -62,7 +62,7 @@ import { Check } from "lucide-react";
 import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
 import { UnsavedChangesDialog } from "@/components/UnsavedChangesDialog";
 import { useEmergencySave } from "@/hooks/useEmergencySave";
-import { saveReportSnapshot, getReportSnapshot } from "@/lib/local-backup-ledger";
+import { saveReportSnapshot, getReportSnapshot, markSnapshotSynced } from "@/lib/local-backup-ledger";
 import { useSaveShortcut } from "@/hooks/useKeyboardShortcuts";
 import { useReportEditPermission } from "@/hooks/useReportEditPermission";
 import { CompletionLockDialog } from "@/components/CompletionLockDialog";
@@ -1526,6 +1526,7 @@ export default function InspectionForm() {
               updated_at: hadFilteredItems ? inspectionToSave.updated_at : syncTimestamp,
             });
 
+            markSnapshotSynced('inspection', id!);
             console.log('[InspectionForm Sync] Synced all data to Supabase successfully');
           } catch (error: any) {
             // Detect network-related errors for retry

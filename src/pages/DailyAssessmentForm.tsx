@@ -56,7 +56,7 @@ import { SaveBeforeLeaveDialog } from "@/components/SaveBeforeLeaveDialog";
 import { Lock } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useEmergencySave } from "@/hooks/useEmergencySave";
-import { saveReportSnapshot, getReportSnapshot } from "@/lib/local-backup-ledger";
+import { saveReportSnapshot, getReportSnapshot, markSnapshotSynced } from "@/lib/local-backup-ledger";
 import { appendVersion } from "@/lib/report-version-manager";
 import { showHardSavedToast } from "@/lib/toast-helpers";
 import { DataIntegrityBadge, type IntegrityStatus } from "@/components/ui/data-integrity-badge";
@@ -767,7 +767,8 @@ export default function DailyAssessmentForm() {
             }
           }
           
-          toast.success("Progress saved");
+           markSnapshotSynced('daily_assessment', id!);
+           toast.success("Progress saved");
         } catch (error) {
           console.error('[Save] Error syncing to database:', error);
           if (offlineStorage) {
@@ -988,8 +989,9 @@ export default function DailyAssessmentForm() {
           try {
             await withTimeout(saveDailyAssessmentOffline(completedAssessment), 2000, 'Synced_at update');
           } catch (e) {
-            console.warn('[Submit] Synced_at offline update timed out');
-          }
+             console.warn('[Submit] Synced_at offline update timed out');
+           }
+           markSnapshotSynced('daily_assessment', id!);
         } catch (error) {
           console.error('[Submit] Error syncing to database:', error);
           try {
