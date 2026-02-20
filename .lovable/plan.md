@@ -1,45 +1,48 @@
 
 
-# Fix: Exclude Admin/SuperAdmin Users from Active Timer Recording
+# Fix: Overdue Reports Cron Job -- Webhook Secret Case Mismatch
 
 ## Problem
 
-The `useActiveTimer` hook is enabled by the condition `canEdit && !isReadOnly && !isCompletionLocked` in all three report forms. Since super admins currently receive `canEdit: true` and `isReadOnly: false` from the permission hook, the timer actively records duration during their auditing sessions. This inflates completion time metrics with non-user activity.
+The scheduled cron job that checks for overdue reports every day at 07:00 UTC is silently failing. It queries `webhook_config WHERE key_name = 'webhook_secret'` (lowercase), but the stored key is `'WEBHOOK_SECRET'` (uppercase). This means the edge function receives a null secret and returns 401 Unauthorized.
 
-## Fix (3 files, 1-line change each)
+## Fix
 
-Add `&& !isSuperAdmin` to the timer's `enabled` condition in each form. The `isSuperAdmin` value is already available -- it is destructured from `useReportEditPermission` in all three files.
+A database migration will:
 
-### File 1: `src/pages/InspectionForm.tsx` (line 147)
+1. **Unschedule** the broken cron job (`check-overdue-reports-daily`)
+2. **Reschedule** it with the corrected uppercase `'WEBHOOK_SECRET'` lookup
 
-```text
-Before: enabled: canEdit && !isReadOnly && !isCompletionLocked,
-After:  enabled: canEdit && !isReadOnly && !isCompletionLocked && !isSuperAdmin,
+No edge function or frontend changes are needed -- only the cron SQL command is wrong.
+
+---
+
+## Technical Details
+
+**Migration SQL:**
+
+```sql
+-- Remove the broken cron job
+SELECT cron.unschedule('check-overdue-reports-daily');
+
+-- Re-create with corrected case: 'WEBHOOK_SECRET' (uppercase)
+SELECT cron.schedule(
+  'check-overdue-reports-daily',
+  '0 7 * * *',
+  $$
+  SELECT net.http_post(
+    url := 'https://ssgzcgvygnsrqalisshx.supabase.co/functions/v1/check-overdue-reports',
+    headers := (
+      SELECT jsonb_build_object(
+        'Content-Type', 'application/json',
+        'x-webhook-secret', (SELECT key_value FROM webhook_config WHERE key_name = 'WEBHOOK_SECRET' LIMIT 1)
+      )
+    ),
+    body := '{"source": "cron"}'::jsonb
+  ) AS request_id;
+  $$
+);
 ```
 
-### File 2: `src/pages/TrainingForm.tsx` (line 110)
+**Files changed:** One database migration only. No code files modified.
 
-```text
-Before: enabled: canEdit && !isReadOnly && !isCompletionLocked,
-After:  enabled: canEdit && !isReadOnly && !isCompletionLocked && !isSuperAdmin,
-```
-
-### File 3: `src/pages/DailyAssessmentForm.tsx` (line 113)
-
-```text
-Before: enabled: canEdit && !isReadOnly && !isCompletionLocked,
-After:  enabled: canEdit && !isReadOnly && !isCompletionLocked && !isSuperAdmin,
-```
-
-## What Does NOT Change
-
-- The `useActiveTimer` hook itself -- no modifications needed
-- The `ActiveTimerDisplay` component -- it will simply show a dormant state (gray dot, no REC) for admins
-- The `useReportEditPermission` hook -- admin edit permissions remain intact
-- Auto-save logic -- admins can still save; the timer just will not increment `active_duration_seconds`
-- Dashboard analytics calculations in `SuperAdminDashboard.tsx`
-- No new dependencies, no database changes
-
-## Why This Works
-
-The `isSuperAdmin` flag is already resolved by `useReportEditPermission` before the timer initializes. When `enabled` is `false`, the `useActiveTimer` hook skips all interval ticking, event listeners, and idle detection -- zero overhead. The timer display renders in its inactive state (gray indicator), giving admins a clear visual cue that their session is not being tracked.
