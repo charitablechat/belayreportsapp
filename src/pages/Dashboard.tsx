@@ -988,7 +988,7 @@ export default function Dashboard() {
       <div className="relative z-10 min-h-screen">
         
         
-        <header className="border-b bg-card/95 backdrop-blur-sm">
+        <header className="border-b border-white/20 bg-white/10 dark:bg-black/20 backdrop-blur-[12px] shadow-md shadow-black/5">
         <div className="container mx-auto px-1 md:px-4 py-3 md:py-4">
           {/* Top row - Logos, status indicators, and user dropdown */}
           <div className="flex items-center justify-between gap-4 mb-3">
