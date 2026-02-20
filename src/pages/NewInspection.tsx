@@ -1,6 +1,7 @@
- import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { goBack } from "@/lib/navigation";
+import { DiscardDraftDialog } from "@/components/DiscardDraftDialog";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,7 +26,8 @@ export default function NewInspection() {
   const { isOnline } = useNetworkStatus();
   const [loading, setLoading] = useState(false);
   const [locationLoading, setLocationLoading] = useState(false);
-   const isSubmitting = useRef(false);
+  const [showDiscardDialog, setShowDiscardDialog] = useState(false);
+  const isSubmitting = useRef(false);
   const [formData, setFormData] = useState({
     organization: "",
     location: "",
@@ -109,6 +111,16 @@ export default function NewInspection() {
       latitude: null,
       longitude: null,
     }));
+  };
+
+  const hasChanges =
+    formData.organization.trim() !== "" ||
+    formData.location.trim() !== "" ||
+    formData.onsite_contact.trim() !== "" ||
+    formData.course_history.trim() !== "";
+  const handleBack = () => {
+    if (hasChanges) setShowDiscardDialog(true);
+    else goBack(navigate);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -238,7 +250,7 @@ export default function NewInspection() {
     <div className="min-h-screen bg-background">
       <header className="border-b bg-card">
         <div className="container mx-auto px-2 md:px-4 py-4 flex items-center justify-between">
-          <Button variant="ghost" size="sm" onClick={() => goBack(navigate)}>
+          <Button variant="ghost" size="sm" onClick={handleBack}>
             <ArrowLeft className="w-4 h-4" />
             <span className="hidden sm:inline ml-2">Back to Dashboard</span>
           </Button>
@@ -393,7 +405,7 @@ export default function NewInspection() {
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={() => navigate("/dashboard")}
+                  onClick={handleBack}
                 >
                   Cancel
                 </Button>
@@ -402,6 +414,12 @@ export default function NewInspection() {
           </CardContent>
         </Card>
       </main>
+
+      <DiscardDraftDialog
+        open={showDiscardDialog}
+        onStay={() => setShowDiscardDialog(false)}
+        onDiscard={() => { setShowDiscardDialog(false); goBack(navigate); }}
+      />
     </div>
   );
 }
