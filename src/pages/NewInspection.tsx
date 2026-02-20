@@ -242,7 +242,7 @@ export default function NewInspection() {
             <ArrowLeft className="w-4 h-4" />
             <span className="hidden sm:inline ml-2">Back to Dashboard</span>
           </Button>
-          <img src={ropeWorksLogo} alt="Rope Works" className="h-8 md:h-10 w-auto object-contain" />
+          <img src={ropeWorksLogo} alt="Rope Works" className="h-8 md:h-10 w-auto object-contain cursor-pointer hover:opacity-80 transition-opacity" onClick={() => navigate('/dashboard')} />
         </div>
       </header>
 

@@ -2096,7 +2096,7 @@ export default function InspectionForm() {
           <Button 
             variant="ghost" 
             size="sm" 
-            onClick={() => navigate('/dashboard')}
+            onClick={() => goBack(navigate)}
             className="mt-4"
           >
             <ArrowLeft className="w-4 h-4 mr-2" />

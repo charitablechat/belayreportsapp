@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router-dom';
+import { goBack } from '@/lib/navigation';
 import { Download, Smartphone, Zap, Wifi, Save, RefreshCw, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -24,7 +25,7 @@ export default function Install() {
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => navigate('/dashboard')}
+              onClick={() => goBack(navigate)}
               className="gap-2"
             >
               <ArrowLeft className="h-4 w-4" />

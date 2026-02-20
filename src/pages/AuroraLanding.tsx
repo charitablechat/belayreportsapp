@@ -37,7 +37,7 @@ export default function AuroraLanding() {
           className="relative flex flex-col gap-6 items-center justify-center px-2 md:px-4"
         >
           <div className="flex items-center gap-4 mb-4">
-            <img src={ropeWorksLogo} alt="Rope Works" className="h-16 w-auto object-contain" />
+            <img src={ropeWorksLogo} alt="Rope Works" className="h-16 w-auto object-contain cursor-pointer hover:opacity-80 transition-opacity" onClick={() => navigate('/dashboard')} />
             <img src={acctLogo} alt="ACCT Accredited Vendor" className="h-16 w-auto object-contain" />
           </div>
           

@@ -993,7 +993,7 @@ export default function Dashboard() {
           {/* Top row - Logos, status indicators, and user dropdown */}
           <div className="flex items-center justify-between gap-4 mb-3">
             <div className="flex items-center gap-2 md:gap-3">
-              <img src={ropeWorksLogo} alt="Rope Works" className="h-8 md:h-12 w-auto object-contain" />
+              <img src={ropeWorksLogo} alt="Rope Works" className="h-8 md:h-12 w-auto object-contain cursor-pointer hover:opacity-80 transition-opacity" onClick={() => navigate('/dashboard')} />
               <img src={acctLogo} alt="ACCT Accredited Vendor" className="h-8 md:h-12 w-auto object-contain" />
             </div>
             
