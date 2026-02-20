@@ -52,6 +52,7 @@ import { UnsavedChangesDialog } from "@/components/UnsavedChangesDialog";
 import { useSaveShortcut } from "@/hooks/useKeyboardShortcuts";
 import { useReportEditPermission } from "@/hooks/useReportEditPermission";
 import { CompletionLockDialog } from "@/components/CompletionLockDialog";
+import { SaveBeforeLeaveDialog } from "@/components/SaveBeforeLeaveDialog";
 import { Lock } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useEmergencySave } from "@/hooks/useEmergencySave";
@@ -79,7 +80,7 @@ export default function TrainingForm() {
   // Completion lock: prevent accidental edits to completed reports
   const [completionLockOverridden, setCompletionLockOverridden] = useState(false);
   const [showCompletionLockDialog, setShowCompletionLockDialog] = useState(false);
-  
+  const [showLeaveDialog, setShowLeaveDialog] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
@@ -163,7 +164,7 @@ export default function TrainingForm() {
       if (currentIndex > 0) {
         setCurrentTab(tabOrder[currentIndex - 1]);
       } else if (currentIndex === 0) {
-        goBack(navigate);
+        setShowLeaveDialog(true);
       }
     },
   });
@@ -1097,6 +1098,21 @@ export default function TrainingForm() {
         onOpenChange={setShowCompletionLockDialog}
         onConfirm={() => setCompletionLockOverridden(true)}
       />
+      <SaveBeforeLeaveDialog
+        open={showLeaveDialog}
+        onOpenChange={setShowLeaveDialog}
+        onSave={async () => {
+          await handleSaveAndLeave();
+          setShowLeaveDialog(false);
+          goBack(navigate);
+        }}
+        onLeave={() => {
+          setShowLeaveDialog(false);
+          goBack(navigate);
+        }}
+        onCancel={() => setShowLeaveDialog(false)}
+        isSaving={isSaving}
+      />
       <div className="min-h-screen bg-background">
       {/* Offline Mode Banner */}
       {!isOnline && (
@@ -1122,7 +1138,7 @@ export default function TrainingForm() {
           {/* Top row - Back button, Logo, User Avatar */}
           <div className="flex items-center justify-between mb-2 sm:mb-0">
             <div className="flex items-center gap-2">
-              <Button variant="ghost" size="icon" onClick={() => goBack(navigate)}>
+              <Button variant="ghost" size="icon" onClick={() => setShowLeaveDialog(true)}>
                 <ArrowLeft className="w-4 h-4" />
               </Button>
               <img src={ropeWorksLogo} alt="Rope Works" className="h-8 sm:h-10 w-auto object-contain" />

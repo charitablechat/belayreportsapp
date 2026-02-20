@@ -61,6 +61,7 @@ import { saveReportSnapshot, getReportSnapshot } from "@/lib/local-backup-ledger
 import { useSaveShortcut } from "@/hooks/useKeyboardShortcuts";
 import { useReportEditPermission } from "@/hooks/useReportEditPermission";
 import { CompletionLockDialog } from "@/components/CompletionLockDialog";
+import { SaveBeforeLeaveDialog } from "@/components/SaveBeforeLeaveDialog";
 import { Lock } from "lucide-react";
 import { appendVersion } from "@/lib/report-version-manager";
 import { showHardSavedToast } from "@/lib/toast-helpers";
@@ -86,7 +87,7 @@ export default function InspectionForm() {
   // Completion lock: prevent accidental edits to completed reports
   const [completionLockOverridden, setCompletionLockOverridden] = useState(false);
   const [showCompletionLockDialog, setShowCompletionLockDialog] = useState(false);
-  
+  const [showLeaveDialog, setShowLeaveDialog] = useState(false);
   // Enable keyboard avoidance for mobile
   useKeyboardAvoidance();
   
@@ -197,7 +198,7 @@ export default function InspectionForm() {
       if (currentIndex > 0) {
         setCurrentTab(tabOrder[currentIndex - 1]);
       } else if (currentIndex === 0) {
-        safeGoBack();
+        setShowLeaveDialog(true);
       }
     },
   });
@@ -2120,6 +2121,21 @@ export default function InspectionForm() {
         onOpenChange={setShowCompletionLockDialog}
         onConfirm={() => setCompletionLockOverridden(true)}
       />
+      <SaveBeforeLeaveDialog
+        open={showLeaveDialog}
+        onOpenChange={setShowLeaveDialog}
+        onSave={async () => {
+          await handleSaveAndLeave();
+          setShowLeaveDialog(false);
+          goBack(navigate);
+        }}
+        onLeave={() => {
+          setShowLeaveDialog(false);
+          goBack(navigate);
+        }}
+        onCancel={() => setShowLeaveDialog(false)}
+        isSaving={saving}
+      />
       <div className="min-h-screen bg-background">
       {/* Offline Mode Banner */}
       {!isOnline && (
@@ -2145,7 +2161,7 @@ export default function InspectionForm() {
           {/* Top row - Back button, Logo, User Avatar */}
           <div className="flex items-center justify-between mb-2 sm:mb-0">
             <div className="flex items-center gap-2">
-              <Button variant="ghost" size="icon" onClick={safeGoBack}>
+              <Button variant="ghost" size="icon" onClick={() => setShowLeaveDialog(true)}>
                 <ArrowLeft className="w-4 h-4" />
               </Button>
               <img src={ropeWorksLogo} alt="Rope Works" className="h-8 sm:h-10 w-auto object-contain" />
