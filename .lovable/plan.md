@@ -1,40 +1,79 @@
 
 
-# Match AutoSaveIndicator to ActiveTimerDisplay Glassmorphism Style
+# Fix: Temp-ID to UUID Swap Missing in Training and Daily Assessment Sync
 
-## Summary
+## Root Cause
 
-Update the `AutoSaveIndicator` component's container styling to exactly match the `ActiveTimerDisplay` pill, while preserving all auto-save logic, responsive text behavior, and status-specific colors.
+The database logs show the error `invalid input syntax for type uuid: "temp-1770737793484-119jf23me"` repeating every 2 seconds. This is the "Aspen report" stuck in an infinite sync loop.
 
-## File Changed
+**The bug:** `syncTrainingAtomic()` and `syncDailyAssessmentAtomic()` in `atomic-sync-manager.ts` are missing the temp-to-UUID swap that `syncInspectionAtomic()` already has (lines 117-128). When a training or daily assessment is created offline, it gets a `temp-` prefixed ID. During sync:
 
-**`src/components/AutoSaveIndicator.tsx`** (line 39)
+1. The `temp-` ID is passed to `checkRemoteRecordStatus` RPC, which expects a UUID type -- PostgreSQL rejects it
+2. The function returns `null` (error caught), sync continues
+3. The upsert to the database table also fails because `temp-` is not a valid UUID
+4. The error is caught, the record stays unsynced in IndexedDB
+5. Next sync cycle (every 5-30 seconds) picks it up again -- infinite loop
 
-## What Changes
+The inspection sync already handles this correctly (lines 117-128 of `atomic-sync-manager.ts`). The training and daily assessment sync paths were never given the same treatment.
 
-### Container class (the `mobilePill` variable, line 39)
+## Fix (1 file, 2 changes)
 
-**Current:**
-```
-bg-slate-900/60 backdrop-blur-sm border border-white/10 rounded-sm px-2 py-0.5
-```
-With responsive overrides: `sm:bg-transparent sm:backdrop-blur-none sm:border-0 sm:rounded-none sm:px-0 sm:py-0`
+### File: `src/lib/atomic-sync-manager.ts`
 
-**New (matches ActiveTimerDisplay exactly):**
-```
-bg-white/15 dark:bg-black/30 backdrop-blur-xl border border-white/20 shadow-md shadow-black/5 rounded-full px-2.5 py-1
-```
-The responsive overrides (`sm:bg-transparent sm:backdrop-blur-none ...`) stay as-is so desktop remains inline/plain.
+#### Change 1: Add temp-to-UUID swap to `syncTrainingAtomic()` (~line 797)
 
-### Status colors (lines 83, 93)
+After the training is loaded from IndexedDB but before any database calls, add the same temp-ID detection and UUID replacement pattern used in `syncInspectionAtomic`:
 
-- **Saved state** (line 83): `text-green-600 dark:text-green-400` becomes `text-emerald-400` to match the emerald palette used by ActiveTimerDisplay.
-- **Unsaved state** (line 93): `text-yellow-600 dark:text-yellow-400` becomes `text-amber-400` for consistency with the app's status palette.
+- Detect if `training.id` starts with `temp-`
+- Generate a real UUID via `crypto.randomUUID()`
+- Track the old-to-new mapping for post-sync IndexedDB cleanup
+- Propagate the new UUID to all child records (delivery_approaches, operating_systems, etc.)
+- After successful sync, delete the old `temp-` keyed entry from IndexedDB and save under the new UUID
+
+#### Change 2: Add temp-to-UUID swap to `syncDailyAssessmentAtomic()` (~line 1331)
+
+Same pattern as above, adapted for daily assessments:
+
+- Detect if `assessment.id` starts with `temp-`
+- Generate a real UUID
+- Track mapping for IndexedDB cleanup
+- Propagate UUID to all child records (beginning_of_day, end_of_day, operating_systems, equipment_checks, structure_checks, environment_checks)
+- Post-sync cleanup of old temp entries
 
 ## What Does NOT Change
 
-- All logic (debounce, intervals, IndexedDB persistence)
-- Props and interface
-- Responsive text pattern (icon-only on mobile via `sm:hidden` / `hidden sm:inline`)
-- Error, saving, and pending_sync states (only container styling updates)
-- The `ActiveTimerDisplay` component itself
+- `syncInspectionAtomic` -- already has the fix
+- No UI or styling changes
+- No database schema changes
+- No changes to auto-save logic, debounce intervals, or sync scheduling
+- No changes to the `useAutoSync` hook or `PWAProvider`
+- The existing validation, conflict detection, empty-local-guard, and field-count regression guard all remain intact
+
+## Why This Fixes the Infinite Loop
+
+Once the temp ID is swapped to a real UUID before any database calls:
+- `checkRemoteRecordStatus` receives a valid UUID -- no more PostgreSQL errors
+- The upsert succeeds with the real UUID
+- `synced_at` and `updated_at` are aligned post-sync
+- The record is no longer flagged as "unsynced" in IndexedDB
+- The sync loop stops
+
+## Technical Details
+
+The implementation mirrors the existing inspection pattern exactly:
+
+```text
+1. Load record from IndexedDB
+2. IF id starts with 'temp-':
+   a. Generate new UUID
+   b. Save mapping { oldId, newId }
+   c. Update record.id and function parameter
+3. Validate session, ownership
+4. Fetch child records using OLD id (stored under temp key in IndexedDB)
+5. Propagate new UUID to child record foreign keys
+6. Transform child temp IDs to UUIDs (already done)
+7. Validate, check remote status, build transaction steps
+8. Execute transaction
+9. Post-sync: delete old temp entries, save under new UUID
+```
+
