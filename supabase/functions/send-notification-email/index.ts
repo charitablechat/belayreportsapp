@@ -31,11 +31,34 @@ serve(async (req) => {
   }
 
   try {
+    // Create Supabase admin client early for webhook validation
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
+      auth: { persistSession: false }
+    });
+
     // Validate webhook secret from database trigger
     const webhookSecret = req.headers.get('x-webhook-secret');
-    const expectedWebhookSecret = Deno.env.get('WEBHOOK_SECRET');
     
-    if (!webhookSecret || !expectedWebhookSecret || webhookSecret !== expectedWebhookSecret) {
+    // Read the expected secret from the webhook_config table (same source as triggers)
+    const { data: secretRow, error: secretError } = await supabaseAdmin
+      .from('webhook_config')
+      .select('key_value')
+      .eq('key_name', 'WEBHOOK_SECRET')
+      .single();
+
+    if (secretError || !secretRow?.key_value) {
+      console.error('Failed to read webhook secret from database:', secretError);
+      return new Response(
+        JSON.stringify({ success: false, error: 'Server configuration error' }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const expectedWebhookSecret = secretRow.key_value;
+    
+    if (!webhookSecret || webhookSecret !== expectedWebhookSecret) {
       console.error('Invalid or missing webhook secret');
       return new Response(
         JSON.stringify({ success: false, error: 'Unauthorized - Invalid webhook secret' }),
@@ -68,12 +91,7 @@ serve(async (req) => {
 
     const resend = new Resend(resendApiKey);
 
-    // Create Supabase admin client
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
-      auth: { persistSession: false }
-    });
+    // supabaseAdmin already created above for webhook validation
 
     const payload: NotificationEmailRequest = await req.json();
     const { organizationId, notificationType, title, body, data } = payload;

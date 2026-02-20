@@ -39,11 +39,30 @@ serve(async (req) => {
   }
 
   try {
-    // Validate webhook secret from database trigger
+    // Create service role client for privileged operations
+    const supabaseServiceClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    );
+
+    // Validate webhook secret by reading from database (same source as triggers)
     const webhookSecret = req.headers.get('x-webhook-secret');
-    const expectedWebhookSecret = Deno.env.get('WEBHOOK_SECRET');
     
-    if (!webhookSecret || !expectedWebhookSecret || webhookSecret !== expectedWebhookSecret) {
+    const { data: secretRow, error: secretError } = await supabaseServiceClient
+      .from('webhook_config')
+      .select('key_value')
+      .eq('key_name', 'WEBHOOK_SECRET')
+      .single();
+
+    if (secretError || !secretRow?.key_value) {
+      console.error('Failed to read webhook secret from database:', secretError);
+      return new Response(
+        JSON.stringify({ error: 'Server configuration error' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if (!webhookSecret || webhookSecret !== secretRow.key_value) {
       console.error('Invalid or missing webhook secret');
       return new Response(
         JSON.stringify({ error: 'Unauthorized - Invalid webhook secret' }),
@@ -64,11 +83,7 @@ serve(async (req) => {
       );
     }
 
-    // Create service role client for privileged operations
-    const supabaseServiceClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    );
+    // supabaseServiceClient already created above for webhook validation
 
     const { organizationId, notificationType, title, body, data } = payload;
 

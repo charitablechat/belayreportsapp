@@ -24,11 +24,30 @@ serve(async (req) => {
   }
 
   try {
-    // Validate webhook secret
-    const webhookSecret = req.headers.get('x-webhook-secret');
-    const expectedWebhookSecret = Deno.env.get('WEBHOOK_SECRET');
+    // Create admin client first for webhook validation
+    const supabaseAdmin = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    );
 
-    if (!webhookSecret || !expectedWebhookSecret || webhookSecret !== expectedWebhookSecret) {
+    // Validate webhook secret by reading from database (same source as triggers)
+    const webhookSecret = req.headers.get('x-webhook-secret');
+    
+    const { data: secretRow, error: secretError } = await supabaseAdmin
+      .from('webhook_config')
+      .select('key_value')
+      .eq('key_name', 'WEBHOOK_SECRET')
+      .single();
+
+    if (secretError || !secretRow?.key_value) {
+      console.error('Failed to read webhook secret from database:', secretError);
+      return new Response(
+        JSON.stringify({ error: 'Server configuration error' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if (!webhookSecret || webhookSecret !== secretRow.key_value) {
       console.error('Invalid or missing webhook secret');
       return new Response(
         JSON.stringify({ error: 'Unauthorized' }),
@@ -37,11 +56,6 @@ serve(async (req) => {
     }
 
     console.log('check-overdue-reports: webhook validated, starting scan');
-
-    const supabaseAdmin = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    );
 
     const cutoffDate = new Date();
     cutoffDate.setDate(cutoffDate.getDate() - OVERDUE_THRESHOLD_DAYS);
