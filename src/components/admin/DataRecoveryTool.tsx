@@ -181,56 +181,106 @@ export function LocalSnapshotsPanel({ allowDelete = true }: SnapshotsPanelProps)
             No local backup snapshots found. Snapshots are created automatically when you save reports.
           </div>
         ) : (
-          <div className="rounded-md border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Organization</TableHead>
-                  <TableHead>Device</TableHead>
-                  <TableHead>Sync</TableHead>
-                  <TableHead>Last Saved</TableHead>
-                  <TableHead>Size</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {snapshots.map((s) => (
-                  <TableRow key={s.key}>
-                    <TableCell>
-                      <Badge variant="outline">{s.reportType.replace('_', ' ')}</Badge>
-                    </TableCell>
-                    <TableCell className="font-medium">{s.organization || "N/A"}</TableCell>
-                    <TableCell>{s.device}</TableCell>
-                    <TableCell>
-                      <Badge variant={s.synced ? "default" : "destructive"}>
-                        {s.synced ? "Synced" : "Unsynced"}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{formatDate(s.timestamp)}</TableCell>
-                    <TableCell className="text-sm">{(s.sizeBytes / 1024).toFixed(1)} KB</TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-1">
-                        <Button size="sm" variant="outline" onClick={() => handleRestore(s.reportType, s.reportId)} title="Restore to IndexedDB">
-                          <RotateCcw className="h-4 w-4" />
+          <>
+            {/* Mobile card layout */}
+            <div className="md:hidden space-y-3">
+              {snapshots.map((s) => (
+                <div key={s.key} className="rounded-lg border border-white/10 bg-white/5 dark:bg-white/[0.02] p-4 space-y-3 min-w-0">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <Badge variant="outline" className="text-xs">{s.reportType.replace('_', ' ')}</Badge>
+                    <Badge variant={s.synced ? "default" : "destructive"} className="text-xs">
+                      {s.synced ? "Synced" : "Unsynced"}
+                    </Badge>
+                  </div>
+                  <div className="space-y-1.5 min-w-0">
+                    <div className="flex justify-between gap-2 text-sm">
+                      <span className="text-muted-foreground shrink-0">Organization</span>
+                      <span className="font-medium text-right break-words min-w-0">{s.organization || "N/A"}</span>
+                    </div>
+                    <div className="flex justify-between gap-2 text-sm">
+                      <span className="text-muted-foreground shrink-0">Device</span>
+                      <span>{s.device}</span>
+                    </div>
+                    <div className="flex justify-between gap-2 text-sm">
+                      <span className="text-muted-foreground shrink-0">Last Saved</span>
+                      <span className="text-right text-muted-foreground">{formatDate(s.timestamp)}</span>
+                    </div>
+                    <div className="flex justify-between gap-2 text-sm">
+                      <span className="text-muted-foreground shrink-0">Size</span>
+                      <span>{(s.sizeBytes / 1024).toFixed(1)} KB</span>
+                    </div>
+                  </div>
+                  <div className="flex gap-2 pt-1">
+                    <Button size="sm" variant="outline" className="flex-1" onClick={() => handleRestore(s.reportType, s.reportId)}>
+                      <RotateCcw className="h-4 w-4 mr-1.5" />
+                      Restore
+                    </Button>
+                    {allowDelete && (
+                      <>
+                        <Button size="sm" variant="outline" onClick={() => handleExport(s.reportType, s.reportId)} title="Export">
+                          <Download className="h-4 w-4" />
                         </Button>
-                        {allowDelete && (
-                          <>
-                            <Button size="sm" variant="outline" onClick={() => handleExport(s.reportType, s.reportId)} title="Export as JSON">
-                              <Download className="h-4 w-4" />
-                            </Button>
-                            <Button size="sm" variant="ghost" className="text-destructive" onClick={() => handleDelete(s.reportType, s.reportId)} title="Delete snapshot">
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </>
-                        )}
-                      </div>
-                    </TableCell>
+                        <Button size="sm" variant="ghost" className="text-destructive" onClick={() => handleDelete(s.reportType, s.reportId)} title="Delete">
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+            {/* Desktop table layout */}
+            <div className="hidden md:block rounded-md border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Type</TableHead>
+                    <TableHead>Organization</TableHead>
+                    <TableHead>Device</TableHead>
+                    <TableHead>Sync</TableHead>
+                    <TableHead>Last Saved</TableHead>
+                    <TableHead>Size</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
+                </TableHeader>
+                <TableBody>
+                  {snapshots.map((s) => (
+                    <TableRow key={s.key}>
+                      <TableCell>
+                        <Badge variant="outline">{s.reportType.replace('_', ' ')}</Badge>
+                      </TableCell>
+                      <TableCell className="font-medium">{s.organization || "N/A"}</TableCell>
+                      <TableCell>{s.device}</TableCell>
+                      <TableCell>
+                        <Badge variant={s.synced ? "default" : "destructive"}>
+                          {s.synced ? "Synced" : "Unsynced"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">{formatDate(s.timestamp)}</TableCell>
+                      <TableCell className="text-sm">{(s.sizeBytes / 1024).toFixed(1)} KB</TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-1">
+                          <Button size="sm" variant="outline" onClick={() => handleRestore(s.reportType, s.reportId)} title="Restore to IndexedDB">
+                            <RotateCcw className="h-4 w-4" />
+                          </Button>
+                          {allowDelete && (
+                            <>
+                              <Button size="sm" variant="outline" onClick={() => handleExport(s.reportType, s.reportId)} title="Export as JSON">
+                                <Download className="h-4 w-4" />
+                              </Button>
+                              <Button size="sm" variant="ghost" className="text-destructive" onClick={() => handleDelete(s.reportType, s.reportId)} title="Delete snapshot">
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </>
+                          )}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </>
         )}
       </CardContent>
     </Card>
