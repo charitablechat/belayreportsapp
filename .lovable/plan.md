@@ -1,26 +1,38 @@
 
 
-## Make "Saved" Indicator Match "REC" Pill on All Screen Sizes
+## Add Text Location Field to New Training Report
 
-### Problem
-The AutoSaveIndicator currently uses the glassmorphism pill style only on mobile. On desktop (sm: and above), the pill styling is stripped away via responsive overrides (`sm:bg-transparent sm:backdrop-blur-none sm:border-0 sm:rounded-none`), making it look plain -- unlike the ActiveTimerDisplay "REC" pill which always shows as a pill.
+### What Changes
+The "New Training Report" form currently only supports GPS coordinate capture for location. This plan adds a text input field so users can type a location (e.g., "Camp Thunderbird, Lake Wylie, SC") in addition to (or instead of) capturing GPS coordinates.
 
-### Solution
-Update the `mobilePill` class string in `AutoSaveIndicator.tsx` to always render the pill shape, matching the ActiveTimerDisplay component exactly.
+### Database Change
+Add a `location` text column to the `trainings` table (nullable, defaults to empty string), matching how inspections already store location text.
 
-### Changes
+### UI Changes
 
-**File: `src/components/AutoSaveIndicator.tsx`**
+**File: `src/pages/NewTraining.tsx`**
+- Add a `location` field to the `formData` state (empty string default)
+- Add a text input field labeled "Location" above the GPS capture button
+- The text input and GPS capture button sit together in the same section so the user can do either or both
 
-- Replace the `mobilePill` variable (line 39) that currently has responsive overrides stripping the pill on desktop
-- New value: `"inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/15 dark:bg-black/30 backdrop-blur-xl border border-white/20 shadow-md shadow-black/5"` -- identical to the ActiveTimerDisplay wrapper
-- This is the same styling used by ActiveTimerDisplay at line 28 of that component
-- The green color (`text-emerald-400`) for the "Saved" state is already correct and will remain unchanged
-- No functional changes -- save timing, retry logic, and all state handling remain as-is
+**File: `src/components/training/TrainingHeader.tsx`**
+- Add a "Location" text input field so users can also view/edit the location text from within the training form itself
+- Wire it to `onUpdate('location', value)`
 
-### What stays the same
-- All status colors (emerald for saved, amber for unsaved, destructive for error, primary for saving)
-- Icons (CheckCircle, Clock, AlertCircle, Loader2, CloudOff, RefreshCw)
-- Text content and mobile/desktop text visibility (`hidden sm:inline` vs `sm:hidden`)
-- Save timing and retry functionality
+**File: `src/pages/NewTraining.tsx` (submit handler)**
+- Include `location` in the insert payload sent to the database
 
+### Technical Details
+
+1. **Migration SQL:**
+   ```sql
+   ALTER TABLE trainings ADD COLUMN location text NOT NULL DEFAULT '';
+   ```
+
+2. **NewTraining.tsx state** adds `location: ""` to formData and includes it in the insert call.
+
+3. **TrainingHeader.tsx** adds a text input between the organization field and the date pickers, labeled "Location", using `VoiceNameInput` for voice support consistency.
+
+4. **Offline storage** -- the `saveTrainingOffline` call already passes the full object, so including `location` requires no additional offline logic changes.
+
+5. No RLS policy changes needed -- existing policies on the `trainings` table already cover all CRUD operations.
