@@ -1,4 +1,9 @@
 import { useEffect, useState, useCallback, useRef } from "react";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel,
+  AlertDialogContent, AlertDialogDescription,
+  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { isLocalDataNewer } from "@/lib/local-data-guards";
 import { useParams, useNavigate } from "react-router-dom";
 import { goBack } from "@/lib/navigation";
@@ -81,6 +86,7 @@ export default function TrainingForm() {
   const [completionLockOverridden, setCompletionLockOverridden] = useState(false);
   const [showCompletionLockDialog, setShowCompletionLockDialog] = useState(false);
   const [showLeaveDialog, setShowLeaveDialog] = useState(false);
+  const [showCompleteDialog, setShowCompleteDialog] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
@@ -1190,7 +1196,7 @@ export default function TrainingForm() {
               </Button>
               <Button 
                 size={isMobile ? "default" : "sm"} 
-                onClick={completeTraining} 
+                onClick={() => setShowCompleteDialog(true)} 
                 disabled={isSaving || !isOnline}
                 className={isMobile ? "min-w-[100px] h-10 text-sm font-medium" : ""}
               >
@@ -1450,6 +1456,23 @@ export default function TrainingForm() {
       />
 
       </div>
+
+      <AlertDialog open={showCompleteDialog} onOpenChange={setShowCompleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Complete Training Report</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to mark this training as complete? This will lock the report. You can still edit it afterward if needed.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={completeTraining}>
+              Complete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }
