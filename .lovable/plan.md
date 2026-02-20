@@ -1,56 +1,54 @@
 
 
-# Show Auto-Save Feedback on Mobile Viewports
+# Restyle ActiveTimerDisplay: Glassmorphism Clock Badge
 
-## Findings
+## Problem
+The `ActiveTimerDisplay` component uses a hard-coded black background (`#1a1a1a`) with neon green (`#32CD32`) text -- a "Matrix terminal" look that clashes with the application's established Minimal Brutalist + Glassmorphism aesthetic.
 
-### Auto-Save Logic (Already Working -- No Changes Needed)
-The auto-save system is already optimized and fully operational on all screen sizes:
+## New Design Direction
+Replace the opaque black/green scheme with a **frosted glass pill** that matches existing UI elements like the `AuthenticatedHeader` and `AutoSaveIndicator`:
 
-- **Trigger**: 1.5-second debounce after any data change, plus a 10-second interval backup
-- **Persistence**: IndexedDB (local-first), then background sync to the cloud
-- **Emergency save**: Fires on `visibilitychange` / `pagehide` (tab switch, app close)
-- **Safety timeout**: 8-second max to prevent stuck "saving" states
+- **Background**: `bg-white/10 dark:bg-black/20` with `backdrop-blur-[12px]`
+- **Border**: `border border-white/15`
+- **Text**: `text-foreground/80` for the time, muted tones for "REC" label
+- **Recording dot**: Subtle `bg-emerald-400` (Emerald 400 from the status palette) instead of neon green
+- **Typography**: Keep `font-mono` and `tabular-nums` for the timer digits -- monospaced is correct for a clock
+- **Cursor**: Remove the blinking terminal cursor (`_`) -- it reinforces the terminal look that is being removed
 
-No changes to save logic, timing, or persistence method are needed.
+## Single File Change
 
-### The Bug: No Visual Feedback on Mobile
-All three report forms pass `className="hidden sm:flex"` to `AutoSaveIndicator`, making it completely invisible below 640px. Mobile users get no confirmation that their data is being saved.
+### `src/components/ActiveTimerDisplay.tsx`
 
-## Plan
+**Outer container** (line 26):
+```
+Before: bg-[#1a1a1a] border border-[#32CD32]/30
+After:  bg-white/10 dark:bg-black/20 backdrop-blur-[12px] border border-white/15 shadow-sm
+```
 
-### 1. Update `AutoSaveIndicator` for Mobile-Friendly Display
-Restyle the component to show a compact, icon-only indicator on mobile (already partially implemented with `sm:hidden` / `hidden sm:inline` spans inside the component). The issue is the **parent** hides the entire component.
+**REC dot** (lines 30-34):
+```
+Before: bg-[#32CD32] / bg-[#32CD32]/30
+After:  bg-emerald-400 / bg-muted-foreground/30
+```
 
-### 2. Remove `hidden sm:flex` from All Three Forms
-Change the className from `"hidden sm:flex"` to `"flex"` in:
+**REC text** (lines 37-39):
+```
+Before: text-[#32CD32] / text-[#32CD32]/40
+After:  text-emerald-400 / text-muted-foreground/40
+```
 
-| File | Line |
-|------|------|
-| `src/pages/InspectionForm.tsx` | ~2224 |
-| `src/pages/TrainingForm.tsx` | ~1163 |
-| `src/pages/DailyAssessmentForm.tsx` | ~1268 |
+**Time digits** (line 46):
+```
+Before: text-[#32CD32]
+After:  text-foreground/80
+```
 
-The component already has responsive internal behavior (icon-only on mobile, icon+text on desktop via `hidden sm:inline` / `sm:hidden` spans), so simply unhiding the wrapper is sufficient.
-
-### 3. Apply Brutalist Glassmorphism Styling to the AutoSaveIndicator
-Update `src/components/AutoSaveIndicator.tsx` to add a subtle frosted-glass pill on mobile that matches the Slate 900 / Emerald 400 aesthetic:
-
-- Add `bg-slate-900/60 backdrop-blur-sm border border-white/10 rounded-sm px-2 py-0.5` wrapper on mobile for the terminal look
-- Keep the existing desktop inline style unchanged (no background pill)
-- Use `font-mono` for the terminal aesthetic consistency
-
-## Files Modified
-| File | Change |
-|------|--------|
-| `src/components/AutoSaveIndicator.tsx` | Add Brutalist glassmorphism mobile styling |
-| `src/pages/InspectionForm.tsx` | Change `hidden sm:flex` to `flex` |
-| `src/pages/TrainingForm.tsx` | Change `hidden sm:flex` to `flex` |
-| `src/pages/DailyAssessmentForm.tsx` | Change `hidden sm:flex` to `flex` |
+**Blinking cursor** (lines 49-51): Remove entirely.
 
 ## What Does NOT Change
-- Auto-save debounce timing (1.5s)
-- IndexedDB persistence logic
-- Emergency save behavior
-- Background sync system
-- Desktop layout
+- `formatTime` logic
+- `memo` wrapper
+- Props interface
+- Timer hook usage in InspectionForm, TrainingForm, DailyAssessmentForm
+- No other files modified
+
