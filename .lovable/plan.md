@@ -1,73 +1,26 @@
 
 
-## Connect Make.com for Notification Emails
+## Make "Saved" Indicator Match "REC" Pill on All Screen Sizes
 
-### Overview
+### Problem
+The AutoSaveIndicator currently uses the glassmorphism pill style only on mobile. On desktop (sm: and above), the pill styling is stripped away via responsive overrides (`sm:bg-transparent sm:backdrop-blur-none sm:border-0 sm:rounded-none`), making it look plain -- unlike the ActiveTimerDisplay "REC" pill which always shows as a pill.
 
-Replace Resend with a Make.com webhook for sending admin notification emails (inspection completed, training completed, daily assessment completed, sync conflicts). The `send-report-email` function (for emailing reports to clients) stays unchanged with Resend.
+### Solution
+Update the `mobilePill` class string in `AutoSaveIndicator.tsx` to always render the pill shape, matching the ActiveTimerDisplay component exactly.
 
-### What You Need to Do in Make.com
+### Changes
 
-1. Go to **Make.com** and create a new **Scenario**
-2. Add a **Webhooks > Custom Webhook** module as the first step
-3. Click on the webhook to get the **webhook URL** (it will look like `https://hook.make.com/abc123...`)
-4. Add your email-sending module (Gmail, Outlook, SMTP, etc.) as the next step
-5. Map the incoming data fields to your email module:
-   - `recipients` -- array of objects with `email`, `name`
-   - `subject` -- email subject line
-   - `html` -- the fully formatted HTML email body (ready to send as-is)
-   - `notificationType` -- type of notification (for filtering/routing if needed)
-   - `data` -- extra context (report ID, organization, location, etc.)
-6. Since `recipients` is an array, use Make.com's **Iterator** module to loop through and send one email per recipient
-7. **Activate** the scenario so it listens for incoming webhooks
+**File: `src/components/AutoSaveIndicator.tsx`**
 
-### What I Will Change in Lovable
+- Replace the `mobilePill` variable (line 39) that currently has responsive overrides stripping the pill on desktop
+- New value: `"inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/15 dark:bg-black/30 backdrop-blur-xl border border-white/20 shadow-md shadow-black/5"` -- identical to the ActiveTimerDisplay wrapper
+- This is the same styling used by ActiveTimerDisplay at line 28 of that component
+- The green color (`text-emerald-400`) for the "Saved" state is already correct and will remain unchanged
+- No functional changes -- save timing, retry logic, and all state handling remain as-is
 
-**1. Store the Make.com Webhook URL as a secret**
-- Add a new secret called `MAKE_WEBHOOK_URL` with your Make.com webhook URL
-
-**2. Update `send-notification-email` edge function**
-- Remove the Resend import and Resend API key check
-- Keep all existing logic: webhook secret validation, rate limiting, super admin lookup, notification preference filtering, email fetching, HTML generation
-- Replace the Resend email-sending section with a single `fetch()` POST to the Make.com webhook URL
-- Send a JSON payload containing:
-
-```text
-{
-  "recipients": [
-    { "email": "admin1@example.com", "name": "Kale" },
-    { "email": "admin2@example.com", "name": "Brenda" }
-  ],
-  "subject": "Inspection Completed",
-  "html": "<full HTML email body>",
-  "notificationType": "inspection_completed",
-  "data": { "inspectionId": "...", "organization": "...", ... }
-}
-```
-
-- This sends all recipients and the pre-formatted HTML in one call to Make.com, which then handles delivery
-
-**3. No other changes needed**
-- Database triggers remain unchanged (they already call `send-notification-email`)
-- `send-report-email` (client-facing report emails) continues using Resend
-- Push notifications remain unchanged
-
-### Technical Details
-
-```text
-Current flow:
-  DB Trigger --> send-notification-email --> Resend API --> Email delivered
-
-New flow:
-  DB Trigger --> send-notification-email --> Make.com Webhook --> Your email module --> Email delivered
-```
-
-The edge function still handles all the "smart" logic (who to notify, preference checks, HTML formatting). Make.com just receives a ready-to-send package and delivers it.
-
-### Steps to Implement
-
-1. You provide the Make.com webhook URL (I will prompt you to enter it as a secret)
-2. I update the `send-notification-email` edge function to POST to Make.com instead of Resend
-3. The function redeploys automatically
-4. You complete a test report to verify emails arrive
+### What stays the same
+- All status colors (emerald for saved, amber for unsaved, destructive for error, primary for saving)
+- Icons (CheckCircle, Clock, AlertCircle, Loader2, CloudOff, RefreshCw)
+- Text content and mobile/desktop text visibility (`hidden sm:inline` vs `sm:hidden`)
+- Save timing and retry functionality
 
