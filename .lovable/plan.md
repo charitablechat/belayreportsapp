@@ -1,55 +1,48 @@
 
 
-# Fix Auto-Versioning and Refresh Badge Aesthetic
+# Always-Prompt "Save Before Leaving" on Back Button
 
-## Root Cause
+## Current Behavior
+The back button in each report form (`InspectionForm`, `TrainingForm`, `DailyAssessmentForm`) calls `goBack(navigate)` directly. A confirmation dialog only appears if `hasUnsavedChanges` is `true` (via `useBlocker`). If the user has no pending edits (or they were just auto-saved), pressing back silently exits.
 
-The `vite-auto-version.ts` plugin reads `version.json` (currently `"2.6.1"`), increments it in memory to `2.6.2`, and attempts to write the new value back to `version.json` via `fs.writeFileSync`. However, in the Lovable Cloud build environment, **file system writes do not persist between builds**. This means:
+## New Behavior
+Every time the back button is pressed inside a report, a confirmation dialog appears with three options:
+- **Save and Leave** -- saves the report, then navigates back
+- **Leave Without Saving** -- navigates back immediately
+- **Stay on Page** -- closes the dialog, no action
 
-- Every build reads the stale `"2.6.1"` from disk.
-- The plugin increments it to `"2.6.2"` in memory and injects it as `APP_VERSION`.
-- The write-back to `version.json` is lost, so the next build repeats the same cycle.
+This is independent of the existing `useBlocker`-based unsaved changes protection, which continues to guard against browser back/forward and link navigation.
 
-The version has been stuck at `v2.6.2` for all recent deployments.
+## Implementation
 
-## Fix Strategy
+### 1. New Component: `SaveBeforeLeaveDialog.tsx`
+A lightweight dialog styled with the existing Glassmorphism aesthetic (reuses the `AlertDialog` primitives already in the project). Three buttons: "Stay on Page", "Save and Leave", "Leave Without Saving".
 
-Since the file-write-back mechanism cannot work in this environment, the solution is:
+### 2. Modify `InspectionForm.tsx`
+- Add `showLeaveDialog` state (boolean, default `false`).
+- Change the back button `onClick` from `safeGoBack()` to `setShowLeaveDialog(true)`.
+- Change the swipe-right-on-first-tab handler from `goBack(navigate)` to `setShowLeaveDialog(true)`.
+- Render `SaveBeforeLeaveDialog` with:
+  - `onSave`: calls the existing save function, then `goBack(navigate)`.
+  - `onLeave`: calls `goBack(navigate)` directly.
+  - `onCancel`: closes the dialog.
 
-1. **Manually bump `version.json`** to `"2.8.1"` to account for the 15+ significant changes since `2.6.1` (active timer, admin settings, dark mode, dashboard polish, etc.).
-2. **Accept the +1 increment model**: each build will always show the version stored in `version.json` + 1 patch. Future version bumps are done by updating `version.json` directly when shipping milestone features.
-3. **Upgrade the VersionBadge** to use the Glassmorphism aesthetic (`backdrop-blur-md`, `bg-white/10`, Inter font) to match the current design system.
+### 3. Modify `TrainingForm.tsx`
+Same pattern: intercept back button and first-tab swipe-right with the dialog.
 
-## Changes
+### 4. Modify `DailyAssessmentForm.tsx`
+Same pattern: intercept back button and first-tab swipe-right with the dialog.
 
-### 1. `version.json`
-Update from `"2.6.1"` to `"2.8.1"`. The next build will display `v2.8.2`.
+## What Does NOT Change
+- The existing `useBlocker` / `UnsavedChangesDialog` system remains intact for guarding against browser navigation, link clicks, and programmatic route changes.
+- No business logic, save logic, offline storage, or auth flows are modified.
+- Emergency save behavior is unaffected.
 
-### 2. `src/components/VersionBadge.tsx`
-Restyle the badge button with the Minimal Glassmorphism aesthetic:
-- Replace the retro-green terminal look with `backdrop-blur-md`, `bg-white/10`, `border-white/20`.
-- Use `font-sans` (Inter) for the version text instead of `font-mono`.
-- Maintain dark mode compatibility with `dark:` variants.
-- Keep the click-to-open modal behavior intact.
-
-### 3. `src/components/VersionInfoModal.tsx`
-Upgrade the modal to Glassmorphism:
-- Replace `bg-black border-2 border-white rounded-none` with `bg-black/90 backdrop-blur-xl border-white/20 rounded-lg`.
-- Keep the CRT scanline overlay for the retro-tech character.
-- Ensure the version number, build date, and timestamp remain clearly readable.
-
-### 4. `vite-auto-version.ts`
-Add a comment documenting the persistence limitation and the manual-bump workflow so future developers understand the pattern.
-
-## Files Modified
-- `version.json` -- bump to 2.8.1
-- `src/components/VersionBadge.tsx` -- glassmorphism badge styling
-- `src/components/VersionInfoModal.tsx` -- glassmorphism modal styling
-- `vite-auto-version.ts` -- documentation comment
-
-## No Impact On
-- IndexedDB recovery guards (unrelated code path)
-- localStorage snapshotting (unrelated)
-- Auth logic in `AuthenticatedHeader.tsx` / `UserProfileDropdown.tsx` (badge is a leaf component, no auth coupling)
-- No secrets or API keys involved
+## Files
+| File | Action |
+|------|--------|
+| `src/components/SaveBeforeLeaveDialog.tsx` | **Create** -- new dialog component |
+| `src/pages/InspectionForm.tsx` | **Edit** -- wire back button and swipe to dialog |
+| `src/pages/TrainingForm.tsx` | **Edit** -- wire back button and swipe to dialog |
+| `src/pages/DailyAssessmentForm.tsx` | **Edit** -- wire back button and swipe to dialog |
 
