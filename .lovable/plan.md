@@ -1,48 +1,38 @@
 
 
-# Always-Prompt "Save Before Leaving" on Back Button
+# Restyle "Save Before Leave" Dialog to Brutalist Glassmorphism Spec
 
-## Current Behavior
-The back button in each report form (`InspectionForm`, `TrainingForm`, `DailyAssessmentForm`) calls `goBack(navigate)` directly. A confirmation dialog only appears if `hasUnsavedChanges` is `true` (via `useBlocker`). If the user has no pending edits (or they were just auto-saved), pressing back silently exits.
+## Current State
+The `SaveBeforeLeaveDialog` and `UnsavedChangesDialog` components already exist and are wired into all three report forms. The back button, swipe-right, and browser back/forward navigation all trigger confirmation prompts. **No new wiring is needed.**
 
-## New Behavior
-Every time the back button is pressed inside a report, a confirmation dialog appears with three options:
-- **Save and Leave** -- saves the report, then navigates back
-- **Leave Without Saving** -- navigates back immediately
-- **Stay on Page** -- closes the dialog, no action
+This plan updates the visual presentation and copy to match the requested spec.
 
-This is independent of the existing `useBlocker`-based unsaved changes protection, which continues to guard against browser back/forward and link navigation.
+## Changes
 
-## Implementation
+### 1. Update `SaveBeforeLeaveDialog.tsx` (Restyle + New Copy)
+- **Title**: Change from "Save before leaving?" to "Unsaved Changes Detected"
+- **Body**: Update to "You have unsaved progress in this report. Do you want to Save and Exit or Discard Changes and Exit?"
+- **Save button**: Apply Emerald 400 styling (`bg-emerald-500 hover:bg-emerald-400 text-white`) for high visibility
+- **Discard button**: Keep destructive red variant
+- **Cancel button**: Keep outline variant
+- **Container**: Add sharp `border border-white/20`, `backdrop-blur-xl`, `bg-slate-900/95`, and `shadow-2xl` for the frosted Brutalist look
+- **Icon**: Add `AlertTriangle` icon in the title for visual emphasis
 
-### 1. New Component: `SaveBeforeLeaveDialog.tsx`
-A lightweight dialog styled with the existing Glassmorphism aesthetic (reuses the `AlertDialog` primitives already in the project). Three buttons: "Stay on Page", "Save and Leave", "Leave Without Saving".
+### 2. Update `UnsavedChangesDialog.tsx` (Matching Restyle)
+Apply the same Brutalist Glassmorphism treatment so both dialogs (back-button triggered and browser-navigation triggered) look consistent:
+- Same frosted glass container styling
+- Emerald 400 for the "Save and Leave" button
+- Matching typography and border treatment
 
-### 2. Modify `InspectionForm.tsx`
-- Add `showLeaveDialog` state (boolean, default `false`).
-- Change the back button `onClick` from `safeGoBack()` to `setShowLeaveDialog(true)`.
-- Change the swipe-right-on-first-tab handler from `goBack(navigate)` to `setShowLeaveDialog(true)`.
-- Render `SaveBeforeLeaveDialog` with:
-  - `onSave`: calls the existing save function, then `goBack(navigate)`.
-  - `onLeave`: calls `goBack(navigate)` directly.
-  - `onCancel`: closes the dialog.
+### What Does NOT Change
+- No form logic changes
+- No save/persistence logic changes
+- No navigation wiring changes
+- No changes to `useBlocker` or `useUnsavedChanges` hooks
 
-### 3. Modify `TrainingForm.tsx`
-Same pattern: intercept back button and first-tab swipe-right with the dialog.
-
-### 4. Modify `DailyAssessmentForm.tsx`
-Same pattern: intercept back button and first-tab swipe-right with the dialog.
-
-## What Does NOT Change
-- The existing `useBlocker` / `UnsavedChangesDialog` system remains intact for guarding against browser navigation, link clicks, and programmatic route changes.
-- No business logic, save logic, offline storage, or auth flows are modified.
-- Emergency save behavior is unaffected.
-
-## Files
-| File | Action |
+## Files Modified
+| File | Change |
 |------|--------|
-| `src/components/SaveBeforeLeaveDialog.tsx` | **Create** -- new dialog component |
-| `src/pages/InspectionForm.tsx` | **Edit** -- wire back button and swipe to dialog |
-| `src/pages/TrainingForm.tsx` | **Edit** -- wire back button and swipe to dialog |
-| `src/pages/DailyAssessmentForm.tsx` | **Edit** -- wire back button and swipe to dialog |
+| `src/components/SaveBeforeLeaveDialog.tsx` | Restyle + update copy |
+| `src/components/UnsavedChangesDialog.tsx` | Matching restyle for consistency |
 
