@@ -1,38 +1,85 @@
 
+## Add "Complete Report" Confirmation Dialog to All Three Report Types
 
-## Add Text Location Field to New Training Report
+### What the user sees today
+- **Daily Assessment**: Clicking "Complete" already shows a confirmation dialog ("Submit Assessment" / "Are you sure...") before finalizing.
+- **Inspection Report**: Clicking "Complete Report" immediately fires `completeInspection()` — no confirmation step.
+- **Training Report**: Clicking "Complete" immediately fires `completeTraining()` — no confirmation step.
 
-### What Changes
-The "New Training Report" form currently only supports GPS coordinate capture for location. This plan adds a text input field so users can type a location (e.g., "Camp Thunderbird, Lake Wylie, SC") in addition to (or instead of) capturing GPS coordinates.
+### Goal
+Every report type must show an identical "Submit [Report Type]" confirmation dialog before marking it as complete.
 
-### Database Change
-Add a `location` text column to the `trainings` table (nullable, defaults to empty string), matching how inspections already store location text.
+---
 
-### UI Changes
+### Changes Required
 
-**File: `src/pages/NewTraining.tsx`**
-- Add a `location` field to the `formData` state (empty string default)
-- Add a text input field labeled "Location" above the GPS capture button
-- The text input and GPS capture button sit together in the same section so the user can do either or both
+#### 1. `src/pages/InspectionForm.tsx`
 
-**File: `src/components/training/TrainingHeader.tsx`**
-- Add a "Location" text input field so users can also view/edit the location text from within the training form itself
-- Wire it to `onUpdate('location', value)`
+**State** — add one new state variable:
+```tsx
+const [showCompleteDialog, setShowCompleteDialog] = useState(false);
+```
 
-**File: `src/pages/NewTraining.tsx` (submit handler)**
-- Include `location` in the insert payload sent to the database
+**Imports** — add `AlertDialog` components (not currently imported):
+```tsx
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel,
+  AlertDialogContent, AlertDialogDescription,
+  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+```
 
-### Technical Details
+**Button** (line 2249) — change `onClick={completeInspection}` to `onClick={() => setShowCompleteDialog(true)}`
 
-1. **Migration SQL:**
-   ```sql
-   ALTER TABLE trainings ADD COLUMN location text NOT NULL DEFAULT '';
-   ```
+**Dialog** — add the `AlertDialog` block just before the closing `</> ` of the return statement:
+```tsx
+<AlertDialog open={showCompleteDialog} onOpenChange={setShowCompleteDialog}>
+  <AlertDialogContent>
+    <AlertDialogHeader>
+      <AlertDialogTitle>Complete Inspection Report</AlertDialogTitle>
+      <AlertDialogDescription>
+        Are you sure you want to mark this inspection as complete? This will lock the report. You can still edit it afterward if needed.
+      </AlertDialogDescription>
+    </AlertDialogHeader>
+    <AlertDialogFooter>
+      <AlertDialogCancel>Cancel</AlertDialogCancel>
+      <AlertDialogAction onClick={completeInspection}>
+        Complete
+      </AlertDialogAction>
+    </AlertDialogFooter>
+  </AlertDialogContent>
+</AlertDialog>
+```
 
-2. **NewTraining.tsx state** adds `location: ""` to formData and includes it in the insert call.
+---
 
-3. **TrainingHeader.tsx** adds a text input between the organization field and the date pickers, labeled "Location", using `VoiceNameInput` for voice support consistency.
+#### 2. `src/pages/TrainingForm.tsx`
 
-4. **Offline storage** -- the `saveTrainingOffline` call already passes the full object, so including `location` requires no additional offline logic changes.
+Same pattern:
 
-5. No RLS policy changes needed -- existing policies on the `trainings` table already cover all CRUD operations.
+**State** — add:
+```tsx
+const [showCompleteDialog, setShowCompleteDialog] = useState(false);
+```
+
+**Imports** — add `AlertDialog` components (not currently imported).
+
+**Button** (line 1193) — change `onClick={completeTraining}` to `onClick={() => setShowCompleteDialog(true)}`
+
+**Dialog** — add the same `AlertDialog` block before the return's closing fragment, with label "Complete Training Report".
+
+---
+
+#### 3. `src/pages/DailyAssessmentForm.tsx`
+
+No changes needed — this file already has the `showSubmitDialog` state, the `AlertDialog`, and the button correctly wired to `setShowSubmitDialog(true)`.
+
+---
+
+### Technical Notes
+
+- No backend changes required.
+- No new components — uses the existing `AlertDialog` from `@radix-ui/react-alert-dialog` (already installed, already used in DailyAssessmentForm).
+- The actual `completeInspection` / `completeTraining` functions are not modified — they remain the source of truth for save logic, confetti, and haptic feedback.
+- The dialog's "Cancel" button simply closes the dialog without side effects.
+- The styling of the dialog will match the existing default system dialog style (same as Daily Assessment — clean white modal with Cancel / Complete buttons).
