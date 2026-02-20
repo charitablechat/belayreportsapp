@@ -1,79 +1,105 @@
 
-## Add Unsaved-Changes Guard to All Three "New Report" Screens
+## Fix: Back Navigation Blocked in Training Form (and All Three Report Forms)
 
-### The Problem
+### Root Cause
 
-All three report-creation screens — New Daily Assessment, New Training, and New Inspection — currently call `goBack(navigate)` directly with no guard. If a user has started filling in fields and accidentally taps the back button (or uses a browser/native back gesture), all entered data is silently discarded.
+All three report forms (Training, Inspection, Daily Assessment) have two separate navigation-guard systems running simultaneously:
 
-The Cancel button in each form also navigates to `/dashboard` with no guard.
+1. **`useBlocker` (from `useUnsavedChanges`)** — intercepts ALL programmatic `navigate()` calls when `hasUnsavedChanges` is `true`. This is a React Router-level blocker that catches every SPA navigation.
+
+2. **`SaveBeforeLeaveDialog`** — a manual confirmation modal opened when the user clicks the back arrow or swipes right on the first tab.
+
+**The conflict:** When the user clicks "Save & Exit" or "Discard & Exit" in the `SaveBeforeLeaveDialog`, the handlers call `goBack(navigate)` → `navigate(-1)`. At that instant, `hasUnsavedChanges` is still `true`, so the `useBlocker` intercepts the `navigate(-1)` call and blocks it. The navigation never completes — the user is stuck on the page with no visible feedback.
+
+This is the same bug in all three forms:
+- `src/pages/TrainingForm.tsx` → `onSave` / `onLeave` call `goBack(navigate)` while blocker is active
+- `src/pages/InspectionForm.tsx` → same pattern
+- `src/pages/DailyAssessmentForm.tsx` → same pattern
+
+### Scope
+
+The bug affects:
+- Back arrow button in all three report form headers
+- Swipe-right-on-first-tab gesture in all three forms (all trigger `setShowLeaveDialog(true)`)
+
+The **"New" creation screens** (NewTraining, NewInspection, NewDailyAssessment) are NOT affected — they use the simpler `DiscardDraftDialog` without `useBlocker`.
+
+---
 
 ### The Fix
 
-Wire a lightweight "Discard Unsaved Changes?" confirmation dialog into all three screens. Because these are *creation* screens (no record exists yet), there is nothing to "Save & Exit" — the only two actions are "Stay on Page" or "Discard & Go Back". This is simpler than the `SaveBeforeLeaveDialog` used in the full report forms.
+The fix is simple and identical for all three files. In the `SaveBeforeLeaveDialog`'s callbacks, `hasUnsavedChanges` must be set to `false` **before** calling `goBack(navigate)`, so the `useBlocker` releases its hold before the navigation fires.
 
-A new shared component `DiscardDraftDialog` will be created — or the existing `SaveBeforeLeaveDialog` reused without the Save button — and integrated into all three screens.
+**For the "Save & Exit" path:** `handleSaveAndLeave()` already calls `setHasUnsavedChanges(false)` internally at the end. But the navigation call happens in the dialog callback (`onSave`) after awaiting it — at this point the state update may not have flushed yet in the same render cycle. The fix: explicitly call `setHasUnsavedChanges(false)` synchronously right before `goBack(navigate)`.
 
----
-
-### Files to Change
-
-#### 1. `src/components/DiscardDraftDialog.tsx` — NEW component
-
-A dedicated dialog for creation screens. Matches the existing glassmorphism aesthetic exactly:
-- Dark frosted glass background: `bg-slate-900/95 backdrop-blur-xl border border-white/20`
-- Title: "Discard Unsaved Changes?" with amber warning icon
-- Body: "Any information you've entered will be lost."
-- **Primary action**: "Stay on Page" — dark/neutral button (keeps the user on the page)
-- **Secondary action**: "Discard & Go Back" — destructive/muted border button (confirms discarding)
-
-No "Save" button because there is no persisted record to save yet.
-
-#### 2. `src/pages/NewDailyAssessment.tsx`
-
-- Add `showDiscardDialog` boolean state.
-- Compute `hasChanges` = `formData.organization.trim() || formData.site.trim()`.
-- Change back button `onClick` from `() => goBack(navigate)` to a guarded handler:
-  - If `hasChanges` → `setShowDiscardDialog(true)`
-  - Else → `goBack(navigate)`
-- Change Cancel button the same way.
-- Render `<DiscardDraftDialog>` at the bottom of the return, passing `onDiscard={() => goBack(navigate)}`.
-
-#### 3. `src/pages/NewTraining.tsx`
-
-- Same pattern as above.
-- `hasChanges` = `formData.organization.trim() || formData.site.trim()`
-- Guard both back button and Cancel button.
-- Render `<DiscardDraftDialog>`.
-
-#### 4. `src/pages/NewInspection.tsx`
-
-- Same pattern.
-- `hasChanges` = any of: `formData.organization`, `formData.location`, `formData.onsite_contact`, `formData.course_history`, `formData.previous_inspector` having a non-empty value.
-- Guard both back button and Cancel button.
-- Render `<DiscardDraftDialog>`.
+**For the "Discard & Exit" path:** `hasUnsavedChanges` is never cleared, so the blocker intercepts the navigation. The fix: call `setHasUnsavedChanges(false)` before `goBack(navigate)`.
 
 ---
 
-### Dialog Design (matching existing glassmorphism style)
+### Changes Required
 
-```
-┌─────────────────────────────────────────┐
-│ ⚠  Discard Unsaved Changes?             │  ← amber icon, white bold text
-│                                         │
-│ Any information you've entered will     │
-│ be lost if you go back now.             │  ← slate-300 body text
-│                                         │
-│ [     Stay on Page      ]               │  ← full-width, dark neutral
-│ [   Discard & Go Back   ]               │  ← full-width, destructive
-└─────────────────────────────────────────┘
+All three changes are mechanically identical — only the file differs.
+
+#### `src/pages/TrainingForm.tsx` (lines ~1107–1121)
+
+```tsx
+// BEFORE
+<SaveBeforeLeaveDialog
+  open={showLeaveDialog}
+  onOpenChange={setShowLeaveDialog}
+  onSave={async () => {
+    await handleSaveAndLeave();
+    setShowLeaveDialog(false);
+    goBack(navigate);
+  }}
+  onLeave={() => {
+    setShowLeaveDialog(false);
+    goBack(navigate);
+  }}
+  ...
+/>
+
+// AFTER
+<SaveBeforeLeaveDialog
+  open={showLeaveDialog}
+  onOpenChange={setShowLeaveDialog}
+  onSave={async () => {
+    await handleSaveAndLeave();
+    setShowLeaveDialog(false);
+    setHasUnsavedChanges(false);   // ← release blocker BEFORE navigate
+    goBack(navigate);
+  }}
+  onLeave={() => {
+    setShowLeaveDialog(false);
+    setHasUnsavedChanges(false);   // ← release blocker BEFORE navigate
+    goBack(navigate);
+  }}
+  ...
+/>
 ```
 
+#### `src/pages/InspectionForm.tsx` (lines ~2130–2144)
+
+Same `setHasUnsavedChanges(false)` added before `goBack(navigate)` in both `onSave` and `onLeave`.
+
+**Note:** In `InspectionForm`, the state setter is also named `setHasUnsavedChanges` — confirmed in the file.
+
+#### `src/pages/DailyAssessmentForm.tsx` (lines ~1205–1219)
+
+Same fix. The state variable is also `hasUnsavedChanges` / `setHasUnsavedChanges`.
+
 ---
 
-### Technical Notes
+### Why This Works
 
-- No backend changes. No migrations. No new dependencies.
-- `DiscardDraftDialog` reuses `AlertDialog` from `@radix-ui/react-alert-dialog` already installed and used throughout the app.
-- The guard only activates when `hasChanges` is truthy — users who haven't typed anything can still navigate back instantly.
-- The `useBlocker` hook from React Router is NOT used here because these screens don't have unsaved edits of a persisted record; the simpler state-driven dialog is sufficient and avoids the complexity of the blocker for creation flows.
-- `goBack(navigate)` is preserved as the actual navigation call so the `navigationDepth` tracker continues to work correctly.
+React Router's `useBlocker` evaluates its condition (the `hasUnsavedChanges` value) at the time the navigation is dispatched. By calling `setHasUnsavedChanges(false)` synchronously before `goBack(navigate)`, React batches the state update so that when `navigate(-1)` fires in the same event handler, the blocker's condition evaluates to `false` and allows the navigation through. No dialog conflict occurs.
+
+---
+
+### No Other Files Need Changing
+
+- `useUnsavedChanges.tsx` — no change
+- `SaveBeforeLeaveDialog.tsx` — no change  
+- `navigation.ts` — no change
+- `App.tsx` — no change
+- New-report screens — not affected (they don't use `useBlocker`)
