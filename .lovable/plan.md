@@ -1,45 +1,60 @@
 
 
-## Add "Download as PDF" Button to Mobile Report Viewer
+## Root Cause: CORS Header Mismatch in Edge Functions
 
-### What Changes
+### Diagnosis
 
-Add a dedicated "Download as PDF" button to the mobile action banner in `HtmlReportViewer.tsx`, alongside the existing "Share" and "Close" buttons. This button will directly trigger `printFromIframe` (the browser's native Save as PDF flow), separate from the Share button which uses the Web Share API.
+The edge function `generate-inspection-html` works correctly -- it returns a 200 with a valid signed URL when called directly. The problem is a **CORS preflight failure** in the browser.
 
-### File: `src/components/HtmlReportViewer.tsx`
+The `@supabase/supabase-js` v2.78 client sends additional HTTP headers that the edge function does not allow:
+- `x-supabase-client-platform`
+- `x-supabase-client-platform-version`
+- `x-supabase-client-runtime`
+- `x-supabase-client-runtime-version`
 
-**1. Add a new `handleSavePdf` function** that directly calls `printFromIframe(iframeRef.current)` -- no Web Share API, just the native print dialog.
+The current CORS config only permits: `authorization, x-client-info, apikey, content-type`
 
-**2. Add a new button before the existing Share button (around line 311)**
+When the browser sends the OPTIONS preflight, the server responds with an `Access-Control-Allow-Headers` that doesn't include the extra headers the client is sending. The browser silently blocks the actual POST request. The `supabase.functions.invoke()` call hangs until the 58-second client-side timeout fires.
 
-- Visible on mobile only: `className="md:hidden"` (inverse of the hidden Email/SMS buttons)
-- Hidden from print output: add `print:hidden` to the className (the parent div at line 282 already has `print:hidden`, providing double coverage)
-- Uses `Download` icon with label "Save PDF"
-- Calls `handleSavePdf` on click
+Only `send-report-email` has the correct CORS headers. All 19 other edge functions have the outdated set.
 
-**3. Button structure:**
-```tsx
-<Button
-  variant="outline"
-  size="sm"
-  onClick={handleSavePdf}
-  className="md:hidden gap-2 print:hidden"
-  title="Download as PDF"
->
-  <Download className="h-4 w-4" />
-  <span className="hidden sm:inline">Save PDF</span>
-</Button>
+### Fix
+
+Update the `corsHeaders` in **all 19 affected edge functions** to include the full set:
+
+```text
+authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version
 ```
 
-### Why It's Hidden from PDF
+### Affected Functions (all 19)
 
-Two layers of protection:
-1. The parent toolbar div already has `print:hidden` (Tailwind's `@media print { display: none }`)
-2. The button itself also carries `print:hidden` for explicit safety
+1. `generate-inspection-html`
+2. `generate-training-html`
+3. `generate-daily-assessment-html`
+4. `generate-inspection-pdf`
+5. `generate-training-pdf`
+6. `extract-names`
+7. `admin-manage-user`
+8. `send-contact-email`
+9. `send-training-pdf-email`
+10. `send-push-notification`
+11. `send-notification-email`
+12. `check-overdue-reports`
+13. `get-vapid-public-key`
+14. `get-logo-base64`
+15. `initialize-logos`
+16. `cleanup-duplicate-summaries`
+17. `migrate-circle-bullets`
+18. `migrate-field-history`
+19. `temp-convert-logos`
 
-### No changes to
-- Edge functions or report HTML generation
-- The existing "Share" button behavior (Web Share API on mobile)
-- The existing "Save PDF" button on desktop
-- Any report data logic or timeout settings
+### Priority
+
+The 3 report generators and `extract-names` are the most critical (user-facing). The webhook-triggered functions (`send-push-notification`, `send-notification-email`, `check-overdue-reports`) are called server-to-server and technically don't need CORS, but should be updated for consistency and future-proofing.
+
+### No Other Changes Needed
+
+- The frontend timeout logic in `InspectionForm.tsx` is correct and working as designed
+- The edge function backend logic is fully functional
+- No database or schema changes required
 
