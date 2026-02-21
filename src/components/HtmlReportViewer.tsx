@@ -4,10 +4,10 @@
  */
 
  import { useEffect, useState } from 'react';
- import { X, Download, Share2, Mail, MessageSquare } from 'lucide-react';
+ import { X, Download, Mail, MessageSquare } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
-import { downloadHtmlReport, shareHtmlReport, canShareHtml, generateSmsLink, canShareViaSms } from '@/lib/html-report-viewer';
+import { downloadHtmlReport, generateSmsLink, canShareViaSms } from '@/lib/html-report-viewer';
  import { EmailReportDialog } from './EmailReportDialog';
  import { useNetworkStatus } from '@/hooks/useNetworkStatus';
 
@@ -33,7 +33,6 @@ export function HtmlReportViewer({
    organization,
    date,
 }: HtmlReportViewerProps) {
-  const canShare = canShareHtml();
   const canSms = canShareViaSms();
    const { isOnline } = useNetworkStatus();
    const [emailDialogOpen, setEmailDialogOpen] = useState(false);
@@ -248,14 +247,6 @@ export function HtmlReportViewer({
     downloadHtmlReport(html, filename);
   };
 
-  const handleShare = async () => {
-    const shared = await shareHtmlReport(html, filename, title);
-    if (!shared) {
-      // Fallback to download if share fails
-      handleDownload();
-    }
-  };
-
    const handleEmail = () => {
      setEmailDialogOpen(true);
    };
@@ -304,19 +295,7 @@ export function HtmlReportViewer({
                  <span className="hidden sm:inline">Download</span>
               </Button>
                
-               {canShare && (
-                 <Button
-                   variant="outline"
-                   size="sm"
-                   onClick={handleShare}
-                   className="gap-2"
-                 >
-                   <Share2 className="h-4 w-4" />
-                   <span className="hidden sm:inline">Share</span>
-                 </Button>
-               )}
-               
-               <Button
+                <Button
                  variant="ghost"
                  size="sm"
                  onClick={onClose}
