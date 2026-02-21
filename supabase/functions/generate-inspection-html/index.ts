@@ -1265,7 +1265,8 @@ serve(async (req) => {
       
       /* PHOTO FIX: Ensure photos render in PDF */
       .photo-gallery {
-        display: block !important;
+        display: grid !important;
+        grid-template-columns: repeat(2, 1fr) !important;
         visibility: visible !important;
       }
       
@@ -1487,9 +1488,9 @@ serve(async (req) => {
     /* Photo Gallery Styles - Professional centered layout */
     .photo-gallery {
       display: grid;
-      grid-template-columns: 1fr;
-      gap: 30px;
-      max-width: 80%;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 20px;
+      max-width: 90%;
       margin: 30px auto;
       overflow: visible;
     }
@@ -1502,12 +1503,12 @@ serve(async (req) => {
       border-radius: 6px;
       background: #ffffff;
       box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -2px rgba(0,0,0,0.1);
-      padding: 16px;
+      padding: 12px;
     }
 
     .inspection-photo {
       max-width: 100%;
-      max-height: 350px;
+      max-height: 280px;
       object-fit: contain;
       display: block;
       margin: 0 auto;
@@ -1540,8 +1541,8 @@ serve(async (req) => {
 
     @media print {
       .photo-gallery {
-        grid-template-columns: 1fr;
-        max-width: 85%;
+        grid-template-columns: repeat(2, 1fr);
+        max-width: 92%;
         margin: 20px auto;
         gap: 20px;
         overflow: visible !important;
