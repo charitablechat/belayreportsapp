@@ -1,52 +1,36 @@
 
 
-## Disable the Email Button in the HTML Report Viewer
+## Download Report as PDF
 
-### Change
+### Approach
 
-In `src/components/HtmlReportViewer.tsx`, the Email button (lines 262-273) will be changed from conditionally rendered and fully active to **always visible but permanently disabled and greyed out**.
+Use the browser's built-in Print-to-PDF engine to convert the HTML report to a PDF download. This is the most reliable method because:
 
-### What Will Change
+- No extra libraries needed (zero bundle size increase)
+- The browser's rendering engine handles page breaks, margins, and layout perfectly
+- The HTML reports already contain print-optimized CSS (`@media print` styles)
 
-- Remove the `canEmail` conditional wrapper so the button always renders (when `reportType` is provided)
-- Add `disabled` to the Button
-- Replace the active styling with a muted/greyed-out appearance (`opacity-50 cursor-not-allowed`)
-- Remove the `onClick` handler
+### How It Works
 
-The `EmailReportDialog` component and its related state/imports can remain for now (no functional impact since the button can't be clicked).
+When the user clicks **Download**, a new browser window opens with the report HTML, automatically triggers the system Print dialog (which defaults to "Save as PDF" on most devices), and closes itself afterward. The user picks a save location and gets a proper `.pdf` file.
 
-### File
+On mobile (iOS/Android), this opens the native share/print sheet which also offers "Save as PDF."
 
-**`src/components/HtmlReportViewer.tsx`** (lines 262-273)
+### Files to Change
 
-```tsx
-// BEFORE
-{canEmail && (
-  <Button
-    variant="outline"
-    size="sm"
-    onClick={handleEmail}
-    className="gap-2 border-2 border-foreground hover:bg-foreground hover:text-background transition-colors duration-100"
-    title="Email Report"
-  >
-    <Mail className="h-4 w-4" />
-    <span className="hidden sm:inline">Email</span>
-  </Button>
-)}
+**`src/lib/html-report-viewer.ts`**
+- Replace the `downloadHtmlReport` function. Instead of creating and downloading an `.html` blob, it will:
+  1. Open a new browser window
+  2. Write the HTML content into it
+  3. Wait for images/fonts to load
+  4. Call `window.print()` (which opens the Save as PDF dialog)
+  5. Close the window when printing is done or cancelled
 
-// AFTER
-{Boolean(reportType) && (
-  <Button
-    variant="outline"
-    size="sm"
-    disabled
-    className="gap-2 opacity-50 cursor-not-allowed"
-    title="Email Report (coming soon)"
-  >
-    <Mail className="h-4 w-4" />
-    <span className="hidden sm:inline">Email</span>
-  </Button>
-)}
-```
+**`src/components/HtmlReportViewer.tsx`**
+- Update the Download button label from "Download" to "Save PDF" for clarity
+- No logic changes needed since it already calls `downloadHtmlReport`
 
-No other files need changes.
+### No New Dependencies
+
+This uses only built-in browser APIs (`window.open`, `window.print`). No npm packages to install.
+
