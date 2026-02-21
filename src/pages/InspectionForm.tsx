@@ -2075,11 +2075,23 @@ export default function InspectionForm() {
         throw new Error(error.message || 'Failed to generate HTML');
       }
 
-      if (!data?.html) {
-        throw new Error('No HTML content received');
+      // Backend now returns a signed URL instead of raw HTML
+      let html: string;
+      
+      if (data?.htmlUrl) {
+        // Fetch the HTML content from the signed storage URL
+        console.log('[HTML Generation] Fetching HTML from signed URL...');
+        const htmlResponse = await fetch(data.htmlUrl);
+        if (!htmlResponse.ok) {
+          throw new Error(`Failed to fetch report: ${htmlResponse.status} ${htmlResponse.statusText}`);
+        }
+        html = await htmlResponse.text();
+      } else if (data?.html) {
+        // Backward compatibility: direct HTML response
+        html = data.html;
+      } else {
+        throw new Error('No HTML content or URL received from server');
       }
-
-      const html = data.html;
       const filename = `inspection-report-${inspection?.organization || 'report'}-${new Date().toISOString().split('T')[0]}.html`;
       const title = `Inspection Report - ${inspection?.organization || 'Report'}`;
 
