@@ -1,35 +1,65 @@
 
 
-## Fix: Report Generation Timeout Too Short
+## Fix: Save PDF on Mobile and Tablet Devices
 
-### Root Cause
+### Problem
 
-The `handleGenerateHTML` function in `InspectionForm.tsx` has a hardcoded **10-second timeout** for report generation. The backend function (`generate-inspection-html`) downloads each photo from private storage and converts it to base64 -- this alone can take 10-15+ seconds for reports with 3-5 photos.
+The "Save PDF" button calls `downloadHtmlReport()`, which opens a new browser tab via `window.open()` and then calls `window.print()`. This approach fails on mobile:
 
-When the timeout fires:
-1. The button resets to "Generate Report" (looks like nothing happened)
-2. The successful backend response arrives moments later but gets discarded
-3. The error toast may not appear due to concurrent LockManager issues swallowing it
-
-The backend logs confirm this: a 5-photo report took ~10 seconds just for photo processing, and a 3-photo report took ~4 seconds. Any report with 4+ photos will consistently time out.
+- **iOS Safari / PWA mode**: `window.open()` is blocked as a popup; `window.print()` is unsupported in standalone mode
+- **Android Chrome**: The new-tab-then-print flow is unreliable and confusing for users
+- Result: tapping "Save PDF" does nothing on phones and tablets
 
 ### Solution
 
-Increase the generation timeout to **60 seconds** and improve the user feedback so they know the report is still being generated.
+Make the Save PDF button platform-aware:
+
+- **Mobile / Tablet / PWA**: Use the **Web Share API** (already partially implemented in `shareHtmlReport`) to let users share/save the HTML report via the native share sheet. This works reliably on both iOS and Android.
+- **If Web Share is unavailable**: Print directly from the **existing iframe** already rendered in the viewer dialog, avoiding the broken `window.open()` path entirely.
+- **Desktop**: Keep the current `window.open()` + `print()` behavior (it works fine there).
 
 ### File Changes
 
-**`src/pages/InspectionForm.tsx` (lines 2047-2055)**
+**`src/lib/html-report-viewer.ts`**
 
-1. Change `GENERATION_TIMEOUT` from `10000` (10s) to `60000` (60s)
-2. Update the `timeoutPromise` gap from `GENERATION_TIMEOUT - 1000` to `GENERATION_TIMEOUT - 2000` (reject at 58s, safety at 60s)
-3. Update the safety timeout log message to say "60 seconds" instead of "10 seconds"
+- Add a new function `printFromIframe(iframe: HTMLIFrameElement)` that calls `iframe.contentWindow.print()` directly — no new window needed.
+- This serves as the fallback when Web Share API is not available on mobile.
 
-That's it -- a 3-line change. The backend function itself completes fine; the client is just giving up too early.
+**`src/components/HtmlReportViewer.tsx`**
 
-### Why 60 Seconds?
+- Add a `ref` to the iframe element so we can access it for direct printing.
+- Update the `handleDownload` function:
+  1. If on mobile/PWA: try `shareHtmlReport()` first (native share sheet)
+  2. If share fails or is unavailable: call `printFromIframe()` on the existing iframe ref
+  3. If on desktop: keep existing `downloadHtmlReport()` behavior
+- Update the button label to say "Share" on mobile and "Save PDF" on desktop for clarity.
 
-- Edge functions have a maximum execution time of 60 seconds
-- Reports with 10+ photos could realistically take 30-40 seconds
-- This matches the maximum the backend can take, so the client will never give up before the server does
+### Technical Details
+
+```
+User taps "Save PDF" / "Share"
+        |
+        v
+   Is mobile/PWA?
+   /          \
+  Yes          No
+  |             |
+  v             v
+Try Web Share  window.open + print
+  |             (existing behavior)
+  |
+Success? 
+ / \
+Y   N
+|   |
+v   v
+Done  Print from
+      existing iframe
+```
+
+### What the User Sees
+
+- **On iPhone/iPad**: Tapping the button opens the native iOS share sheet, where they can "Save to Files", AirDrop, email, etc.
+- **On Android**: Tapping the button opens the Android share dialog with similar options
+- **On Desktop**: No change — same print dialog as before
 
