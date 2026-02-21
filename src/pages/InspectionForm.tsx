@@ -1163,10 +1163,24 @@ export default function InspectionForm() {
       }
     } catch (error: any) {
       console.error("Error loading inspection:", error);
-      toast.error("Failed to load inspection", {
-        description: error.message || "An error occurred while loading the inspection.",
-      });
-      navigate('/dashboard');
+      
+      // LockManager timeout: concurrency issue, not a real failure.
+      // If we already have inspection data loaded (from offline cache or partial server fetch),
+      // continue with what we have instead of crashing back to dashboard.
+      const errorMsg = error?.message || error?.toString?.() || '';
+      const isLockTimeout = errorMsg.includes('LockManager') || (errorMsg.includes('lock') && errorMsg.includes('timed out'));
+      
+      if (isLockTimeout && inspection.organization) {
+        console.warn('[InspectionForm] LockManager timeout — continuing with cached data');
+        toast.warning("Loading with cached data", {
+          description: "Some data may be slightly out of date. It will refresh automatically.",
+        });
+      } else {
+        toast.error("Failed to load inspection", {
+          description: error.message || "An error occurred while loading the inspection.",
+        });
+        navigate('/dashboard');
+      }
     } finally {
       loadCompleted = true;
       clearTimeout(safetyTimeout);
