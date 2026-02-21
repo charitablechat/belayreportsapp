@@ -1475,6 +1475,11 @@ serve(async (req) => {
       .photo-gallery {
         grid-template-columns: 1fr !important;
       }
+      
+      .inspection-photo {
+        max-height: 220px !important;
+        object-fit: contain !important;
+      }
     }
 
     /* Photo Gallery Styles - Bento Grid with card containers */
@@ -1490,16 +1495,18 @@ serve(async (req) => {
       page-break-inside: avoid;
       break-inside: avoid;
       overflow: hidden;
-      border: 1px solid #e2e8f0;
-      border-radius: 6px;
+      border: 2px solid #1e293b;
+      border-radius: 0;
       background: #ffffff;
     }
 
     .inspection-photo {
-      width: 100%;
-      max-height: 300px;
-      object-fit: cover;
+      max-width: 100%;
+      max-height: 280px;
+      object-fit: contain;
       display: block;
+      margin: 0 auto;
+      background: #f8fafc;
     }
 
     .photo-caption {
@@ -1520,6 +1527,7 @@ serve(async (req) => {
       background: #eff6ff;
       display: inline-block;
       margin: 8px 0 0 8px;
+      border-left: 3px solid #1e40af;
     }
 
     @media print {
@@ -1530,8 +1538,9 @@ serve(async (req) => {
       }
 
       .inspection-photo {
-        max-height: 300px !important;
-        object-fit: cover !important;
+        max-width: 100% !important;
+        max-height: 280px !important;
+        object-fit: contain !important;
         display: block !important;
         visibility: visible !important;
         opacity: 1 !important;
