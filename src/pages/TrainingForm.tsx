@@ -885,10 +885,10 @@ export default function TrainingForm() {
     
     setIsGeneratingHTML(true);
     
-    // Safety timeout - NEVER get stuck in generating state (10 seconds max)
-    const GENERATION_TIMEOUT = 10000;
+    // Safety timeout - NEVER get stuck in generating state (60 seconds max)
+    const GENERATION_TIMEOUT = 60000;
     const safetyTimeoutHandle = setTimeout(() => {
-      console.error('[HTML Generation] Safety timeout reached after 10 seconds - force resetting state');
+      console.error('[HTML Generation] Safety timeout reached after 60 seconds - force resetting state');
       setIsGeneratingHTML(false);
       toast.error("Report generation timed out", {
         description: "Please check your connection and try again.",
@@ -906,7 +906,7 @@ export default function TrainingForm() {
       const timeoutPromise = new Promise<never>((_, reject) => {
         setTimeout(() => {
           reject(new Error('TIMEOUT: Report generation took too long'));
-        }, GENERATION_TIMEOUT - 1000); // 1 second before safety timeout
+        }, GENERATION_TIMEOUT - 2000); // 2 seconds before safety timeout
       });
       
       const { data, error } = await Promise.race([generatePromise, timeoutPromise]);
