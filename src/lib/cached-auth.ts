@@ -23,6 +23,15 @@ const SESSION_REFRESH_BUFFER = 60; // Refresh if within 60 seconds of expiry
 const AUTH_NETWORK_TIMEOUT = 8000; // 8 seconds max for network auth fetch
 
 /**
+ * Detects Navigator LockManager timeout errors from Supabase auth-js.
+ * These occur when too many concurrent auth requests compete for the session lock.
+ */
+function isLockManagerError(error: any): boolean {
+  const msg = error?.message || error?.toString?.() || '';
+  return msg.includes('LockManager') || (msg.includes('lock') && msg.includes('timed out'));
+}
+
+/**
  * Initialize auth state change listener (called lazily on first use)
  */
 function initAuthListener() {
@@ -145,7 +154,17 @@ export async function getUserWithCache(): Promise<CachedUser | null> {
       }
       
       return result.user;
-    } catch (error) {
+    } catch (error: any) {
+      // LockManager timeout: fall back to localStorage session user
+      if (isLockManagerError(error)) {
+        console.warn('[CachedAuth] LockManager timeout in getUser — falling back to localStorage');
+        const localUser = getCachedUserFromStorage();
+        if (localUser) {
+          cachedUser = localUser;
+          cacheTimestamp = Date.now();
+          return localUser;
+        }
+      }
       console.error('[CachedAuth] Error fetching user:', error);
       return null;
     } finally {
@@ -345,7 +364,25 @@ export async function ensureValidSession(): Promise<CachedUser | null> {
   
   try {
     // First, try to get the current session from Supabase client
-    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+    let session;
+    let sessionError;
+    try {
+      const result = await supabase.auth.getSession();
+      session = result.data.session;
+      sessionError = result.error;
+    } catch (lockError: any) {
+      // LockManager timeout: bypass the lock and read session from localStorage
+      if (isLockManagerError(lockError)) {
+        console.warn('[CachedAuth] LockManager timeout in getSession — falling back to localStorage');
+        const localUser = getCachedUserFromStorage();
+        if (localUser) {
+          cachedUser = localUser;
+          cacheTimestamp = Date.now();
+          return localUser;
+        }
+      }
+      throw lockError;
+    }
     
     if (sessionError) {
       console.error('[CachedAuth] Session error:', sessionError);
