@@ -1,24 +1,42 @@
 
 
-## Make Photo Gallery 2-Column in Both HTML and Print/PDF
+## Add Missing "Overall" Column to Zipline Table in Generated Report
 
 ### Problem
-The photo gallery currently uses `grid-template-columns: 1fr` (single column) everywhere -- base styles, mobile media query, and print media query. The user wants a 2-column layout in both the HTML view and the PDF output.
+The zipline table in the generated inspection HTML report is missing the "Overall" result column. The data exists in the database (`inspection_ziplines.result`) but is not rendered in the report. It should display with the same color-coded styling (green/red/orange) as Cable Result, Braking Result, and EAD Result.
 
 ### File: `supabase/functions/generate-inspection-html/index.ts`
 
-**1. Base styles (line 1490):** Change `grid-template-columns: 1fr` to `repeat(2, 1fr)`. Reduce gap from 30px to 20px, increase max-width from 80% to 90%.
+### Changes
 
-**2. Photo item (line 1505):** Reduce padding from 16px to 12px so images use more card space.
+**1. Update CSS column widths (lines 792-810)**
 
-**3. Photo image (line 1510):** Reduce max-height from 350px to 280px for better side-by-side sizing.
+The comment says "9 columns" but it needs to be 10 columns. Add a new column definition for the Overall result (nth-child(9)) and shift Comments to nth-child(10). Redistribute widths slightly to accommodate the extra column.
 
-**4. Print media query (lines 1541-1548):** Change `grid-template-columns: 1fr` to `repeat(2, 1fr)` so PDF also gets 2 columns. Increase max-width from 85% to 92%.
+**2. Update combined ziplines table header (line 1923)**
 
-**5. Early print override (lines 1267-1270):** Change `display: block !important` to `display: grid !important` so it doesn't accidentally flatten the grid back to block layout.
+Add `<th>Overall</th>` between "EAD Result" and "Comments and/or Required Changes".
 
-**6. Mobile media query (lines 1474-1479):** Keep `grid-template-columns: 1fr` for small screens -- single column is correct on mobile.
+**3. Update combined ziplines table row (lines 1933-1944)**
+
+Add Overall result cell using `formatResultCheckbox(zip.result || "Pass")` between the EAD Result cell and the Comments cell.
+
+**4. Update separate ziplines table header (line 2071)**
+
+Same change -- add `<th>Overall</th>` between "EAD Result" and "Comments".
+
+**5. Update separate ziplines table row (lines 2081-2091)**
+
+Same change -- add the Overall result cell between EAD Result and Comments.
+
+**6. Update all CSS nth-child references that target ziplines columns**
+
+Any existing CSS rules referencing `ziplines-table td:nth-child(9)` (currently Comments) need to shift to `nth-child(10)`. This appears in at least 3 places in the stylesheet.
 
 ### Deployment
+
 Redeploy `generate-inspection-html` after changes.
 
+### Result
+
+The Overall column will render with the same `formatResultCheckbox()` styling as other result columns -- green background for Pass, red for Fail, orange for Pass w/Provisions -- in both the HTML view and PDF output.
