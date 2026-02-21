@@ -94,22 +94,38 @@ export function openHtmlReport(options: ViewerOptions): boolean {
 /**
  * Download HTML report as a file
  */
-export function downloadHtmlReport(html: string, filename: string): void {
+export function downloadHtmlReport(html: string, _filename: string): void {
   try {
-    // Add UTF-8 BOM (Byte Order Mark) to ensure proper encoding detection
-    // when the file is opened locally in browsers or email clients
-    const BOM = '\uFEFF';
-    const blob = new Blob([BOM + html], { type: 'text/html;charset=utf-8' });
-    const url = window.URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = filename;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    window.URL.revokeObjectURL(url);
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      console.error('[HTMLViewer] Popup blocked - cannot open print window');
+      return;
+    }
+
+    printWindow.document.open();
+    printWindow.document.write(html);
+    printWindow.document.close();
+
+    // Wait for content (images/fonts) to load, then trigger print
+    const triggerPrint = () => {
+      try {
+        printWindow.focus();
+        printWindow.print();
+      } catch (e) {
+        console.error('[HTMLViewer] Print failed:', e);
+      }
+    };
+
+    // Use onload to wait for images, with a fallback timeout
+    if (printWindow.document.readyState === 'complete') {
+      setTimeout(triggerPrint, 300);
+    } else {
+      printWindow.onload = () => setTimeout(triggerPrint, 300);
+      // Fallback if onload never fires
+      setTimeout(triggerPrint, 3000);
+    }
   } catch (error) {
-    console.error('[HTMLViewer] Failed to download:', error);
+    console.error('[HTMLViewer] Failed to open print dialog:', error);
   }
 }
 
