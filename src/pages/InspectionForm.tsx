@@ -309,10 +309,12 @@ export default function InspectionForm() {
 
     // Process Operating Systems
     systems.forEach(system => {
-      if (!system.system_name) return;
+      if (!system.system_name && !system.name) return;
       
-      const name = system.name ? ` (${system.name})` : '';
-      const entry = `○   Operating System- ${system.system_name}${name}${system.comments ? ': ' + system.comments : ''}`;
+      const label = system.system_name
+        ? `${system.system_name}${system.name ? ` (${system.name})` : ''}`
+        : system.name;
+      const entry = `○   Operating System- ${label}${system.comments ? ': ' + system.comments : ''}`;
       
       if (system.result === 'fail') {
         criticalActions.push(entry);
