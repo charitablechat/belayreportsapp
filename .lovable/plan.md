@@ -1,50 +1,35 @@
 
 
-## Fix: Navigator LockManager Auth Token Timeout
+## Fix: Report Generation Timeout Too Short
 
 ### Root Cause
 
-The Supabase JS client (v2.78+) uses the browser's `navigator.locks` API internally to serialize access to the auth session token. When the InspectionForm loads, it fires 6+ parallel database queries simultaneously (via `Promise.all`), plus background auto-sync and auth refresh operations are also competing for the same lock. This causes a deadlock where one operation holds the lock and others queue up, eventually timing out after 10 seconds with:
+The `handleGenerateHTML` function in `InspectionForm.tsx` has a hardcoded **10-second timeout** for report generation. The backend function (`generate-inspection-html`) downloads each photo from private storage and converts it to base64 -- this alone can take 10-15+ seconds for reports with 3-5 photos.
 
-> "Acquiring an exclusive Navigator LockManager lock "lock:sb-...-auth-token" timed out waiting 10000ms"
+When the timeout fires:
+1. The button resets to "Generate Report" (looks like nothing happened)
+2. The successful backend response arrives moments later but gets discarded
+3. The error toast may not appear due to concurrent LockManager issues swallowing it
 
-This crashes the entire load flow because the error propagates up to the catch block, which shows "Failed to load inspection" and redirects to the dashboard.
+The backend logs confirm this: a 5-photo report took ~10 seconds just for photo processing, and a 3-photo report took ~4 seconds. Any report with 4+ photos will consistently time out.
 
-### Solution (Two-Part Fix)
+### Solution
 
-**Part 1: Increase the lock timeout in the Supabase client configuration**
+Increase the generation timeout to **60 seconds** and improve the user feedback so they know the report is still being generated.
 
-The Supabase client supports a `lock.acquireTimeout` option (undocumented but present in auth-js). Since the auto-generated `client.ts` cannot be edited directly, we will create a **post-initialization configuration patch** that sets the lock timeout higher (e.g., 30 seconds) by calling `supabase.auth.setLockAcquireTimeout()` or by re-initializing with the option.
+### File Changes
 
-However, since `client.ts` is auto-generated and we cannot edit it, the practical fix is:
+**`src/pages/InspectionForm.tsx` (lines 2047-2055)**
 
-**Part 2: Make the InspectionForm load resilient to lock timeout errors**
+1. Change `GENERATION_TIMEOUT` from `10000` (10s) to `60000` (60s)
+2. Update the `timeoutPromise` gap from `GENERATION_TIMEOUT - 1000` to `GENERATION_TIMEOUT - 2000` (reject at 58s, safety at 60s)
+3. Update the safety timeout log message to say "60 seconds" instead of "10 seconds"
 
-Wrap the parallel Supabase queries in the `loadInspection` function so that a lock timeout error on any single query does not crash the entire load. The `withQueryTimeout` helper already exists -- we just need to ensure the LockManager error is caught and treated as a timeout (returning fallback data from offline cache) rather than a fatal error.
+That's it -- a 3-line change. The backend function itself completes fine; the client is just giving up too early.
 
-### Files to Change
+### Why 60 Seconds?
 
-**`src/pages/InspectionForm.tsx`**
-- In the `loadInspection` function's main catch block (~line 1164), detect the LockManager timeout error specifically and gracefully fall back to offline-only data instead of navigating away to the dashboard. If offline data was already loaded earlier in the function, the user can still view and work with the report.
+- Edge functions have a maximum execution time of 60 seconds
+- Reports with 10+ photos could realistically take 30-40 seconds
+- This matches the maximum the backend can take, so the client will never give up before the server does
 
-**`src/lib/cached-auth.ts`**
-- In `ensureValidSession()` and `getUserWithCache()`, catch LockManager timeout errors specifically and fall back to the localStorage-cached session instead of returning null. This prevents the lock contention from cascading into a full auth failure.
-
-### Detailed Changes
-
-**`src/pages/InspectionForm.tsx` (catch block, ~line 1164)**
-- Check if the error message contains "LockManager" or "lock" and "timed out"
-- If offline data was already loaded (inspection state is populated), suppress the error toast and continue with cached data instead of redirecting
-- Only redirect to dashboard if there is genuinely no data to show
-
-**`src/lib/cached-auth.ts` (ensureValidSession, ~line 342)**
-- Wrap the `supabase.auth.getSession()` call in a try-catch that specifically handles the LockManager error
-- On LockManager failure, read the session directly from localStorage (the `sb-...-auth-token` key) and extract the user, bypassing the lock entirely
-- This is safe because we only need the user ID for RLS -- the token in localStorage is the same one the lock was protecting
-
-**`src/lib/cached-auth.ts` (getUserWithCache, ~line 125)**
-- Same pattern: if `supabase.auth.getUser()` throws a LockManager error, fall back to the localStorage session user
-
-### Why This Works
-
-The LockManager error is a concurrency problem, not an authentication problem. The auth token in localStorage is still perfectly valid. By falling back to the cached session on lock contention, we avoid the cascading failure without compromising security. The user's session is still authenticated -- it's just that the lock serialization failed due to too many concurrent requests.
