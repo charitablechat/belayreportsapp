@@ -139,6 +139,25 @@ export function canShareHtml(): boolean {
 /**
  * Share HTML report using Web Share API (mobile)
  */
+/**
+ * Print directly from an existing iframe element (fallback for mobile)
+ */
+export function printFromIframe(iframe: HTMLIFrameElement): boolean {
+  try {
+    const contentWindow = iframe.contentWindow;
+    if (!contentWindow) {
+      console.error('[HTMLViewer] No contentWindow on iframe');
+      return false;
+    }
+    contentWindow.focus();
+    contentWindow.print();
+    return true;
+  } catch (error) {
+    console.error('[HTMLViewer] Failed to print from iframe:', error);
+    return false;
+  }
+}
+
 export async function shareHtmlReport(html: string, filename: string, title: string): Promise<boolean> {
   if (!canShareHtml()) {
     return false;

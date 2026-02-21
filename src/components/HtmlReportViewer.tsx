@@ -3,13 +3,14 @@
  * Full-screen modal viewer for HTML reports with download and share options
  */
 
- import { useEffect, useState } from 'react';
- import { X, Download, Mail, MessageSquare } from 'lucide-react';
+ import { useEffect, useRef, useState } from 'react';
+ import { X, Download, Share2, Mail, MessageSquare } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
-import { downloadHtmlReport, generateSmsLink, canShareViaSms } from '@/lib/html-report-viewer';
+import { downloadHtmlReport, shareHtmlReport, printFromIframe, generateSmsLink, canShareViaSms } from '@/lib/html-report-viewer';
  import { EmailReportDialog } from './EmailReportDialog';
  import { useNetworkStatus } from '@/hooks/useNetworkStatus';
+import { isMobile, isPWA } from '@/lib/mobile-detection';
 
 interface HtmlReportViewerProps {
   html: string;
@@ -33,6 +34,8 @@ export function HtmlReportViewer({
    organization,
    date,
 }: HtmlReportViewerProps) {
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const isMobileOrPWA = isMobile() || isPWA();
   const canSms = canShareViaSms();
    const { isOnline } = useNetworkStatus();
    const [emailDialogOpen, setEmailDialogOpen] = useState(false);
@@ -243,7 +246,19 @@ export function HtmlReportViewer({
     }
   }, [isOpen, onClose]);
 
-  const handleDownload = () => {
+  const handleDownload = async () => {
+    if (isMobileOrPWA) {
+      // Try Web Share API first (native share sheet)
+      const shared = await shareHtmlReport(html, filename, title);
+      if (shared) return;
+
+      // Fallback: print from existing iframe
+      if (iframeRef.current) {
+        printFromIframe(iframeRef.current);
+        return;
+      }
+    }
+    // Desktop: existing window.open + print behavior
     downloadHtmlReport(html, filename);
   };
 
@@ -291,8 +306,8 @@ export function HtmlReportViewer({
                  onClick={handleDownload}
                 className="gap-2"
               >
-                  <Download className="h-4 w-4" />
-                  <span className="hidden sm:inline">Save PDF</span>
+                  {isMobileOrPWA ? <Share2 className="h-4 w-4" /> : <Download className="h-4 w-4" />}
+                  <span className="hidden sm:inline">{isMobileOrPWA ? 'Share' : 'Save PDF'}</span>
               </Button>
                
                 <Button
@@ -309,13 +324,14 @@ export function HtmlReportViewer({
 
            {/* Report Content */}
            <div className="flex-1 min-h-0 overflow-hidden">
-             <iframe
-               srcDoc={enhancedHtml}
-               title={title}
-               className="w-full h-full border-0"
-               sandbox="allow-same-origin"
-               style={{ touchAction: 'pan-x pan-y pinch-zoom' }}
-             />
+              <iframe
+                ref={iframeRef}
+                srcDoc={enhancedHtml}
+                title={title}
+                className="w-full h-full border-0"
+                sandbox="allow-same-origin allow-modals"
+                style={{ touchAction: 'pan-x pan-y pinch-zoom' }}
+              />
            </div>
          </DialogContent>
        </Dialog>
