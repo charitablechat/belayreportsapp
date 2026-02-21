@@ -1474,20 +1474,23 @@ serve(async (req) => {
       /* Photo gallery: Single column */
       .photo-gallery {
         grid-template-columns: 1fr !important;
+        max-width: 95% !important;
+        gap: 20px !important;
       }
       
       .inspection-photo {
-        max-height: 220px !important;
+        max-height: 250px !important;
         object-fit: contain !important;
       }
     }
 
-    /* Photo Gallery Styles - Bento Grid with card containers */
+    /* Photo Gallery Styles - Professional centered layout */
     .photo-gallery {
       display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 15px;
-      margin: 15px 0;
+      grid-template-columns: 1fr;
+      gap: 30px;
+      max-width: 80%;
+      margin: 30px auto;
       overflow: visible;
     }
 
@@ -1495,25 +1498,28 @@ serve(async (req) => {
       page-break-inside: avoid;
       break-inside: avoid;
       overflow: hidden;
-      border: 2px solid #1e293b;
-      border-radius: 0;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
       background: #ffffff;
+      box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -2px rgba(0,0,0,0.1);
+      padding: 16px;
     }
 
     .inspection-photo {
       max-width: 100%;
-      max-height: 280px;
+      max-height: 350px;
       object-fit: contain;
       display: block;
       margin: 0 auto;
       background: #f8fafc;
+      border-radius: 4px;
     }
 
     .photo-caption {
-      font-size: 9pt;
+      font-size: 9.5pt;
       color: #475569;
-      padding: 8px 10px;
-      border-top: 1px solid #f1f5f9;
+      padding: 12px 10px 4px;
+      text-align: center;
       line-height: 1.4;
     }
 
@@ -1523,23 +1529,27 @@ serve(async (req) => {
       text-transform: uppercase;
       font-weight: 700;
       letter-spacing: 0.05em;
-      padding: 3px 8px;
+      padding: 3px 8px 6px;
       background: #eff6ff;
-      display: inline-block;
-      margin: 8px 0 0 8px;
-      border-left: 3px solid #1e40af;
+      display: block;
+      text-align: center;
+      margin: 0 0 12px 0;
+      border-bottom: 2px solid #dbeafe;
+      border-radius: 4px 4px 0 0;
     }
 
     @media print {
       .photo-gallery {
-        grid-template-columns: repeat(2, 1fr);
-        gap: 12px;
+        grid-template-columns: 1fr;
+        max-width: 85%;
+        margin: 20px auto;
+        gap: 20px;
         overflow: visible !important;
       }
 
       .inspection-photo {
         max-width: 100% !important;
-        max-height: 280px !important;
+        max-height: 300px !important;
         object-fit: contain !important;
         display: block !important;
         visibility: visible !important;
@@ -1552,6 +1562,10 @@ serve(async (req) => {
         page-break-inside: avoid;
         break-inside: avoid;
         overflow: hidden !important;
+        box-shadow: none !important;
+        border: 1px solid #e2e8f0;
+        border-radius: 6px;
+        padding: 12px;
       }
     }
   </style>
