@@ -1,57 +1,53 @@
 
 
-## Fix: Report Generation Silent Timeout Due to Oversized Response
+## Refine Photo Presentation in Generated HTML Reports (Screen + PDF)
 
-### Problem
+### Overview
 
-The `generate-inspection-html` edge function downloads all inspection photos, converts them to base64, and embeds them directly in the HTML string. It then tries to return this entire HTML (~3-4MB with 5 photos) as a JSON response body. This exceeds the edge function's response size or memory limits, causing a silent crash -- no error is logged, no response is sent, and the client times out after 58 seconds.
+Update photo gallery CSS in the edge function so images appear centered, properly sized, and professionally framed -- on screen, in the in-app viewer, AND in the PDF output (via `window.print()`).
 
-### Solution
+### File: `supabase/functions/generate-inspection-html/index.ts`
 
-Upload the generated HTML to storage and return a signed URL instead of the raw HTML. The client then fetches the HTML from storage.
+**1. `.photo-gallery` (lines 1486-1492)**
+Change from 2-column grid to single-column centered layout:
+- `grid-template-columns: 1fr` (one image per row)
+- `gap: 30px` (generous vertical spacing)
+- `max-width: 80%; margin: 30px auto` (center gallery, cap width)
 
-### File Changes
+**2. `.photo-item` (lines 1494-1501)**
+Replace heavy brutalist border with subtle professional frame:
+- `border: 1px solid #e2e8f0` (light gray)
+- `border-radius: 6px`
+- `box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -2px rgba(0,0,0,0.1)`
+- `padding: 16px`
 
-**1. `supabase/functions/generate-inspection-html/index.ts`**
+**3. `.inspection-photo` (lines 1503-1510)**
+- `max-height: 350px` (slightly larger for premium feel)
+- Keep `object-fit: contain`, `display: block`, `margin: 0 auto`
+- Add `border-radius: 4px`
 
-After constructing the HTML string (line ~2614), instead of returning it directly:
+**4. `.photo-caption` (lines 1512-1518)**
+- `text-align: center`
+- `padding: 12px 10px 4px`
 
-- Upload the HTML string as a file to the `inspection-reports` storage bucket (path: `html-reports/{inspectionId}-{timestamp}.html`)
-- Create a 24-hour signed URL for the uploaded file
-- Return `{ htmlUrl, fileName }` instead of `{ html }`
-- Add a completion log so silent failures become visible
-- Keep the error handler returning JSON as before
+**5. `.photo-section-label` (lines 1520-1531)**
+- Center with `display: block; text-align: center; margin: 0 0 12px 0`
+- Replace left border with subtle bottom border
 
-**2. `src/pages/InspectionForm.tsx`**
+**6. Print media query (lines 1533-1556)**
+Update to match the new professional styles for PDF output:
+- `.photo-gallery { grid-template-columns: 1fr; max-width: 85%; margin: 20px auto; gap: 20px; }`
+- `.inspection-photo { max-height: 300px !important; }`
+- `.photo-item { box-shadow: none !important; border: 1px solid #e2e8f0; border-radius: 6px; padding: 12px; }`
+- Shadows removed for print (printers don't render CSS shadows)
 
-Update `handleGenerateHTML` (~line 2072-2095):
+**7. Mobile media query**
+- `.photo-gallery { max-width: 95% !important; gap: 20px !important; }`
+- `.inspection-photo { max-height: 250px !important; }`
 
-- After receiving the response, check for `data.htmlUrl` instead of `data.html`
-- Fetch the HTML content from the signed URL
-- Pass the fetched HTML to the viewer/opener as before
-- Add error handling for the fetch step
+### What stays the same
 
-### Technical Flow
-
-```text
-BEFORE (broken):
-  Edge Function builds HTML (~3-4MB) --> JSON.stringify --> Response body --> SILENT CRASH
-
-AFTER (fixed):
-  Edge Function builds HTML --> Upload to Storage --> Return signed URL (tiny JSON) --> OK
-  Client receives URL --> Fetches HTML from Storage --> Opens viewer
-```
-
-### Why This Fixes It
-
-- The edge function response shrinks from ~4MB to a few hundred bytes (just a URL)
-- The HTML file is uploaded via the Supabase Storage SDK which handles large payloads natively
-- The client fetches the HTML directly from storage (no edge function size limits apply)
-- Storage already has the `inspection-reports` bucket configured
-
-### Additional Safeguards
-
-- Add `console.log` before and after the upload step so any future failures are visible in logs
-- The existing 60-second client timeout and safety reset remain as a fallback
-- If the storage upload fails, the error handler catches it and returns a proper error JSON
+- No changes to report data logic, photo encoding, or timeout settings
+- No changes to HtmlReportViewer.tsx toolbar or print:hidden behavior
+- The `page-break-inside: avoid` rules remain so photos don't split across PDF pages
 
