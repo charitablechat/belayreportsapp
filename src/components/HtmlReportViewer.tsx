@@ -279,26 +279,26 @@ export function HtmlReportViewer({
                     variant="outline"
                     size="sm"
                     disabled
-                    className="gap-2 opacity-50 cursor-not-allowed"
+                    className="hidden md:inline-flex gap-2 opacity-50 cursor-not-allowed"
                     title="Email Report (coming soon)"
                   >
                     <Mail className="h-4 w-4" />
                     <span className="hidden sm:inline">Email</span>
                   </Button>
                 )}
-               
-               {canSms && smsLink && (
-                 <Button
-                   variant="outline"
-                   size="sm"
-                   onClick={handleSms}
-                   className="gap-2 border-2 border-foreground hover:bg-foreground hover:text-background transition-colors duration-100"
-                   title="Share via Text"
-                 >
-                   <MessageSquare className="h-4 w-4" />
-                   <span className="hidden sm:inline">Text</span>
-                 </Button>
-               )}
+                
+                {canSms && smsLink && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleSms}
+                    className="hidden md:inline-flex gap-2 border-2 border-foreground hover:bg-foreground hover:text-background transition-colors duration-100"
+                    title="Share via Text"
+                  >
+                    <MessageSquare className="h-4 w-4" />
+                    <span className="hidden sm:inline">Text</span>
+                  </Button>
+                )}
                
               <Button
                 variant="outline"
