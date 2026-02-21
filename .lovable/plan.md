@@ -1,42 +1,29 @@
 
 
-## Add Missing "Overall" Column to Zipline Table in Generated Report
+## Fix: Operating Systems with No System Type Are Silently Skipped from Summary
 
-### Problem
-The zipline table in the generated inspection HTML report is missing the "Overall" result column. The data exists in the database (`inspection_ziplines.result`) but is not rendered in the report. It should display with the same color-coded styling (green/red/orange) as Cable Result, Braking Result, and EAD Result.
+### Root Cause
 
-### File: `supabase/functions/generate-inspection-html/index.ts`
+In `src/pages/InspectionForm.tsx`, line 312, the guard `if (!system.system_name) return;` causes any operating system row without a "System Type" selection (e.g., "Spotted/Low") to be completely excluded from summary generation. This means their comments are never aggregated into Repairs, Critical Actions, or Future Considerations -- even when the element has a name, a result, and comments.
 
-### Changes
+In the "Test" report, the operating system "T P Shuffle" has `result = 'pass'` and a comment ("TP needed to be tightened"), but its `system_name` is empty, so it gets skipped. Similarly, "Aerial Leap" (fail), "Mountain Tops" (fail), and "Giant Swing" (pass w/provisions) are all silently dropped from the summary for the same reason.
 
-**1. Update CSS column widths (lines 792-810)**
+### Fix (1 file)
 
-The comment says "9 columns" but it needs to be 10 columns. Add a new column definition for the Overall result (nth-child(9)) and shift Comments to nth-child(10). Redistribute widths slightly to accommodate the extra column.
+**File: `src/pages/InspectionForm.tsx`**
 
-**2. Update combined ziplines table header (line 1923)**
+1. **Line 312** -- Change the guard from `if (!system.system_name) return;` to `if (!system.system_name && !system.name) return;`. This ensures items are only skipped when they have neither a system type nor an element name (i.e., truly blank rows).
 
-Add `<th>Overall</th>` between "EAD Result" and "Comments and/or Required Changes".
+2. **Line 314-315** -- Adjust the entry text formatting to handle an empty `system_name` gracefully. Currently it always leads with `system_name`, producing output like "Operating System- (T P Shuffle)". Instead, lead with whichever identifier is available:
+   - If `system_name` exists: `"Operating System- {system_name} ({name}): {comments}"`
+   - If only `name` exists: `"Operating System- {name}: {comments}"`
 
-**3. Update combined ziplines table row (lines 1933-1944)**
+### No other files need changes
 
-Add Overall result cell using `formatResultCheckbox(zip.result || "Pass")` between the EAD Result cell and the Comments cell.
+- The auto-regeneration effect (lines 609-688) already correctly includes pass-with-comments systems in its change signature -- it just never fires because the generator itself skips the items.
+- The edge function (`generate-inspection-html`) reads the summary text as-is from the database, so once the client writes correct data, reports will render correctly.
 
-**4. Update separate ziplines table header (line 2071)**
+### Testing
 
-Same change -- add `<th>Overall</th>` between "EAD Result" and "Comments".
+After the fix, open the "Test" inspection, navigate to the Summary tab, and click "Regenerate from Inspection". The "Repairs, Alterations performed during inspection" section should now show "T P Shuffle: TP needed to be tightened." The Critical Actions section should also gain "Aerial Leap" and "Mountain Tops", and Future Considerations should gain "Giant Swing".
 
-**5. Update separate ziplines table row (lines 2081-2091)**
-
-Same change -- add the Overall result cell between EAD Result and Comments.
-
-**6. Update all CSS nth-child references that target ziplines columns**
-
-Any existing CSS rules referencing `ziplines-table td:nth-child(9)` (currently Comments) need to shift to `nth-child(10)`. This appears in at least 3 places in the stylesheet.
-
-### Deployment
-
-Redeploy `generate-inspection-html` after changes.
-
-### Result
-
-The Overall column will render with the same `formatResultCheckbox()` styling as other result columns -- green background for Pass, red for Fail, orange for Pass w/Provisions -- in both the HTML view and PDF output.
