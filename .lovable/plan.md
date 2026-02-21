@@ -1,40 +1,57 @@
 
 
-## Refactor: Constrain Photo Images in Generated HTML Reports
+## Fix: Report Generation Silent Timeout Due to Oversized Response
 
 ### Problem
 
-Photos in generated inspection reports render at full, unconstrained width -- they stretch edge-to-edge across the viewport, dominating the page and pushing content off-screen on mobile. The screenshot confirms images have no effective size cap and overflow their containers.
-
-### Root Cause
-
-In `supabase/functions/generate-inspection-html/index.ts`, the `.inspection-photo` class uses `width: 100%` with `max-height: 300px` and `object-fit: cover`. On wide screens, this stretches photos to the full container width (which is the full page). On mobile, the single-column grid means each photo takes up the entire screen width. The `object-fit: cover` crops aggressively rather than fitting the image naturally.
+The `generate-inspection-html` edge function downloads all inspection photos, converts them to base64, and embeds them directly in the HTML string. It then tries to return this entire HTML (~3-4MB with 5 photos) as a JSON response body. This exceeds the edge function's response size or memory limits, causing a silent crash -- no error is logged, no response is sent, and the client times out after 58 seconds.
 
 ### Solution
 
-Update the photo gallery CSS in the backend edge function to constrain images with a reasonable max size, use `object-fit: contain` for natural proportions, and apply Minimal Brutalist styling (strong borders, clear hierarchy).
+Upload the generated HTML to storage and return a signed URL instead of the raw HTML. The client then fetches the HTML from storage.
 
 ### File Changes
 
-**`supabase/functions/generate-inspection-html/index.ts`**
+**1. `supabase/functions/generate-inspection-html/index.ts`**
 
-Update three CSS blocks:
+After constructing the HTML string (line ~2614), instead of returning it directly:
 
-1. **`.photo-gallery`** (line ~1481): Keep 2-column grid on desktop but add `max-width: 100%`
+- Upload the HTML string as a file to the `inspection-reports` storage bucket (path: `html-reports/{inspectionId}-{timestamp}.html`)
+- Create a 24-hour signed URL for the uploaded file
+- Return `{ htmlUrl, fileName }` instead of `{ html }`
+- Add a completion log so silent failures become visible
+- Keep the error handler returning JSON as before
 
-2. **`.inspection-photo`** (line ~1498): Change from unconstrained cover to contained sizing:
-   - `max-width: 100%` and `max-height: 280px` with `object-fit: contain` (show full image, no cropping)
-   - `margin: 0 auto` to center smaller images
-   - `background: #f8fafc` behind the image to fill empty space cleanly
+**2. `src/pages/InspectionForm.tsx`**
 
-3. **`.photo-item`** (line ~1489): Add a stronger Brutalist border (`2px solid #1e293b`) and remove the rounded corners for the Minimal Brutalist look
+Update `handleGenerateHTML` (~line 2072-2095):
 
-4. **`.photo-section-label`** (line ~1513): Strengthen with a left border accent (`border-left: 3px solid #1e40af`)
+- After receiving the response, check for `data.htmlUrl` instead of `data.html`
+- Fetch the HTML content from the signed URL
+- Pass the fetched HTML to the viewer/opener as before
+- Add error handling for the fetch step
 
-5. **Mobile media query** (line ~1473): Ensure `.inspection-photo` on mobile gets `max-height: 220px` so photos don't dominate small screens
+### Technical Flow
 
-6. **Print media query** (line ~1525): Update `.inspection-photo` to use `max-height: 280px` with `object-fit: contain` to match screen rendering, ensuring print output shows full images without cropping
+```text
+BEFORE (broken):
+  Edge Function builds HTML (~3-4MB) --> JSON.stringify --> Response body --> SILENT CRASH
 
-7. **HtmlReportViewer.tsx mobile styles**: Update the injected mobile CSS to include matching photo constraints (`.inspection-photo { max-height: 220px; object-fit: contain; }`) for consistency in the in-app viewer
+AFTER (fixed):
+  Edge Function builds HTML --> Upload to Storage --> Return signed URL (tiny JSON) --> OK
+  Client receives URL --> Fetches HTML from Storage --> Opens viewer
+```
 
-No changes to report generation logic, photo encoding, or print toolbar behavior.
+### Why This Fixes It
+
+- The edge function response shrinks from ~4MB to a few hundred bytes (just a URL)
+- The HTML file is uploaded via the Supabase Storage SDK which handles large payloads natively
+- The client fetches the HTML directly from storage (no edge function size limits apply)
+- Storage already has the `inspection-reports` bucket configured
+
+### Additional Safeguards
+
+- Add `console.log` before and after the upload step so any future failures are visible in logs
+- The existing 60-second client timeout and safety reset remain as a fallback
+- If the storage upload fails, the error handler catches it and returns a proper error JSON
+
