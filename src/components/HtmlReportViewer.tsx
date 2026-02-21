@@ -291,8 +291,8 @@ export function HtmlReportViewer({
                  onClick={handleDownload}
                 className="gap-2"
               >
-                 <Download className="h-4 w-4" />
-                 <span className="hidden sm:inline">Download</span>
+                  <Download className="h-4 w-4" />
+                  <span className="hidden sm:inline">Save PDF</span>
               </Button>
                
                 <Button
