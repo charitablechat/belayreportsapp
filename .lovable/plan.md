@@ -1,53 +1,31 @@
 
 
-## Refine Photo Presentation in Generated HTML Reports (Screen + PDF)
+## Add "Download as PDF" Button to Generated HTML Report
 
-### Overview
+### What Changes
 
-Update photo gallery CSS in the edge function so images appear centered, properly sized, and professionally framed -- on screen, in the in-app viewer, AND in the PDF output (via `window.print()`).
+Add a floating "Download as PDF" button directly into the generated HTML report that triggers the browser's native `window.print()` (Save as PDF). The button will be hidden from print/PDF output using `@media print { display: none }`.
 
 ### File: `supabase/functions/generate-inspection-html/index.ts`
 
-**1. `.photo-gallery` (lines 1486-1492)**
-Change from 2-column grid to single-column centered layout:
-- `grid-template-columns: 1fr` (one image per row)
-- `gap: 30px` (generous vertical spacing)
-- `max-width: 80%; margin: 30px auto` (center gallery, cap width)
+**1. Add CSS for the button (in the existing `<style>` block)**
 
-**2. `.photo-item` (lines 1494-1501)**
-Replace heavy brutalist border with subtle professional frame:
-- `border: 1px solid #e2e8f0` (light gray)
-- `border-radius: 6px`
-- `box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -2px rgba(0,0,0,0.1)`
-- `padding: 16px`
+- A `.download-pdf-btn` class: fixed position at top-right, styled professionally (clean background, subtle shadow, border-radius), with a print icon or download icon
+- Inside `@media print`: `.download-pdf-btn { display: none !important; }` so it never appears in the PDF output
 
-**3. `.inspection-photo` (lines 1503-1510)**
-- `max-height: 350px` (slightly larger for premium feel)
-- Keep `object-fit: contain`, `display: block`, `margin: 0 auto`
-- Add `border-radius: 4px`
+**2. Add the button HTML (just before `</body>`)**
 
-**4. `.photo-caption` (lines 1512-1518)**
-- `text-align: center`
-- `padding: 12px 10px 4px`
+- Insert a button element with `onclick="window.print()"` right before the closing `</body>` tag (around line 2627)
+- The button will say "Save as PDF" with a small download/print icon (inline SVG)
 
-**5. `.photo-section-label` (lines 1520-1531)**
-- Center with `display: block; text-align: center; margin: 0 0 12px 0`
-- Replace left border with subtle bottom border
+### Why It Works
 
-**6. Print media query (lines 1533-1556)**
-Update to match the new professional styles for PDF output:
-- `.photo-gallery { grid-template-columns: 1fr; max-width: 85%; margin: 20px auto; gap: 20px; }`
-- `.inspection-photo { max-height: 300px !important; }`
-- `.photo-item { box-shadow: none !important; border: 1px solid #e2e8f0; border-radius: 6px; padding: 12px; }`
-- Shadows removed for print (printers don't render CSS shadows)
+- `window.print()` triggers the browser's native print dialog, which includes "Save as PDF" on all modern browsers
+- The `@media print { display: none }` rule guarantees the button is invisible in the PDF output
+- This works whether the report is viewed in the in-app viewer, opened in a new tab, or accessed via the signed storage URL directly
 
-**7. Mobile media query**
-- `.photo-gallery { max-width: 95% !important; gap: 20px !important; }`
-- `.inspection-photo { max-height: 250px !important; }`
+### No changes to
 
-### What stays the same
-
-- No changes to report data logic, photo encoding, or timeout settings
-- No changes to HtmlReportViewer.tsx toolbar or print:hidden behavior
-- The `page-break-inside: avoid` rules remain so photos don't split across PDF pages
-
+- Report data logic, photo encoding, or timeout settings
+- `HtmlReportViewer.tsx` (the existing toolbar "Save PDF" button remains as-is)
+- Any other edge functions
