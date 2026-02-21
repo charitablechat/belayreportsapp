@@ -1538,7 +1538,45 @@ serve(async (req) => {
       border-radius: 4px 4px 0 0;
     }
 
+    .download-pdf-btn {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      z-index: 10000;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 18px;
+      background: #ffffff;
+      color: #1e293b;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-size: 14px;
+      font-weight: 600;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -2px rgba(0,0,0,0.1);
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    .download-pdf-btn:hover {
+      background: #f8fafc;
+      box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -4px rgba(0,0,0,0.1);
+      transform: translateY(-1px);
+    }
+    .download-pdf-btn:active {
+      transform: translateY(0);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    .download-pdf-btn svg {
+      width: 16px;
+      height: 16px;
+      flex-shrink: 0;
+    }
+
     @media print {
+      .download-pdf-btn {
+        display: none !important;
+      }
       .photo-gallery {
         grid-template-columns: 1fr;
         max-width: 85%;
@@ -2623,6 +2661,11 @@ serve(async (req) => {
   }
 
   </div> <!-- End content-wrapper -->
+
+  <button class="download-pdf-btn" onclick="window.print()" title="Save as PDF">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+    Save as PDF
+  </button>
 
 </body>
 </html>`;
