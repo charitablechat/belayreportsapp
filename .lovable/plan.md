@@ -1,31 +1,45 @@
 
 
-## Add "Download as PDF" Button to Generated HTML Report
+## Add "Download as PDF" Button to Mobile Report Viewer
 
 ### What Changes
 
-Add a floating "Download as PDF" button directly into the generated HTML report that triggers the browser's native `window.print()` (Save as PDF). The button will be hidden from print/PDF output using `@media print { display: none }`.
+Add a dedicated "Download as PDF" button to the mobile action banner in `HtmlReportViewer.tsx`, alongside the existing "Share" and "Close" buttons. This button will directly trigger `printFromIframe` (the browser's native Save as PDF flow), separate from the Share button which uses the Web Share API.
 
-### File: `supabase/functions/generate-inspection-html/index.ts`
+### File: `src/components/HtmlReportViewer.tsx`
 
-**1. Add CSS for the button (in the existing `<style>` block)**
+**1. Add a new `handleSavePdf` function** that directly calls `printFromIframe(iframeRef.current)` -- no Web Share API, just the native print dialog.
 
-- A `.download-pdf-btn` class: fixed position at top-right, styled professionally (clean background, subtle shadow, border-radius), with a print icon or download icon
-- Inside `@media print`: `.download-pdf-btn { display: none !important; }` so it never appears in the PDF output
+**2. Add a new button before the existing Share button (around line 311)**
 
-**2. Add the button HTML (just before `</body>`)**
+- Visible on mobile only: `className="md:hidden"` (inverse of the hidden Email/SMS buttons)
+- Hidden from print output: add `print:hidden` to the className (the parent div at line 282 already has `print:hidden`, providing double coverage)
+- Uses `Download` icon with label "Save PDF"
+- Calls `handleSavePdf` on click
 
-- Insert a button element with `onclick="window.print()"` right before the closing `</body>` tag (around line 2627)
-- The button will say "Save as PDF" with a small download/print icon (inline SVG)
+**3. Button structure:**
+```tsx
+<Button
+  variant="outline"
+  size="sm"
+  onClick={handleSavePdf}
+  className="md:hidden gap-2 print:hidden"
+  title="Download as PDF"
+>
+  <Download className="h-4 w-4" />
+  <span className="hidden sm:inline">Save PDF</span>
+</Button>
+```
 
-### Why It Works
+### Why It's Hidden from PDF
 
-- `window.print()` triggers the browser's native print dialog, which includes "Save as PDF" on all modern browsers
-- The `@media print { display: none }` rule guarantees the button is invisible in the PDF output
-- This works whether the report is viewed in the in-app viewer, opened in a new tab, or accessed via the signed storage URL directly
+Two layers of protection:
+1. The parent toolbar div already has `print:hidden` (Tailwind's `@media print { display: none }`)
+2. The button itself also carries `print:hidden` for explicit safety
 
 ### No changes to
+- Edge functions or report HTML generation
+- The existing "Share" button behavior (Web Share API on mobile)
+- The existing "Save PDF" button on desktop
+- Any report data logic or timeout settings
 
-- Report data logic, photo encoding, or timeout settings
-- `HtmlReportViewer.tsx` (the existing toolbar "Save PDF" button remains as-is)
-- Any other edge functions
