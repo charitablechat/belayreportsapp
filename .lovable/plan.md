@@ -1,36 +1,28 @@
 
 
-## Download Report as PDF
+## Hide Report Viewer Toolbar from Print/PDF Output
 
-### Approach
+### Problem
+The header toolbar bar in the HTML Report Viewer (containing Email, Save PDF, Close buttons) could appear in PDF output if a user triggers the browser's native print function (Cmd+P / Ctrl+P) while the report dialog is open.
 
-Use the browser's built-in Print-to-PDF engine to convert the HTML report to a PDF download. This is the most reliable method because:
+### Solution
+Add a `@media print` CSS rule to hide the toolbar, and a `print:hidden` Tailwind class on the header div. This ensures:
+- The toolbar is fully visible during normal browsing
+- The toolbar is completely hidden when printing/saving as PDF
 
-- No extra libraries needed (zero bundle size increase)
-- The browser's rendering engine handles page breaks, margins, and layout perfectly
-- The HTML reports already contain print-optimized CSS (`@media print` styles)
+### Changes
 
-### How It Works
+**File: `src/components/HtmlReportViewer.tsx`**
 
-When the user clicks **Download**, a new browser window opens with the report HTML, automatically triggers the system Print dialog (which defaults to "Save as PDF" on most devices), and closes itself afterward. The user picks a save location and gets a proper `.pdf` file.
+Add the `print:hidden` Tailwind utility class to the header bar div (line 259):
 
-On mobile (iOS/Android), this opens the native share/print sheet which also offers "Save as PDF."
+```tsx
+// BEFORE
+<div className="flex items-center justify-between p-4 pt-[max(1rem,env(safe-area-inset-top))] border-b bg-background">
 
-### Files to Change
+// AFTER
+<div className="flex items-center justify-between p-4 pt-[max(1rem,env(safe-area-inset-top))] border-b bg-background print:hidden">
+```
 
-**`src/lib/html-report-viewer.ts`**
-- Replace the `downloadHtmlReport` function. Instead of creating and downloading an `.html` blob, it will:
-  1. Open a new browser window
-  2. Write the HTML content into it
-  3. Wait for images/fonts to load
-  4. Call `window.print()` (which opens the Save as PDF dialog)
-  5. Close the window when printing is done or cancelled
-
-**`src/components/HtmlReportViewer.tsx`**
-- Update the Download button label from "Download" to "Save PDF" for clarity
-- No logic changes needed since it already calls `downloadHtmlReport`
-
-### No New Dependencies
-
-This uses only built-in browser APIs (`window.open`, `window.print`). No npm packages to install.
+This single class addition uses Tailwind's built-in `print:` variant, which applies `display: none` only inside `@media print`. No other files need changes.
 
