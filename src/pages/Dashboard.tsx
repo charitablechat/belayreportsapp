@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { cn } from "@/lib/utils";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -84,6 +84,33 @@ export default function Dashboard() {
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [userProfile, setUserProfile] = useState<any>(null);
   const [inspectorFilter, setInspectorFilter] = useState<string>("all");
+  
+  // Build unique inspector list from report data
+  const uniqueInspectors = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const i of inspections) {
+      const insp = i.inspector;
+      if (insp?.first_name || insp?.last_name) {
+        map.set(i.inspector_id, `${insp.first_name || ''} ${insp.last_name || ''}`.trim());
+      }
+    }
+    for (const t of trainings) {
+      const tr = t.trainer;
+      if (tr?.first_name || tr?.last_name) {
+        map.set(t.inspector_id, `${tr.first_name || ''} ${tr.last_name || ''}`.trim());
+      }
+    }
+    for (const d of dailyAssessments) {
+      const insp = d.inspector;
+      if (insp?.first_name || insp?.last_name) {
+        map.set(d.inspector_id, `${insp.first_name || ''} ${insp.last_name || ''}`.trim());
+      }
+    }
+    return Array.from(map.entries())
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [inspections, trainings, dailyAssessments]);
+
   // Silent auto-resolution of conflicts via last-write-wins
   useConflicts();
   const { photosByInspection, isSyncing, unsyncedCount, forceSync } = usePWA();
@@ -1168,9 +1195,12 @@ export default function Dashboard() {
             </Tabs>
             
             {(() => {
-              const displayInspections = reportSection === "recent" ? inspections.slice(0, 9) : inspections;
-              const displayTrainings = reportSection === "recent" ? trainings.slice(0, 9) : trainings;
-              const displayDailyAssessments = reportSection === "recent" ? dailyAssessments.slice(0, 9) : dailyAssessments;
+              const filteredInspections = inspectorFilter !== "all" ? inspections.filter(i => i.inspector_id === inspectorFilter) : inspections;
+              const filteredTrainings = inspectorFilter !== "all" ? trainings.filter(t => t.inspector_id === inspectorFilter) : trainings;
+              const filteredDailyAssessments = inspectorFilter !== "all" ? dailyAssessments.filter(d => d.inspector_id === inspectorFilter) : dailyAssessments;
+              const displayInspections = reportSection === "recent" ? filteredInspections.slice(0, 9) : filteredInspections;
+              const displayTrainings = reportSection === "recent" ? filteredTrainings.slice(0, 9) : filteredTrainings;
+              const displayDailyAssessments = reportSection === "recent" ? filteredDailyAssessments.slice(0, 9) : filteredDailyAssessments;
               
               return (
             <Tabs value={activeReportTab} onValueChange={setActiveReportTab}>
@@ -1197,8 +1227,9 @@ export default function Dashboard() {
                     </SelectTrigger>
                     <SelectContent className="bg-card border-border">
                       <SelectItem value="all">All Inspectors</SelectItem>
-                      <SelectItem value="a-z">Name: A to Z</SelectItem>
-                      <SelectItem value="z-a">Name: Z to A</SelectItem>
+                      {uniqueInspectors.map(({ id, name }) => (
+                        <SelectItem key={id} value={id}>{name}</SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 )}
@@ -1245,11 +1276,6 @@ export default function Dashboard() {
                         const tierDiff = tierOf(a) - tierOf(b);
                         if (tierDiff !== 0) return tierDiff;
 
-                        if (inspectorFilter === 'a-z') {
-                          return getInspectorName(a).localeCompare(getInspectorName(b));
-                        } else if (inspectorFilter === 'z-a') {
-                          return getInspectorName(b).localeCompare(getInspectorName(a));
-                        }
                         return 0;
                       })
                       .map((inspection) => (
@@ -1309,11 +1335,6 @@ export default function Dashboard() {
                         const tierDiff = tierOf(a) - tierOf(b);
                         if (tierDiff !== 0) return tierDiff;
 
-                        if (inspectorFilter === 'a-z') {
-                          return getTrainerName(a).localeCompare(getTrainerName(b));
-                        } else if (inspectorFilter === 'z-a') {
-                          return getTrainerName(b).localeCompare(getTrainerName(a));
-                        }
                         return 0;
                       })
                       .map((training) => (
@@ -1372,11 +1393,6 @@ export default function Dashboard() {
                         const tierDiff = tierOf(a) - tierOf(b);
                         if (tierDiff !== 0) return tierDiff;
 
-                        if (inspectorFilter === 'a-z') {
-                          return getInspectorName(a).localeCompare(getInspectorName(b));
-                        } else if (inspectorFilter === 'z-a') {
-                          return getInspectorName(b).localeCompare(getInspectorName(a));
-                        }
                         return 0;
                       })
                       .map((assessment) => (
