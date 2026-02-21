@@ -1,23 +1,40 @@
 
 
-## Hide Email and SMS Buttons on Mobile in Report Viewer
+## Refactor: Constrain Photo Images in Generated HTML Reports
 
-### What Changes
+### Problem
 
-In `src/components/HtmlReportViewer.tsx`, add responsive CSS classes to conditionally hide the Email and SMS/Text buttons on screens below 768px, while keeping the Share and Close buttons visible.
+Photos in generated inspection reports render at full, unconstrained width -- they stretch edge-to-edge across the viewport, dominating the page and pushing content off-screen on mobile. The screenshot confirms images have no effective size cap and overflow their containers.
 
-### Technical Details
+### Root Cause
 
-**File: `src/components/HtmlReportViewer.tsx`**
+In `supabase/functions/generate-inspection-html/index.ts`, the `.inspection-photo` class uses `width: 100%` with `max-height: 300px` and `object-fit: cover`. On wide screens, this stretches photos to the full container width (which is the full page). On mobile, the single-column grid means each photo takes up the entire screen width. The `object-fit: cover` crops aggressively rather than fitting the image naturally.
 
-Two buttons need the `hidden sm:inline-flex` (or `hidden md:flex`) treatment:
+### Solution
 
-1. **Email button** (~line 211-221): Wrap or add `hidden md:inline-flex` to hide it below 768px
-2. **SMS/Text button** (~line 223-233): Same treatment -- `hidden md:inline-flex`
+Update the photo gallery CSS in the backend edge function to constrain images with a reasonable max size, use `object-fit: contain` for natural proportions, and apply Minimal Brutalist styling (strong borders, clear hierarchy).
 
-The Share and Close buttons remain untouched.
+### File Changes
 
-This uses Tailwind's responsive prefix `md:` (768px breakpoint) which aligns with the project's existing `MOBILE_BREAKPOINT = 768` in `use-mobile.tsx`. No CSS media queries in a separate stylesheet are needed -- Tailwind's utility classes are the established pattern in this codebase.
+**`supabase/functions/generate-inspection-html/index.ts`**
 
-No changes to PDF generation logic, share logic, or any other file.
+Update three CSS blocks:
 
+1. **`.photo-gallery`** (line ~1481): Keep 2-column grid on desktop but add `max-width: 100%`
+
+2. **`.inspection-photo`** (line ~1498): Change from unconstrained cover to contained sizing:
+   - `max-width: 100%` and `max-height: 280px` with `object-fit: contain` (show full image, no cropping)
+   - `margin: 0 auto` to center smaller images
+   - `background: #f8fafc` behind the image to fill empty space cleanly
+
+3. **`.photo-item`** (line ~1489): Add a stronger Brutalist border (`2px solid #1e293b`) and remove the rounded corners for the Minimal Brutalist look
+
+4. **`.photo-section-label`** (line ~1513): Strengthen with a left border accent (`border-left: 3px solid #1e40af`)
+
+5. **Mobile media query** (line ~1473): Ensure `.inspection-photo` on mobile gets `max-height: 220px` so photos don't dominate small screens
+
+6. **Print media query** (line ~1525): Update `.inspection-photo` to use `max-height: 280px` with `object-fit: contain` to match screen rendering, ensuring print output shows full images without cropping
+
+7. **HtmlReportViewer.tsx mobile styles**: Update the injected mobile CSS to include matching photo constraints (`.inspection-photo { max-height: 220px; object-fit: contain; }`) for consistency in the in-app viewer
+
+No changes to report generation logic, photo encoding, or print toolbar behavior.
