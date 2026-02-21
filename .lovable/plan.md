@@ -1,28 +1,24 @@
 
 
-## Remove Redundant "Save as PDF" Button from Generated HTML Report
+## Make Photo Gallery 2-Column in Both HTML and Print/PDF
 
-### What Changes
-
-Remove the floating "Save as PDF" button that was injected into the generated HTML report content itself. The toolbar already has a "Save PDF" button, making the in-report button redundant.
+### Problem
+The photo gallery currently uses `grid-template-columns: 1fr` (single column) everywhere -- base styles, mobile media query, and print media query. The user wants a 2-column layout in both the HTML view and the PDF output.
 
 ### File: `supabase/functions/generate-inspection-html/index.ts`
 
-**1. Remove the CSS (lines 1541-1574)**
+**1. Base styles (line 1490):** Change `grid-template-columns: 1fr` to `repeat(2, 1fr)`. Reduce gap from 30px to 20px, increase max-width from 80% to 90%.
 
-Delete the `.download-pdf-btn`, `.download-pdf-btn:hover`, `.download-pdf-btn:active`, and `.download-pdf-btn svg` style rules.
+**2. Photo item (line 1505):** Reduce padding from 16px to 12px so images use more card space.
 
-Also remove the `.download-pdf-btn` rule inside the existing `@media print` block (lines 1576-1579) -- only the download-pdf-btn portion, keeping the rest of the print media styles intact (photo-gallery rules, etc.).
+**3. Photo image (line 1510):** Reduce max-height from 350px to 280px for better side-by-side sizing.
 
-**2. Remove the button HTML (lines 2665-2668)**
+**4. Print media query (lines 1541-1548):** Change `grid-template-columns: 1fr` to `repeat(2, 1fr)` so PDF also gets 2 columns. Increase max-width from 85% to 92%.
 
-Delete the `<button class="download-pdf-btn">` element just before `</body>`.
+**5. Early print override (lines 1267-1270):** Change `display: block !important` to `display: grid !important` so it doesn't accidentally flatten the grid back to block layout.
+
+**6. Mobile media query (lines 1474-1479):** Keep `grid-template-columns: 1fr` for small screens -- single column is correct on mobile.
 
 ### Deployment
-
-Redeploy the `generate-inspection-html` edge function after the changes.
-
-### No other changes needed
-
-The toolbar "Save PDF" button in `HtmlReportViewer.tsx` remains as the single control for PDF generation.
+Redeploy `generate-inspection-html` after changes.
 
