@@ -259,18 +259,18 @@ export function HtmlReportViewer({
            <div className="flex items-center justify-between p-4 pt-[max(1rem,env(safe-area-inset-top))] border-b bg-background">
              <h2 className="text-lg font-semibold truncate flex-1">{title}</h2>
              <div className="flex items-center gap-2 ml-4">
-               {canEmail && (
-                 <Button
-                   variant="outline"
-                   size="sm"
-                   onClick={handleEmail}
-                   className="gap-2 border-2 border-foreground hover:bg-foreground hover:text-background transition-colors duration-100"
-                   title="Email Report"
-                 >
-                   <Mail className="h-4 w-4" />
-                   <span className="hidden sm:inline">Email</span>
-                 </Button>
-               )}
+              {Boolean(reportType) && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled
+                    className="gap-2 opacity-50 cursor-not-allowed"
+                    title="Email Report (coming soon)"
+                  >
+                    <Mail className="h-4 w-4" />
+                    <span className="hidden sm:inline">Email</span>
+                  </Button>
+                )}
                
                {canSms && smsLink && (
                  <Button
