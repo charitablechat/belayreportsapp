@@ -54,6 +54,12 @@ export function HtmlReportViewer({
     }
   };
 
+  const handleSavePdf = () => {
+    if (iframeRef.current) {
+      printFromIframe(iframeRef.current);
+    }
+  };
+
   // Comprehensive mobile styles to ensure viewport consistency and prevent overlap/clipping
   const mobileBaseStyles = `
     <style>
@@ -307,11 +313,22 @@ export function HtmlReportViewer({
                     <span className="hidden sm:inline">Text</span>
                   </Button>
                 )}
-               
-              <Button
-                variant="outline"
-                size="sm"
-                 onClick={handleDownload}
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleSavePdf}
+                  className="md:hidden gap-2 print:hidden"
+                  title="Download as PDF"
+                >
+                  <Download className="h-4 w-4" />
+                  <span className="hidden sm:inline">Save PDF</span>
+                </Button>
+                
+               <Button
+                 variant="outline"
+                 size="sm"
+                  onClick={handleDownload}
                 className="gap-2"
               >
                   {isMobileOrPWA ? <Share2 className="h-4 w-4" /> : <Download className="h-4 w-4" />}
