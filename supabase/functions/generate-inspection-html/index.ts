@@ -2613,7 +2613,39 @@ serve(async (req) => {
 </body>
 </html>`;
 
-    return new Response(JSON.stringify({ html }), {
+    // Upload HTML to storage instead of returning directly (avoids response size limits)
+    console.log(`[generate-inspection-html] Uploading HTML to storage for inspection ${inspectionId}...`);
+    
+    const timestamp = Date.now();
+    const filePath = `html-reports/${inspectionId}-${timestamp}.html`;
+    const htmlBlob = new Blob([html], { type: 'text/html' });
+    
+    const { error: uploadError } = await supabase.storage
+      .from('inspection-reports')
+      .upload(filePath, htmlBlob, {
+        contentType: 'text/html',
+        upsert: false,
+      });
+
+    if (uploadError) {
+      console.error(`[generate-inspection-html] Storage upload failed:`, uploadError);
+      throw new Error(`Failed to upload report: ${uploadError.message}`);
+    }
+
+    console.log(`[generate-inspection-html] Upload successful. Creating signed URL...`);
+
+    const { data: signedUrlData, error: signedUrlError } = await supabase.storage
+      .from('inspection-reports')
+      .createSignedUrl(filePath, 86400); // 24 hours
+
+    if (signedUrlError || !signedUrlData?.signedUrl) {
+      console.error(`[generate-inspection-html] Signed URL creation failed:`, signedUrlError);
+      throw new Error(`Failed to create report URL: ${signedUrlError?.message || 'Unknown error'}`);
+    }
+
+    console.log(`[generate-inspection-html] Complete. Returning signed URL.`);
+
+    return new Response(JSON.stringify({ htmlUrl: signedUrlData.signedUrl, fileName: filePath }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
       status: 200,
     });
