@@ -789,25 +789,27 @@ serve(async (req) => {
     .standards-table th:nth-child(4),
     .standards-table td:nth-child(4) { width: auto; min-width: 150px; } /* Comments - dynamic */
 
-    /* Optimized column widths for Ziplines table (9 columns) */
+    /* Optimized column widths for Ziplines table (10 columns) */
     .ziplines-table th:nth-child(1),
-    .ziplines-table td:nth-child(1) { width: 11%; } /* Name */
+    .ziplines-table td:nth-child(1) { width: 10%; } /* Name */
     .ziplines-table th:nth-child(2),
-    .ziplines-table td:nth-child(2) { width: 8%; } /* Cable Type */
+    .ziplines-table td:nth-child(2) { width: 7%; } /* Cable Type */
     .ziplines-table th:nth-child(3),
-    .ziplines-table td:nth-child(3) { width: 7%; } /* Length */
+    .ziplines-table td:nth-child(3) { width: 6%; } /* Length */
     .ziplines-table th:nth-child(4),
-    .ziplines-table td:nth-child(4) { width: 11%; } /* Cable Result - wider */
+    .ziplines-table td:nth-child(4) { width: 10%; } /* Cable Result */
     .ziplines-table th:nth-child(5),
-    .ziplines-table td:nth-child(5) { width: 9%; } /* Braking System */
+    .ziplines-table td:nth-child(5) { width: 8%; } /* Braking System */
     .ziplines-table th:nth-child(6),
-    .ziplines-table td:nth-child(6) { width: 11%; } /* Braking Result - wider */
+    .ziplines-table td:nth-child(6) { width: 10%; } /* Braking Result */
     .ziplines-table th:nth-child(7),
-    .ziplines-table td:nth-child(7) { width: 8%; } /* EAD System */
+    .ziplines-table td:nth-child(7) { width: 7%; } /* EAD System */
     .ziplines-table th:nth-child(8),
-    .ziplines-table td:nth-child(8) { width: 11%; } /* EAD Result - wider */
+    .ziplines-table td:nth-child(8) { width: 10%; } /* EAD Result */
     .ziplines-table th:nth-child(9),
-    .ziplines-table td:nth-child(9) { width: auto; min-width: 180px; } /* Comments - dynamic, wider */
+    .ziplines-table td:nth-child(9) { width: 10%; } /* Overall Result */
+    .ziplines-table th:nth-child(10),
+    .ziplines-table td:nth-child(10) { width: auto; min-width: 160px; } /* Comments - dynamic */
 
     /* Optimized column widths for Operating Systems table */
     .systems-table th:nth-child(1),
@@ -844,7 +846,7 @@ serve(async (req) => {
     /* Allow comments columns to wrap and expand */
     .equipment-table td:nth-child(5),
     .systems-table td:nth-child(4),
-    .ziplines-table td:nth-child(9),
+    .ziplines-table td:nth-child(10),
     .standards-table td:nth-child(3),
     .standards-table td:nth-child(4) {
       white-space: normal;
@@ -1106,7 +1108,7 @@ serve(async (req) => {
 
       .equipment-table td:nth-child(5),
       .systems-table td:nth-child(4),
-      .ziplines-table td:nth-child(9),
+      .ziplines-table td:nth-child(10),
       .standards-table td:nth-child(3),
       .standards-table td:nth-child(4) {
         max-width: none; /* Remove limit to allow full content display */
@@ -1920,6 +1922,7 @@ serve(async (req) => {
               <th>Braking Result</th>
               <th>EAD System</th>
               <th>EAD Result</th>
+              <th>Overall</th>
               <th>Comments and/or Required Changes</th>
             </tr>
           </thead>
@@ -1929,6 +1932,7 @@ serve(async (req) => {
                 const cableResultData = formatResultCheckbox(zip.cable_result || "Pass");
                 const brakingResultData = formatResultCheckbox(zip.braking_result || "Pass");
                 const eadResultData = formatResultCheckbox(zip.ead_result || "Pass");
+                const overallResultData = formatResultCheckbox(zip.result || "Pass");
                 const formattedComments = formatCommentsAsBullets(zip.comments);
                 return `
                 <tr>
@@ -1940,6 +1944,7 @@ serve(async (req) => {
                   <td style="${brakingResultData.cellStyle}">${brakingResultData.html}</td>
                   <td style="text-align: center;">${zip.ead_system || "N/A"}</td>
                   <td style="${eadResultData.cellStyle}">${eadResultData.html}</td>
+                  <td style="${overallResultData.cellStyle}">${overallResultData.html}</td>
                   <td style="font-size: 9pt;">${formattedComments}</td>
                 </tr>
               `;
@@ -2068,6 +2073,7 @@ serve(async (req) => {
             <th>Braking Result</th>
             <th>EAD System</th>
             <th>EAD Result</th>
+            <th>Overall</th>
             <th>Comments and/or Required Changes</th>
           </tr>
         </thead>
@@ -2077,6 +2083,7 @@ serve(async (req) => {
               const cableResultData = formatResultCheckbox(zip.cable_result || "Pass");
               const brakingResultData = formatResultCheckbox(zip.braking_result || "Pass");
               const eadResultData = formatResultCheckbox(zip.ead_result || "Pass");
+              const overallResultData = formatResultCheckbox(zip.result || "Pass");
               const formattedComments = formatCommentsAsBullets(zip.comments);
               return `
               <tr>
@@ -2088,6 +2095,7 @@ serve(async (req) => {
                 <td style="${brakingResultData.cellStyle}">${brakingResultData.html}</td>
                 <td style="text-align: center;">${zip.ead_system || "N/A"}</td>
                 <td style="${eadResultData.cellStyle}">${eadResultData.html}</td>
+                <td style="${overallResultData.cellStyle}">${overallResultData.html}</td>
                 <td style="font-size: 9pt;">${formattedComments}</td>
               </tr>
             `;
