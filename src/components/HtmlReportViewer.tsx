@@ -217,6 +217,14 @@ export function HtmlReportViewer({
           gap: 12px !important;
         }
         
+        .inspection-photo {
+          max-height: 220px !important;
+          object-fit: contain !important;
+          max-width: 100% !important;
+          margin: 0 auto !important;
+          background: #f8fafc !important;
+        }
+        
         .photo-item {
           width: 100% !important;
         }
