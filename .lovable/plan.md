@@ -1,34 +1,41 @@
 
 
-## Filter Reports by Specific Inspector/Trainer
+## Fix: "Regenerate from Inspection" Button Appears to Do Nothing
 
-### Current Behavior
-The "All Inspectors" dropdown currently only offers sort options (A-Z, Z-A). It does not filter reports by a specific person.
+### Root Cause
 
-### What Will Change
-The dropdown will be populated with the actual names of inspectors/trainers who have created reports. Selecting a name will filter the report list to show only that person's reports. The "All Inspectors" option remains as the default (no filter). The A-Z/Z-A sort options are removed since filtering by person is more useful.
+The `RichTextEditor` component (TipTap-based) only reads the `content` prop once -- during initial editor creation. After that, TipTap manages its own internal state and ignores React prop changes. So when the "Regenerate" button calls `setSummary(...)`, the new HTML content flows into the `content` prop but the TipTap editor never updates its display.
 
-### How It Works
+The toast ("Summary Updated") likely does fire, but the editor fields visually remain unchanged, making it appear broken.
 
-1. **Extract unique inspector names from loaded report data** -- no new database queries needed. The inspector/trainer profile data is already joined in the existing queries (`inspector.first_name`, `inspector.last_name` for inspections/daily assessments; `trainer.first_name`, `trainer.last_name` for trainings).
+### Fix (1 file)
 
-2. **Build a deduplicated, sorted list** of inspector names using a `useMemo` that combines names from all three report types (inspections, trainings, daily assessments), keyed by `inspector_id` to avoid duplicates.
+**File: `src/components/ui/rich-text-editor.tsx`**
 
-3. **Update the Select dropdown** to show each unique inspector/trainer as an option, with their `inspector_id` as the value.
+Add a `useEffect` that detects when the `content` prop changes externally (i.e., not from the user typing in the editor) and calls `editor.commands.setContent(content)` to sync TipTap's internal state.
 
-4. **Apply filtering** at the `displayInspections`/`displayTrainings`/`displayDailyAssessments` level. When a specific inspector is selected, filter each list to only show reports where `inspector_id` matches.
+To avoid an infinite loop (since `onUpdate` also fires `onChange` which could cycle back), the effect will compare the incoming `content` against the editor's current HTML. If they differ, it updates the editor.
 
-5. **Empty state handling** -- if filtering results in zero reports for a tab, the existing empty state components already handle this gracefully.
+```text
+useEffect(() => {
+  if (editor && content !== editor.getHTML()) {
+    editor.commands.setContent(content, false);
+  }
+}, [content, editor]);
+```
 
-### Technical Details
+The `false` parameter tells TipTap not to emit a parse event, preventing unnecessary re-renders.
 
-**File: `src/pages/Dashboard.tsx`**
+### Why This Is Safe
 
-- Add a `useMemo` that iterates `inspections`, `trainings`, and `dailyAssessments` arrays to build a `Map<string, string>` of `inspector_id -> full name`, then sort alphabetically.
+- The comparison `content !== editor.getHTML()` prevents infinite loops: when the user types, `onUpdate` fires `onChange`, which updates the parent's state, which passes a new `content` prop back down -- but since that content matches what the editor already has, the `setContent` call is skipped.
+- External updates (like the regenerate button) produce content that differs from the editor's current HTML, so the update fires exactly once.
+- No other files need changes. The `SummarySection`, `VoiceRichTextEditor`, and `InspectionForm` are all wired correctly already.
 
-- Update lines 1171-1173 (the `displayInspections`/`displayTrainings`/`displayDailyAssessments` computation) to add a `.filter()` step when `inspectorFilter` is not `"all"` -- filtering by `report.inspector_id === inspectorFilter`.
+### Testing
 
-- Replace the Select options (lines 1198-1202) to render dynamic `SelectItem` entries from the computed inspector list, removing the static A-Z/Z-A options.
-
-- Remove the A-Z/Z-A sort branches from all three tab sort functions (they become unnecessary once filtering by person is available).
+1. Open an inspection report with items that have comments (e.g., the "Test" report).
+2. Navigate to the Summary tab.
+3. Click "Regenerate from Inspection."
+4. The three rich text fields (Repairs, Critical Actions, Future Considerations) should immediately update with the aggregated content and a success toast should appear.
 
