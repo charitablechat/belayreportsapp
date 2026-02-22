@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import { Bold, Italic, List } from 'lucide-react';
@@ -44,6 +45,13 @@ export const RichTextEditor = ({
       },
     },
   });
+
+  // Sync external content changes (e.g. regenerate button) into TipTap
+  useEffect(() => {
+    if (editor && content !== editor.getHTML()) {
+      editor.commands.setContent(content, { emitUpdate: false });
+    }
+  }, [content, editor]);
 
   if (!editor) {
     return null;
