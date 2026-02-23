@@ -11,11 +11,11 @@ interface Sparkle {
 }
 
 const SPARKLE_COLORS = [
-  "hsl(350, 80%, 65%)",   // Rose red
-  "hsl(340, 70%, 75%)",   // Pink
-  "hsl(45, 100%, 70%)",   // Gold
+  "hsl(145, 70%, 40%)",   // Emerald green
+  "hsl(120, 60%, 55%)",   // Lime green
+  "hsl(45, 100%, 55%)",   // Gold
   "hsl(0, 0%, 100%)",     // White
-  "hsl(320, 60%, 70%)",   // Magenta pink
+  "hsl(150, 80%, 25%)",   // Dark green
 ];
 
 export function useSparkles() {
@@ -82,10 +82,13 @@ export function SparkleContainer({ sparkles }: SparkleContainerProps) {
               filter: `drop-shadow(0 0 4px ${sparkle.color}) drop-shadow(0 0 8px ${sparkle.color})` 
             }}
           >
-            <path
-              d="M12 0L14.59 9.41L24 12L14.59 14.59L12 24L9.41 14.59L0 12L9.41 9.41L12 0Z"
-              fill={sparkle.color}
-            />
+            <g fill={sparkle.color}>
+              <ellipse cx="12" cy="7" rx="3" ry="5" />
+              <ellipse cx="12" cy="17" rx="3" ry="5" />
+              <ellipse cx="7" cy="12" rx="5" ry="3" />
+              <ellipse cx="17" cy="12" rx="5" ry="3" />
+              <line x1="12" y1="17" x2="12" y2="23" stroke={sparkle.color} strokeWidth="1.5" />
+            </g>
           </svg>
         </div>
       ))}

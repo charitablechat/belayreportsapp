@@ -4,6 +4,7 @@ import * as React from "react"
 import { Slot } from "@radix-ui/react-slot"
 import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "@/lib/utils"
+import { useClickAndHoverSparkles, SparkleContainer } from "@/components/christmas/Sparkles"
 
 const gradientButtonVariants = cva(
   [
@@ -35,15 +36,27 @@ export interface GradientButtonProps
 }
 
 const GradientButton = React.forwardRef<HTMLButtonElement, GradientButtonProps>(
-  ({ className, variant, asChild = false, ...props }, ref) => {
+  ({ className, variant, asChild = false, onClick, onMouseMove, ...props }, ref) => {
     const Comp = asChild ? Slot : "button"
+    const { sparkles, triggerSparkles, handleMouseMove } = useClickAndHoverSparkles()
     
     return (
-      <Comp
-        className={cn(gradientButtonVariants({ variant, className }))}
-        ref={ref}
-        {...props}
-      />
+      <>
+        <Comp
+          className={cn(gradientButtonVariants({ variant, className }))}
+          ref={ref}
+          onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
+            triggerSparkles(e);
+            onClick?.(e);
+          }}
+          onMouseMove={(e: React.MouseEvent<HTMLButtonElement>) => {
+            handleMouseMove(e);
+            onMouseMove?.(e);
+          }}
+          {...props}
+        />
+        <SparkleContainer sparkles={sparkles} />
+      </>
     )
   }
 )
