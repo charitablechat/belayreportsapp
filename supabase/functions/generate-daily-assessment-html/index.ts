@@ -100,9 +100,28 @@ serve(async (req) => {
 `);
 
     // Format dates in Central Time (CST/CDT)
-    const formatDate = (dateStr: string) => {
+    const formatDate = (dateStr: string | null) => {
       if (!dateStr) return 'N/A';
+      const SPECIAL_DATE_VALUES = ["N/A", "Unknown"];
+      if (SPECIAL_DATE_VALUES.includes(dateStr)) return dateStr;
+
+      // Parse date-only strings (YYYY-MM-DD) as local to avoid UTC shift
+      const dateOnly = dateStr.split('T')[0];
+      const parts = dateOnly.split('-');
+      if (parts.length === 3) {
+        const [year, month, day] = parts.map(Number);
+        if (!isNaN(year) && !isNaN(month) && !isNaN(day)) {
+          const months = [
+            "January", "February", "March", "April", "May", "June",
+            "July", "August", "September", "October", "November", "December"
+          ];
+          return `${months[month - 1]} ${day}, ${year}`;
+        }
+      }
+
+      // Fallback for datetime strings or unparseable values
       const date = new Date(dateStr);
+      if (isNaN(date.getTime())) return dateStr;
       return date.toLocaleDateString('en-US', { timeZone: 'America/Chicago', year: 'numeric', month: 'long', day: 'numeric' });
     };
 
