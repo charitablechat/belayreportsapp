@@ -1233,12 +1233,12 @@ export default function DailyAssessmentForm() {
           setShowLeaveDialog(false);
           setHasUnsavedChanges(false);
           emitSyncComplete();
-          goBack(navigate);
+          setTimeout(() => goBack(navigate), 0);
         }}
         onLeave={() => {
           setShowLeaveDialog(false);
           setHasUnsavedChanges(false);
-          goBack(navigate);
+          setTimeout(() => goBack(navigate), 0);
         }}
         onCancel={() => setShowLeaveDialog(false)}
         isSaving={saving}
