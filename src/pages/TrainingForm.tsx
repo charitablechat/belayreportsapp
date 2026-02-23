@@ -12,7 +12,7 @@ import { getUserWithCache, getOfflineUserId } from "@/lib/cached-auth";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Save, FileDown, FileText, ChevronLeft, WifiOff, Wifi, Mail, CheckCircle, Info, Users, Settings, AlertTriangle, ClipboardCheck, FileCheck, LogOut, User, CloudOff, ArrowLeft, Camera } from "lucide-react";
+import { Loader2, Save, FileDown, FileText, ChevronLeft, WifiOff, Wifi, Mail, CheckCircle, Info, Users, Settings, AlertTriangle, ClipboardCheck, FileCheck, LogOut, User, CloudOff, ArrowLeft, Camera, RefreshCw } from "lucide-react";
 import { toast } from "@/components/ui/sonner";
 import ropeWorksLogo from "@/assets/rope-works-logo.png";
 
@@ -1219,6 +1219,18 @@ export default function TrainingForm() {
               </>
               )}
               {training?.status === 'completed' && (
+                <>
+                {isMobile && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={handleGenerateHTML}
+                    disabled={isGeneratingHTML || !isOnline}
+                    className="h-9 w-9"
+                  >
+                    <RefreshCw className={cn("w-4 h-4", isGeneratingHTML && "animate-spin")} />
+                  </Button>
+                )}
                 <Button
                   variant="outline"
                   size={isMobile ? "default" : "sm"}
@@ -1234,6 +1246,7 @@ export default function TrainingForm() {
                     </>
                   )}
                 </Button>
+                </>
               )}
             </div>
           </div>

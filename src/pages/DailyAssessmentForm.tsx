@@ -6,7 +6,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { getUserWithCache, getOfflineUserId } from "@/lib/cached-auth";
 import { useFormConfiguration } from "@/hooks/useFormConfiguration";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Save, FileText, Loader2, WifiOff, Check, Sunrise, Sunset, Settings, Package, Building, Cloud, LogOut, User, CloudOff, CheckCircle, Camera } from "lucide-react";
+import { ArrowLeft, Save, FileText, Loader2, WifiOff, Check, Sunrise, Sunset, Settings, Package, Building, Cloud, LogOut, User, CloudOff, CheckCircle, Camera, RefreshCw } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { AutoSaveIndicator } from "@/components/AutoSaveIndicator";
@@ -1318,6 +1318,18 @@ export default function DailyAssessmentForm() {
               </>
               )}
               {assessment?.status === 'completed' && (
+                <>
+                {isMobileView && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={handleGenerateReport}
+                    disabled={generating}
+                    className="h-9 w-9"
+                  >
+                    <RefreshCw className={cn("w-4 h-4", generating && "animate-spin")} />
+                  </Button>
+                )}
                 <Button 
                   variant="outline" 
                   size={isMobileView ? "default" : "sm"} 
@@ -1333,6 +1345,7 @@ export default function DailyAssessmentForm() {
                     </>
                   )}
                 </Button>
+                </>
               )}
             </div>
           </div>
