@@ -52,7 +52,7 @@ export function UnsavedChangesDialog({
             className="w-full rounded-none font-semibold"
           >
             <LogOut className="w-4 h-4 mr-2" />
-            Discard any Changes & Exit
+            Exit Without Saving
           </Button>
           <Button
             variant="outline"

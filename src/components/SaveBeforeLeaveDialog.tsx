@@ -56,7 +56,7 @@ export function SaveBeforeLeaveDialog({
             className="w-full rounded-none font-semibold"
           >
             <LogOut className="w-4 h-4 mr-2" />
-            Discard & Exit
+            Exit Without Saving
           </Button>
           <Button
             variant="outline"
