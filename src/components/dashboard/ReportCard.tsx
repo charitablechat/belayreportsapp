@@ -14,6 +14,7 @@ import { triggerHaptic } from "@/lib/haptics";
 import { parseLocalDate } from "@/lib/date-utils";
 import { triggerSuccessConfetti } from "@/lib/confetti";
 import { cn } from "@/lib/utils";
+import { useClickAndHoverSparkles, SparkleContainer } from "@/components/christmas/Sparkles";
 
 export type ReportAgeState = 'critical' | 'warning' | 'completed' | 'default';
 
@@ -35,6 +36,7 @@ interface ReportCardProps {
 }
 
 export function ReportCard({ report, type, onDelete, onClick, getStatusBadge }: ReportCardProps) {
+  const { sparkles, triggerSparkles, handleMouseMove } = useClickAndHoverSparkles();
   const isInspection = type === 'inspection';
   const isDaily = type === 'daily';
   
@@ -125,13 +127,15 @@ export function ReportCard({ report, type, onDelete, onClick, getStatusBadge }: 
         "relative overflow-visible cursor-pointer transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5 hover:border-primary/50 active:scale-[0.99] active:shadow-md group",
         ageStateClasses[ageState]
       )}
-      onClick={() => {
+      onClick={(e) => {
         triggerHaptic('light');
+        triggerSparkles(e);
         if (getReportStatus() === 'completed') {
           triggerSuccessConfetti();
         }
         onClick(report);
       }}
+      onMouseMove={handleMouseMove}
     >
       {getReportStatus() === 'completed' && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
@@ -227,6 +231,7 @@ export function ReportCard({ report, type, onDelete, onClick, getStatusBadge }: 
           </div>
         </div>
       </CardContent>
+      <SparkleContainer sparkles={sparkles} />
     </Card>
   );
 }
