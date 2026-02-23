@@ -55,6 +55,7 @@ import { CompletionLockDialog } from "@/components/CompletionLockDialog";
 import { SaveBeforeLeaveDialog } from "@/components/SaveBeforeLeaveDialog";
 import { Lock } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { reconcileAllChildTables } from "@/lib/sync-reconciliation";
 import { useEmergencySave } from "@/hooks/useEmergencySave";
 import { saveReportSnapshot, getReportSnapshot, markSnapshotSynced } from "@/lib/local-backup-ledger";
 import { appendVersion } from "@/lib/report-version-manager";
@@ -673,6 +674,24 @@ export default function DailyAssessmentForm() {
       if (navigator.onLine) {
         if (import.meta.env.DEV) console.log('[Save] Online - syncing to database...');
         try {
+          // RECONCILE: Delete server rows removed locally before upserting
+          const user = await getUserWithCache();
+          if (user) {
+            await reconcileAllChildTables(
+              [
+                { childTable: 'daily_assessment_beginning_of_day', parentIdColumn: 'assessment_id', localItems: beginningOfDay },
+                { childTable: 'daily_assessment_end_of_day', parentIdColumn: 'assessment_id', localItems: endOfDay },
+                { childTable: 'daily_assessment_operating_systems', parentIdColumn: 'assessment_id', localItems: operatingSystems },
+                { childTable: 'daily_assessment_equipment_checks', parentIdColumn: 'assessment_id', localItems: equipmentChecks },
+                { childTable: 'daily_assessment_structure_checks', parentIdColumn: 'assessment_id', localItems: structureChecks },
+                { childTable: 'daily_assessment_environment_checks', parentIdColumn: 'assessment_id', localItems: environmentChecks },
+              ],
+              id!,
+              'daily_assessment',
+              user.id,
+            );
+          }
+
           // Use upsert with onConflict to prevent duplicates
           const upsertResults = await Promise.all([
             beginningOfDay.length > 0 

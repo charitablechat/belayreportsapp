@@ -1353,6 +1353,45 @@ export type Database = {
         }
         Relationships: []
       }
+      report_deleted_items: {
+        Row: {
+          child_table: string
+          deleted_at: string
+          deleted_by: string | null
+          deleted_item_data: Json
+          deleted_item_id: string
+          id: string
+          report_id: string
+          report_type: string
+          restored_at: string | null
+          restored_by: string | null
+        }
+        Insert: {
+          child_table: string
+          deleted_at?: string
+          deleted_by?: string | null
+          deleted_item_data: Json
+          deleted_item_id: string
+          id?: string
+          report_id: string
+          report_type: string
+          restored_at?: string | null
+          restored_by?: string | null
+        }
+        Update: {
+          child_table?: string
+          deleted_at?: string
+          deleted_by?: string | null
+          deleted_item_data?: Json
+          deleted_item_id?: string
+          id?: string
+          report_id?: string
+          report_type?: string
+          restored_at?: string | null
+          restored_by?: string | null
+        }
+        Relationships: []
+      }
       sync_conflicts: {
         Row: {
           created_at: string | null

@@ -60,6 +60,7 @@ import { CompletionLockDialog } from "@/components/CompletionLockDialog";
 import { SaveBeforeLeaveDialog } from "@/components/SaveBeforeLeaveDialog";
 import { Lock } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { reconcileAllChildTables } from "@/lib/sync-reconciliation";
 import { useEmergencySave } from "@/hooks/useEmergencySave";
 import { saveReportSnapshot, getReportSnapshot, markSnapshotSynced } from "@/lib/local-backup-ledger";
 import { appendVersion } from "@/lib/report-version-manager";
@@ -648,6 +649,24 @@ export default function TrainingForm() {
 
           // Execute all upserts in parallel (single batch operation)
           const parallelOps: Promise<void>[] = [];
+
+          // RECONCILE: Delete server rows removed locally before upserting
+          const user = await getUserWithCache();
+          if (user) {
+            await reconcileAllChildTables(
+              [
+                { childTable: 'training_delivery_approaches', parentIdColumn: 'training_id', localItems: deliveryApproaches },
+                { childTable: 'training_operating_systems', parentIdColumn: 'training_id', localItems: operatingSystems },
+                { childTable: 'training_immediate_attention', parentIdColumn: 'training_id', localItems: immediateAttention },
+                { childTable: 'training_verifiable_items', parentIdColumn: 'training_id', localItems: verifiableItems },
+                { childTable: 'training_systems_in_place', parentIdColumn: 'training_id', localItems: systemsInPlace },
+                { childTable: 'training_summary', parentIdColumn: 'training_id', localItems: summary ? [summary] : [] },
+              ],
+              id!,
+              'training',
+              user.id,
+            );
+          }
           
           // Helper to convert PromiseLike to proper Promise
           const dbOp = async (operation: PromiseLike<{ error: any }>) => {

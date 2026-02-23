@@ -35,6 +35,7 @@ import {
   TransactionStep,
   fetchRollbackData
 } from "./transaction-manager";
+import { reconcileAllChildTables } from "./sync-reconciliation";
 import { syncProgressEmitter } from "@/hooks/useSyncProgress";
 import { getMobileCapabilities } from "./mobile-detection";
 import { getCachedProfile } from "./profile-cache";
@@ -442,7 +443,23 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
       }
     }
     
-    // Step 2: UPSERT all related data (NEVER delete -- preserves server rows not in local state)
+    // Step 2: RECONCILE then UPSERT child data
+    // Delete server rows that were removed locally, then upsert current local data
+    if (recordStatus?.record_exists && !recordStatus?.is_deleted) {
+      await reconcileAllChildTables(
+        [
+          { childTable: 'inspection_systems', parentIdColumn: 'inspection_id', localItems: systems },
+          { childTable: 'inspection_ziplines', parentIdColumn: 'inspection_id', localItems: ziplines },
+          { childTable: 'inspection_equipment', parentIdColumn: 'inspection_id', localItems: equipment },
+          { childTable: 'inspection_standards', parentIdColumn: 'inspection_id', localItems: standards },
+          { childTable: 'inspection_summary', parentIdColumn: 'inspection_id', localItems: summary ? [summary] : [] },
+        ],
+        inspectionId,
+        'inspection',
+        user.id,
+      );
+    }
+
     if (systems.length > 0) {
       steps.push({
         table: 'inspection_systems',
@@ -1083,7 +1100,24 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
       }
     }
     
-    // Step 2: UPSERT all related data (NEVER delete -- preserves server rows not in local state)
+    // Step 2: RECONCILE then UPSERT child data
+    // Delete server rows that were removed locally, then upsert current local data
+    if (recordStatus?.record_exists && !recordStatus?.is_deleted) {
+      await reconcileAllChildTables(
+        [
+          { childTable: 'training_delivery_approaches', parentIdColumn: 'training_id', localItems: delivery_approaches },
+          { childTable: 'training_operating_systems', parentIdColumn: 'training_id', localItems: operating_systems },
+          { childTable: 'training_immediate_attention', parentIdColumn: 'training_id', localItems: immediate_attention },
+          { childTable: 'training_verifiable_items', parentIdColumn: 'training_id', localItems: verifiable_items },
+          { childTable: 'training_systems_in_place', parentIdColumn: 'training_id', localItems: systems_in_place },
+          { childTable: 'training_summary', parentIdColumn: 'training_id', localItems: summary ? [summary] : [] },
+        ],
+        trainingId,
+        'training',
+        user.id,
+      );
+    }
+
     if (delivery_approaches.length > 0) {
       steps.push({
         table: 'training_delivery_approaches',
@@ -1673,7 +1707,24 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
       }
     }
     
-    // Step 2: UPSERT all related data (NEVER delete -- preserves server rows not in local state)
+    // Step 2: RECONCILE then UPSERT child data
+    // Delete server rows that were removed locally, then upsert current local data
+    if (recordStatus?.record_exists && !recordStatus?.is_deleted) {
+      await reconcileAllChildTables(
+        [
+          { childTable: 'daily_assessment_beginning_of_day', parentIdColumn: 'assessment_id', localItems: beginning_of_day },
+          { childTable: 'daily_assessment_end_of_day', parentIdColumn: 'assessment_id', localItems: end_of_day },
+          { childTable: 'daily_assessment_operating_systems', parentIdColumn: 'assessment_id', localItems: operating_systems },
+          { childTable: 'daily_assessment_equipment_checks', parentIdColumn: 'assessment_id', localItems: equipment_checks },
+          { childTable: 'daily_assessment_structure_checks', parentIdColumn: 'assessment_id', localItems: structure_checks },
+          { childTable: 'daily_assessment_environment_checks', parentIdColumn: 'assessment_id', localItems: environment_checks },
+        ],
+        assessmentId,
+        'daily_assessment',
+        user.id,
+      );
+    }
+
     if (beginning_of_day.length > 0) {
       steps.push({
         table: 'daily_assessment_beginning_of_day',
