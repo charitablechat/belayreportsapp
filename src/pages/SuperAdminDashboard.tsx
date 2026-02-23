@@ -703,6 +703,8 @@ export default function SuperAdminDashboard() {
 
       {/* Overview Stats - Row 3 */}
       <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
+        {/* DISABLED: Avg Completion Time — greyed out until timer accuracy is resolved */}
+        <div className="opacity-40 pointer-events-none select-none">
         <StatCard
           title="Avg Completion Time"
           value={avgCompletionTime ? `${avgCompletionTime.toFixed(1)}h` : "0h"}
@@ -744,6 +746,7 @@ export default function SuperAdminDashboard() {
             </div>
           }
         />
+        </div>
         <StatCard
           title="This Month"
           value={inspectionsThisMonth || 0}

@@ -111,9 +111,10 @@ export default function TrainingForm() {
   // Completion lock derived values (after report state is declared)
   const isCompletionLocked = training?.status === 'completed' && !completionLockOverridden;
   // Active-usage timer: only tracks time when user is actively editing
+  // DISABLED: Timer fully disabled — set enabled: false to stop all background tracking
   const { elapsedSeconds, isActive: timerActive, isPaused: timerPaused, getElapsedSeconds } = useActiveTimer({
     initialSeconds: training?.active_duration_seconds || 0,
-    enabled: canEdit && !isReadOnly && !isCompletionLocked && !isSuperAdmin,
+    enabled: false, // was: canEdit && !isReadOnly && !isCompletionLocked && !isSuperAdmin
   });
 
   const effectiveReadOnly = isReadOnly || isCompletionLocked;
@@ -567,7 +568,7 @@ export default function TrainingForm() {
       const updatedTraining = {
         ...training,
         updated_at: new Date().toISOString(),
-        active_duration_seconds: getElapsedSeconds(),
+        // DISABLED: active_duration_seconds: getElapsedSeconds(),
         // Track who modified the report if current user is not the owner
         ...(currentUser?.id && currentUser.id !== training.inspector_id 
           ? { last_modified_by: currentUser.id } 
@@ -1172,12 +1173,14 @@ export default function TrainingForm() {
                 hasUnsavedChanges={hasUnsavedChanges}
                 className="flex"
               />
+              {/* DISABLED: Timer display hidden for now
               <ActiveTimerDisplay
                 elapsedSeconds={elapsedSeconds}
                 isActive={timerActive}
                 isPaused={timerPaused}
                 isReadOnly={effectiveReadOnly}
               />
+              */}
             </div>
             
             <div className="flex items-center gap-2">
