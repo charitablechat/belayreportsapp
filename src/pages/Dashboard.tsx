@@ -20,7 +20,7 @@ import { KnownIssuesCard } from "@/components/dashboard/KnownIssuesCard";
 import { DeveloperNotesCard } from "@/components/dashboard/DeveloperNotesCard";
 import ropeWorksLogo from "@/assets/rope-works-logo.png";
 import acctLogo from "@/assets/acct-accredited-vendor.png";
-import dashboardBackground from "@/assets/app-background.png";
+import { getSessionBackground } from "@/lib/background-manager";
 import { triggerHaptic } from "@/lib/haptics";
 
 import { useSyncProgress } from "@/hooks/useSyncProgress";
@@ -1001,7 +1001,7 @@ export default function Dashboard() {
       {/* Background image */}
       <div className="fixed inset-0 z-0 overflow-hidden">
         <img
-          src={dashboardBackground}
+          src={getSessionBackground()}
           alt=""
           className="w-full h-full object-cover object-center"
         />
