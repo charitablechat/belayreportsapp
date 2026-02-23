@@ -10,7 +10,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Eye, EyeOff, WifiOff, ArrowRight } from "lucide-react";
 import { usePWA } from "@/hooks/usePWA";
 import ropeWorksLogo from "@/assets/rope-works-logo.png";
-import appBackground from "@/assets/app-background.png";
+import authVideo from "@/assets/auth-background.mp4";
 import { hasCachedSessionForOffline } from "@/lib/cached-auth";
 import { createOfflineSession } from "@/lib/offline-auth";
 import { triggerHaptic } from "@/lib/haptics";
@@ -161,7 +161,14 @@ export default function Auth() {
     <div className="relative min-h-screen flex items-center justify-center p-2 md:p-4">
       {/* Background */}
       <div className="absolute inset-0 z-0">
-        <img src={appBackground} alt="" className="w-full h-full object-cover" />
+        <video
+          src={authVideo}
+          autoPlay
+          loop
+          muted
+          playsInline
+          className="w-full h-full object-cover"
+        />
       </div>
       <Card className="relative z-10 w-full max-w-md shadow-2xl backdrop-blur-sm bg-card/95 mx-2">
         <CardHeader className="space-y-4 text-center">

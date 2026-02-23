@@ -22,6 +22,7 @@ import { DeletedRecordsRecovery } from "@/components/admin/DeletedRecordsRecover
 import { ReportOwnershipTool } from "@/components/admin/ReportOwnershipTool";
 import { toast } from "sonner";
 import { parseLocalDate } from "@/lib/date-utils";
+import { getSessionBackground } from "@/lib/background-manager";
 
 export default function SuperAdminDashboard() {
   const { loading } = useRequireSuperAdmin();
@@ -584,6 +585,11 @@ export default function SuperAdminDashboard() {
   }
 
   return (
+    <div className="relative min-h-screen">
+      <div className="fixed inset-0 z-0">
+        <img src={getSessionBackground()} alt="" className="w-full h-full object-cover" />
+      </div>
+      <div className="relative z-10 min-h-screen bg-gradient-to-b from-background/50 via-background/60 to-background/80 backdrop-blur-sm">
     <div className="container mx-auto px-6 py-10 md:px-10 space-y-10 max-w-7xl">
       <div className="flex items-start gap-4">
         <Button
@@ -1511,6 +1517,8 @@ export default function SuperAdminDashboard() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+    </div>
+    </div>
     </div>
   );
 }

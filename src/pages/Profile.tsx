@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ArrowLeft, Camera, Check, Loader2, Lock, User, X, RefreshCw } from "lucide-react";
 import ropeWorksLogo from "@/assets/rope-works-logo.png";
+import { getSessionBackground } from "@/lib/background-manager";
 import { triggerHaptic } from "@/lib/haptics";
 import { useToast } from "@/hooks/use-toast";
 import { ForceSyncButton } from "@/components/pwa/ForceSyncButton";
@@ -253,7 +254,11 @@ export default function Profile() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="relative min-h-screen">
+      <div className="fixed inset-0 z-0">
+        <img src={getSessionBackground()} alt="" className="w-full h-full object-cover" />
+      </div>
+      <div className="relative z-10 min-h-screen bg-gradient-to-b from-background/50 via-background/60 to-background/80 backdrop-blur-sm">
       <header className="border-b bg-card">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
@@ -553,6 +558,7 @@ export default function Profile() {
         {/* Version Badge - Bottom of Profile */}
         <VersionBadge />
       </main>
+      </div>
     </div>
   );
 }
