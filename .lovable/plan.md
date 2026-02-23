@@ -1,88 +1,137 @@
 
 
-## Add Mobile Refresh Button to Completed Report Pages
+## Fix: Deleted Child Rows Reappear After Sync
 
-### What's Changing
+### Root Cause
 
-A new **Refresh** button (using the `RefreshCw` icon) will be added **immediately to the left** of the existing "Generate Report" button on all three completed report pages. This button will only be visible on **mobile view** and will call the same report generation handler as the existing button -- effectively allowing users to quickly re-trigger report generation.
+When a user deletes a row (e.g., an operating system, zipline, or equipment entry) from within a report form, the deletion is only applied locally. The server-side sync uses **upsert-only** logic and explicitly blocks DELETE operations on child tables via a safety blocklist. This means:
 
-### Placement
+1. Local state (in-memory + IndexedDB) correctly removes the row
+2. Server sync only UPSERTs remaining rows -- the deleted row stays on the server
+3. On next session load, the server data (with the "deleted" row still present) gets fetched and merged back in
+4. The deletion appears to "undo" itself
 
-On mobile, the action bar will show:
+This is confirmed by the comment in `atomic-sync-manager.ts` line 445: *"NEVER delete -- preserves server rows not in local state"* and the `REPORT_TABLE_BLOCKLIST` in `transaction-manager.ts` which blocks all delete operations on report child tables.
 
-```text
-[ (refresh icon) ] [ (file icon) ]
+### Solution: Server-Side Reconciliation via Delete-and-Replace
+
+Instead of trying to track individual row deletions (which is fragile with offline/sync scenarios), the sync process will adopt a **delete-and-replace** pattern for child tables. Before upserting the current local data, the sync will delete all existing server rows for that report's child table, then insert the current set. This is wrapped in the existing transaction pattern so rollback is possible on failure.
+
+This is safe because:
+- The pre-sync version snapshot already captures an immutable backup before any sync
+- The existing rollback mechanism can restore deleted rows on failure
+- The `REPORT_TABLE_BLOCKLIST` guard will be updated to allow controlled deletes during sync (not ad-hoc deletes)
+
+### Changes
+
+#### 1. Database Migration: Add `deleted_items` tracking table
+
+Create a new table `report_deleted_items` to log which child rows were intentionally deleted by users. This provides the audit trail and recovery capability requested.
+
+```sql
+CREATE TABLE public.report_deleted_items (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  report_type TEXT NOT NULL CHECK (report_type IN ('inspection', 'training', 'daily_assessment')),
+  report_id UUID NOT NULL,
+  child_table TEXT NOT NULL,
+  deleted_item_id UUID NOT NULL,
+  deleted_item_data JSONB NOT NULL,
+  deleted_by UUID REFERENCES auth.users(id),
+  deleted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  restored_at TIMESTAMPTZ,
+  restored_by UUID REFERENCES auth.users(id)
+);
+
+-- RLS: owners can insert (log deletions), super admins can view/restore
+ALTER TABLE public.report_deleted_items ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can log their own deletions"
+  ON public.report_deleted_items FOR INSERT
+  WITH CHECK (deleted_by = auth.uid());
+
+CREATE POLICY "Super admins can view all deleted items"
+  ON public.report_deleted_items FOR SELECT
+  USING (public.is_super_admin());
+
+CREATE POLICY "Users can view their own deleted items"
+  ON public.report_deleted_items FOR SELECT
+  USING (deleted_by = auth.uid());
+
+CREATE POLICY "Super admins can restore deleted items"
+  ON public.report_deleted_items FOR UPDATE
+  USING (public.is_super_admin());
+
+-- Index for efficient lookups
+CREATE INDEX idx_deleted_items_report ON public.report_deleted_items(report_type, report_id);
+CREATE INDEX idx_deleted_items_lookup ON public.report_deleted_items(child_table, deleted_item_id);
 ```
 
-The refresh button is a compact icon-only button using `variant="outline"` and matching the existing button sizing.
+#### 2. Update `transaction-manager.ts`
 
-### Files Changed
+Modify the `REPORT_TABLE_BLOCKLIST` to allow a new `'replace'` operation type (or add a bypass flag) so that the sync pipeline can perform controlled delete-then-insert for child tables. The blocklist should only prevent ad-hoc deletes, not reconciliation deletes during a full sync.
 
-| File | Change |
-|------|--------|
-| `src/pages/InspectionForm.tsx` | Add a mobile-only `RefreshCw` icon button before the Generate Report button (inside the `inspection?.status === 'completed'` block, ~line 2332) |
-| `src/pages/TrainingForm.tsx` | Add a mobile-only `RefreshCw` icon button before the Generate Report button (inside the `training?.status === 'completed'` block, ~line 1222) |
-| `src/pages/DailyAssessmentForm.tsx` | Add a mobile-only `RefreshCw` icon button before the Generate Report button (inside the `assessment?.status === 'completed'` block, ~line 1321) |
+Add a new `TransactionStep` operation type `'replace'` that:
+1. Fetches all existing rows for the child table (for rollback)
+2. Deletes all rows matching the report ID
+3. Inserts the current set of rows
 
-### Technical Details
+#### 3. Update `atomic-sync-manager.ts` -- Inspection Sync
 
-Each refresh button will:
-- Use `RefreshCw` from lucide-react (already imported in InspectionForm; needs import in Training and DailyAssessment)
-- Be wrapped in a condition: only render when `isMobile` / `isMobileView` is true
-- Call the same handler as Generate Report (`handleGenerateHTML` / `handleGenerateReport`)
-- Share the same `disabled` state as the Generate Report button
-- Use `variant="ghost"` with `size="icon"` for a compact footprint
-- Show a spinning animation on the icon while generating
+In `syncInspectionAtomic`, change child table sync from upsert-only to delete-and-replace:
 
-**InspectionForm.tsx** (~line 2332, before the existing TooltipProvider):
-```tsx
-{isMobileView && (
-  <Button
-    variant="ghost"
-    size="icon"
-    onClick={handleGenerateHTML}
-    disabled={generatingHtml || !isOnline}
-    className="h-9 w-9"
-  >
-    <RefreshCw className={cn("w-4 h-4", generatingHtml && "animate-spin")} />
-  </Button>
-)}
-```
+- Before upserting systems/ziplines/equipment/standards/summary, first delete all existing rows for this inspection_id from each child table
+- Log deleted item IDs to `report_deleted_items` for audit/recovery (comparing server rows vs local rows to identify which were intentionally removed)
+- Upsert current local data
 
-**TrainingForm.tsx** (~line 1222, before the existing Generate Report Button):
-- Add `RefreshCw` to the lucide-react import
-```tsx
-{isMobile && (
-  <Button
-    variant="ghost"
-    size="icon"
-    onClick={handleGenerateHTML}
-    disabled={isGeneratingHTML || !isOnline}
-    className="h-9 w-9"
-  >
-    <RefreshCw className={cn("w-4 h-4", isGeneratingHTML && "animate-spin")} />
-  </Button>
-)}
-```
+The same pattern applies to training and daily assessment sync functions.
 
-**DailyAssessmentForm.tsx** (~line 1321, before the existing Generate Report Button):
-- Add `RefreshCw` to the lucide-react import
-```tsx
-{isMobileView && (
-  <Button
-    variant="ghost"
-    size="icon"
-    onClick={handleGenerateReport}
-    disabled={generating}
-    className="h-9 w-9"
-  >
-    <RefreshCw className={cn("w-4 h-4", generating && "animate-spin")} />
-  </Button>
-)}
-```
+#### 4. Update `atomic-sync-manager.ts` -- Training Sync
 
-### What's NOT Changing
-- No changes to the generate report logic itself
-- Desktop view remains unchanged (refresh button is mobile-only)
-- Button styling follows existing patterns (ghost variant, icon size)
-- No new dependencies required
+Apply the same delete-and-replace pattern for training child tables:
+- `training_delivery_approaches`
+- `training_operating_systems`
+- `training_immediate_attention`
+- `training_verifiable_items`
+- `training_systems_in_place`
+- `training_summary`
+
+#### 5. Update `atomic-sync-manager.ts` -- Daily Assessment Sync
+
+Apply the same delete-and-replace pattern for daily assessment child tables:
+- `daily_assessment_beginning_of_day`
+- `daily_assessment_end_of_day`
+- `daily_assessment_operating_systems`
+- `daily_assessment_equipment_checks`
+- `daily_assessment_structure_checks`
+- `daily_assessment_environment_checks`
+
+#### 6. Update `InspectionForm.tsx` save logic
+
+In the online save path (lines ~1380-1530), add server-side deletion of removed rows:
+- Before upserting, fetch current server rows for each child table
+- Compare server row IDs with local row IDs
+- DELETE server rows that are no longer in the local set
+- Log deleted rows to `report_deleted_items`
+
+#### 7. Apply same save logic updates to `TrainingForm.tsx` and `DailyAssessmentForm.tsx`
+
+Ensure the same reconciliation delete logic exists in the inline save paths for training and daily assessment forms.
+
+### Safety Guarantees
+
+| Concern | Mitigation |
+|---------|-----------|
+| Accidental data loss during sync | Pre-sync version snapshot already captures immutable backup |
+| Rollback on sync failure | Transaction manager restores deleted rows from rollback data |
+| Recovery of user-deleted items | `report_deleted_items` table logs all deletions with full item data (JSONB) |
+| Offline scenario | Deletions persist in IndexedDB locally; reconciled on next online sync |
+| Empty local guard bypass | The existing `empty_local_guard` still blocks if ALL local data is empty (corruption detection) |
+
+### What is NOT Changing
+
+- The soft-delete mechanism for entire reports (inspections/trainings/daily_assessments parent records) remains unchanged
+- RLS policies on parent tables are untouched
+- The version history / backup ledger systems remain unchanged
+- Frontend delete confirmation dialogs and UX remain the same
+- The `allowEmpty` guard in `saveRelatedDataOffline` remains for IndexedDB safety
+
