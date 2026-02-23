@@ -1,66 +1,38 @@
 
 
-## Rotating Random Backgrounds on Dashboard, Profile, and Admin — Keep Animated Zipliner on Auth/Landing
+## Add 8 New Background Images and Fix PWA Build Error
 
-### What Changes
+### Problem
+The build is failing because 7 of the existing background images exceed the PWA's default 2MB precache limit (`maximumFileSizeToCacheInBytes`). Adding 8 more images will make this worse.
 
-**1. Save the 10 uploaded background images**
-Copy all 10 uploaded images into `src/assets/backgrounds/` with clean names:
-- `bg-01-blue-wave.png` (existing `app-background.png`)
-- `bg-02-road-runner.png`
-- `bg-03-marble-gold.png`
-- `bg-04-wood-planks.png`
-- `bg-05-wood-rings.png`
-- `bg-06-wood-tiles.png`
-- `bg-07-bamboo.png`
-- `bg-09-gold-water.png`
-- `bg-12-pool-tiles.png`
-- `bg-17-treasure-map.png`
+### Solution
 
-**2. Create background manager utility (`src/lib/background-manager.ts`)**
-- Import all 10 background images
-- On first call per session, pick a random index, store it in `sessionStorage` under key `app-bg-index`
-- Export `getSessionBackground()` that returns the selected image for the session
-- A new login triggers a new random pick
+**1. Fix the PWA build error (`vite-pwa-config.ts`)**
+- Add `maximumFileSizeToCacheInBytes: 5 * 1024 * 1024` (5MB) to the workbox config
+- This allows the larger background images to be precached for offline use
 
-**3. Restore the animated zipliner video on Auth and Landing pages**
+**2. Save the 8 new background images to `src/assets/backgrounds/`**
 
-**Auth (`src/components/Auth.tsx`)**
-- Replace the static `appBackground` image with the `auth-background.mp4` video element (the file still exists in `src/assets/`)
-- Restore the `<video>` tag with autoPlay, loop, muted, playsInline attributes
+| New File | Description |
+|----------|-------------|
+| `bg-08-pastel-paint.png` | Pastel brushstroke sky |
+| `bg-10-sunset-wave.png` | Pink/gold sunset gradient |
+| `bg-11-blue-silk.png` | Blue flowing waves |
+| `bg-13-pastel-hills.png` | Colorful wavy hills |
+| `bg-14-crystal-mosaic.png` | Blue/red geometric mosaic |
+| `bg-15-beach-grass.png` | Beach with sea grass |
+| `bg-16-old-map.png` | Vintage compass map |
+| `bg-17-treasure-map.png` | Treasure map with X (replaces the existing bg-17) |
 
-**Landing (`src/pages/AuroraLanding.tsx`)**
-- Same change: replace the static image with the `auth-background.mp4` video background
+**3. Update background manager (`src/lib/background-manager.ts`)**
+- Add imports for the 8 new images
+- Add them to the backgrounds array (total: 18 backgrounds)
 
-**4. Use rotating backgrounds on Dashboard, Profile, and Admin**
-
-**Dashboard (`src/pages/Dashboard.tsx`)**
-- Replace the hardcoded `dashboardBackground` import with `getSessionBackground()`
-
-**Profile (`src/pages/Profile.tsx`)**
-- Add a fixed background image layer behind the page content using `getSessionBackground()`
-- Add a gradient overlay for readability (`bg-background/70 backdrop-blur-sm`)
-
-**Admin (`src/pages/SuperAdminDashboard.tsx`)**
-- Wrap the return in a container with a fixed background image layer using `getSessionBackground()`
-- Add a gradient overlay for readability
-
-### Session Behavior
-
-- A random background is selected on first page load after login and stored in `sessionStorage`
-- Navigating between Dashboard, Profile, and Admin shows the same background
-- Signing out and back in picks a new random one
-- Auth and Landing pages always show the animated zipliner video, unaffected by the random selection
-
-### Files Summary
+### Files Changed
 
 | File | Change |
 |------|--------|
-| `src/assets/backgrounds/*.png` (x10) | New image assets |
-| `src/lib/background-manager.ts` | New utility for random session-based selection |
-| `src/components/Auth.tsx` | Restore video background (remove static image) |
-| `src/pages/AuroraLanding.tsx` | Restore video background (remove static image) |
-| `src/pages/Dashboard.tsx` | Use `getSessionBackground()` |
-| `src/pages/Profile.tsx` | Add background image layer with overlay |
-| `src/pages/SuperAdminDashboard.tsx` | Add background image layer with overlay |
+| `src/assets/backgrounds/bg-08-*.png` through `bg-17-*` | 8 new image assets |
+| `src/lib/background-manager.ts` | Add 8 new imports to the array |
+| `vite-pwa-config.ts` | Add `maximumFileSizeToCacheInBytes: 5 * 1024 * 1024` |
 
