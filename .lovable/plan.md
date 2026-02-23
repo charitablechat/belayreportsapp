@@ -1,28 +1,39 @@
+## Replace Background and Remove Olympic Decorations
+
+### 1. Add the new background image
+
+Copy the uploaded blue wave image to `src/assets/app-background.png` for use as the background across all pages.
+
+### 2. Replace backgrounds on all pages
+
+**Dashboard (`src/pages/Dashboard.tsx`)**
+
+- Replace `dashboardBackground` (webp image) with the new blue wave image
+- Remove the `OlympicRings` import and all 3 uses on the foyer cards (lines 1104, 1131, 1158)
+
+### 3. Remove all Olympic decorations
+
+**Dashboard (`src/pages/Dashboard.tsx`)**
+
+- Remove `OlympicRings` import (line 44)
+- Remove 3 `<OlympicRings />` instances from the foyer cards
+
+**ReportCard (`src/components/dashboard/ReportCard.tsx`)**
+
+- Remove `OlympicRings` import and `<OlympicRings />` usage (line 143)
+
+### 4. Files NOT deleted
+
+The `src/components/christmas/` folder (OlympicRings, Sparkles, Icicles, SnowPile, ChristmasLights) will remain in the codebase but will no longer be imported anywhere. This keeps the code available if seasonal decorations are ever wanted again.
+
+### Summary of touched files
 
 
-## Fully Disable Timer (Keep Code for Future Reactivation)
-
-### What Changes
-
-**1. Disable the timer hook in all 3 report forms**
-
-In `InspectionForm.tsx`, `TrainingForm.tsx`, and `DailyAssessmentForm.tsx`:
-- Set `enabled: false` on the `useActiveTimer` hook call (replacing the current condition). This stops all background tracking -- no intervals, no event listeners, no idle timers.
-- Comment out the `<ActiveTimerDisplay />` JSX block (wrap in `{/* DISABLED */}`) so it is not rendered but the code remains.
-- Comment out the `active_duration_seconds: getElapsedSeconds()` line in the save object so existing saved values are not overwritten. Add a note like `// DISABLED: active_duration_seconds`.
-
-**2. Grey out the Avg Completion Time card on the Admin dashboard**
-
-In `SuperAdminDashboard.tsx`:
-- Wrap the "Avg Completion Time" `StatCard` (lines 706-746) in a `<div className="opacity-40 pointer-events-none select-none">`. This visually greys it out, blocks interaction, and keeps it in the layout.
-- All queries and logic behind it remain untouched.
-
-### What Is Preserved (Untouched)
-- `useActiveTimer` hook file (`src/hooks/useActiveTimer.tsx`)
-- `ActiveTimerDisplay` component file (`src/components/ActiveTimerDisplay.tsx`)
-- All imports in the form files (just the usage is disabled)
-- All admin dashboard queries and calculation logic
-- The `active_duration_seconds` column in the database
-
-### Re-enabling Later
-To turn the timer back on: restore the original `enabled` condition, uncomment the display and save lines, and remove the wrapper div from the admin card.
+| File                                      | Changes                                        |
+| ----------------------------------------- | ---------------------------------------------- |
+| `src/assets/app-background.png`           | New file (uploaded image)                      |
+| `src/components/Auth.tsx`                 | Video background replaced with static image    |
+| `src/pages/Dashboard.tsx`                 | Background image swapped, OlympicRings removed |
+| `src/pages/AuroraLanding.tsx`             | Video background replaced with static image    |
+| `src/components/dashboard/ReportCard.tsx` | OlympicRings and Sparkles removed              |
+| `src/components/ui/gradient-button.tsx`   | Sparkles removed                               |
