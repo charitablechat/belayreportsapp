@@ -1,41 +1,28 @@
 
 
-## Fix: "Regenerate from Inspection" Button Appears to Do Nothing
+## Fully Disable Timer (Keep Code for Future Reactivation)
 
-### Root Cause
+### What Changes
 
-The `RichTextEditor` component (TipTap-based) only reads the `content` prop once -- during initial editor creation. After that, TipTap manages its own internal state and ignores React prop changes. So when the "Regenerate" button calls `setSummary(...)`, the new HTML content flows into the `content` prop but the TipTap editor never updates its display.
+**1. Disable the timer hook in all 3 report forms**
 
-The toast ("Summary Updated") likely does fire, but the editor fields visually remain unchanged, making it appear broken.
+In `InspectionForm.tsx`, `TrainingForm.tsx`, and `DailyAssessmentForm.tsx`:
+- Set `enabled: false` on the `useActiveTimer` hook call (replacing the current condition). This stops all background tracking -- no intervals, no event listeners, no idle timers.
+- Comment out the `<ActiveTimerDisplay />` JSX block (wrap in `{/* DISABLED */}`) so it is not rendered but the code remains.
+- Comment out the `active_duration_seconds: getElapsedSeconds()` line in the save object so existing saved values are not overwritten. Add a note like `// DISABLED: active_duration_seconds`.
 
-### Fix (1 file)
+**2. Grey out the Avg Completion Time card on the Admin dashboard**
 
-**File: `src/components/ui/rich-text-editor.tsx`**
+In `SuperAdminDashboard.tsx`:
+- Wrap the "Avg Completion Time" `StatCard` (lines 706-746) in a `<div className="opacity-40 pointer-events-none select-none">`. This visually greys it out, blocks interaction, and keeps it in the layout.
+- All queries and logic behind it remain untouched.
 
-Add a `useEffect` that detects when the `content` prop changes externally (i.e., not from the user typing in the editor) and calls `editor.commands.setContent(content)` to sync TipTap's internal state.
+### What Is Preserved (Untouched)
+- `useActiveTimer` hook file (`src/hooks/useActiveTimer.tsx`)
+- `ActiveTimerDisplay` component file (`src/components/ActiveTimerDisplay.tsx`)
+- All imports in the form files (just the usage is disabled)
+- All admin dashboard queries and calculation logic
+- The `active_duration_seconds` column in the database
 
-To avoid an infinite loop (since `onUpdate` also fires `onChange` which could cycle back), the effect will compare the incoming `content` against the editor's current HTML. If they differ, it updates the editor.
-
-```text
-useEffect(() => {
-  if (editor && content !== editor.getHTML()) {
-    editor.commands.setContent(content, false);
-  }
-}, [content, editor]);
-```
-
-The `false` parameter tells TipTap not to emit a parse event, preventing unnecessary re-renders.
-
-### Why This Is Safe
-
-- The comparison `content !== editor.getHTML()` prevents infinite loops: when the user types, `onUpdate` fires `onChange`, which updates the parent's state, which passes a new `content` prop back down -- but since that content matches what the editor already has, the `setContent` call is skipped.
-- External updates (like the regenerate button) produce content that differs from the editor's current HTML, so the update fires exactly once.
-- No other files need changes. The `SummarySection`, `VoiceRichTextEditor`, and `InspectionForm` are all wired correctly already.
-
-### Testing
-
-1. Open an inspection report with items that have comments (e.g., the "Test" report).
-2. Navigate to the Summary tab.
-3. Click "Regenerate from Inspection."
-4. The three rich text fields (Repairs, Critical Actions, Future Considerations) should immediately update with the aggregated content and a success toast should appear.
-
+### Re-enabling Later
+To turn the timer back on: restore the original `enabled` condition, uncomment the display and save lines, and remove the wrapper div from the admin card.
