@@ -10,7 +10,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Eye, EyeOff, WifiOff, ArrowRight } from "lucide-react";
 import { usePWA } from "@/hooks/usePWA";
 import ropeWorksLogo from "@/assets/rope-works-logo.png";
-import authBackgroundVideo from "@/assets/auth-background.mp4";
+import appBackground from "@/assets/app-background.png";
 import { hasCachedSessionForOffline } from "@/lib/cached-auth";
 import { createOfflineSession } from "@/lib/offline-auth";
 import { triggerHaptic } from "@/lib/haptics";
@@ -159,28 +159,9 @@ export default function Auth() {
 
   return (
     <div className="relative min-h-screen flex items-center justify-center p-2 md:p-4">
-      {/* Background - Video on desktop, gradient on mobile */}
+      {/* Background */}
       <div className="absolute inset-0 z-0">
-        {/* Static gradient fallback for mobile and reduced motion */}
-        <div className="absolute inset-0 bg-gradient-to-br from-primary/20 via-secondary/10 to-accent/20 md:hidden" />
-        
-        {/* Video background - desktop only, respects reduced motion */}
-        <video 
-          autoPlay 
-          loop 
-          muted 
-          playsInline
-          className="hidden md:block w-full h-full object-cover motion-reduce:hidden"
-          onLoadedMetadata={(e) => {
-            const video = e.currentTarget;
-            video.playbackRate = 0.7;
-          }}
-        >
-          <source src={authBackgroundVideo} type="video/mp4" />
-        </video>
-        
-        {/* Gradient fallback when motion is reduced */}
-        <div className="absolute inset-0 bg-gradient-to-br from-primary/20 via-secondary/10 to-accent/20 hidden motion-reduce:block" />
+        <img src={appBackground} alt="" className="w-full h-full object-cover" />
       </div>
       <Card className="relative z-10 w-full max-w-md shadow-2xl backdrop-blur-sm bg-card/95 mx-2">
         <CardHeader className="space-y-4 text-center">

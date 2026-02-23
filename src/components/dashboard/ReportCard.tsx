@@ -12,9 +12,7 @@ import { format, differenceInDays } from "date-fns";
 import { FileText, MoreVertical, Trash2, Download, Check, Cloud } from "lucide-react";
 import { triggerHaptic } from "@/lib/haptics";
 import { parseLocalDate } from "@/lib/date-utils";
-import { OlympicRings } from "@/components/christmas/OlympicRings";
 import { triggerSuccessConfetti } from "@/lib/confetti";
-import { useClickAndHoverSparkles, SparkleContainer } from "@/components/christmas/Sparkles";
 import { cn } from "@/lib/utils";
 
 export type ReportAgeState = 'critical' | 'warning' | 'completed' | 'default';
@@ -37,7 +35,6 @@ interface ReportCardProps {
 }
 
 export function ReportCard({ report, type, onDelete, onClick, getStatusBadge }: ReportCardProps) {
-  const { sparkles, triggerSparkles, handleMouseMove } = useClickAndHoverSparkles();
   const isInspection = type === 'inspection';
   const isDaily = type === 'daily';
   
@@ -128,19 +125,14 @@ export function ReportCard({ report, type, onDelete, onClick, getStatusBadge }: 
         "relative overflow-visible cursor-pointer transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5 hover:border-primary/50 active:scale-[0.99] active:shadow-md group",
         ageStateClasses[ageState]
       )}
-      onClick={(e) => {
+      onClick={() => {
         triggerHaptic('light');
-        triggerSparkles(e);
-        // Trigger confetti for completed reports
         if (getReportStatus() === 'completed') {
           triggerSuccessConfetti();
         }
         onClick(report);
       }}
-      onMouseMove={handleMouseMove}
     >
-      <SparkleContainer sparkles={sparkles} />
-      <OlympicRings />
       {getReportStatus() === 'completed' && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
           <span className="text-green-500/20 text-4xl md:text-5xl font-bold tracking-wider rotate-[-25deg] select-none whitespace-nowrap">
