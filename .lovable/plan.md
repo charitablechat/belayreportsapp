@@ -1,4 +1,5 @@
 
+## ✅ COMPLETED: Fix Deleted Child Rows Reappear After Sync
 
 ## Fix: Deleted Child Rows Reappear After Sync
 

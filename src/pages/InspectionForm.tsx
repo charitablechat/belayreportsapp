@@ -39,6 +39,7 @@ import {
   getOfflinePhotos
 } from "@/lib/offline-storage";
 import { validateInspectionPackage } from "@/lib/validation-schemas";
+import { reconcileAllChildTables } from "@/lib/sync-reconciliation";
 import { cn } from "@/lib/utils";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 
@@ -1416,6 +1417,23 @@ export default function InspectionForm() {
 
             // Execute ALL operations in parallel for maximum speed
             const parallelOperations: Promise<void>[] = [];
+
+            // RECONCILE: Delete server rows removed locally before upserting
+            const user = await getUserWithCache();
+            if (user) {
+              await reconcileAllChildTables(
+                [
+                  { childTable: 'inspection_systems', parentIdColumn: 'inspection_id', localItems: systems },
+                  { childTable: 'inspection_ziplines', parentIdColumn: 'inspection_id', localItems: ziplines },
+                  { childTable: 'inspection_equipment', parentIdColumn: 'inspection_id', localItems: equipment },
+                  { childTable: 'inspection_standards', parentIdColumn: 'inspection_id', localItems: standards },
+                  { childTable: 'inspection_summary', parentIdColumn: 'inspection_id', localItems: summary ? [summary] : [] },
+                ],
+                id!,
+                'inspection',
+                user.id,
+              );
+            }
             
             // Helper to convert PromiseLike to proper Promise
             const dbOp = async (operation: PromiseLike<{ error: any }>) => {
