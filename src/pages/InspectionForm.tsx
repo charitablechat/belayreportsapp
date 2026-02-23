@@ -6,7 +6,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { toast } from "@/components/ui/sonner";
 import { addSaveNotification, addSyncNotification } from "@/lib/notification-center";
-import { onSyncComplete } from "@/lib/sync-events";
+import { onSyncComplete, emitSyncComplete } from "@/lib/sync-events";
 import { useNavigate, useParams } from "react-router-dom";
 import { goBack } from "@/lib/navigation";
 import { isLocalDataNewer } from "@/lib/local-data-guards";
@@ -2183,6 +2183,7 @@ export default function InspectionForm() {
           await handleSaveAndLeave();
           setShowLeaveDialog(false);
           setHasUnsavedChanges(false);
+          emitSyncComplete();
           goBack(navigate);
         }}
         onLeave={() => {
