@@ -10,6 +10,7 @@ import { onSyncComplete } from "@/lib/sync-events";
 import { useNavigate, useParams } from "react-router-dom";
 import { goBack } from "@/lib/navigation";
 import { isLocalDataNewer } from "@/lib/local-data-guards";
+import { hasTextContent } from "@/lib/html-content-cleaner";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -297,13 +298,13 @@ export default function InspectionForm() {
         item.quantity ? `Qty: ${item.quantity}` : null
       ].filter(Boolean).join(', ');
       
-      const entry = `○   ${item.equipment_category || 'Equipment'}- ${details}${item.comments ? ': ' + item.comments : ''}`;
+      const entry = `○   ${item.equipment_category || 'Equipment'}- ${details}${hasTextContent(item.comments) ? ': ' + item.comments : ''}`;
       
       if (item.result === 'fail') {
         criticalActions.push(entry);
       } else if (item.result === 'pass w/provisions') {
         futureConsiderations.push(entry);
-      } else if (item.result === 'pass' && item.comments?.trim()) {
+      } else if (item.result === 'pass' && hasTextContent(item.comments)) {
         repairsPerformed.push(entry);
       }
     });
@@ -315,13 +316,13 @@ export default function InspectionForm() {
       const label = system.system_name
         ? `${system.system_name}${system.name ? ` (${system.name})` : ''}`
         : system.name;
-      const entry = `○   Operating System- ${label}${system.comments ? ': ' + system.comments : ''}`;
+      const entry = `○   Operating System- ${label}${hasTextContent(system.comments) ? ': ' + system.comments : ''}`;
       
       if (system.result === 'fail') {
         criticalActions.push(entry);
       } else if (system.result === 'pass w/provisions') {
         futureConsiderations.push(entry);
-      } else if (system.result === 'pass' && system.comments?.trim()) {
+      } else if (system.result === 'pass' && hasTextContent(system.comments)) {
         repairsPerformed.push(entry);
       }
     });
@@ -359,11 +360,11 @@ export default function InspectionForm() {
                             zipline.braking_result === 'pass w/provisions' || 
                             zipline.ead_result === 'pass w/provisions';
       const hasPassWithComments = !hasFail && !hasProvisions && 
-                                  zipline.result === 'pass' && zipline.comments?.trim();
+                                  zipline.result === 'pass' && hasTextContent(zipline.comments);
       
       // Create entry with component issues or just overall result
       const issueText = issues.length > 0 ? ` [${issues.join(', ')}]` : '';
-      const entry = `○   Zipline- ${zipline.zipline_name}${issueText}${zipline.comments ? ': ' + zipline.comments : ''}`;
+      const entry = `○   Zipline- ${zipline.zipline_name}${issueText}${hasTextContent(zipline.comments) ? ': ' + zipline.comments : ''}`;
       
       if (hasFail) {
         criticalActions.push(entry);
