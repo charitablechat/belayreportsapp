@@ -2329,6 +2329,17 @@ export default function InspectionForm() {
                     </Tooltip>
                   </TooltipProvider>
                   */}
+                  {isMobileView && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={handleGenerateHTML}
+                      disabled={generatingHtml || !isOnline}
+                      className="h-9 w-9"
+                    >
+                      <RefreshCw className={cn("w-4 h-4", generatingHtml && "animate-spin")} />
+                    </Button>
+                  )}
                   <TooltipProvider>
                     <Tooltip>
                       <TooltipTrigger asChild>
