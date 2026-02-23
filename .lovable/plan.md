@@ -1,87 +1,80 @@
 
 
-## Fix: Locked Report Dialog Not Triggering for All Editable Actions
-
-### Issue Summary
-
-The completion lock on finished reports is not blocking all edit actions. Users can add new rows, delete existing rows, and click action buttons on locked reports without ever seeing the "REPORT LOCKED" dialog.
+## Fix: Next Inspection Date Off by One Day in Reports
 
 ### Root Cause
 
-The lock interception relies on a CSS selector in `handleLockedFieldClick` that only matches specific form elements:
+The `formatDate` function in the backend edge functions parses date-only strings (like `"2027-02-06"`) using `new Date(dateStr)`. JavaScript interprets `"YYYY-MM-DD"` as **midnight UTC**. The function then formats with `timeZone: "America/Chicago"` (UTC-6), which shifts `2027-02-06T00:00:00Z` back to `2027-02-05T18:00:00 CST` -- rendering as **February 5, 2027** instead of the correct **February 6, 2027**.
 
+This affects three edge functions:
+
+| File | Issue |
+|------|-------|
+| `supabase/functions/generate-inspection-html/index.ts` | `formatDate` uses `new Date(dateStr)` with `timeZone: "America/Chicago"` |
+| `supabase/functions/generate-inspection-pdf/index.ts` | `formatDate` uses `new Date(dateStr)` (no timezone specified, but still parses as UTC) |
+| `supabase/functions/generate-daily-assessment-html/index.ts` | Same `formatDate` pattern with `timeZone: "America/Chicago"` |
+
+The frontend input and storage are correct -- `SummarySection.tsx` uses `parseLocalDate` and `format(date, "yyyy-MM-dd")` properly, storing `"2027-02-06"` in the database. The bug is solely in the backend rendering.
+
+### Fix
+
+Replace `new Date(dateStr)` in all three `formatDate` functions with manual component parsing that creates a local date, preventing UTC interpretation from shifting the day.
+
+The updated `formatDate` will parse `"YYYY-MM-DD"` strings by splitting on `-` and constructing the date from components, just like the frontend's `parseLocalDate` already does:
+
+```typescript
+const formatDate = (dateStr: string | null) => {
+  if (!dateStr) return "N/A";
+  const SPECIAL_DATE_VALUES = ["N/A", "Unknown"];
+  if (SPECIAL_DATE_VALUES.includes(dateStr)) return dateStr;
+
+  // Parse date-only strings (YYYY-MM-DD) as local to avoid UTC shift
+  const dateOnly = dateStr.split('T')[0];
+  const parts = dateOnly.split('-');
+  if (parts.length === 3) {
+    const [year, month, day] = parts.map(Number);
+    if (!isNaN(year) && !isNaN(month) && !isNaN(day)) {
+      // Format manually to avoid any timezone conversion
+      const months = [
+        "January", "February", "March", "April", "May", "June",
+        "July", "August", "September", "October", "November", "December"
+      ];
+      return `${months[month - 1]} ${day}, ${year}`;
+    }
+  }
+
+  // Fallback for datetime strings or unparseable values
+  const date = new Date(dateStr);
+  if (isNaN(date.getTime())) return dateStr;
+  return date.toLocaleDateString("en-US", {
+    timeZone: "America/Chicago",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+};
 ```
-input, textarea, select, [contenteditable="true"],
-[role="combobox"], [role="listbox"], [role="switch"],
-[role="checkbox"], [role="radio"], [role="slider"],
-button[data-editable], .tiptap, .ProseMirror
-```
-
-Regular buttons (like "Add System", "Add Zipline", "Delete" trash icons, etc.) do NOT match `button[data-editable]` because they lack the `data-editable` attribute. These buttons execute their `onClick` handlers normally, bypassing the lock entirely.
-
-Additionally, the table/section child components (`OperatingSystemsTable`, `ZiplinesTable`, `EquipmentTable`, `StandardsTable`, `SummarySection`) do not receive a `readOnly` prop, so they always render as fully editable.
-
-### Fix Approach
-
-Expand the `handleLockedFieldClick` selector to also intercept clicks on ANY `button` element within the locked container, not just `button[data-editable]`. This is the simplest, most comprehensive fix that closes all gaps without needing to modify every child component.
 
 ### Files Changed
 
 | File | Change |
 |------|--------|
-| `src/pages/InspectionForm.tsx` | Change `button[data-editable]` to `button` in the `handleLockedFieldClick` selector |
-| `src/pages/TrainingForm.tsx` | Same change |
-| `src/pages/DailyAssessmentForm.tsx` | Same change |
+| `supabase/functions/generate-inspection-html/index.ts` (line ~333) | Replace `formatDate` with timezone-safe version |
+| `supabase/functions/generate-inspection-pdf/index.ts` (line ~88) | Replace `formatDate` with timezone-safe version |
+| `supabase/functions/generate-daily-assessment-html/index.ts` (line ~103) | Replace `formatDate` with timezone-safe version |
 
-### Technical Detail
+### What This Fixes
 
-In each form's `handleLockedFieldClick` callback, the selector changes from:
-
-```typescript
-const isEditable = target.closest(
-  'input, textarea, select, [contenteditable="true"], ' +
-  '[role="combobox"], [role="listbox"], [role="switch"], [role="checkbox"], [role="radio"], [role="slider"], ' +
-  'button[data-editable], .tiptap, .ProseMirror'
-);
-```
-
-To:
-
-```typescript
-const isEditable = target.closest(
-  'input, textarea, select, [contenteditable="true"], ' +
-  '[role="combobox"], [role="listbox"], [role="switch"], [role="checkbox"], [role="radio"], [role="slider"], ' +
-  'button, .tiptap, .ProseMirror'
-);
-```
-
-This ensures that ALL button clicks within the locked report area -- including "Add", "Delete", and any other action buttons -- are intercepted and trigger the lock dialog. Non-interactive elements (text, headers, scroll areas) remain unaffected so users can still browse the report freely.
-
-### Edge Cases Considered
-
-- **Tab navigation buttons**: The `TabsTrigger` elements are buttons, but they sit inside `TabsList` which is outside the `onClickCapture` target area in the Training and Daily Assessment forms. For InspectionForm, the tabs ARE inside the `<main>` wrapper, so we need to exclude tab triggers. We will add an exclusion for elements matching `[role="tab"]` to preserve tab navigation in locked mode.
-- **Dropdown menu triggers**: The "more options" button on report cards uses a dropdown -- these are also buttons. However, the lock container only wraps the form content area, not the header, so these remain unaffected.
-- **Photo gallery interactions**: Photo galleries already receive `readOnly={effectiveReadOnly}`, so they are properly locked.
-
-### Updated Selector (Final)
-
-```typescript
-const isEditable = target.closest(
-  'input, textarea, select, [contenteditable="true"], ' +
-  '[role="combobox"], [role="listbox"], [role="switch"], [role="checkbox"], [role="radio"], [role="slider"], ' +
-  'button, .tiptap, .ProseMirror'
-);
-
-// Allow tab navigation in locked mode
-const isTabTrigger = target.closest('[role="tab"]');
-if (!isEditable || isTabTrigger) return;
-```
+- **Next Inspection Date**: "2027-02-06" will render as "February 6, 2027" (not Feb 5)
+- **Inspection Date**: Same fix applies to `inspection_date`
+- **Previous Inspection Date**: Same fix applies
+- **Daily Assessment Date**: Same fix applies
+- Any other date-only field passed through `formatDate`
 
 ### What is NOT Changing
 
-- No backend or database changes
-- No changes to child component APIs (no new readOnly props needed)
-- No changes to the CompletionLockDialog component itself
-- The CSS `.completion-locked` visual styling remains unchanged
-- Photo capture/gallery lock behavior remains unchanged (already works correctly)
+- No frontend changes needed (input and storage are already correct)
+- No database schema changes
+- No changes to training HTML generation (it doesn't use this pattern)
+- The fallback for datetime strings with time components still uses `toLocaleDateString` with timezone for accurate rendering
 
