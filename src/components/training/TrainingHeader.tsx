@@ -142,7 +142,7 @@ export default function TrainingHeader({ training, onUpdate, isReadOnly = false,
         {modifiedByName && (
           <div className="space-y-2">
             <Label className="text-sm text-muted-foreground">Report modified by</Label>
-            <VoiceNameInput
+            <Input
               value={modifiedByName}
               disabled
               className="bg-muted/50 cursor-not-allowed"
