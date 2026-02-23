@@ -133,10 +133,12 @@ export default function TrainingForm() {
     const isEditable = target.closest(
       'input, textarea, select, [contenteditable="true"], ' +
       '[role="combobox"], [role="listbox"], [role="switch"], [role="checkbox"], [role="radio"], [role="slider"], ' +
-      'button[data-editable], .tiptap, .ProseMirror'
+      'button, .tiptap, .ProseMirror'
     );
 
-    if (!isEditable) return; // Allow all non-editable interactions (scroll, expand, copy, navigate)
+    // Allow tab navigation in locked mode
+    const isTabTrigger = target.closest('[role="tab"]');
+    if (!isEditable || isTabTrigger) return; // Allow all non-editable interactions (scroll, expand, copy, navigate)
 
     e.preventDefault();
     e.stopPropagation();
