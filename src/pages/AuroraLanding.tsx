@@ -3,7 +3,7 @@ import { GradientButton } from "@/components/ui/gradient-button";
 import { useNavigate } from "react-router-dom";
 import ropeWorksLogo from "@/assets/rope-works-logo.png";
 import acctLogo from "@/assets/acct-accredited-vendor.png";
-import backgroundVideo from "@/assets/dashboard-background.mp4";
+import appBackground from "@/assets/app-background.png";
 
 export default function AuroraLanding() {
   const navigate = useNavigate();
@@ -11,19 +11,7 @@ export default function AuroraLanding() {
   return (
     <div className="relative min-h-screen">
       <div className="absolute inset-0 z-0">
-        <video 
-          autoPlay 
-          loop 
-          muted 
-          playsInline
-          className="w-full h-full object-cover"
-          onLoadedMetadata={(e) => {
-            const video = e.currentTarget;
-            video.playbackRate = 0.7;
-          }}
-        >
-          <source src={backgroundVideo} type="video/mp4" />
-        </video>
+        <img src={appBackground} alt="" className="w-full h-full object-cover" />
       </div>
       <div className="relative z-10 min-h-screen bg-background/80 backdrop-blur-sm flex items-center justify-center">
         <motion.div

@@ -20,7 +20,7 @@ import { KnownIssuesCard } from "@/components/dashboard/KnownIssuesCard";
 import { DeveloperNotesCard } from "@/components/dashboard/DeveloperNotesCard";
 import ropeWorksLogo from "@/assets/rope-works-logo.png";
 import acctLogo from "@/assets/acct-accredited-vendor.png";
-import dashboardBackground from "@/assets/dashboard-background.webp";
+import dashboardBackground from "@/assets/app-background.png";
 import { triggerHaptic } from "@/lib/haptics";
 
 import { useSyncProgress } from "@/hooks/useSyncProgress";
@@ -40,8 +40,8 @@ import { ContactDeveloperSheet } from "@/components/ContactDeveloperSheet";
 import { onSyncComplete, isSyncInProgress } from "@/lib/sync-events";
 import { InspectionsEmptyState, TrainingsEmptyState, DailyAssessmentsEmptyState } from "@/components/EmptyState";
 import { getUserWithCache, getSuperAdminStatusWithCache, invalidateSuperAdminCache, ensureValidSession, getOfflineUserId } from "@/lib/cached-auth";
-/* Holiday Theme Components */
-import { OlympicRings } from "@/components/christmas/OlympicRings";
+/* Holiday Theme Components - DISABLED */
+// import { OlympicRings } from "@/components/christmas/OlympicRings";
 // UserProfileDropdown moved to AuthenticatedHeader (global)
 import {
   AlertDialog,
@@ -1101,7 +1101,6 @@ export default function Dashboard() {
                     navigate("/inspection/new");
                   }}
                 >
-                  <OlympicRings />
                   <div className="absolute inset-0 bg-gradient-to-br from-blue-50/30 to-transparent opacity-50 rounded-lg" />
                   <CardHeader className="relative z-10 text-center pb-4">
                     <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-blue-100 flex items-center justify-center group-hover:scale-110 transition-transform">
@@ -1128,7 +1127,6 @@ export default function Dashboard() {
                     navigate("/training/new");
                   }}
                 >
-                  <OlympicRings />
                   <div className="absolute inset-0 bg-gradient-to-br from-sky-50/30 to-transparent opacity-50 rounded-lg" />
                   <CardHeader className="relative z-10 text-center pb-4">
                     <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-green-100 flex items-center justify-center group-hover:scale-110 transition-transform">
@@ -1155,7 +1153,6 @@ export default function Dashboard() {
                     navigate("/daily-assessment/new");
                   }}
                 >
-                  <OlympicRings />
                   <div className="absolute inset-0 bg-gradient-to-br from-indigo-50/30 to-transparent opacity-50 rounded-lg" />
                   <CardHeader className="relative z-10 text-center pb-4">
                     <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-purple-100 flex items-center justify-center group-hover:scale-110 transition-transform">
