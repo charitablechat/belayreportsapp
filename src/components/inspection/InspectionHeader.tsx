@@ -1,4 +1,5 @@
 import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { VoiceInput } from "@/components/ui/voice-input";
 import { VoiceTextarea } from "@/components/ui/voice-textarea";
@@ -91,7 +92,7 @@ export default function InspectionHeader({ inspection, userProfile, modifiedByPr
               {modifiedByName && (
                 <div className="space-y-1.5 p-3 rounded-lg bg-muted/30 border border-border/50">
                   <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1 block">Report modified by</Label>
-                  <VoiceInput
+                  <Input
                     value={modifiedByName}
                     disabled
                     className="bg-muted/50 cursor-not-allowed font-medium"
