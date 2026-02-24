@@ -15,25 +15,25 @@ export const pwaConfig = VitePWA({
     start_url: '/',
     icons: [
       {
-        src: 'icons/icon-192.png',
+        src: 'icons/app-icon.png',
         sizes: '192x192',
         type: 'image/png',
         purpose: 'any'
       },
       {
-        src: 'icons/icon-512.png',
+        src: 'icons/app-icon.png',
         sizes: '512x512',
         type: 'image/png',
         purpose: 'any'
       },
       {
-        src: 'icons/icon-192-maskable.png',
+        src: 'icons/app-icon.png',
         sizes: '192x192',
         type: 'image/png',
         purpose: 'maskable'
       },
       {
-        src: 'icons/icon-512-maskable.png',
+        src: 'icons/app-icon.png',
         sizes: '512x512',
         type: 'image/png',
         purpose: 'maskable'
