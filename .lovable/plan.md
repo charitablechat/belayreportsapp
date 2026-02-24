@@ -1,81 +1,93 @@
 
 
-## Hybrid Select-then-Edit for Equipment Ropes Type Field
+## Fix: Dashboard Not Showing Latest Reports After Save & Exit
 
-### Summary
+### Problem
 
-After a user picks one of the 4 rope type options from the dropdown, the field transitions into an editable text input pre-filled with the selected value. The user can then append or modify text freely (e.g., "Dynamic Kernmantle - 11mm, replaced Jan 2026"). The final string in `equipment_type` is what gets persisted and synced.
+When you save a report and exit back to the dashboard, the dashboard doesn't display the just-saved report until you manually refresh. This happens because of a timing race in the event system.
 
-### How It Works
+### Root Cause
 
-When `typeOptions` is provided and the current value is empty/unset, render the existing `Select` dropdown. Once a value is selected (or if the item already has a non-empty `equipment_type`), render an `Input` text field instead, pre-filled with the value. A small button allows reverting back to the dropdown if the user wants to re-select from scratch.
+The Save & Exit flow does this:
 
-### Data Integrity
+1. Save data to local storage
+2. Fire a "sync complete" event (to tell the dashboard to refresh)
+3. Navigate back to the dashboard
 
-The `equipment_type` field remains a plain string. The only change is **how** the UI populates it. The value stored in IndexedDB and synced to the database is identical to what appears in the input. No schema changes, no new columns, no impact on reconciliation logic. The delete-and-replace sync pattern operates on `item.id`, not on the content of `equipment_type`, so custom text values are preserved exactly as entered.
+The problem is that step 2 happens **before** the dashboard page has loaded. The dashboard only starts listening for sync events after it mounts, so it completely misses the event. By the time the dashboard loads and fetches data from the server, the locally saved data hasn't been uploaded yet, so the server returns stale results.
 
-### Files Changed
+### Fix
 
-| File | Change |
-|------|--------|
-| `src/components/inspection/EquipmentTable.tsx` | Replace the `typeOptions` Select rendering (both desktop and mobile) with a hybrid component: show Select when value is empty, show editable Input when value is set. Add a small "re-select" button to clear the value and return to dropdown mode. |
+Instead of relying on an event that fires before the dashboard exists, we'll use a simple persistent flag. When a report is saved-and-exited, a flag is written to `sessionStorage`. When the dashboard mounts, it checks for this flag, clears it, and forces a reload of local data after a short delay to ensure everything is settled.
+
+### Changes
+
+| File | What Changes |
+|------|-------------|
+| `src/lib/sync-events.ts` | Add two new helper functions: `markPendingDashboardRefresh()` and `consumePendingDashboardRefresh()` that use `sessionStorage` to persist a refresh flag across page navigations |
+| `src/pages/InspectionForm.tsx` | In the Save & Exit handler, call `markPendingDashboardRefresh()` alongside `emitSyncComplete()` |
+| `src/pages/TrainingForm.tsx` | Same change as InspectionForm |
+| `src/pages/DailyAssessmentForm.tsx` | Same change as InspectionForm |
+| `src/pages/Dashboard.tsx` | On mount, check `consumePendingDashboardRefresh()`. If true, schedule a second data reload after a short delay (500ms) to pick up the freshly saved local data |
 
 ### Technical Detail
 
-In `EquipmentTable.tsx`, for both the desktop table cell and the mobile card, the current `typeOptions` branch:
+**New functions in `sync-events.ts`:**
 
 ```typescript
-{typeOptions ? (
-  <Select value={currentVal} onValueChange={...}>
-    ...
-  </Select>
-) : (
-  <GlobalAutocomplete ... />
-)}
+const PENDING_REFRESH_KEY = 'pendingDashboardRefresh';
+
+export function markPendingDashboardRefresh(): void {
+  sessionStorage.setItem(PENDING_REFRESH_KEY, '1');
+}
+
+export function consumePendingDashboardRefresh(): boolean {
+  const pending = sessionStorage.getItem(PENDING_REFRESH_KEY);
+  if (pending) {
+    sessionStorage.removeItem(PENDING_REFRESH_KEY);
+    return true;
+  }
+  return false;
+}
 ```
 
-Becomes:
+**In each form's Save & Exit handler** (alongside the existing `emitSyncComplete()`):
 
 ```typescript
-{typeOptions ? (
-  currentVal.trim() !== "" ? (
-    // Post-selection: editable text input with re-select option
-    <div className="flex items-center gap-1">
-      <Input
-        value={currentVal}
-        onChange={(e) => updateEquipment(item, "equipment_type", e.target.value)}
-        onBlur={onImmediateSave}
-        onKeyDown={(e) => e.key === 'Enter' && onImmediateSave?.()}
-        className="border-0 bg-transparent flex-1"
-      />
-      <Button
-        variant="ghost"
-        size="sm"
-        className="h-7 w-7 p-0 shrink-0"
-        onClick={() => { updateEquipment(item, "equipment_type", ""); onImmediateSave?.(); }}
-        title="Re-select type"
-      >
-        <X className="h-3 w-3" />
-      </Button>
-    </div>
-  ) : (
-    // Initial state: dropdown selection
-    <Select onValueChange={(v) => { updateEquipment(item, "equipment_type", v); onImmediateSave?.(); }}>
-      <SelectTrigger className="ring-2 ring-destructive ...">
-        <SelectValue placeholder="Select type" />
-      </SelectTrigger>
-      <SelectContent>
-        {typeOptions.map((opt) => (
-          <SelectItem key={opt} value={opt}>{opt}</SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
-  )
-) : (
-  <GlobalAutocomplete ... />
-)}
+emitSyncComplete();
+markPendingDashboardRefresh(); // <-- new line
 ```
 
-The legacy value handling (amber ring for values not in the current options list) is no longer needed since any string is valid once the field is in text-input mode. Legacy values will simply appear in the editable input.
+**In Dashboard's mount effect**, after the initial `loadAllData()`:
 
-Mobile view receives the identical logic, adapted to the card layout styling.
+```typescript
+// Check if we're returning from a save-and-exit
+if (consumePendingDashboardRefresh()) {
+  // Schedule a follow-up reload to catch locally saved data
+  setTimeout(async () => {
+    const user = await getUserWithCache();
+    const userId = user?.id || getOfflineUserId();
+    const superAdminStatus = user ? await getSuperAdminStatusWithCache() : false;
+    await Promise.all([
+      loadInspections(userId, superAdminStatus),
+      loadTrainingReports(userId, superAdminStatus),
+      loadDailyAssessments(userId, superAdminStatus),
+    ]);
+  }, 500);
+}
+```
+
+### Why This Works
+
+- `sessionStorage` persists across in-app navigations but clears when the browser tab is closed
+- The flag survives the unmount/mount cycle between the report form and the dashboard
+- The 500ms delay ensures the IndexedDB write from the save operation has fully committed before the dashboard reads from it
+- The existing `emitSyncComplete()` call is kept for cases where the dashboard is already mounted (e.g., browser back button with cached component)
+
+### What is NOT Changing
+
+- No database or backend changes
+- No changes to the sync system or background sync logic
+- No changes to how data is saved in the report forms
+- The existing `onSyncComplete` listener in Dashboard remains for handling background sync events
+
