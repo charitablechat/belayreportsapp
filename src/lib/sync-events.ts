@@ -50,3 +50,18 @@ export function emitSyncComplete(): void {
     }
   });
 }
+
+const PENDING_REFRESH_KEY = 'pendingDashboardRefresh';
+
+export function markPendingDashboardRefresh(): void {
+  sessionStorage.setItem(PENDING_REFRESH_KEY, '1');
+}
+
+export function consumePendingDashboardRefresh(): boolean {
+  const pending = sessionStorage.getItem(PENDING_REFRESH_KEY);
+  if (pending) {
+    sessionStorage.removeItem(PENDING_REFRESH_KEY);
+    return true;
+  }
+  return false;
+}
