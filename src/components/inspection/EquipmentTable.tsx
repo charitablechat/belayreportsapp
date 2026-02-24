@@ -146,28 +146,32 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
                     {typeOptions ? (
                       (() => {
                         const currentVal = item.equipment_type || "";
-                        const isLegacy = currentVal.trim() !== "" && !typeOptions.includes(currentVal);
-                        return (
-                          <Select
-                            value={currentVal}
-                            onValueChange={(v) => { updateEquipment(item, "equipment_type", v); onImmediateSave?.(); }}
-                          >
-                            <SelectTrigger className={cn(
-                              "border-0 bg-transparent",
-                              !currentVal || currentVal.trim() === ""
-                                ? "ring-2 ring-destructive"
-                                : isLegacy
-                                  ? "ring-2 ring-amber-500"
-                                  : ""
-                            )}>
+                        return currentVal.trim() !== "" ? (
+                          <div className="flex items-center gap-1">
+                            <Input
+                              value={currentVal}
+                              onChange={(e) => updateEquipment(item, "equipment_type", e.target.value)}
+                              onBlur={onImmediateSave}
+                              onKeyDown={(e) => e.key === 'Enter' && onImmediateSave?.()}
+                              placeholder="Edit type..."
+                              className="border-0 bg-transparent flex-1"
+                            />
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 w-7 p-0 shrink-0"
+                              onClick={() => { updateEquipment(item, "equipment_type", ""); onImmediateSave?.(); }}
+                              title="Re-select type"
+                            >
+                              <X className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        ) : (
+                          <Select onValueChange={(v) => { updateEquipment(item, "equipment_type", v); onImmediateSave?.(); }}>
+                            <SelectTrigger className={cn("border-0 bg-transparent", "ring-2 ring-destructive")}>
                               <SelectValue placeholder="Select type" />
                             </SelectTrigger>
                             <SelectContent>
-                              {isLegacy && (
-                                <SelectItem key={currentVal} value={currentVal} className="text-amber-600 italic">
-                                  {currentVal} (legacy)
-                                </SelectItem>
-                              )}
                               {typeOptions.map((opt) => (
                                 <SelectItem key={opt} value={opt}>{opt}</SelectItem>
                               ))}
@@ -175,7 +179,6 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
                           </Select>
                         );
                       })()
-                      
                     ) : (
                       <GlobalAutocomplete
                         value={item.equipment_type}
@@ -315,27 +318,31 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
                     {typeOptions ? (
                       (() => {
                         const currentVal = item.equipment_type || "";
-                        const isLegacy = currentVal.trim() !== "" && !typeOptions.includes(currentVal);
-                        return (
-                          <Select
-                            value={currentVal}
-                            onValueChange={(v) => { updateEquipment(item, "equipment_type", v); onImmediateSave?.(); }}
-                          >
-                            <SelectTrigger className={cn(
-                              !currentVal || currentVal.trim() === ""
-                                ? "ring-2 ring-destructive"
-                                : isLegacy
-                                  ? "ring-2 ring-amber-500"
-                                  : ""
-                            )}>
+                        return currentVal.trim() !== "" ? (
+                          <div className="flex items-center gap-1">
+                            <Input
+                              value={currentVal}
+                              onChange={(e) => updateEquipment(item, "equipment_type", e.target.value)}
+                              onBlur={onImmediateSave}
+                              onKeyDown={(e) => e.key === 'Enter' && onImmediateSave?.()}
+                              placeholder="Edit type..."
+                            />
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 w-7 p-0 shrink-0"
+                              onClick={() => { updateEquipment(item, "equipment_type", ""); onImmediateSave?.(); }}
+                              title="Re-select type"
+                            >
+                              <X className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        ) : (
+                          <Select onValueChange={(v) => { updateEquipment(item, "equipment_type", v); onImmediateSave?.(); }}>
+                            <SelectTrigger className="ring-2 ring-destructive">
                               <SelectValue placeholder="Select type" />
                             </SelectTrigger>
                             <SelectContent>
-                              {isLegacy && (
-                                <SelectItem key={currentVal} value={currentVal} className="text-amber-600 italic">
-                                  {currentVal} (legacy)
-                                </SelectItem>
-                              )}
                               {typeOptions.map((opt) => (
                                 <SelectItem key={opt} value={opt}>{opt}</SelectItem>
                               ))}
