@@ -238,21 +238,24 @@ export default function Dashboard() {
       }
     };
     
-    loadAllData();
+    // Consume the flag synchronously before any async work
+    const hasPendingRefresh = consumePendingDashboardRefresh();
 
-    // Check if we're returning from a save-and-exit
-    if (consumePendingDashboardRefresh()) {
-      setTimeout(async () => {
-        const user = await getUserWithCache();
-        const userId = user?.id || getOfflineUserId();
-        const superAdminStatus = user ? await getSuperAdminStatusWithCache() : false;
-        await Promise.all([
-          loadInspections(userId, superAdminStatus),
-          loadTrainingReports(userId, superAdminStatus),
-          loadDailyAssessments(userId, superAdminStatus),
-        ]);
-      }, 500);
-    }
+    loadAllData().then(() => {
+      // Only after initial load completes, schedule follow-up if needed
+      if (hasPendingRefresh) {
+        setTimeout(async () => {
+          const user = await getUserWithCache();
+          const userId = user?.id || getOfflineUserId();
+          const superAdminStatus = user ? await getSuperAdminStatusWithCache() : false;
+          await Promise.all([
+            loadInspections(userId, superAdminStatus),
+            loadTrainingReports(userId, superAdminStatus),
+            loadDailyAssessments(userId, superAdminStatus),
+          ]);
+        }, 300);
+      }
+    });
     
     // Fetch current user - works offline with cache!
     const fetchUser = async () => {
