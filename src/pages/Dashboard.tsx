@@ -37,7 +37,7 @@ import { usePullToRefresh } from "@/hooks/usePullToRefresh";
 import { getOfflineInspections, deleteOfflineInspection, queueOperation, saveInspectionOffline, getOfflineTrainings, saveTrainingOffline, deleteOfflineTraining, getOfflineDailyAssessments, saveDailyAssessmentOffline, deleteOfflineDailyAssessment, getOfflineInspection, getOfflineTraining, getOfflineDailyAssessment, clearRelatedDataOffline, clearTrainingDataOffline, clearAssessmentDataOffline } from "@/lib/offline-storage";
 import { shouldPreserveLocalRecord } from "@/lib/local-data-guards";
 import { ContactDeveloperSheet } from "@/components/ContactDeveloperSheet";
-import { onSyncComplete, isSyncInProgress } from "@/lib/sync-events";
+import { onSyncComplete, isSyncInProgress, consumePendingDashboardRefresh } from "@/lib/sync-events";
 import { InspectionsEmptyState, TrainingsEmptyState, DailyAssessmentsEmptyState } from "@/components/EmptyState";
 import { getUserWithCache, getSuperAdminStatusWithCache, invalidateSuperAdminCache, ensureValidSession, getOfflineUserId } from "@/lib/cached-auth";
 /* Holiday Theme Components - DISABLED */
@@ -239,6 +239,20 @@ export default function Dashboard() {
     };
     
     loadAllData();
+
+    // Check if we're returning from a save-and-exit
+    if (consumePendingDashboardRefresh()) {
+      setTimeout(async () => {
+        const user = await getUserWithCache();
+        const userId = user?.id || getOfflineUserId();
+        const superAdminStatus = user ? await getSuperAdminStatusWithCache() : false;
+        await Promise.all([
+          loadInspections(userId, superAdminStatus),
+          loadTrainingReports(userId, superAdminStatus),
+          loadDailyAssessments(userId, superAdminStatus),
+        ]);
+      }, 500);
+    }
     
     // Fetch current user - works offline with cache!
     const fetchUser = async () => {
