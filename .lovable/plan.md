@@ -1,80 +1,81 @@
 
 
-## Fix: Next Inspection Date Off by One Day in Reports
+## Hybrid Select-then-Edit for Equipment Ropes Type Field
 
-### Root Cause
+### Summary
 
-The `formatDate` function in the backend edge functions parses date-only strings (like `"2027-02-06"`) using `new Date(dateStr)`. JavaScript interprets `"YYYY-MM-DD"` as **midnight UTC**. The function then formats with `timeZone: "America/Chicago"` (UTC-6), which shifts `2027-02-06T00:00:00Z` back to `2027-02-05T18:00:00 CST` -- rendering as **February 5, 2027** instead of the correct **February 6, 2027**.
+After a user picks one of the 4 rope type options from the dropdown, the field transitions into an editable text input pre-filled with the selected value. The user can then append or modify text freely (e.g., "Dynamic Kernmantle - 11mm, replaced Jan 2026"). The final string in `equipment_type` is what gets persisted and synced.
 
-This affects three edge functions:
+### How It Works
 
-| File | Issue |
-|------|-------|
-| `supabase/functions/generate-inspection-html/index.ts` | `formatDate` uses `new Date(dateStr)` with `timeZone: "America/Chicago"` |
-| `supabase/functions/generate-inspection-pdf/index.ts` | `formatDate` uses `new Date(dateStr)` (no timezone specified, but still parses as UTC) |
-| `supabase/functions/generate-daily-assessment-html/index.ts` | Same `formatDate` pattern with `timeZone: "America/Chicago"` |
+When `typeOptions` is provided and the current value is empty/unset, render the existing `Select` dropdown. Once a value is selected (or if the item already has a non-empty `equipment_type`), render an `Input` text field instead, pre-filled with the value. A small button allows reverting back to the dropdown if the user wants to re-select from scratch.
 
-The frontend input and storage are correct -- `SummarySection.tsx` uses `parseLocalDate` and `format(date, "yyyy-MM-dd")` properly, storing `"2027-02-06"` in the database. The bug is solely in the backend rendering.
+### Data Integrity
 
-### Fix
-
-Replace `new Date(dateStr)` in all three `formatDate` functions with manual component parsing that creates a local date, preventing UTC interpretation from shifting the day.
-
-The updated `formatDate` will parse `"YYYY-MM-DD"` strings by splitting on `-` and constructing the date from components, just like the frontend's `parseLocalDate` already does:
-
-```typescript
-const formatDate = (dateStr: string | null) => {
-  if (!dateStr) return "N/A";
-  const SPECIAL_DATE_VALUES = ["N/A", "Unknown"];
-  if (SPECIAL_DATE_VALUES.includes(dateStr)) return dateStr;
-
-  // Parse date-only strings (YYYY-MM-DD) as local to avoid UTC shift
-  const dateOnly = dateStr.split('T')[0];
-  const parts = dateOnly.split('-');
-  if (parts.length === 3) {
-    const [year, month, day] = parts.map(Number);
-    if (!isNaN(year) && !isNaN(month) && !isNaN(day)) {
-      // Format manually to avoid any timezone conversion
-      const months = [
-        "January", "February", "March", "April", "May", "June",
-        "July", "August", "September", "October", "November", "December"
-      ];
-      return `${months[month - 1]} ${day}, ${year}`;
-    }
-  }
-
-  // Fallback for datetime strings or unparseable values
-  const date = new Date(dateStr);
-  if (isNaN(date.getTime())) return dateStr;
-  return date.toLocaleDateString("en-US", {
-    timeZone: "America/Chicago",
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
-};
-```
+The `equipment_type` field remains a plain string. The only change is **how** the UI populates it. The value stored in IndexedDB and synced to the database is identical to what appears in the input. No schema changes, no new columns, no impact on reconciliation logic. The delete-and-replace sync pattern operates on `item.id`, not on the content of `equipment_type`, so custom text values are preserved exactly as entered.
 
 ### Files Changed
 
 | File | Change |
 |------|--------|
-| `supabase/functions/generate-inspection-html/index.ts` (line ~333) | Replace `formatDate` with timezone-safe version |
-| `supabase/functions/generate-inspection-pdf/index.ts` (line ~88) | Replace `formatDate` with timezone-safe version |
-| `supabase/functions/generate-daily-assessment-html/index.ts` (line ~103) | Replace `formatDate` with timezone-safe version |
+| `src/components/inspection/EquipmentTable.tsx` | Replace the `typeOptions` Select rendering (both desktop and mobile) with a hybrid component: show Select when value is empty, show editable Input when value is set. Add a small "re-select" button to clear the value and return to dropdown mode. |
 
-### What This Fixes
+### Technical Detail
 
-- **Next Inspection Date**: "2027-02-06" will render as "February 6, 2027" (not Feb 5)
-- **Inspection Date**: Same fix applies to `inspection_date`
-- **Previous Inspection Date**: Same fix applies
-- **Daily Assessment Date**: Same fix applies
-- Any other date-only field passed through `formatDate`
+In `EquipmentTable.tsx`, for both the desktop table cell and the mobile card, the current `typeOptions` branch:
 
-### What is NOT Changing
+```typescript
+{typeOptions ? (
+  <Select value={currentVal} onValueChange={...}>
+    ...
+  </Select>
+) : (
+  <GlobalAutocomplete ... />
+)}
+```
 
-- No frontend changes needed (input and storage are already correct)
-- No database schema changes
-- No changes to training HTML generation (it doesn't use this pattern)
-- The fallback for datetime strings with time components still uses `toLocaleDateString` with timezone for accurate rendering
+Becomes:
 
+```typescript
+{typeOptions ? (
+  currentVal.trim() !== "" ? (
+    // Post-selection: editable text input with re-select option
+    <div className="flex items-center gap-1">
+      <Input
+        value={currentVal}
+        onChange={(e) => updateEquipment(item, "equipment_type", e.target.value)}
+        onBlur={onImmediateSave}
+        onKeyDown={(e) => e.key === 'Enter' && onImmediateSave?.()}
+        className="border-0 bg-transparent flex-1"
+      />
+      <Button
+        variant="ghost"
+        size="sm"
+        className="h-7 w-7 p-0 shrink-0"
+        onClick={() => { updateEquipment(item, "equipment_type", ""); onImmediateSave?.(); }}
+        title="Re-select type"
+      >
+        <X className="h-3 w-3" />
+      </Button>
+    </div>
+  ) : (
+    // Initial state: dropdown selection
+    <Select onValueChange={(v) => { updateEquipment(item, "equipment_type", v); onImmediateSave?.(); }}>
+      <SelectTrigger className="ring-2 ring-destructive ...">
+        <SelectValue placeholder="Select type" />
+      </SelectTrigger>
+      <SelectContent>
+        {typeOptions.map((opt) => (
+          <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  )
+) : (
+  <GlobalAutocomplete ... />
+)}
+```
+
+The legacy value handling (amber ring for values not in the current options list) is no longer needed since any string is valid once the field is in text-input mode. Legacy values will simply appear in the editable input.
+
+Mobile view receives the identical logic, adapted to the card layout styling.
