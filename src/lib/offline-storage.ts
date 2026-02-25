@@ -734,21 +734,31 @@ export async function getUnsyncedInspections(userId?: string) {
 }
 
 export async function queueOperation(type: 'create' | 'update' | 'delete', inspectionId: string, data: any) {
-  const db = await getDB();
-  await db.add('operations', {
-    type,
-    inspectionId,
-    data,
-    timestamp: Date.now(),
-    retries: 0,
-  });
-  
-  if (import.meta.env.DEV) {
-    console.log('[Offline Storage] Queued operation:', { type, inspectionId });
-  }
-  
-  const { registerInspectionSync } = await import('./background-sync');
-  await registerInspectionSync();
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      await db.add('operations', {
+        type,
+        inspectionId,
+        data,
+        timestamp: Date.now(),
+        retries: 0,
+      });
+      
+      if (import.meta.env.DEV) {
+        console.log('[Offline Storage] Queued operation:', { type, inspectionId });
+      }
+      
+      try {
+        const { registerInspectionSync } = await import('./background-sync');
+        await registerInspectionSync();
+      } catch (e) {
+        console.warn('[Offline Storage] Background sync registration failed:', e);
+      }
+    },
+    undefined,
+    'queueOperation'
+  );
 }
 
 export async function getQueuedOperations() {
@@ -1284,21 +1294,31 @@ export async function getUnsyncedDailyAssessments(userId?: string) {
 }
 
 export async function queueAssessmentOperation(type: 'create' | 'update' | 'delete', assessmentId: string, data: any) {
-  const db = await getDB();
-  await db.add('assessment_operations', {
-    type,
-    assessmentId,
-    data,
-    timestamp: Date.now(),
-    retries: 0,
-  });
-  
-  if (import.meta.env.DEV) {
-    console.log('[Offline Storage] Queued assessment operation:', { type, assessmentId });
-  }
-  
-  const { registerInspectionSync } = await import('./background-sync');
-  await registerInspectionSync();
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      await db.add('assessment_operations', {
+        type,
+        assessmentId,
+        data,
+        timestamp: Date.now(),
+        retries: 0,
+      });
+      
+      if (import.meta.env.DEV) {
+        console.log('[Offline Storage] Queued assessment operation:', { type, assessmentId });
+      }
+      
+      try {
+        const { registerInspectionSync } = await import('./background-sync');
+        await registerInspectionSync();
+      } catch (e) {
+        console.warn('[Offline Storage] Background sync registration failed:', e);
+      }
+    },
+    undefined,
+    'queueAssessmentOperation'
+  );
 }
 
 export async function getQueuedAssessmentOperations() {
@@ -1588,21 +1608,31 @@ export async function getUnsyncedTrainings(userId?: string) {
 }
 
 export async function queueTrainingOperation(type: 'create' | 'update' | 'delete', trainingId: string, data: any) {
-  const db = await getDB();
-  await db.add('training_operations', {
-    type,
-    trainingId,
-    data,
-    timestamp: Date.now(),
-    retries: 0,
-  });
-  
-  if (import.meta.env.DEV) {
-    console.log('[Offline Storage] Queued training operation:', { type, trainingId });
-  }
-  
-  const { registerInspectionSync } = await import('./background-sync');
-  await registerInspectionSync();
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      await db.add('training_operations', {
+        type,
+        trainingId,
+        data,
+        timestamp: Date.now(),
+        retries: 0,
+      });
+      
+      if (import.meta.env.DEV) {
+        console.log('[Offline Storage] Queued training operation:', { type, trainingId });
+      }
+      
+      try {
+        const { registerInspectionSync } = await import('./background-sync');
+        await registerInspectionSync();
+      } catch (e) {
+        console.warn('[Offline Storage] Background sync registration failed:', e);
+      }
+    },
+    undefined,
+    'queueTrainingOperation'
+  );
 }
 
 export async function getQueuedTrainingOperations() {

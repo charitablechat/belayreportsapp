@@ -730,12 +730,26 @@ export default function TrainingForm() {
           if (import.meta.env.DEV) console.log('[Training Save] Synced to database');
         } catch (error) {
           if (import.meta.env.DEV) console.log('[Training Save] Failed to sync, queuing operation:', error);
-          await queueTrainingOperation('update', id, updatedTraining);
+          try {
+            await Promise.race([
+              queueTrainingOperation('update', id, updatedTraining),
+              new Promise((_, reject) => setTimeout(() => reject(new Error('Queue timeout')), 5000)),
+            ]);
+          } catch (e) {
+            console.warn('[TrainingForm] Queue operation failed/timed out:', e);
+          }
         }
       } else {
         // Queue for later sync
         if (import.meta.env.DEV) console.log('[Training Save] Offline - queuing for sync');
-        await queueTrainingOperation('update', id, updatedTraining);
+        try {
+          await Promise.race([
+            queueTrainingOperation('update', id, updatedTraining),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Queue timeout')), 5000)),
+          ]);
+        } catch (e) {
+          console.warn('[TrainingForm] Queue operation failed/timed out:', e);
+        }
       }
 
       setLastSaved(new Date());
@@ -1074,11 +1088,25 @@ export default function TrainingForm() {
           markSnapshotSynced('training', id);
         } catch (error) {
           console.warn('[Offline] Failed to sync, queuing operation');
-          await queueTrainingOperation('update', id, completedTraining);
+          try {
+            await Promise.race([
+              queueTrainingOperation('update', id, completedTraining),
+              new Promise((_, reject) => setTimeout(() => reject(new Error('Queue timeout')), 5000)),
+            ]);
+          } catch (e) {
+            console.warn('[TrainingForm] Queue operation failed/timed out:', e);
+          }
         }
       } else {
         // Queue for later sync
-        await queueTrainingOperation('update', id, completedTraining);
+        try {
+          await Promise.race([
+            queueTrainingOperation('update', id, completedTraining),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Queue timeout')), 5000)),
+          ]);
+        } catch (e) {
+          console.warn('[TrainingForm] Queue operation failed/timed out:', e);
+        }
       }
 
       setTraining(completedTraining);

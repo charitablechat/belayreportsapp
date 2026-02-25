@@ -558,12 +558,26 @@ export default function DailyAssessmentForm() {
         setLastSaved(new Date());
       } else {
         // Queue for sync
-        await queueAssessmentOperation('update', id!, updatedAssessment);
+        try {
+          await Promise.race([
+            queueAssessmentOperation('update', id!, updatedAssessment),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Queue timeout')), 5000)),
+          ]);
+        } catch (e) {
+          console.warn('[DailyAssessment] Queue operation failed/timed out:', e);
+        }
       }
     } catch (error) {
       console.error('Error updating assessment:', error);
-      const { queueAssessmentOperation } = await import('@/lib/offline-storage');
-      await queueAssessmentOperation('update', id!, updatedAssessment);
+      try {
+        const { queueAssessmentOperation: queueOp } = await import('@/lib/offline-storage');
+        await Promise.race([
+          queueOp('update', id!, updatedAssessment),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Queue timeout')), 5000)),
+        ]);
+      } catch (e) {
+        console.warn('[DailyAssessment] Fallback queue failed/timed out:', e);
+      }
     }
   };
 
@@ -796,7 +810,10 @@ export default function DailyAssessmentForm() {
           console.error('[Save] Error syncing to database:', error);
           if (offlineStorage) {
             try {
-              await offlineStorage.queueAssessmentOperation('update', id!, updatedAssessment);
+              await Promise.race([
+                offlineStorage.queueAssessmentOperation('update', id!, updatedAssessment),
+                new Promise((_, reject) => setTimeout(() => reject(new Error('Queue timeout')), 5000)),
+              ]);
             } catch (queueError) {
               console.warn('[Save] Failed to queue operation:', queueError);
             }
@@ -811,7 +828,10 @@ export default function DailyAssessmentForm() {
         console.log('[Save] Offline - queuing for sync');
         if (offlineStorage) {
           try {
-            await offlineStorage.queueAssessmentOperation('update', id!, updatedAssessment);
+            await Promise.race([
+              offlineStorage.queueAssessmentOperation('update', id!, updatedAssessment),
+              new Promise((_, reject) => setTimeout(() => reject(new Error('Queue timeout')), 5000)),
+            ]);
           } catch (queueError) {
             console.warn('[Save] Failed to queue operation:', queueError);
           }
@@ -1018,7 +1038,10 @@ export default function DailyAssessmentForm() {
         } catch (error) {
           console.error('[Submit] Error syncing to database:', error);
           try {
-            await queueAssessmentOperation('update', id!, completedAssessment);
+            await Promise.race([
+              queueAssessmentOperation('update', id!, completedAssessment),
+              new Promise((_, reject) => setTimeout(() => reject(new Error('Queue timeout')), 5000)),
+            ]);
           } catch (queueError) {
             console.warn('[Submit] Failed to queue operation:', queueError);
           }
@@ -1026,7 +1049,10 @@ export default function DailyAssessmentForm() {
       } else {
         console.log('[Submit] Offline - queuing for sync');
         try {
-          await queueAssessmentOperation('update', id!, completedAssessment);
+          await Promise.race([
+            queueAssessmentOperation('update', id!, completedAssessment),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Queue timeout')), 5000)),
+          ]);
         } catch (queueError) {
           console.warn('[Submit] Failed to queue operation:', queueError);
         }
