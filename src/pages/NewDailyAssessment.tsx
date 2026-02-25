@@ -168,11 +168,25 @@ export default function NewDailyAssessment() {
         } catch (error) {
           console.error('Error syncing to database:', error);
           // Only queue for later sync if online sync failed
-          await queueAssessmentOperation('create', assessmentId, newAssessment);
+          try {
+            await Promise.race([
+              queueAssessmentOperation('create', assessmentId, newAssessment),
+              new Promise((_, reject) => setTimeout(() => reject(new Error('Queue timeout')), 5000)),
+            ]);
+          } catch (e) {
+            console.warn('[NewDailyAssessment] Queue operation failed/timed out:', e);
+          }
         }
       } else {
         // Queue for later sync only when offline
-        await queueAssessmentOperation('create', assessmentId, newAssessment);
+        try {
+          await Promise.race([
+            queueAssessmentOperation('create', assessmentId, newAssessment),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Queue timeout')), 5000)),
+          ]);
+        } catch (e) {
+          console.warn('[NewDailyAssessment] Queue operation failed/timed out:', e);
+        }
       }
 
       navigate(`/daily-assessment/${assessmentId}`, { replace: true });

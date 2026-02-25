@@ -1596,7 +1596,14 @@ export default function InspectionForm() {
           // Use "Pending sync" instead of error - less alarming, auto-retry handles it
           setSaveError('pending_sync');
           // Queue for later sync
-          await queueOperation('update', id!, saveData);
+          try {
+            await Promise.race([
+              queueOperation('update', id!, saveData),
+              new Promise((_, reject) => setTimeout(() => reject(new Error('Queue timeout')), 5000)),
+            ]);
+          } catch (queueErr) {
+            console.warn('[InspectionForm] Queue operation failed/timed out:', queueErr);
+          }
           console.log('[InspectionForm Sync] Queued for later sync');
           
           // If local save ALSO failed, warn the user urgently
@@ -1622,7 +1629,14 @@ export default function InspectionForm() {
         }
       } else {
         // Queue operation when offline
-        await queueOperation('update', id!, saveData);
+        try {
+          await Promise.race([
+            queueOperation('update', id!, saveData),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Queue timeout')), 5000)),
+          ]);
+        } catch (queueErr) {
+          console.warn('[InspectionForm] Queue operation failed/timed out:', queueErr);
+        }
         console.log('[InspectionForm Sync] Queued for sync when online');
       }
     } catch (error: any) {
@@ -1824,7 +1838,14 @@ export default function InspectionForm() {
         // Save completion offline
         const updatedInspection = { ...inspection, status: "completed" };
         await saveInspectionOffline(updatedInspection);
-        await queueOperation('update', id!, updatedInspection);
+        try {
+          await Promise.race([
+            queueOperation('update', id!, updatedInspection),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Queue timeout')), 5000)),
+          ]);
+        } catch (queueErr) {
+          console.warn('[InspectionForm] Queue operation failed/timed out:', queueErr);
+        }
         
         // Update local state to reflect completion
         setInspection(updatedInspection);
