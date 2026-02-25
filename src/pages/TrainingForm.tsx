@@ -1316,7 +1316,7 @@ export default function TrainingForm() {
         )}
 
         <Tabs value={currentTab} onValueChange={setCurrentTab} className="space-y-6">
-          <div ref={swipeContainerRef}>
+          <div ref={swipeContainerRef} className="sticky top-0 z-30 bg-background/95 backdrop-blur-sm pb-1">
             <TabsList className="grid w-full grid-cols-4 lg:grid-cols-7 gap-1 lg:gap-0 h-auto p-1.5 lg:p-1">
               <TabsTrigger value="info" className="text-xs lg:text-sm py-2 flex flex-col lg:flex-row items-center gap-1 lg:gap-1.5">
                 <Info className="h-3.5 w-3.5" />

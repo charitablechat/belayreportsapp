@@ -2457,7 +2457,7 @@ export default function InspectionForm() {
           // Mark tab as visited for lazy rendering
           setVisitedTabs(prev => new Set([...prev, tab]));
         }} className="space-y-6 mt-6">
-          <div ref={swipeContainerRef}>
+          <div ref={swipeContainerRef} className="sticky top-0 z-30 bg-background/95 backdrop-blur-sm pb-1">
             <TabsList className="grid grid-cols-2 lg:grid-cols-4 w-full gap-1 lg:gap-0 h-auto p-1.5 lg:p-1 bg-muted/50 border border-border/50 rounded-lg">
               <TabsTrigger value="details" className="whitespace-nowrap text-xs lg:text-sm py-2 flex flex-col lg:flex-row items-center gap-1 lg:gap-1.5 text-muted-foreground hover:text-foreground hover:bg-accent/50 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-md data-[state=active]:font-semibold data-[state=active]:border data-[state=active]:border-primary/30">
                 <Settings className="h-3.5 w-3.5" />
