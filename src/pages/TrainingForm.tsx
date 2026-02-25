@@ -1244,14 +1244,8 @@ export default function TrainingForm() {
                 onClick={saveTraining} 
                 disabled={isSaving || !isOnline}
               >
-                {isSaving ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <>
-                    <Save className={isMobile ? "w-5 h-5 mr-1.5" : "w-4 h-4 mr-2"} />
-                    {isMobile ? "" : "Save Progress"}
-                  </>
-                )}
+                <Save className={isMobile ? "w-5 h-5 mr-1.5" : "w-4 h-4 mr-2"} />
+                {isMobile ? (isSaving ? "..." : "Save") : (isSaving ? "Saving..." : "Save Progress")}
               </Button>
               <Button 
                 size={isMobile ? "default" : "sm"} 
