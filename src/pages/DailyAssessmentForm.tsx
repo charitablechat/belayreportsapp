@@ -1341,14 +1341,8 @@ export default function DailyAssessmentForm() {
                 onClick={handleSaveProgress} 
                 disabled={saving || submitting}
               >
-                {saving ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <>
-                    <Save className={isMobileView ? "w-5 h-5 mr-1.5" : "w-4 h-4 mr-2"} />
-                    {isMobileView ? "" : "Save Progress"}
-                  </>
-                )}
+                <Save className={isMobileView ? "w-5 h-5 mr-1.5" : "w-4 h-4 mr-2"} />
+                {isMobileView ? (saving ? "..." : "Save") : (saving ? "Saving..." : "Save Progress")}
               </Button>
               <Button 
                 size={isMobileView ? "default" : "sm"} 
