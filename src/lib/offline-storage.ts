@@ -390,9 +390,10 @@ async function withIndexedDBErrorBoundary<T>(
   }
 
   const OPERATION_TIMEOUT = 5000; // 5 second timeout for any IndexedDB operation
+  const TIMEOUT_SENTINEL = Symbol('timeout');
   
   try {
-    // Wrap the entire operation with a timeout
+    // Wrap the entire operation with a timeout, using a sentinel to detect timeouts
     const result = await withTimeout(
       (async () => {
         // Only run health check if we haven't verified the connection yet
@@ -409,13 +410,18 @@ async function withIndexedDBErrorBoundary<T>(
         return await operation();
       })(),
       OPERATION_TIMEOUT,
-      fallbackValue
+      TIMEOUT_SENTINEL as any
     );
     
-    // Record success - since we wrapped operation with timeout, if we got here without error
-    // it means the operation completed (or we returned fallback on timeout, which is tracked separately)
-    recordIndexedDBSuccess();
+    // Check if the result is the sentinel -- meaning a timeout occurred
+    if (result === TIMEOUT_SENTINEL) {
+      console.warn(`[Offline Storage] Timeout detected for ${operationName}, counting as failure`);
+      dbConnectionVerified = false;
+      recordIndexedDBFailure();
+      return fallbackValue;
+    }
     
+    recordIndexedDBSuccess();
     return result;
   } catch (error: any) {
     console.error(`[Offline Storage] Error in ${operationName}:`, error);
@@ -592,9 +598,9 @@ export async function getDB() {
       openDBV8WithTimeout(),
       new Promise<never>((_, reject) => 
         setTimeout(() => {
-          console.error('[Offline Storage] IndexedDB open timed out after 5 seconds');
+          console.error('[Offline Storage] IndexedDB open timed out after 3 seconds');
           reject(new Error('IndexedDB open timed out'));
-        }, 5000)
+        }, 3000)
       )
     ]).catch(error => {
       console.error('[Offline Storage] Failed to open IndexedDB:', error);
