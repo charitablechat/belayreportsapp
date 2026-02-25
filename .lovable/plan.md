@@ -1,63 +1,35 @@
 
 
-## Make Section Tab Bar Sticky on All Three Report Forms
+## Single-Line Tab Bar for InspectionForm on Mobile
 
 ### Summary
-
-Add sticky positioning to the tab navigation bar in all three report forms (InspectionForm, DailyAssessmentForm, TrainingForm) so the category tabs remain fixed at the top of the viewport when scrolling. The screenshot confirms all four tabs (including Summary) should be visible and sticky.
+Change the InspectionForm's tab bar from a 2-column grid (2 rows) to a 4-column grid (1 row) on mobile, matching the desktop layout.
 
 ### Changes
 
-**1. `src/pages/InspectionForm.tsx` (line 2460)**
+**`src/pages/InspectionForm.tsx` (line 2461)**
 
-Add sticky classes to the swipe container div:
+1. Change `grid-cols-2` to `grid-cols-4` so all 4 tabs sit on one line on mobile
+2. Change each TabsTrigger from `flex-col` to `flex-row` on mobile so the icon and label are side-by-side (saves vertical space)
+3. Hide the icons on mobile (`hidden lg:block`) to give the text more room in the compact single-row layout
 
-```tsx
-// Before:
-<div ref={swipeContainerRef}>
-
-// After:
-<div ref={swipeContainerRef} className="sticky top-0 z-30 bg-background/95 backdrop-blur-sm pb-1">
-```
-
-**2. `src/pages/DailyAssessmentForm.tsx` (line 1424)**
-
-Same change:
+### Technical Detail
 
 ```tsx
-// Before:
-<div ref={swipeContainerRef}>
+// TabsList: grid-cols-2 -> grid-cols-4
+<TabsList className="grid grid-cols-4 w-full gap-1 lg:gap-0 h-auto p-1.5 lg:p-1 ...">
 
-// After:
-<div ref={swipeContainerRef} className="sticky top-0 z-30 bg-background/95 backdrop-blur-sm pb-1">
+// Each TabsTrigger: flex-col lg:flex-row -> flex-row, hide icon on mobile
+<TabsTrigger className="... text-xs lg:text-sm py-1.5 lg:py-2 flex flex-row items-center gap-1 lg:gap-1.5 ...">
+  <Settings className="h-3.5 w-3.5 hidden lg:block" />
+  <span>Systems</span>
+</TabsTrigger>
 ```
-
-**3. `src/pages/TrainingForm.tsx` (line 1319)**
-
-Same change:
-
-```tsx
-// Before:
-<div ref={swipeContainerRef}>
-
-// After:
-<div ref={swipeContainerRef} className="sticky top-0 z-30 bg-background/95 backdrop-blur-sm pb-1">
-```
-
-### Design Details
-
-- `sticky top-0` -- sticks to top of viewport when scrolled past
-- `z-30` -- above content, below modals (z-50) and header avatar (z-50)
-- `bg-background/95 backdrop-blur-sm` -- semi-transparent background with blur so content scrolling beneath is subtly visible but not distracting
-- `pb-1` -- small bottom padding for visual separation from content below
-- Max height stays compact (~48-56px) matching existing tab dimensions
-- All 4 tabs remain visible (no truncation) on both mobile grid-cols-2/4 and desktop grid-cols-4/7 layouts
 
 ### Files to Modify
 
 | File | Line | Change |
 |------|------|--------|
-| `src/pages/InspectionForm.tsx` | 2460 | Add sticky classes to swipe container div |
-| `src/pages/DailyAssessmentForm.tsx` | 1424 | Add sticky classes to swipe container div |
-| `src/pages/TrainingForm.tsx` | 1319 | Add sticky classes to swipe container div |
+| `src/pages/InspectionForm.tsx` | 2461 | `grid-cols-2` to `grid-cols-4` |
+| `src/pages/InspectionForm.tsx` | 2462-2477 | Hide icons on mobile, use `flex-row` always, reduce vertical padding |
 
