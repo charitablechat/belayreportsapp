@@ -1,66 +1,48 @@
 
 
-## Add "All User Snapshots" Panel to Admin Data Recovery
+## Convert Data Recovery Panels to Tabbed Interface
 
-### What This Adds
-A new panel in the Super Admin Data Recovery Tool that queries ALL cloud backup snapshots across ALL users, grouped by user name. This gives admins a single place to find and restore any user's data.
+### What Changes
+Replace the vertically stacked panels in the Data Recovery Tool with a clean tabbed layout, matching the professional style used throughout the app (similar to the inspection form's Systems/Equipment/Criteria/Summary tabs).
 
-### How It Works
+### Current Layout (stacked)
+All five panels render one after another in a long scrollable list:
+1. Local Snapshots
+2. Cloud Snapshots
+3. All User Snapshots
+4. Admin Edit History
+5. IndexedDB Recovery
+6. *(Below)* Deleted Records Recovery
 
-1. **Database: Add RLS policy for super admin access**
-   - Add a SELECT policy on `report_cloud_backups` so super admins can read all rows (currently users can only see their own)
-   - No schema changes needed — the table already has all the data
+### New Layout (tabbed)
 
-2. **New query function: `fetchAllCloudSnapshots()`**
-   - Joins `report_cloud_backups` with `profiles` to get user names
-   - Returns snapshots grouped by user, sorted newest-first
-   - Only callable by super admins (RLS enforces this)
+```text
++-----------------------------------------------------------+
+| Local | Cloud | All Users | Edit History | IndexedDB | Deleted |
++-----------------------------------------------------------+
+|                                                           |
+|  [Active tab content renders here]                        |
+|                                                           |
++-----------------------------------------------------------+
+```
 
-3. **New UI panel: `AllUserSnapshotsPanel`**
-   - Added to the admin `DataRecoveryTool` as a new tab/section
-   - Shows snapshots grouped under collapsible user headers (e.g., "John Smith — 4 snapshots")
-   - Each snapshot shows: report type, organization, device, timestamp, sync status
-   - Actions: Restore (pushes data back to the server tables), Export JSON, View diff (future)
-
-4. **Restore to server (not just local)**
-   - Unlike the current restore which writes to IndexedDB, admin restores should write directly back to the database tables (upsert parent + delete/re-insert children)
-   - This uses the same pattern as the proposed admin edit snapshot restore
-
-### What Does NOT Change
-- Regular users still only see their own snapshots in the user-facing Data Recovery sheet
-- The existing Local Snapshots and Cloud Snapshots panels remain unchanged
-- No changes to how snapshots are created or uploaded
+On mobile, the tab bar will scroll horizontally to fit all labels cleanly.
 
 ### Technical Details
 
-| Change | File(s) |
-|--------|---------|
-| RLS policy: super admin SELECT on `report_cloud_backups` | New SQL migration |
-| `fetchAllCloudSnapshots()` with profile join | `src/lib/cloud-backup.ts` |
-| `AllUserSnapshotsPanel` component | `src/components/admin/DataRecoveryTool.tsx` |
-| Server-side restore utility | `src/lib/cloud-backup.ts` (new function) |
+**File: `src/components/admin/DataRecoveryTool.tsx`**
+- Wrap the `DataRecoveryTool` component's content in a `<Tabs>` component with `defaultValue="local"`
+- Replace the stacked `<div className="space-y-6">` with a `<TabsList>` and individual `<TabsContent>` wrappers around each panel
+- Each tab gets a short, clean label: Local, Cloud, All Users, Edit History, IndexedDB
+- Style the TabsList with the same glassmorphic treatment used elsewhere (`backdrop-blur-md bg-white/5 border border-white/10`)
 
-### UI Layout
+**File: `src/pages/SuperAdminDashboard.tsx`** (lines 1132-1138)
+- Move `DeletedRecordsRecovery` inside the `DataRecoveryTool` as a 6th tab called "Deleted Records" instead of rendering it separately above
+- Remove the separator div and "Local Browser Data Recovery" heading since the tabs are self-explanatory
+- The tab labels on mobile will be compact (e.g., "Local", "Cloud", "Users", "Edits", "IDB", "Deleted")
 
-```text
-Data Recovery Tool (Super Admin)
-+------------------------------------------+
-| [Local Snapshots]  [Cloud Snapshots]     |
-| [All User Snapshots]  [IndexedDB]        |
-+------------------------------------------+
-| ALL USER SNAPSHOTS                       |
-|                                          |
-| > John Smith (4 snapshots)               |
-|   - Inspection | Acme Corp | Feb 25      |
-|   - Training | Acme Corp | Feb 24        |
-|                                          |
-| > Jane Doe (2 snapshots)                 |
-|   - Daily Assessment | Beta Inc | Feb 23 |
-+------------------------------------------+
-```
-
-### Risk Assessment
-- **Zero risk to existing data**: Only adds a new RLS policy (SELECT) and a new UI panel
-- **Security**: RLS ensures only super admins can see all snapshots; regular users are unaffected
-- **Performance**: Query is limited to 100 rows with pagination possible later
+### What Does NOT Change
+- All panel internals remain identical -- only the wrapper changes
+- The `UserDataRecoverySheet` (regular user view) continues to stack panels since it only shows two
+- No database or logic changes
 
