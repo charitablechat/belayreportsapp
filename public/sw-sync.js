@@ -208,6 +208,20 @@ async function syncInspectionsAtomic() {
           continue;
         }
         
+        // SUSPICIOUS EMPTY GUARD: If record was edited but ALL child data is empty,
+        // IndexedDB reads likely failed silently. Skip to prevent marking as complete.
+        const localIsCompletelyEmpty = systems.length === 0 && ziplines.length === 0 && 
+          equipment.length === 0 && standards.length === 0 && !summary;
+        const createdAt = new Date(inspection.created_at || inspection.updated_at).getTime();
+        const updatedAt = new Date(inspection.updated_at).getTime();
+        const ageMinutes = (Date.now() - createdAt) / 60000;
+        const wasEdited = (updatedAt - createdAt) > 60000;
+        
+        if (localIsCompletelyEmpty && wasEdited && ageMinutes > 5) {
+          console.warn('[SW SAFETY] suspicious_empty_guard: inspection edited but all children empty', inspection.id);
+          continue;
+        }
+        
         // Sync using upsert-only transaction (no deletes)
         const syncTimestamp = await syncInspectionWithTransaction(
           inspection, systems, ziplines, equipment, standards, summary
@@ -362,6 +376,20 @@ async function syncTrainingsAtomic() {
         const systemsInPlace = await getAllRelatedData(db, 'training_systems_in_place', training.id).catch(() => []);
         const summaryArray = await getAllRelatedData(db, 'training_summary', training.id).catch(() => []);
         
+        // SUSPICIOUS EMPTY GUARD for trainings
+        const trainingChildEmpty = deliveryApproaches.length === 0 && operatingSystems.length === 0 && 
+          immediateAttention.length === 0 && verifiableItems.length === 0 && 
+          systemsInPlace.length === 0 && summaryArray.length === 0;
+        const tCreatedAt = new Date(training.created_at || training.updated_at).getTime();
+        const tUpdatedAt = new Date(training.updated_at).getTime();
+        const tAgeMinutes = (Date.now() - tCreatedAt) / 60000;
+        const tWasEdited = (tUpdatedAt - tCreatedAt) > 60000;
+        
+        if (trainingChildEmpty && tWasEdited && tAgeMinutes > 5) {
+          console.warn('[SW SAFETY] suspicious_empty_guard: training edited but all children empty', training.id);
+          continue;
+        }
+        
         // Step 1: Upsert training WITHOUT synced_at (deferred marking)
         const trainingData = { ...training };
         delete trainingData.synced_at;
@@ -465,6 +493,20 @@ async function syncDailyAssessmentsAtomic() {
         const equipmentChecks = await getAllRelatedData(db, 'daily_assessment_equipment_checks', assessment.id).catch(() => []);
         const structureChecks = await getAllRelatedData(db, 'daily_assessment_structure_checks', assessment.id).catch(() => []);
         const operatingSystems = await getAllRelatedData(db, 'daily_assessment_operating_systems', assessment.id).catch(() => []);
+        
+        // SUSPICIOUS EMPTY GUARD for daily assessments
+        const assessmentChildEmpty = beginningOfDay.length === 0 && endOfDay.length === 0 && 
+          environmentChecks.length === 0 && equipmentChecks.length === 0 && 
+          structureChecks.length === 0 && operatingSystems.length === 0;
+        const aCreatedAt = new Date(assessment.created_at || assessment.updated_at).getTime();
+        const aUpdatedAt = new Date(assessment.updated_at).getTime();
+        const aAgeMinutes = (Date.now() - aCreatedAt) / 60000;
+        const aWasEdited = (aUpdatedAt - aCreatedAt) > 60000;
+        
+        if (assessmentChildEmpty && aWasEdited && aAgeMinutes > 5) {
+          console.warn('[SW SAFETY] suspicious_empty_guard: assessment edited but all children empty', assessment.id);
+          continue;
+        }
         
         // Step 1: Upsert assessment WITHOUT synced_at (deferred marking)
         const assessmentData = { ...assessment };

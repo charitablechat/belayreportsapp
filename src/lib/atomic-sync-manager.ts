@@ -443,6 +443,27 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
       }
     }
     
+    // SUSPICIOUS EMPTY GUARD: If record has been edited but ALL child data is empty,
+    // this likely means IndexedDB reads failed silently. Skip sync to prevent marking as complete.
+    // This complements the empty_local_guard above (which only fires when server already has data).
+    {
+      const localIsCompletelyEmpty = systems.length === 0 && ziplines.length === 0 && 
+        equipment.length === 0 && standards.length === 0 && !summary;
+      const createdAt = new Date(inspection.created_at || inspection.updated_at).getTime();
+      const updatedAt = new Date(inspection.updated_at).getTime();
+      const ageMinutes = (Date.now() - createdAt) / 60000;
+      const wasEdited = (updatedAt - createdAt) > 60000; // edited if updated > 60s after creation
+
+      if (localIsCompletelyEmpty && wasEdited && ageMinutes > 5) {
+        console.warn('[SAFETY] suspicious_empty_guard: inspection was edited but all child data is empty', {
+          inspectionId: inspectionId.substring(0, 8),
+          ageMinutes: Math.round(ageMinutes),
+          updatedAt: inspection.updated_at,
+        });
+        return { success: false, skipped: true, reason: 'suspicious_empty' };
+      }
+    }
+
     // Step 2: RECONCILE then UPSERT child data
     // Delete server rows that were removed locally, then upsert current local data
     if (recordStatus?.record_exists && !recordStatus?.is_deleted) {
@@ -1117,6 +1138,27 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
       }
     }
     
+    // SUSPICIOUS EMPTY GUARD: If record has been edited but ALL child data is empty,
+    // this likely means IndexedDB reads failed silently. Skip sync to prevent marking as complete.
+    {
+      const localIsCompletelyEmpty = delivery_approaches.length === 0 && operating_systems.length === 0 && 
+        immediate_attention.length === 0 && verifiable_items.length === 0 && 
+        systems_in_place.length === 0 && !summary;
+      const createdAt = new Date(training.created_at || training.updated_at).getTime();
+      const updatedAt = new Date(training.updated_at).getTime();
+      const ageMinutes = (Date.now() - createdAt) / 60000;
+      const wasEdited = (updatedAt - createdAt) > 60000;
+
+      if (localIsCompletelyEmpty && wasEdited && ageMinutes > 5) {
+        console.warn('[SAFETY] suspicious_empty_guard: training was edited but all child data is empty', {
+          trainingId: trainingId.substring(0, 8),
+          ageMinutes: Math.round(ageMinutes),
+          updatedAt: training.updated_at,
+        });
+        return { success: false, skipped: true, reason: 'suspicious_empty' };
+      }
+    }
+
     // Step 2: RECONCILE then UPSERT child data
     // Delete server rows that were removed locally, then upsert current local data
     if (recordStatus?.record_exists && !recordStatus?.is_deleted) {
@@ -1741,6 +1783,27 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
       }
     }
     
+    // SUSPICIOUS EMPTY GUARD: If record has been edited but ALL child data is empty,
+    // this likely means IndexedDB reads failed silently. Skip sync to prevent marking as complete.
+    {
+      const localIsCompletelyEmpty = beginning_of_day.length === 0 && end_of_day.length === 0 && 
+        operating_systems.length === 0 && equipment_checks.length === 0 && 
+        structure_checks.length === 0 && environment_checks.length === 0;
+      const createdAt = new Date(assessment.created_at || assessment.updated_at).getTime();
+      const updatedAt = new Date(assessment.updated_at).getTime();
+      const ageMinutes = (Date.now() - createdAt) / 60000;
+      const wasEdited = (updatedAt - createdAt) > 60000;
+
+      if (localIsCompletelyEmpty && wasEdited && ageMinutes > 5) {
+        console.warn('[SAFETY] suspicious_empty_guard: assessment was edited but all child data is empty', {
+          assessmentId: assessmentId.substring(0, 8),
+          ageMinutes: Math.round(ageMinutes),
+          updatedAt: assessment.updated_at,
+        });
+        return { success: false, skipped: true, reason: 'suspicious_empty' };
+      }
+    }
+
     // Step 2: RECONCILE then UPSERT child data
     // Delete server rows that were removed locally, then upsert current local data
     if (recordStatus?.record_exists && !recordStatus?.is_deleted) {
