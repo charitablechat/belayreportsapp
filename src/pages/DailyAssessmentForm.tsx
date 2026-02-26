@@ -145,6 +145,17 @@ export default function DailyAssessmentForm() {
   }, [isCompletionLocked]);
 
   const isInternalUpdateRef = useRef(false);
+
+  // Track which child data types loaded successfully (not from timeout fallback)
+  const childDataLoadedRef = useRef<Record<string, boolean>>({
+    beginning_of_day: false,
+    end_of_day: false,
+    operating_systems: false,
+    equipment_checks: false,
+    structure_checks: false,
+    environment_checks: false,
+  });
+
   // Auto-save debounce timer (declared early for useEmergencySave)
   const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
   const autoSaveIntervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -403,6 +414,13 @@ export default function DailyAssessmentForm() {
         ]);
 
         isInternalUpdateRef.current = true;
+        // Track successful loads — arrays with data came from real IndexedDB reads
+        if (bodData.length > 0) childDataLoadedRef.current.beginning_of_day = true;
+        if (eodData.length > 0) childDataLoadedRef.current.end_of_day = true;
+        if (osData.length > 0) childDataLoadedRef.current.operating_systems = true;
+        if (eqData.length > 0) childDataLoadedRef.current.equipment_checks = true;
+        if (stData.length > 0) childDataLoadedRef.current.structure_checks = true;
+        if (envData.length > 0) childDataLoadedRef.current.environment_checks = true;
         setBeginningOfDay(bodData);
         setEndOfDay(eodData);
         setOperatingSystems(osData);
@@ -428,6 +446,9 @@ export default function DailyAssessmentForm() {
             for (const [childType, childData] of Object.entries(backup.children)) {
               if (Array.isArray(childData) && childData.length > 0) {
                 saveAssessmentDataOffline(childType as any, id!, childData).catch(() => {});
+                if (childType in childDataLoadedRef.current) {
+                  childDataLoadedRef.current[childType] = true;
+                }
               }
             }
             setBeginningOfDay(backup.children.beginning_of_day || []);
@@ -494,6 +515,13 @@ export default function DailyAssessmentForm() {
 
           // Vector 2: Non-regression guard — don't overwrite local data with empty server arrays
           isInternalUpdateRef.current = true;
+          // Mark all child types as loaded when server data is applied
+          childDataLoadedRef.current.beginning_of_day = true;
+          childDataLoadedRef.current.end_of_day = true;
+          childDataLoadedRef.current.operating_systems = true;
+          childDataLoadedRef.current.equipment_checks = true;
+          childDataLoadedRef.current.structure_checks = true;
+          childDataLoadedRef.current.environment_checks = true;
           const { saveDailyAssessmentOffline, saveAssessmentDataOffline } = await import('@/lib/offline-storage');
           saveDailyAssessmentOffline({ ...assessmentData, synced_at: assessmentData.synced_at || new Date().toISOString() }).catch(e =>
             console.warn('[DailyAssessmentForm] Non-critical: failed to cache assessment', e)
@@ -629,16 +657,24 @@ export default function DailyAssessmentForm() {
       }
       
       // Save related data offline (fire-and-forget for UI responsiveness)
+      // Guard: Only write child data if it was successfully loaded OR has items
       if (offlineStorage) {
         if (import.meta.env.DEV) console.log('[Save] Saving to offline storage...');
-        Promise.all([
-          offlineStorage.saveAssessmentDataOffline('beginning_of_day', id!, beginningOfDay),
-          offlineStorage.saveAssessmentDataOffline('end_of_day', id!, endOfDay),
-          offlineStorage.saveAssessmentDataOffline('operating_systems', id!, operatingSystems),
-          offlineStorage.saveAssessmentDataOffline('equipment_checks', id!, equipmentChecks),
-          offlineStorage.saveAssessmentDataOffline('structure_checks', id!, structureChecks),
-          offlineStorage.saveAssessmentDataOffline('environment_checks', id!, environmentChecks),
-        ]).then(() => {
+        const childOps: Promise<any>[] = [];
+        const guardedSave = (key: string, data: any[]) => {
+          if (data.length > 0 || childDataLoadedRef.current[key]) {
+            childOps.push(offlineStorage.saveAssessmentDataOffline(key, id!, data));
+          } else {
+            console.warn(`[DailyAssessment Save] Skipping ${key} save — empty array not confirmed as loaded`);
+          }
+        };
+        guardedSave('beginning_of_day', beginningOfDay);
+        guardedSave('end_of_day', endOfDay);
+        guardedSave('operating_systems', operatingSystems);
+        guardedSave('equipment_checks', equipmentChecks);
+        guardedSave('structure_checks', structureChecks);
+        guardedSave('environment_checks', environmentChecks);
+        Promise.all(childOps).then(() => {
           if (import.meta.env.DEV) console.log('[Save] Offline storage completed');
            // Layer 1: localStorage snapshot backup
            try {

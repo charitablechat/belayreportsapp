@@ -183,6 +183,16 @@ export default function InspectionForm() {
 
   // Track if auto-population has run for this inspection
   const autoPopulatedRef = useRef<string | null>(null);
+
+  // Track which child data types loaded successfully (not from timeout fallback)
+  // Prevents destructive auto-save of timeout-sourced empty arrays
+  const childDataLoadedRef = useRef<Record<string, boolean>>({
+    systems: false,
+    ziplines: false,
+    equipment: false,
+    standards: false,
+    summary: false,
+  });
   
   // Track for real-time summary regeneration
   const summaryRegenerateTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -880,6 +890,10 @@ export default function InspectionForm() {
             for (const [childType, childData] of Object.entries(backup.children)) {
               if (Array.isArray(childData) && childData.length > 0) {
                 saveRelatedDataOffline(childType as any, id!, childData).catch(() => {});
+                // Mark restored child types as loaded
+                if (childType in childDataLoadedRef.current) {
+                  childDataLoadedRef.current[childType] = true;
+                }
               }
             }
           }
@@ -913,7 +927,12 @@ export default function InspectionForm() {
 
       // Mark as internal update to prevent change tracker from firing
       isInternalUpdateRef.current = true;
+
+      // Track successful loads vs timeout fallbacks
+      // If the entire Promise.all timed out, ALL arrays are empty fallbacks
+      // If individual arrays have data, they came from real reads
       if (offlineSystems.length > 0) {
+        childDataLoadedRef.current.systems = true;
         const normalizedSystems = offlineSystems.map(item => ({
           ...item,
           result: normalizeResultValue(item.result)
@@ -921,6 +940,7 @@ export default function InspectionForm() {
         setSystems(normalizedSystems);
       }
       if (offlineZiplines.length > 0) {
+        childDataLoadedRef.current.ziplines = true;
         const normalizedZiplines = offlineZiplines.map(item => ({
           ...item,
           result: normalizeResultValue(item.result),
@@ -931,14 +951,19 @@ export default function InspectionForm() {
         setZiplines(normalizedZiplines);
       }
       if (offlineEquipment.length > 0) {
+        childDataLoadedRef.current.equipment = true;
         const normalizedEquipment = offlineEquipment.map(item => ({
           ...item,
           result: normalizeResultValue(item.result)
         }));
         setEquipment(normalizedEquipment);
       }
-      if (offlineStandards.length > 0) setStandards(offlineStandards);
+      if (offlineStandards.length > 0) {
+        childDataLoadedRef.current.standards = true;
+        setStandards(offlineStandards);
+      }
       if (offlineSummary.length > 0) {
+        childDataLoadedRef.current.summary = true;
         setSummary(offlineSummary[0]);
       } else {
         // Initialize summary with required fields if it doesn't exist
@@ -1094,6 +1119,13 @@ export default function InspectionForm() {
           const { data: systemsData } = systemsResult;
           // Mark as internal update to prevent change tracker from firing
           isInternalUpdateRef.current = true;
+          // Mark all child types as loaded when server data is applied
+          // (server is the source of truth in this branch)
+          childDataLoadedRef.current.systems = true;
+          childDataLoadedRef.current.ziplines = true;
+          childDataLoadedRef.current.equipment = true;
+          childDataLoadedRef.current.standards = true;
+          childDataLoadedRef.current.summary = true;
           if (systemsData && systemsData.length > 0) {
             const normalizedSystems = systemsData.map(item => ({
               ...item,
@@ -1310,14 +1342,37 @@ export default function InspectionForm() {
       setInspection(inspectionToSave);
       let localSaveSucceeded = false;
       try {
-        await Promise.all([
+        // Guard: Only write child data if it was successfully loaded OR has items
+        // This prevents timeout-sourced empty arrays from overwriting real IndexedDB data
+        const childSaveOps: Promise<void>[] = [
           saveInspectionOffline(inspectionToSave),
-          saveRelatedDataOffline('systems', id!, systems),       // ALL systems, not filtered
-          saveRelatedDataOffline('ziplines', id!, ziplines),     // ALL ziplines, not filtered
-          saveRelatedDataOffline('equipment', id!, equipment),   // ALL equipment, not filtered
-          saveRelatedDataOffline('standards', id!, standards),
-          saveRelatedDataOffline('summary', id!, [summary]),
-        ]);
+        ];
+        if (systems.length > 0 || childDataLoadedRef.current.systems) {
+          childSaveOps.push(saveRelatedDataOffline('systems', id!, systems));
+        } else {
+          console.warn('[InspectionForm Save] Skipping systems save — empty array not confirmed as loaded');
+        }
+        if (ziplines.length > 0 || childDataLoadedRef.current.ziplines) {
+          childSaveOps.push(saveRelatedDataOffline('ziplines', id!, ziplines));
+        } else {
+          console.warn('[InspectionForm Save] Skipping ziplines save — empty array not confirmed as loaded');
+        }
+        if (equipment.length > 0 || childDataLoadedRef.current.equipment) {
+          childSaveOps.push(saveRelatedDataOffline('equipment', id!, equipment));
+        } else {
+          console.warn('[InspectionForm Save] Skipping equipment save — empty array not confirmed as loaded');
+        }
+        if (standards.length > 0 || childDataLoadedRef.current.standards) {
+          childSaveOps.push(saveRelatedDataOffline('standards', id!, standards));
+        } else {
+          console.warn('[InspectionForm Save] Skipping standards save — empty array not confirmed as loaded');
+        }
+        if ([summary].length > 0 || childDataLoadedRef.current.summary) {
+          childSaveOps.push(saveRelatedDataOffline('summary', id!, [summary]));
+        } else {
+          console.warn('[InspectionForm Save] Skipping summary save — empty array not confirmed as loaded');
+        }
+        await Promise.all(childSaveOps);
         localSaveSucceeded = true;
         console.log('[InspectionForm Save] Offline storage completed');
 
