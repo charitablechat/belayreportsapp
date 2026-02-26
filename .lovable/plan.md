@@ -1,92 +1,63 @@
 
 
-## Fix Background Sync False-Success Bug
+## Remaining Gaps in the Sync Pipeline
 
-### Problem
-The `executeTransaction()` function and `align_synced_at` error handling in the atomic sync manager allow reports to be marked as "synced" locally even when 0 rows were written to the server. This is the root cause of the Marine Military Academy report (and potentially others) appearing synced on the mobile laptop but missing from the central database.
+After reviewing all the code changes and the current state of the sync pipeline, here are the gaps that still exist:
 
-### Safety Confirmation
-These changes are strictly additive and defensive. No existing data loss protections are modified or removed:
-- No DELETE calls introduced
-- No destructive operations added
-- Triple-Copy Backup, Emergency Save, Write-Ahead Log, regression guards all untouched
-- The only behavioral change: records that previously got falsely marked "synced" will now correctly stay "unsynced" and keep retrying
+### Gap 1: Service Worker Has No Row-Count Verification
 
----
+The main-thread `transaction-manager.ts` now verifies that writes return rows (`.select('id')` + row-count check). But the service worker (`sw-sync.js`) uses raw `fetch()` calls and does **not** verify the response body contains actual rows.
 
-### Change 1: Row-Count Verification in `transaction-manager.ts`
+**Specifically:**
+- `syncInspectionWithTransaction()` (line 133): The PATCH to inspections checks `inspResponse.ok` but does not verify the response body contains a returned row. A PATCH to a non-existent ID returns `200 OK` with an **empty array** `[]`.
+- `upsertRelatedData()` (line 98): Uses `return=representation` but never checks that the response body actually contains rows.
+- Same issue in the training and daily assessment sync functions (lines 397, 425, 515, 543).
 
-**File:** `src/lib/transaction-manager.ts`
+**Risk:** If the service worker fires while the user's JWT is expired or the record ID doesn't match RLS, the server returns `200 []` (success with 0 rows affected), and the SW marks the record as synced locally.
 
-Add `.select('id')` to `upsert` and `update` operations, then verify that at least 1 row was returned. For batch operations (arrays), verify the returned count matches the input count.
+### Gap 2: Service Worker Uses Anon Key Instead of User's JWT
 
-```text
-Current (broken):
-  case 'upsert':
-    result = await supabase.from(table).upsert(data);  // no verification
-    break;
+The service worker hardcodes `Authorization: Bearer ${supabaseKey}` where `supabaseKey` is the **anon key** (lines 109, 138, etc.). This means all SW writes authenticate as the anonymous role, not the logged-in user. RLS policies that check `auth.uid()` will silently reject these writes, returning empty arrays.
 
-Fixed:
-  case 'upsert':
-    result = await supabase.from(table).upsert(data).select('id');
-    // After the switch: verify result.data has rows
-    break;
-```
+This is likely a **contributing factor** to the Marine Military Academy issue: the main thread sync could fail/timeout, the SW picks up the sync event, writes with the anon key, gets `200 []` back (RLS blocks it), but still marks it as synced locally.
 
-After the switch statement, add a row-count check:
-- For single-item operations: throw if `result.data` is null or empty
-- For batch operations (Array.isArray(step.data)): throw if returned count < input count
-- Skip verification for `delete` operations (already protected by REPORT_TABLE_BLOCKLIST)
+### Gap 3: No Post-Sync Verification in Service Worker
 
-### Change 2: Strict `align_synced_at` Handling in `atomic-sync-manager.ts`
+The main thread now does a post-transaction verification read (checking the record exists on the server after sync). The service worker has no such check -- it trusts that if `syncStampResponse.ok` is true, the sync succeeded. But as noted in Gap 1, `ok` can be true with 0 rows affected.
 
-**File:** `src/lib/atomic-sync-manager.ts`
+### Gap 4: Service Worker PATCH Can Silently Affect 0 Rows
 
-In all three sync functions (inspections, trainings, daily assessments), change the `align_synced_at` RPC error handling:
+Lines 133-144 and 158-169 in `sw-sync.js` use `PATCH` with `?id=eq.{id}` filter. If the record doesn't exist on the server yet (new record created offline), PATCH returns `200 []` -- it matches 0 rows and updates nothing. The SW then proceeds to upsert children and mark as synced, creating orphaned child records with no parent.
 
-**Current (broken):**
-- If RPC returns null -> falls back to `new Date().toISOString()` -> marks record as synced
-- If RPC throws -> catches error, uses fake timestamp -> marks record as synced
-
-**Fixed:**
-- If RPC returns null or error response -> throw an error with message "Sync verification failed: server record not found"
-- If RPC throws -> re-throw the error (don't swallow it)
-- This causes the sync attempt to fail, leaving the local record as "unsynced" so it retries on the next cycle
-
-### Change 3: Post-Transaction Server Verification in `atomic-sync-manager.ts`
-
-**File:** `src/lib/atomic-sync-manager.ts`
-
-After `executeTransaction` reports success in each sync function, add a lightweight read-back:
-
-```typescript
-const { data: verify } = await supabase
-  .from('inspections')  // or 'trainings' / 'daily_assessments'
-  .select('id, synced_at')
-  .eq('id', recordId)
-  .maybeSingle();
-
-if (!verify) {
-  throw new Error('Post-sync verification failed: record not found on server');
-}
-```
-
-This catches the edge case where the transaction "succeeded" but RLS silently blocked all writes. If verification fails, the record stays unsynced and retries.
+The main-thread code handles this via `upsert` (which creates if not exists). The SW uses `PATCH` (which only updates existing records).
 
 ---
 
-### Files Modified
+### Proposed Fixes
 
-| File | Type of Change |
-|------|---------------|
-| `src/lib/transaction-manager.ts` | Add `.select('id')` + row-count verification to upsert/update cases |
-| `src/lib/atomic-sync-manager.ts` | Fix align_synced_at null handling; add post-transaction verification read |
+**File: `public/sw-sync.js`**
+
+1. **Add response body verification to all PATCH and upsert calls**: After each `fetch()`, parse the JSON response and verify at least 1 row was returned. If 0 rows, throw an error instead of continuing.
+
+2. **Add post-sync verification read**: After the final sync-stamp PATCH, do a GET to verify the record exists on the server with a non-null `synced_at`.
+
+3. **Switch inspection parent write from PATCH to POST+upsert**: Use `POST` with `Prefer: resolution=merge-duplicates` (same as `upsertRelatedData`) instead of `PATCH` for the parent record, so new records created offline are properly inserted.
+
+**Changes are strictly additive and defensive:**
+- No local data is modified or deleted
+- No existing protections are removed
+- The only behavioral change: SW sync attempts that silently wrote 0 rows will now correctly fail and leave the record as "unsynced" for retry by the main thread
+
+### Files to Modify
+
+| File | Change |
+|------|--------|
+| `public/sw-sync.js` | Add row-count verification to all fetch responses; add post-sync verification read; switch parent PATCH to upsert for new records |
 
 ### What Stays Unchanged
-- All three report form files (InspectionForm, TrainingForm, DailyAssessmentForm) - already fixed in prior commit
-- IndexedDB circuit breaker, timeout logic, error boundaries
-- Triple-Copy Backup, Emergency Save, Write-Ahead Log
-- Empty-array and field-count regression guards
-- REPORT_TABLE_BLOCKLIST preventing DELETEs
-- All RLS policies and database triggers/functions
+
+- All main-thread sync code (already fixed)
+- All IndexedDB data on the laptop
+- Triple-Copy Backup, Emergency Save, WAL, regression guards
+- No destructive operations added
 
