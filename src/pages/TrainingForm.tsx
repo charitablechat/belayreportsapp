@@ -149,6 +149,16 @@ export default function TrainingForm() {
 
   const autoSaveTimer = useRef<NodeJS.Timeout | null>(null);
   const isInternalUpdateRef = useRef(false);
+
+  // Track which child data types loaded successfully (not from timeout fallback)
+  const childDataLoadedRef = useRef<Record<string, boolean>>({
+    delivery_approaches: false,
+    operating_systems: false,
+    immediate_attention: false,
+    verifiable_items: false,
+    systems_in_place: false,
+    summary: false,
+  });
   const [htmlViewerOpen, setHtmlViewerOpen] = useState(false);
   const [reportHtml, setReportHtml] = useState<string>('');
   const [currentUser, setCurrentUser] = useState<any>(null);
@@ -379,6 +389,13 @@ export default function TrainingForm() {
           isInternalUpdateRef.current = true;
           setTraining(offlineTraining);
           setInspectorId(offlineTraining.inspector_id);
+          // Track successful loads — arrays with data came from real IndexedDB reads
+          if (delivery_approaches && delivery_approaches.length > 0) childDataLoadedRef.current.delivery_approaches = true;
+          if (operating_systems && operating_systems.length > 0) childDataLoadedRef.current.operating_systems = true;
+          if (immediate_attention && immediate_attention.length > 0) childDataLoadedRef.current.immediate_attention = true;
+          if (verifiable_items && verifiable_items.length > 0) childDataLoadedRef.current.verifiable_items = true;
+          if (systems_in_place && systems_in_place.length > 0) childDataLoadedRef.current.systems_in_place = true;
+          if (summaryData) childDataLoadedRef.current.summary = true;
           setDeliveryApproaches(delivery_approaches || []);
           setOperatingSystems(operating_systems || []);
           setImmediateAttention(immediate_attention || []);
@@ -403,6 +420,9 @@ export default function TrainingForm() {
               for (const [childType, childData] of Object.entries(backup.children)) {
                 if (Array.isArray(childData) && childData.length > 0) {
                   saveTrainingDataOffline(childType as any, id, childData).catch(() => {});
+                  if (childType in childDataLoadedRef.current) {
+                    childDataLoadedRef.current[childType] = true;
+                  }
                 }
               }
               setDeliveryApproaches(backup.children.delivery_approaches || []);
@@ -479,6 +499,13 @@ export default function TrainingForm() {
 
             // Vector 2: Non-regression guard — don't overwrite local data with empty server arrays
             isInternalUpdateRef.current = true;
+            // Mark all child types as loaded when server data is applied
+            childDataLoadedRef.current.delivery_approaches = true;
+            childDataLoadedRef.current.operating_systems = true;
+            childDataLoadedRef.current.immediate_attention = true;
+            childDataLoadedRef.current.verifiable_items = true;
+            childDataLoadedRef.current.systems_in_place = true;
+            childDataLoadedRef.current.summary = true;
             if (approachData && approachData.length > 0) {
               setDeliveryApproaches(approachData);
               saveTrainingDataOffline('delivery_approaches', id, approachData).catch(e =>
@@ -582,15 +609,37 @@ export default function TrainingForm() {
       };
 
       // Save offline (fire-and-forget for UI responsiveness)
-      Promise.all([
-        saveTrainingOffline(updatedTraining),
-        saveTrainingDataOffline('delivery_approaches', id, deliveryApproaches),
-        saveTrainingDataOffline('operating_systems', id, operatingSystems),
-        saveTrainingDataOffline('immediate_attention', id, immediateAttention),
-        saveTrainingDataOffline('verifiable_items', id, verifiableItems),
-        saveTrainingDataOffline('systems_in_place', id, systemsInPlace),
-        summary && saveTrainingDataOffline('summary', id, summary)
-      ]).then(() => {
+      // Guard: Only write child data if it was successfully loaded OR has items
+      const childOps: Promise<any>[] = [saveTrainingOffline(updatedTraining)];
+      if (deliveryApproaches.length > 0 || childDataLoadedRef.current.delivery_approaches) {
+        childOps.push(saveTrainingDataOffline('delivery_approaches', id, deliveryApproaches));
+      } else {
+        console.warn('[Training Save] Skipping delivery_approaches save — empty array not confirmed as loaded');
+      }
+      if (operatingSystems.length > 0 || childDataLoadedRef.current.operating_systems) {
+        childOps.push(saveTrainingDataOffline('operating_systems', id, operatingSystems));
+      } else {
+        console.warn('[Training Save] Skipping operating_systems save — empty array not confirmed as loaded');
+      }
+      if (immediateAttention.length > 0 || childDataLoadedRef.current.immediate_attention) {
+        childOps.push(saveTrainingDataOffline('immediate_attention', id, immediateAttention));
+      } else {
+        console.warn('[Training Save] Skipping immediate_attention save — empty array not confirmed as loaded');
+      }
+      if (verifiableItems.length > 0 || childDataLoadedRef.current.verifiable_items) {
+        childOps.push(saveTrainingDataOffline('verifiable_items', id, verifiableItems));
+      } else {
+        console.warn('[Training Save] Skipping verifiable_items save — empty array not confirmed as loaded');
+      }
+      if (systemsInPlace.length > 0 || childDataLoadedRef.current.systems_in_place) {
+        childOps.push(saveTrainingDataOffline('systems_in_place', id, systemsInPlace));
+      } else {
+        console.warn('[Training Save] Skipping systems_in_place save — empty array not confirmed as loaded');
+      }
+      if (summary && (childDataLoadedRef.current.summary || summary.observations || summary.recommendations)) {
+        childOps.push(saveTrainingDataOffline('summary', id, summary));
+      }
+      Promise.all(childOps).then(() => {
         if (import.meta.env.DEV) console.log('[Training Save] Offline storage completed');
         // Layer 1: localStorage snapshot backup
         try {
