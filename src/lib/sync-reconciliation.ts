@@ -54,7 +54,16 @@ export async function reconcileChildTable({
       .filter((id): id is string => !!id && !id.startsWith('temp-'))
   );
 
-  // 3. Find server rows not in local state (these were deleted by user)
+  // 3. Partial-read detection: if local has < 50% of server rows, skip reconciliation
+  const localCount = localItems.filter(i => i.id && !i.id.startsWith('temp-')).length;
+  const serverCount = serverRows.length;
+
+  if (serverCount > 2 && localCount > 0 && localCount < serverCount * 0.5) {
+    console.warn(`[Reconcile] BLOCKED: ${childTable} local has ${localCount}/${serverCount} rows -- possible partial read, preserving server data`);
+    return { deletedCount: 0, deletedRows: [] };
+  }
+
+  // 4. Find server rows not in local state (these were deleted by user)
   const rowsToDelete = serverRows.filter((row: any) => !localIdSet.has(row.id));
 
   if (rowsToDelete.length === 0) {
