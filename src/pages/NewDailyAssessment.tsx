@@ -108,6 +108,12 @@ export default function NewDailyAssessment() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Block all writes in Lovable preview to protect production data
+    if ((await import('@/lib/environment')).isLovablePreview()) {
+      toast.info("Preview mode", { description: "Changes are not saved in the Lovable preview." });
+      return;
+    }
     
     // Phase 5: Prevent double submission
     if (isSubmitting.current || loading) {

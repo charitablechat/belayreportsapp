@@ -629,6 +629,8 @@ export default function DailyAssessmentForm() {
 
   // Save progress without completing - keeps status as draft
   const handleSaveProgress = async () => {
+    // Block all writes in Lovable preview to protect production data
+    if ((await import('@/lib/environment')).isLovablePreview()) return;
     // Prevent duplicate save calls
     if (saveInProgressRef.current) {
       if (import.meta.env.DEV) console.log('[Save] Save already in progress, skipping');

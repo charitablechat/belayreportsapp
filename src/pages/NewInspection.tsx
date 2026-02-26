@@ -126,6 +126,12 @@ export default function NewInspection() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    // Block all writes in Lovable preview to protect production data
+    if ((await import('@/lib/environment')).isLovablePreview()) {
+      toast.info("Preview mode", { description: "Changes are not saved in the Lovable preview." });
+      return;
+    }
+
     if (!formData.organization.trim() || !formData.location.trim()) {
       toast.error("Required fields missing", {
         description: "Organization and Location are required."

@@ -1234,6 +1234,8 @@ export default function InspectionForm() {
   };
 
   const performSave = async (silent: boolean = false) => {
+    // Block all writes in Lovable preview to protect production data
+    if ((await import('@/lib/environment')).isLovablePreview()) return;
     // Mutex guard: prevent concurrent saves from auto-save, emergency save, and interval timer
     if (anySaveInProgressRef.current) {
       if (import.meta.env.DEV) console.log('[InspectionForm] performSave skipped - another save in progress');
