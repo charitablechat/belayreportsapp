@@ -7,7 +7,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { getUserWithCache, getOfflineUserId } from "@/lib/cached-auth";
 import { useFormConfiguration } from "@/hooks/useFormConfiguration";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Save, FileText, Loader2, WifiOff, Check, Sunrise, Sunset, Settings, Package, Building, Cloud, LogOut, User, CloudOff, CheckCircle, Camera, RefreshCw } from "lucide-react";
+import { ArrowLeft, Save, FileText, Loader2, WifiOff, Check, Sunrise, Sunset, Settings, Package, Building, Cloud, LogOut, User, CloudOff, CheckCircle, Camera, RefreshCw, AlertTriangle } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { AutoSaveIndicator } from "@/components/AutoSaveIndicator";
@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import ropeWorksLogo from "@/assets/rope-works-logo.png";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
+import { useStorageHealthCheck } from "@/hooks/useStorageHealthCheck";
 
 import DailyAssessmentHeader from "@/components/daily-assessment/DailyAssessmentHeader";
 import BeginningOfDaySection from "@/components/daily-assessment/BeginningOfDaySection";
@@ -72,6 +73,7 @@ export default function DailyAssessmentForm() {
   const { isOnline } = useNetworkStatus();
   const isMobileView = useIsMobile();
   const { syncReport } = useReportSync(id, 'daily_assessment');
+  const storageUnavailable = useStorageHealthCheck();
   
   // Check edit permissions - Super Admins are view-only, only owners can edit
   const [inspectorId, setInspectorId] = useState<string | null>(null);
@@ -674,19 +676,20 @@ export default function DailyAssessmentForm() {
         guardedSave('equipment_checks', equipmentChecks);
         guardedSave('structure_checks', structureChecks);
         guardedSave('environment_checks', environmentChecks);
+        // Layer 1: localStorage snapshot backup FIRST (before IndexedDB writes)
+        try {
+          saveReportSnapshot('daily_assessment', id!, assessment, {
+            beginning_of_day: beginningOfDay,
+            end_of_day: endOfDay,
+            operating_systems: operatingSystems,
+            equipment_checks: equipmentChecks,
+            structure_checks: structureChecks,
+            environment_checks: environmentChecks,
+          }, false);
+        } catch {}
+
         Promise.all(childOps).then(() => {
           if (import.meta.env.DEV) console.log('[Save] Offline storage completed');
-           // Layer 1: localStorage snapshot backup
-           try {
-             saveReportSnapshot('daily_assessment', id!, assessment, {
-               beginning_of_day: beginningOfDay,
-               end_of_day: endOfDay,
-               operating_systems: operatingSystems,
-               equipment_checks: equipmentChecks,
-               structure_checks: structureChecks,
-               environment_checks: environmentChecks,
-             }, false);
-           } catch {}
 
            // Layer 2: Append-only version history
            appendVersion('daily_assessment', id!, assessment, {
@@ -1352,6 +1355,41 @@ export default function DailyAssessmentForm() {
                   Changes will be saved locally and synced when you're back online
                 </p>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Storage Unavailable Banner (Vector A) */}
+      {storageUnavailable && (
+        <div className="bg-destructive/10 border-b border-destructive/20">
+          <div className="container mx-auto px-4 py-3">
+            <div className="flex items-center gap-3">
+              <AlertTriangle className="w-5 h-5 text-destructive shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-destructive">
+                  Local storage unavailable
+                </p>
+                <p className="text-xs text-destructive/80 mt-0.5">
+                  Your changes are at risk. Please stay connected to sync your work.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Offline Empty Data Banner (Vector E) */}
+      {!isOnline && !loading && beginningOfDay.length === 0 && endOfDay.length === 0 &&
+        equipmentChecks.length === 0 && !childDataLoadedRef.current.beginning_of_day && 
+        !childDataLoadedRef.current.end_of_day && !childDataLoadedRef.current.equipment_checks && (
+        <div className="bg-muted border-b border-border">
+          <div className="container mx-auto px-4 py-3">
+            <div className="flex items-center gap-3">
+              <WifiOff className="w-5 h-5 text-muted-foreground shrink-0" />
+              <p className="text-sm text-muted-foreground">
+                Assessment details not available offline. Connect to the internet to load full data.
+              </p>
             </div>
           </div>
         </div>

@@ -17,7 +17,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { ArrowLeft, Save, CheckCircle, Loader2, WifiOff, CloudOff, LogOut, User, FileText, Settings, Package, ClipboardList, FileCheck, RefreshCw } from "lucide-react";
+import { ArrowLeft, Save, CheckCircle, Loader2, WifiOff, CloudOff, LogOut, User, FileText, Settings, Package, ClipboardList, FileCheck, RefreshCw, AlertTriangle } from "lucide-react";
 import { AutoSaveIndicator } from "@/components/AutoSaveIndicator";
 import { useActiveTimer } from "@/hooks/useActiveTimer";
 import { ActiveTimerDisplay } from "@/components/ActiveTimerDisplay";
@@ -42,6 +42,7 @@ import { validateInspectionPackage } from "@/lib/validation-schemas";
 import { reconcileAllChildTables } from "@/lib/sync-reconciliation";
 import { cn } from "@/lib/utils";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
+import { useStorageHealthCheck } from "@/hooks/useStorageHealthCheck";
 
 import { usePWA } from "@/hooks/usePWA";
 import { ForceSyncButton } from "@/components/pwa/ForceSyncButton";
@@ -82,6 +83,7 @@ export default function InspectionForm() {
   const { isOnline } = useNetworkStatus();
   const { isSyncing } = usePWA();
   const isMobileView = useIsMobile();
+  const storageUnavailable = useStorageHealthCheck();
   const { syncReport } = useReportSync(id, 'inspection');
   
   // Check edit permissions - Super Admins are view-only, only owners can edit
@@ -1372,11 +1374,8 @@ export default function InspectionForm() {
         } else {
           console.warn('[InspectionForm Save] Skipping summary save — empty array not confirmed as loaded');
         }
-        await Promise.all(childSaveOps);
-        localSaveSucceeded = true;
-        console.log('[InspectionForm Save] Offline storage completed');
-
-        // Layer 1: localStorage snapshot backup (survives IndexedDB eviction)
+        // Layer 1: localStorage snapshot backup FIRST (survives IndexedDB eviction)
+        // Written BEFORE IndexedDB writes complete so backup always has latest React state
         try {
           saveReportSnapshot('inspection', id!, inspectionToSave, {
             systems, ziplines, equipment, standards, summary: [summary],
@@ -1384,6 +1383,10 @@ export default function InspectionForm() {
         } catch {
           // Never let snapshot failure block the save
         }
+
+        await Promise.all(childSaveOps);
+        localSaveSucceeded = true;
+        console.log('[InspectionForm Save] Offline storage completed');
 
         // Layer 2: Append-only version history (fire-and-forget)
         appendVersion('inspection', id!, inspectionToSave, {
@@ -2319,6 +2322,40 @@ export default function InspectionForm() {
                   Changes will be saved locally and synced when you're back online
                 </p>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Storage Unavailable Banner (Vector A: circuit breaker tripped) */}
+      {storageUnavailable && (
+        <div className="bg-destructive/10 border-b border-destructive/20">
+          <div className="container mx-auto px-4 py-3">
+            <div className="flex items-center gap-3">
+              <AlertTriangle className="w-5 h-5 text-destructive shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-destructive">
+                  Local storage unavailable
+                </p>
+                <p className="text-xs text-destructive/80 mt-0.5">
+                  Your changes are at risk. Please stay connected to sync your work.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Offline Empty Data Banner (Vector E: child data unavailable offline) */}
+      {!isOnline && !loading && systems.length === 0 && ziplines.length === 0 && equipment.length === 0 &&
+        !childDataLoadedRef.current.systems && !childDataLoadedRef.current.ziplines && !childDataLoadedRef.current.equipment && (
+        <div className="bg-muted border-b border-border">
+          <div className="container mx-auto px-4 py-3">
+            <div className="flex items-center gap-3">
+              <WifiOff className="w-5 h-5 text-muted-foreground shrink-0" />
+              <p className="text-sm text-muted-foreground">
+                Report details not available offline. Connect to the internet to load full data.
+              </p>
             </div>
           </div>
         </div>

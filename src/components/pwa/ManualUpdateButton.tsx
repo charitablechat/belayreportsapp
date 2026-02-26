@@ -25,9 +25,10 @@ import { toast } from 'sonner';
 const UPDATE_FLAG_KEY = 'pwa-update-pending';
 
 export const ManualUpdateButton = () => {
-  const { needsUpdate, updateAndReload } = usePWA();
+  const { needsUpdate, updateAndReload, unsyncedCount, forceSync, isSyncing } = usePWA();
   const [checking, setChecking] = useState(false);
   const [showForceRefreshDialog, setShowForceRefreshDialog] = useState(false);
+  const [showUnsyncedWarning, setShowUnsyncedWarning] = useState(false);
   const previousNeedsUpdate = useRef(needsUpdate);
 
   // Check if app was just updated after reload
@@ -103,6 +104,34 @@ export const ManualUpdateButton = () => {
     }
   };
 
+  const handleForceRefreshRequest = () => {
+    if (unsyncedCount > 0) {
+      setShowUnsyncedWarning(true);
+    } else {
+      setShowForceRefreshDialog(true);
+    }
+  };
+
+  const handleSyncFirst = async () => {
+    setShowUnsyncedWarning(false);
+    toast.loading('Syncing data...', { id: 'sync-first' });
+    try {
+      await forceSync();
+      toast.dismiss('sync-first');
+      toast.success('Sync complete!', { description: 'You can now safely force refresh.' });
+      triggerHaptic('success');
+    } catch {
+      toast.dismiss('sync-first');
+      toast.error('Sync failed', { description: 'Please try again or proceed with caution.' });
+      triggerHaptic('warning');
+    }
+  };
+
+  const handleForceRefreshAnyway = () => {
+    setShowUnsyncedWarning(false);
+    setShowForceRefreshDialog(true);
+  };
+
   const handleForceRefresh = async () => {
     setShowForceRefreshDialog(false);
     toast.loading('Clearing cache...', { id: 'force-refresh' });
@@ -169,7 +198,7 @@ export const ManualUpdateButton = () => {
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem
-              onClick={() => setShowForceRefreshDialog(true)}
+              onClick={handleForceRefreshRequest}
               className="text-destructive"
             >
               <Trash2 className="w-4 h-4 mr-2" />
@@ -191,6 +220,26 @@ export const ManualUpdateButton = () => {
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={handleForceRefresh}>
               Clear Cache & Reload
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={showUnsyncedWarning} onOpenChange={setShowUnsyncedWarning}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Unsynced Data Detected</AlertDialogTitle>
+            <AlertDialogDescription>
+              You have {unsyncedCount} unsynced report{unsyncedCount !== 1 ? 's' : ''}. Force refreshing will not delete your data, but the app won't work offline until you reconnect. We recommend syncing first.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleSyncFirst} disabled={isSyncing}>
+              {isSyncing ? 'Syncing...' : 'Sync First'}
+            </AlertDialogAction>
+            <AlertDialogAction onClick={handleForceRefreshAnyway} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Force Refresh Anyway
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
