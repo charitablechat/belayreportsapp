@@ -1,82 +1,128 @@
 
 
-## Root Cause: IndexedDB Timeout Fallbacks Erased Real Data
+## Comprehensive Data Loss Audit
 
-### What Happened
+After a thorough review of every file involved in data persistence, synchronization, and deletion, here is a complete inventory of every path where data can be lost, along with the current mitigation status and proposed fixes for unmitigated vectors.
 
-The Marine Military Academy data loss followed this sequence:
+---
 
-1. User edited the report for ~1.5 hours. Child data (systems, ziplines, equipment) was saved to IndexedDB successfully.
-2. The Service Worker performed a "false-success" sync -- parent shell synced but child data did not reach the server. `synced_at` was stamped on the parent.
-3. Post-sync, `updated_at` was aligned to match `synced_at` in IndexedDB, making the record appear "fully synced."
-4. On next form open (online), `isLocalDataNewer()` returned `false` (timestamps aligned), so the code took the "server data is current" path.
-5. The non-regression guards correctly prevented empty server arrays from overwriting React state.
-6. **However**, the initial `getRelatedDataOffline` calls (lines 900-912) likely **timed out** (the console logs show frequent "Operation timed out after 5000ms" errors). When they timeout, the `withOfflineTimeout` wrapper returns **empty arrays** as fallback values.
-7. React state initialized with these empty arrays. The auto-save debounce (1.5s) then fired and **wrote the empty arrays back to IndexedDB**, permanently erasing the real child data.
-8. The localStorage backup ledger shows 9am as the last save because that was the last **successful** IndexedDB write before timeouts began. The 11:30pm activity was likely hitting timeout fallbacks.
+### ALREADY MITIGATED (No Action Needed)
 
-### The Core Bug
+These vectors have existing guards in place:
 
-`withIndexedDBErrorBoundary` returns `[]` (empty array) on timeout, and this is **indistinguishable** from "the user intentionally has zero items." When auto-save fires, it persists whatever is in React state -- including timeout-sourced empty arrays -- back to IndexedDB, destroying real data.
+| # | Vector | Mitigation |
+|---|--------|-----------|
+| 1 | **IndexedDB timeout returns empty array, auto-save overwrites real data** | `childDataLoadedRef` guard (just implemented) |
+| 2 | **Server empty arrays overwrite local React state** | Non-regression guards in all 3 forms |
+| 3 | **Service Worker false-success sync (shell syncs, children don't)** | 3-step deferred `synced_at`, `verifyResponseRows`, suspicious-empty guard |
+| 4 | **Empty report auto-delete on exit** | `hasUserInteracted` guard, soft-delete with 60-day retention |
+| 5 | **Dashboard orphan cleanup deletes unsynced records** | Recency check (60s/5min), sync-in-progress guard, 50% threshold, localStorage snapshot |
+| 6 | **QuotaExceededError silently drops writes** | Immediate user toast, circuit breaker excludes quota errors |
+| 7 | **Concurrent save race conditions** | Single-transaction atomic IndexedDB writes (delete + put in one tx) |
+| 8 | **Admin soft-delete removes data the user can't see** | `check_record_status` RPC bypasses RLS, pre-delete WAL backup |
+| 9 | **Field-count regression during sync** | 50% drop threshold blocks sync |
+| 10 | **Auth token expiry during sync** | `.select('id')` row-count verification, upsert fallback |
 
-### Fix: Track Timeout-Sourced Data to Prevent Destructive Auto-Save
+---
 
-**1. Add a "data loaded successfully" flag per child type** -- `src/pages/InspectionForm.tsx`
+### UNMITIGATED VECTORS FOUND (Require Fixes)
 
-Add a ref that tracks whether each child data type was loaded from a real IndexedDB read (not a timeout fallback). The auto-save function checks this flag before writing child data.
+#### Vector A: Browser "Clear Site Data" / Private Browsing Eviction
 
-```typescript
-// New ref to track which child types loaded successfully from IndexedDB
-const childDataLoadedRef = useRef<Record<string, boolean>>({
-  systems: false,
-  ziplines: false,
-  equipment: false,
-  standards: false,
-  summary: false,
-});
-```
+**Risk**: The browser can evict IndexedDB at any time (especially non-persistent storage on iOS Safari). The `localStorage` backup ledger survives this, but is limited to 4MB and only stores the LAST snapshot per report. If IndexedDB is evicted mid-session, auto-save will fail silently (circuit breaker trips) but the user won't know their data is no longer persisting.
 
-After each successful `getRelatedDataOffline` call, mark the corresponding flag as `true`. On timeout (empty fallback), the flag stays `false`.
+**Current state**: A one-time banner warns about non-persistent storage, but after dismissal, there's no ongoing indicator.
 
-**2. Guard the auto-save write path** -- `src/pages/InspectionForm.tsx`
+**Fix**: Add a periodic "storage heartbeat" check during active form editing. If IndexedDB becomes unreachable during a session (circuit breaker trips), show a persistent red banner at the top of the form: "Local storage unavailable -- your changes are at risk. Please stay connected to sync." This uses the existing `getCircuitBreakerStatus()` function.
 
-In the `performSave` function, skip writing child data for any type where `childDataLoadedRef.current[type] === false` AND the React state array is empty. This prevents timeout-sourced empty arrays from overwriting real data in IndexedDB.
+**Files**: `src/pages/InspectionForm.tsx`, `TrainingForm.tsx`, `DailyAssessmentForm.tsx` -- add a `useEffect` that polls `getCircuitBreakerStatus()` every 30 seconds and shows a persistent alert when `open === true`.
 
-```typescript
-// In performSave, before each saveRelatedDataOffline call:
-if (systems.length > 0 || childDataLoadedRef.current.systems) {
-  await saveRelatedDataOffline('systems', id!, systems);
-}
-// Same pattern for ziplines, equipment, standards, summary
-```
+---
 
-Logic: If the array has items, always save (user has data). If the array is empty AND it was loaded successfully, save (user intentionally cleared). If the array is empty AND it was NOT loaded successfully (timeout), skip (preserve existing IndexedDB data).
+#### Vector B: `saveRelatedDataOffline` Delete-Then-Put Non-Atomicity Across Stores
 
-**3. Apply the same pattern to Training and Daily Assessment forms**
+**Risk**: `saveRelatedDataOffline` (line 1098) uses a single IndexedDB transaction that deletes all existing items and puts new ones. This IS atomic within one store. However, the form's `performSave` calls `Promise.all` across 5-6 different stores (systems, ziplines, equipment, etc.). If the page is killed mid-way (e.g., iOS kills the tab), some stores may have been updated while others haven't, leaving the report in a partially-saved state.
 
-The same timeout-to-empty-array-to-auto-save chain exists in `TrainingForm.tsx` and `DailyAssessmentForm.tsx`. Apply the identical `childDataLoadedRef` pattern.
+**Current state**: Emergency save fires on `visibilitychange`/`pagehide` but is fire-and-forget. The localStorage backup ledger is the safety net, but it only captures the state at the LAST successful IndexedDB write.
 
-**4. Mark server-sourced data as "loaded" too** -- `src/pages/InspectionForm.tsx`
+**Fix**: Update the `localStorage` snapshot to be written BEFORE the IndexedDB writes (not after). This ensures the backup always has the latest React state, even if IndexedDB writes are interrupted. Currently `saveReportSnapshot` is called after IndexedDB succeeds. Move it to fire FIRST in `performSave`.
 
-When server data arrives and is applied (the `else` branch at line 1077), also mark the corresponding child types as loaded so that subsequent saves can write them.
+**Files**: `src/pages/InspectionForm.tsx`, `TrainingForm.tsx`, `DailyAssessmentForm.tsx` -- reorder `saveReportSnapshot` call to execute before the `Promise.all` of IndexedDB writes.
 
-### Files to Modify
+---
 
-| File | Change |
-|------|--------|
-| `src/pages/InspectionForm.tsx` | Add `childDataLoadedRef`, set flags on successful loads, guard auto-save writes |
-| `src/pages/TrainingForm.tsx` | Same pattern for training child data types |
-| `src/pages/DailyAssessmentForm.tsx` | Same pattern for daily assessment child data types |
+#### Vector C: `ManualUpdateButton` "Force Refresh" Clears Service Worker Caches
 
-### What This Does NOT Change
+**Risk**: The `ManualUpdateButton` (line 116-118) calls `caches.keys()` and `caches.delete()` on ALL caches, then reloads the page. This clears the service worker app shell cache, meaning the app won't work offline until the SW repopulates. More critically, if IndexedDB is also unhealthy at this point, the user has no local persistence layer at all.
 
-- No changes to IndexedDB, sync logic, or service worker
-- No changes to the localStorage backup ledger
-- No DELETE or clear operations added
-- Existing data is never touched -- this only prevents future empty-array overwrites
-- The `withIndexedDBErrorBoundary` timeout behavior stays the same (it still returns fallbacks for UI responsiveness)
+**Current state**: A confirmation dialog warns about offline unavailability, but doesn't check for unsynced data first.
 
-### Why the Existing Guards Were Not Enough
+**Fix**: Before clearing caches, check `unsyncedCount` from PWA context. If > 0, show a warning: "You have X unsynced reports. Force refreshing will not delete your data, but the app won't work offline until you reconnect. Sync first?" Add a "Sync First" button option.
 
-The non-regression guards (lines 1097-1159) only protect against **server** empty arrays overwriting local state. They do NOT protect against **local** timeout-sourced empty arrays being auto-saved back to IndexedDB. This fix closes that gap.
+**Files**: `src/components/pwa/ManualUpdateButton.tsx` -- add unsynced-data check before cache clear.
+
+---
+
+#### Vector D: Service Worker Opens IndexedDB at Version 4, Main Thread at Version 8
+
+**Risk**: The service worker (`sw-sync.js` line 210) opens IndexedDB at version 4: `openDB('rope-works-inspections', 4)`. The main thread opens at version 8 (line 464 of `offline-storage.ts`). If the SW opens the DB first after a fresh install, it creates the DB at v4 without the v7/v8 stores (`report_backups`, `report_versions`). When the main thread later tries to open at v8, the `upgrade` callback fires and adds the missing stores. This is generally fine but creates a timing window where the SW could be reading from a DB that's mid-upgrade, potentially causing read failures that return empty arrays.
+
+**Current state**: No version alignment between SW and main thread.
+
+**Fix**: Update `sw-sync.js` to open IndexedDB at version 8 (matching the main thread). The SW doesn't need the `report_backups` or `report_versions` stores, but opening at the correct version prevents upgrade conflicts.
+
+**Files**: `public/sw-sync.js` -- change `openDB('rope-works-inspections', 4)` to `openDB('rope-works-inspections', 8)` in all 3 sync functions (lines 210, 383, 534).
+
+---
+
+#### Vector E: Dashboard Caches Server Data Without Child Records
+
+**Risk**: When the Dashboard saves server data to IndexedDB (lines 426-438), it only saves the PARENT record (inspection shell). It does NOT cache child records (systems, ziplines, etc.). If the user goes offline after the Dashboard loads, then opens a report, the form loads the parent from IndexedDB but child data may be empty (no server child data was cached locally). The `childDataLoadedRef` guard (just implemented) prevents auto-save from overwriting, but the user sees an empty form with no way to populate it offline.
+
+**Current state**: Only parent records are cached on Dashboard load. Child data is only available if the user previously opened the form while online.
+
+**Fix**: This is a UX issue rather than a data loss issue (the `childDataLoadedRef` guard prevents destructive writes). However, a "Data not available offline" banner should appear when child data fails to load AND the user is offline, informing them to reconnect.
+
+**Files**: Already partially handled by the non-regression guards. Add an informational banner in the form when offline AND all child arrays are empty AND `childDataLoadedRef` flags are all false.
+
+---
+
+#### Vector F: `localStorage` Backup Ledger Eviction Loses Only Recovery Copy
+
+**Risk**: The backup ledger has a 4MB budget and uses LRU eviction of SYNCED snapshots. Unsynced snapshots are never evicted. However, if `localStorage` itself is cleared (user clears browser data, or browser does it under storage pressure), all snapshots are lost. This is the last-resort recovery layer -- losing it means only IndexedDB and the server have data.
+
+**Current state**: Acceptable risk given it's a tertiary backup, but worth noting.
+
+**Fix**: No code change needed. The three-layer architecture (IndexedDB primary, localStorage backup, server sync) means all three would need to fail simultaneously for permanent loss. The `childDataLoadedRef` guard now prevents the most dangerous scenario (IndexedDB timeout -> empty write -> backup overwritten with empty).
+
+---
+
+#### Vector G: Photo Blob Eviction from IndexedDB
+
+**Risk**: Photo blobs stored in IndexedDB can be evicted by the browser under storage pressure (they're large). The `photo-receipts` system stores lightweight metadata in localStorage, and the `PhotoGallery` component shows warning indicators for evicted photos. However, if the photo was never uploaded to the server (offline capture), the binary data is permanently lost.
+
+**Current state**: Warning indicators exist but no re-capture prompt.
+
+**Fix**: Already mitigated with receipt system and WAL backup. The main risk is if the user never goes online to sync photos. No additional code change needed -- the existing architecture handles this correctly.
+
+---
+
+### Summary of Required Changes
+
+| Priority | Vector | Fix | Files |
+|----------|--------|-----|-------|
+| **High** | D: SW version mismatch | Change `openDB` version from 4 to 8 in SW | `public/sw-sync.js` |
+| **High** | B: localStorage snapshot timing | Write snapshot BEFORE IndexedDB writes | 3 form files |
+| **Medium** | A: Circuit breaker banner | Show persistent warning when circuit breaker trips during editing | 3 form files |
+| **Medium** | C: Force refresh unsynced check | Check unsyncedCount before cache clear | `ManualUpdateButton.tsx` |
+| **Low** | E: Offline empty-form banner | Show info banner when child data unavailable offline | 3 form files |
+| **None** | F: localStorage eviction | Acceptable risk (tertiary backup) | -- |
+| **None** | G: Photo eviction | Already mitigated with receipts | -- |
+
+### What This Plan Does NOT Change
+
+- No changes to IndexedDB schema or sync logic
+- No DELETE, `.clear()`, or overwrite operations added
+- No changes to the server-side database or RLS policies
+- Existing data is never touched
 
