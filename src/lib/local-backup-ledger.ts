@@ -10,6 +10,7 @@
  */
 
 import { isMobile } from './mobile-detection';
+import { uploadSnapshotToCloud } from './cloud-backup';
 
 const BACKUP_PREFIX = 'rw_backup_';
 const SCHEMA_VERSION = 1;
@@ -137,6 +138,9 @@ export function saveReportSnapshot(
       console.log(`[Backup Ledger] Saved ${reportType} snapshot:`, reportId.substring(0, 8), 
         `(${(json.length / 1024).toFixed(1)}KB, synced=${isSynced})`);
     }
+
+    // Fire-and-forget cloud upload — non-blocking, silent on failure
+    uploadSnapshotToCloud(reportType, reportId, snapshot);
   } catch (error) {
     // localStorage is full or unavailable — fail silently
     console.warn('[Backup Ledger] Failed to save snapshot:', error);
