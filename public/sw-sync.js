@@ -207,7 +207,7 @@ async function syncInspectionsAtomic() {
   console.log('[SW Atomic Sync] Starting atomic inspection sync...');
   
   try {
-    const db = await openDB('rope-works-inspections', 4);
+    const db = await openDB('rope-works-inspections', 8);
     const allInspections = await getAllFromStore(db, 'inspections');
     const unsynced = allInspections.filter(i => !i.synced_at || new Date(i.updated_at) > new Date(i.synced_at));
     
@@ -290,7 +290,7 @@ async function syncPhotos() {
   console.log('[SW Sync] Starting photo sync...');
   
   try {
-    const db = await openDB('rope-works-inspections', 4);
+    const db = await openDB('rope-works-inspections', 8);
     const allPhotos = await getAllFromStore(db, 'photos');
     const unuploaded = allPhotos.filter(p => !p.uploaded);
     
@@ -380,7 +380,7 @@ async function syncTrainingsAtomic() {
   console.log('[SW Atomic Sync] Starting atomic training sync...');
   
   try {
-    const db = await openDB('rope-works-inspections', 4);
+    const db = await openDB('rope-works-inspections', 8);
     const allTrainings = await getAllFromStore(db, 'trainings');
     const unsynced = allTrainings.filter(t => !t.synced_at || new Date(t.updated_at) > new Date(t.synced_at));
     
@@ -509,7 +509,7 @@ async function syncDailyAssessmentsAtomic() {
   console.log('[SW Atomic Sync] Starting atomic daily assessment sync...');
   
   try {
-    const db = await openDB('rope-works-inspections', 4);
+    const db = await openDB('rope-works-inspections', 8);
     const allAssessments = await getAllFromStore(db, 'daily_assessments');
     const unsynced = allAssessments.filter(a => !a.synced_at || new Date(a.updated_at) > new Date(a.synced_at));
     

@@ -33,6 +33,7 @@ import TrainingSummarySection from "@/components/training/TrainingSummarySection
 import PhotoCapture from "@/components/PhotoCapture";
 import PhotoGallery from "@/components/PhotoGallery";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
+import { useStorageHealthCheck } from "@/hooks/useStorageHealthCheck";
 import { format } from "date-fns";
 import { 
   getOfflineTraining, 
@@ -76,6 +77,7 @@ export default function TrainingForm() {
   const { isOnline } = useNetworkStatus();
   const isMobile = useIsMobile();
   const { syncReport } = useReportSync(id, 'training');
+  const storageUnavailable = useStorageHealthCheck();
   
   // Check edit permissions - Super Admins are view-only, only owners can edit
   const [inspectorId, setInspectorId] = useState<string | null>(null);
@@ -639,19 +641,20 @@ export default function TrainingForm() {
       if (summary && (childDataLoadedRef.current.summary || summary.observations || summary.recommendations)) {
         childOps.push(saveTrainingDataOffline('summary', id, summary));
       }
+      // Layer 1: localStorage snapshot backup FIRST (before IndexedDB writes)
+      try {
+        saveReportSnapshot('training', id, updatedTraining, {
+          delivery_approaches: deliveryApproaches,
+          operating_systems: operatingSystems,
+          immediate_attention: immediateAttention,
+          verifiable_items: verifiableItems,
+          systems_in_place: systemsInPlace,
+          summary: summary ? [summary] : [],
+        }, false);
+      } catch {}
+
       Promise.all(childOps).then(() => {
         if (import.meta.env.DEV) console.log('[Training Save] Offline storage completed');
-        // Layer 1: localStorage snapshot backup
-        try {
-          saveReportSnapshot('training', id, updatedTraining, {
-            delivery_approaches: deliveryApproaches,
-            operating_systems: operatingSystems,
-            immediate_attention: immediateAttention,
-            verifiable_items: verifiableItems,
-            systems_in_place: systemsInPlace,
-            summary: summary ? [summary] : [],
-          }, false);
-        } catch {}
 
         // Layer 2: Append-only version history
         appendVersion('training', id, updatedTraining, {
@@ -1266,6 +1269,41 @@ export default function TrainingForm() {
                   Changes will be saved locally and synced when you're back online
                 </p>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Storage Unavailable Banner (Vector A) */}
+      {storageUnavailable && (
+        <div className="bg-destructive/10 border-b border-destructive/20">
+          <div className="container mx-auto px-4 py-3">
+            <div className="flex items-center gap-3">
+              <AlertTriangle className="w-5 h-5 text-destructive shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-destructive">
+                  Local storage unavailable
+                </p>
+                <p className="text-xs text-destructive/80 mt-0.5">
+                  Your changes are at risk. Please stay connected to sync your work.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Offline Empty Data Banner (Vector E) */}
+      {!isOnline && !isLoading && deliveryApproaches.length === 0 && operatingSystems.length === 0 &&
+        immediateAttention.length === 0 && !childDataLoadedRef.current.delivery_approaches && 
+        !childDataLoadedRef.current.operating_systems && !childDataLoadedRef.current.immediate_attention && (
+        <div className="bg-muted border-b border-border">
+          <div className="container mx-auto px-4 py-3">
+            <div className="flex items-center gap-3">
+              <WifiOff className="w-5 h-5 text-muted-foreground shrink-0" />
+              <p className="text-sm text-muted-foreground">
+                Report details not available offline. Connect to the internet to load full data.
+              </p>
             </div>
           </div>
         </div>
