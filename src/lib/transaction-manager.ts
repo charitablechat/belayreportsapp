@@ -70,21 +70,21 @@ export async function executeTransaction(
         case 'insert':
           // Support both single item and batch insert (arrays)
           result = await withStepTimeout(
-            (supabase as any).from(step.table).insert(step.data),
+            (supabase as any).from(step.table).insert(step.data).select('id'),
             `insert:${step.table}`
           );
           break;
           
         case 'update':
           result = await withStepTimeout(
-            (supabase as any).from(step.table).update(step.data).match(step.filter),
+            (supabase as any).from(step.table).update(step.data).match(step.filter).select('id'),
             `update:${step.table}`
           );
           break;
           
         case 'upsert':
           result = await withStepTimeout(
-            (supabase as any).from(step.table).upsert(step.data),
+            (supabase as any).from(step.table).upsert(step.data).select('id'),
             `upsert:${step.table}`
           );
           break;
@@ -106,10 +106,26 @@ export async function executeTransaction(
         throw new Error(`Step ${i + 1} failed: ${result.error.message}`);
       }
       
+      // ROW-COUNT VERIFICATION: Ensure writes actually affected rows
+      // Skip for delete operations (already protected by REPORT_TABLE_BLOCKLIST)
+      if (step.operation !== 'delete') {
+        const returnedRows = result.data?.length ?? 0;
+        const expectedRows = Array.isArray(step.data) ? step.data.length : 1;
+        
+        if (returnedRows === 0) {
+          throw new Error(`Step ${i + 1} (${step.operation}:${step.table}) affected 0 rows — possible RLS block or expired session`);
+        }
+        
+        if (Array.isArray(step.data) && returnedRows < expectedRows) {
+          console.warn(`[Transaction] Step ${i + 1} (${step.operation}:${step.table}) partial write: ${returnedRows}/${expectedRows} rows`);
+          throw new Error(`Step ${i + 1} (${step.operation}:${step.table}) partial write: expected ${expectedRows} rows, got ${returnedRows}`);
+        }
+      }
+      
       completedSteps.push(step);
       
       if (import.meta.env.DEV) {
-        console.log(`[Transaction] Step ${i + 1} completed successfully`);
+        console.log(`[Transaction] Step ${i + 1} completed successfully (${result.data?.length ?? 0} rows)`);
       }
     }
     
