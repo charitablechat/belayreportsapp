@@ -1,77 +1,82 @@
 
 
-## Add Sync Path Tracking for Diagnostics
+## Root Cause: IndexedDB Timeout Fallbacks Erased Real Data
 
-Track which sync path (main thread vs service worker) successfully synced each report, making future issues like the Marine Military Academy incident diagnosable at a glance.
+### What Happened
 
-### Approach
+The Marine Military Academy data loss followed this sequence:
 
-Add a `last_sync_source` text column to the three parent report tables. Each sync path stamps its identity when it sets `synced_at`, giving you a permanent record of how each report was last synced.
+1. User edited the report for ~1.5 hours. Child data (systems, ziplines, equipment) was saved to IndexedDB successfully.
+2. The Service Worker performed a "false-success" sync -- parent shell synced but child data did not reach the server. `synced_at` was stamped on the parent.
+3. Post-sync, `updated_at` was aligned to match `synced_at` in IndexedDB, making the record appear "fully synced."
+4. On next form open (online), `isLocalDataNewer()` returned `false` (timestamps aligned), so the code took the "server data is current" path.
+5. The non-regression guards correctly prevented empty server arrays from overwriting React state.
+6. **However**, the initial `getRelatedDataOffline` calls (lines 900-912) likely **timed out** (the console logs show frequent "Operation timed out after 5000ms" errors). When they timeout, the `withOfflineTimeout` wrapper returns **empty arrays** as fallback values.
+7. React state initialized with these empty arrays. The auto-save debounce (1.5s) then fired and **wrote the empty arrays back to IndexedDB**, permanently erasing the real child data.
+8. The localStorage backup ledger shows 9am as the last save because that was the last **successful** IndexedDB write before timeouts began. The 11:30pm activity was likely hitting timeout fallbacks.
 
-### Changes
+### The Core Bug
 
-**1. Database Migration** -- Add `last_sync_source` column
+`withIndexedDBErrorBoundary` returns `[]` (empty array) on timeout, and this is **indistinguishable** from "the user intentionally has zero items." When auto-save fires, it persists whatever is in React state -- including timeout-sourced empty arrays -- back to IndexedDB, destroying real data.
 
-Add a nullable `text` column `last_sync_source` to `inspections`, `trainings`, and `daily_assessments`. Also add it to the `update_updated_at_column` exclusion list so it doesn't bump `updated_at` when only the source tag changes.
+### Fix: Track Timeout-Sourced Data to Prevent Destructive Auto-Save
 
-```sql
-ALTER TABLE inspections ADD COLUMN last_sync_source text;
-ALTER TABLE trainings ADD COLUMN last_sync_source text;
-ALTER TABLE daily_assessments ADD COLUMN last_sync_source text;
-```
+**1. Add a "data loaded successfully" flag per child type** -- `src/pages/InspectionForm.tsx`
 
-Update `update_updated_at_column()` function to exclude `last_sync_source` from the comparison (same as `synced_at`, `last_opened_at`, etc.) so writing it doesn't trigger a new `updated_at` and cause a re-sync loop.
-
-**2. Main Thread** -- `src/lib/atomic-sync-manager.ts`
-
-In the final sync step for each report type (inspections line 535, trainings line 1239, daily assessments line 1878), add `last_sync_source: 'main_thread'` to the data payload:
+Add a ref that tracks whether each child data type was loaded from a real IndexedDB read (not a timeout fallback). The auto-save function checks this flag before writing child data.
 
 ```typescript
-// Before:
-data: { synced_at: new Date().toISOString() },
-
-// After:
-data: { synced_at: new Date().toISOString(), last_sync_source: 'main_thread' },
+// New ref to track which child types loaded successfully from IndexedDB
+const childDataLoadedRef = useRef<Record<string, boolean>>({
+  systems: false,
+  ziplines: false,
+  equipment: false,
+  standards: false,
+  summary: false,
+});
 ```
 
-Three small edits, one per report type.
+After each successful `getRelatedDataOffline` call, mark the corresponding flag as `true`. On timeout (empty fallback), the flag stays `false`.
 
-**3. Service Worker** -- `public/sw-sync.js`
+**2. Guard the auto-save write path** -- `src/pages/InspectionForm.tsx`
 
-In the sync stamp PATCH for each report type (inspections line 176, trainings line 457, daily assessments line 586), add `last_sync_source: 'service_worker'` to the JSON body:
+In the `performSave` function, skip writing child data for any type where `childDataLoadedRef.current[type] === false` AND the React state array is empty. This prevents timeout-sourced empty arrays from overwriting real data in IndexedDB.
 
-```javascript
-// Before:
-body: JSON.stringify({ synced_at: now, updated_at: now })
-
-// After:
-body: JSON.stringify({ synced_at: now, updated_at: now, last_sync_source: 'service_worker' })
+```typescript
+// In performSave, before each saveRelatedDataOffline call:
+if (systems.length > 0 || childDataLoadedRef.current.systems) {
+  await saveRelatedDataOffline('systems', id!, systems);
+}
+// Same pattern for ziplines, equipment, standards, summary
 ```
 
-Three small edits, one per report type.
+Logic: If the array has items, always save (user has data). If the array is empty AND it was loaded successfully, save (user intentionally cleared). If the array is empty AND it was NOT loaded successfully (timeout), skip (preserve existing IndexedDB data).
 
-### How to Use
+**3. Apply the same pattern to Training and Daily Assessment forms**
 
-After deployment, you can query any report to see how it was last synced:
+The same timeout-to-empty-array-to-auto-save chain exists in `TrainingForm.tsx` and `DailyAssessmentForm.tsx`. Apply the identical `childDataLoadedRef` pattern.
 
-- `last_sync_source = 'main_thread'` -- synced by the authenticated main app (reliable path)
-- `last_sync_source = 'service_worker'` -- synced by the SW background process (uses anon key, higher risk)
-- `last_sync_source IS NULL` -- never synced, or synced before this feature was added
+**4. Mark server-sourced data as "loaded" too** -- `src/pages/InspectionForm.tsx`
 
-This would have immediately revealed the Marine Military Academy issue: the report would show `last_sync_source = 'service_worker'`, confirming the SW was the path that falsely marked it as synced.
+When server data arrives and is applied (the `else` branch at line 1077), also mark the corresponding child types as loaded so that subsequent saves can write them.
 
 ### Files to Modify
 
 | File | Change |
 |------|--------|
-| Database migration | Add `last_sync_source` column to 3 tables, update trigger exclusion |
-| `src/lib/atomic-sync-manager.ts` | Add `last_sync_source: 'main_thread'` to 3 final sync steps |
-| `public/sw-sync.js` | Add `last_sync_source: 'service_worker'` to 3 sync stamp PATCHes |
+| `src/pages/InspectionForm.tsx` | Add `childDataLoadedRef`, set flags on successful loads, guard auto-save writes |
+| `src/pages/TrainingForm.tsx` | Same pattern for training child data types |
+| `src/pages/DailyAssessmentForm.tsx` | Same pattern for daily assessment child data types |
 
-### What Stays Unchanged
+### What This Does NOT Change
 
-- No changes to sync logic, data flow, or error handling
-- No changes to IndexedDB or local storage
-- Column is nullable so existing records are unaffected
-- The `update_updated_at_column` trigger exclusion prevents re-sync loops
+- No changes to IndexedDB, sync logic, or service worker
+- No changes to the localStorage backup ledger
+- No DELETE or clear operations added
+- Existing data is never touched -- this only prevents future empty-array overwrites
+- The `withIndexedDBErrorBoundary` timeout behavior stays the same (it still returns fallbacks for UI responsiveness)
+
+### Why the Existing Guards Were Not Enough
+
+The non-regression guards (lines 1097-1159) only protect against **server** empty arrays overwriting local state. They do NOT protect against **local** timeout-sourced empty arrays being auto-saved back to IndexedDB. This fix closes that gap.
 
