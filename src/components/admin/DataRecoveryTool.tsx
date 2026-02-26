@@ -90,6 +90,9 @@ export function DataRecoveryTool() {
       <RecoveryErrorBoundary panelName="Cloud Backup Snapshots">
         <CloudSnapshotsPanel />
       </RecoveryErrorBoundary>
+      <RecoveryErrorBoundary panelName="All User Snapshots">
+        <AllUserSnapshotsPanel />
+      </RecoveryErrorBoundary>
       <RecoveryErrorBoundary panelName="IndexedDB Recovery">
         <IndexedDBRecoveryPanel />
       </RecoveryErrorBoundary>
@@ -476,6 +479,178 @@ export function CloudSnapshotsPanel({ allowDelete = true }: CloudSnapshotsPanelP
               </Table>
             </div>
           </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ── All User Snapshots (Super Admin only) ──────────────────────────
+
+function AllUserSnapshotsPanel() {
+  const [snapshots, setSnapshots] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [restoring, setRestoring] = useState<string | null>(null);
+  const [expandedUsers, setExpandedUsers] = useState<Set<string>>(new Set());
+
+  const loadSnapshots = useCallback(async () => {
+    setLoading(true);
+    try {
+      const { fetchAllCloudSnapshots } = await import('@/lib/cloud-backup');
+      const data = await fetchAllCloudSnapshots();
+      setSnapshots(data);
+    } catch {
+      toast.error("Failed to load all user snapshots");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadSnapshots();
+  }, [loadSnapshots]);
+
+  const handleServerRestore = async (snapshotId: string) => {
+    setRestoring(snapshotId);
+    try {
+      const { restoreSnapshotToServer } = await import('@/lib/cloud-backup');
+      const ok = await restoreSnapshotToServer(snapshotId);
+      if (ok) {
+        toast.success("Snapshot restored to database");
+      } else {
+        toast.error("Failed to restore snapshot to database");
+      }
+    } catch (error) {
+      console.error('[All User Snapshots] Restore failed:', error);
+      toast.error("Restore failed");
+    } finally {
+      setRestoring(null);
+    }
+  };
+
+  const handleExport = async (snapshotId: string, reportType: string, reportId: string) => {
+    try {
+      const { fetchCloudSnapshot } = await import('@/lib/cloud-backup');
+      const full = await fetchCloudSnapshot(snapshotId);
+      if (!full) { toast.error("Failed to fetch snapshot"); return; }
+      const blob = new Blob([JSON.stringify(full.snapshot_data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `backup_${reportType}_${reportId.substring(0, 8)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success("Exported as JSON");
+    } catch {
+      toast.error("Export failed");
+    }
+  };
+
+  const toggleUser = (userId: string) => {
+    setExpandedUsers(prev => {
+      const next = new Set(prev);
+      if (next.has(userId)) next.delete(userId); else next.add(userId);
+      return next;
+    });
+  };
+
+  const formatDate = (ts: number) => {
+    try { return format(new Date(ts), "MMM d, yyyy h:mm a"); } catch { return "N/A"; }
+  };
+
+  // Group snapshots by user
+  const grouped = snapshots.reduce<Record<string, { name: string; items: any[] }>>((acc, s) => {
+    if (!acc[s.user_id]) acc[s.user_id] = { name: s.user_name, items: [] };
+    acc[s.user_id].items.push(s);
+    return acc;
+  }, {});
+
+  const userEntries = Object.entries(grouped).sort((a, b) => a[1].name.localeCompare(b[1].name));
+
+  return (
+    <Card className="backdrop-blur-md bg-white/5 dark:bg-white/[0.03] border border-white/10 rounded-xl shadow-lg shadow-black/5 overflow-hidden">
+      <CardHeader className="px-3 md:px-6 py-4 md:p-6">
+        <div className="flex items-center justify-between">
+          <div className="min-w-0">
+            <CardTitle className="flex items-center gap-2">
+              <Database className="h-5 w-5 text-amber-400 shrink-0" />
+              All User Snapshots
+            </CardTitle>
+            <CardDescription className="mt-2 break-words" style={{ overflowWrap: 'anywhere' }}>
+              Cloud backup snapshots across all users. Restore pushes data directly to the database.
+            </CardDescription>
+          </div>
+          <Button variant="outline" size="sm" onClick={loadSnapshots} disabled={loading}>
+            <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent className="px-3 md:px-6 pb-4 md:pb-6 pt-0">
+        {loading ? (
+          <div className="flex items-center justify-center py-8 gap-2 text-muted-foreground">
+            <Loader2 className="h-5 w-5 animate-spin" />
+            Loading all user snapshots...
+          </div>
+        ) : userEntries.length === 0 ? (
+          <div className="text-center py-8 text-muted-foreground">
+            No cloud backup snapshots found across any users.
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {userEntries.map(([userId, { name, items }]) => {
+              const isExpanded = expandedUsers.has(userId);
+              return (
+                <div key={userId} className="rounded-lg border border-white/10 overflow-hidden">
+                  <button
+                    className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-white/5 transition-colors"
+                    onClick={() => toggleUser(userId)}
+                  >
+                    <span className="font-medium text-sm">{name}</span>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="secondary" className="text-xs">{items.length} snapshot{items.length !== 1 ? 's' : ''}</Badge>
+                      <span className={`text-xs transition-transform ${isExpanded ? 'rotate-90' : ''}`}>▶</span>
+                    </div>
+                  </button>
+                  {isExpanded && (
+                    <div className="border-t border-white/10 divide-y divide-white/5">
+                      {items.map((s: any) => (
+                        <div key={s.id} className="px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+                          <div className="flex items-center gap-2 flex-1 min-w-0">
+                            <Badge variant="outline" className="text-xs shrink-0">{(s.report_type || '').replace('_', ' ')}</Badge>
+                            <span className="text-xs text-muted-foreground truncate">{s.device}</span>
+                            <Badge variant={s.synced ? "default" : "destructive"} className="text-xs shrink-0">
+                              {s.synced ? "Synced" : "Unsynced"}
+                            </Badge>
+                            <span className="text-xs text-muted-foreground shrink-0">{formatDate(s.snapshot_ts)}</span>
+                          </div>
+                          <div className="flex gap-1 shrink-0">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleServerRestore(s.id)}
+                              disabled={restoring === s.id}
+                              title="Restore to database"
+                            >
+                              {restoring === s.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleExport(s.id, s.report_type, s.report_id)}
+                              title="Export as JSON"
+                            >
+                              <Download className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         )}
       </CardContent>
     </Card>
