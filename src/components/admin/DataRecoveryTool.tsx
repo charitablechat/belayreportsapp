@@ -6,7 +6,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { RefreshCw, Upload, Trash2, AlertTriangle, Database, HardDrive, CheckCircle2, XCircle, Clock, Loader2, Download, RotateCcw, Shield } from "lucide-react";
+import { RefreshCw, Upload, Trash2, AlertTriangle, Database, HardDrive, CheckCircle2, XCircle, Clock, Loader2, Download, RotateCcw, Shield, Cloud } from "lucide-react";
 import { toast } from "sonner";
 import { format, formatDistanceToNow } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
@@ -86,6 +86,9 @@ export function DataRecoveryTool() {
     <div className="space-y-6">
       <RecoveryErrorBoundary panelName="Local Backup Snapshots">
         <LocalSnapshotsPanel />
+      </RecoveryErrorBoundary>
+      <RecoveryErrorBoundary panelName="Cloud Backup Snapshots">
+        <CloudSnapshotsPanel />
       </RecoveryErrorBoundary>
       <RecoveryErrorBoundary panelName="IndexedDB Recovery">
         <IndexedDBRecoveryPanel />
@@ -272,6 +275,198 @@ export function LocalSnapshotsPanel({ allowDelete = true }: SnapshotsPanelProps)
                                 <Trash2 className="h-4 w-4" />
                               </Button>
                             </>
+                          )}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+interface CloudSnapshotsPanelProps {
+  allowDelete?: boolean;
+}
+
+export function CloudSnapshotsPanel({ allowDelete = true }: CloudSnapshotsPanelProps) {
+  const [snapshots, setSnapshots] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const loadSnapshots = useCallback(async () => {
+    setLoading(true);
+    try {
+      const { fetchCloudSnapshots } = await import('@/lib/cloud-backup');
+      const data = await fetchCloudSnapshots();
+      setSnapshots(data);
+    } catch {
+      toast.error("Failed to load cloud backups");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadSnapshots();
+  }, [loadSnapshots]);
+
+  const handleRestore = async (snapshotId: string) => {
+    try {
+      const { fetchCloudSnapshot } = await import('@/lib/cloud-backup');
+      const full = await fetchCloudSnapshot(snapshotId);
+      if (!full) { toast.error("Failed to fetch snapshot data"); return; }
+
+      const { saveInspectionOffline, saveRelatedDataOffline, saveTrainingOffline, saveTrainingDataOffline, saveDailyAssessmentOffline, saveAssessmentDataOffline } = await import('@/lib/offline-storage');
+      const { parent, children } = full.snapshot_data;
+      const reportType = full.report_type as ReportType;
+      const reportId = full.report_id;
+
+      if (reportType === 'inspection') {
+        await saveInspectionOffline(parent);
+        for (const [key, data] of Object.entries(children)) {
+          if (Array.isArray(data) && data.length > 0) await saveRelatedDataOffline(key as any, reportId, data);
+        }
+      } else if (reportType === 'training') {
+        await saveTrainingOffline(parent);
+        for (const [key, data] of Object.entries(children)) {
+          if (Array.isArray(data) && data.length > 0) await saveTrainingDataOffline(key as any, reportId, data);
+        }
+      } else if (reportType === 'daily_assessment') {
+        await saveDailyAssessmentOffline(parent);
+        for (const [key, data] of Object.entries(children)) {
+          if (Array.isArray(data) && data.length > 0) await saveAssessmentDataOffline(key as any, reportId, data);
+        }
+      }
+      toast.success("Cloud backup restored to local storage");
+    } catch (error) {
+      console.error('[Cloud Recovery] Restore failed:', error);
+      toast.error("Failed to restore cloud backup");
+    }
+  };
+
+  const handleDelete = async (snapshotId: string) => {
+    try {
+      const { deleteCloudSnapshot } = await import('@/lib/cloud-backup');
+      const ok = await deleteCloudSnapshot(snapshotId);
+      if (ok) {
+        setSnapshots(prev => prev.filter(s => s.id !== snapshotId));
+        toast.success("Cloud backup deleted");
+      } else {
+        toast.error("Failed to delete cloud backup");
+      }
+    } catch {
+      toast.error("Failed to delete cloud backup");
+    }
+  };
+
+  const formatDate = (ts: number) => {
+    try { return format(new Date(ts), "MMM d, yyyy h:mm a"); } catch { return "N/A"; }
+  };
+
+  return (
+    <Card className="backdrop-blur-md bg-white/5 dark:bg-white/[0.03] border border-white/10 rounded-xl shadow-lg shadow-black/5 overflow-hidden">
+      <CardHeader className="px-3 md:px-6 py-4 md:p-6">
+        <div className="flex items-center justify-between">
+          <div className="min-w-0">
+            <CardTitle className="flex items-center gap-2">
+              <Cloud className="h-5 w-5 text-blue-400 shrink-0" />
+              Cloud Backup Snapshots
+            </CardTitle>
+            <CardDescription className="mt-2 break-words" style={{ overflowWrap: 'anywhere' }}>
+              Snapshots synced to the central database. Accessible from any device.
+            </CardDescription>
+          </div>
+          <Button variant="outline" size="sm" onClick={loadSnapshots} disabled={loading}>
+            <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent className="px-3 md:px-6 pb-4 md:pb-6 pt-0">
+        {loading ? (
+          <div className="flex items-center justify-center py-8 gap-2 text-muted-foreground">
+            <Loader2 className="h-5 w-5 animate-spin" />
+            Loading cloud backups...
+          </div>
+        ) : snapshots.length === 0 ? (
+          <div className="text-center py-8 text-muted-foreground">
+            No cloud backups found. They are created automatically when you save reports while online.
+          </div>
+        ) : (
+          <>
+            {/* Mobile card layout */}
+            <div className="md:hidden space-y-3">
+              {snapshots.map((s) => (
+                <div key={s.id} className="rounded-lg border border-white/10 bg-white/5 dark:bg-white/[0.02] p-3 space-y-2.5 min-w-0 overflow-hidden font-mono">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <Badge variant="outline" className="text-xs">{(s.report_type || '').replace('_', ' ')}</Badge>
+                    <Badge variant={s.synced ? "default" : "destructive"} className="text-xs">
+                      {s.synced ? "Synced" : "Unsynced"}
+                    </Badge>
+                  </div>
+                  <div className="space-y-1.5 min-w-0">
+                    <div className="flex justify-between gap-2 text-xs">
+                      <span className="text-muted-foreground shrink-0">Device</span>
+                      <span className="text-right min-w-0 break-words" style={{ overflowWrap: 'anywhere' }}>{s.device}</span>
+                    </div>
+                    <div className="flex justify-between gap-2 text-xs">
+                      <span className="text-muted-foreground shrink-0">Saved</span>
+                      <span className="text-right text-muted-foreground break-words" style={{ overflowWrap: 'anywhere' }}>{formatDate(s.snapshot_ts)}</span>
+                    </div>
+                  </div>
+                  <div className="flex gap-2 pt-1">
+                    <Button size="sm" variant="outline" className="flex-1 w-full" onClick={() => handleRestore(s.id)}>
+                      <RotateCcw className="h-4 w-4 mr-1.5" />
+                      Restore
+                    </Button>
+                    {allowDelete && (
+                      <Button size="sm" variant="ghost" className="text-destructive" onClick={() => handleDelete(s.id)} title="Delete">
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+            {/* Desktop table layout */}
+            <div className="hidden md:block rounded-md border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Type</TableHead>
+                    <TableHead>Device</TableHead>
+                    <TableHead>Sync</TableHead>
+                    <TableHead>Last Saved</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {snapshots.map((s) => (
+                    <TableRow key={s.id}>
+                      <TableCell>
+                        <Badge variant="outline">{(s.report_type || '').replace('_', ' ')}</Badge>
+                      </TableCell>
+                      <TableCell>{s.device}</TableCell>
+                      <TableCell>
+                        <Badge variant={s.synced ? "default" : "destructive"}>
+                          {s.synced ? "Synced" : "Unsynced"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">{formatDate(s.snapshot_ts)}</TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-1">
+                          <Button size="sm" variant="outline" onClick={() => handleRestore(s.id)} title="Restore to IndexedDB">
+                            <RotateCcw className="h-4 w-4" />
+                          </Button>
+                          {allowDelete && (
+                            <Button size="sm" variant="ghost" className="text-destructive" onClick={() => handleDelete(s.id)} title="Delete cloud backup">
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
                           )}
                         </div>
                       </TableCell>

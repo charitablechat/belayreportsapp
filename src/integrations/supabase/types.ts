@@ -1359,6 +1359,42 @@ export type Database = {
         }
         Relationships: []
       }
+      report_cloud_backups: {
+        Row: {
+          created_at: string
+          device: string
+          id: string
+          report_id: string
+          report_type: string
+          snapshot_data: Json
+          snapshot_ts: number
+          synced: boolean
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          device?: string
+          id?: string
+          report_id: string
+          report_type: string
+          snapshot_data: Json
+          snapshot_ts: number
+          synced?: boolean
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          device?: string
+          id?: string
+          report_id?: string
+          report_type?: string
+          snapshot_data?: Json
+          snapshot_ts?: number
+          synced?: boolean
+          user_id?: string
+        }
+        Relationships: []
+      }
       report_deleted_items: {
         Row: {
           child_table: string
