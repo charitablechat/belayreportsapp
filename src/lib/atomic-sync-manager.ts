@@ -532,7 +532,7 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
     steps.push({
       table: 'inspections',
       operation: 'update',
-      data: { synced_at: new Date().toISOString() },
+      data: { synced_at: new Date().toISOString(), last_sync_source: 'main_thread' },
       filter: { id: inspectionId },
     });
     
@@ -1236,7 +1236,7 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
     steps.push({
       table: 'trainings',
       operation: 'update',
-      data: { synced_at: new Date().toISOString() },
+      data: { synced_at: new Date().toISOString(), last_sync_source: 'main_thread' },
       filter: { id: trainingId },
     });
     
@@ -1875,7 +1875,7 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
     steps.push({
       table: 'daily_assessments',
       operation: 'update',
-      data: { synced_at: new Date().toISOString() },
+      data: { synced_at: new Date().toISOString(), last_sync_source: 'main_thread' },
       filter: { id: assessmentId },
     });
     

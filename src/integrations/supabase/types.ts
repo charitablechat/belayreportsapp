@@ -367,6 +367,7 @@ export type Database = {
           inspector_id: string
           last_modified_by: string | null
           last_opened_at: string | null
+          last_sync_source: string | null
           latest_report_generated_at: string | null
           latest_report_html: string | null
           latitude: number | null
@@ -394,6 +395,7 @@ export type Database = {
           inspector_id: string
           last_modified_by?: string | null
           last_opened_at?: string | null
+          last_sync_source?: string | null
           latest_report_generated_at?: string | null
           latest_report_html?: string | null
           latitude?: number | null
@@ -421,6 +423,7 @@ export type Database = {
           inspector_id?: string
           last_modified_by?: string | null
           last_opened_at?: string | null
+          last_sync_source?: string | null
           latest_report_generated_at?: string | null
           latest_report_html?: string | null
           latitude?: number | null
@@ -1001,6 +1004,7 @@ export type Database = {
           inspector_id: string
           last_modified_by: string | null
           last_opened_at: string | null
+          last_sync_source: string | null
           latest_report_generated_at: string | null
           latest_report_html: string | null
           latitude: number | null
@@ -1030,6 +1034,7 @@ export type Database = {
           inspector_id: string
           last_modified_by?: string | null
           last_opened_at?: string | null
+          last_sync_source?: string | null
           latest_report_generated_at?: string | null
           latest_report_html?: string | null
           latitude?: number | null
@@ -1059,6 +1064,7 @@ export type Database = {
           inspector_id?: string
           last_modified_by?: string | null
           last_opened_at?: string | null
+          last_sync_source?: string | null
           latest_report_generated_at?: string | null
           latest_report_html?: string | null
           latitude?: number | null
@@ -1712,6 +1718,7 @@ export type Database = {
           inspector_id: string
           last_modified_by: string | null
           last_opened_at: string | null
+          last_sync_source: string | null
           latest_report_generated_at: string | null
           latest_report_html: string | null
           latitude: number | null
@@ -1738,6 +1745,7 @@ export type Database = {
           inspector_id: string
           last_modified_by?: string | null
           last_opened_at?: string | null
+          last_sync_source?: string | null
           latest_report_generated_at?: string | null
           latest_report_html?: string | null
           latitude?: number | null
@@ -1764,6 +1772,7 @@ export type Database = {
           inspector_id?: string
           last_modified_by?: string | null
           last_opened_at?: string | null
+          last_sync_source?: string | null
           latest_report_generated_at?: string | null
           latest_report_html?: string | null
           latitude?: number | null

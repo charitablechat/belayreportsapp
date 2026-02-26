@@ -173,7 +173,7 @@ async function syncInspectionWithTransaction(inspection, systems, ziplines, equi
         'Authorization': `Bearer ${supabaseKey}`,
         'Prefer': 'return=representation'
       },
-      body: JSON.stringify({ synced_at: now, updated_at: now })
+      body: JSON.stringify({ synced_at: now, updated_at: now, last_sync_source: 'service_worker' })
     });
     
     await verifyResponseRows(syncStampResponse, 'Inspection sync stamp');
@@ -454,7 +454,7 @@ async function syncTrainingsAtomic() {
             'Authorization': `Bearer ${supabaseKey}`,
             'Prefer': 'return=representation'
           },
-          body: JSON.stringify({ synced_at: now, updated_at: now })
+           body: JSON.stringify({ synced_at: now, updated_at: now, last_sync_source: 'service_worker' })
         });
         
         await verifyResponseRows(syncStampResponse, 'Training sync stamp');
@@ -583,7 +583,7 @@ async function syncDailyAssessmentsAtomic() {
             'Authorization': `Bearer ${supabaseKey}`,
             'Prefer': 'return=representation'
           },
-          body: JSON.stringify({ synced_at: now, updated_at: now })
+          body: JSON.stringify({ synced_at: now, updated_at: now, last_sync_source: 'service_worker' })
         });
         
         await verifyResponseRows(syncStampResponse, 'Assessment sync stamp');
