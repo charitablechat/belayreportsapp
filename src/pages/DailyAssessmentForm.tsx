@@ -781,21 +781,43 @@ export default function DailyAssessmentForm() {
           }
           if (import.meta.env.DEV) console.log('[Save] Child tables synced successfully');
 
-          // Update assessment (keep current status)
-          const saveSyncTimestamp = new Date().toISOString();
-          const { error: assessmentError } = await supabase
+          // DEFERRED: Update assessment parent first WITHOUT synced_at
+          const { data: updateResult, error: assessmentUpdateError } = await supabase
             .from('daily_assessments')
-            .update({ updated_at: updatedAssessment.updated_at, synced_at: saveSyncTimestamp })
-            .eq('id', id);
+            .update({ updated_at: updatedAssessment.updated_at })
+            .eq('id', id)
+            .select('id');
 
-          if (assessmentError) {
-            console.error('[Save] Assessment update error:', assessmentError);
-            throw assessmentError;
+          if (assessmentUpdateError) {
+            console.error('[Save] Assessment update error:', assessmentUpdateError);
+            throw assessmentUpdateError;
           }
-          if (import.meta.env.DEV) console.log('[Save] Assessment updated in database');
+          
+          // Verification: If 0 rows updated, record may not exist on server — use upsert
+          if (!updateResult || updateResult.length === 0) {
+            console.warn('[Save] Update returned 0 rows — falling back to upsert');
+            const { error: upsertError } = await supabase
+              .from('daily_assessments')
+              .upsert({ id, updated_at: updatedAssessment.updated_at, inspector_id: updatedAssessment.inspector_id });
+            if (upsertError) throw upsertError;
+          }
+          
+          // Set synced_at ONLY after all child data committed and parent verified
+          const saveSyncTimestamp = new Date().toISOString();
+          const { data: verifyData, error: finalSyncError } = await supabase
+            .from('daily_assessments')
+            .update({ synced_at: saveSyncTimestamp })
+            .eq('id', id)
+            .select('id, synced_at');
+          
+          if (finalSyncError || !verifyData?.length) {
+            console.error('[Save] Post-sync verification failed:', finalSyncError);
+            throw new Error("Sync verification failed: server did not confirm synced_at update");
+          }
+          if (import.meta.env.DEV) console.log('[Save] Assessment synced to database (verified)');
 
-          // Update synced_at
-          updatedAssessment.synced_at = new Date().toISOString();
+          // Only mark local as synced after server confirmation
+          updatedAssessment.synced_at = saveSyncTimestamp;
           if (offlineStorage) {
             try {
               await withTimeout(offlineStorage.saveDailyAssessmentOffline(updatedAssessment), 2000, 'Synced_at update');
