@@ -96,6 +96,8 @@ export default function InspectionForm() {
   const [showCompletionLockDialog, setShowCompletionLockDialog] = useState(false);
   const [showLeaveDialog, setShowLeaveDialog] = useState(false);
   const [showCompleteDialog, setShowCompleteDialog] = useState(false);
+  const leavingRef = useRef(false);
+  const [isSavingBeforeLeave, setIsSavingBeforeLeave] = useState(false);
   // Enable keyboard avoidance for mobile
   useKeyboardAvoidance();
   
@@ -237,7 +239,7 @@ export default function InspectionForm() {
 
   // Unsaved changes protection
   const { isBlocked, confirmNavigation, cancelNavigation, saveAndLeave } = useUnsavedChanges({
-    hasUnsavedChanges: hasUnsavedChanges && (inspection?.status !== 'completed' || completionLockOverridden),
+    hasUnsavedChanges: hasUnsavedChanges && (inspection?.status !== 'completed' || completionLockOverridden) && !leavingRef.current,
     message: "You have unsaved changes to this inspection. Are you sure you want to leave?",
     onSaveAndLeave: async () => { await saveBeforeLeaveRef.current?.(); },
   });
@@ -2228,6 +2230,9 @@ export default function InspectionForm() {
         open={showLeaveDialog}
         onOpenChange={setShowLeaveDialog}
         onSave={async () => {
+          if (isSavingBeforeLeave) return;
+          setIsSavingBeforeLeave(true);
+          leavingRef.current = true;
           await handleSaveAndLeave();
           setShowLeaveDialog(false);
           setHasUnsavedChanges(false);
@@ -2236,12 +2241,13 @@ export default function InspectionForm() {
           setTimeout(() => goBack(navigate), 0);
         }}
         onLeave={() => {
+          leavingRef.current = true;
           setShowLeaveDialog(false);
           setHasUnsavedChanges(false);
           setTimeout(() => goBack(navigate), 0);
         }}
         onCancel={() => setShowLeaveDialog(false)}
-        isSaving={saving}
+        isSaving={isSavingBeforeLeave}
       />
       <div className="min-h-screen bg-background">
       {/* Offline Mode Banner */}
