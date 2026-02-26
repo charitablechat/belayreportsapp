@@ -623,17 +623,23 @@ export default function TrainingForm() {
       // If online, try to sync to Supabase
       if (isOnline) {
         try {
-          // Update main training record with synced_at
-          const syncedTraining = {
-            ...updatedTraining,
-            synced_at: new Date().toISOString(),
-          };
-          const { error: trainingError } = await supabase
+          // Update main training record WITHOUT synced_at (deferred pattern)
+          const { data: updateResult, error: trainingError } = await supabase
             .from('trainings')
-            .update(syncedTraining)
-            .eq('id', id);
+            .update(updatedTraining)
+            .eq('id', id)
+            .select('id');
 
           if (trainingError) throw trainingError;
+          
+          // Verification: If 0 rows updated, record may not exist on server — use upsert
+          if (!updateResult || updateResult.length === 0) {
+            console.warn('[Training Save] Update returned 0 rows — falling back to upsert');
+            const { error: upsertError } = await supabase
+              .from('trainings')
+              .upsert({ id, ...updatedTraining });
+            if (upsertError) throw upsertError;
+          }
 
           // OPTIMIZED: Pre-generate UUIDs and run ALL operations in parallel
           // Prepare all data with proper IDs upfront
@@ -722,12 +728,26 @@ export default function TrainingForm() {
           // Execute all in parallel
           await Promise.all(parallelOps);
 
+          // DEFERRED: Set synced_at ONLY after all child data committed successfully
+          const syncTimestamp = new Date().toISOString();
+          const { data: verifyData, error: finalSyncError } = await supabase
+            .from('trainings')
+            .update({ synced_at: syncTimestamp })
+            .eq('id', id)
+            .select('id, synced_at');
+          
+          if (finalSyncError || !verifyData?.length) {
+            console.error('[Training Save] Post-sync verification failed:', finalSyncError);
+            throw new Error("Sync verification failed: server did not confirm synced_at update");
+          }
+
+          // Only mark local as synced after server confirmation
           await saveTrainingOffline({
             ...updatedTraining,
-            synced_at: new Date().toISOString()
+            synced_at: syncTimestamp
           });
           markSnapshotSynced('training', id);
-          if (import.meta.env.DEV) console.log('[Training Save] Synced to database');
+          if (import.meta.env.DEV) console.log('[Training Save] Synced to database (verified)');
         } catch (error) {
           if (import.meta.env.DEV) console.log('[Training Save] Failed to sync, queuing operation:', error);
           try {

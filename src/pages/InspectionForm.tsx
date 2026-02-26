@@ -1369,16 +1369,29 @@ export default function InspectionForm() {
               };
             };
 
-            // Update main inspection record (include synced_at so server reflects sync status)
+            // Update main inspection record WITHOUT synced_at (deferred pattern)
             const sanitized = sanitizeInspection(inspectionToSave);
-            const { error: inspectionError } = await supabase
+            const { data: updateResult, error: inspectionError } = await supabase
               .from("inspections")
-              .update({ ...sanitized, synced_at: new Date().toISOString() })
-              .eq("id", id);
+              .update(sanitized)
+              .eq("id", id)
+              .select("id");
             
             if (inspectionError) {
               console.error('[InspectionForm Sync] Failed to update inspection:', inspectionError);
               throw inspectionError;
+            }
+            
+            // Verification: If 0 rows updated, record may not exist on server — use upsert
+            if (!updateResult || updateResult.length === 0) {
+              console.warn('[InspectionForm Sync] Update returned 0 rows — falling back to upsert');
+              const { error: upsertError } = await supabase
+                .from("inspections")
+                .upsert({ id, ...sanitized });
+              if (upsertError) {
+                console.error('[InspectionForm Sync] Upsert fallback failed:', upsertError);
+                throw upsertError;
+              }
             }
             
             // OPTIMIZED: Parallelize all independent database operations
@@ -1550,14 +1563,26 @@ export default function InspectionForm() {
             // Execute all in parallel
             await Promise.all(parallelOperations);
 
-            // Mark as synced - conditional timestamp alignment
-            // If any items had empty names, keep updated_at ahead of synced_at
-            // so background sync re-processes once names are filled
+            // DEFERRED: Set synced_at ONLY after all child data committed successfully
             const hadFilteredItems = validSystems.length !== systems.length
               || validZiplines.length !== ziplines.length
               || validEquipment.length !== equipment.length;
 
             const syncTimestamp = new Date().toISOString();
+            
+            // Final step: set synced_at on server and verify it was written
+            const { data: verifyData, error: finalSyncError } = await supabase
+              .from("inspections")
+              .update({ synced_at: syncTimestamp })
+              .eq("id", id)
+              .select("id, synced_at");
+            
+            if (finalSyncError || !verifyData?.length) {
+              console.error('[InspectionForm Sync] Post-sync verification failed:', finalSyncError);
+              throw new Error("Sync verification failed: server did not confirm synced_at update");
+            }
+
+            // Only mark local as synced after server confirmation
             await saveInspectionOffline({
               ...inspectionToSave,
               synced_at: syncTimestamp,
@@ -1565,7 +1590,7 @@ export default function InspectionForm() {
             });
 
             markSnapshotSynced('inspection', id!);
-            console.log('[InspectionForm Sync] Synced all data to Supabase successfully');
+            console.log('[InspectionForm Sync] Synced all data to Supabase successfully (verified)');
           } catch (error: any) {
             // Detect network-related errors for retry
             const isNetworkError = 
