@@ -1,76 +1,106 @@
 
 
-## Bug: "Save & Exit" Dialog Gets Stuck in "Saving..." State
+## Fix: Navigation Loop Between Two Competing Exit Dialogs
 
 ### Root Cause
 
-In `InspectionForm.tsx` (and identically in `TrainingForm.tsx` and `DailyAssessmentForm.tsx`), the `onSave` handler in `SaveBeforeLeaveDialog` sets `isSavingBeforeLeave(true)` but **never resets it to `false`**. There are two failure modes:
+There are **two independent navigation guard systems** that fight each other:
 
-1. **Navigation blocked**: After the save completes, `goBack(navigate)` fires inside `setTimeout(0)`. If the `useBlocker` guard re-intercepts (race between `setHasUnsavedChanges(false)` and the blocker evaluating), the dialog stays visible with all three buttons disabled.
+1. **`SaveBeforeLeaveDialog`** -- shown when the user taps the in-app back button (`setShowLeaveDialog(true)`)
+2. **`useBlocker` / `UnsavedChangesDialog`** -- React Router's built-in navigation blocker
 
-2. **Mutex skip**: If an auto-save is already in progress (`anySaveInProgressRef.current === true`), `performSave` returns immediately without doing any work. The dialog shows "Saving..." but the data was never actually saved. Then navigation proceeds, potentially losing the unsaved delta.
+When the user confirms exit via `SaveBeforeLeaveDialog`, the handler does:
+```
+setHasUnsavedChanges(false);   // schedules React re-render
+setTimeout(() => goBack(navigate), 0);  // schedules navigation
+```
 
-3. **No timeout**: Unlike other save paths that have 5-8 second safety timeouts, this path has no upper bound. If `performSave` hangs (e.g., waiting on an IndexedDB transaction that never resolves), the UI is permanently stuck.
+The **race condition**: `setTimeout(0)` fires a macrotask. React's state flush may or may not complete before it runs. If `goBack(navigate)` fires before React re-renders, `useBlocker` still holds the **old** value (`true`) from the previous render. It intercepts the navigation, and one of two things happens:
+
+- **Scenario A (Stuck):** React then re-renders with `useBlocker(false)`, which auto-resets the blocker. The blocked navigation is **silently dropped** -- no dialog, no navigation. The user is stranded on the form with no visible UI to interact with.
+- **Scenario B (Double dialog):** `UnsavedChangesDialog` appears on top. The user must click through a second dialog, which is confusing but eventually works.
+
+The `leavingRef` was intended to prevent this, but it's a **ref** (not state) -- it doesn't trigger a re-render. The expression `hasUnsavedChanges && !leavingRef.current` was already evaluated and baked into `useBlocker` during the previous render cycle. The ref change has no effect until the next render.
 
 ### Fix
 
-Add three safeguards to the `onSave` handler in all three form files:
+Replace `setTimeout(() => goBack(navigate), 0)` with **synchronous state flushing** using React DOM's `flushSync`. This forces React to process `setHasUnsavedChanges(false)` immediately, so `useBlocker` receives `false` **before** navigation fires.
 
-**1. Always reset `isSavingBeforeLeave` in a `finally` block**
+### Code Changes
 
-Wrap the entire `onSave` handler in try/finally so that `setIsSavingBeforeLeave(false)` always executes, regardless of success or failure. This ensures the buttons are never permanently disabled.
+#### 1. All 3 Form Files (identical pattern)
 
-**2. Add a safety timeout (8 seconds)**
+**`src/pages/InspectionForm.tsx`**, **`src/pages/TrainingForm.tsx`**, **`src/pages/DailyAssessmentForm.tsx`**
 
-Wrap the `handleSaveAndLeave()` call in a `Promise.race` with an 8-second timeout. If the save hangs, the timeout resolves, the state resets, and the user regains control of the dialog.
+Add import:
+```typescript
+import { flushSync } from "react-dom";
+```
 
-**3. Wait for mutex if save is in progress**
-
-Before calling `performSave`, if the mutex is held, wait up to 3 seconds for it to release (poll every 200ms). This handles the case where auto-save is mid-flight -- instead of skipping, we wait for it to finish, ensuring the latest data is persisted before navigating.
-
-### Code Change (same pattern in all 3 files)
-
+Replace the `onSave` handler:
 ```typescript
 onSave={async () => {
   if (isSavingBeforeLeave) return;
   setIsSavingBeforeLeave(true);
   leavingRef.current = true;
   try {
-    // Race against an 8-second safety timeout
     await Promise.race([
       handleSaveAndLeave(),
       new Promise(resolve => setTimeout(resolve, 8000)),
     ]);
-    setShowLeaveDialog(false);
-    setHasUnsavedChanges(false);
     emitSyncComplete();
     markPendingDashboardRefresh();
-    setTimeout(() => goBack(navigate), 0);
+    // flushSync forces useBlocker to re-evaluate BEFORE we navigate
+    flushSync(() => {
+      setShowLeaveDialog(false);
+      setHasUnsavedChanges(false);
+    });
+    goBack(navigate);
   } catch (e) {
     console.warn('[Form] Save-before-leave error:', e);
-    // Still navigate -- the emergency save / localStorage snapshot
-    // will preserve data
-    setShowLeaveDialog(false);
-    setHasUnsavedChanges(false);
-    setTimeout(() => goBack(navigate), 0);
+    flushSync(() => {
+      setShowLeaveDialog(false);
+      setHasUnsavedChanges(false);
+    });
+    goBack(navigate);
   } finally {
     setIsSavingBeforeLeave(false);
   }
 }}
 ```
 
+Replace the `onLeave` handler:
+```typescript
+onLeave={() => {
+  leavingRef.current = true;
+  flushSync(() => {
+    setShowLeaveDialog(false);
+    setHasUnsavedChanges(false);
+  });
+  goBack(navigate);
+}}
+```
+
+### Why `flushSync` Fixes This
+
+- `flushSync` forces React to synchronously flush state updates and re-render before returning
+- After `flushSync` returns, `useBlocker` has already received `false`
+- `goBack(navigate)` then fires immediately with no blocker to intercept it
+- No `setTimeout(0)` needed -- the race condition is eliminated entirely
+- `leavingRef` remains as a secondary safety net but is no longer load-bearing
+
 ### Files to Modify
 
-| File | Change |
-|------|--------|
-| `src/pages/InspectionForm.tsx` | Wrap `onSave` handler in try/finally with timeout |
-| `src/pages/TrainingForm.tsx` | Same pattern |
-| `src/pages/DailyAssessmentForm.tsx` | Same pattern |
+| File | Changes |
+|------|---------|
+| `src/pages/InspectionForm.tsx` | Add `flushSync` import; replace `setTimeout` with `flushSync` in `onSave` and `onLeave` |
+| `src/pages/TrainingForm.tsx` | Same |
+| `src/pages/DailyAssessmentForm.tsx` | Same |
 
 ### What This Does NOT Change
 
-- No changes to the save logic itself (`performSave`, `handleSaveAndLeave`)
-- No changes to IndexedDB, sync, or localStorage
-- No changes to the `useBlocker` or `useUnsavedChanges` hook
-- The emergency save system remains the safety net if the timed-out save didn't complete
+- No changes to `useUnsavedChanges` hook or `useBlocker` logic
+- No changes to `SaveBeforeLeaveDialog` or `UnsavedChangesDialog` components
+- No changes to save logic (`performSave`, `handleSaveAndLeave`)
+- No changes to IndexedDB, sync, or data persistence layers
 
