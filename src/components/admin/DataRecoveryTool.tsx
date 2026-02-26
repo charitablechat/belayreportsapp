@@ -81,25 +81,62 @@ interface LocalData {
   queuedTrainingOperations: any[];
 }
 
-export function DataRecoveryTool() {
+interface DataRecoveryToolProps {
+  deletedRecordsSlot?: React.ReactNode;
+}
+
+export function DataRecoveryTool({ deletedRecordsSlot }: DataRecoveryToolProps) {
   return (
-    <div className="space-y-6">
-      <RecoveryErrorBoundary panelName="Local Backup Snapshots">
-        <LocalSnapshotsPanel />
-      </RecoveryErrorBoundary>
-      <RecoveryErrorBoundary panelName="Cloud Backup Snapshots">
-        <CloudSnapshotsPanel />
-      </RecoveryErrorBoundary>
-      <RecoveryErrorBoundary panelName="All User Snapshots">
-        <AllUserSnapshotsPanel />
-      </RecoveryErrorBoundary>
-      <RecoveryErrorBoundary panelName="Admin Edit History">
-        <AdminEditHistoryPanel />
-      </RecoveryErrorBoundary>
-      <RecoveryErrorBoundary panelName="IndexedDB Recovery">
-        <IndexedDBRecoveryPanel />
-      </RecoveryErrorBoundary>
-    </div>
+    <Tabs defaultValue="local" className="w-full">
+      <TabsList className="w-full flex overflow-x-auto backdrop-blur-md bg-white/5 dark:bg-white/[0.03] border border-white/10 rounded-lg h-auto p-1 gap-1">
+        <TabsTrigger value="local" className="text-xs md:text-sm whitespace-nowrap flex-shrink-0">Local</TabsTrigger>
+        <TabsTrigger value="cloud" className="text-xs md:text-sm whitespace-nowrap flex-shrink-0">Cloud</TabsTrigger>
+        <TabsTrigger value="all-users" className="text-xs md:text-sm whitespace-nowrap flex-shrink-0">All Users</TabsTrigger>
+        <TabsTrigger value="edit-history" className="text-xs md:text-sm whitespace-nowrap flex-shrink-0">Edits</TabsTrigger>
+        <TabsTrigger value="indexeddb" className="text-xs md:text-sm whitespace-nowrap flex-shrink-0">IndexedDB</TabsTrigger>
+        {deletedRecordsSlot && (
+          <TabsTrigger value="deleted" className="text-xs md:text-sm whitespace-nowrap flex-shrink-0">Deleted</TabsTrigger>
+        )}
+      </TabsList>
+
+      <TabsContent value="local">
+        <RecoveryErrorBoundary panelName="Local Backup Snapshots">
+          <LocalSnapshotsPanel />
+        </RecoveryErrorBoundary>
+      </TabsContent>
+
+      <TabsContent value="cloud">
+        <RecoveryErrorBoundary panelName="Cloud Backup Snapshots">
+          <CloudSnapshotsPanel />
+        </RecoveryErrorBoundary>
+      </TabsContent>
+
+      <TabsContent value="all-users">
+        <RecoveryErrorBoundary panelName="All User Snapshots">
+          <AllUserSnapshotsPanel />
+        </RecoveryErrorBoundary>
+      </TabsContent>
+
+      <TabsContent value="edit-history">
+        <RecoveryErrorBoundary panelName="Admin Edit History">
+          <AdminEditHistoryPanel />
+        </RecoveryErrorBoundary>
+      </TabsContent>
+
+      <TabsContent value="indexeddb">
+        <RecoveryErrorBoundary panelName="IndexedDB Recovery">
+          <IndexedDBRecoveryPanel />
+        </RecoveryErrorBoundary>
+      </TabsContent>
+
+      {deletedRecordsSlot && (
+        <TabsContent value="deleted">
+          <RecoveryErrorBoundary panelName="Deleted Records Recovery">
+            {deletedRecordsSlot}
+          </RecoveryErrorBoundary>
+        </TabsContent>
+      )}
+    </Tabs>
   );
 }
 

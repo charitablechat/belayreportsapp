@@ -1130,11 +1130,7 @@ export default function SuperAdminDashboard() {
         </TabsContent>
 
         <TabsContent value="data-recovery" className="space-y-4">
-          <DeletedRecordsRecovery />
-          <div className="border-t pt-6 mt-6">
-            <h3 className="text-lg font-semibold mb-4">Local Browser Data Recovery</h3>
-            <DataRecoveryTool />
-          </div>
+          <DataRecoveryTool deletedRecordsSlot={<DeletedRecordsRecovery />} />
         </TabsContent>
 
         <TabsContent value="maintenance" className="space-y-4">
