@@ -45,6 +45,9 @@ export function useEmergencySave({
   useEffect(() => {
     const handleEmergencySave = () => {
       if (!hasUnsavedRef.current) return;
+      // Block all writes in Lovable preview to protect production data
+      try { if ((window as any).__lovablePreviewChecked === undefined) { (window as any).__lovablePreviewChecked = window.location.hostname.includes('id-preview--'); } } catch {}
+      if ((window as any).__lovablePreviewChecked) return;
 
       // Always trigger localStorage snapshot FIRST — it's synchronous and
       // survives even if the browser kills the page before IndexedDB finishes.

@@ -115,6 +115,8 @@ export function saveReportSnapshot(
   photoMetadata?: PhotoMetadataEntry[]
 ): void {
   try {
+    // Block all writes in Lovable preview to protect production data
+    if (window.location.hostname.includes('id-preview--')) return;
     const snapshot: ReportSnapshot = {
       v: SCHEMA_VERSION,
       ts: Date.now(),

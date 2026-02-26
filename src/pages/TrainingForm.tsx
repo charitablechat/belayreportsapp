@@ -581,6 +581,8 @@ export default function TrainingForm() {
 
   // Auto-save functionality with safety timeout and duplicate prevention
   const saveTraining = useCallback(async () => {
+    // Block all writes in Lovable preview to protect production data
+    if ((await import('@/lib/environment')).isLovablePreview()) return;
     if (!training || !id) return;
 
     // Prevent duplicate save calls
