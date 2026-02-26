@@ -21,19 +21,8 @@ export function AutoSaveIndicator({
   showRelativeTime = true,
   onRetry,
 }: AutoSaveIndicatorProps) {
-  const formatTime = (date: Date) => {
-    if (showRelativeTime) {
-      const now = new Date();
-      const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
-      
-      if (diffInSeconds < 10) return "just now";
-      if (diffInSeconds < 60) return `${diffInSeconds}s ago`;
-      if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}m ago`;
-      
-      return format(date, "h:mm a");
-    }
-    return format(date, "h:mm:ss a");
-  };
+  const formatTimeMobile = (date: Date) => format(date, "h:mm a");
+  const formatTimeDesktop = (date: Date) => format(date, "h:mm:ss a");
 
   // Glassmorphism pill on mobile, plain inline on desktop
   const mobilePill = "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/15 dark:bg-black/30 backdrop-blur-xl border border-white/20 shadow-md shadow-black/5";
@@ -82,8 +71,8 @@ export function AutoSaveIndicator({
     return (
       <div className={cn("flex items-center gap-1.5 text-xs font-mono text-emerald-400", mobilePill, className)}>
         <CheckCircle className="w-3 h-3" />
-        <span className="hidden sm:inline">Saved {formatTime(lastSaved)}</span>
-        <span className="sm:hidden">Saved</span>
+        <span className="sm:hidden">Saved {formatTimeMobile(lastSaved)}</span>
+        <span className="hidden sm:inline">Saved at {formatTimeDesktop(lastSaved)}</span>
       </div>
     );
   }
