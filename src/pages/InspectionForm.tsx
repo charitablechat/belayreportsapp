@@ -2291,12 +2291,24 @@ export default function InspectionForm() {
           if (isSavingBeforeLeave) return;
           setIsSavingBeforeLeave(true);
           leavingRef.current = true;
-          await handleSaveAndLeave();
-          setShowLeaveDialog(false);
-          setHasUnsavedChanges(false);
-          emitSyncComplete();
-          markPendingDashboardRefresh();
-          setTimeout(() => goBack(navigate), 0);
+          try {
+            await Promise.race([
+              handleSaveAndLeave(),
+              new Promise(resolve => setTimeout(resolve, 8000)),
+            ]);
+            setShowLeaveDialog(false);
+            setHasUnsavedChanges(false);
+            emitSyncComplete();
+            markPendingDashboardRefresh();
+            setTimeout(() => goBack(navigate), 0);
+          } catch (e) {
+            console.warn('[InspectionForm] Save-before-leave error:', e);
+            setShowLeaveDialog(false);
+            setHasUnsavedChanges(false);
+            setTimeout(() => goBack(navigate), 0);
+          } finally {
+            setIsSavingBeforeLeave(false);
+          }
         }}
         onLeave={() => {
           leavingRef.current = true;
