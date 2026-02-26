@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from "react";
+import { flushSync } from "react-dom";
 import { isLocalDataNewer } from "@/lib/local-data-guards";
 import { useParams, useNavigate } from "react-router-dom";
 import { goBack } from "@/lib/navigation";
@@ -1328,25 +1329,31 @@ export default function DailyAssessmentForm() {
               handleSaveAndLeave(),
               new Promise(resolve => setTimeout(resolve, 8000)),
             ]);
-            setShowLeaveDialog(false);
-            setHasUnsavedChanges(false);
             emitSyncComplete();
             markPendingDashboardRefresh();
-            setTimeout(() => goBack(navigate), 0);
+            flushSync(() => {
+              setShowLeaveDialog(false);
+              setHasUnsavedChanges(false);
+            });
+            goBack(navigate);
           } catch (e) {
             console.warn('[DailyAssessmentForm] Save-before-leave error:', e);
-            setShowLeaveDialog(false);
-            setHasUnsavedChanges(false);
-            setTimeout(() => goBack(navigate), 0);
+            flushSync(() => {
+              setShowLeaveDialog(false);
+              setHasUnsavedChanges(false);
+            });
+            goBack(navigate);
           } finally {
             setIsSavingBeforeLeave(false);
           }
         }}
         onLeave={() => {
           leavingRef.current = true;
-          setShowLeaveDialog(false);
-          setHasUnsavedChanges(false);
-          setTimeout(() => goBack(navigate), 0);
+          flushSync(() => {
+            setShowLeaveDialog(false);
+            setHasUnsavedChanges(false);
+          });
+          goBack(navigate);
         }}
         onCancel={() => setShowLeaveDialog(false)}
         isSaving={isSavingBeforeLeave}
