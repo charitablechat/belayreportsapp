@@ -1,103 +1,77 @@
 
 
-## Fix: Save & Exit Navigation Loop on Locked Reports
+## Add Sync Path Tracking for Diagnostics
 
-### Root Cause
+Track which sync path (main thread vs service worker) successfully synced each report, making future issues like the Marine Military Academy incident diagnosable at a glance.
 
-The report forms (Inspection, Training, Daily Assessment) have **two separate navigation guard systems** that can fight each other:
+### Approach
 
-1. **SaveBeforeLeaveDialog** -- shown when the user clicks the Back button. Its "Save & Exit" handler saves, then calls `setTimeout(() => goBack(navigate), 0)`.
-2. **UnsavedChangesDialog** (via `useBlocker`) -- blocks any SPA navigation when `hasUnsavedChanges` is true.
+Add a `last_sync_source` text column to the three parent report tables. Each sync path stamps its identity when it sets `synced_at`, giving you a permanent record of how each report was last synced.
 
-The loop occurs because:
+### Changes
 
-1. User clicks Back button, SaveBeforeLeaveDialog opens.
-2. User clicks "Save & Exit". The handler runs `handleSaveAndLeave()`, sets `hasUnsavedChanges(false)`, then queues `setTimeout(() => goBack(navigate), 0)`.
-3. `goBack` fires `navigate(-1)`. But React may not have flushed the `hasUnsavedChanges = false` state into `useBlocker`'s registered condition yet (effects run after paint; setTimeout(0) timing vs useEffect registration is not guaranteed).
-4. `useBlocker` blocks the navigation. The URL briefly shows `/dashboard`, then reverts. The user sees the report again with `UnsavedChangesDialog` now showing.
-5. User clicks "Save & Exit" in UnsavedChangesDialog. `blocker.proceed()` completes the navigation to Dashboard.
-6. But `trackNavigation()` in RootLayout incremented `navigationDepth` when the URL briefly changed. And the save may have re-triggered `hasUnsavedChanges(true)` via state effects before the user could escape.
+**1. Database Migration** -- Add `last_sync_source` column
 
-**Secondary issue**: The `isSaving` prop on SaveBeforeLeaveDialog is bound to the `saving` state, but `handleSaveAndLeave` calls `performSave()` directly without setting `saving = true`. This means the Save & Exit button is NOT disabled during the save operation, allowing double-clicks that queue multiple `goBack` calls.
+Add a nullable `text` column `last_sync_source` to `inspections`, `trainings`, and `daily_assessments`. Also add it to the `update_updated_at_column` exclusion list so it doesn't bump `updated_at` when only the source tag changes.
 
-### Solution
+```sql
+ALTER TABLE inspections ADD COLUMN last_sync_source text;
+ALTER TABLE trainings ADD COLUMN last_sync_source text;
+ALTER TABLE daily_assessments ADD COLUMN last_sync_source text;
+```
 
-**Approach**: When the SaveBeforeLeaveDialog handles exit, temporarily disable the `useBlocker` guard so the two systems don't conflict, and properly track the saving state.
+Update `update_updated_at_column()` function to exclude `last_sync_source` from the comparison (same as `synced_at`, `last_opened_at`, etc.) so writing it doesn't trigger a new `updated_at` and cause a re-sync loop.
 
-### Technical Changes
+**2. Main Thread** -- `src/lib/atomic-sync-manager.ts`
 
-#### File 1: `src/pages/InspectionForm.tsx`
+In the final sync step for each report type (inspections line 535, trainings line 1239, daily assessments line 1878), add `last_sync_source: 'main_thread'` to the data payload:
 
-1. **Add a `leavingRef` flag** that is set to `true` when SaveBeforeLeaveDialog's Save & Exit or Discard is clicked. This ref prevents the `useBlocker` condition from being true during the programmatic navigation.
+```typescript
+// Before:
+data: { synced_at: new Date().toISOString() },
 
-2. **Update the useBlocker condition** to include the leaving flag:
-   ```
-   // Before:
-   hasUnsavedChanges: hasUnsavedChanges && (inspection?.status !== 'completed' || completionLockOverridden)
-   
-   // After:
-   hasUnsavedChanges: hasUnsavedChanges && (inspection?.status !== 'completed' || completionLockOverridden) && !leavingRef.current
-   ```
+// After:
+data: { synced_at: new Date().toISOString(), last_sync_source: 'main_thread' },
+```
 
-3. **Track saving state in SaveBeforeLeaveDialog's onSave**: Add a local `isSavingBeforeLeave` state that is set to true when Save & Exit is clicked, preventing double-clicks.
+Three small edits, one per report type.
 
-4. **Update onSave handler**:
-   ```typescript
-   onSave={async () => {
-     if (isSavingBeforeLeave) return; // prevent double-click
-     setIsSavingBeforeLeave(true);
-     leavingRef.current = true;       // disable useBlocker
-     await handleSaveAndLeave();
-     setShowLeaveDialog(false);
-     setHasUnsavedChanges(false);
-     emitSyncComplete();
-     markPendingDashboardRefresh();
-     setTimeout(() => goBack(navigate), 0);
-   }}
-   ```
+**3. Service Worker** -- `public/sw-sync.js`
 
-5. **Update onLeave handler** similarly:
-   ```typescript
-   onLeave={() => {
-     leavingRef.current = true;       // disable useBlocker
-     setShowLeaveDialog(false);
-     setHasUnsavedChanges(false);
-     setTimeout(() => goBack(navigate), 0);
-   }}
-   ```
+In the sync stamp PATCH for each report type (inspections line 176, trainings line 457, daily assessments line 586), add `last_sync_source: 'service_worker'` to the JSON body:
 
-6. **Pass `isSavingBeforeLeave`** to the dialog's `isSaving` prop instead of the unrelated `saving` state.
+```javascript
+// Before:
+body: JSON.stringify({ synced_at: now, updated_at: now })
 
-#### File 2: `src/pages/TrainingForm.tsx`
+// After:
+body: JSON.stringify({ synced_at: now, updated_at: now, last_sync_source: 'service_worker' })
+```
 
-Apply the same three changes:
-- Add `leavingRef` and `isSavingBeforeLeave` state
-- Update `useUnsavedChanges` condition to include `!leavingRef.current`
-- Guard `onSave` and `onLeave` handlers with `leavingRef.current = true` and double-click prevention
+Three small edits, one per report type.
 
-#### File 3: `src/pages/DailyAssessmentForm.tsx`
+### How to Use
 
-Apply the same three changes as above.
+After deployment, you can query any report to see how it was last synced:
 
-### Why This Works
+- `last_sync_source = 'main_thread'` -- synced by the authenticated main app (reliable path)
+- `last_sync_source = 'service_worker'` -- synced by the SW background process (uses anon key, higher risk)
+- `last_sync_source IS NULL` -- never synced, or synced before this feature was added
 
-- Setting `leavingRef.current = true` immediately (synchronously, before any async work) ensures that `useBlocker` sees a `false` condition on the very next render, regardless of React batching timing.
-- Using a ref (not state) means the value is available immediately without waiting for a re-render.
-- The double-click guard prevents multiple `goBack` calls from being queued.
-- The existing `UnsavedChangesDialog` (useBlocker path) continues to work independently for browser back/forward button presses and programmatic navigations that don't go through SaveBeforeLeaveDialog.
+This would have immediately revealed the Marine Military Academy issue: the report would show `last_sync_source = 'service_worker'`, confirming the SW was the path that falsely marked it as synced.
 
 ### Files to Modify
 
 | File | Change |
 |------|--------|
-| `src/pages/InspectionForm.tsx` | Add leavingRef, isSavingBeforeLeave, update useBlocker condition, guard onSave/onLeave |
-| `src/pages/TrainingForm.tsx` | Same pattern |
-| `src/pages/DailyAssessmentForm.tsx` | Same pattern |
+| Database migration | Add `last_sync_source` column to 3 tables, update trigger exclusion |
+| `src/lib/atomic-sync-manager.ts` | Add `last_sync_source: 'main_thread'` to 3 final sync steps |
+| `public/sw-sync.js` | Add `last_sync_source: 'service_worker'` to 3 sync stamp PATCHes |
 
 ### What Stays Unchanged
 
-- No changes to navigation logic, sync pipeline, or data storage
-- No changes to the useBlocker/UnsavedChangesDialog system itself
-- No changes to SaveBeforeLeaveDialog component
-- All existing data protections remain intact
+- No changes to sync logic, data flow, or error handling
+- No changes to IndexedDB or local storage
+- Column is nullable so existing records are unaffected
+- The `update_updated_at_column` trigger exclusion prevents re-sync loops
 
