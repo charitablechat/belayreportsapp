@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { X, Cloud, CloudOff, Loader2, AlertTriangle } from "lucide-react";
 import { triggerHaptic } from "@/lib/haptics";
+import { toast } from "sonner";
 import PhotoCaptionInput from "./PhotoCaptionInput";
 import { DraggablePhotoItem } from "./DraggablePhotoItem";
 import {
@@ -333,6 +334,11 @@ export default function PhotoGallery({
   };
 
   const handleDelete = async (photo: Photo) => {
+    // Block all writes in Lovable preview to protect production data
+    if ((await import('@/lib/environment')).isLovablePreview()) {
+      toast.info("Preview mode", { description: "Photo deletion is disabled in the Lovable preview." });
+      return;
+    }
     triggerHaptic('warning');
     try {
       if (photo.uploaded && isOnline) {

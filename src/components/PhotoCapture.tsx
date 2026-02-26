@@ -192,6 +192,11 @@ export default function PhotoCapture({
   };
 
   const processFiles = async (files: FileList | null) => {
+    // Block all writes in Lovable preview to protect production data
+    if ((await import('@/lib/environment')).isLovablePreview()) {
+      toast.info("Preview mode", { description: "Photo uploads are disabled in the Lovable preview." });
+      return;
+    }
     // Prevent concurrent uploads (mutex lock)
     if (uploadMutexRef.current) {
       console.log('[PhotoCapture] Upload already in progress, ignoring');
