@@ -1,128 +1,100 @@
 
 
-## Comprehensive Data Loss Audit
+## Final Security Audit: Local Data Loss Vectors in Sync Lifecycle
 
-After a thorough review of every file involved in data persistence, synchronization, and deletion, here is a complete inventory of every path where data can be lost, along with the current mitigation status and proposed fixes for unmitigated vectors.
-
----
-
-### ALREADY MITIGATED (No Action Needed)
-
-These vectors have existing guards in place:
-
-| # | Vector | Mitigation |
-|---|--------|-----------|
-| 1 | **IndexedDB timeout returns empty array, auto-save overwrites real data** | `childDataLoadedRef` guard (just implemented) |
-| 2 | **Server empty arrays overwrite local React state** | Non-regression guards in all 3 forms |
-| 3 | **Service Worker false-success sync (shell syncs, children don't)** | 3-step deferred `synced_at`, `verifyResponseRows`, suspicious-empty guard |
-| 4 | **Empty report auto-delete on exit** | `hasUserInteracted` guard, soft-delete with 60-day retention |
-| 5 | **Dashboard orphan cleanup deletes unsynced records** | Recency check (60s/5min), sync-in-progress guard, 50% threshold, localStorage snapshot |
-| 6 | **QuotaExceededError silently drops writes** | Immediate user toast, circuit breaker excludes quota errors |
-| 7 | **Concurrent save race conditions** | Single-transaction atomic IndexedDB writes (delete + put in one tx) |
-| 8 | **Admin soft-delete removes data the user can't see** | `check_record_status` RPC bypasses RLS, pre-delete WAL backup |
-| 9 | **Field-count regression during sync** | 50% drop threshold blocks sync |
-| 10 | **Auth token expiry during sync** | `.select('id')` row-count verification, upsert fallback |
+This audit systematically examines every scenario where local data (IndexedDB, localStorage) can be lost during the synchronization process, confirms existing mitigations, and identifies any remaining gaps.
 
 ---
 
-### UNMITIGATED VECTORS FOUND (Require Fixes)
+### PHASE 1: COMPLETE VECTOR INVENTORY
 
-#### Vector A: Browser "Clear Site Data" / Private Browsing Eviction
-
-**Risk**: The browser can evict IndexedDB at any time (especially non-persistent storage on iOS Safari). The `localStorage` backup ledger survives this, but is limited to 4MB and only stores the LAST snapshot per report. If IndexedDB is evicted mid-session, auto-save will fail silently (circuit breaker trips) but the user won't know their data is no longer persisting.
-
-**Current state**: A one-time banner warns about non-persistent storage, but after dismissal, there's no ongoing indicator.
-
-**Fix**: Add a periodic "storage heartbeat" check during active form editing. If IndexedDB becomes unreachable during a session (circuit breaker trips), show a persistent red banner at the top of the form: "Local storage unavailable -- your changes are at risk. Please stay connected to sync." This uses the existing `getCircuitBreakerStatus()` function.
-
-**Files**: `src/pages/InspectionForm.tsx`, `TrainingForm.tsx`, `DailyAssessmentForm.tsx` -- add a `useEffect` that polls `getCircuitBreakerStatus()` every 30 seconds and shows a persistent alert when `open === true`.
+Every code path that deletes, overwrites, or clears local data has been traced across `atomic-sync-manager.ts`, `sw-sync.js`, `offline-storage.ts`, `sync-reconciliation.ts`, `local-backup-ledger.ts`, `transaction-manager.ts`, `Dashboard.tsx`, `useEmptyReportCleanup.tsx`, and `useSoftDelete.tsx`.
 
 ---
 
-#### Vector B: `saveRelatedDataOffline` Delete-Then-Put Non-Atomicity Across Stores
+### CATEGORY A: VECTORS FULLY MITIGATED (No Action Needed)
 
-**Risk**: `saveRelatedDataOffline` (line 1098) uses a single IndexedDB transaction that deletes all existing items and puts new ones. This IS atomic within one store. However, the form's `performSave` calls `Promise.all` across 5-6 different stores (systems, ziplines, equipment, etc.). If the page is killed mid-way (e.g., iOS kills the tab), some stores may have been updated while others haven't, leaving the report in a partially-saved state.
-
-**Current state**: Emergency save fires on `visibilitychange`/`pagehide` but is fire-and-forget. The localStorage backup ledger is the safety net, but it only captures the state at the LAST successful IndexedDB write.
-
-**Fix**: Update the `localStorage` snapshot to be written BEFORE the IndexedDB writes (not after). This ensures the backup always has the latest React state, even if IndexedDB writes are interrupted. Currently `saveReportSnapshot` is called after IndexedDB succeeds. Move it to fire FIRST in `performSave`.
-
-**Files**: `src/pages/InspectionForm.tsx`, `TrainingForm.tsx`, `DailyAssessmentForm.tsx` -- reorder `saveReportSnapshot` call to execute before the `Promise.all` of IndexedDB writes.
-
----
-
-#### Vector C: `ManualUpdateButton` "Force Refresh" Clears Service Worker Caches
-
-**Risk**: The `ManualUpdateButton` (line 116-118) calls `caches.keys()` and `caches.delete()` on ALL caches, then reloads the page. This clears the service worker app shell cache, meaning the app won't work offline until the SW repopulates. More critically, if IndexedDB is also unhealthy at this point, the user has no local persistence layer at all.
-
-**Current state**: A confirmation dialog warns about offline unavailability, but doesn't check for unsynced data first.
-
-**Fix**: Before clearing caches, check `unsyncedCount` from PWA context. If > 0, show a warning: "You have X unsynced reports. Force refreshing will not delete your data, but the app won't work offline until you reconnect. Sync first?" Add a "Sync First" button option.
-
-**Files**: `src/components/pwa/ManualUpdateButton.tsx` -- add unsynced-data check before cache clear.
-
----
-
-#### Vector D: Service Worker Opens IndexedDB at Version 4, Main Thread at Version 8
-
-**Risk**: The service worker (`sw-sync.js` line 210) opens IndexedDB at version 4: `openDB('rope-works-inspections', 4)`. The main thread opens at version 8 (line 464 of `offline-storage.ts`). If the SW opens the DB first after a fresh install, it creates the DB at v4 without the v7/v8 stores (`report_backups`, `report_versions`). When the main thread later tries to open at v8, the `upgrade` callback fires and adds the missing stores. This is generally fine but creates a timing window where the SW could be reading from a DB that's mid-upgrade, potentially causing read failures that return empty arrays.
-
-**Current state**: No version alignment between SW and main thread.
-
-**Fix**: Update `sw-sync.js` to open IndexedDB at version 8 (matching the main thread). The SW doesn't need the `report_backups` or `report_versions` stores, but opening at the correct version prevents upgrade conflicts.
-
-**Files**: `public/sw-sync.js` -- change `openDB('rope-works-inspections', 4)` to `openDB('rope-works-inspections', 8)` in all 3 sync functions (lines 210, 383, 534).
+| # | Vector | Mitigation | Confidence |
+|---|--------|-----------|------------|
+| 1 | **IndexedDB timeout returns `[]`, auto-save overwrites real data** | `childDataLoadedRef` guard in all 3 form files. Auto-save skips writing empty arrays unless the data was confirmed loaded. | HIGH |
+| 2 | **Server empty arrays overwrite local React state on form load** | Non-regression guards in InspectionForm, TrainingForm, DailyAssessmentForm prevent replacing non-empty local state with empty server arrays. | HIGH |
+| 3 | **SW false-success sync (parent syncs, children don't)** | 3-step deferred `synced_at` pattern in both `atomic-sync-manager.ts` (lines 530-537) and `sw-sync.js` (lines 166-179). `synced_at` only stamps after all children commit. `verifyResponseRows` validates each write. Post-sync read-back (lines 182-195) confirms server state. | HIGH |
+| 4 | **Empty report auto-delete on exit** | `hasUserInteracted` guard in `useEmptyReportCleanup.tsx` (line 124). Soft-delete with 60-day retention (line 146-151). WAL backup before delete in `deleteOfflineInspection` (lines 682-691). | HIGH |
+| 5 | **Dashboard orphan cleanup deletes unsynced records** | Recency check: 60s for updates, 5min for creates (lines 469-474). `isSyncInProgress()` guard (line 461). Orphan log in localStorage (lines 477-480). `temp-` IDs excluded (line 465). | HIGH |
+| 6 | **QuotaExceededError silently drops writes** | Immediate destructive toast on first occurrence (lines 438-448). Excluded from circuit breaker threshold (line 432). | HIGH |
+| 7 | **Concurrent save race conditions within a single store** | Single-transaction atomic delete+put in `saveRelatedDataOffline` (lines 1104-1124). All ops in one IDB transaction. | HIGH |
+| 8 | **Admin soft-delete cascades to local data** | `check_record_status` RPC bypasses RLS. Pre-delete WAL backup via `appendVersion('pre_delete')` (lines 246-248). | HIGH |
+| 9 | **Field-count regression during sync** | 50% drop threshold blocks sync (lines 344-355). Pre-sync version snapshot (lines 335-337). | HIGH |
+| 10 | **Auth token expiry during sync (RLS returns 0 rows)** | `.select('id')` row-count verification in `transaction-manager.ts` (lines 100-113). `verifyResponseRows` in SW (lines 99-109). | HIGH |
+| 11 | **`saveRelatedDataOffline` called with empty array** | Guard at line 1093: `if (data.length === 0 && !options?.allowEmpty) return;` -- blocks destructive empty writes unless `allowEmpty` is explicit. | HIGH |
+| 12 | **`clearRelatedDataOffline` on non-temp IDs** | Guard at line 1158: blocks clear on non-temp IDs unless `bypassTempGuard` is explicitly set. | HIGH |
+| 13 | **Transaction manager DELETE on report tables** | `REPORT_TABLE_BLOCKLIST` (lines 22-34) blocks all delete operations on report tables at runtime. | HIGH |
+| 14 | **SW opens IndexedDB at wrong version** | Fixed: all `openDB` calls in `sw-sync.js` now use version 8, matching main thread. | HIGH |
+| 15 | **localStorage snapshot written after IDB writes (lost on mid-write crash)** | Fixed: `saveReportSnapshot` now fires BEFORE `Promise.all` of IndexedDB writes. | HIGH |
+| 16 | **Circuit breaker trips silently during form editing** | Fixed: `useStorageHealthCheck` hook polls every 30s, persistent red banner shown. | HIGH |
+| 17 | **Force refresh clears caches with unsynced data** | Fixed: `ManualUpdateButton` checks `unsyncedCount` before cache clear, offers "Sync First". | HIGH |
+| 18 | **Suspicious empty guard (main thread)** | Lines 447-464: blocks sync if record was edited >60s but ALL child arrays are empty. Returns `skipped: true`. | HIGH |
+| 19 | **Suspicious empty guard (service worker)** | Lines 237-249 (inspections), 406-417 (trainings), 534-546 (assessments): identical guard in SW. | HIGH |
+| 20 | **Empty local guard (server has data, local is empty)** | Lines 383-443: if server has child data but local is completely empty, sync is blocked. Recovery path pulls server data into local cache and re-aligns timestamps. | HIGH |
 
 ---
 
-#### Vector E: Dashboard Caches Server Data Without Child Records
+### CATEGORY B: RESIDUAL RISKS (Acceptable, No Code Change Needed)
 
-**Risk**: When the Dashboard saves server data to IndexedDB (lines 426-438), it only saves the PARENT record (inspection shell). It does NOT cache child records (systems, ziplines, etc.). If the user goes offline after the Dashboard loads, then opens a report, the form loads the parent from IndexedDB but child data may be empty (no server child data was cached locally). The `childDataLoadedRef` guard (just implemented) prevents auto-save from overwriting, but the user sees an empty form with no way to populate it offline.
-
-**Current state**: Only parent records are cached on Dashboard load. Child data is only available if the user previously opened the form while online.
-
-**Fix**: This is a UX issue rather than a data loss issue (the `childDataLoadedRef` guard prevents destructive writes). However, a "Data not available offline" banner should appear when child data fails to load AND the user is offline, informing them to reconnect.
-
-**Files**: Already partially handled by the non-regression guards. Add an informational banner in the form when offline AND all child arrays are empty AND `childDataLoadedRef` flags are all false.
-
----
-
-#### Vector F: `localStorage` Backup Ledger Eviction Loses Only Recovery Copy
-
-**Risk**: The backup ledger has a 4MB budget and uses LRU eviction of SYNCED snapshots. Unsynced snapshots are never evicted. However, if `localStorage` itself is cleared (user clears browser data, or browser does it under storage pressure), all snapshots are lost. This is the last-resort recovery layer -- losing it means only IndexedDB and the server have data.
-
-**Current state**: Acceptable risk given it's a tertiary backup, but worth noting.
-
-**Fix**: No code change needed. The three-layer architecture (IndexedDB primary, localStorage backup, server sync) means all three would need to fail simultaneously for permanent loss. The `childDataLoadedRef` guard now prevents the most dangerous scenario (IndexedDB timeout -> empty write -> backup overwritten with empty).
+| # | Vector | Risk Level | Why Acceptable |
+|---|--------|-----------|---------------|
+| B1 | **Browser evicts IndexedDB (iOS Safari, storage pressure)** | LOW | Three-layer backup: IndexedDB (primary) + localStorage ledger (secondary) + server (tertiary). Circuit breaker banner now warns user. Unsynced ledger snapshots are never evicted. |
+| B2 | **localStorage itself cleared by user/browser** | LOW | Tertiary backup only. IndexedDB + server still hold data. Would require all 3 layers to fail simultaneously. |
+| B3 | **Photo blobs evicted from IndexedDB under storage pressure** | LOW | `photo-receipts` system preserves metadata. `PhotoGallery` shows warning indicators. Only permanent if user never goes online. |
+| B4 | **`Promise.all` across multiple IDB stores is non-atomic** | LOW | Fixed by writing localStorage snapshot FIRST (before IDB writes), so backup always has latest React state even if tab is killed mid-write. |
+| B5 | **Dashboard caches only parent records (no child data offline)** | LOW | `childDataLoadedRef` prevents destructive auto-save. Offline empty-form banner informs user to reconnect. UX issue, not data loss. |
 
 ---
 
-#### Vector G: Photo Blob Eviction from IndexedDB
+### CATEGORY C: REMAINING UNMITIGATED VECTOR (1 Found)
 
-**Risk**: Photo blobs stored in IndexedDB can be evicted by the browser under storage pressure (they're large). The `photo-receipts` system stores lightweight metadata in localStorage, and the `PhotoGallery` component shows warning indicators for evicted photos. However, if the photo was never uploaded to the server (offline capture), the binary data is permanently lost.
+#### Vector C1: Reconciliation Deletes Server Rows Based on Potentially Stale Local State
 
-**Current state**: Warning indicators exist but no re-capture prompt.
+**Location**: `sync-reconciliation.ts` lines 57-76
 
-**Fix**: Already mitigated with receipt system and WAL backup. The main risk is if the user never goes online to sync photos. No additional code change needed -- the existing architecture handles this correctly.
+**Scenario**: `reconcileChildTable` compares server-side child IDs against local IDs. Any server row NOT in the local set is deleted from the server and logged to `report_deleted_items`. This is correct when the user intentionally removed rows locally. However:
+
+- If local IndexedDB returns a **partial** set of child records (e.g., 3 of 5 systems load due to an interrupted read or corruption), the reconciler will delete the 2 "missing" rows from the server -- genuine data that the user never removed.
+- The `suspicious_empty` guard only fires when ALL children are empty. A partial read (some items present, some missing) bypasses this guard entirely.
+
+**Current mitigation**: Deleted rows are logged to `report_deleted_items` (audit table) for Super Admin recovery. But the user has no visibility that rows were removed.
+
+**Risk level**: MEDIUM. Partial IDB reads are rare but possible during storage pressure, version upgrades, or tab crashes mid-write.
+
+**Proposed fix** (minimal, non-breaking):
+
+Add a **partial-read detection** check in `reconcileChildTable`. Before deleting server rows, compare the ratio of local items to server items. If local has significantly fewer items than the server (e.g., less than 50%), log a warning and skip reconciliation for that table, preserving server data.
+
+```typescript
+// In reconcileChildTable, before line 58:
+const localCount = localItems.filter(i => i.id && !i.id.startsWith('temp-')).length;
+const serverCount = serverRows.length;
+
+// If local has < 50% of server rows, this is suspicious -- likely a partial read
+if (serverCount > 2 && localCount > 0 && localCount < serverCount * 0.5) {
+  console.warn(`[Reconcile] BLOCKED: ${childTable} local has ${localCount}/${serverCount} rows -- possible partial read, preserving server data`);
+  return { deletedCount: 0, deletedRows: [] };
+}
+```
+
+**Files to modify**: `src/lib/sync-reconciliation.ts` (add ~6 lines before the deletion logic)
 
 ---
 
-### Summary of Required Changes
+### SUMMARY
 
-| Priority | Vector | Fix | Files |
-|----------|--------|-----|-------|
-| **High** | D: SW version mismatch | Change `openDB` version from 4 to 8 in SW | `public/sw-sync.js` |
-| **High** | B: localStorage snapshot timing | Write snapshot BEFORE IndexedDB writes | 3 form files |
-| **Medium** | A: Circuit breaker banner | Show persistent warning when circuit breaker trips during editing | 3 form files |
-| **Medium** | C: Force refresh unsynced check | Check unsyncedCount before cache clear | `ManualUpdateButton.tsx` |
-| **Low** | E: Offline empty-form banner | Show info banner when child data unavailable offline | 3 form files |
-| **None** | F: localStorage eviction | Acceptable risk (tertiary backup) | -- |
-| **None** | G: Photo eviction | Already mitigated with receipts | -- |
+| Status | Count | Details |
+|--------|-------|---------|
+| Fully Mitigated | 20 | All critical vectors covered by existing guards |
+| Acceptable Risk | 5 | Tertiary/environmental risks with no practical code fix |
+| **Unmitigated** | **1** | Reconciliation partial-read gap (Vector C1) |
 
-### What This Plan Does NOT Change
+### Recommended Action
 
-- No changes to IndexedDB schema or sync logic
-- No DELETE, `.clear()`, or overwrite operations added
-- No changes to the server-side database or RLS policies
-- Existing data is never touched
+Implement the partial-read detection guard in `sync-reconciliation.ts`. This is a 6-line addition that prevents the reconciler from deleting server rows when local data appears incomplete. No other data loss vectors remain unaddressed.
 
