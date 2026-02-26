@@ -42,6 +42,13 @@ export function useReportEditPermission({
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+    // Synchronous fast-path: set userId from localStorage immediately
+    // so effectiveReadOnly is false while async auth resolves
+    const offlineId = getOfflineUserId();
+    if (offlineId && !currentUserId) {
+      setCurrentUserId(offlineId);
+    }
+
     const checkPermissions = async () => {
       try {
         // Get current user
