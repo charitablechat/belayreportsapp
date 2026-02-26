@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from "react";
+import { flushSync } from "react-dom";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel,
   AlertDialogContent, AlertDialogDescription,
@@ -2296,25 +2297,31 @@ export default function InspectionForm() {
               handleSaveAndLeave(),
               new Promise(resolve => setTimeout(resolve, 8000)),
             ]);
-            setShowLeaveDialog(false);
-            setHasUnsavedChanges(false);
             emitSyncComplete();
             markPendingDashboardRefresh();
-            setTimeout(() => goBack(navigate), 0);
+            flushSync(() => {
+              setShowLeaveDialog(false);
+              setHasUnsavedChanges(false);
+            });
+            goBack(navigate);
           } catch (e) {
             console.warn('[InspectionForm] Save-before-leave error:', e);
-            setShowLeaveDialog(false);
-            setHasUnsavedChanges(false);
-            setTimeout(() => goBack(navigate), 0);
+            flushSync(() => {
+              setShowLeaveDialog(false);
+              setHasUnsavedChanges(false);
+            });
+            goBack(navigate);
           } finally {
             setIsSavingBeforeLeave(false);
           }
         }}
         onLeave={() => {
           leavingRef.current = true;
-          setShowLeaveDialog(false);
-          setHasUnsavedChanges(false);
-          setTimeout(() => goBack(navigate), 0);
+          flushSync(() => {
+            setShowLeaveDialog(false);
+            setHasUnsavedChanges(false);
+          });
+          goBack(navigate);
         }}
         onCancel={() => setShowLeaveDialog(false)}
         isSaving={isSavingBeforeLeave}
