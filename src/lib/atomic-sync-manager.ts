@@ -522,28 +522,45 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
       throw new Error(`Transaction failed after ${result.completedSteps}/${result.totalSteps} steps. Rollback: ${result.rollbackSuccess ? 'successful' : 'failed'}`);
     }
     
+    // POST-TRANSACTION VERIFICATION: Confirm the record actually exists on the server
+    const { data: postSyncVerify } = await supabase
+      .from('inspections')
+      .select('id, synced_at')
+      .eq('id', inspectionId)
+      .maybeSingle();
+    
+    if (!postSyncVerify) {
+      throw new Error('Post-sync verification failed: inspection not found on server after transaction succeeded');
+    }
+    
     // 6. Get cached inspector profile to attach to offline data
     const inspectorProfile = await getCachedProfile(user.id);
     
     // POST-SYNC ALIGNMENT: Call align_synced_at RPC to set synced_at = updated_at on server
     // The updated trigger now preserves updated_at for metadata-only changes,
     // and this RPC ensures synced_at >= updated_at, eliminating the re-sync race condition.
-    let serverTimestamp: string;
-    try {
-      const { data: aligned } = await supabase.rpc('align_synced_at', {
-        p_table_name: 'inspections',
-        p_record_id: inspectionId,
-      });
-      serverTimestamp = (aligned as any)?.updated_at || new Date().toISOString();
-      console.log(
-        '%c[SYNC_TERMINAL] align_synced_at CONFIRMED %c%s',
-        'color: #4ade80; font-family: monospace; font-weight: bold',
-        'color: #86efac; font-family: monospace',
-        `| table=inspections | id=${inspectionId.substring(0,8)}... | ts=${serverTimestamp}`
-      );
-    } catch {
-      serverTimestamp = new Date().toISOString();
+    const { data: aligned, error: alignError } = await supabase.rpc('align_synced_at', {
+      p_table_name: 'inspections',
+      p_record_id: inspectionId,
+    });
+    
+    // STRICT: If align_synced_at returns null/error, the server has no record — fail the sync
+    if (alignError) {
+      throw new Error(`Sync verification failed: align_synced_at RPC error: ${alignError.message}`);
     }
+    
+    const alignedData = aligned as any;
+    if (!alignedData || alignedData.error) {
+      throw new Error(`Sync verification failed: server record not found (align_synced_at returned ${JSON.stringify(aligned)})`);
+    }
+    
+    const serverTimestamp = alignedData.updated_at;
+    console.log(
+      '%c[SYNC_TERMINAL] align_synced_at CONFIRMED %c%s',
+      'color: #4ade80; font-family: monospace; font-weight: bold',
+      'color: #86efac; font-family: monospace',
+      `| table=inspections | id=${inspectionId.substring(0,8)}... | ts=${serverTimestamp}`
+    );
     
     await saveInspectionOffline({
       ...inspection,
@@ -1188,26 +1205,43 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
       throw new Error(`Transaction failed after ${result.completedSteps}/${result.totalSteps} steps. Rollback: ${result.rollbackSuccess ? 'successful' : 'failed'}`);
     }
     
+    // POST-TRANSACTION VERIFICATION: Confirm the record actually exists on the server
+    const { data: postSyncVerify } = await supabase
+      .from('trainings')
+      .select('id, synced_at')
+      .eq('id', trainingId)
+      .maybeSingle();
+    
+    if (!postSyncVerify) {
+      throw new Error('Post-sync verification failed: training not found on server after transaction succeeded');
+    }
+    
     // 6. Get cached inspector profile to attach to offline data
     const inspectorProfile = await getCachedProfile(user.id);
     
     // POST-SYNC ALIGNMENT: Call align_synced_at RPC to set synced_at = updated_at on server
-    let serverTimestamp: string;
-    try {
-      const { data: aligned } = await supabase.rpc('align_synced_at', {
-        p_table_name: 'trainings',
-        p_record_id: trainingId,
-      });
-      serverTimestamp = (aligned as any)?.updated_at || new Date().toISOString();
-      console.log(
-        '%c[SYNC_TERMINAL] align_synced_at CONFIRMED %c%s',
-        'color: #4ade80; font-family: monospace; font-weight: bold',
-        'color: #86efac; font-family: monospace',
-        `| table=trainings | id=${trainingId.substring(0,8)}... | ts=${serverTimestamp}`
-      );
-    } catch {
-      serverTimestamp = new Date().toISOString();
+    const { data: aligned, error: alignError } = await supabase.rpc('align_synced_at', {
+      p_table_name: 'trainings',
+      p_record_id: trainingId,
+    });
+    
+    // STRICT: If align_synced_at returns null/error, the server has no record — fail the sync
+    if (alignError) {
+      throw new Error(`Sync verification failed: align_synced_at RPC error: ${alignError.message}`);
     }
+    
+    const alignedData = aligned as any;
+    if (!alignedData || alignedData.error) {
+      throw new Error(`Sync verification failed: server record not found (align_synced_at returned ${JSON.stringify(aligned)})`);
+    }
+    
+    const serverTimestamp = alignedData.updated_at;
+    console.log(
+      '%c[SYNC_TERMINAL] align_synced_at CONFIRMED %c%s',
+      'color: #4ade80; font-family: monospace; font-weight: bold',
+      'color: #86efac; font-family: monospace',
+      `| table=trainings | id=${trainingId.substring(0,8)}... | ts=${serverTimestamp}`
+    );
     
     await saveTrainingOffline({
       ...training,
@@ -1789,26 +1823,43 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
       throw new Error(`Transaction failed after ${result.completedSteps}/${result.totalSteps} steps. Rollback: ${result.rollbackSuccess ? 'successful' : 'failed'}`);
     }
     
+    // POST-TRANSACTION VERIFICATION: Confirm the record actually exists on the server
+    const { data: postSyncVerify } = await supabase
+      .from('daily_assessments')
+      .select('id, synced_at')
+      .eq('id', assessmentId)
+      .maybeSingle();
+    
+    if (!postSyncVerify) {
+      throw new Error('Post-sync verification failed: daily assessment not found on server after transaction succeeded');
+    }
+    
     // 6. Get cached inspector profile to attach to offline data
     const inspectorProfile = await getCachedProfile(user.id);
     
     // POST-SYNC ALIGNMENT: Call align_synced_at RPC to set synced_at = updated_at on server
-    let serverTimestamp: string;
-    try {
-      const { data: aligned } = await supabase.rpc('align_synced_at', {
-        p_table_name: 'daily_assessments',
-        p_record_id: assessmentId,
-      });
-      serverTimestamp = (aligned as any)?.updated_at || new Date().toISOString();
-      console.log(
-        '%c[SYNC_TERMINAL] align_synced_at CONFIRMED %c%s',
-        'color: #4ade80; font-family: monospace; font-weight: bold',
-        'color: #86efac; font-family: monospace',
-        `| table=daily_assessments | id=${assessmentId.substring(0,8)}... | ts=${serverTimestamp}`
-      );
-    } catch {
-      serverTimestamp = new Date().toISOString();
+    const { data: aligned, error: alignError } = await supabase.rpc('align_synced_at', {
+      p_table_name: 'daily_assessments',
+      p_record_id: assessmentId,
+    });
+    
+    // STRICT: If align_synced_at returns null/error, the server has no record — fail the sync
+    if (alignError) {
+      throw new Error(`Sync verification failed: align_synced_at RPC error: ${alignError.message}`);
     }
+    
+    const alignedData = aligned as any;
+    if (!alignedData || alignedData.error) {
+      throw new Error(`Sync verification failed: server record not found (align_synced_at returned ${JSON.stringify(aligned)})`);
+    }
+    
+    const serverTimestamp = alignedData.updated_at;
+    console.log(
+      '%c[SYNC_TERMINAL] align_synced_at CONFIRMED %c%s',
+      'color: #4ade80; font-family: monospace; font-weight: bold',
+      'color: #86efac; font-family: monospace',
+      `| table=daily_assessments | id=${assessmentId.substring(0,8)}... | ts=${serverTimestamp}`
+    );
     
     await saveDailyAssessmentOffline({
       ...assessment,
