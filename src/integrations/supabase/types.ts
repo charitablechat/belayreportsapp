@@ -14,6 +14,36 @@ export type Database = {
   }
   public: {
     Tables: {
+      admin_edit_snapshots: {
+        Row: {
+          created_at: string
+          edited_by: string
+          id: string
+          original_owner_id: string
+          report_id: string
+          report_type: string
+          snapshot_data: Json
+        }
+        Insert: {
+          created_at?: string
+          edited_by: string
+          id?: string
+          original_owner_id: string
+          report_id: string
+          report_type: string
+          snapshot_data: Json
+        }
+        Update: {
+          created_at?: string
+          edited_by?: string
+          id?: string
+          original_owner_id?: string
+          report_id?: string
+          report_type?: string
+          snapshot_data?: Json
+        }
+        Relationships: []
+      }
       admin_settings: {
         Row: {
           id: string

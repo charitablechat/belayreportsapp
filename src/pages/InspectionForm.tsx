@@ -1421,6 +1421,11 @@ export default function InspectionForm() {
 
       // If online, sync to Supabase with retry logic
       if (isOnline) {
+        // Pre-edit snapshot: capture server state before admin overwrites it
+        if (currentUser?.id && inspection?.inspector_id && currentUser.id !== inspection.inspector_id) {
+          const { capturePreEditSnapshot } = await import('@/lib/admin-edit-snapshot');
+          capturePreEditSnapshot('inspection', id!, inspection.inspector_id, currentUser.id);
+        }
         const syncWithRetry = async (retries = 2): Promise<void> => {
           try {
             // Sanitize inspection data - remove joined/computed fields and handle nulls
