@@ -94,6 +94,20 @@ function validateInspectionData(inspection, systems, ziplines, equipment, standa
   return { valid: errors.length === 0, errors };
 }
 
+// Verify that a fetch response returned at least 1 row.
+// PostgREST returns 200 OK with [] when RLS blocks or record doesn't exist.
+async function verifyResponseRows(response, context) {
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`${context}: HTTP ${response.status} — ${errorText}`);
+  }
+  const body = await response.json();
+  if (Array.isArray(body) && body.length === 0) {
+    throw new Error(`${context}: Server returned 200 OK but 0 rows affected (possible RLS block or missing record)`);
+  }
+  return body;
+}
+
 // SAFETY: Upsert related data using PostgREST merge-duplicates (never deletes)
 async function upsertRelatedData(supabaseUrl, supabaseKey, table, data) {
   if (!data || data.length === 0) {
@@ -112,11 +126,7 @@ async function upsertRelatedData(supabaseUrl, supabaseKey, table, data) {
     body: JSON.stringify(data)
   });
   
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Upsert to ${table} failed: ${errorText}`);
-  }
-  
+  await verifyResponseRows(response, `Upsert ${table}`);
   return true;
 }
 
@@ -127,21 +137,22 @@ async function syncInspectionWithTransaction(inspection, systems, ziplines, equi
   
   try {
     // Step 1: Upsert inspection data WITHOUT synced_at (deferred marking pattern)
+    // Uses POST + merge-duplicates instead of PATCH to handle offline-created records
     const inspData = { ...inspection };
     delete inspData.synced_at; // Don't mark as synced yet
     
-    const inspResponse = await fetch(`${supabaseUrl}/rest/v1/inspections?id=eq.${inspection.id}`, {
-      method: 'PATCH',
+    const inspResponse = await fetch(`${supabaseUrl}/rest/v1/inspections`, {
+      method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'apikey': supabaseKey,
         'Authorization': `Bearer ${supabaseKey}`,
-        'Prefer': 'return=representation'
+        'Prefer': 'resolution=merge-duplicates,return=representation'
       },
       body: JSON.stringify(inspData)
     });
     
-    if (!inspResponse.ok) throw new Error('Inspection sync failed');
+    await verifyResponseRows(inspResponse, 'Inspection parent upsert');
     
     // Step 2: Upsert all child data (NO deletes -- upsert-only for zero data loss)
     await Promise.all([
@@ -153,7 +164,6 @@ async function syncInspectionWithTransaction(inspection, systems, ziplines, equi
     ]);
     
     // Step 3: ONLY NOW mark as synced on the server (deferred synced_at)
-    // Set synced_at = updated_at to match atomic-sync-manager's align pattern
     const now = new Date().toISOString();
     const syncStampResponse = await fetch(`${supabaseUrl}/rest/v1/inspections?id=eq.${inspection.id}`, {
       method: 'PATCH',
@@ -166,7 +176,23 @@ async function syncInspectionWithTransaction(inspection, systems, ziplines, equi
       body: JSON.stringify({ synced_at: now, updated_at: now })
     });
     
-    if (!syncStampResponse.ok) throw new Error('Sync stamp failed -- children committed but parent not marked synced, will retry');
+    await verifyResponseRows(syncStampResponse, 'Inspection sync stamp');
+    
+    // Step 4: Post-sync verification — confirm the record exists with synced_at set
+    const verifyResponse = await fetch(
+      `${supabaseUrl}/rest/v1/inspections?id=eq.${inspection.id}&select=id,synced_at&synced_at=not.is.null`,
+      {
+        method: 'GET',
+        headers: {
+          'apikey': supabaseKey,
+          'Authorization': `Bearer ${supabaseKey}`
+        }
+      }
+    );
+    const verifyRows = await verifyResponse.json();
+    if (!Array.isArray(verifyRows) || verifyRows.length === 0) {
+      throw new Error('Post-sync verification failed: record not found with synced_at on server');
+    }
     
     return now; // Return the aligned timestamp for local IndexedDB update
     
@@ -391,24 +417,22 @@ async function syncTrainingsAtomic() {
         }
         
         // Step 1: Upsert training WITHOUT synced_at (deferred marking)
+        // Uses POST + merge-duplicates instead of PATCH to handle offline-created records
         const trainingData = { ...training };
         delete trainingData.synced_at;
         
-        const response = await fetch(`${supabaseUrl}/rest/v1/trainings?id=eq.${training.id}`, {
-          method: 'PATCH',
+        const response = await fetch(`${supabaseUrl}/rest/v1/trainings`, {
+          method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'apikey': supabaseKey,
             'Authorization': `Bearer ${supabaseKey}`,
-            'Prefer': 'return=representation'
+            'Prefer': 'resolution=merge-duplicates,return=representation'
           },
           body: JSON.stringify(trainingData)
         });
         
-        if (!response.ok) {
-          console.error('[SW Atomic Sync] Training sync failed:', await response.text());
-          continue;
-        }
+        await verifyResponseRows(response, 'Training parent upsert');
         
         // Step 2: Upsert all children (no deletes)
         await Promise.all([
@@ -433,9 +457,22 @@ async function syncTrainingsAtomic() {
           body: JSON.stringify({ synced_at: now, updated_at: now })
         });
         
-        if (!syncStampResponse.ok) {
-          console.error('[SW Atomic Sync] Training sync stamp failed -- will retry');
-          continue;
+        await verifyResponseRows(syncStampResponse, 'Training sync stamp');
+        
+        // Step 4: Post-sync verification
+        const verifyResponse = await fetch(
+          `${supabaseUrl}/rest/v1/trainings?id=eq.${training.id}&select=id,synced_at&synced_at=not.is.null`,
+          {
+            method: 'GET',
+            headers: {
+              'apikey': supabaseKey,
+              'Authorization': `Bearer ${supabaseKey}`
+            }
+          }
+        );
+        const verifyRows = await verifyResponse.json();
+        if (!Array.isArray(verifyRows) || verifyRows.length === 0) {
+          throw new Error('Post-sync verification failed: training not found with synced_at on server');
         }
         
         // Align local timestamps
@@ -509,24 +546,22 @@ async function syncDailyAssessmentsAtomic() {
         }
         
         // Step 1: Upsert assessment WITHOUT synced_at (deferred marking)
+        // Uses POST + merge-duplicates instead of PATCH to handle offline-created records
         const assessmentData = { ...assessment };
         delete assessmentData.synced_at;
         
-        const response = await fetch(`${supabaseUrl}/rest/v1/daily_assessments?id=eq.${assessment.id}`, {
-          method: 'PATCH',
+        const response = await fetch(`${supabaseUrl}/rest/v1/daily_assessments`, {
+          method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'apikey': supabaseKey,
             'Authorization': `Bearer ${supabaseKey}`,
-            'Prefer': 'return=representation'
+            'Prefer': 'resolution=merge-duplicates,return=representation'
           },
           body: JSON.stringify(assessmentData)
         });
         
-        if (!response.ok) {
-          console.error('[SW Atomic Sync] Assessment sync failed:', await response.text());
-          continue;
-        }
+        await verifyResponseRows(response, 'Assessment parent upsert');
         
         // Step 2: Upsert all children (no deletes)
         await Promise.all([
@@ -551,9 +586,22 @@ async function syncDailyAssessmentsAtomic() {
           body: JSON.stringify({ synced_at: now, updated_at: now })
         });
         
-        if (!syncStampResponse.ok) {
-          console.error('[SW Atomic Sync] Assessment sync stamp failed -- will retry');
-          continue;
+        await verifyResponseRows(syncStampResponse, 'Assessment sync stamp');
+        
+        // Step 4: Post-sync verification
+        const verifyResponse = await fetch(
+          `${supabaseUrl}/rest/v1/daily_assessments?id=eq.${assessment.id}&select=id,synced_at&synced_at=not.is.null`,
+          {
+            method: 'GET',
+            headers: {
+              'apikey': supabaseKey,
+              'Authorization': `Bearer ${supabaseKey}`
+            }
+          }
+        );
+        const verifyRows = await verifyResponse.json();
+        if (!Array.isArray(verifyRows) || verifyRows.length === 0) {
+          throw new Error('Post-sync verification failed: assessment not found with synced_at on server');
         }
         
         // Align local timestamps
