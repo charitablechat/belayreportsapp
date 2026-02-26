@@ -1,66 +1,96 @@
 
 
-## Bug: Save Button Missing on Inspection Form
+## Cloud Backup Snapshots -- Sync Local Backups to Central Database
 
-### Root Cause
+### Overview
 
-The Save button is present in the code but **conditionally hidden** by `{!effectiveReadOnly && (...)}`. The chain is:
+Add a new database table (`report_cloud_backups`) to store local backup snapshots centrally. This creates a "fourth copy" of report data that is accessible from any device, without interfering with the existing save/sync pipeline.
 
-1. `effectiveReadOnly = isReadOnly || isCompletionLocked`
-2. `isReadOnly` comes from `useReportEditPermission`
-3. The hook returns `isReadOnly: true` when `currentUserId` is `null` (the "still loading" fallback at line 110)
-4. Console logs confirm: **"Session validation timed out, skipping sync"** -- the auth session is timing out
+### How It Works
 
-When `getUserWithCache()` times out or the session cache expires, `currentUserId` stays `null`. Even though `inspectorId` is loaded from IndexedDB, the permission hook can't confirm ownership, so it defaults to read-only mode. This hides the Save and Complete buttons entirely.
+1. **After every successful local snapshot write**, a background task uploads the snapshot to the central database (fire-and-forget, non-blocking).
+2. **The Data Recovery UI** gains a new "Cloud Backups" tab showing snapshots from all devices, allowing restore on any device.
+3. **No interference with existing sync**: Cloud backups are a passive mirror of localStorage snapshots. They never overwrite primary data (IndexedDB or server tables). They are only used when the user explicitly clicks "Restore" from the recovery panel.
 
-### Why This Wasn't Caught Before
+### Database Table
 
-The auth timeout is intermittent. It depends on network conditions, Supabase session state, and LockManager availability. When auth resolves quickly, the Save button appears normally.
+```text
+report_cloud_backups
++-----------------+----------+---------------------------------------+
+| Column          | Type     | Notes                                 |
++-----------------+----------+---------------------------------------+
+| id              | uuid     | PK, default gen_random_uuid()         |
+| user_id         | uuid     | NOT NULL, references auth.uid via RLS |
+| report_type     | text     | 'inspection'|'training'|'daily_...'   |
+| report_id       | text     | The report UUID (may be temp-)        |
+| device           | text     | 'mobile' or 'desktop'                 |
+| synced           | boolean  | Whether the report was synced at time  |
+| snapshot_data   | jsonb    | Full parent + children + photoMeta    |
+| snapshot_ts     | bigint   | Client-side timestamp (epoch ms)      |
+| created_at      | timestamptz | Server insert time                 |
++-----------------+----------+---------------------------------------+
+```
 
-### Fix
-
-Modify `useReportEditPermission` to use `getOfflineUserId()` as an immediate synchronous fallback when the async auth check hasn't completed yet. This ensures `currentUserId` is populated from localStorage before the network auth resolves, preventing the "loading = read-only" state from hiding buttons.
+RLS: Users can only read/write their own rows. A unique constraint on `(user_id, report_type, report_id)` ensures one cloud backup per report per user (upserted on each save).
 
 ### Code Changes
 
-**File: `src/hooks/useReportEditPermission.tsx`**
-
-In the `useEffect` that calls `checkPermissions`, initialize `currentUserId` from localStorage **synchronously before** the async auth check:
-
-```typescript
-useEffect(() => {
-  // Synchronous fast-path: set userId from localStorage immediately
-  // so effectiveReadOnly is false while async auth resolves
-  const offlineId = getOfflineUserId();
-  if (offlineId && !currentUserId) {
-    setCurrentUserId(offlineId);
-  }
-
-  const checkPermissions = async () => {
-    // ... existing async logic unchanged
-  };
-
-  checkPermissions();
-  // ... rest unchanged
-}, []);
-```
-
-This ensures:
-- The Save button is visible immediately (no flash of read-only state)
-- If the async auth check returns a different userId (shouldn't happen), it overwrites correctly
-- If auth times out entirely, the localStorage fallback keeps the UI functional
-- No changes to any other file or component
-
-### Files to Modify
-
 | File | Change |
 |------|--------|
-| `src/hooks/useReportEditPermission.tsx` | Add synchronous `getOfflineUserId()` call at start of useEffect |
+| **New migration** | Create `report_cloud_backups` table with RLS policies |
+| `src/lib/local-backup-ledger.ts` | Add `uploadSnapshotToCloud()` -- fire-and-forget upsert after each `saveReportSnapshot` call |
+| `src/lib/local-backup-ledger.ts` | Add `fetchCloudSnapshots()` and `fetchCloudSnapshot()` for reading |
+| `src/components/admin/DataRecoveryTool.tsx` | Add a "Cloud Backups" section showing remote snapshots with Restore/Download actions |
+| `src/components/UserDataRecoverySheet.tsx` | Include the cloud backups panel alongside local snapshots |
 
-### What This Does NOT Change
+### Safety Guarantees
 
-- No changes to the Save button itself or its position in the header
-- No changes to InspectionForm, TrainingForm, or DailyAssessmentForm
-- No changes to the auth system or cached-auth logic
-- No changes to IndexedDB, sync, or data persistence
+- **Non-blocking**: The cloud upload runs as a fire-and-forget async call after the localStorage write. If it fails (offline, quota, network error), the local backup still exists. No user-facing error.
+- **No interference with sync**: Cloud backups write to a completely separate table (`report_cloud_backups`). The existing sync pipeline (`inspections`, `trainings`, `daily_assessments`) is untouched.
+- **No interference with emergency save**: The emergency save path writes to localStorage first, then optionally triggers the cloud upload. If the cloud upload hangs, it does not block the save.
+- **Upsert-only**: Each report gets exactly one cloud backup row per user. No unbounded growth. Estimated max ~500KB per snapshot row.
+- **LRU cleanup**: A database function or client-side limit caps cloud backups to the most recent 50 per user, auto-deleting the oldest synced ones.
+- **Restore is explicit**: Cloud backups are never auto-applied. The user must click "Restore" in the recovery panel, which writes to IndexedDB (same as current local restore flow).
+
+### Technical Details
+
+**Upload function** (in `local-backup-ledger.ts`):
+```typescript
+async function uploadSnapshotToCloud(
+  reportType: ReportType,
+  reportId: string,
+  snapshot: ReportSnapshot
+): Promise<void> {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    
+    await supabase.from('report_cloud_backups').upsert({
+      user_id: user.id,
+      report_type: reportType,
+      report_id: reportId,
+      device: snapshot.device,
+      synced: snapshot.synced,
+      snapshot_data: { parent: snapshot.parent, children: snapshot.children, photoMetadata: snapshot.photoMetadata },
+      snapshot_ts: snapshot.ts,
+    }, { onConflict: 'user_id,report_type,report_id' });
+  } catch {
+    // Silent failure -- local backup is the safety net
+  }
+}
+```
+
+Called at the end of `saveReportSnapshot()` as a non-awaited promise (fire-and-forget).
+
+**Fetch function** (for recovery UI):
+```typescript
+export async function fetchCloudSnapshots(): Promise<CloudBackupEntry[]> {
+  const { data } = await supabase
+    .from('report_cloud_backups')
+    .select('id, report_type, report_id, device, synced, snapshot_ts, created_at')
+    .order('snapshot_ts', { ascending: false })
+    .limit(50);
+  return data ?? [];
+}
+```
 
