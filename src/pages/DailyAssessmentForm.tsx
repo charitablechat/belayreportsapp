@@ -84,6 +84,8 @@ export default function DailyAssessmentForm() {
   const [completionLockOverridden, setCompletionLockOverridden] = useState(false);
   const [showCompletionLockDialog, setShowCompletionLockDialog] = useState(false);
   const [showLeaveDialog, setShowLeaveDialog] = useState(false);
+  const leavingRef = useRef(false);
+  const [isSavingBeforeLeave, setIsSavingBeforeLeave] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -193,7 +195,7 @@ export default function DailyAssessmentForm() {
 
   // Unsaved changes protection
   const { isBlocked, confirmNavigation, cancelNavigation, saveAndLeave } = useUnsavedChanges({
-    hasUnsavedChanges: hasUnsavedChanges && (assessment?.status !== 'completed' || completionLockOverridden),
+    hasUnsavedChanges: hasUnsavedChanges && (assessment?.status !== 'completed' || completionLockOverridden) && !leavingRef.current,
     message: "You have unsaved changes to this assessment. Are you sure you want to leave?",
     onSaveAndLeave: async () => { await saveBeforeLeaveRef.current?.(); },
   });
@@ -1279,6 +1281,9 @@ export default function DailyAssessmentForm() {
         open={showLeaveDialog}
         onOpenChange={setShowLeaveDialog}
         onSave={async () => {
+          if (isSavingBeforeLeave) return;
+          setIsSavingBeforeLeave(true);
+          leavingRef.current = true;
           await handleSaveAndLeave();
           setShowLeaveDialog(false);
           setHasUnsavedChanges(false);
@@ -1287,12 +1292,13 @@ export default function DailyAssessmentForm() {
           setTimeout(() => goBack(navigate), 0);
         }}
         onLeave={() => {
+          leavingRef.current = true;
           setShowLeaveDialog(false);
           setHasUnsavedChanges(false);
           setTimeout(() => goBack(navigate), 0);
         }}
         onCancel={() => setShowLeaveDialog(false)}
-        isSaving={saving}
+        isSaving={isSavingBeforeLeave}
       />
       
       <div className="min-h-screen bg-background">

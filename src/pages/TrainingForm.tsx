@@ -89,6 +89,8 @@ export default function TrainingForm() {
   const [showCompletionLockDialog, setShowCompletionLockDialog] = useState(false);
   const [showLeaveDialog, setShowLeaveDialog] = useState(false);
   const [showCompleteDialog, setShowCompleteDialog] = useState(false);
+  const leavingRef = useRef(false);
+  const [isSavingBeforeLeave, setIsSavingBeforeLeave] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
@@ -201,7 +203,7 @@ export default function TrainingForm() {
 
   // Unsaved changes protection
   const { isBlocked, confirmNavigation, cancelNavigation, saveAndLeave } = useUnsavedChanges({
-    hasUnsavedChanges: hasUnsavedChanges && (training?.status !== 'completed' || completionLockOverridden),
+    hasUnsavedChanges: hasUnsavedChanges && (training?.status !== 'completed' || completionLockOverridden) && !leavingRef.current,
     message: "You have unsaved changes to this training report. Are you sure you want to leave?",
     onSaveAndLeave: async () => { await saveBeforeLeaveRef.current?.(); },
   });
@@ -1181,6 +1183,9 @@ export default function TrainingForm() {
         open={showLeaveDialog}
         onOpenChange={setShowLeaveDialog}
         onSave={async () => {
+          if (isSavingBeforeLeave) return;
+          setIsSavingBeforeLeave(true);
+          leavingRef.current = true;
           await handleSaveAndLeave();
           setShowLeaveDialog(false);
           setHasUnsavedChanges(false);
@@ -1189,12 +1194,13 @@ export default function TrainingForm() {
           setTimeout(() => goBack(navigate), 0);
         }}
         onLeave={() => {
+          leavingRef.current = true;
           setShowLeaveDialog(false);
           setHasUnsavedChanges(false);
           setTimeout(() => goBack(navigate), 0);
         }}
         onCancel={() => setShowLeaveDialog(false)}
-        isSaving={isSaving}
+        isSaving={isSavingBeforeLeave}
       />
       <div className="min-h-screen bg-background">
       {/* Offline Mode Banner */}
