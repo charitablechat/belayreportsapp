@@ -679,6 +679,11 @@ export default function TrainingForm() {
 
       // If online, try to sync to Supabase
       if (isOnline) {
+        // Pre-edit snapshot: capture server state before admin overwrites it
+        if (currentUser?.id && training?.inspector_id && currentUser.id !== training.inspector_id) {
+          const { capturePreEditSnapshot } = await import('@/lib/admin-edit-snapshot');
+          capturePreEditSnapshot('training', id!, training.inspector_id, currentUser.id);
+        }
         try {
           // Update main training record WITHOUT synced_at (deferred pattern)
           const { data: updateResult, error: trainingError } = await supabase

@@ -733,6 +733,11 @@ export default function DailyAssessmentForm() {
       }
 
       if (navigator.onLine) {
+        // Pre-edit snapshot: capture server state before admin overwrites it
+        if (currentUser?.id && assessment?.inspector_id && currentUser.id !== assessment.inspector_id) {
+          const { capturePreEditSnapshot } = await import('@/lib/admin-edit-snapshot');
+          capturePreEditSnapshot('daily_assessment', id!, assessment.inspector_id, currentUser.id);
+        }
         if (import.meta.env.DEV) console.log('[Save] Online - syncing to database...');
         try {
           // RECONCILE: Delete server rows removed locally before upserting

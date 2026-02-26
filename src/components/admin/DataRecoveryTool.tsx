@@ -93,6 +93,9 @@ export function DataRecoveryTool() {
       <RecoveryErrorBoundary panelName="All User Snapshots">
         <AllUserSnapshotsPanel />
       </RecoveryErrorBoundary>
+      <RecoveryErrorBoundary panelName="Admin Edit History">
+        <AdminEditHistoryPanel />
+      </RecoveryErrorBoundary>
       <RecoveryErrorBoundary panelName="IndexedDB Recovery">
         <IndexedDBRecoveryPanel />
       </RecoveryErrorBoundary>
@@ -650,6 +653,139 @@ function AllUserSnapshotsPanel() {
                 </div>
               );
             })}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ── Admin Edit History Panel ──────────────────────────────────────
+
+function AdminEditHistoryPanel() {
+  const [snapshots, setSnapshots] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [restoring, setRestoring] = useState<string | null>(null);
+
+  const loadSnapshots = useCallback(async () => {
+    setLoading(true);
+    try {
+      const { fetchAdminEditSnapshots } = await import('@/lib/admin-edit-snapshot');
+      const data = await fetchAdminEditSnapshots();
+      setSnapshots(data);
+    } catch {
+      toast.error("Failed to load admin edit history");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadSnapshots();
+  }, [loadSnapshots]);
+
+  const handleRestore = async (snapshotId: string) => {
+    setRestoring(snapshotId);
+    try {
+      const { restoreAdminEditSnapshot } = await import('@/lib/admin-edit-snapshot');
+      const ok = await restoreAdminEditSnapshot(snapshotId);
+      if (ok) {
+        toast.success("Original data restored to database");
+      } else {
+        toast.error("Failed to restore original data");
+      }
+    } catch (error) {
+      console.error('[Admin Edit History] Restore failed:', error);
+      toast.error("Restore failed");
+    } finally {
+      setRestoring(null);
+    }
+  };
+
+  const handleExport = async (snapshotId: string, reportType: string) => {
+    try {
+      const { data, error } = await (supabase.from('admin_edit_snapshots') as any)
+        .select('snapshot_data')
+        .eq('id', snapshotId)
+        .single();
+      if (error || !data) { toast.error("Failed to fetch snapshot"); return; }
+      const blob = new Blob([JSON.stringify(data.snapshot_data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `admin_edit_${reportType}_${snapshotId.substring(0, 8)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success("Exported as JSON");
+    } catch {
+      toast.error("Export failed");
+    }
+  };
+
+  const formatDate = (ts: string) => {
+    try { return format(new Date(ts), "MMM d, yyyy h:mm a"); } catch { return "N/A"; }
+  };
+
+  return (
+    <Card className="backdrop-blur-md bg-white/5 dark:bg-white/[0.03] border border-white/10 rounded-xl shadow-lg shadow-black/5 overflow-hidden">
+      <CardHeader className="px-3 md:px-6 py-4 md:p-6">
+        <div className="flex items-center justify-between">
+          <div className="min-w-0">
+            <CardTitle className="flex items-center gap-2">
+              <Shield className="h-5 w-5 text-orange-400 shrink-0" />
+              Admin Edit History
+            </CardTitle>
+            <CardDescription className="mt-2 break-words" style={{ overflowWrap: 'anywhere' }}>
+              Pre-edit snapshots captured before an admin modified another user's report. Restore to undo admin changes.
+            </CardDescription>
+          </div>
+          <Button variant="outline" size="sm" onClick={loadSnapshots} disabled={loading}>
+            <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent className="px-3 md:px-6 pb-4 md:pb-6 pt-0">
+        {loading ? (
+          <div className="flex items-center justify-center py-8 gap-2 text-muted-foreground">
+            <Loader2 className="h-5 w-5 animate-spin" />
+            Loading admin edit history...
+          </div>
+        ) : snapshots.length === 0 ? (
+          <div className="text-center py-8 text-muted-foreground">
+            No admin edit snapshots found. Snapshots are captured automatically when a super admin modifies another user's report.
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {snapshots.map((s: any) => (
+              <div key={s.id} className="rounded-lg border border-white/10 px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+                <div className="flex items-center gap-2 flex-1 min-w-0 flex-wrap">
+                  <Badge variant="outline" className="text-xs shrink-0">{(s.report_type || '').replace('_', ' ')}</Badge>
+                  <span className="text-xs text-muted-foreground truncate">Owner: {s.owner_name}</span>
+                  <span className="text-xs text-muted-foreground truncate">Edited by: {s.editor_name}</span>
+                  <span className="text-xs text-muted-foreground shrink-0">{formatDate(s.created_at)}</span>
+                </div>
+                <div className="flex gap-1 shrink-0">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => handleRestore(s.id)}
+                    disabled={restoring === s.id}
+                    title="Restore original data"
+                  >
+                    {restoring === s.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => handleExport(s.id, s.report_type)}
+                    title="Export as JSON"
+                  >
+                    <Download className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </CardContent>
