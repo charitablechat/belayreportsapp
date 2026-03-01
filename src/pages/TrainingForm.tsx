@@ -1257,14 +1257,14 @@ export default function TrainingForm() {
               setShowLeaveDialog(false);
               setHasUnsavedChanges(false);
             });
-            goBack(navigate);
+            navigate('/dashboard');
           } catch (e) {
             console.warn('[TrainingForm] Save-before-leave error:', e);
             flushSync(() => {
               setShowLeaveDialog(false);
               setHasUnsavedChanges(false);
             });
-            goBack(navigate);
+            navigate('/dashboard');
           } finally {
             setIsSavingBeforeLeave(false);
           }
@@ -1276,7 +1276,7 @@ export default function TrainingForm() {
             setHasUnsavedChanges(false);
           });
           markPendingDashboardRefresh();
-          goBack(navigate);
+          navigate('/dashboard');
         }}
         onCancel={() => setShowLeaveDialog(false)}
         isSaving={isSavingBeforeLeave}

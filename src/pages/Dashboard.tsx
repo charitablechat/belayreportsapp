@@ -188,17 +188,11 @@ export default function Dashboard() {
     const loadAllData = async () => {
       setLoading(true);
       
-      // CRITICAL: Refresh auth session before any RLS-restricted queries
-      // This fixes the "session validation timed out" loop where stale JWTs
-      // cause all Supabase queries to return empty results
-      try {
-        await Promise.race([
-          ensureValidSession(),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('Session refresh timeout')), 5000))
-        ]);
-      } catch (e) {
-        console.warn('[Dashboard] Session refresh failed, will try cached auth:', e);
-      }
+      // NON-BLOCKING: Start session refresh in background
+      // Data loading uses getUserWithCache() which reads from localStorage instantly
+      ensureValidSession().catch(e => {
+        console.warn('[Dashboard] Background session refresh failed:', e);
+      });
       
       // PERFORMANCE: Fetch user once, then pass to all loaders
       const user = await getUserWithCache();
@@ -242,9 +236,14 @@ export default function Dashboard() {
     // Consume the flag synchronously before any async work
     const hasPendingRefresh = consumePendingDashboardRefresh();
 
+    // Track whether data was loaded (refs avoid stale closure issues)
+    const dataLoadedRef = { inspections: false, trainings: false, assessments: false };
+
     loadAllData().then(() => {
-      // Only after initial load completes, schedule follow-up if needed
-      if (hasPendingRefresh) {
+      // Check current state via DOM-independent tracking
+      // Schedule retry if initial load came back empty while online
+      // (session may have been stale; ensureValidSession runs in background)
+      if (hasPendingRefresh || (navigator.onLine && !dataLoadedRef.inspections && !dataLoadedRef.trainings && !dataLoadedRef.assessments)) {
         setTimeout(async () => {
           const user = await getUserWithCache();
           const userId = user?.id || getOfflineUserId();
@@ -254,7 +253,7 @@ export default function Dashboard() {
             loadTrainingReports(userId, superAdminStatus),
             loadDailyAssessments(userId, superAdminStatus),
           ]);
-        }, 300);
+        }, hasPendingRefresh ? 300 : 1500);
       }
     });
     
@@ -334,9 +333,25 @@ export default function Dashboard() {
       ]);
     });
 
+    // Reload data when tab regains focus (e.g., after switching apps on mobile)
+    const handleVisibilityChange = async () => {
+      if (document.visibilityState === 'visible' && navigator.onLine) {
+        const user = await getUserWithCache();
+        const userId = user?.id || getOfflineUserId();
+        const superAdminStatus = user ? await getSuperAdminStatusWithCache() : false;
+        await Promise.all([
+          loadInspections(userId, superAdminStatus),
+          loadTrainingReports(userId, superAdminStatus),
+          loadDailyAssessments(userId, superAdminStatus),
+        ]);
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
       subscription.unsubscribe();
       unsubscribeSyncComplete();
     };
