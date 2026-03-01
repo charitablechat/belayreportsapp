@@ -48,7 +48,7 @@ export function ReportCard({ report, type, onDelete, onClick, getStatusBadge }: 
 
   const getReportOrganization = () => {
     if (isInspection) return report.organization;
-    if (isDaily) return report.site;
+    if (isDaily) return report.organization;
     return report.training?.organization || report.organization;
   };
 
