@@ -1,12 +1,16 @@
 
 
-## Make Section Notes Text Black
+## Change Red Button Text to "Exit — Nothing to Save"
 
-### Change
-Update the text color in the Section Notes from amber/brown to black in both:
+### What's Changing
+The destructive (red) button in the exit confirmation dialogs will be relabeled from **"Exit Without Saving"** to **"Exit — Nothing to Save"** across all report types.
 
-1. **Form UI** (`SectionComments.tsx` line 33): Change `text-amber-900` to `text-black` (keep `dark:text-amber-100` for dark mode)
-2. **Report HTML** (`generate-daily-assessment-html/index.ts` line 529): Change `color: #78350f` to `color: #000000`
+### Files Changed
 
-Two lines changed, purely cosmetic.
+| File | Line | Change |
+|------|------|--------|
+| `src/components/SaveBeforeLeaveDialog.tsx` | 59 | `Exit Without Saving` → `Exit — Nothing to Save` |
+| `src/components/UnsavedChangesDialog.tsx` | 55 | `Exit Without Saving` → `Exit — Nothing to Save` |
+
+Two one-line text changes. No logic or layout changes.
 
