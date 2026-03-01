@@ -20,8 +20,8 @@ export function SectionComments({
   label = "Section Notes"
 }: SectionCommentsProps) {
   return (
-    <div className="mt-4 pt-4 border-t border-border/50">
-      <Label className="flex items-center gap-2 text-sm font-medium mb-2 text-muted-foreground">
+    <div className="mt-4 pt-4 border-t border-amber-300/50 dark:border-amber-700/50 border-l-4 border-l-amber-500 pl-3">
+      <Label className="flex items-center gap-2 text-sm font-medium mb-2 text-amber-700 dark:text-amber-400">
         <MessageSquare className="h-4 w-4" />
         {label}
       </Label>
@@ -30,7 +30,7 @@ export function SectionComments({
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         rows={3}
-        className="font-mono text-sm bg-slate-900/5 dark:bg-slate-900/50 border-slate-300 dark:border-slate-700 focus:border-primary placeholder:text-muted-foreground/60 resize-y"
+        className="font-mono text-sm bg-amber-50 dark:bg-amber-950/30 border-amber-300 dark:border-amber-700 focus:border-amber-500 placeholder:text-amber-800/40 dark:placeholder:text-amber-300/40 text-amber-900 dark:text-amber-100 resize-y"
       />
     </div>
   );
