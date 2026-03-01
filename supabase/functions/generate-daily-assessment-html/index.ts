@@ -526,7 +526,7 @@ serve(async (req) => {
     }
 
     .notes-content {
-      color: #78350f;
+      color: #000000;
       font-size: 12px;
       line-height: 1.6;
       margin: 0;
