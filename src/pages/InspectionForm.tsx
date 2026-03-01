@@ -2310,14 +2310,14 @@ export default function InspectionForm() {
               setShowLeaveDialog(false);
               setHasUnsavedChanges(false);
             });
-            goBack(navigate);
+            navigate('/dashboard');
           } catch (e) {
             console.warn('[InspectionForm] Save-before-leave error:', e);
             flushSync(() => {
               setShowLeaveDialog(false);
               setHasUnsavedChanges(false);
             });
-            goBack(navigate);
+            navigate('/dashboard');
           } finally {
             setIsSavingBeforeLeave(false);
           }
@@ -2329,7 +2329,7 @@ export default function InspectionForm() {
             setHasUnsavedChanges(false);
           });
           markPendingDashboardRefresh();
-          goBack(navigate);
+          navigate('/dashboard');
         }}
         onCancel={() => setShowLeaveDialog(false)}
         isSaving={isSavingBeforeLeave}
