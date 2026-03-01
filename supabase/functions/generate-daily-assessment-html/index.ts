@@ -867,45 +867,83 @@ serve(async (req) => {
     ${footer(1)}
   </div>
 
-  <!-- Page 2: End of Day Checklist -->
-  <div class="page">
-    ${header()}
-    <div class="page-content">
-      ${renderChecklistItems(endOfDay, 'End of Day Checklist')}
-    </div>
-    ${footer(2)}
-  </div>
+  ${(() => {
+    // Collect optional pages - only include pages that have content
+    const optionalPages: { content: string }[] = [];
 
-  <!-- Page 3: Equipment + Structure Inspections -->
-  <div class="page">
-    ${header()}
-    <div class="page-content">
-      ${renderChecklistItems(equipmentChecks, 'Equipment Inspection')}
-      ${renderChecklistItems(structureChecks, 'Structure Inspection')}
-      ${renderSectionComments(assessment.structure_comments, 'Structure Notes')}
-    </div>
-    ${footer(3)}
-  </div>
+    // End of Day page
+    const endOfDayContent = renderChecklistItems(endOfDay, 'End of Day Checklist');
+    if (endOfDayContent) {
+      optionalPages.push({ content: endOfDayContent });
+    }
 
-  <!-- Page 4: Environment + Disclaimer -->
-  <div class="page">
-    ${header()}
-    <div class="page-content">
-      ${renderChecklistItems(environmentChecks, 'Environment Inspection')}
-      ${renderSectionComments(assessment.environment_comments, 'Environment Notes')}
+    // Equipment + Structure page
+    const equipContent = renderChecklistItems(equipmentChecks, 'Equipment Inspection');
+    const structContent = renderChecklistItems(structureChecks, 'Structure Inspection');
+    const structNotes = renderSectionComments(assessment.structure_comments, 'Structure Notes');
+    const page3Content = equipContent + structContent + structNotes;
+    if (page3Content.trim()) {
+      optionalPages.push({ content: page3Content });
+    }
 
-      <div class="disclaimer">
-        <div class="disclaimer-title">DISCLAIMER</div>
-        <div class="disclaimer-text">
-          This daily assessment form documents the operational readiness checks performed for the challenge course facility. 
-          It is intended to verify that all safety systems, equipment, and environmental conditions meet operational standards 
-          before and after use. This document should be retained as part of the facility's operational records. Any items 
-          marked as incomplete or requiring attention should be addressed before course operations begin or resume.
+    // Environment page
+    const envContent = renderChecklistItems(environmentChecks, 'Environment Inspection');
+    const envNotes = renderSectionComments(assessment.environment_comments, 'Environment Notes');
+    const page4Content = envContent + envNotes;
+    if (page4Content.trim()) {
+      optionalPages.push({ content: page4Content });
+    }
+
+    // Render optional pages with sequential numbering starting from page 2
+    let pagesHtml = '';
+    optionalPages.forEach((p, i) => {
+      const pageNum = i + 2; // page 1 is always the first page
+      const isLast = i === optionalPages.length - 1;
+      pagesHtml += `
+        <div class="page">
+          ${header()}
+          <div class="page-content">
+            ${p.content}
+            ${isLast ? `
+              <div class="disclaimer">
+                <div class="disclaimer-title">DISCLAIMER</div>
+                <div class="disclaimer-text">
+                  This daily assessment form documents the operational readiness checks performed for the challenge course facility. 
+                  It is intended to verify that all safety systems, equipment, and environmental conditions meet operational standards 
+                  before and after use. This document should be retained as part of the facility's operational records. Any items 
+                  marked as incomplete or requiring attention should be addressed before course operations begin or resume.
+                </div>
+              </div>
+            ` : ''}
+          </div>
+          ${footer(pageNum)}
         </div>
-      </div>
-    </div>
-    ${footer(4)}
-  </div>
+      `;
+    });
+
+    // If no optional pages, add a disclaimer-only page
+    if (optionalPages.length === 0) {
+      pagesHtml = `
+        <div class="page">
+          ${header()}
+          <div class="page-content">
+            <div class="disclaimer">
+              <div class="disclaimer-title">DISCLAIMER</div>
+              <div class="disclaimer-text">
+                This daily assessment form documents the operational readiness checks performed for the challenge course facility. 
+                It is intended to verify that all safety systems, equipment, and environmental conditions meet operational standards 
+                before and after use. This document should be retained as part of the facility's operational records. Any items 
+                marked as incomplete or requiring attention should be addressed before course operations begin or resume.
+              </div>
+            </div>
+          </div>
+          ${footer(2)}
+        </div>
+      `;
+    }
+
+    return pagesHtml;
+  })()}
 </body>
 </html>
     `;
