@@ -78,7 +78,16 @@ export default function DailyAssessmentHeader({ assessment, onUpdate, isReadOnly
             />
           </div>
 
-          <div className="md:col-span-2">
+          <div>
+            <Label htmlFor="organization">Organization</Label>
+            <OrganizationAutocomplete
+              value={assessment.organization || ''}
+              onChange={(value) => onUpdate("organization", value)}
+              disabled={isReadOnly}
+            />
+          </div>
+
+          <div>
             <Label className="text-sm text-muted-foreground">Trainer/Facilitator of Record</Label>
             <Input
               value={assessment.trainer_of_record || 'Not Set'}

@@ -836,7 +836,11 @@ serve(async (req) => {
             <div class="info-label">Site</div>
             <div class="info-value">${assessment.site || 'N/A'}</div>
           </div>
-          <div class="info-item full-width">
+          <div class="info-item">
+            <div class="info-label">Organization</div>
+            <div class="info-value">${assessment.organization || 'N/A'}</div>
+          </div>
+          <div class="info-item">
             <div class="info-label">Trainer/Facilitator of Record</div>
             <div class="info-value">${assessment.trainer_of_record || 'N/A'}</div>
           </div>
