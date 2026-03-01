@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo } from "react";
 import { cn } from "@/lib/utils";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -71,6 +71,7 @@ import {
 
 export default function Dashboard() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [inspections, setInspections] = useState<any[]>([]);
   const [trainings, setTrainings] = useState<any[]>([]);
   const [dailyAssessments, setDailyAssessments] = useState<any[]>([]);
@@ -339,7 +340,7 @@ export default function Dashboard() {
       subscription.unsubscribe();
       unsubscribeSyncComplete();
     };
-  }, []);
+  }, [location.key]);
 
   // Helper function to add timeout to network queries
   const withNetworkTimeout = async <T,>(
