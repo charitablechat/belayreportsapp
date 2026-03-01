@@ -1,48 +1,49 @@
 
 
-## Convert Data Recovery Panels to Tabbed Interface
+## Fix: Add Organization to Daily Assessment Header and Report Output
 
-### What Changes
-Replace the vertically stacked panels in the Data Recovery Tool with a clean tabbed layout, matching the professional style used throughout the app (similar to the inspection form's Systems/Equipment/Criteria/Summary tabs).
+### Problem
+The Organization field is captured when creating a new Daily Assessment (in `NewDailyAssessment.tsx`), but it is never displayed in the form's header component or included in the generated HTML/PDF report. The data exists in the database -- it is simply not rendered anywhere after creation.
 
-### Current Layout (stacked)
-All five panels render one after another in a long scrollable list:
-1. Local Snapshots
-2. Cloud Snapshots
-3. All User Snapshots
-4. Admin Edit History
-5. IndexedDB Recovery
-6. *(Below)* Deleted Records Recovery
+### Root Cause
+Two rendering gaps:
+1. **Form Header** (`DailyAssessmentHeader.tsx`): Shows Date, Site, and Trainer -- but omits Organization entirely. Users cannot see or edit the organization after the report is created.
+2. **HTML Report Template** (`generate-daily-assessment-html/index.ts`): The "Assessment Information" section renders Date, Site, and Trainer -- but never references `assessment.organization`.
 
-### New Layout (tabbed)
+### Fix (3 changes, no database changes needed)
+
+**1. Add Organization field to `DailyAssessmentHeader.tsx`**
+- Add an Organization row in the header grid, between Site and Trainer
+- Use `OrganizationAutocomplete` (same as Site field) so it is editable and consistent with the rest of the app
+- Displays as read-only when the report is locked or viewed by a non-owner
+
+**2. Add Organization to the HTML report template (`generate-daily-assessment-html/index.ts`)**
+- Insert a new `info-item` in the Assessment Information grid showing the Organization value
+- Placed alongside Date and Site for a clean 2-column layout:
+  - Row 1: Date | Site
+  - Row 2: Organization | Trainer/Facilitator of Record
+
+**3. No database or migration changes**
+- The `organization` column already exists on `daily_assessments` and is populated at creation time
+- The edge function already fetches `SELECT *` from the table, so `assessment.organization` is already available in the template context
+
+### What the report will look like after the fix
 
 ```text
-+-----------------------------------------------------------+
-| Local | Cloud | All Users | Edit History | IndexedDB | Deleted |
-+-----------------------------------------------------------+
-|                                                           |
-|  [Active tab content renders here]                        |
-|                                                           |
-+-----------------------------------------------------------+
+Assessment Information
++---------------------+--------------------------------+
+| Date                | Site                           |
+| February 23, 2026   | Marble Falls, Texas            |
++---------------------+--------------------------------+
+| Organization        | Trainer/Facilitator of Record  |
+| Acme Adventures     | Taylor Maanao                  |
++---------------------+--------------------------------+
 ```
 
-On mobile, the tab bar will scroll horizontally to fit all labels cleanly.
+### Files Changed
 
-### Technical Details
-
-**File: `src/components/admin/DataRecoveryTool.tsx`**
-- Wrap the `DataRecoveryTool` component's content in a `<Tabs>` component with `defaultValue="local"`
-- Replace the stacked `<div className="space-y-6">` with a `<TabsList>` and individual `<TabsContent>` wrappers around each panel
-- Each tab gets a short, clean label: Local, Cloud, All Users, Edit History, IndexedDB
-- Style the TabsList with the same glassmorphic treatment used elsewhere (`backdrop-blur-md bg-white/5 border border-white/10`)
-
-**File: `src/pages/SuperAdminDashboard.tsx`** (lines 1132-1138)
-- Move `DeletedRecordsRecovery` inside the `DataRecoveryTool` as a 6th tab called "Deleted Records" instead of rendering it separately above
-- Remove the separator div and "Local Browser Data Recovery" heading since the tabs are self-explanatory
-- The tab labels on mobile will be compact (e.g., "Local", "Cloud", "Users", "Edits", "IDB", "Deleted")
-
-### What Does NOT Change
-- All panel internals remain identical -- only the wrapper changes
-- The `UserDataRecoverySheet` (regular user view) continues to stack panels since it only shows two
-- No database or logic changes
+| File | Change |
+|------|--------|
+| `src/components/daily-assessment/DailyAssessmentHeader.tsx` | Add Organization field (editable via OrganizationAutocomplete) |
+| `supabase/functions/generate-daily-assessment-html/index.ts` | Add Organization info-item to the Assessment Information grid |
 
