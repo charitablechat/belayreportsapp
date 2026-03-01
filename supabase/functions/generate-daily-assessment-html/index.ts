@@ -878,21 +878,21 @@ serve(async (req) => {
 
   <!-- Page 3: Equipment + Structure Inspections -->
   <div class="page">
-    \${header()}
+    ${header()}
     <div class="page-content">
-      \${renderChecklistItems(equipmentChecks, 'Equipment Inspection')}
-      \${renderChecklistItems(structureChecks, 'Structure Inspection')}
-      \${renderSectionComments(assessment.structure_comments, 'Structure Notes')}
+      ${renderChecklistItems(equipmentChecks, 'Equipment Inspection')}
+      ${renderChecklistItems(structureChecks, 'Structure Inspection')}
+      ${renderSectionComments(assessment.structure_comments, 'Structure Notes')}
     </div>
-    \${footer(3)}
+    ${footer(3)}
   </div>
 
   <!-- Page 4: Environment + Disclaimer -->
   <div class="page">
-    \${header()}
+    ${header()}
     <div class="page-content">
-      \${renderChecklistItems(environmentChecks, 'Environment Inspection')}
-      \${renderSectionComments(assessment.environment_comments, 'Environment Notes')}
+      ${renderChecklistItems(environmentChecks, 'Environment Inspection')}
+      ${renderSectionComments(assessment.environment_comments, 'Environment Notes')}
 
       <div class="disclaimer">
         <div class="disclaimer-title">DISCLAIMER</div>
