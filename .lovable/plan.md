@@ -1,24 +1,32 @@
 
-## Display Organization Instead of Site on Daily Assessment Report Cards
+
+## Fix: Escaped Template Literals in Daily Assessment Report (Pages 3-4)
 
 ### Problem
-In `ReportCard.tsx`, the `getReportOrganization()` function returns `report.site` for daily assessment cards. This causes the card title to show the Site name (e.g., "Marble Falls, TX") instead of the Organization name.
+Pages 3 and 4 of the Daily Assessment HTML report show raw template literal text like `${header()}`, `${renderChecklistItems(...)}`, and `${footer(3)}` instead of rendered content. The screenshot confirms this.
 
-### Fix
-One line change in `src/components/dashboard/ReportCard.tsx`, line 51:
+### Root Cause
+On lines 881-895 of `supabase/functions/generate-daily-assessment-html/index.ts`, the template expressions are **escaped** with a backslash (`\${...}`), which prevents JavaScript from evaluating them. Pages 1 and 2 use the correct unescaped syntax (`${...}`), which is why they render properly.
 
-```typescript
-// Before
-if (isDaily) return report.site;
-
-// After
-if (isDaily) return report.organization;
+```
+Line 881:  \${header()}          <-- BROKEN (escaped)
+Line 883:  \${renderChecklistItems(...)}  <-- BROKEN
+Line 884:  \${renderChecklistItems(...)}  <-- BROKEN
+Line 885:  \${renderSectionComments(...)} <-- BROKEN
+Line 887:  \${footer(3)}         <-- BROKEN
+Line 892:  \${header()}          <-- BROKEN
+Line 894:  \${renderChecklistItems(...)}  <-- BROKEN
+Line 895:  \${renderSectionComments(...)} <-- BROKEN
 ```
 
-This is a pure display change -- no data, sync, or auth logic is affected. The `organization` field is already fetched and available on daily assessment records (confirmed by the recent work adding it to the header and report template).
+Pages 1, 2, and the footer on Page 4 (line 907) are fine -- they use unescaped `${...}`.
 
-### File Changed
+### Fix
+Remove the backslash from all 8 escaped expressions on lines 881-895. Change `\${` to `${` for each one. No other changes needed.
 
-| File | Change |
-|------|--------|
-| `src/components/dashboard/ReportCard.tsx` | Line 51: swap `report.site` to `report.organization` in `getReportOrganization()` |
+### Scope
+- **One file**: `supabase/functions/generate-daily-assessment-html/index.ts`
+- **Lines 881-895**: Remove `\` prefix from 8 template expressions
+- No logic, layout, or styling changes
+- The edge function will redeploy automatically
+
