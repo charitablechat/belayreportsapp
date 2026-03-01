@@ -1,32 +1,39 @@
 
 
-## Fix: Escaped Template Literals in Daily Assessment Report (Pages 3-4)
+## Restyle Section Notes to Warning Yellow
 
-### Problem
-Pages 3 and 4 of the Daily Assessment HTML report show raw template literal text like `${header()}`, `${renderChecklistItems(...)}`, and `${footer(3)}` instead of rendered content. The screenshot confirms this.
+### What's Changing
+The "Structure Notes" / "Section Notes" boxes currently use a dark terminal-style theme (dark navy background, light text). These will be restyled to a **warning yellow** theme in both:
 
-### Root Cause
-On lines 881-895 of `supabase/functions/generate-daily-assessment-html/index.ts`, the template expressions are **escaped** with a backslash (`\${...}`), which prevents JavaScript from evaluating them. Pages 1 and 2 use the correct unescaped syntax (`${...}`), which is why they render properly.
+1. **The form UI** (`SectionComments.tsx`) -- what you see when editing the assessment
+2. **The generated HTML report** (`generate-daily-assessment-html/index.ts`) -- what appears in the PDF/HTML output
 
-```
-Line 881:  \${header()}          <-- BROKEN (escaped)
-Line 883:  \${renderChecklistItems(...)}  <-- BROKEN
-Line 884:  \${renderChecklistItems(...)}  <-- BROKEN
-Line 885:  \${renderSectionComments(...)} <-- BROKEN
-Line 887:  \${footer(3)}         <-- BROKEN
-Line 892:  \${header()}          <-- BROKEN
-Line 894:  \${renderChecklistItems(...)}  <-- BROKEN
-Line 895:  \${renderSectionComments(...)} <-- BROKEN
-```
+### New Look
+- Background: warm amber/yellow tint
+- Border-left accent: amber/orange
+- Text: dark (readable on light yellow background)
+- Header icon and title: amber-toned
+- Overall feel: clearly a "warning/attention" callout
 
-Pages 1, 2, and the footer on Page 4 (line 907) are fine -- they use unescaped `${...}`.
+### Files Changed
 
-### Fix
-Remove the backslash from all 8 escaped expressions on lines 881-895. Change `\${` to `${` for each one. No other changes needed.
+| File | Change |
+|------|--------|
+| `src/components/daily-assessment/SectionComments.tsx` | Replace dark slate classes with amber/yellow warning classes on the textarea and label |
+| `supabase/functions/generate-daily-assessment-html/index.ts` | Update `.section-notes`, `.notes-header`, `.notes-icon`, `.notes-title`, `.notes-content` CSS from dark navy to warning yellow palette |
 
-### Scope
-- **One file**: `supabase/functions/generate-daily-assessment-html/index.ts`
-- **Lines 881-895**: Remove `\` prefix from 8 template expressions
-- No logic, layout, or styling changes
-- The edge function will redeploy automatically
+### Technical Details
 
+**SectionComments.tsx** (form UI):
+- Textarea: `bg-amber-50 dark:bg-amber-950/30 border-amber-300 dark:border-amber-700 focus:border-amber-500`
+- Label: `text-amber-700 dark:text-amber-400`
+- Icon color: amber
+- Left border accent on the container
+
+**Report HTML CSS** (lines 498-539):
+- `.section-notes` background: `#fffbeb` (amber-50) with `#f59e0b` (amber-500) border
+- `.notes-icon` color: `#d97706` (amber-600)
+- `.notes-title` color: `#92400e` (amber-800)
+- `.notes-content` background: `#fef3c7` (amber-100), text color: `#78350f` (amber-900), left border: `#f59e0b` (amber-500)
+
+No logic, data, or layout changes -- purely color/styling swap.
