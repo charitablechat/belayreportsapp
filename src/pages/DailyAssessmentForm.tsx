@@ -1360,6 +1360,7 @@ export default function DailyAssessmentForm() {
             setShowLeaveDialog(false);
             setHasUnsavedChanges(false);
           });
+          markPendingDashboardRefresh();
           goBack(navigate);
         }}
         onCancel={() => setShowLeaveDialog(false)}

@@ -2328,6 +2328,7 @@ export default function InspectionForm() {
             setShowLeaveDialog(false);
             setHasUnsavedChanges(false);
           });
+          markPendingDashboardRefresh();
           goBack(navigate);
         }}
         onCancel={() => setShowLeaveDialog(false)}
