@@ -495,13 +495,13 @@ serve(async (req) => {
       line-height: 1.5;
     }
 
-    /* Terminal-style section notes */
+    /* Warning-yellow section notes */
     .section-notes {
-      background: #0f172a;
+      background: #fffbeb;
       border-radius: 6px;
       padding: 12px;
       margin-top: 16px;
-      border: 1px solid #334155;
+      border: 1px solid #f59e0b;
       font-family: 'Fira Code', 'Monaco', 'Consolas', monospace;
     }
 
@@ -513,12 +513,12 @@ serve(async (req) => {
     }
 
     .notes-icon {
-      color: #22d3ee;
+      color: #d97706;
       font-size: 12px;
     }
 
     .notes-title {
-      color: #94a3b8;
+      color: #92400e;
       font-size: 11px;
       text-transform: uppercase;
       letter-spacing: 0.5px;
@@ -526,16 +526,16 @@ serve(async (req) => {
     }
 
     .notes-content {
-      color: #e2e8f0;
+      color: #78350f;
       font-size: 12px;
       line-height: 1.6;
       margin: 0;
       white-space: pre-wrap;
       word-wrap: break-word;
       padding: 8px;
-      background: #1e293b;
+      background: #fef3c7;
       border-radius: 4px;
-      border-left: 3px solid #22d3ee;
+      border-left: 3px solid #f59e0b;
     }
 
     /* 
