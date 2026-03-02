@@ -23,11 +23,13 @@ import {
 import {
   DndContext,
   closestCenter,
+  DragOverlay,
   PointerSensor,
   TouchSensor,
   useSensor,
   useSensors,
   type DragEndEvent,
+  type DragStartEvent,
 } from "@dnd-kit/core";
 import {
   SortableContext,
@@ -56,6 +58,7 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
   const categoryIds = useMemo(() => categoryEquipment.map(e => e.id), [categoryEquipment]);
   
   const [itemToDelete, setItemToDelete] = useState<{ item: any; name: string } | null>(null);
+  const [activeId, setActiveId] = useState<string | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -92,7 +95,12 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
     }
   }, [itemToDelete, onUpdate, onImmediateSave]);
 
+  const handleDragStart = useCallback((event: DragStartEvent) => {
+    setActiveId(event.active.id as string);
+  }, []);
+
   const handleDragEnd = useCallback((event: DragEndEvent) => {
+    setActiveId(null);
     const { active, over } = event;
     if (!over || active.id === over.id) return;
 
@@ -118,6 +126,8 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
     });
   }, [onUpdate, category]);
 
+  const activeEquipment = useMemo(() => activeId ? categoryEquipment.find(e => e.id === activeId) : null, [activeId, categoryEquipment]);
+
   return (
     <Card>
       <CardHeader className="px-4 md:px-6">
@@ -133,7 +143,7 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
         </div>
       </CardHeader>
       <CardContent className="px-3 md:px-6">
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
           <SortableContext items={categoryIds} strategy={verticalListSortingStrategy}>
             {/* Desktop table view */}
             <div className="hidden md:block overflow-visible">
@@ -469,6 +479,14 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
               ))}
             </div>
           </SortableContext>
+          <DragOverlay dropAnimation={{ duration: 200, easing: 'ease' }}>
+            {activeEquipment ? (
+              <div className="flex items-center gap-3 px-4 py-3 rounded-lg border-l-4 border-l-primary bg-background shadow-2xl transform scale-105 rotate-1">
+                <span className="font-medium text-sm truncate">{activeEquipment.equipment_type || 'Equipment'}</span>
+                <span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground">{activeEquipment.result}</span>
+              </div>
+            ) : null}
+          </DragOverlay>
         </DndContext>
       </CardContent>
 

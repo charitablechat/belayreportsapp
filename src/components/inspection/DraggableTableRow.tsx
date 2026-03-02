@@ -23,15 +23,15 @@ export function DraggableTableRow({ id, children, className = "" }: DraggableTab
   const baseTransform = CSS.Transform.toString(transform);
   const style = {
     transform: baseTransform ? (isDragging ? `${baseTransform} scale(1.01)` : baseTransform) : undefined,
-    transition: transition || 'transform 200ms ease',
-    opacity: isDragging ? 0.8 : 1,
+    transition: transition || 'transform 200ms ease, opacity 150ms ease, border-top 150ms ease',
+    opacity: isDragging ? 0.3 : 1,
     zIndex: isDragging ? 50 : 'auto' as const,
     position: 'relative' as const,
     boxShadow: isDragging
       ? '0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05)'
       : 'none',
     background: isDragging ? 'hsl(var(--background))' : undefined,
-    borderTop: isOver && !isDragging ? '2px solid hsl(var(--primary))' : undefined,
+    borderTop: isOver && !isDragging ? '3px solid hsl(var(--primary))' : undefined,
   };
 
   return (
@@ -73,13 +73,13 @@ export function DraggableMobileCard({ id, children }: DraggableMobileCardProps) 
 
   const style = {
     transform: CSS.Transform.toString(transform),
-    transition: transition || 'transform 200ms ease',
-    opacity: isDragging ? 0.8 : 1,
+    transition: transition || 'transform 200ms ease, opacity 150ms ease, border-top 150ms ease',
+    opacity: isDragging ? 0.3 : 1,
     zIndex: isDragging ? 50 : 'auto' as const,
     boxShadow: isDragging
       ? '0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05)'
       : 'none',
-    borderTop: isOver && !isDragging ? '2px solid hsl(var(--primary))' : undefined,
+    borderTop: isOver && !isDragging ? '3px solid hsl(var(--primary))' : undefined,
   };
 
   return (
