@@ -1,5 +1,5 @@
 import { useSortable } from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
+
 import { GripVertical } from "lucide-react";
 import { ReactNode } from "react";
 
@@ -22,9 +22,9 @@ export function DraggableTableRow({ id, children, className = "", gridCols }: Dr
   } = useSortable({ id });
 
   const style = {
-    transform: CSS.Transform.toString(transform),
-    transition: transition || 'transform 200ms ease',
-    opacity: isDragging ? 0.3 : 1,
+    transform: undefined,
+    transition: undefined,
+    opacity: isDragging ? 0.15 : 1,
     zIndex: isDragging ? 50 : 'auto' as const,
   };
 
@@ -69,9 +69,9 @@ export function DraggableMobileCard({ id, children }: DraggableMobileCardProps) 
   } = useSortable({ id });
 
   const style = {
-    transform: CSS.Transform.toString(transform),
-    transition: transition || 'transform 200ms ease',
-    opacity: isDragging ? 0.3 : 1,
+    transform: undefined,
+    transition: undefined,
+    opacity: isDragging ? 0.15 : 1,
     zIndex: isDragging ? 50 : 'auto' as const,
   };
 
