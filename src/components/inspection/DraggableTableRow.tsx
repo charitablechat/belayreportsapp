@@ -23,22 +23,23 @@ export function DraggableTableRow({ id, children, className = "" }: DraggableTab
   const baseTransform = CSS.Transform.toString(transform);
   const style = {
     transform: baseTransform ? (isDragging ? `${baseTransform} scale(1.01)` : baseTransform) : undefined,
-    transition: transition || 'transform 200ms ease, opacity 150ms ease, border-top 150ms ease',
-    opacity: isDragging ? 0.3 : 1,
+    transition: transition || 'transform 200ms cubic-bezier(0.25, 1, 0.5, 1), opacity 150ms ease, box-shadow 200ms ease',
+    opacity: isDragging ? 0.15 : 1,
     zIndex: isDragging ? 50 : 'auto' as const,
     position: 'relative' as const,
-    boxShadow: isDragging
-      ? '0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05)'
+    outline: isDragging ? '2px dashed hsl(var(--primary) / 0.4)' : 'none',
+    outlineOffset: isDragging ? '-2px' : undefined,
+    background: isDragging ? 'hsl(var(--muted) / 0.5)' : isOver && !isDragging ? 'hsl(var(--primary) / 0.08)' : undefined,
+    boxShadow: isOver && !isDragging
+      ? 'inset 0 4px 0 0 hsl(var(--primary)), 0 0 12px -2px hsl(var(--primary) / 0.35)'
       : 'none',
-    background: isDragging ? 'hsl(var(--background))' : undefined,
-    borderTop: isOver && !isDragging ? '3px solid hsl(var(--primary))' : undefined,
   };
 
   return (
     <tr
       ref={setNodeRef}
       style={style}
-      className={`${className} ${isOver && !isDragging ? 'bg-primary/5' : ''}`}
+      className={`${className} ${isDragging ? 'pointer-events-none' : ''}`}
     >
       <td className="border p-2 text-center w-10">
         <div
@@ -73,20 +74,22 @@ export function DraggableMobileCard({ id, children }: DraggableMobileCardProps) 
 
   const style = {
     transform: CSS.Transform.toString(transform),
-    transition: transition || 'transform 200ms ease, opacity 150ms ease, border-top 150ms ease',
-    opacity: isDragging ? 0.3 : 1,
+    transition: transition || 'transform 200ms cubic-bezier(0.25, 1, 0.5, 1), opacity 150ms ease, box-shadow 200ms ease',
+    opacity: isDragging ? 0.15 : 1,
     zIndex: isDragging ? 50 : 'auto' as const,
-    boxShadow: isDragging
-      ? '0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05)'
+    outline: isDragging ? '2px dashed hsl(var(--primary) / 0.4)' : 'none',
+    outlineOffset: isDragging ? '-2px' : undefined,
+    boxShadow: isOver && !isDragging
+      ? 'inset 0 4px 0 0 hsl(var(--primary)), 0 0 12px -2px hsl(var(--primary) / 0.35)'
       : 'none',
-    borderTop: isOver && !isDragging ? '3px solid hsl(var(--primary))' : undefined,
+    background: isOver && !isDragging ? 'hsl(var(--primary) / 0.08)' : undefined,
   };
 
   return (
     <div
       ref={setNodeRef}
       style={style}
-      className={`${isDragging ? 'ring-2 ring-primary ring-offset-2 shadow-xl rounded-lg' : ''} ${isOver && !isDragging ? 'bg-primary/5' : ''}`}
+      className={`${isDragging ? 'rounded-lg pointer-events-none' : ''}`}
     >
       <div className="relative">
         <div

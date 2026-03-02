@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import ResultSelect from "@/components/ResultSelect";
 import { GlobalAutocomplete } from "@/components/GlobalAutocomplete";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2, GripVertical } from "lucide-react";
 import { useState, useCallback, memo, useMemo } from "react";
 import {
   AlertDialog,
@@ -43,6 +43,10 @@ interface ZiplinesTableProps {
 }
 
 function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: ZiplinesTableProps) {
+  const restrictToYAxis = useCallback(({ transform }: { transform: { x: number; y: number; scaleX: number; scaleY: number } }) => ({
+    ...transform,
+    x: 0,
+  }), []);
   const [itemToDelete, setItemToDelete] = useState<{ id: string; name: string } | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
 
@@ -124,7 +128,7 @@ function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: ZiplinesTablePro
           <p><strong>Emergency Brake System KEY -</strong> ZS = Zip Stop, AP = Auto Prusik, SB = Spring Bank</p>
         </div>
 
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd} modifiers={[restrictToYAxis]}>
           <SortableContext items={ziplineIds} strategy={verticalListSortingStrategy}>
             {/* Desktop table view */}
             <div className="hidden md:block overflow-x-auto">
@@ -454,12 +458,13 @@ function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: ZiplinesTablePro
               ))}
             </div>
           </SortableContext>
-          <DragOverlay dropAnimation={{ duration: 200, easing: 'ease' }}>
+          <DragOverlay dropAnimation={{ duration: 200, easing: 'cubic-bezier(0.25, 1, 0.5, 1)' }}>
             {activeZipline ? (
-              <div className="flex items-center gap-3 px-4 py-3 rounded-lg border-l-4 border-l-primary bg-background shadow-2xl transform scale-105 rotate-1">
-                <span className="font-medium text-sm truncate">{activeZipline.zipline_name || 'Zipline'}</span>
+              <div className="flex items-center gap-3 px-4 py-3 w-full min-w-[400px] rounded-lg border-l-4 border-l-primary bg-background shadow-2xl ring-2 ring-primary/30 scale-[1.02]">
+                <GripVertical className="w-4 h-4 text-muted-foreground shrink-0" />
+                <span className="font-medium text-sm truncate flex-1">{activeZipline.zipline_name || 'Zipline'}</span>
                 <span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground">{activeZipline.cable_type}</span>
-                <span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground">{activeZipline.result}</span>
+                <span className="text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary font-medium">{activeZipline.result}</span>
               </div>
             ) : null}
           </DragOverlay>
