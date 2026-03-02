@@ -5,8 +5,8 @@ import { Label } from "@/components/ui/label";
 import ResultSelect from "@/components/ResultSelect";
 import SystemTypeSelect from "@/components/SystemTypeSelect";
 import { GlobalAutocomplete } from "@/components/GlobalAutocomplete";
-import { Plus, Trash2, GripVertical } from "lucide-react";
-import { useState, useCallback, memo, useMemo } from "react";
+import { Plus, Trash2 } from "lucide-react";
+import { useState, useCallback, memo } from "react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -17,19 +17,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import {
-  DndContext,
-  DragOverlay,
-  PointerSensor,
-  TouchSensor,
-  closestCenter,
-  useSensor,
-  useSensors,
-  type DragEndEvent,
-  type DragStartEvent,
-} from "@dnd-kit/core";
-import { SortableContext, verticalListSortingStrategy, arrayMove } from "@dnd-kit/sortable";
 import { DraggableTableRow, DraggableMobileCard } from "./DraggableTableRow";
+import { useNativeDrag } from "@/hooks/useNativeDrag";
 
 interface OperatingSystemsTableProps {
   systems: any[];
@@ -41,13 +30,8 @@ const OS_GRID_COLS = "grid-cols-[40px_minmax(180px,1fr)_minmax(160px,1fr)_192px_
 
 function OperatingSystemsTable({ systems, onUpdate, onImmediateSave }: OperatingSystemsTableProps) {
   const [itemToDelete, setItemToDelete] = useState<{ id: string; name: string } | null>(null);
-  const [activeId, setActiveId] = useState<string | null>(null);
 
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
-    useSensor(TouchSensor, { activationConstraint: { distance: 8 } })
-  );
-
+  const { getDragProps } = useNativeDrag(systems, (reordered) => onUpdate(reordered));
 
   const addSystem = useCallback(() => {
     onUpdate(prev => [
@@ -76,23 +60,6 @@ function OperatingSystemsTable({ systems, onUpdate, onImmediateSave }: Operating
     }
   }, [itemToDelete, onUpdate, onImmediateSave]);
 
-  const handleDragStart = useCallback((event: DragStartEvent) => {
-    setActiveId(event.active.id as string);
-  }, []);
-
-  const handleDragEnd = useCallback((event: DragEndEvent) => {
-    setActiveId(null);
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
-    onUpdate(prev => {
-      const oldIndex = prev.findIndex(s => s.id === active.id);
-      const newIndex = prev.findIndex(s => s.id === over.id);
-      return arrayMove(prev, oldIndex, newIndex);
-    });
-  }, [onUpdate]);
-
-  const activeSystem = useMemo(() => activeId ? systems.find(s => s.id === activeId) : null, [activeId, systems]);
-
   return (
     <Card>
       <CardHeader className="px-4 md:px-6">
@@ -105,138 +72,123 @@ function OperatingSystemsTable({ systems, onUpdate, onImmediateSave }: Operating
         </div>
       </CardHeader>
       <CardContent className="px-3 md:px-6">
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragCancel={() => setActiveId(null)}>
-            {/* Desktop grid view */}
-            <div className="hidden md:block overflow-x-auto">
-              {/* Header */}
-              <div className={`grid ${OS_GRID_COLS} bg-blue-50 dark:bg-blue-950/20 border-b border-border`}>
-                <div className="p-3 text-center font-semibold text-sm border-r border-border"></div>
-                <div className="p-3 text-left font-semibold text-sm border-r border-border">Element Name</div>
-                <div className="p-3 text-left font-semibold text-sm border-r border-border">Operating System</div>
-                <div className="p-3 text-left font-semibold text-sm border-r border-border">Result</div>
-                <div className="p-3 text-left font-semibold text-sm border-r border-border">Comments and/or Required Changes</div>
-                <div className="p-3 text-center font-semibold text-sm"></div>
-              </div>
-              {/* Rows */}
-              <div className="border border-t-0 border-border rounded-b">
-                <SortableContext items={systems.map(s => s.id)} strategy={verticalListSortingStrategy}>
-                {systems.map((system) => (
-                  <DraggableTableRow
-                    key={system.id}
-                    id={system.id}
-                    className="hover:bg-muted/50"
-                    gridCols={OS_GRID_COLS}
+        {/* Desktop grid view */}
+        <div className="hidden md:block overflow-x-auto">
+          {/* Header */}
+          <div className={`grid ${OS_GRID_COLS} bg-blue-50 dark:bg-blue-950/20 border-b border-border`}>
+            <div className="p-3 text-center font-semibold text-sm border-r border-border"></div>
+            <div className="p-3 text-left font-semibold text-sm border-r border-border">Element Name</div>
+            <div className="p-3 text-left font-semibold text-sm border-r border-border">Operating System</div>
+            <div className="p-3 text-left font-semibold text-sm border-r border-border">Result</div>
+            <div className="p-3 text-left font-semibold text-sm border-r border-border">Comments and/or Required Changes</div>
+            <div className="p-3 text-center font-semibold text-sm"></div>
+          </div>
+          {/* Rows */}
+          <div className="border border-t-0 border-border rounded-b">
+            {systems.map((system) => (
+              <DraggableTableRow
+                key={system.id}
+                id={system.id}
+                className="hover:bg-muted/50"
+                gridCols={OS_GRID_COLS}
+                {...getDragProps(system.id)}
+              >
+                <div className="p-2 border-r border-border">
+                  <GlobalAutocomplete
+                    value={system.name || ""}
+                    onChange={(value) => updateSystem(system, "name", value)}
+                    onBlur={onImmediateSave}
+                    fieldType="operating_system_element"
+                    placeholder="Enter or select name"
+                    className="border-0 bg-transparent"
+                  />
+                </div>
+                <div className="p-2 border-r border-border">
+                  <SystemTypeSelect
+                    value={system.system_name}
+                    onChange={(value) => updateSystem(system, "system_name", value)}
+                  />
+                </div>
+                <div className="p-2 border-r border-border">
+                  <ResultSelect
+                    value={system.result}
+                    onChange={(value) => updateSystem(system, "result", value)}
+                  />
+                </div>
+                <div className="p-2 border-r border-border">
+                  <VoiceRichTextEditor
+                    content={system.comments || ""}
+                    onChange={(value) => updateSystem(system, "comments", value)}
+                    placeholder="Enter comments..."
+                    className="border-0 bg-transparent"
+                  />
+                </div>
+                <div className="p-2 text-center">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setItemToDelete({ id: system.id, name: system.name || system.system_name || "this system" })}
+                    className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
                   >
-                    <div className="p-2 border-r border-border">
-                      <GlobalAutocomplete
-                        value={system.name || ""}
-                        onChange={(value) => updateSystem(system, "name", value)}
-                        onBlur={onImmediateSave}
-                        fieldType="operating_system_element"
-                        placeholder="Enter or select name"
-                        className="border-0 bg-transparent"
-                      />
-                    </div>
-                    <div className="p-2 border-r border-border">
-                      <SystemTypeSelect
-                        value={system.system_name}
-                        onChange={(value) => updateSystem(system, "system_name", value)}
-                      />
-                    </div>
-                    <div className="p-2 border-r border-border">
-                      <ResultSelect
-                        value={system.result}
-                        onChange={(value) => updateSystem(system, "result", value)}
-                      />
-                    </div>
-                    <div className="p-2 border-r border-border">
-                      <VoiceRichTextEditor
-                        content={system.comments || ""}
-                        onChange={(value) => updateSystem(system, "comments", value)}
-                        placeholder="Enter comments..."
-                        className="border-0 bg-transparent"
-                      />
-                    </div>
-                    <div className="p-2 text-center">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setItemToDelete({ id: system.id, name: system.name || system.system_name || "this system" })}
-                        className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </DraggableTableRow>
-                ))}
-                </SortableContext>
-              </div>
-            </div>
-            
-            {/* Mobile card view */}
-            <div className="md:hidden space-y-3">
-              <SortableContext items={systems.map(s => s.id)} strategy={verticalListSortingStrategy}>
-              {systems.map((system) => (
-                <DraggableMobileCard key={system.id} id={system.id}>
-                  <div className="p-4 pl-12 relative border-l-4 border-l-primary/20 rounded-lg bg-muted/30 border border-border">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setItemToDelete({ id: system.id, name: system.name || system.system_name || "this system" })}
-                      className="absolute top-3 right-3 h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                    <div className="space-y-3 pr-10">
-                      <div>
-                        <Label className="text-xs text-muted-foreground">Element Name</Label>
-                        <GlobalAutocomplete
-                          value={system.name || ""}
-                          onChange={(value) => updateSystem(system, "name", value)}
-                          onBlur={onImmediateSave}
-                          fieldType="operating_system_element"
-                          placeholder="Enter or select name"
-                        />
-                      </div>
-                      <div>
-                        <Label className="text-xs text-muted-foreground">Operating System</Label>
-                        <SystemTypeSelect
-                          value={system.system_name}
-                          onChange={(value) => updateSystem(system, "system_name", value)}
-                        />
-                      </div>
-                      <div>
-                        <Label className="text-xs text-muted-foreground">Result</Label>
-                        <ResultSelect
-                          value={system.result}
-                          onChange={(value) => updateSystem(system, "result", value)}
-                        />
-                      </div>
-                      <div>
-                        <Label className="text-xs text-muted-foreground">Comments / Changes</Label>
-                        <VoiceRichTextEditor
-                          content={system.comments || ""}
-                          onChange={(value) => updateSystem(system, "comments", value)}
-                          placeholder="Enter comments..."
-                        />
-                      </div>
-                    </div>
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              </DraggableTableRow>
+            ))}
+          </div>
+        </div>
+        
+        {/* Mobile card view */}
+        <div className="md:hidden space-y-3">
+          {systems.map((system) => (
+            <DraggableMobileCard key={system.id} id={system.id} {...getDragProps(system.id)}>
+              <div className="p-4 pl-12 relative border-l-4 border-l-primary/20 rounded-lg bg-muted/30 border border-border">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setItemToDelete({ id: system.id, name: system.name || system.system_name || "this system" })}
+                  className="absolute top-3 right-3 h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+                <div className="space-y-3 pr-10">
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Element Name</Label>
+                    <GlobalAutocomplete
+                      value={system.name || ""}
+                      onChange={(value) => updateSystem(system, "name", value)}
+                      onBlur={onImmediateSave}
+                      fieldType="operating_system_element"
+                      placeholder="Enter or select name"
+                    />
                   </div>
-                </DraggableMobileCard>
-              ))}
-              </SortableContext>
-            </div>
-          
-          <DragOverlay dropAnimation={{ duration: 200, easing: 'cubic-bezier(0.25, 1, 0.5, 1)' }}>
-            {activeSystem ? (
-              <div className="flex items-center gap-3 px-4 py-3 w-full min-w-[400px] rounded-lg border-l-4 border-l-primary bg-background shadow-2xl ring-2 ring-primary/30 scale-[1.02]">
-                <GripVertical className="w-4 h-4 text-muted-foreground shrink-0" />
-                <span className="font-medium text-sm truncate flex-1">{activeSystem.name || activeSystem.system_name || 'System'}</span>
-                <span className="text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary font-medium">{activeSystem.result}</span>
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Operating System</Label>
+                    <SystemTypeSelect
+                      value={system.system_name}
+                      onChange={(value) => updateSystem(system, "system_name", value)}
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Result</Label>
+                    <ResultSelect
+                      value={system.result}
+                      onChange={(value) => updateSystem(system, "result", value)}
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Comments / Changes</Label>
+                    <VoiceRichTextEditor
+                      content={system.comments || ""}
+                      onChange={(value) => updateSystem(system, "comments", value)}
+                      placeholder="Enter comments..."
+                    />
+                  </div>
+                </div>
               </div>
-            ) : null}
-          </DragOverlay>
-        </DndContext>
+            </DraggableMobileCard>
+          ))}
+        </div>
         
         <div className="mt-6 text-xs text-muted-foreground border-t pt-4">
           <p>
