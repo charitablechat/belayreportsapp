@@ -1,101 +1,64 @@
 
 
-## Fix Drag-and-Drop: Ghost Offset and Drop Indicator
+## Fix Drag-and-Drop: Enable Transforms and Mirror DraggablePhotoItem Pattern
 
-### Root Cause
+### Current State
 
-The current implementation uses separate `useDraggable` + `useDroppable` hooks, which fragments the node measurement. `DragOverlay` calculates its position from the draggable node's rect. When that ref is on a tiny grip icon, the offset math breaks -- the overlay renders hundreds of pixels from the cursor. Meanwhile, `useDroppable` combined with `pointerWithin` collision detection isn't reliably triggering `isOver` because collision detection and droppable registration are loosely coupled without `SortableContext`.
+`DraggableTableRow.tsx` already uses `useSortable` but **explicitly ignores** the `transform` and `transition` outputs. This is why the ghost offset persists and the drop indicator is unreliable -- without transforms, `@dnd-kit`'s sorting layer cannot visually shift rows to "make room" for the dragged item, and the internal collision tracking doesn't stay in sync with the visual layout.
 
-### Solution: Return to `useSortable` with Zeroed Transforms
+### Solution
 
-Use `useSortable` from `@dnd-kit/sortable` which bundles draggable + droppable into a single coordinated hook. The key insight the previous attempts missed: you CAN zero out the CSS transforms while keeping `isOver` working, because `isOver` is driven by collision detection against actual DOM rects, not by transform values.
+Enable `CSS.Transform.toString(transform)` and `transition` on the row container, exactly as `DraggablePhotoItem.tsx` does. This is the pattern that already works correctly for photo reordering in this same project.
 
-- `setNodeRef` on the row container (full-width measurement for DragOverlay positioning)
-- `listeners` + `attributes` on the grip handle only (handle-activated dragging)
-- `transform: undefined, transition: undefined` in style (rows stay static)
-- `isOver` from `useSortable` provides reliable drop indicator state
-- `DragOverlay` with `dropAnimation` for the floating ghost
+### File 1: `src/components/inspection/DraggableTableRow.tsx`
 
-### File 1: `DraggableTableRow.tsx` -- Rewrite
+**DraggableTableRow changes:**
+- Import `CSS` from `@dnd-kit/utilities`
+- Apply `CSS.Transform.toString(transform)` and `transition` to the row style
+- Keep `isDragging` for opacity (0.4) and dashed border on the source row
+- Keep `isOver` for the blue insertion line indicator
+- Add `position: relative` and `z-index` when dragging to float above siblings
 
-Replace `useDraggable` + `useDroppable` with `useSortable`:
+**DraggableMobileCard changes:**
+- Same transform/transition enablement
+- Same visual feedback (opacity, ring, indicator line)
 
-```typescript
-import { useSortable } from "@dnd-kit/sortable";
-
-export function DraggableTableRow({ id, children, className, gridCols }) {
-  const { attributes, listeners, setNodeRef, isDragging, isOver } = useSortable({ id });
-
-  // CRITICAL: No transform, no transition -- rows stay perfectly static
-  const style = {
-    opacity: isDragging ? 0.4 : 1,
-  };
-
-  return (
-    <div ref={setNodeRef} style={style} className={`relative grid ${gridCols} ...`}>
-      {isOver && !isDragging && (
-        <div className="absolute top-0 left-0 right-0 h-[3px] bg-primary z-50 ..." />
-      )}
-      <div {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing ...">
-        <GripVertical />
-      </div>
-      {children}
-    </div>
-  );
+```text
+Key style object:
+{
+  transform: CSS.Transform.toString(transform),
+  transition: transition || 'transform 200ms ease',
+  opacity: isDragging ? 0.4 : 1,
+  zIndex: isDragging ? 50 : 'auto',
 }
 ```
 
-Same for `DraggableMobileCard` -- use `useSortable`, zero transforms, `isOver` for indicator.
+### Files 2-4: Table Components (no changes needed)
 
-Remove the `isOver` prop from both components (it's now internal from `useSortable`).
+`OperatingSystemsTable.tsx`, `ZiplinesTable.tsx`, and `EquipmentTable.tsx` already have:
+- `SortableContext` with `verticalListSortingStrategy` wrapping rows
+- `closestCenter` collision detection
+- `DragOverlay` with ghost elements
+- Correct `handleDragEnd` using `arrayMove`
 
-### Files 2-4: Table Components
+These files need **no modifications** -- only the shared `DraggableTableRow.tsx` component needs updating.
 
-Restore `SortableContext` + `verticalListSortingStrategy` wrapping around rows. Use `closestCenter` collision detection (more reliable than `pointerWithin` when paired with `SortableContext`).
+### Why This Works
 
-Remove `overId` state and `handleDragOver` since `isOver` is now handled inside each row.
+1. **Ghost offset fixed**: With transforms enabled, `@dnd-kit` can properly calculate the drag offset relative to the grab point. The `DragOverlay` uses the measured rect of the full row (via `setNodeRef`) to position the ghost correctly under the cursor.
 
-```typescript
-import { SortableContext, verticalListSortingStrategy, arrayMove } from "@dnd-kit/sortable";
-import { closestCenter } from "@dnd-kit/core";
+2. **Drop indicator reliable**: `isOver` from `useSortable` works correctly when transforms are enabled because the sorting layer can track which item the pointer is nearest to as rows shift position.
 
-<DndContext
-  sensors={sensors}
-  collisionDetection={closestCenter}
-  onDragStart={handleDragStart}
-  onDragEnd={handleDragEnd}
-  onDragCancel={() => setActiveId(null)}
->
-  <SortableContext items={systems.map(s => s.id)} strategy={verticalListSortingStrategy}>
-    {systems.map((system) => (
-      <DraggableTableRow key={system.id} id={system.id} gridCols={OS_GRID_COLS}>
-        ...
-      </DraggableTableRow>
-    ))}
-  </SortableContext>
-  <DragOverlay dropAnimation={{ duration: 200, easing: '...' }}>
-    {activeSystem ? (...ghost element...) : null}
-  </DragOverlay>
-</DndContext>
-```
+3. **Rows shift smoothly**: Neighboring rows animate out of the way (via CSS transform) to show where the dragged item will land, providing clear spatial feedback alongside the blue line indicator.
+
+4. **Proven pattern**: This mirrors `DraggablePhotoItem.tsx` which uses the identical approach and works correctly in this project.
 
 ### Changes Summary
 
 | File | Change |
 |------|--------|
-| `DraggableTableRow.tsx` | Replace `useDraggable`+`useDroppable` with `useSortable`. Zero transforms. Internal `isOver` for drop line. Remove `isOver` prop. |
-| `OperatingSystemsTable.tsx` | Add `SortableContext` wrapper. Use `closestCenter`. Remove `overId` state and `handleDragOver`. Remove `isOver` prop from rows. |
-| `ZiplinesTable.tsx` | Same changes as OperatingSystems. |
-| `EquipmentTable.tsx` | Same changes as OperatingSystems (using `categoryEquipment` IDs for SortableContext items). |
-
-### Why This Fixes All Issues
-
-1. **Ghost offset**: `useSortable`'s `setNodeRef` goes on the full row. DragOverlay measures the row's rect and computes the initial grab offset (cursor minus row top-left), so the ghost stays pinned to where you grabbed.
-2. **Drop indicator**: `isOver` from `useSortable` is driven by `closestCenter` collision detection against row rects registered through `SortableContext`. No external state management needed -- each row knows when it's the drop target.
-3. **Rows stay static**: Explicitly setting no transform/transition means rows never jump or shift during drag. Only the DragOverlay moves.
-4. **Visual feedback**: Source row at 0.4 opacity with dashed border. Ghost has shadow + ring. Grip has grab/grabbing cursors.
-
-### Why Previous `useSortable` Attempt Failed
-
-The earlier attempt used `CSS.Transform.toString(transform)` which applied sorting transforms to rows, causing them to jump. This plan explicitly ignores the transform output from `useSortable`, using the hook only for `isOver`, `isDragging`, ref registration, and listener forwarding.
+| `DraggableTableRow.tsx` | Enable `CSS.Transform.toString(transform)` and `transition` in both `DraggableTableRow` and `DraggableMobileCard`. Add z-index on drag. |
+| `OperatingSystemsTable.tsx` | No changes needed. |
+| `ZiplinesTable.tsx` | No changes needed. |
+| `EquipmentTable.tsx` | No changes needed. |
 
