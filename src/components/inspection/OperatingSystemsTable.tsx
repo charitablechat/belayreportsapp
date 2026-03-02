@@ -22,13 +22,13 @@ import {
   DragOverlay,
   PointerSensor,
   TouchSensor,
-  pointerWithin,
+  closestCenter,
   useSensor,
   useSensors,
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
-import { arrayMove } from "@dnd-kit/sortable";
+import { SortableContext, verticalListSortingStrategy, arrayMove } from "@dnd-kit/sortable";
 import { DraggableTableRow, DraggableMobileCard } from "./DraggableTableRow";
 
 interface OperatingSystemsTableProps {
@@ -42,7 +42,6 @@ const OS_GRID_COLS = "grid-cols-[40px_minmax(180px,1fr)_minmax(160px,1fr)_192px_
 function OperatingSystemsTable({ systems, onUpdate, onImmediateSave }: OperatingSystemsTableProps) {
   const [itemToDelete, setItemToDelete] = useState<{ id: string; name: string } | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [overId, setOverId] = useState<string | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -81,13 +80,8 @@ function OperatingSystemsTable({ systems, onUpdate, onImmediateSave }: Operating
     setActiveId(event.active.id as string);
   }, []);
 
-  const handleDragOver = useCallback((event: any) => {
-    setOverId(event.over?.id as string ?? null);
-  }, []);
-
   const handleDragEnd = useCallback((event: DragEndEvent) => {
     setActiveId(null);
-    setOverId(null);
     const { active, over } = event;
     if (!over || active.id === over.id) return;
     onUpdate(prev => {
@@ -111,7 +105,7 @@ function OperatingSystemsTable({ systems, onUpdate, onImmediateSave }: Operating
         </div>
       </CardHeader>
       <CardContent className="px-3 md:px-6">
-        <DndContext sensors={sensors} collisionDetection={pointerWithin} onDragStart={handleDragStart} onDragOver={handleDragOver} onDragEnd={handleDragEnd} onDragCancel={() => { setActiveId(null); setOverId(null); }}>
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragCancel={() => setActiveId(null)}>
             {/* Desktop grid view */}
             <div className="hidden md:block overflow-x-auto">
               {/* Header */}
@@ -125,13 +119,13 @@ function OperatingSystemsTable({ systems, onUpdate, onImmediateSave }: Operating
               </div>
               {/* Rows */}
               <div className="border border-t-0 border-border rounded-b">
+                <SortableContext items={systems.map(s => s.id)} strategy={verticalListSortingStrategy}>
                 {systems.map((system) => (
                   <DraggableTableRow
                     key={system.id}
                     id={system.id}
                     className="hover:bg-muted/50"
                     gridCols={OS_GRID_COLS}
-                    isOver={overId === system.id}
                   >
                     <div className="p-2 border-r border-border">
                       <GlobalAutocomplete
@@ -175,13 +169,15 @@ function OperatingSystemsTable({ systems, onUpdate, onImmediateSave }: Operating
                     </div>
                   </DraggableTableRow>
                 ))}
+                </SortableContext>
               </div>
             </div>
             
             {/* Mobile card view */}
             <div className="md:hidden space-y-3">
+              <SortableContext items={systems.map(s => s.id)} strategy={verticalListSortingStrategy}>
               {systems.map((system) => (
-                <DraggableMobileCard key={system.id} id={system.id} isOver={overId === system.id}>
+                <DraggableMobileCard key={system.id} id={system.id}>
                   <div className="p-4 pl-12 relative border-l-4 border-l-primary/20 rounded-lg bg-muted/30 border border-border">
                     <Button
                       variant="ghost"
@@ -228,6 +224,7 @@ function OperatingSystemsTable({ systems, onUpdate, onImmediateSave }: Operating
                   </div>
                 </DraggableMobileCard>
               ))}
+              </SortableContext>
             </div>
           
           <DragOverlay dropAnimation={{ duration: 200, easing: 'cubic-bezier(0.25, 1, 0.5, 1)' }}>
