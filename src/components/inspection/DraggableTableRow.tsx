@@ -21,22 +21,30 @@ export function DraggableTableRow({ id, children, className = "" }: DraggableTab
   } = useSortable({ id });
 
   const baseTransform = CSS.Transform.toString(transform);
-  const style = {
-    transform: isDragging ? 'none' : (baseTransform || undefined),
-    transition: transition || 'transform 200ms cubic-bezier(0.25, 1, 0.5, 1), opacity 150ms ease',
-    opacity: isDragging ? 0.15 : 1,
-    zIndex: isDragging ? 50 : 'auto' as const,
-    position: 'relative' as const,
-    outline: isDragging ? '2px dashed hsl(var(--primary) / 0.4)' : 'none',
-    outlineOffset: isDragging ? '-2px' : undefined,
-    background: isDragging ? 'hsl(var(--muted) / 0.5)' : isOver && !isDragging ? 'hsl(var(--primary) / 0.08)' : undefined,
-    borderTop: isOver && !isDragging ? '4px solid hsl(var(--primary))' : undefined,
-  };
 
   return (
     <tr
       ref={setNodeRef}
-      style={style}
+      style={{
+        // When dragging, keep placeholder in place (DragOverlay follows cursor)
+        transform: isDragging ? 'none' : (baseTransform || undefined),
+        transition: transition || 'transform 200ms cubic-bezier(0.25, 1, 0.5, 1), opacity 150ms ease',
+        opacity: isDragging ? 0.15 : 1,
+        zIndex: isDragging ? 50 : 'auto' as const,
+        position: 'relative' as const,
+        // Placeholder: dashed outline showing the "slot"
+        outline: isDragging
+          ? '2px dashed hsl(var(--primary) / 0.4)'
+          : isOver && !isDragging
+            ? '3px solid hsl(var(--primary))'
+            : 'none',
+        outlineOffset: isDragging ? '-2px' : isOver && !isDragging ? '-3px' : undefined,
+        background: isDragging
+          ? 'hsl(var(--muted) / 0.5)'
+          : isOver && !isDragging
+            ? 'hsl(var(--primary) / 0.08)'
+            : undefined,
+      }}
       className={`${className} ${isDragging ? 'pointer-events-none' : ''}`}
     >
       <td className="border p-2 text-center w-10">
@@ -70,21 +78,27 @@ export function DraggableMobileCard({ id, children }: DraggableMobileCardProps) 
     isOver,
   } = useSortable({ id });
 
-  const style = {
-    transform: isDragging ? 'none' : (CSS.Transform.toString(transform) || undefined),
-    transition: transition || 'transform 200ms cubic-bezier(0.25, 1, 0.5, 1), opacity 150ms ease',
-    opacity: isDragging ? 0.15 : 1,
-    zIndex: isDragging ? 50 : 'auto' as const,
-    outline: isDragging ? '2px dashed hsl(var(--primary) / 0.4)' : 'none',
-    outlineOffset: isDragging ? '-2px' : undefined,
-    borderTop: isOver && !isDragging ? '4px solid hsl(var(--primary))' : undefined,
-    background: isDragging ? 'hsl(var(--muted) / 0.5)' : isOver && !isDragging ? 'hsl(var(--primary) / 0.08)' : undefined,
-  };
-
   return (
     <div
       ref={setNodeRef}
-      style={style}
+      style={{
+        transform: isDragging ? 'none' : (CSS.Transform.toString(transform) || undefined),
+        transition: transition || 'transform 200ms cubic-bezier(0.25, 1, 0.5, 1), opacity 150ms ease',
+        opacity: isDragging ? 0.15 : 1,
+        zIndex: isDragging ? 50 : 'auto' as const,
+        outline: isDragging
+          ? '2px dashed hsl(var(--primary) / 0.4)'
+          : isOver && !isDragging
+            ? '3px solid hsl(var(--primary))'
+            : 'none',
+        outlineOffset: isDragging ? '-2px' : isOver && !isDragging ? '-3px' : undefined,
+        background: isDragging
+          ? 'hsl(var(--muted) / 0.5)'
+          : isOver && !isDragging
+            ? 'hsl(var(--primary) / 0.08)'
+            : undefined,
+        borderRadius: isOver && !isDragging ? '8px' : undefined,
+      }}
       className={`${isDragging ? 'rounded-lg pointer-events-none' : ''}`}
     >
       <div className="relative">
