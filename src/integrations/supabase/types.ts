@@ -720,6 +720,7 @@ export type Database = {
         Row: {
           comments: string | null
           created_at: string | null
+          display_order: number
           equipment_category: string
           equipment_type: string
           id: string
@@ -732,6 +733,7 @@ export type Database = {
         Insert: {
           comments?: string | null
           created_at?: string | null
+          display_order?: number
           equipment_category: string
           equipment_type: string
           id?: string
@@ -744,6 +746,7 @@ export type Database = {
         Update: {
           comments?: string | null
           created_at?: string | null
+          display_order?: number
           equipment_category?: string
           equipment_type?: string
           id?: string
@@ -925,6 +928,7 @@ export type Database = {
         Row: {
           comments: string | null
           created_at: string | null
+          display_order: number
           id: string
           inspection_id: string
           name: string | null
@@ -934,6 +938,7 @@ export type Database = {
         Insert: {
           comments?: string | null
           created_at?: string | null
+          display_order?: number
           id?: string
           inspection_id: string
           name?: string | null
@@ -943,6 +948,7 @@ export type Database = {
         Update: {
           comments?: string | null
           created_at?: string | null
+          display_order?: number
           id?: string
           inspection_id?: string
           name?: string | null
@@ -968,6 +974,7 @@ export type Database = {
           cable_type: string | null
           comments: string | null
           created_at: string | null
+          display_order: number
           ead_result: string | null
           ead_system: string | null
           id: string
@@ -985,6 +992,7 @@ export type Database = {
           cable_type?: string | null
           comments?: string | null
           created_at?: string | null
+          display_order?: number
           ead_result?: string | null
           ead_system?: string | null
           id?: string
@@ -1002,6 +1010,7 @@ export type Database = {
           cable_type?: string | null
           comments?: string | null
           created_at?: string | null
+          display_order?: number
           ead_result?: string | null
           ead_system?: string | null
           id?: string
