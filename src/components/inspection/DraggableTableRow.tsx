@@ -26,19 +26,11 @@ export function DraggableTableRow({ id, children, className = "" }: DraggableTab
     <tr
       ref={setNodeRef}
       style={{
-        // When dragging, keep placeholder in place (DragOverlay follows cursor)
         transform: isDragging ? 'none' : (baseTransform || undefined),
         transition: transition || 'transform 200ms cubic-bezier(0.25, 1, 0.5, 1), opacity 150ms ease',
         opacity: isDragging ? 0.15 : 1,
         zIndex: isDragging ? 50 : 'auto' as const,
         position: 'relative' as const,
-        // Placeholder: dashed outline showing the "slot"
-        outline: isDragging
-          ? '2px dashed hsl(var(--primary) / 0.4)'
-          : isOver && !isDragging
-            ? '3px solid hsl(var(--primary))'
-            : 'none',
-        outlineOffset: isDragging ? '-2px' : isOver && !isDragging ? '-3px' : undefined,
         background: isDragging
           ? 'hsl(var(--muted) / 0.5)'
           : isOver && !isDragging
@@ -47,7 +39,27 @@ export function DraggableTableRow({ id, children, className = "" }: DraggableTab
       }}
       className={`${className} ${isDragging ? 'pointer-events-none' : ''}`}
     >
-      <td className="border p-2 text-center w-10">
+      <td
+        className="border p-2 text-center w-10"
+        style={{ position: 'relative', overflow: 'visible' }}
+      >
+        {/* Rendered drop indicator bar — immune to border-collapse clipping */}
+        {isOver && !isDragging && (
+          <div
+            style={{
+              position: 'absolute',
+              top: -2,
+              left: -1,
+              height: 4,
+              width: '200vw',
+              background: 'hsl(var(--primary))',
+              boxShadow: '0 0 8px hsl(var(--primary) / 0.5)',
+              zIndex: 50,
+              pointerEvents: 'none',
+              borderRadius: 2,
+            }}
+          />
+        )}
         <div
           {...attributes}
           {...listeners}
@@ -86,22 +98,32 @@ export function DraggableMobileCard({ id, children }: DraggableMobileCardProps) 
         transition: transition || 'transform 200ms cubic-bezier(0.25, 1, 0.5, 1), opacity 150ms ease',
         opacity: isDragging ? 0.15 : 1,
         zIndex: isDragging ? 50 : 'auto' as const,
-        outline: isDragging
-          ? '2px dashed hsl(var(--primary) / 0.4)'
-          : isOver && !isDragging
-            ? '3px solid hsl(var(--primary))'
-            : 'none',
-        outlineOffset: isDragging ? '-2px' : isOver && !isDragging ? '-3px' : undefined,
         background: isDragging
           ? 'hsl(var(--muted) / 0.5)'
           : isOver && !isDragging
             ? 'hsl(var(--primary) / 0.08)'
             : undefined,
-        borderRadius: isOver && !isDragging ? '8px' : undefined,
       }}
       className={`${isDragging ? 'rounded-lg pointer-events-none' : ''}`}
     >
       <div className="relative">
+        {/* Rendered drop indicator bar for mobile */}
+        {isOver && !isDragging && (
+          <div
+            style={{
+              position: 'absolute',
+              top: -2,
+              left: 0,
+              right: 0,
+              height: 4,
+              background: 'hsl(var(--primary))',
+              boxShadow: '0 0 8px hsl(var(--primary) / 0.5)',
+              zIndex: 50,
+              pointerEvents: 'none',
+              borderRadius: 2,
+            }}
+          />
+        )}
         <div
           {...attributes}
           {...listeners}
