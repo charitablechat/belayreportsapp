@@ -27,7 +27,6 @@ import {
   useSensors,
   type DragEndEvent,
   type DragStartEvent,
-  type DragOverEvent,
 } from "@dnd-kit/core";
 import {
   SortableContext,
@@ -42,6 +41,8 @@ interface OperatingSystemsTableProps {
   onImmediateSave?: () => void;
 }
 
+const OS_GRID_COLS = "grid-cols-[40px_minmax(180px,1fr)_minmax(160px,1fr)_192px_1fr_64px]";
+
 function OperatingSystemsTable({ systems, onUpdate, onImmediateSave }: OperatingSystemsTableProps) {
   const restrictToYAxis = useCallback(({ transform }: { transform: { x: number; y: number; scaleX: number; scaleY: number } }) => ({
     ...transform,
@@ -49,7 +50,6 @@ function OperatingSystemsTable({ systems, onUpdate, onImmediateSave }: Operating
   }), []);
   const [itemToDelete, setItemToDelete] = useState<{ id: string; name: string } | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [overId, setOverId] = useState<string | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -89,13 +89,8 @@ function OperatingSystemsTable({ systems, onUpdate, onImmediateSave }: Operating
     setActiveId(event.active.id as string);
   }, []);
 
-  const handleDragOver = useCallback((event: DragOverEvent) => {
-    setOverId(event.over?.id as string ?? null);
-  }, []);
-
   const handleDragEnd = useCallback((event: DragEndEvent) => {
     setActiveId(null);
-    setOverId(null);
     const { active, over } = event;
     if (!over || active.id === over.id) return;
     onUpdate(prev => {
@@ -119,80 +114,77 @@ function OperatingSystemsTable({ systems, onUpdate, onImmediateSave }: Operating
         </div>
       </CardHeader>
       <CardContent className="px-3 md:px-6">
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragOver={handleDragOver} onDragEnd={handleDragEnd} onDragCancel={() => { setActiveId(null); setOverId(null); }}>
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragCancel={() => setActiveId(null)}>
           <SortableContext items={systemIds} strategy={verticalListSortingStrategy}>
-            {/* Desktop table view */}
+            {/* Desktop grid view */}
             <div className="hidden md:block overflow-x-auto">
-              <table className="w-full border-collapse">
-                <thead>
-                  <tr className="bg-blue-50 dark:bg-blue-950/20">
-                    <th className="border p-3 text-center font-semibold text-sm w-10"></th>
-                    <th className="border p-3 text-left font-semibold text-sm min-w-[180px]">Element Name</th>
-                    <th className="border p-3 text-left font-semibold text-sm min-w-[160px]">Operating System</th>
-                    <th className="border p-3 text-left font-semibold text-sm w-48">Result</th>
-                    <th className="border p-3 text-left font-semibold text-sm">Comments and/or Required Changes</th>
-                    <th className="border p-3 text-center font-semibold text-sm w-16"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {systems.map((system) => (
-                    <DraggableTableRow
-                      key={system.id}
-                      id={system.id}
-                      className="hover:bg-muted/50"
-                      isDropTarget={overId === system.id && activeId !== system.id}
-                      isDragActive={activeId === system.id}
-                    >
-                      <td className="border p-2">
-                        <GlobalAutocomplete
-                          value={system.name || ""}
-                          onChange={(value) => updateSystem(system, "name", value)}
-                          onBlur={onImmediateSave}
-                          fieldType="operating_system_element"
-                          placeholder="Enter or select name"
-                          className="border-0 bg-transparent"
-                        />
-                      </td>
-                      <td className="border p-2">
-                        <SystemTypeSelect
-                          value={system.system_name}
-                          onChange={(value) => updateSystem(system, "system_name", value)}
-                        />
-                      </td>
-                      <td className="border p-2">
-                        <ResultSelect
-                          value={system.result}
-                          onChange={(value) => updateSystem(system, "result", value)}
-                        />
-                      </td>
-                      <td className="border p-2">
-                        <VoiceRichTextEditor
-                          content={system.comments || ""}
-                          onChange={(value) => updateSystem(system, "comments", value)}
-                          placeholder="Enter comments..."
-                          className="border-0 bg-transparent"
-                        />
-                      </td>
-                      <td className="border p-2 text-center">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setItemToDelete({ id: system.id, name: system.name || system.system_name || "this system" })}
-                          className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </td>
-                    </DraggableTableRow>
-                  ))}
-                </tbody>
-              </table>
+              {/* Header */}
+              <div className={`grid ${OS_GRID_COLS} bg-blue-50 dark:bg-blue-950/20 border-b border-border`}>
+                <div className="p-3 text-center font-semibold text-sm border-r border-border"></div>
+                <div className="p-3 text-left font-semibold text-sm border-r border-border">Element Name</div>
+                <div className="p-3 text-left font-semibold text-sm border-r border-border">Operating System</div>
+                <div className="p-3 text-left font-semibold text-sm border-r border-border">Result</div>
+                <div className="p-3 text-left font-semibold text-sm border-r border-border">Comments and/or Required Changes</div>
+                <div className="p-3 text-center font-semibold text-sm"></div>
+              </div>
+              {/* Rows */}
+              <div className="border border-t-0 border-border rounded-b">
+                {systems.map((system) => (
+                  <DraggableTableRow
+                    key={system.id}
+                    id={system.id}
+                    className="hover:bg-muted/50"
+                    gridCols={OS_GRID_COLS}
+                  >
+                    <div className="p-2 border-r border-border">
+                      <GlobalAutocomplete
+                        value={system.name || ""}
+                        onChange={(value) => updateSystem(system, "name", value)}
+                        onBlur={onImmediateSave}
+                        fieldType="operating_system_element"
+                        placeholder="Enter or select name"
+                        className="border-0 bg-transparent"
+                      />
+                    </div>
+                    <div className="p-2 border-r border-border">
+                      <SystemTypeSelect
+                        value={system.system_name}
+                        onChange={(value) => updateSystem(system, "system_name", value)}
+                      />
+                    </div>
+                    <div className="p-2 border-r border-border">
+                      <ResultSelect
+                        value={system.result}
+                        onChange={(value) => updateSystem(system, "result", value)}
+                      />
+                    </div>
+                    <div className="p-2 border-r border-border">
+                      <VoiceRichTextEditor
+                        content={system.comments || ""}
+                        onChange={(value) => updateSystem(system, "comments", value)}
+                        placeholder="Enter comments..."
+                        className="border-0 bg-transparent"
+                      />
+                    </div>
+                    <div className="p-2 text-center">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setItemToDelete({ id: system.id, name: system.name || system.system_name || "this system" })}
+                        className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </DraggableTableRow>
+                ))}
+              </div>
             </div>
             
             {/* Mobile card view */}
             <div className="md:hidden space-y-3">
               {systems.map((system) => (
-                <DraggableMobileCard key={system.id} id={system.id} isDropTarget={overId === system.id && activeId !== system.id} isDragActive={activeId === system.id}>
+                <DraggableMobileCard key={system.id} id={system.id}>
                   <div className="p-4 pl-12 relative border-l-4 border-l-primary/20 rounded-lg bg-muted/30 border border-border">
                     <Button
                       variant="ghost"

@@ -1,4 +1,5 @@
 import { useSortable } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { GripVertical } from "lucide-react";
 import { ReactNode } from "react";
 
@@ -6,51 +7,37 @@ interface DraggableTableRowProps {
   id: string;
   children: ReactNode;
   className?: string;
-  isDropTarget?: boolean;
-  isDragActive?: boolean;
+  gridCols: string;
 }
 
-export function DraggableTableRow({ id, children, className = "", isDropTarget = false, isDragActive = false }: DraggableTableRowProps) {
+export function DraggableTableRow({ id, children, className = "", gridCols }: DraggableTableRowProps) {
   const {
     attributes,
     listeners,
     setNodeRef,
+    transform,
+    transition,
+    isDragging,
+    isOver,
   } = useSortable({ id });
 
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition: transition || 'transform 200ms ease',
+    opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging ? 50 : ('auto' as const),
+    boxShadow: isDragging
+      ? '0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05)'
+      : 'none',
+  };
+
   return (
-    <tr
+    <div
       ref={setNodeRef}
-      style={{
-        opacity: isDragActive ? 0.15 : 1,
-        position: 'relative' as const,
-        background: isDragActive
-          ? 'hsl(var(--muted) / 0.5)'
-          : isDropTarget
-            ? 'hsl(var(--primary) / 0.08)'
-            : undefined,
-      }}
-      className={`${className} ${isDragActive ? 'pointer-events-none' : ''}`}
+      style={style}
+      className={`grid ${gridCols} border-b border-border bg-background ${className} ${isDragging ? 'ring-2 ring-primary ring-offset-2 rounded' : ''} ${isOver && !isDragging ? 'ring-2 ring-primary bg-primary/5' : ''}`}
     >
-      <td
-        className="border p-2 text-center w-10"
-        style={{ position: 'relative', overflow: 'visible' }}
-      >
-        {isDropTarget && (
-          <div
-            style={{
-              position: 'absolute',
-              top: -2,
-              left: -1,
-              height: 4,
-              width: '200vw',
-              background: 'hsl(var(--primary))',
-              boxShadow: '0 0 8px hsl(var(--primary) / 0.5)',
-              zIndex: 50,
-              pointerEvents: 'none',
-              borderRadius: 2,
-            }}
-          />
-        )}
+      <div className="p-2 flex items-center justify-center border-r border-border">
         <div
           {...attributes}
           {...listeners}
@@ -59,56 +46,45 @@ export function DraggableTableRow({ id, children, className = "", isDropTarget =
         >
           <GripVertical className="w-4 h-4 text-muted-foreground hover:text-foreground transition-colors" />
         </div>
-      </td>
+      </div>
       {children}
-    </tr>
+    </div>
   );
 }
 
 interface DraggableMobileCardProps {
   id: string;
   children: ReactNode;
-  isDropTarget?: boolean;
-  isDragActive?: boolean;
 }
 
-export function DraggableMobileCard({ id, children, isDropTarget = false, isDragActive = false }: DraggableMobileCardProps) {
+export function DraggableMobileCard({ id, children }: DraggableMobileCardProps) {
   const {
     attributes,
     listeners,
     setNodeRef,
+    transform,
+    transition,
+    isDragging,
+    isOver,
   } = useSortable({ id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition: transition || 'transform 200ms ease',
+    opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging ? 50 : ('auto' as const),
+    boxShadow: isDragging
+      ? '0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05)'
+      : 'none',
+  };
 
   return (
     <div
       ref={setNodeRef}
-      style={{
-        opacity: isDragActive ? 0.15 : 1,
-        background: isDragActive
-          ? 'hsl(var(--muted) / 0.5)'
-          : isDropTarget
-            ? 'hsl(var(--primary) / 0.08)'
-            : undefined,
-      }}
-      className={`${isDragActive ? 'rounded-lg pointer-events-none' : ''}`}
+      style={style}
+      className={`relative ${isDragging ? 'ring-2 ring-primary ring-offset-2 rounded-lg' : ''} ${isOver && !isDragging ? 'ring-2 ring-primary bg-primary/5 rounded-lg' : ''}`}
     >
       <div className="relative">
-        {isDropTarget && (
-          <div
-            style={{
-              position: 'absolute',
-              top: -2,
-              left: 0,
-              right: 0,
-              height: 4,
-              background: 'hsl(var(--primary))',
-              boxShadow: '0 0 8px hsl(var(--primary) / 0.5)',
-              zIndex: 50,
-              pointerEvents: 'none',
-              borderRadius: 2,
-            }}
-          />
-        )}
         <div
           {...attributes}
           {...listeners}
