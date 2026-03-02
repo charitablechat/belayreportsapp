@@ -1,74 +1,102 @@
 
 
-## Fix Drag-and-Drop: Row Jumping, Missing Drop Indicator, and Cursor Tracking
+## Comprehensive Drag-and-Drop Fix
 
-### Root Causes
+### Root Cause Analysis
 
-**Bug 1 -- Row jumps to top when grabbed:**
-The `DraggableTableRow` applies `CSS.Transform.toString(transform)` even when `isDragging` is true. When using `DragOverlay`, the original dragged item should NOT be transformed -- it should stay in place as a ghost/placeholder. Currently, `@dnd-kit` calculates a transform for the active item too, which causes it to visually jump. The fix is to zero out the transform when `isDragging` is true.
+After thorough investigation, the persistent DnD issues stem from **one architectural problem**: trying to apply visual indicators (`outline`, `box-shadow`, `borderTop`) directly to `<tr>` elements inside a `border-collapse` table wrapped in an `overflow-x-auto` container.
 
-**Bug 2 -- Drop indicator (bold line) is invisible:**
-The current indicator uses `box-shadow: inset 0 4px 0 0 hsl(var(--primary))` on a `<tr>` element. Table rows have notoriously poor `box-shadow` support across browsers -- the shadow gets clipped by the table's `border-collapse` layout. The fix is to switch to `outline` (which works on `<tr>`) or use a simple `borderTop` which is reliable in collapsed tables.
+- `box-shadow` on `<tr>`: clipped by `border-collapse`
+- `borderTop` on `<tr>`: shifts the table layout, causing row jumps
+- `outline` on `<tr>`: renders outside the box but gets clipped by the `overflow-x-auto` wrapper div
 
-**Bug 3 -- Overlay feels disconnected:**
-The `DragOverlay` content is a small summary pill that doesn't resemble the actual row. Combined with the original row jumping away, it feels like nothing is attached to the cursor.
+No combination of these CSS properties will produce a reliable, visible indicator on table rows. Every "fix" so far has been a variation of the same broken approach.
 
-### Solution
+### Solution: Rendered Indicator Elements
 
-#### 1. `DraggableTableRow.tsx` -- Stop transform on active item + fix indicator
+Instead of CSS properties on `<tr>`, render actual DOM elements for the indicators:
 
-```text
-BEFORE:
-  transform: isDragging ? `${baseTransform} scale(1.01)` : baseTransform
-  boxShadow (inset) for isOver indicator  <-- invisible on <tr>
+**1. Drop indicator bar** -- An absolutely-positioned `<div>` inside the grip `<td>` cell that extends visually across the full row width. This is a real DOM element, not a CSS pseudo-effect, so it cannot be clipped by table layout rules.
 
-AFTER:
-  transform: isDragging ? 'none' : baseTransform   <-- placeholder stays in place
-  borderTop: '4px solid hsl(var(--primary))'        <-- reliable on <tr>
-  background: 'hsl(var(--primary) / 0.08)'          <-- tint for drop target
-```
+**2. Placeholder styling** -- Instead of `outline` on the `<tr>` (which gets clipped), apply a subtle dashed border to each `<td>` inside the dragging row via a CSS class, and reduce the row's background opacity.
 
-Key changes:
-- When `isDragging`: set `transform: 'none'` so the placeholder row stays exactly where it was. The `DragOverlay` handles the floating visual.
-- When `isOver && !isDragging`: use `borderTop` instead of `box-shadow` for the insertion line. This is reliable across all browsers in collapsed tables.
-- Keep the dashed outline and low opacity (0.15) on the placeholder.
+**3. DragOverlay cursor attachment** -- Ensure the overlay renders with `position: fixed` (which `DragOverlay` does by default via a portal). No changes needed to overlay content, but add `onDragCancel` handlers to all three tables to prevent stale `activeId` state if a drag is aborted.
 
-#### 2. `DraggableMobileCard` -- Same transform fix
+---
 
-Apply the same `transform: 'none'` when `isDragging` pattern. The mobile card's `box-shadow` indicator actually works (since it's a `<div>`), but we'll also switch to `borderTop` for consistency.
+### File Changes
 
-#### 3. All three table DragOverlay content -- no changes needed
+#### `src/components/inspection/DraggableTableRow.tsx`
 
-The current overlay cards (with GripVertical + name + result badge) are actually fine in design. The real problem was the original row jumping away, making the overlay appear disconnected. Once the placeholder stays in place, the overlay will feel properly "lifted" from that position.
+**DraggableTableRow (desktop):**
+- Remove all `outline`, `outlineOffset`, `background` styles from the `<tr>` `style` prop
+- Keep `transform: isDragging ? 'none' : baseTransform` (this part is correct)
+- Keep `opacity: isDragging ? 0.15 : 1`
+- Inside the grip `<td>`, render a drop indicator `<div>` when `isOver && !isDragging`:
+  - Absolutely positioned at `top: 0, left: 0`
+  - `height: 4px`, `width: 200vw` (extends beyond cell), `background: hsl(var(--primary))`
+  - `boxShadow: 0 0 8px hsl(var(--primary) / 0.5)` for glow
+  - `pointerEvents: none`, `zIndex: 50`
+- The grip `<td>` gets `style={{ position: 'relative', overflow: 'visible' }}`
+- When `isOver && !isDragging`, add a subtle background tint to the `<tr>` via `className` instead of inline style (using a simple conditional class)
 
-### Files Changed
+**DraggableMobileCard:**
+- Same approach: render indicator `<div>` inside the card when `isOver && !isDragging`
+- Remove unreliable `outline`/`outlineOffset` styles
+- Keep `transform: 'none'` when dragging
 
-| File | Change |
-|------|--------|
-| `src/components/inspection/DraggableTableRow.tsx` | Zero transform when `isDragging`; replace `box-shadow` indicator with `borderTop` for `isOver`; apply same fixes to `DraggableMobileCard` |
+#### `src/components/inspection/OperatingSystemsTable.tsx`
+- Add `onDragCancel` handler that clears `activeId` (prevents stale overlay on drag abort)
 
-Only one file needs to change -- the three table components are already correctly configured with `DragOverlay`, `activeId` tracking, and the Y-axis modifier.
+#### `src/components/inspection/ZiplinesTable.tsx`
+- Add `onDragCancel` handler that clears `activeId`
+
+#### `src/components/inspection/EquipmentTable.tsx`
+- Add `onDragCancel` handler that clears `activeId`
+
+---
 
 ### Technical Details
 
-The critical one-line fix in `DraggableTableRow`:
-```typescript
-// BEFORE (causes jump):
-transform: baseTransform ? (isDragging ? `${baseTransform} scale(1.01)` : baseTransform) : undefined,
+The indicator element approach inside the grip cell:
 
-// AFTER (placeholder stays put):
-transform: isDragging ? 'none' : (baseTransform || undefined),
+```text
+<tr style={{ transform: isDragging ? 'none' : baseTransform, opacity: isDragging ? 0.15 : 1 }}>
+  <td style={{ position: 'relative', overflow: 'visible' }}>
+    {isOver && !isDragging && (
+      <div style={{
+        position: 'absolute',
+        top: -1,
+        left: -1,
+        height: 4,
+        width: '200vw',     // extends far beyond cell boundaries
+        background: 'hsl(var(--primary))',
+        boxShadow: '0 0 8px hsl(var(--primary) / 0.5)',
+        zIndex: 50,
+        pointerEvents: 'none',
+      }} />
+    )}
+    <GripVertical /> (drag handle)
+  </td>
+  {children}   (remaining <td> cells)
+</tr>
 ```
 
-For the drop indicator, replacing unreliable `box-shadow` with reliable `borderTop`:
-```typescript
-// BEFORE (invisible on <tr> in border-collapse):
-boxShadow: isOver && !isDragging
-  ? 'inset 0 4px 0 0 hsl(var(--primary)), 0 0 12px -2px hsl(var(--primary) / 0.35)'
-  : 'none',
+This works because:
+- The `<div>` is a real DOM element, not a CSS property on `<tr>`
+- `overflow: visible` on the parent `<td>` lets the bar extend beyond the cell
+- `200vw` width ensures it covers any table width
+- The `overflow-x-auto` on the table wrapper clips horizontally at the wrapper edge, which is actually desirable (the bar spans the visible table width)
+- `position: absolute` + `zIndex: 50` ensures it paints above adjacent rows
 
-// AFTER (works everywhere):
-borderTop: isOver && !isDragging ? '4px solid hsl(var(--primary))' : undefined,
-background: isDragging ? 'hsl(var(--muted) / 0.5)' : isOver && !isDragging ? 'hsl(var(--primary) / 0.08)' : undefined,
-```
+For the mobile card, the same `<div>` indicator works trivially since `<div>` elements have no styling restrictions.
+
+### Why This Will Work
+
+Previous approaches all tried to use CSS properties that are known to fail on `<tr>` in `border-collapse` tables:
+- `box-shadow`: clipped by collapsed borders
+- `outline`: painted outside the box, clipped by `overflow` containers  
+- `borderTop`: shifts layout, causes rows to jump
+
+This approach uses an actual rendered DOM element that is not subject to any of those restrictions. It's the same technique used by professional Kanban boards (Trello, Linear, etc.) where the insertion indicator is always a separate rendered element, never a CSS property on the container.
 
