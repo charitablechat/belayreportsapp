@@ -393,7 +393,7 @@ serve(async (req) => {
 
       // Full words format with responsive line breaks
       return {
-        html: `<span class="result-checkbox">${pass} Pass<br>${provisions} Provisions<br>${fail} Fail</span>`,
+        html: `<span class="result-checkbox">${pass} Pass<br>${provisions} Pass with Provisions<br>${fail} Fail</span>`,
         cellStyle,
       };
     };
