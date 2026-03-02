@@ -30,6 +30,7 @@ import {
   useSensors,
   type DragEndEvent,
   type DragStartEvent,
+  type DragOverEvent,
 } from "@dnd-kit/core";
 import {
   SortableContext,
@@ -63,6 +64,7 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
   
   const [itemToDelete, setItemToDelete] = useState<{ item: any; name: string } | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [overId, setOverId] = useState<string | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -103,8 +105,13 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
     setActiveId(event.active.id as string);
   }, []);
 
+  const handleDragOver = useCallback((event: DragOverEvent) => {
+    setOverId(event.over?.id as string ?? null);
+  }, []);
+
   const handleDragEnd = useCallback((event: DragEndEvent) => {
     setActiveId(null);
+    setOverId(null);
     const { active, over } = event;
     if (!over || active.id === over.id) return;
 
@@ -147,7 +154,7 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
         </div>
       </CardHeader>
       <CardContent className="px-3 md:px-6">
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragCancel={() => setActiveId(null)} modifiers={[restrictToYAxis]}>
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragOver={handleDragOver} onDragEnd={handleDragEnd} onDragCancel={() => { setActiveId(null); setOverId(null); }}>
           <SortableContext items={categoryIds} strategy={verticalListSortingStrategy}>
             {/* Desktop table view */}
             <div className="hidden md:block overflow-visible">
@@ -169,6 +176,8 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
                       key={item.id}
                       id={item.id}
                       className="hover:bg-muted/50"
+                      isDropTarget={overId === item.id && activeId !== item.id}
+                      isDragActive={activeId === item.id}
                     >
                        <td className="border p-2">
                         {typeOptions ? (
@@ -324,7 +333,7 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
             {/* Mobile card view */}
             <div className="md:hidden space-y-3">
               {categoryEquipment.map((item) => (
-                <DraggableMobileCard key={item.id} id={item.id}>
+                <DraggableMobileCard key={item.id} id={item.id} isDropTarget={overId === item.id && activeId !== item.id} isDragActive={activeId === item.id}>
                   <div className="p-4 pl-12 relative border-l-4 border-l-primary/20 rounded-lg bg-muted/30 border border-border">
                     <Button
                       variant="ghost"
@@ -483,7 +492,7 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
               ))}
             </div>
           </SortableContext>
-          <DragOverlay dropAnimation={{ duration: 200, easing: 'cubic-bezier(0.25, 1, 0.5, 1)' }}>
+          <DragOverlay modifiers={[restrictToYAxis]} dropAnimation={{ duration: 200, easing: 'cubic-bezier(0.25, 1, 0.5, 1)' }}>
             {activeEquipment ? (
               <div className="flex items-center gap-3 px-4 py-3 w-full min-w-[400px] rounded-lg border-l-4 border-l-primary bg-background shadow-2xl ring-2 ring-primary/30 scale-[1.02]">
                 <GripVertical className="w-4 h-4 text-muted-foreground shrink-0" />

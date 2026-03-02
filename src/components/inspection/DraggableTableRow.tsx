@@ -1,5 +1,4 @@
 import { useSortable } from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
 import { GripVertical } from "lucide-react";
 import { ReactNode } from "react";
 
@@ -7,44 +6,36 @@ interface DraggableTableRowProps {
   id: string;
   children: ReactNode;
   className?: string;
+  isDropTarget?: boolean;
+  isDragActive?: boolean;
 }
 
-export function DraggableTableRow({ id, children, className = "" }: DraggableTableRowProps) {
+export function DraggableTableRow({ id, children, className = "", isDropTarget = false, isDragActive = false }: DraggableTableRowProps) {
   const {
     attributes,
     listeners,
     setNodeRef,
-    transform,
-    transition,
-    isDragging,
-    isOver,
   } = useSortable({ id });
-
-  const baseTransform = CSS.Transform.toString(transform);
 
   return (
     <tr
       ref={setNodeRef}
       style={{
-        transform: isDragging ? 'none' : (baseTransform || undefined),
-        transition: transition || 'transform 200ms cubic-bezier(0.25, 1, 0.5, 1), opacity 150ms ease',
-        opacity: isDragging ? 0.15 : 1,
-        zIndex: isDragging ? 50 : 'auto' as const,
+        opacity: isDragActive ? 0.15 : 1,
         position: 'relative' as const,
-        background: isDragging
+        background: isDragActive
           ? 'hsl(var(--muted) / 0.5)'
-          : isOver && !isDragging
+          : isDropTarget
             ? 'hsl(var(--primary) / 0.08)'
             : undefined,
       }}
-      className={`${className} ${isDragging ? 'pointer-events-none' : ''}`}
+      className={`${className} ${isDragActive ? 'pointer-events-none' : ''}`}
     >
       <td
         className="border p-2 text-center w-10"
         style={{ position: 'relative', overflow: 'visible' }}
       >
-        {/* Rendered drop indicator bar — immune to border-collapse clipping */}
-        {isOver && !isDragging && (
+        {isDropTarget && (
           <div
             style={{
               position: 'absolute',
@@ -77,38 +68,32 @@ export function DraggableTableRow({ id, children, className = "" }: DraggableTab
 interface DraggableMobileCardProps {
   id: string;
   children: ReactNode;
+  isDropTarget?: boolean;
+  isDragActive?: boolean;
 }
 
-export function DraggableMobileCard({ id, children }: DraggableMobileCardProps) {
+export function DraggableMobileCard({ id, children, isDropTarget = false, isDragActive = false }: DraggableMobileCardProps) {
   const {
     attributes,
     listeners,
     setNodeRef,
-    transform,
-    transition,
-    isDragging,
-    isOver,
   } = useSortable({ id });
 
   return (
     <div
       ref={setNodeRef}
       style={{
-        transform: isDragging ? 'none' : (CSS.Transform.toString(transform) || undefined),
-        transition: transition || 'transform 200ms cubic-bezier(0.25, 1, 0.5, 1), opacity 150ms ease',
-        opacity: isDragging ? 0.15 : 1,
-        zIndex: isDragging ? 50 : 'auto' as const,
-        background: isDragging
+        opacity: isDragActive ? 0.15 : 1,
+        background: isDragActive
           ? 'hsl(var(--muted) / 0.5)'
-          : isOver && !isDragging
+          : isDropTarget
             ? 'hsl(var(--primary) / 0.08)'
             : undefined,
       }}
-      className={`${isDragging ? 'rounded-lg pointer-events-none' : ''}`}
+      className={`${isDragActive ? 'rounded-lg pointer-events-none' : ''}`}
     >
       <div className="relative">
-        {/* Rendered drop indicator bar for mobile */}
-        {isOver && !isDragging && (
+        {isDropTarget && (
           <div
             style={{
               position: 'absolute',
