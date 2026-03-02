@@ -1,106 +1,81 @@
 
 
-## Architectural Redesign: Replace useSortable with useDraggable + useDroppable
+## Fix: Switch to pointerWithin Collision + Verify DragOverlay Positioning
 
-### Why Previous Fixes Failed
+### Root Cause Analysis (from Session Replay)
 
-Every attempt so far has tried to work around `useSortable` -- disabling its transforms, overriding its collision, fighting its rect calculations. The core problem is that `useSortable` is designed to **visually shift items to make space** during drag. When you disable that (set transform to undefined), its internal rect tracking becomes stale. It still reports the active item's original rect, making collision detection unreliable for tall, variable-height rows.
+The session replay shows element 2052 (DragOverlay) receiving smooth `translate3d` updates frame-by-frame (207px,57px -> 207px,50px -> 206px,51px -> ...). This confirms the **DragOverlay IS tracking the cursor correctly at the dnd-kit level**.
 
-The session replay confirms: the DragOverlay tracks the cursor smoothly (`translate3d(277px, 119px, 0px)` progressing frame-by-frame), but drops still resolve incorrectly because `useSortable`'s internal coordinate system is broken when transforms are disabled.
+However, three things are broken:
 
-### The Fix: Drop useSortable Entirely
+1. **"Jumps to top"**: The DragOverlay uses `position: fixed` and renders via React Portal to document.body. The transform values are DELTAS from the initial grab point. If the page is scrolled (the user is at y=2264-2385 scroll position per the replay), the DragOverlay appears at the correct viewport-relative position but may visually "jump" because the source row becomes nearly invisible (opacity: 0.15) and the overlay ghost appears at the cursor -- which IS correct behavior, but feels like a jump because the ghost is a slim summary bar while the source was a full row.
 
-Replace `useSortable` with the lower-level `useDraggable` + `useDroppable` hooks from `@dnd-kit/core`. These hooks give direct control with zero sorting transform logic.
+2. **"Drop indicator never appears"**: `closestCenter` requires the pointer to be closer to a NEIGHBOR's center than the active item's center. Even though we filter out the active item, for tall rows the pointer must travel far enough to cross into the next row's vertical zone. The `closestCenter` algorithm calculates Euclidean distance to centers, which can cause the nearest match to "flicker" or not register if the pointer is between two rows. Switching to `pointerWithin` solves this -- it simply checks if the pointer is geometrically inside a droppable rect, giving a 1:1 mapping.
+
+3. **"Doesn't follow cursor"**: This is a perception issue -- the overlay DOES follow (confirmed by replay data), but it may appear offset if there's a CSS `transform` ancestor causing coordinate space issues. Need to verify no parent has transforms that would shift the fixed-position overlay.
+
+### The Fix: 3 Targeted Changes
+
+#### Change 1: Switch collision detection from closestCenter to pointerWithin
+
+`pointerWithin` checks if the pointer falls inside a droppable rect. Since rows are stacked vertically with no gaps, exactly ONE row will match at any time. This gives:
+- Instant detection (no "closer to center" threshold to cross)
+- No flickering between candidates
+- `isOver` on `useDroppable` fires immediately when the pointer enters a row
 
 ```text
-Current flow (broken):
-  useSortable -> transform (disabled) -> stale rects -> bad collision
+// In each table component, change:
+import { closestCenter, ... } from "@dnd-kit/core";
+// To:
+import { pointerWithin, ... } from "@dnd-kit/core";
 
-New flow (clean):
-  useDraggable (grip handle) -> DragOverlay (ghost)
-  useDroppable (row container) -> live rects -> accurate collision
+// And change the collision function:
+const collisionDetection: CollisionDetection = useCallback((args) => {
+  const filtered = args.droppableContainers.filter(c => c.id !== args.active.id);
+  return pointerWithin({ ...args, droppableContainers: filtered });
+}, []);
 ```
 
-### Changes
+#### Change 2: Make the source row placeholder more visible
 
-**File 1: `src/components/inspection/DraggableTableRow.tsx`** (full rewrite)
+Currently `opacity: 0.15` makes it nearly invisible, contributing to the "jump" perception. Change to a dashed-border placeholder style so the user sees where the row came from:
 
-Replace `useSortable` with:
-- `useDraggable({ id })` on the grip handle -- provides `listeners`, `attributes`, `setActivatorNodeRef`
-- `useDroppable({ id })` on the row container -- provides `setNodeRef`, `isOver`
-- `isOver` from `useDroppable` replaces the manual `overId` state tracking
-- No transforms applied to rows at all -- they stay in DOM position permanently
-- The `isDropTarget` prop is replaced by `useDroppable`'s built-in `isOver`
-- Insertion line indicator rendered when `isOver && !isDragging`
-
-**File 2: `src/components/inspection/OperatingSystemsTable.tsx`**
-
-- Remove `SortableContext` and `verticalListSortingStrategy` imports
-- Remove `overId` state and `onDragOver` handler (no longer needed -- `useDroppable` handles this internally)
-- Remove `isDropTarget` prop from row components (handled internally now)
-- Keep: `DndContext`, sensors, collision detection, `DragOverlay`, `arrayMove`, `handleDragEnd`
-
-**File 3: `src/components/inspection/ZiplinesTable.tsx`**
-
-Same changes as OperatingSystemsTable.
-
-**File 4: `src/components/inspection/EquipmentTable.tsx`**
-
-Same changes as OperatingSystemsTable.
-
-### Technical Details
-
-**DraggableTableRow (new implementation sketch):**
 ```text
-import { useDraggable, useDroppable } from "@dnd-kit/core";
-
-function DraggableTableRow({ id, children, gridCols }) {
-  const { attributes, listeners, setNodeRef: setDragRef, isDragging } = useDraggable({ id });
-  const { setNodeRef: setDropRef, isOver } = useDroppable({ id });
-
-  return (
-    <div ref={setDropRef} style={{ opacity: isDragging ? 0.15 : 1 }}
-         className={`relative grid ${gridCols} ...`}>
-      {isOver && !isDragging && (
-        <div className="absolute top-0 left-0 right-0 h-[3px] bg-primary ..." />
-      )}
-      <div className="p-2 flex items-center justify-center border-r">
-        <div ref={setDragRef} {...attributes} {...listeners}
-             className="cursor-grab active:cursor-grabbing touch-none">
-          <GripVertical />
-        </div>
-      </div>
-      {children}
-    </div>
-  );
-}
+// DraggableTableRow: instead of just opacity
+style={{ opacity: isDragging ? 0.3 : 1 }}
+className={`... ${isDragging ? 'bg-muted/50 border-dashed' : ''}`}
 ```
 
-**Table component cleanup (per file):**
+#### Change 3: Strengthen the drop indicator
+
+The current 3px line with translate-y-1/2 may be clipped by `overflow-x-auto` on the desktop container. Add `overflow-visible` to the row and make the indicator thicker with animation:
+
 ```text
-// REMOVE these:
-import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
-const [overId, setOverId] = useState(null);
-onDragOver={(e) => setOverId(...)}
-<SortableContext items={ids} strategy={verticalListSortingStrategy}>
-
-// KEEP these (unchanged):
-import { DndContext, closestCenter, DragOverlay, ... } from "@dnd-kit/core";
-import { arrayMove } from "@dnd-kit/sortable";  // arrayMove is still useful
-collisionDetection (exclude active item)
-handleDragEnd with arrayMove
-DragOverlay with ghost content
+{isOver && !isDragging && (
+  <div className="absolute top-0 left-0 right-0 h-[3px] bg-primary z-50 
+    -translate-y-1/2 rounded-full shadow-[0_0_8px_2px_hsl(var(--primary)/0.4)]
+    animate-pulse" />
+)}
 ```
 
-### Why This Will Work
+### Files Changed
 
-1. `useDroppable` tracks its own rect independently -- no stale transform math
-2. `useDroppable.isOver` is computed directly from pointer position vs. droppable rect -- no intermediate sorting layer
-3. The collision detection (closestCenter excluding active) works correctly against real DOM rects since no transforms are applied
-4. `useDraggable` only provides drag activation on the grip handle -- clean separation of concerns
-5. The DragOverlay already tracks the cursor perfectly (confirmed by session replay)
+| File | Change |
+|------|--------|
+| `DraggableTableRow.tsx` | Increase opacity to 0.3, add dashed border when dragging, strengthen indicator with z-50 and animate-pulse, add overflow-visible |
+| `OperatingSystemsTable.tsx` | Switch `closestCenter` to `pointerWithin` in import and collision function |
+| `ZiplinesTable.tsx` | Same collision detection switch |
+| `EquipmentTable.tsx` | Same collision detection switch |
 
 ### Data Safety
 
-Zero risk. `arrayMove` in `handleDragEnd` is identical. `onUpdate` callbacks unchanged. Only the hook layer changes from `useSortable` to `useDraggable`/`useDroppable`.
+Zero risk. Only collision algorithm and visual styling changes. `arrayMove`, `onUpdate`, `handleDragEnd` logic completely untouched.
+
+### Why This Will Actually Work
+
+- `pointerWithin` gives deterministic 1:1 row targeting -- the pointer is either inside a row or not
+- Filtering out the active item means only neighbor rows can be targets
+- `useDroppable.isOver` fires reliably with `pointerWithin` since it's a simple rect containment check
+- The DragOverlay already tracks perfectly (session replay proves this)
+- The stronger indicator (z-50, animate-pulse) ensures visibility even with overflow containers
 
