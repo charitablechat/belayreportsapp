@@ -5,7 +5,7 @@ import { Label } from "@/components/ui/label";
 import ResultSelect from "@/components/ResultSelect";
 import SystemTypeSelect from "@/components/SystemTypeSelect";
 import { GlobalAutocomplete } from "@/components/GlobalAutocomplete";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2, GripVertical } from "lucide-react";
 import { useState, useCallback, memo, useMemo } from "react";
 import {
   AlertDialog,
@@ -42,6 +42,10 @@ interface OperatingSystemsTableProps {
 }
 
 function OperatingSystemsTable({ systems, onUpdate, onImmediateSave }: OperatingSystemsTableProps) {
+  const restrictToYAxis = useCallback(({ transform }: { transform: { x: number; y: number; scaleX: number; scaleY: number } }) => ({
+    ...transform,
+    x: 0,
+  }), []);
   const [itemToDelete, setItemToDelete] = useState<{ id: string; name: string } | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
 
@@ -108,7 +112,7 @@ function OperatingSystemsTable({ systems, onUpdate, onImmediateSave }: Operating
         </div>
       </CardHeader>
       <CardContent className="px-3 md:px-6">
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd} modifiers={[restrictToYAxis]}>
           <SortableContext items={systemIds} strategy={verticalListSortingStrategy}>
             {/* Desktop table view */}
             <div className="hidden md:block overflow-x-auto">
@@ -228,11 +232,12 @@ function OperatingSystemsTable({ systems, onUpdate, onImmediateSave }: Operating
               ))}
             </div>
           </SortableContext>
-          <DragOverlay dropAnimation={{ duration: 200, easing: 'ease' }}>
+          <DragOverlay dropAnimation={{ duration: 200, easing: 'cubic-bezier(0.25, 1, 0.5, 1)' }}>
             {activeSystem ? (
-              <div className="flex items-center gap-3 px-4 py-3 rounded-lg border-l-4 border-l-primary bg-background shadow-2xl transform scale-105 rotate-1">
-                <span className="font-medium text-sm truncate">{activeSystem.name || activeSystem.system_name || 'System'}</span>
-                <span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground">{activeSystem.result}</span>
+              <div className="flex items-center gap-3 px-4 py-3 w-full min-w-[400px] rounded-lg border-l-4 border-l-primary bg-background shadow-2xl ring-2 ring-primary/30 scale-[1.02]">
+                <GripVertical className="w-4 h-4 text-muted-foreground shrink-0" />
+                <span className="font-medium text-sm truncate flex-1">{activeSystem.name || activeSystem.system_name || 'System'}</span>
+                <span className="text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary font-medium">{activeSystem.result}</span>
               </div>
             ) : null}
           </DragOverlay>

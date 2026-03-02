@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import ResultSelect from "@/components/ResultSelect";
 import { GlobalAutocomplete } from "@/components/GlobalAutocomplete";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Trash2, X } from "lucide-react";
+import { Plus, Trash2, X, GripVertical } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState, useMemo, useCallback, memo } from "react";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -48,6 +48,10 @@ interface EquipmentTableProps {
 }
 
 function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediateSave, typeOptions }: EquipmentTableProps) {
+  const restrictToYAxis = useCallback(({ transform }: { transform: { x: number; y: number; scaleX: number; scaleY: number } }) => ({
+    ...transform,
+    x: 0,
+  }), []);
   const isMobile = useIsMobile();
   
   const categoryEquipment = useMemo(
@@ -143,7 +147,7 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
         </div>
       </CardHeader>
       <CardContent className="px-3 md:px-6">
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd} modifiers={[restrictToYAxis]}>
           <SortableContext items={categoryIds} strategy={verticalListSortingStrategy}>
             {/* Desktop table view */}
             <div className="hidden md:block overflow-visible">
@@ -479,11 +483,12 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
               ))}
             </div>
           </SortableContext>
-          <DragOverlay dropAnimation={{ duration: 200, easing: 'ease' }}>
+          <DragOverlay dropAnimation={{ duration: 200, easing: 'cubic-bezier(0.25, 1, 0.5, 1)' }}>
             {activeEquipment ? (
-              <div className="flex items-center gap-3 px-4 py-3 rounded-lg border-l-4 border-l-primary bg-background shadow-2xl transform scale-105 rotate-1">
-                <span className="font-medium text-sm truncate">{activeEquipment.equipment_type || 'Equipment'}</span>
-                <span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground">{activeEquipment.result}</span>
+              <div className="flex items-center gap-3 px-4 py-3 w-full min-w-[400px] rounded-lg border-l-4 border-l-primary bg-background shadow-2xl ring-2 ring-primary/30 scale-[1.02]">
+                <GripVertical className="w-4 h-4 text-muted-foreground shrink-0" />
+                <span className="font-medium text-sm truncate flex-1">{activeEquipment.equipment_type || 'Equipment'}</span>
+                <span className="text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary font-medium">{activeEquipment.result}</span>
               </div>
             ) : null}
           </DragOverlay>
