@@ -50,10 +50,6 @@ interface EquipmentTableProps {
 const EQ_GRID_COLS = "grid-cols-[40px_minmax(160px,1fr)_128px_96px_192px_1fr_64px]";
 
 function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediateSave, typeOptions }: EquipmentTableProps) {
-  const restrictToYAxis = useCallback(({ transform }: { transform: { x: number; y: number; scaleX: number; scaleY: number } }) => ({
-    ...transform,
-    x: 0,
-  }), []);
   const isMobile = useIsMobile();
   
   const categoryEquipment = useMemo(
@@ -376,7 +372,7 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
               ))}
             </div>
           </SortableContext>
-          <DragOverlay modifiers={[restrictToYAxis]} dropAnimation={{ duration: 200, easing: 'cubic-bezier(0.25, 1, 0.5, 1)' }}>
+          <DragOverlay dropAnimation={{ duration: 200, easing: 'cubic-bezier(0.25, 1, 0.5, 1)' }}>
             {activeEquipment ? (
               <div className="flex items-center gap-3 px-4 py-3 w-full min-w-[400px] rounded-lg border-l-4 border-l-primary bg-background shadow-2xl ring-2 ring-primary/30 scale-[1.02]">
                 <GripVertical className="w-4 h-4 text-muted-foreground shrink-0" />
