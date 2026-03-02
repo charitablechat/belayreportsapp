@@ -1,77 +1,74 @@
 
 
-## Premium Drag-and-Drop Visual Refinement
+## Fix Drag-and-Drop: Row Jumping, Missing Drop Indicator, and Cursor Tracking
 
-### Problems Identified
+### Root Causes
 
-After reviewing the current implementation, three root issues cause the poor experience:
+**Bug 1 -- Row jumps to top when grabbed:**
+The `DraggableTableRow` applies `CSS.Transform.toString(transform)` even when `isDragging` is true. When using `DragOverlay`, the original dragged item should NOT be transformed -- it should stay in place as a ghost/placeholder. Currently, `@dnd-kit` calculates a transform for the active item too, which causes it to visually jump. The fix is to zero out the transform when `isDragging` is true.
 
-1. **Tiny overlay**: The `DragOverlay` renders a small pill-shaped summary card (just name + result badge) instead of a full-width row representation. This makes it feel disconnected from the actual row being dragged.
+**Bug 2 -- Drop indicator (bold line) is invisible:**
+The current indicator uses `box-shadow: inset 0 4px 0 0 hsl(var(--primary))` on a `<tr>` element. Table rows have notoriously poor `box-shadow` support across browsers -- the shadow gets clipped by the table's `border-collapse` layout. The fix is to switch to `outline` (which works on `<tr>`) or use a simple `borderTop` which is reliable in collapsed tables.
 
-2. **Weak drop indicator**: The insertion point is shown as a `borderTop: 3px` on the `isOver` item with a faint `bg-primary/5` tint -- too subtle to read quickly during a drag.
-
-3. **No axis restriction**: Items can be dragged freely in both X and Y directions, causing visual wobble. Since these are vertical lists, constraining to the Y-axis would feel much tighter.
+**Bug 3 -- Overlay feels disconnected:**
+The `DragOverlay` content is a small summary pill that doesn't resemble the actual row. Combined with the original row jumping away, it feels like nothing is attached to the cursor.
 
 ### Solution
 
-#### 1. Improved DragOverlay content (all 3 tables)
+#### 1. `DraggableTableRow.tsx` -- Stop transform on active item + fix indicator
 
-Replace the small pill overlay with a **full-width row card** that mirrors the actual row layout:
-- Full width with `w-full` / `min-w-[400px]`
-- Shows a GripVertical icon + item name + result badge in a row layout
-- Strong shadow (`shadow-2xl`), solid background, 2px primary left border
-- Slight scale (`scale-[1.02]`) and no rotation (rotation causes visual jank)
-- Rounded corners with `ring-2 ring-primary/30` for a "selected" glow
+```text
+BEFORE:
+  transform: isDragging ? `${baseTransform} scale(1.01)` : baseTransform
+  boxShadow (inset) for isOver indicator  <-- invisible on <tr>
 
-#### 2. Enhanced drop target indicator (DraggableTableRow + DraggableMobileCard)
+AFTER:
+  transform: isDragging ? 'none' : baseTransform   <-- placeholder stays in place
+  borderTop: '4px solid hsl(var(--primary))'        <-- reliable on <tr>
+  background: 'hsl(var(--primary) / 0.08)'          <-- tint for drop target
+```
 
-Replace the subtle `borderTop` with a **prominent animated insertion line**:
-- Use a `::before` pseudo-element approach via a wrapper div for the mobile card, and inline styles for the table row
-- **4px tall, full-width primary-colored bar** positioned at the top of the target row
-- Add a subtle **glow effect** using `box-shadow: 0 0 8px hsl(var(--primary) / 0.5)` on the indicator
-- Stronger background tint: `bg-primary/10` instead of `bg-primary/5`
-- Smooth transition on appearance
+Key changes:
+- When `isDragging`: set `transform: 'none'` so the placeholder row stays exactly where it was. The `DragOverlay` handles the floating visual.
+- When `isOver && !isDragging`: use `borderTop` instead of `box-shadow` for the insertion line. This is reliable across all browsers in collapsed tables.
+- Keep the dashed outline and low opacity (0.15) on the placeholder.
 
-#### 3. Add vertical axis restriction
+#### 2. `DraggableMobileCard` -- Same transform fix
 
-Import `restrictToVerticalAxis` from `@dnd-kit/modifiers` and apply it to all three `DndContext` instances. This locks the drag to vertical movement only, eliminating horizontal wobble and making the interaction feel precise.
+Apply the same `transform: 'none'` when `isDragging` pattern. The mobile card's `box-shadow` indicator actually works (since it's a `<div>`), but we'll also switch to `borderTop` for consistency.
 
-#### 4. Reduce original row opacity further
+#### 3. All three table DragOverlay content -- no changes needed
 
-The dragged row placeholder stays at `opacity: 0.3` (good) but add a **dashed border outline** to show the "slot" where the item came from -- a common Kanban pattern.
+The current overlay cards (with GripVertical + name + result badge) are actually fine in design. The real problem was the original row jumping away, making the overlay appear disconnected. Once the placeholder stays in place, the overlay will feel properly "lifted" from that position.
 
 ### Files Changed
 
 | File | Change |
 |------|--------|
-| `src/components/inspection/DraggableTableRow.tsx` | Enhanced `isOver` indicator (4px glowing bar), dashed border on dragging placeholder, stronger background tint |
-| `src/components/inspection/OperatingSystemsTable.tsx` | Full-width overlay card, add `restrictToVerticalAxis` modifier |
-| `src/components/inspection/ZiplinesTable.tsx` | Full-width overlay card, add `restrictToVerticalAxis` modifier |
-| `src/components/inspection/EquipmentTable.tsx` | Full-width overlay card, add `restrictToVerticalAxis` modifier |
+| `src/components/inspection/DraggableTableRow.tsx` | Zero transform when `isDragging`; replace `box-shadow` indicator with `borderTop` for `isOver`; apply same fixes to `DraggableMobileCard` |
+
+Only one file needs to change -- the three table components are already correctly configured with `DragOverlay`, `activeId` tracking, and the Y-axis modifier.
 
 ### Technical Details
 
-- `restrictToVerticalAxis` is exported from `@dnd-kit/modifiers` -- this package is NOT currently installed and needs to be added (it's a tiny peer package of dnd-kit)
-- Alternative: If we want to avoid a new dependency, we can write a simple custom modifier inline: `({ transform }) => ({ ...transform, x: 0 })` -- same effect, zero dependencies
-- All changes use CSS properties that are GPU-composited (transform, opacity, box-shadow)
-- No new React state or event handlers added beyond what already exists
+The critical one-line fix in `DraggableTableRow`:
+```typescript
+// BEFORE (causes jump):
+transform: baseTransform ? (isDragging ? `${baseTransform} scale(1.01)` : baseTransform) : undefined,
 
-### Visual Summary
+// AFTER (placeholder stays put):
+transform: isDragging ? 'none' : (baseTransform || undefined),
+```
 
-```text
-BEFORE (current):
-  [Row 1] ..................  opacity 0.3
-  [Row 2] ..................  borderTop: 3px (barely visible)
-  [Row 3] ..................
-  
-  Floating: [Name | Badge]  (tiny pill, can drift sideways)
+For the drop indicator, replacing unreliable `box-shadow` with reliable `borderTop`:
+```typescript
+// BEFORE (invisible on <tr> in border-collapse):
+boxShadow: isOver && !isDragging
+  ? 'inset 0 4px 0 0 hsl(var(--primary)), 0 0 12px -2px hsl(var(--primary) / 0.35)'
+  : 'none',
 
-AFTER (proposed):
-  [Row 1] - - - - - - - - -  opacity 0.3, dashed outline (placeholder slot)
-  ========================== 4px glowing primary bar (insertion point)
-  [Row 2] ..................  bg-primary/10 tint
-  [Row 3] ..................
-  
-  Floating: [Grip | Name ........... | Badge]  (full-width card, Y-axis locked)
+// AFTER (works everywhere):
+borderTop: isOver && !isDragging ? '4px solid hsl(var(--primary))' : undefined,
+background: isDragging ? 'hsl(var(--muted) / 0.5)' : isOver && !isDragging ? 'hsl(var(--primary) / 0.08)' : undefined,
 ```
 
