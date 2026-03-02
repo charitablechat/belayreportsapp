@@ -1,85 +1,83 @@
 
 
-## Replace @dnd-kit with Native HTML5 Drag-and-Drop
+## Add Touch Support to Native HTML5 Drag-and-Drop
 
-### Approach
+### Problem
 
-Completely remove all `@dnd-kit` usage from the table row components and replace with native HTML5 drag events (`draggable`, `onDragStart`, `onDragOver`, `onDragEnter`, `onDragLeave`, `onDrop`, `onDragEnd`). The browser handles the ghost image natively with no offset issues. A blue insertion line is rendered based on cursor position relative to each row's midpoint.
+The current implementation uses native HTML5 drag events (`dragstart`, `dragover`, `drop`). These events **do not fire on mobile touch devices** (iOS Safari, Chrome for Android). This is a fundamental browser limitation — not a bug in the code. Touch devices use `touchstart`/`touchmove`/`touchend` instead.
 
-### File 1: `DraggableTableRow.tsx` -- Full Rewrite
+### Solution
 
-Remove all `@dnd-kit` imports. The components become simple wrappers that accept native drag event handlers from the parent.
+Add touch event handlers alongside the existing drag handlers. The touch handlers will:
+1. Detect a long-press on the grip handle to initiate a drag (to distinguish from scroll)
+2. Track finger position during `touchmove` to determine which row is being hovered and whether the drop position is above/below
+3. Reorder on `touchend` using the same logic as the existing `handleDrop`
 
-```typescript
-// New props -- no library, just native event forwarding
-interface DraggableTableRowProps {
-  id: string;
-  children: ReactNode;
-  className?: string;
-  gridCols: string;
-  isDragging?: boolean;
-  dropIndicator?: 'above' | 'below' | null;
-  onDragStart: (e: React.DragEvent, id: string) => void;
-  onDragOver: (e: React.DragEvent, id: string) => void;
-  onDragLeave: () => void;
-  onDrop: (e: React.DragEvent, id: string) => void;
-  onDragEnd: () => void;
-}
+### File Changes
+
+#### 1. `src/hooks/useNativeDrag.tsx` — Add touch support
+
+- Add a `longPressTimeout` ref and `LONG_PRESS_MS` constant (e.g., 200ms) to distinguish drag intent from scrolling
+- Add `handleTouchStart(id)`: starts a timer; if finger stays still for 200ms, set `draggingId`
+- Add `handleTouchMove(e)`: use `document.elementFromPoint(touch.clientX, touch.clientY)` to find which row the finger is over, then calculate midpoint for above/below positioning (same logic as `handleDragOver`)
+- Add `handleTouchEnd()`: if a valid drag was in progress, perform the reorder (same logic as `handleDrop`), then clear state
+- Add `handleTouchCancel()`: clear all state
+- Rows being dragged over need a `data-drag-id` attribute so `elementFromPoint` can identify them
+- Return these touch handlers alongside existing drag handlers in `getDragProps`
+
+#### 2. `src/components/inspection/DraggableTableRow.tsx` — Wire touch events
+
+- Accept new touch handler props: `onTouchDragStart`, `onTouchDragMove`, `onTouchDragEnd`, `onTouchDragCancel`
+- Attach `onTouchStart` to the **grip handle only** (not the whole row, so form inputs remain interactive)
+- Attach `onTouchMove` and `onTouchEnd` to the row container
+- Add `data-drag-id={id}` attribute to the row container for element detection
+- When touch-dragging is active, add `touch-action: none` to prevent page scrolling
+- Same changes for `DraggableMobileCard`
+
+#### 3. `src/components/inspection/EquipmentTable.tsx` — Wire touch props
+
+- EquipmentTable has inline drag handlers (not using `useNativeDrag` hook). Add the same touch handlers inline, or refactor to use `useNativeDrag`.
+- Pass touch handler props to `DraggableTableRow` and `DraggableMobileCard`
+
+#### 4. No changes needed for `OperatingSystemsTable.tsx` and `ZiplinesTable.tsx`
+- They already use `useNativeDrag` hook, so they automatically get touch support once the hook and `DraggableTableRow` are updated.
+
+### Touch Interaction Flow
+
+```text
+User touches grip handle
+        |
+   200ms hold?
+   /         \
+  No          Yes
+  |            |
+Normal      Set draggingId,
+scroll      prevent scroll
+              |
+        touchmove fires
+              |
+        elementFromPoint()
+        finds target row
+              |
+        Calculate midpoint
+        Set dropIndicator
+              |
+        touchend fires
+              |
+        Reorder array
+        Clear state
 ```
 
-- Row container: `draggable={true}`, wires all native drag events
-- Grip handle: `cursor-grab` / `cursor-grabbing` via CSS
-- `isDragging`: parent sets this when the row's id matches the dragged id (opacity 0.4)
-- `dropIndicator`: parent passes `'above'` or `'below'` -- renders a 3px blue line as `border-top` or `border-bottom`
-- Same pattern for `DraggableMobileCard`
+### Visual Feedback During Touch Drag
 
-### Files 2-4: Table Components (OperatingSystems, Ziplines, Equipment)
+- Source row: opacity 0.4 + dashed border (same as desktop)
+- Target row: 3px blue line above or below (same as desktop)
+- No custom ghost element needed — the visual indicators are sufficient for touch
 
-**Remove all @dnd-kit imports**: `DndContext`, `DragOverlay`, `SortableContext`, `PointerSensor`, `TouchSensor`, `closestCenter`, `useSensor`, `useSensors`, `arrayMove`, `verticalListSortingStrategy`.
+### Key Technical Details
 
-**Add state:**
-```typescript
-const draggedIdRef = useRef<string | null>(null);
-const [draggingId, setDraggingId] = useState<string | null>(null);
-const [dragOverId, setDragOverId] = useState<string | null>(null);
-const [dropPosition, setDropPosition] = useState<'above' | 'below' | null>(null);
-```
-
-**Handlers:**
-- `handleDragStart(e, id)`: Store id in ref and state, set `e.dataTransfer.effectAllowed = 'move'`
-- `handleDragOver(e, id)`: `e.preventDefault()`, calculate midpoint via `getBoundingClientRect()`, set `dragOverId` and `dropPosition`
-- `handleDragLeave()`: Clear `dragOverId` and `dropPosition`
-- `handleDrop(e, id)`: Reorder array -- remove dragged item, insert before or after target based on `dropPosition`. Clear all state.
-- `handleDragEnd()`: Clear all state (fires even if drop is cancelled)
-
-**Reorder logic** (replaces `arrayMove`):
-```typescript
-const items = [...currentItems];
-const dragIdx = items.findIndex(i => i.id === draggedIdRef.current);
-const [draggedItem] = items.splice(dragIdx, 1);
-const targetIdx = items.findIndex(i => i.id === targetId);
-const insertIdx = dropPosition === 'below' ? targetIdx + 1 : targetIdx;
-items.splice(insertIdx, 0, draggedItem);
-```
-
-For `EquipmentTable`, the same category-aware reorder logic is preserved -- filter by category, reorder within category, then reconstruct the full array.
-
-**Remove `DragOverlay`**: No ghost element needed -- the browser provides the native drag image automatically.
-
-**Remove `SortableContext` wrapper**: Rows are just mapped directly.
-
-### Changes Summary
-
-| File | Change |
-|------|--------|
-| `DraggableTableRow.tsx` | Remove all `@dnd-kit` imports. Accept native drag event handlers + `isDragging` + `dropIndicator` as props. Use `draggable={true}` with native HTML5 events. Render blue 3px insertion line based on `dropIndicator` prop. |
-| `OperatingSystemsTable.tsx` | Remove all `@dnd-kit` imports. Add native drag state (`draggedIdRef`, `draggingId`, `dragOverId`, `dropPosition`). Implement `handleDragStart/Over/Leave/Drop/End`. Remove `DndContext`, `SortableContext`, `DragOverlay`. Pass native handlers to each row. |
-| `ZiplinesTable.tsx` | Same pattern as OperatingSystems. |
-| `EquipmentTable.tsx` | Same pattern, with category-aware reorder logic preserved. |
-
-### Why This Fixes Everything
-
-1. **Ghost offset**: The browser renders the native drag image at the cursor position automatically. No custom overlay, no scroll offset calculations, no portal needed.
-2. **Drop indicator**: Calculated from `e.clientY` vs row midpoint on every `dragOver` event. Renders as a visible 3px blue border on the correct side of the target row.
-3. **No library bugs**: Zero dependency on `@dnd-kit` transform/transition/collision detection systems that were causing persistent issues in scrollable containers.
+- `touch-action: none` CSS is applied dynamically only during an active drag to prevent scroll interference while allowing normal scrolling when not dragging
+- `document.elementFromPoint()` is used during `touchmove` because touch events don't have a natural "target changes as you move" behavior like `dragover` does
+- The long-press threshold prevents accidental drags when the user just wants to scroll past the grip handle
+- `e.preventDefault()` is called in `touchmove` only after drag is confirmed to avoid blocking scroll
 
