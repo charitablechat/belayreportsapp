@@ -1,4 +1,4 @@
-import { useDraggable, useDroppable } from "@dnd-kit/core";
+import { useSortable } from "@dnd-kit/sortable";
 import { GripVertical } from "lucide-react";
 import { ReactNode } from "react";
 
@@ -7,30 +7,28 @@ interface DraggableTableRowProps {
   children: ReactNode;
   className?: string;
   gridCols: string;
-  isOver?: boolean;
 }
 
-export function DraggableTableRow({ id, children, className = "", gridCols, isOver }: DraggableTableRowProps) {
-  const { setNodeRef: setDroppableRef } = useDroppable({ id });
-  const { attributes, listeners, setNodeRef: setDragRef, isDragging } = useDraggable({ id });
+export function DraggableTableRow({ id, children, className = "", gridCols }: DraggableTableRowProps) {
+  const { attributes, listeners, setNodeRef, isDragging, isOver } = useSortable({ id });
 
+  // CRITICAL: No transform/transition — rows stay perfectly static.
+  // useSortable is used only for ref registration, isOver, isDragging, and listener forwarding.
   const style = {
-    opacity: isDragging ? 0.15 : 1,
-    zIndex: isDragging ? 50 : 'auto' as const,
+    opacity: isDragging ? 0.4 : 1,
   };
 
   return (
     <div
-      ref={setDroppableRef}
+      ref={setNodeRef}
       style={style}
-      className={`relative overflow-visible grid ${gridCols} border-b border-border bg-background ${className} ${isDragging ? 'bg-muted/50 border-dashed border-2 border-primary/30' : ''}`}
+      className={`relative overflow-visible grid ${gridCols} border-b border-border bg-background ${className} ${isDragging ? 'border-dashed border-2 border-primary/30' : ''}`}
     >
       {isOver && !isDragging && (
-        <div className="absolute top-0 left-0 right-0 h-[3px] bg-primary z-50 -translate-y-1/2 rounded-full shadow-[0_0_8px_2px_hsl(var(--primary)/0.4)] animate-pulse" />
+        <div className="absolute top-0 left-0 right-0 h-[3px] bg-primary z-50 -translate-y-1/2 rounded-full shadow-[0_0_8px_2px_hsl(var(--primary)/0.4)]" />
       )}
       <div className="p-2 flex items-center justify-center border-r border-border">
         <div
-          ref={setDragRef}
           {...attributes}
           {...listeners}
           className="cursor-grab active:cursor-grabbing touch-none inline-flex items-center justify-center"
@@ -47,30 +45,26 @@ export function DraggableTableRow({ id, children, className = "", gridCols, isOv
 interface DraggableMobileCardProps {
   id: string;
   children: ReactNode;
-  isOver?: boolean;
 }
 
-export function DraggableMobileCard({ id, children, isOver }: DraggableMobileCardProps) {
-  const { setNodeRef: setDroppableRef } = useDroppable({ id });
-  const { attributes, listeners, setNodeRef: setDragRef, isDragging } = useDraggable({ id });
+export function DraggableMobileCard({ id, children }: DraggableMobileCardProps) {
+  const { attributes, listeners, setNodeRef, isDragging, isOver } = useSortable({ id });
 
   const style = {
-    opacity: isDragging ? 0.15 : 1,
-    zIndex: isDragging ? 50 : 'auto' as const,
+    opacity: isDragging ? 0.4 : 1,
   };
 
   return (
     <div
-      ref={setDroppableRef}
+      ref={setNodeRef}
       style={style}
-      className={`relative overflow-visible ${isDragging ? 'bg-muted/50 border-dashed border-2 border-primary/30 rounded-lg' : ''}`}
+      className={`relative overflow-visible ${isDragging ? 'border-dashed border-2 border-primary/30 rounded-lg' : ''}`}
     >
       {isOver && !isDragging && (
-        <div className="absolute top-0 left-0 right-0 h-[3px] bg-primary z-50 -translate-y-1/2 rounded-full shadow-[0_0_8px_2px_hsl(var(--primary)/0.4)] animate-pulse" />
+        <div className="absolute top-0 left-0 right-0 h-[3px] bg-primary z-50 -translate-y-1/2 rounded-full shadow-[0_0_8px_2px_hsl(var(--primary)/0.4)]" />
       )}
       <div className="relative">
         <div
-          ref={setDragRef}
           {...attributes}
           {...listeners}
           className="absolute top-3 left-3 z-10 p-1.5 bg-background/90 backdrop-blur-sm rounded-md cursor-grab active:cursor-grabbing touch-none shadow-sm border border-border hover:bg-accent transition-colors"
