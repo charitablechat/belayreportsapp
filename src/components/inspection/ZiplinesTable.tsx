@@ -20,7 +20,6 @@ import {
 } from "@/components/ui/alert-dialog";
 import {
   DndContext,
-  pointerWithin,
   DragOverlay,
   PointerSensor,
   TouchSensor,
@@ -28,9 +27,8 @@ import {
   useSensors,
   type DragEndEvent,
   type DragStartEvent,
-  type CollisionDetection,
 } from "@dnd-kit/core";
-import { arrayMove } from "@dnd-kit/sortable";
+import { arrayMove, SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { DraggableTableRow, DraggableMobileCard } from "./DraggableTableRow";
 
 interface ZiplinesTableProps {
@@ -45,10 +43,6 @@ function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: ZiplinesTablePro
   const [itemToDelete, setItemToDelete] = useState<{ id: string; name: string } | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
 
-  const collisionDetection: CollisionDetection = useCallback((args) => {
-    const filtered = args.droppableContainers.filter(c => c.id !== args.active.id);
-    return pointerWithin({ ...args, droppableContainers: filtered });
-  }, []);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -128,7 +122,7 @@ function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: ZiplinesTablePro
           <p><strong>Emergency Brake System KEY -</strong> ZS = Zip Stop, AP = Auto Prusik, SB = Spring Bank</p>
         </div>
 
-        <DndContext sensors={sensors} collisionDetection={collisionDetection} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragCancel={() => setActiveId(null)}>
+        <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragCancel={() => setActiveId(null)}>
             {/* Desktop grid view */}
             <div className="hidden md:block overflow-x-auto">
               <div className="min-w-[1200px]">
@@ -150,6 +144,7 @@ function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: ZiplinesTablePro
                   <div className="p-2 text-center font-semibold"></div>
                 </div>
                 {/* Rows */}
+                <SortableContext items={ziplines.map(z => z.id)} strategy={verticalListSortingStrategy}>
                 <div className="border border-t-0 border-border rounded-b">
                   {ziplines.map((zipline) => (
                     <DraggableTableRow
@@ -229,10 +224,12 @@ function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: ZiplinesTablePro
                     </DraggableTableRow>
                   ))}
                 </div>
+                </SortableContext>
               </div>
             </div>
             
             {/* Mobile/Tablet card view */}
+            <SortableContext items={ziplines.map(z => z.id)} strategy={verticalListSortingStrategy}>
             <div className="md:hidden space-y-3">
               {ziplines.map((zipline) => (
                 <DraggableMobileCard key={zipline.id} id={zipline.id}>
@@ -340,6 +337,7 @@ function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: ZiplinesTablePro
                 </DraggableMobileCard>
               ))}
             </div>
+            </SortableContext>
           
           <DragOverlay dropAnimation={{ duration: 200, easing: 'cubic-bezier(0.25, 1, 0.5, 1)' }}>
             {activeZipline ? (

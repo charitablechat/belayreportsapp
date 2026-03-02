@@ -22,7 +22,6 @@ import {
 } from "@/components/ui/alert-dialog";
 import {
   DndContext,
-  pointerWithin,
   DragOverlay,
   PointerSensor,
   TouchSensor,
@@ -30,9 +29,8 @@ import {
   useSensors,
   type DragEndEvent,
   type DragStartEvent,
-  type CollisionDetection,
 } from "@dnd-kit/core";
-import { arrayMove } from "@dnd-kit/sortable";
+import { arrayMove, SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { DraggableTableRow, DraggableMobileCard } from "./DraggableTableRow";
 
 interface EquipmentTableProps {
@@ -59,10 +57,6 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
   const [itemToDelete, setItemToDelete] = useState<{ item: any; name: string } | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
 
-  const collisionDetection: CollisionDetection = useCallback((args) => {
-    const filtered = args.droppableContainers.filter(c => c.id !== args.active.id);
-    return pointerWithin({ ...args, droppableContainers: filtered });
-  }, []);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -145,7 +139,7 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
         </div>
       </CardHeader>
       <CardContent className="px-3 md:px-6">
-        <DndContext sensors={sensors} collisionDetection={collisionDetection} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragCancel={() => setActiveId(null)}>
+        <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragCancel={() => setActiveId(null)}>
             {/* Desktop grid view */}
             <div className="hidden md:block overflow-visible">
               {/* Header */}
@@ -159,6 +153,7 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
                 <div className="p-3 text-center font-semibold text-sm"></div>
               </div>
               {/* Rows */}
+              <SortableContext items={categoryEquipment.map(e => e.id)} strategy={verticalListSortingStrategy}>
               <div className="border border-t-0 border-border rounded-b">
                 {categoryEquipment.map((item) => (
                   <DraggableTableRow
@@ -274,9 +269,11 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
                   </DraggableTableRow>
                 ))}
               </div>
+              </SortableContext>
             </div>
             
             {/* Mobile card view */}
+            <SortableContext items={categoryEquipment.map(e => e.id)} strategy={verticalListSortingStrategy}>
             <div className="md:hidden space-y-3">
               {categoryEquipment.map((item) => (
                 <DraggableMobileCard key={item.id} id={item.id}>
@@ -372,6 +369,7 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
                 </DraggableMobileCard>
               ))}
             </div>
+            </SortableContext>
           
           <DragOverlay dropAnimation={{ duration: 200, easing: 'cubic-bezier(0.25, 1, 0.5, 1)' }}>
             {activeEquipment ? (
