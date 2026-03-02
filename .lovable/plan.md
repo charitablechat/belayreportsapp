@@ -1,122 +1,125 @@
 
 
-## Fix Drag-and-Drop: Eliminate Row Jumping and Restore Drop Indicator
+## Why Drag-and-Drop Keeps Failing (And the Real Fix)
 
-### True Root Cause (Different from All Previous Attempts)
+### The Actual Root Cause
 
-After deep analysis of the code, the session replay, and the dnd-kit architecture, the real problems are:
+The photo drag-and-drop works perfectly. The table row drag-and-drop doesn't. The difference is NOT about CSS indicators, transforms, or collision detection. It's about **one thing**:
 
-**1. Row jumping**: The `verticalListSortingStrategy` calculates CSS transforms for ALL non-active sortable items to visually "make space" during a drag. These transforms (300+ pixels as seen in the session replay) cause the entire table to visually shift, which looks like "the row jumps to the top." This is the core visual chaos.
+**Photos use `<div>` elements. Table rows use `<tr>` elements.**
 
-**2. Missing drop indicator**: The `isOver` flag from `useSortable` relies on dnd-kit's collision detection matching the pointer position to each droppable's measured rect. In `border-collapse` tables, row measurements can be unreliable, causing `isOver` to never become `true` for any row -- so the indicator div never renders.
+HTML `<table>` / `<tr>` / `<td>` elements are governed by the browser's **table layout algorithm**, which is fundamentally incompatible with CSS transforms:
 
-### Why Previous Fixes Failed
+- The browser recalculates cell positions during table layout, fighting any transform applied
+- `border-collapse` clips box-shadows, outlines, and absolutely-positioned children
+- `overflow-x-auto` on the table wrapper clips anything that extends beyond the table
+- The browser's rect measurements for `<tr>` elements inside collapsed tables return inconsistent values, which breaks dnd-kit's collision detection (`closestCenter` can't reliably determine which row the cursor is over)
 
-Every previous attempt kept the same two architectural mistakes:
-- Kept applying `CSS.Transform` sorting transforms to non-active items (causing the jumping)
-- Relied on `useSortable`'s `isOver` for the drop indicator (which doesn't fire reliably in tables)
+Every previous fix tried to work around these issues while keeping the `<table>` structure. That's why none of them worked -- the `<table>` element IS the problem.
 
-No amount of CSS styling changes (outline, border, box-shadow, rendered divs) can fix a problem where the indicator simply never renders because `isOver` is always `false`.
+### The Fix: Replace `<table>` with CSS Grid `<div>`s
 
-### Solution: Remove Sorting Transforms + Manual Drop Target Tracking
+Convert the desktop table from HTML `<table>/<tr>/<td>` to `<div>` elements using CSS Grid, styled to look identical to the current table. This is the exact same element type that makes the photo drag-and-drop work.
 
-**Approach**: Stop using dnd-kit's sorting transforms entirely. Table rows stay in their DOM positions during a drag. The DragOverlay follows the cursor. A manually tracked `overId` powers the insertion indicator. Reorder happens on drop (already works).
+Once rows are `<div>` elements:
+- CSS transforms work correctly (items slide smoothly during drag)
+- `isOver` from `useSortable` fires reliably (no need for manual `overId` tracking)
+- `box-shadow` and `ring` indicators render without clipping
+- We can use the exact same pattern as `DraggablePhotoItem` which already works
 
-This is how Notion, Linear, and other professional table UIs handle drag -- items don't slide around during the drag, they just show an insertion line.
+### What Changes
 
-#### Changes to `DraggableTableRow.tsx`
+#### `DraggableTableRow.tsx` -- Rewrite to match DraggablePhotoItem pattern
 
-- **Remove all transform application**: Set `transform` to `undefined` always (not just when `isDragging`). Items never move during drag -- they stay in place.
-- **Accept `isDropTarget` and `isDragActive` as props** instead of relying on `useSortable`'s unreliable `isOver`.
-- **Render the insertion indicator div** based on `isDropTarget` prop (not `isOver`).
-- **Keep the placeholder opacity (0.15)** for the active dragged item.
-- The `setNodeRef`, `attributes`, `listeners` from `useSortable` are still used for drag handle and droppable registration.
+Replace the `<tr>` with a `<div>` that uses the **same working pattern** as `DraggablePhotoItem`:
 
-#### Changes to all three table components (OperatingSystemsTable, ZiplinesTable, EquipmentTable)
+```text
+- Use CSS.Transform.toString(transform) -- exactly like photos
+- Use transition from useSortable -- exactly like photos
+- Use isDragging and isOver from useSortable -- exactly like photos
+- Remove isDropTarget/isDragActive props -- no longer needed
+- Render as <div> with CSS Grid columns -- not <tr>/<td>
+```
 
-- **Add `onDragOver` handler** to `DndContext` that tracks `overId` state.
-- **Pass `isDropTarget={overId === item.id && activeId !== item.id}`** and `isDragActive={activeId === item.id}` as props to each `DraggableTableRow`.
-- **Move `modifiers` from `DndContext` to `DragOverlay`** -- modifiers on DndContext can interfere with collision detection calculations. The Y-axis lock should only affect the visual overlay, not the sorting algorithm.
-- No changes to `onDragEnd` logic (reorder on drop stays identical -- zero risk of data loss).
+The component will render a `<div>` with `display: grid` and the same column template as the table header, with borders styled via CSS to look like a table row.
+
+#### `OperatingSystemsTable.tsx` -- Convert table to grid
+
+- Replace `<table>` + `<thead>` + `<tbody>` with `<div>` containers
+- Header becomes a `<div>` with CSS Grid columns
+- Each row content (currently `<td>` children passed to DraggableTableRow) becomes `<div>` cells inside DraggableTableRow
+- Remove `overId` state and `onDragOver` handler (no longer needed -- `useSortable` handles it)
+- Keep `activeId` for DragOverlay content only
+- Keep `onDragEnd` logic exactly as-is (arrayMove -- zero data risk)
+
+#### `ZiplinesTable.tsx` -- Same conversion
+
+- Same table-to-grid conversion
+- Same removal of manual overId tracking
+- onDragEnd logic untouched
+
+#### `EquipmentTable.tsx` -- Same conversion
+
+- Same table-to-grid conversion
+- Same removal of manual overId tracking
+- onDragEnd logic untouched
+
+#### `DraggableMobileCard` -- Minor cleanup
+
+Already uses `<div>`, so it mostly works. Just apply the same `CSS.Transform` pattern as DraggablePhotoItem (use transform + transition from useSortable, use isDragging/isOver directly).
 
 ### Data Safety
 
-- The `onDragEnd` handler is completely untouched -- it only calls `arrayMove` when `active.id !== over.id`
-- The `onUpdate` callbacks are unchanged
-- No database queries, sync logic, or storage code is modified
-- Only visual/UI code in the drag components is changed
+- `onDragEnd` handlers are completely untouched -- same `arrayMove` logic
+- `onUpdate` callbacks are unchanged
+- No database, sync, or storage code is modified
+- Only visual/layout markup changes
 
-### Files Changed
+### Why This Will Work
 
-| File | What Changes |
-|------|-------------|
-| `DraggableTableRow.tsx` | Accept `isDropTarget`/`isDragActive` props; remove transform application; use props for indicator instead of `isOver` |
-| `OperatingSystemsTable.tsx` | Add `onDragOver` + `overId` state; pass new props to rows; move `modifiers` to `DragOverlay` |
-| `ZiplinesTable.tsx` | Same pattern as OperatingSystemsTable |
-| `EquipmentTable.tsx` | Same pattern as OperatingSystemsTable |
+This isn't a theory -- the proof is already in the codebase. `DraggablePhotoItem` uses `<div>` + `CSS.Transform` + `isOver` and works perfectly. We're applying the exact same pattern to table rows by converting them from `<tr>` to `<div>`.
 
 ### Technical Details
 
-**DraggableTableRow new prop interface:**
+**DraggableTableRow new structure:**
+
 ```text
-interface DraggableTableRowProps {
-  id: string;
-  children: ReactNode;
-  className?: string;
-  isDropTarget?: boolean;   // NEW: controlled by parent via onDragOver
-  isDragActive?: boolean;   // NEW: controlled by parent via activeId
-}
-```
-
-**DraggableTableRow style (simplified):**
-```text
-<tr ref={setNodeRef} style={{
-  opacity: isDragActive ? 0.15 : 1,
-  background: isDragActive ? 'hsl(var(--muted) / 0.5)' : isDropTarget ? 'hsl(var(--primary) / 0.08)' : undefined,
-}}>
-  <td style={{ position: 'relative', overflow: 'visible' }}>
-    {isDropTarget && (
-      <div style={{
-        position: 'absolute', top: -2, left: -1,
-        height: 4, width: '200vw',
-        background: 'hsl(var(--primary))',
-        boxShadow: '0 0 8px hsl(var(--primary) / 0.5)',
-        zIndex: 50, pointerEvents: 'none', borderRadius: 2,
-      }} />
-    )}
-    <GripVertical /> (drag handle)
-  </td>
-  {children}
-</tr>
-```
-
-No transforms on any row. The `useSortable` hook is still used for its `setNodeRef` (droppable registration), `attributes`, and `listeners` (drag handle), but its `transform` output is ignored.
-
-**Table component onDragOver pattern:**
-```text
-const [overId, setOverId] = useState<string | null>(null);
-
-const handleDragOver = useCallback((event) => {
-  setOverId(event.over?.id as string ?? null);
-}, []);
-
-<DndContext
-  sensors={sensors}
-  collisionDetection={closestCenter}
-  onDragStart={handleDragStart}
-  onDragOver={handleDragOver}
-  onDragEnd={handleDragEnd}
-  onDragCancel={() => { setActiveId(null); setOverId(null); }}
+<div
+  ref={setNodeRef}
+  style={{
+    transform: CSS.Transform.toString(transform),
+    transition: transition || 'transform 200ms ease',
+    opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging ? 50 : 'auto',
+    boxShadow: isDragging ? '0 10px 15px -3px rgba(0,0,0,0.1)' : 'none',
+  }}
+  className={`grid [grid-template-columns] border-b
+    ${isDragging ? 'ring-2 ring-primary ring-offset-2' : ''}
+    ${isOver && !isDragging ? 'ring-2 ring-primary bg-primary/5' : ''}
+  `}
 >
-  ...
-  <DraggableTableRow
-    id={item.id}
-    isDropTarget={overId === item.id && activeId !== item.id}
-    isDragActive={activeId === item.id}
-  >
-  ...
-  <DragOverlay modifiers={[restrictToYAxis]} ...>
+  <div className="p-2 flex items-center justify-center border-r">
+    <div {...attributes} {...listeners} className="cursor-grab">
+      <GripVertical />
+    </div>
+  </div>
+  {children}  <!-- now <div> cells instead of <td> cells -->
+</div>
 ```
 
-Note: `modifiers` moved from `DndContext` to `DragOverlay` so collision detection uses raw pointer position while the overlay visual is Y-axis locked.
+**Grid column template per table:**
 
+- OperatingSystems: `grid-cols-[40px_minmax(180px,1fr)_minmax(160px,1fr)_192px_1fr_64px]`
+- Ziplines: Will match current column widths
+- Equipment: Will match current column widths
+
+The header row uses the same grid template so columns stay aligned.
+
+**Files changed:**
+
+| File | Change |
+|------|--------|
+| `DraggableTableRow.tsx` | Convert `<tr>` to `<div>` with CSS Grid; use same pattern as working DraggablePhotoItem |
+| `OperatingSystemsTable.tsx` | Convert `<table>` to grid divs; remove manual overId tracking; children become `<div>` cells |
+| `ZiplinesTable.tsx` | Same conversion pattern |
+| `EquipmentTable.tsx` | Same conversion pattern |
