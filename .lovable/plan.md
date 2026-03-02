@@ -1,81 +1,82 @@
 
+## Fix: Return to useSortable with Transforms Enabled
 
-## Fix: Switch to pointerWithin Collision + Verify DragOverlay Positioning
+### Why Everything Has Failed So Far
 
-### Root Cause Analysis (from Session Replay)
+Every attempt has either:
+1. Used `useSortable` but **disabled transforms** (set to undefined) -- breaking collision detection
+2. Used `useDraggable`+`useDroppable` -- which has no sorting transform layer at all, so items never shift and collision detection sees stale rects
 
-The session replay shows element 2052 (DragOverlay) receiving smooth `translate3d` updates frame-by-frame (207px,57px -> 207px,50px -> 206px,51px -> ...). This confirms the **DragOverlay IS tracking the cursor correctly at the dnd-kit level**.
+The working `DraggablePhotoItem` + `PhotoGallery` pattern succeeds because it uses `useSortable` with **transforms ENABLED** via `CSS.Transform.toString(transform)`. This is the key: dnd-kit's sorting system needs to apply transforms to shift items during drag so its internal rect tracking stays accurate.
 
-However, three things are broken:
+### The Solution
 
-1. **"Jumps to top"**: The DragOverlay uses `position: fixed` and renders via React Portal to document.body. The transform values are DELTAS from the initial grab point. If the page is scrolled (the user is at y=2264-2385 scroll position per the replay), the DragOverlay appears at the correct viewport-relative position but may visually "jump" because the source row becomes nearly invisible (opacity: 0.15) and the overlay ghost appears at the cursor -- which IS correct behavior, but feels like a jump because the ghost is a slim summary bar while the source was a full row.
+Rewrite `DraggableTableRow` to mirror `DraggablePhotoItem` exactly, and re-add `SortableContext` to all three table components.
 
-2. **"Drop indicator never appears"**: `closestCenter` requires the pointer to be closer to a NEIGHBOR's center than the active item's center. Even though we filter out the active item, for tall rows the pointer must travel far enough to cross into the next row's vertical zone. The `closestCenter` algorithm calculates Euclidean distance to centers, which can cause the nearest match to "flicker" or not register if the pointer is between two rows. Switching to `pointerWithin` solves this -- it simply checks if the pointer is geometrically inside a droppable rect, giving a 1:1 mapping.
+### File 1: `DraggableTableRow.tsx` -- Full Rewrite
 
-3. **"Doesn't follow cursor"**: This is a perception issue -- the overlay DOES follow (confirmed by replay data), but it may appear offset if there's a CSS `transform` ancestor causing coordinate space issues. Need to verify no parent has transforms that would shift the fixed-position overlay.
+Switch from `useDraggable`/`useDroppable` back to `useSortable`, matching the `DraggablePhotoItem` pattern:
 
-### The Fix: 3 Targeted Changes
+```typescript
+import { useSortable } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { GripVertical } from "lucide-react";
 
-#### Change 1: Switch collision detection from closestCenter to pointerWithin
+// DraggableTableRow
+const { attributes, listeners, setNodeRef, transform, transition, isDragging, isOver } = useSortable({ id });
 
-`pointerWithin` checks if the pointer falls inside a droppable rect. Since rows are stacked vertically with no gaps, exactly ONE row will match at any time. This gives:
-- Instant detection (no "closer to center" threshold to cross)
-- No flickering between candidates
-- `isOver` on `useDroppable` fires immediately when the pointer enters a row
+const style = {
+  transform: CSS.Transform.toString(transform),  // KEY: transforms ENABLED
+  transition: transition || 'transform 200ms ease',
+  opacity: isDragging ? 0.3 : 1,
+  zIndex: isDragging ? 50 : 'auto' as const,
+};
 
-```text
-// In each table component, change:
-import { closestCenter, ... } from "@dnd-kit/core";
-// To:
-import { pointerWithin, ... } from "@dnd-kit/core";
-
-// And change the collision function:
-const collisionDetection: CollisionDetection = useCallback((args) => {
-  const filtered = args.droppableContainers.filter(c => c.id !== args.active.id);
-  return pointerWithin({ ...args, droppableContainers: filtered });
-}, []);
+// Render with ref={setNodeRef} style={style}
+// Show insertion indicator when isOver && !isDragging
+// Grip handle uses {...attributes} {...listeners} directly (no separate drag ref)
 ```
 
-#### Change 2: Make the source row placeholder more visible
+Same pattern for `DraggableMobileCard`.
 
-Currently `opacity: 0.15` makes it nearly invisible, contributing to the "jump" perception. Change to a dashed-border placeholder style so the user sees where the row came from:
+### Files 2-4: Table Components (OperatingSystems, Ziplines, Equipment)
 
-```text
-// DraggableTableRow: instead of just opacity
-style={{ opacity: isDragging ? 0.3 : 1 }}
-className={`... ${isDragging ? 'bg-muted/50 border-dashed' : ''}`}
+Re-add `SortableContext` with `verticalListSortingStrategy`:
+
+```typescript
+import { arrayMove, SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
+
+// Remove custom collisionDetection (use default closestCenter from SortableContext)
+// Remove CollisionDetection import and pointerWithin import
+
+// Wrap rows:
+<SortableContext items={systems.map(s => s.id)} strategy={verticalListSortingStrategy}>
+  {systems.map((system) => (
+    <DraggableTableRow key={system.id} id={system.id} ... />
+  ))}
+</SortableContext>
 ```
 
-#### Change 3: Strengthen the drop indicator
+The collision detection import (`pointerWithin`) and custom `collisionDetection` callback are removed entirely -- `SortableContext` with `verticalListSortingStrategy` handles this internally and correctly.
 
-The current 3px line with translate-y-1/2 may be clipped by `overflow-x-auto` on the desktop container. Add `overflow-visible` to the row and make the indicator thicker with animation:
+### Why This Will Work
 
-```text
-{isOver && !isDragging && (
-  <div className="absolute top-0 left-0 right-0 h-[3px] bg-primary z-50 
-    -translate-y-1/2 rounded-full shadow-[0_0_8px_2px_hsl(var(--primary)/0.4)]
-    animate-pulse" />
-)}
-```
+This is not another experiment. This is copying the exact pattern that already works in `PhotoGallery`:
+- `SortableContext` provides the sorting context with proper rect tracking
+- `useSortable` with transforms **enabled** means items visually shift to make space
+- `CSS.Transform.toString(transform)` applies the shift transforms
+- `isOver` from `useSortable` fires reliably because the sorting layer tracks rects correctly
+- `DragOverlay` provides the cursor-following ghost (already working)
 
-### Files Changed
+### Changes Summary
 
 | File | Change |
 |------|--------|
-| `DraggableTableRow.tsx` | Increase opacity to 0.3, add dashed border when dragging, strengthen indicator with z-50 and animate-pulse, add overflow-visible |
-| `OperatingSystemsTable.tsx` | Switch `closestCenter` to `pointerWithin` in import and collision function |
-| `ZiplinesTable.tsx` | Same collision detection switch |
-| `EquipmentTable.tsx` | Same collision detection switch |
+| `DraggableTableRow.tsx` | Replace `useDraggable`/`useDroppable` with `useSortable` + `CSS.Transform`. Apply transform+transition style. Use `isOver` from `useSortable` for indicator. Single `setNodeRef` on container. |
+| `OperatingSystemsTable.tsx` | Add `SortableContext` + `verticalListSortingStrategy`. Remove `pointerWithin`, `CollisionDetection` type, and custom collision callback. |
+| `ZiplinesTable.tsx` | Same as OperatingSystems. |
+| `EquipmentTable.tsx` | Same as OperatingSystems. |
 
 ### Data Safety
 
-Zero risk. Only collision algorithm and visual styling changes. `arrayMove`, `onUpdate`, `handleDragEnd` logic completely untouched.
-
-### Why This Will Actually Work
-
-- `pointerWithin` gives deterministic 1:1 row targeting -- the pointer is either inside a row or not
-- Filtering out the active item means only neighbor rows can be targets
-- `useDroppable.isOver` fires reliably with `pointerWithin` since it's a simple rect containment check
-- The DragOverlay already tracks perfectly (session replay proves this)
-- The stronger indicator (z-50, animate-pulse) ensures visibility even with overflow containers
-
+Zero risk. `handleDragEnd`, `arrayMove`, `onUpdate` callbacks are completely untouched.
