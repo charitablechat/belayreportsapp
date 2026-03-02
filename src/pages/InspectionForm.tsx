@@ -1026,21 +1026,24 @@ export default function InspectionForm() {
             supabase
               .from("inspection_systems")
               .select("*")
-              .eq("inspection_id", id),
+              .eq("inspection_id", id)
+              .order("display_order"),
             8000
           ),
           withQueryTimeout(
             supabase
               .from("inspection_ziplines")
               .select("*")
-              .eq("inspection_id", id),
+              .eq("inspection_id", id)
+              .order("display_order"),
             8000
           ),
           withQueryTimeout(
             supabase
               .from("inspection_equipment")
               .select("*")
-              .eq("inspection_id", id),
+              .eq("inspection_id", id)
+              .order("display_order"),
             8000
           ),
           withQueryTimeout(
@@ -1464,22 +1467,27 @@ export default function InspectionForm() {
             
             // OPTIMIZED: Parallelize all independent database operations
             // Pre-generate UUIDs for new items to avoid .select() roundtrips
-            const existingSystems = systems.filter(s => s.id && !s.id.startsWith('temp-'));
-            const newSystems = systems.filter(s => !s.id || s.id.startsWith('temp-')).map(s => ({
+            // Stamp display_order from array index before saving
+            const systemsWithOrder = systems.map((s, i) => ({ ...s, display_order: i }));
+            const ziplinesWithOrder = ziplines.map((z, i) => ({ ...z, display_order: i }));
+            const equipmentWithOrder = equipment.map((e, i) => ({ ...e, display_order: i }));
+
+            const existingSystems = systemsWithOrder.filter(s => s.id && !s.id.startsWith('temp-'));
+            const newSystems = systemsWithOrder.filter(s => !s.id || s.id.startsWith('temp-')).map(s => ({
               ...s,
               id: crypto.randomUUID(), // Pre-generate UUID
               inspection_id: id
             }));
             
-            const existingZiplines = ziplines.filter(z => z.id && !z.id.startsWith('temp-'));
-            const newZiplines = ziplines.filter(z => !z.id || z.id.startsWith('temp-')).map(z => ({
+            const existingZiplines = ziplinesWithOrder.filter(z => z.id && !z.id.startsWith('temp-'));
+            const newZiplines = ziplinesWithOrder.filter(z => !z.id || z.id.startsWith('temp-')).map(z => ({
               ...z,
               id: crypto.randomUUID(),
               inspection_id: id
             }));
             
-            const existingEquipment = equipment.filter(e => e.id && !e.id.startsWith('temp-'));
-            const newEquipment = equipment.filter(e => !e.id || e.id.startsWith('temp-')).map(e => ({
+            const existingEquipment = equipmentWithOrder.filter(e => e.id && !e.id.startsWith('temp-'));
+            const newEquipment = equipmentWithOrder.filter(e => !e.id || e.id.startsWith('temp-')).map(e => ({
               ...e,
               id: crypto.randomUUID(),
               inspection_id: id

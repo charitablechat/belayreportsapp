@@ -8,8 +8,7 @@ import { GlobalAutocomplete } from "@/components/GlobalAutocomplete";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Plus, Trash2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { AnimatedTableRow, AnimatedListItem } from "@/components/ui/list-item-animation";
-import { useState, useEffect, useRef, useMemo, useCallback, memo } from "react";
+import { useState, useMemo, useCallback, memo } from "react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import {
   AlertDialog,
@@ -21,6 +20,21 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  TouchSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  verticalListSortingStrategy,
+  arrayMove,
+} from "@dnd-kit/sortable";
+import { DraggableTableRow, DraggableMobileCard } from "./DraggableTableRow";
 
 interface EquipmentTableProps {
   category: string;
@@ -31,48 +45,22 @@ interface EquipmentTableProps {
   typeOptions?: string[];
 }
 
-/**
- * PERFORMANCE OPTIMIZATIONS (v2.2.10):
- * 1. LazyRichTextEditor - TipTap only mounts when focused (saves ~1200ms)
- * 2. useMemo for categoryEquipment filter (prevents recalculation on unrelated renders)
- * 3. useCallback for updateEquipment (stable reference for child components)
- * 4. isMobile prop passed to animation components (single hook call vs 25)
- * 5. Conditional AlertDialog rendering (only mounts when needed)
- * 6. React.memo on expensive sub-components
- */
-
 function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediateSave, typeOptions }: EquipmentTableProps) {
-  // PERFORMANCE: Single hook call, passed to all animation children
   const isMobile = useIsMobile();
   
-  // PERFORMANCE: Memoize filter to prevent recalculation on every render
   const categoryEquipment = useMemo(
     () => equipment.filter((item) => item.equipment_category === category),
     [equipment, category]
   );
+
+  const categoryIds = useMemo(() => categoryEquipment.map(e => e.id), [categoryEquipment]);
   
-  const [newItemIds, setNewItemIds] = useState<Set<string>>(new Set());
-  const prevEquipmentLengthRef = useRef(categoryEquipment.length);
   const [itemToDelete, setItemToDelete] = useState<{ item: any; name: string } | null>(null);
 
-  // Track newly added items for animation
-  useEffect(() => {
-    if (categoryEquipment.length > prevEquipmentLengthRef.current) {
-      const latestItem = categoryEquipment[0];
-      if (latestItem?.id) {
-        setNewItemIds(prev => new Set(prev).add(latestItem.id));
-        // Clear the "new" status after animation completes
-        setTimeout(() => {
-          setNewItemIds(prev => {
-            const next = new Set(prev);
-            next.delete(latestItem.id);
-            return next;
-          });
-        }, 1500);
-      }
-    }
-    prevEquipmentLengthRef.current = categoryEquipment.length;
-  }, [categoryEquipment.length]);
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor, { activationConstraint: { distance: 8 } })
+  );
 
   const addEquipment = useCallback(() => {
     onUpdate(prev => [
@@ -90,7 +78,6 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
     ]);
   }, [category, onUpdate]);
 
-  // PERFORMANCE: Stable callback reference — functional update prevents stale closures
   const updateEquipment = useCallback((item: any, field: string, value: any) => {
     onUpdate(prev => prev.map((eq) =>
       eq.id === item.id ? { ...eq, [field]: value } : eq
@@ -104,6 +91,32 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
       setItemToDelete(null);
     }
   }, [itemToDelete, onUpdate, onImmediateSave]);
+
+  const handleDragEnd = useCallback((event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    // Map category-local reorder back to the full equipment array
+    onUpdate(prev => {
+      const catItems = prev.filter(e => e.equipment_category === category);
+      const otherItems = prev.filter(e => e.equipment_category !== category);
+      const oldIndex = catItems.findIndex(e => e.id === active.id);
+      const newIndex = catItems.findIndex(e => e.id === over.id);
+      const reorderedCat = arrayMove(catItems, oldIndex, newIndex);
+      
+      // Rebuild preserving relative position: category items in new order at their original positions
+      const result: any[] = [];
+      let catIdx = 0;
+      for (const item of prev) {
+        if (item.equipment_category === category) {
+          result.push(reorderedCat[catIdx++]);
+        } else {
+          result.push(item);
+        }
+      }
+      return result;
+    });
+  }, [onUpdate, category]);
 
   return (
     <Card>
@@ -120,350 +133,345 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
         </div>
       </CardHeader>
       <CardContent className="px-3 md:px-6">
-        {/* Desktop table view */}
-        <div className="hidden md:block overflow-visible">
-          <table className="w-full border-collapse">
-            <thead>
-              <tr className="bg-blue-50 dark:bg-blue-950/20">
-                <th className="border p-3 text-left font-semibold text-sm">Type</th>
-                <th className="border p-3 text-left font-semibold text-sm w-32">Production Year</th>
-                <th className="border p-3 text-left font-semibold text-sm w-24">Quantity</th>
-                <th className="border p-3 text-left font-semibold text-sm w-48">Result</th>
-                <th className="border p-3 text-left font-semibold text-sm">Comments and/or Required Changes</th>
-                <th className="border p-3 text-center font-semibold text-sm w-16"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {categoryEquipment.map((item, index) => (
-                <AnimatedTableRow 
-                  key={item.id || index} 
-                  itemKey={item.id || `equipment-${index}`}
-                  isNew={newItemIds.has(item.id)}
-                  isMobile={isMobile}
-                  className="hover:bg-muted/50"
-                >
-                   <td className="border p-2">
-                    {typeOptions ? (
-                      (() => {
-                        const currentVal = item.equipment_type || "";
-                        return currentVal.trim() !== "" ? (
-                          <div className="flex items-center gap-1">
-                            <Input
-                              value={currentVal}
-                              onChange={(e) => updateEquipment(item, "equipment_type", e.target.value)}
-                              onBlur={onImmediateSave}
-                              onKeyDown={(e) => e.key === 'Enter' && onImmediateSave?.()}
-                              placeholder="Edit type..."
-                              className="border-0 bg-transparent flex-1"
-                            />
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-7 w-7 p-0 shrink-0"
-                              onClick={() => { updateEquipment(item, "equipment_type", ""); onImmediateSave?.(); }}
-                              title="Re-select type"
-                            >
-                              <X className="h-3 w-3" />
-                            </Button>
-                          </div>
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          <SortableContext items={categoryIds} strategy={verticalListSortingStrategy}>
+            {/* Desktop table view */}
+            <div className="hidden md:block overflow-visible">
+              <table className="w-full border-collapse">
+                <thead>
+                  <tr className="bg-blue-50 dark:bg-blue-950/20">
+                    <th className="border p-3 text-center font-semibold text-sm w-10"></th>
+                    <th className="border p-3 text-left font-semibold text-sm">Type</th>
+                    <th className="border p-3 text-left font-semibold text-sm w-32">Production Year</th>
+                    <th className="border p-3 text-left font-semibold text-sm w-24">Quantity</th>
+                    <th className="border p-3 text-left font-semibold text-sm w-48">Result</th>
+                    <th className="border p-3 text-left font-semibold text-sm">Comments and/or Required Changes</th>
+                    <th className="border p-3 text-center font-semibold text-sm w-16"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {categoryEquipment.map((item) => (
+                    <DraggableTableRow
+                      key={item.id}
+                      id={item.id}
+                      className="hover:bg-muted/50"
+                    >
+                       <td className="border p-2">
+                        {typeOptions ? (
+                          (() => {
+                            const currentVal = item.equipment_type || "";
+                            return currentVal.trim() !== "" ? (
+                              <div className="flex items-center gap-1">
+                                <Input
+                                  value={currentVal}
+                                  onChange={(e) => updateEquipment(item, "equipment_type", e.target.value)}
+                                  onBlur={onImmediateSave}
+                                  onKeyDown={(e) => e.key === 'Enter' && onImmediateSave?.()}
+                                  placeholder="Edit type..."
+                                  className="border-0 bg-transparent flex-1"
+                                />
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-7 w-7 p-0 shrink-0"
+                                  onClick={() => { updateEquipment(item, "equipment_type", ""); onImmediateSave?.(); }}
+                                  title="Re-select type"
+                                >
+                                  <X className="h-3 w-3" />
+                                </Button>
+                              </div>
+                            ) : (
+                              <Select onValueChange={(v) => { updateEquipment(item, "equipment_type", v); onImmediateSave?.(); }}>
+                                <SelectTrigger className={cn("border-0 bg-transparent", "ring-2 ring-destructive")}>
+                                  <SelectValue placeholder="Select type" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {typeOptions.map((opt) => (
+                                    <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            );
+                          })()
                         ) : (
-                          <Select onValueChange={(v) => { updateEquipment(item, "equipment_type", v); onImmediateSave?.(); }}>
-                            <SelectTrigger className={cn("border-0 bg-transparent", "ring-2 ring-destructive")}>
-                              <SelectValue placeholder="Select type" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {typeOptions.map((opt) => (
-                                <SelectItem key={opt} value={opt}>{opt}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        );
-                      })()
-                    ) : (
-                      <GlobalAutocomplete
-                        value={item.equipment_type}
-                        onChange={(value) => updateEquipment(item, "equipment_type", value)}
-                        onBlur={onImmediateSave}
-                        fieldType="equipment_type"
-                        placeholder="Enter or select type"
-                        className={cn(
-                          "border-0 bg-transparent",
-                          !item.equipment_type || item.equipment_type.trim() === ""
-                            ? "ring-2 ring-destructive"
-                            : ""
-                        )}
-                      />
-                    )}
-                  </td>
-                  <td className="border p-2">
-                    <div className="flex items-center gap-1">
-                      {item.production_year === "0" ? (
-                        <div className="flex items-center gap-1 px-2 py-1 bg-muted rounded text-sm flex-1">
-                          <span className="text-muted-foreground font-medium">N/A</span>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-5 w-5 p-0 ml-auto"
-                            onClick={() => { updateEquipment(item, "production_year", null); onImmediateSave?.(); }}
-                          >
-                            <X className="h-3 w-3" />
-                          </Button>
-                        </div>
-                      ) : (
-                        <>
-                          <Input
-                            type="text"
-                            inputMode="text"
-                            value={item.production_year || ""}
-                            onChange={(e) => {
-                              const raw = e.target.value;
-                              if (raw === "") { updateEquipment(item, "production_year", null); return; }
-                              if (/^\d{0,4}(-\d{0,4})?$/.test(raw)) {
-                                updateEquipment(item, "production_year", raw);
-                              }
-                            }}
-                            onBlur={() => {
-                              const val = item.production_year;
-                              if (val && !/^(0|\d{4}(-\d{4})?)$/.test(val)) {
-                                updateEquipment(item, "production_year", null);
-                              }
-                              onImmediateSave?.();
-                            }}
-                            onKeyDown={(e) => e.key === 'Enter' && onImmediateSave?.()}
-                            placeholder="Year"
-                            className="border-0 bg-transparent flex-1"
+                          <GlobalAutocomplete
+                            value={item.equipment_type}
+                            onChange={(value) => updateEquipment(item, "equipment_type", value)}
+                            onBlur={onImmediateSave}
+                            fieldType="equipment_type"
+                            placeholder="Enter or select type"
+                            className={cn(
+                              "border-0 bg-transparent",
+                              !item.equipment_type || item.equipment_type.trim() === ""
+                                ? "ring-2 ring-destructive"
+                                : ""
+                            )}
                           />
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-7 px-2 text-xs shrink-0"
-                            onClick={() => { updateEquipment(item, "production_year", "0"); onImmediateSave?.(); }}
-                          >
-                            N/A
-                          </Button>
-                        </>
-                      )}
-                    </div>
-                  </td>
-                  <td className="border p-2">
-                    <Input
-                      type="text"
-                      inputMode="numeric"
-                      value={item.quantity || ""}
-                      onChange={(e) => {
-                        const raw = e.target.value;
-                        if (raw === "") { updateEquipment(item, "quantity", null); return; }
-                        if (/^\d+\+?$/.test(raw)) {
-                          updateEquipment(item, "quantity", raw);
-                        }
-                      }}
-                      onBlur={onImmediateSave}
-                      onKeyDown={(e) => e.key === 'Enter' && onImmediateSave?.()}
-                      placeholder="Qty"
-                      className="border-0 bg-transparent"
-                    />
-                  </td>
-                  <td className="border p-2">
-                    <ResultSelect
-                      value={item.result}
-                      onChange={(value) => updateEquipment(item, "result", value)}
-                      
-                    />
-                  </td>
-                  <td className="border p-2">
-                    <LazyRichTextEditor
-                      content={item.comments || ""}
-                      onChange={(value) => updateEquipment(item, "comments", value)}
-                      placeholder="Enter comments..."
-                      className="border-0 bg-transparent"
-                    />
-                  </td>
-                  <td className="border p-2 text-center">
+                        )}
+                      </td>
+                      <td className="border p-2">
+                        <div className="flex items-center gap-1">
+                          {item.production_year === "0" ? (
+                            <div className="flex items-center gap-1 px-2 py-1 bg-muted rounded text-sm flex-1">
+                              <span className="text-muted-foreground font-medium">N/A</span>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-5 w-5 p-0 ml-auto"
+                                onClick={() => { updateEquipment(item, "production_year", null); onImmediateSave?.(); }}
+                              >
+                                <X className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          ) : (
+                            <>
+                              <Input
+                                type="text"
+                                inputMode="text"
+                                value={item.production_year || ""}
+                                onChange={(e) => {
+                                  const raw = e.target.value;
+                                  if (raw === "") { updateEquipment(item, "production_year", null); return; }
+                                  if (/^\d{0,4}(-\d{0,4})?$/.test(raw)) {
+                                    updateEquipment(item, "production_year", raw);
+                                  }
+                                }}
+                                onBlur={() => {
+                                  const val = item.production_year;
+                                  if (val && !/^(0|\d{4}(-\d{4})?)$/.test(val)) {
+                                    updateEquipment(item, "production_year", null);
+                                  }
+                                  onImmediateSave?.();
+                                }}
+                                onKeyDown={(e) => e.key === 'Enter' && onImmediateSave?.()}
+                                placeholder="Year"
+                                className="border-0 bg-transparent flex-1"
+                              />
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-7 px-2 text-xs shrink-0"
+                                onClick={() => { updateEquipment(item, "production_year", "0"); onImmediateSave?.(); }}
+                              >
+                                N/A
+                              </Button>
+                            </>
+                          )}
+                        </div>
+                      </td>
+                      <td className="border p-2">
+                        <Input
+                          type="text"
+                          inputMode="numeric"
+                          value={item.quantity || ""}
+                          onChange={(e) => {
+                            const raw = e.target.value;
+                            if (raw === "") { updateEquipment(item, "quantity", null); return; }
+                            if (/^\d+\+?$/.test(raw)) {
+                              updateEquipment(item, "quantity", raw);
+                            }
+                          }}
+                          onBlur={onImmediateSave}
+                          onKeyDown={(e) => e.key === 'Enter' && onImmediateSave?.()}
+                          placeholder="Qty"
+                          className="border-0 bg-transparent"
+                        />
+                      </td>
+                      <td className="border p-2">
+                        <ResultSelect
+                          value={item.result}
+                          onChange={(value) => updateEquipment(item, "result", value)}
+                        />
+                      </td>
+                      <td className="border p-2">
+                        <LazyRichTextEditor
+                          content={item.comments || ""}
+                          onChange={(value) => updateEquipment(item, "comments", value)}
+                          placeholder="Enter comments..."
+                          className="border-0 bg-transparent"
+                        />
+                      </td>
+                      <td className="border p-2 text-center">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setItemToDelete({ item, name: item.equipment_type || "this equipment" })}
+                          className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </td>
+                    </DraggableTableRow>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            
+            {/* Mobile card view */}
+            <div className="md:hidden space-y-3">
+              {categoryEquipment.map((item) => (
+                <DraggableMobileCard key={item.id} id={item.id}>
+                  <div className="p-4 pl-12 relative border-l-4 border-l-primary/20 rounded-lg bg-muted/30 border border-border">
                     <Button
                       variant="ghost"
                       size="sm"
                       onClick={() => setItemToDelete({ item, name: item.equipment_type || "this equipment" })}
-                      className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                      className="absolute top-3 right-3 h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>
-                  </td>
-                </AnimatedTableRow>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        
-        {/* Mobile card view */}
-        <div className="md:hidden space-y-3">
-          {categoryEquipment.map((item, index) => (
-            <AnimatedListItem 
-              key={item.id || index}
-              itemKey={item.id || `mobile-equipment-${index}`}
-              isNew={newItemIds.has(item.id)}
-              isMobile={isMobile}
-            >
-              <div className="p-4 relative border-l-4 border-l-primary/20 rounded-lg bg-muted/30 border border-border">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setItemToDelete({ item, name: item.equipment_type || "this equipment" })}
-                  className="absolute top-3 right-3 h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-                <div className="space-y-3 pr-10">
-                   <div>
-                    <Label className="text-xs text-muted-foreground">Type *</Label>
-                    {typeOptions ? (
-                      (() => {
-                        const currentVal = item.equipment_type || "";
-                        return currentVal.trim() !== "" ? (
-                          <div className="flex items-center gap-1">
-                            <Input
-                              value={currentVal}
-                              onChange={(e) => updateEquipment(item, "equipment_type", e.target.value)}
-                              onBlur={onImmediateSave}
-                              onKeyDown={(e) => e.key === 'Enter' && onImmediateSave?.()}
-                              placeholder="Edit type..."
-                            />
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-7 w-7 p-0 shrink-0"
-                              onClick={() => { updateEquipment(item, "equipment_type", ""); onImmediateSave?.(); }}
-                              title="Re-select type"
-                            >
-                              <X className="h-3 w-3" />
-                            </Button>
-                          </div>
+                    <div className="space-y-3 pr-10">
+                       <div>
+                        <Label className="text-xs text-muted-foreground">Type *</Label>
+                        {typeOptions ? (
+                          (() => {
+                            const currentVal = item.equipment_type || "";
+                            return currentVal.trim() !== "" ? (
+                              <div className="flex items-center gap-1">
+                                <Input
+                                  value={currentVal}
+                                  onChange={(e) => updateEquipment(item, "equipment_type", e.target.value)}
+                                  onBlur={onImmediateSave}
+                                  onKeyDown={(e) => e.key === 'Enter' && onImmediateSave?.()}
+                                  placeholder="Edit type..."
+                                />
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-7 w-7 p-0 shrink-0"
+                                  onClick={() => { updateEquipment(item, "equipment_type", ""); onImmediateSave?.(); }}
+                                  title="Re-select type"
+                                >
+                                  <X className="h-3 w-3" />
+                                </Button>
+                              </div>
+                            ) : (
+                              <Select onValueChange={(v) => { updateEquipment(item, "equipment_type", v); onImmediateSave?.(); }}>
+                                <SelectTrigger className="ring-2 ring-destructive">
+                                  <SelectValue placeholder="Select type" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {typeOptions.map((opt) => (
+                                    <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            );
+                          })()
                         ) : (
-                          <Select onValueChange={(v) => { updateEquipment(item, "equipment_type", v); onImmediateSave?.(); }}>
-                            <SelectTrigger className="ring-2 ring-destructive">
-                              <SelectValue placeholder="Select type" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {typeOptions.map((opt) => (
-                                <SelectItem key={opt} value={opt}>{opt}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        );
-                      })()
-                    ) : (
-                      <GlobalAutocomplete
-                        value={item.equipment_type}
-                        onChange={(value) => updateEquipment(item, "equipment_type", value)}
-                        onBlur={onImmediateSave}
-                        fieldType="equipment_type"
-                        placeholder="Enter or select type"
-                        className={cn(
-                          !item.equipment_type || item.equipment_type.trim() === ""
-                            ? "ring-2 ring-destructive"
-                            : ""
-                        )}
-                      />
-                    )}
-                  </div>
-                  
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Label className="text-xs text-muted-foreground">Production Year</Label>
-                      <div className="flex items-center gap-1">
-                        {item.production_year === "0" ? (
-                          <div className="flex items-center gap-1 px-2 py-1 bg-muted rounded text-sm flex-1 h-10">
-                            <span className="text-muted-foreground font-medium">N/A</span>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-5 w-5 p-0 ml-auto"
-                              onClick={() => { updateEquipment(item, "production_year", null); onImmediateSave?.(); }}
-                            >
-                              <X className="h-3 w-3" />
-                            </Button>
-                          </div>
-                        ) : (
-                          <>
-                            <Input
-                              type="text"
-                              inputMode="text"
-                              value={item.production_year || ""}
-                              onChange={(e) => {
-                                const raw = e.target.value;
-                                if (raw === "") { updateEquipment(item, "production_year", null); return; }
-                                if (/^\d{0,4}(-\d{0,4})?$/.test(raw)) {
-                                  updateEquipment(item, "production_year", raw);
-                                }
-                              }}
-                              onBlur={() => {
-                                const val = item.production_year;
-                                if (val && !/^(0|\d{4}(-\d{4})?)$/.test(val)) {
-                                  updateEquipment(item, "production_year", null);
-                                }
-                                onImmediateSave?.();
-                              }}
-                              onKeyDown={(e) => e.key === 'Enter' && onImmediateSave?.()}
-                              placeholder="Year"
-                              className="flex-1"
-                            />
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="h-10 px-2 text-xs shrink-0"
-                              onClick={() => { updateEquipment(item, "production_year", "0"); onImmediateSave?.(); }}
-                            >
-                              N/A
-                            </Button>
-                          </>
+                          <GlobalAutocomplete
+                            value={item.equipment_type}
+                            onChange={(value) => updateEquipment(item, "equipment_type", value)}
+                            onBlur={onImmediateSave}
+                            fieldType="equipment_type"
+                            placeholder="Enter or select type"
+                            className={cn(
+                              !item.equipment_type || item.equipment_type.trim() === ""
+                                ? "ring-2 ring-destructive"
+                                : ""
+                            )}
+                          />
                         )}
                       </div>
-                    </div>
-                    
-                    <div>
-                      <Label className="text-xs text-muted-foreground">Quantity</Label>
-                      <Input
-                        type="text"
-                        inputMode="numeric"
-                        value={item.quantity || ""}
-                        onChange={(e) => {
-                          const raw = e.target.value;
-                          if (raw === "") { updateEquipment(item, "quantity", null); return; }
-                          if (/^\d+\+?$/.test(raw)) {
-                            updateEquipment(item, "quantity", raw);
-                          }
-                        }}
-                        onBlur={onImmediateSave}
-                        onKeyDown={(e) => e.key === 'Enter' && onImmediateSave?.()}
-                        placeholder="Qty"
-                      />
-                    </div>
-                  </div>
-                  
-                  <div>
-                    <Label className="text-xs text-muted-foreground">Result</Label>
-                    <ResultSelect
-                      value={item.result}
-                      onChange={(value) => updateEquipment(item, "result", value)}
                       
-                    />
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <Label className="text-xs text-muted-foreground">Production Year</Label>
+                          <div className="flex items-center gap-1">
+                            {item.production_year === "0" ? (
+                              <div className="flex items-center gap-1 px-2 py-1 bg-muted rounded text-sm flex-1 h-10">
+                                <span className="text-muted-foreground font-medium">N/A</span>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-5 w-5 p-0 ml-auto"
+                                  onClick={() => { updateEquipment(item, "production_year", null); onImmediateSave?.(); }}
+                                >
+                                  <X className="h-3 w-3" />
+                                </Button>
+                              </div>
+                            ) : (
+                              <>
+                                <Input
+                                  type="text"
+                                  inputMode="text"
+                                  value={item.production_year || ""}
+                                  onChange={(e) => {
+                                    const raw = e.target.value;
+                                    if (raw === "") { updateEquipment(item, "production_year", null); return; }
+                                    if (/^\d{0,4}(-\d{0,4})?$/.test(raw)) {
+                                      updateEquipment(item, "production_year", raw);
+                                    }
+                                  }}
+                                  onBlur={() => {
+                                    const val = item.production_year;
+                                    if (val && !/^(0|\d{4}(-\d{4})?)$/.test(val)) {
+                                      updateEquipment(item, "production_year", null);
+                                    }
+                                    onImmediateSave?.();
+                                  }}
+                                  onKeyDown={(e) => e.key === 'Enter' && onImmediateSave?.()}
+                                  placeholder="Year"
+                                  className="flex-1"
+                                />
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-10 px-2 text-xs shrink-0"
+                                  onClick={() => { updateEquipment(item, "production_year", "0"); onImmediateSave?.(); }}
+                                >
+                                  N/A
+                                </Button>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                        
+                        <div>
+                          <Label className="text-xs text-muted-foreground">Quantity</Label>
+                          <Input
+                            type="text"
+                            inputMode="numeric"
+                            value={item.quantity || ""}
+                            onChange={(e) => {
+                              const raw = e.target.value;
+                              if (raw === "") { updateEquipment(item, "quantity", null); return; }
+                              if (/^\d+\+?$/.test(raw)) {
+                                updateEquipment(item, "quantity", raw);
+                              }
+                            }}
+                            onBlur={onImmediateSave}
+                            onKeyDown={(e) => e.key === 'Enter' && onImmediateSave?.()}
+                            placeholder="Qty"
+                          />
+                        </div>
+                      </div>
+                      
+                      <div>
+                        <Label className="text-xs text-muted-foreground">Result</Label>
+                        <ResultSelect
+                          value={item.result}
+                          onChange={(value) => updateEquipment(item, "result", value)}
+                        />
+                      </div>
+                      
+                      <div>
+                        <Label className="text-xs text-muted-foreground">Comments / Changes</Label>
+                        <LazyRichTextEditor
+                          content={item.comments || ""}
+                          onChange={(value) => updateEquipment(item, "comments", value)}
+                          placeholder="Enter comments..."
+                        />
+                      </div>
+                    </div>
                   </div>
-                  
-                  <div>
-                    <Label className="text-xs text-muted-foreground">Comments / Changes</Label>
-                    <LazyRichTextEditor
-                      content={item.comments || ""}
-                      onChange={(value) => updateEquipment(item, "comments", value)}
-                      placeholder="Enter comments..."
-                    />
-                  </div>
-                </div>
-              </div>
-            </AnimatedListItem>
-          ))}
-        </div>
+                </DraggableMobileCard>
+              ))}
+            </div>
+          </SortableContext>
+        </DndContext>
       </CardContent>
 
-      {/* PERFORMANCE: Only render AlertDialog when needed */}
       {itemToDelete && (
         <AlertDialog open={true} onOpenChange={(open) => !open && setItemToDelete(null)}>
           <AlertDialogContent>
@@ -490,5 +498,4 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
   );
 }
 
-// PERFORMANCE: Memoize component to prevent re-renders from parent state changes
 export default memo(EquipmentTable);
