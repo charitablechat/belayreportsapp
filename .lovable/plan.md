@@ -1,83 +1,67 @@
 
 
-## Fix: Replace @dnd-kit/sortable with @dnd-kit/core only
+## Fix DragOverlay Offset and Drop Indicator Reliability
 
-### Root Cause
-`useSortable` from `@dnd-kit/sortable` bundles sorting transforms + collision detection together. You can't disable transforms without also breaking `isOver` and collision detection. This is why every attempt has failed — they're architecturally coupled.
+### Root Cause Analysis
 
-### Solution
-Use `@dnd-kit/core` primitives directly:
-- `useDraggable` on the grip handle -- provides dragging without any transform on the row
-- `useDroppable` on each row -- provides `isOver` independently of any sorting strategy
-- `DragOverlay` follows cursor naturally (no snapping)
-- No `SortableContext` or `verticalListSortingStrategy` needed
+**DragOverlay offset (~550px):** The `useDraggable` ref (`setDragRef`) is attached to the small grip handle icon. `DragOverlay` positions itself based on the initial rect of this ref node. Since the grip is a tiny element at the far-left of the row, the overlay renders starting from that position and extends right with `min-w-[400px]`, creating the appearance of a large horizontal offset from the cursor.
 
-### File 1: `DraggableTableRow.tsx` -- Rewrite
+**Drop indicator unreliable:** `closestCenter` collision detection targets the geometric center of each droppable row. When rows are tall (rich text editors expand them), the pointer may stay "closest" to one row's center for a large vertical range, making the indicator sluggish to transition between rows.
 
-Replace `useSortable` with separate `useDraggable` + `useDroppable`:
+### Fix 1: Merge draggable + droppable refs onto the row container
+
+Set both refs on the row `<div>` so that `DragOverlay` measures the full row rect (not the tiny grip). Keep drag listeners on the grip handle only (so only the grip activates dragging).
 
 ```typescript
-import { useDraggable, useDroppable } from "@dnd-kit/core";
+// DraggableTableRow - merge refs on the container
+import { useCallback } from "react";
 
-// DraggableTableRow
-const { setNodeRef: setDroppableRef, isOver } = useDroppable({ id });
-const { attributes, listeners, setNodeRef: setDragRef, isDragging } = useDraggable({ id });
+const mergedRef = useCallback((node: HTMLDivElement | null) => {
+  setDroppableRef(node);
+  setDragRef(node);
+}, [setDroppableRef, setDragRef]);
 
-// No transform, no transition on the row -- rows stay completely static
-// isOver comes from useDroppable (works independently of sorting strategy)
-// Drag handle ref goes on the grip icon only
-// Droppable ref goes on the row container
+// Container div uses mergedRef
+<div ref={mergedRef} style={style} className={...}>
+  {/* Grip only gets listeners + attributes (no ref) */}
+  <div {...attributes} {...listeners} className="cursor-grab ...">
+    <GripVertical ... />
+  </div>
+  {children}
+</div>
 ```
 
-Key differences from previous attempts:
-- `useDroppable` provides `isOver` without needing sorting transforms
-- `useDraggable` only tracks the drag start/end, no transform applied to the source row
-- The grip handle uses `setDragRef` + `listeners` + `attributes`
-- The row container uses `setDroppableRef`
-- Opacity set to 0.15 when dragging (source row fades)
+Same pattern for `DraggableMobileCard`.
 
-### Files 2-4: Table Components (OperatingSystems, Ziplines, Equipment)
+### Fix 2: Switch collision detection to `pointerWithin`
 
-- Remove `SortableContext` and `verticalListSortingStrategy` imports
-- Remove `<SortableContext>` wrapper around rows
-- Add `closestCenter` import from `@dnd-kit/core` and pass as `collisionDetection` prop to `DndContext`
-- Keep `DragOverlay`, `handleDragStart`, `handleDragEnd`, `arrayMove` exactly as they are
+Replace `closestCenter` with `pointerWithin` in all three table components. `pointerWithin` fires `isOver` when the pointer is inside a droppable's bounding rect -- much more intuitive for vertically stacked rows and eliminates the "dead zone" problem near row boundaries.
 
 ```typescript
-// Before
-import { arrayMove, SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
+// In each table component
+import { ..., pointerWithin } from "@dnd-kit/core";
 
-// After
-import { arrayMove } from "@dnd-kit/sortable";  // only for the arrayMove utility
-import { closestCenter } from "@dnd-kit/core";   // add to existing core import
-
-// DndContext gets collisionDetection prop
-<DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={...} onDragEnd={...}>
-  {/* No SortableContext wrapper needed */}
-  {systems.map((system) => (
-    <DraggableTableRow key={system.id} id={system.id} ... />
-  ))}
-</DndContext>
+<DndContext
+  sensors={sensors}
+  collisionDetection={pointerWithin}  // was: closestCenter
+  onDragStart={handleDragStart}
+  onDragEnd={handleDragEnd}
+  onDragCancel={() => setActiveId(null)}
+>
 ```
 
-### Why This Will Work
-
-This pattern separates the three concerns that `useSortable` bundles together:
-1. **Dragging** (`useDraggable`) -- only tracks grab/release, no row transforms
-2. **Drop targeting** (`useDroppable`) -- provides `isOver` based on pointer proximity to element rects (no transforms needed)
-3. **Visual feedback** (`DragOverlay`) -- follows cursor independently (already working)
-
-Since no transforms are applied to ANY rows, collision detection uses the actual static DOM rects, which are always accurate. `isOver` fires reliably. `DragOverlay` follows the cursor without snapping.
-
-### Changes Summary
+### Files to change
 
 | File | Change |
 |------|--------|
-| `DraggableTableRow.tsx` | Replace `useSortable` with `useDraggable` + `useDroppable`. Drag ref on grip, droppable ref on container. No transforms. |
-| `OperatingSystemsTable.tsx` | Remove `SortableContext` wrapper. Add `closestCenter` to `DndContext`. Keep `arrayMove` import. |
-| `ZiplinesTable.tsx` | Same changes as OperatingSystems. |
-| `EquipmentTable.tsx` | Same changes as OperatingSystems. |
+| `DraggableTableRow.tsx` | Merge `setDragRef` + `setDroppableRef` via callback ref on container. Move listeners/attributes to grip div only (remove ref from grip). Apply same to `DraggableMobileCard`. |
+| `OperatingSystemsTable.tsx` | Replace `closestCenter` with `pointerWithin` import and usage. |
+| `ZiplinesTable.tsx` | Same collision detection change. |
+| `EquipmentTable.tsx` | Same collision detection change. |
 
-### Data Safety
-Zero changes to `handleDragEnd`, `arrayMove`, `onUpdate`, or any mutation logic. The `active.id` and `over.id` values passed to `handleDragEnd` come from `DndContext` collision detection, which works the same way with `closestCenter` + `useDroppable`.
+### Why this fixes both issues
+
+1. **Offset**: `DragOverlay` now measures the full row rect, so it renders aligned with the row rather than offset to the grip handle's tiny rect.
+2. **Drop indicator**: `pointerWithin` triggers `isOver` as soon as the pointer enters any part of the row, so the blue indicator line appears reliably as you drag between rows.
+3. **No data changes**: `handleDragEnd`, `arrayMove`, `onUpdate` logic remains untouched.
 
