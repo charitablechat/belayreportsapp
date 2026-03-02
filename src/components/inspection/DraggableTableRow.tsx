@@ -1,6 +1,6 @@
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { GripVertical } from "lucide-react";
-import { ReactNode } from "react";
+import { ReactNode, useCallback } from "react";
 
 interface DraggableTableRowProps {
   id: string;
@@ -13,6 +13,11 @@ export function DraggableTableRow({ id, children, className = "", gridCols }: Dr
   const { setNodeRef: setDroppableRef, isOver } = useDroppable({ id });
   const { attributes, listeners, setNodeRef: setDragRef, isDragging } = useDraggable({ id });
 
+  const mergedRef = useCallback((node: HTMLDivElement | null) => {
+    setDroppableRef(node);
+    setDragRef(node);
+  }, [setDroppableRef, setDragRef]);
+
   const style = {
     opacity: isDragging ? 0.15 : 1,
     zIndex: isDragging ? 50 : 'auto' as const,
@@ -20,7 +25,7 @@ export function DraggableTableRow({ id, children, className = "", gridCols }: Dr
 
   return (
     <div
-      ref={setDroppableRef}
+      ref={mergedRef}
       style={style}
       className={`relative overflow-visible grid ${gridCols} border-b border-border bg-background ${className} ${isDragging ? 'bg-muted/50 border-dashed border-2 border-primary/30' : ''}`}
     >
@@ -29,7 +34,6 @@ export function DraggableTableRow({ id, children, className = "", gridCols }: Dr
       )}
       <div className="p-2 flex items-center justify-center border-r border-border">
         <div
-          ref={setDragRef}
           {...attributes}
           {...listeners}
           className="cursor-grab active:cursor-grabbing touch-none inline-flex items-center justify-center"
@@ -52,6 +56,11 @@ export function DraggableMobileCard({ id, children }: DraggableMobileCardProps) 
   const { setNodeRef: setDroppableRef, isOver } = useDroppable({ id });
   const { attributes, listeners, setNodeRef: setDragRef, isDragging } = useDraggable({ id });
 
+  const mergedRef = useCallback((node: HTMLDivElement | null) => {
+    setDroppableRef(node);
+    setDragRef(node);
+  }, [setDroppableRef, setDragRef]);
+
   const style = {
     opacity: isDragging ? 0.15 : 1,
     zIndex: isDragging ? 50 : 'auto' as const,
@@ -59,7 +68,7 @@ export function DraggableMobileCard({ id, children }: DraggableMobileCardProps) 
 
   return (
     <div
-      ref={setDroppableRef}
+      ref={mergedRef}
       style={style}
       className={`relative overflow-visible ${isDragging ? 'bg-muted/50 border-dashed border-2 border-primary/30 rounded-lg' : ''}`}
     >
@@ -68,7 +77,6 @@ export function DraggableMobileCard({ id, children }: DraggableMobileCardProps) 
       )}
       <div className="relative">
         <div
-          ref={setDragRef}
           {...attributes}
           {...listeners}
           className="absolute top-3 left-3 z-10 p-1.5 bg-background/90 backdrop-blur-sm rounded-md cursor-grab active:cursor-grabbing touch-none shadow-sm border border-border hover:bg-accent transition-colors"

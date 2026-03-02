@@ -23,7 +23,7 @@ import {
   DragOverlay,
   PointerSensor,
   TouchSensor,
-  closestCenter,
+  pointerWithin,
   useSensor,
   useSensors,
   type DragEndEvent,
@@ -123,7 +123,7 @@ function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: ZiplinesTablePro
           <p><strong>Emergency Brake System KEY -</strong> ZS = Zip Stop, AP = Auto Prusik, SB = Spring Bank</p>
         </div>
 
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragCancel={() => setActiveId(null)}>
+        <DndContext sensors={sensors} collisionDetection={pointerWithin} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragCancel={() => setActiveId(null)}>
             {/* Desktop grid view */}
             <div className="hidden md:block overflow-x-auto">
               <div className="min-w-[1200px]">
