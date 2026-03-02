@@ -25,11 +25,11 @@ export function DraggableTableRow({ id, children, className = "", gridCols }: Dr
   return (
     <div
       ref={setDropRef}
-      style={{ opacity: isDragging ? 0.15 : 1 }}
-      className={`relative grid ${gridCols} border-b border-border bg-background ${className} ${isDragging ? 'ring-2 ring-primary ring-offset-2 rounded' : ''}`}
+      style={{ opacity: isDragging ? 0.3 : 1 }}
+      className={`relative overflow-visible grid ${gridCols} border-b border-border bg-background ${className} ${isDragging ? 'bg-muted/50 border-dashed border-2 border-primary/30' : ''}`}
     >
       {isOver && !isDragging && (
-        <div className="absolute top-0 left-0 right-0 h-[3px] bg-primary rounded-full -translate-y-1/2 z-10 shadow-[0_0_6px_hsl(var(--primary)/0.5)]" />
+        <div className="absolute top-0 left-0 right-0 h-[3px] bg-primary z-50 -translate-y-1/2 rounded-full shadow-[0_0_8px_2px_hsl(var(--primary)/0.4)] animate-pulse" />
       )}
       <div className="p-2 flex items-center justify-center border-r border-border">
         <div
@@ -68,11 +68,11 @@ export function DraggableMobileCard({ id, children }: DraggableMobileCardProps) 
   return (
     <div
       ref={setDropRef}
-      style={{ opacity: isDragging ? 0.15 : 1 }}
-      className={`relative ${isDragging ? 'ring-2 ring-primary ring-offset-2 rounded-lg' : ''}`}
+      style={{ opacity: isDragging ? 0.3 : 1 }}
+      className={`relative overflow-visible ${isDragging ? 'bg-muted/50 border-dashed border-2 border-primary/30 rounded-lg' : ''}`}
     >
       {isOver && !isDragging && (
-        <div className="absolute top-0 left-0 right-0 h-[3px] bg-primary rounded-full -translate-y-1/2 z-10 shadow-[0_0_6px_hsl(var(--primary)/0.5)]" />
+        <div className="absolute top-0 left-0 right-0 h-[3px] bg-primary z-50 -translate-y-1/2 rounded-full shadow-[0_0_8px_2px_hsl(var(--primary)/0.4)] animate-pulse" />
       )}
       <div className="relative">
         <div
