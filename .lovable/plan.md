@@ -1,110 +1,72 @@
 
 
-## Enhanced Visual Feedback for Drag-and-Drop
+## Improve Drag-and-Drop Feel with DragOverlay
 
-### Overview
+### Problem
 
-Upgrade the drag-and-drop visual feedback across all draggable components to provide clear "lifted" states and drop-target indication. The project uses `@dnd-kit/sortable` throughout -- the `useSortable` hook already exposes `isDragging` and `isSortable`/`isOver` properties that we'll leverage.
+The current drag-and-drop in the inspection tables (Systems, Ziplines, Equipment) lacks a `DragOverlay` -- the floating preview element that visually follows the cursor during a drag. Without it, the row just shifts in-place with subtle opacity/shadow changes, making it feel like nothing is being "held." The PhotoGallery already uses `DragOverlay` correctly and feels smooth; the inspection tables need the same treatment.
 
-### Components to Update
+### Root Cause
 
-There are **5 draggable components** in the project:
+`@dnd-kit` uses `DragOverlay` to render a floating clone of the dragged item above everything else. Without it, the only visual feedback is the in-place transform on the original row, which is barely noticeable inside a dense table.
 
-| Component | Used By |
-|-----------|---------|
-| `DraggableTableRow` + `DraggableMobileCard` | Equipment, Systems, Ziplines tables |
-| `DraggablePhotoItem` | Photo gallery |
-| `DraggableField` | Form CMS admin |
-| `DraggableOption` | Form CMS admin options |
-| `DraggableSection` | Form CMS admin sections |
+### Solution
 
-### Changes Per Component
+Add `DragOverlay` with `DragStartEvent` tracking to all three table components and the shared `DraggableTableRow` component. When a drag starts, store the active item; render a simplified floating preview in `DragOverlay`; clear it on drag end.
 
-#### 1. `DraggableTableRow` (desktop table rows)
+---
 
-**Active drag state:**
-- Add `boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05)'` when `isDragging`
-- Change opacity from `0.4` to `0.8` for better visibility of what's being dragged
-- Add `background: 'var(--background)'` so the row doesn't become transparent over other rows
-- Add `scale(1.01)` to the transform for a subtle "lift" effect
+### 1. Update `DraggableTableRow.tsx`
 
-**Drop target indication:**
-- Destructure `isOver` from `useSortable`
-- When `isOver` is true and not `isDragging`, apply a top border highlight: `borderTop: '2px solid hsl(var(--primary))'` and a subtle background tint
+- Make the dragging row nearly invisible (`opacity: 0.3`) since the `DragOverlay` will show the floating clone
+- Keep the `isOver` drop-target styling (top border + background tint)
 
-#### 2. `DraggableMobileCard`
+### 2. Update `OperatingSystemsTable.tsx`
 
-**Active drag state:**
-- Same shadow lift and `opacity: 0.8`
-- Keep existing `ring-2 ring-primary` but add `shadow-xl` for depth
+- Import `DragOverlay` and `DragStartEvent` from `@dnd-kit/core`
+- Add `useState` for `activeId` (the ID of the item currently being dragged)
+- Add `onDragStart` handler to set `activeId`
+- Update `onDragEnd` to clear `activeId`
+- Render `<DragOverlay>` after `</SortableContext>` showing a styled summary row of the active item (system name + result) with a lifted shadow appearance
+- The overlay renders a simplified card/row so the user sees exactly what they're moving
 
-**Drop target indication:**
-- Add `isOver` styling: top border accent + light background tint
+### 3. Update `ZiplinesTable.tsx`
 
-#### 3. `DraggablePhotoItem`
+Same pattern: track `activeId`, render `DragOverlay` with a summary of the active zipline (name + type + result).
 
-**Active drag state:**
-- Change opacity from `0.4` to `0.8`
-- Add shadow lift
-- Keep existing ring styling
+### 4. Update `EquipmentTable.tsx`
 
-**Drop target indication:**
-- Add `isOver` border/ring highlight when item is a drop target
+Same pattern: track `activeId`, render `DragOverlay` with a summary of the active equipment item (name + type + result).
 
-#### 4. `DraggableField` and `DraggableOption` (admin CMS)
+### Visual Design of the Drag Overlay
 
-**Active drag state:**
-- Change opacity from `0.5` to `0.8`
-- Add shadow lift
-- Add `ring-2 ring-primary` when dragging
+The floating preview will be:
+- A compact card with rounded corners, strong shadow (`shadow-2xl`), slight scale (`scale-105`), and a subtle rotation (`rotate-1`) for a "picked up" feel
+- Background matches the app theme (`bg-background`)
+- Shows the item's key identifying info (name and result) so the user knows what they're holding
+- Has a primary-colored left border accent for visibility
 
-**Drop target indication:**
-- `isOver` top border accent
+### Drop Target Enhancement
 
-#### 5. `DraggableSection` (admin CMS)
+The existing `isOver` border-top indicator is subtle. Enhance it:
+- Increase from `2px` to `3px` border
+- Add a transition so the indicator animates in smoothly
 
-Same pattern as DraggableField.
-
-### Technical Approach
-
-All changes use the `isOver` property already available from `useSortable()` -- no new dependencies or contexts needed. Styles are applied via inline `style` objects (for dynamic shadow/opacity) and conditional Tailwind classes (for ring/border). This is the same approach already used for `isDragging`.
-
-Example pattern applied to each component:
-```typescript
-const {
-  attributes, listeners, setNodeRef,
-  transform, transition,
-  isDragging,
-  isOver,       // <-- add this
-} = useSortable({ id });
-
-const style = {
-  transform: CSS.Transform.toString(transform),
-  transition: transition || 'transform 200ms ease',
-  opacity: isDragging ? 0.8 : 1,
-  zIndex: isDragging ? 50 : 'auto',
-  boxShadow: isDragging
-    ? '0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05)'
-    : 'none',
-  background: isDragging ? 'var(--background)' : undefined,
-};
-
-// For the container element, add isOver class:
-className={`... ${isOver && !isDragging ? 'border-t-2 border-primary bg-primary/5' : ''}`}
-```
+---
 
 ### Files Changed
 
 | File | Change |
 |------|--------|
-| `src/components/inspection/DraggableTableRow.tsx` | Add shadow lift, `isOver` drop indicator, adjust opacity for both `DraggableTableRow` and `DraggableMobileCard` |
-| `src/components/DraggablePhotoItem.tsx` | Add shadow lift, `isOver` drop indicator, adjust opacity |
-| `src/components/admin/DraggableField.tsx` | Add shadow lift, `isOver` drop indicator, adjust opacity |
-| `src/components/admin/DraggableOption.tsx` | Add shadow lift, `isOver` drop indicator, adjust opacity |
-| `src/components/admin/DraggableSection.tsx` | Add shadow lift, `isOver` drop indicator, adjust opacity |
+| `src/components/inspection/DraggableTableRow.tsx` | Lower dragging row opacity to 0.3 (since overlay shows the clone); add smooth transition for isOver styles |
+| `src/components/inspection/OperatingSystemsTable.tsx` | Add `DragOverlay` with floating preview card; track `activeId` via `onDragStart` |
+| `src/components/inspection/ZiplinesTable.tsx` | Add `DragOverlay` with floating preview card; track `activeId` via `onDragStart` |
+| `src/components/inspection/EquipmentTable.tsx` | Add `DragOverlay` with floating preview card; track `activeId` via `onDragStart` |
 
-### Performance Notes
+### Technical Notes
 
-- All visual changes use CSS properties (`box-shadow`, `opacity`, `border`) that are GPU-composited
-- No new DOM elements, event listeners, or React state added
-- `isOver` is already computed by dnd-kit internally -- we're just reading it
+- Follows the exact same `DragOverlay` pattern already used in `PhotoGallery.tsx`
+- No new dependencies -- `DragOverlay` and `DragStartEvent` are already exported from `@dnd-kit/core`
+- The overlay is rendered outside the `SortableContext` but inside `DndContext`, which is the correct placement
+- Performance: `DragOverlay` uses a portal by default, avoiding layout thrashing
+
