@@ -1,67 +1,114 @@
 
 
-## Fix DragOverlay Offset and Drop Indicator Reliability
+## Fix Drop Indicator Visibility and DragOverlay Positioning
 
-### Root Cause Analysis
+### Problem 1: Drop indicator never appears
+The `isOver` from individual `useDroppable` hooks inside each row isn't reliably triggered. This is because `pointerWithin` collision detection fires at the `DndContext` level, but the individual `useDroppable` hooks may not receive `isOver=true` consistently when the `DragOverlay` portal sits above the rows.
 
-**DragOverlay offset (~550px):** The `useDraggable` ref (`setDragRef`) is attached to the small grip handle icon. `DragOverlay` positions itself based on the initial rect of this ref node. Since the grip is a tiny element at the far-left of the row, the overlay renders starting from that position and extends right with `min-w-[400px]`, creating the appearance of a large horizontal offset from the cursor.
+**Fix:** Track the "over" item ID centrally using `DndContext`'s `onDragOver` event in each table component. Pass the `overId` as a prop to `DraggableTableRow` instead of relying on `useDroppable`'s `isOver`.
 
-**Drop indicator unreliable:** `closestCenter` collision detection targets the geometric center of each droppable row. When rows are tall (rich text editors expand them), the pointer may stay "closest" to one row's center for a large vertical range, making the indicator sluggish to transition between rows.
+### Problem 2: DragOverlay offset from cursor
+The draggable ref is on the full-width row container. When the user grabs the small grip handle, `DragOverlay` calculates the initial offset from the top-left of the entire row, causing the overlay to appear shifted.
 
-### Fix 1: Merge draggable + droppable refs onto the row container
+**Fix:** Remove `setDragRef` from the merged container ref and instead put it back on the grip handle div only. Keep `setDroppableRef` on the container. This way the DragOverlay measures position from the grip handle (which is where the user clicks), but collision detection still uses the full row rect.
 
-Set both refs on the row `<div>` so that `DragOverlay` measures the full row rect (not the tiny grip). Keep drag listeners on the grip handle only (so only the grip activates dragging).
+---
+
+### File 1: `DraggableTableRow.tsx`
+
+**Changes:**
+- Remove `useDroppable` entirely -- the drop indicator will be driven by a prop instead
+- Split refs back: `setDragRef` goes on the grip handle, `setDroppableRef` stays on the container
+- Add `isOver` as a boolean prop passed from the parent table
+- Keep `useDraggable` for dragging behavior
 
 ```typescript
-// DraggableTableRow - merge refs on the container
-import { useCallback } from "react";
+// Before: merged ref, useDroppable for isOver
+const mergedRef = useCallback(...);
+const { isOver } = useDroppable({ id });
 
-const mergedRef = useCallback((node: HTMLDivElement | null) => {
-  setDroppableRef(node);
-  setDragRef(node);
-}, [setDroppableRef, setDragRef]);
+// After: droppable ref on container, drag ref on grip, isOver from prop
+interface DraggableTableRowProps {
+  id: string;
+  children: ReactNode;
+  className?: string;
+  gridCols: string;
+  isOver?: boolean;  // NEW - passed from parent
+}
 
-// Container div uses mergedRef
-<div ref={mergedRef} style={style} className={...}>
-  {/* Grip only gets listeners + attributes (no ref) */}
-  <div {...attributes} {...listeners} className="cursor-grab ...">
-    <GripVertical ... />
-  </div>
-  {children}
-</div>
+export function DraggableTableRow({ id, children, className, gridCols, isOver }: ...) {
+  const { setNodeRef: setDroppableRef } = useDroppable({ id });
+  const { attributes, listeners, setNodeRef: setDragRef, isDragging } = useDraggable({ id });
+
+  return (
+    <div ref={setDroppableRef} style={...} className={...}>
+      {isOver && !isDragging && (
+        <div className="absolute top-0 left-0 right-0 h-[3px] bg-primary ..." />
+      )}
+      <div ref={setDragRef} {...attributes} {...listeners} className="cursor-grab ...">
+        <GripVertical />
+      </div>
+      {children}
+    </div>
+  );
+}
 ```
 
-Same pattern for `DraggableMobileCard`.
+Same pattern for `DraggableMobileCard` -- add `isOver` prop, remove internal `useDroppable` isOver usage, put `setDragRef` on grip only.
 
-### Fix 2: Switch collision detection to `pointerWithin`
+### Files 2-4: Table Components (OperatingSystems, Ziplines, Equipment)
 
-Replace `closestCenter` with `pointerWithin` in all three table components. `pointerWithin` fires `isOver` when the pointer is inside a droppable's bounding rect -- much more intuitive for vertically stacked rows and eliminates the "dead zone" problem near row boundaries.
+**Changes in each:**
+- Add `onDragOver` handler to `DndContext` to track the currently hovered item
+- Store `overId` in state alongside `activeId`
+- Pass `isOver={overId === item.id}` prop to each `DraggableTableRow` and `DraggableMobileCard`
 
 ```typescript
-// In each table component
-import { ..., pointerWithin } from "@dnd-kit/core";
+// Add state
+const [overId, setOverId] = useState<string | null>(null);
 
+// Add handler
+const handleDragOver = useCallback((event) => {
+  setOverId(event.over?.id as string ?? null);
+}, []);
+
+// Clear on end/cancel
+const handleDragEnd = useCallback((event) => {
+  setActiveId(null);
+  setOverId(null);  // ADD
+  // ... existing reorder logic
+}, [onUpdate]);
+
+// DndContext
 <DndContext
   sensors={sensors}
-  collisionDetection={pointerWithin}  // was: closestCenter
+  collisionDetection={pointerWithin}
   onDragStart={handleDragStart}
+  onDragOver={handleDragOver}    // NEW
   onDragEnd={handleDragEnd}
-  onDragCancel={() => setActiveId(null)}
+  onDragCancel={() => { setActiveId(null); setOverId(null); }}
+>
+
+// Each row
+<DraggableTableRow
+  key={item.id}
+  id={item.id}
+  gridCols={GRID_COLS}
+  isOver={overId === item.id}   // NEW
 >
 ```
 
-### Files to change
+### Summary
 
-| File | Change |
-|------|--------|
-| `DraggableTableRow.tsx` | Merge `setDragRef` + `setDroppableRef` via callback ref on container. Move listeners/attributes to grip div only (remove ref from grip). Apply same to `DraggableMobileCard`. |
-| `OperatingSystemsTable.tsx` | Replace `closestCenter` with `pointerWithin` import and usage. |
-| `ZiplinesTable.tsx` | Same collision detection change. |
-| `EquipmentTable.tsx` | Same collision detection change. |
+| File | Changes |
+|------|---------|
+| `DraggableTableRow.tsx` | Add `isOver` prop. Put `setDragRef` on grip handle (fixes overlay offset). Keep `setDroppableRef` on container (for collision detection). |
+| `OperatingSystemsTable.tsx` | Add `overId` state, `onDragOver` handler, pass `isOver` prop to rows. |
+| `ZiplinesTable.tsx` | Same as above. |
+| `EquipmentTable.tsx` | Same as above. |
 
 ### Why this fixes both issues
-
-1. **Offset**: `DragOverlay` now measures the full row rect, so it renders aligned with the row rather than offset to the grip handle's tiny rect.
-2. **Drop indicator**: `pointerWithin` triggers `isOver` as soon as the pointer enters any part of the row, so the blue indicator line appears reliably as you drag between rows.
-3. **No data changes**: `handleDragEnd`, `arrayMove`, `onUpdate` logic remains untouched.
+1. **Drop indicator**: `onDragOver` fires reliably from `DndContext` whenever collision detection matches a droppable. Passing it as a prop bypasses any issues with individual `useDroppable` hooks not receiving updates.
+2. **DragOverlay offset**: Moving `setDragRef` back to the grip handle means the overlay measures its initial position from where the user actually clicks, eliminating the horizontal offset.
+3. **Collision detection still works**: `setDroppableRef` remains on the full row container, so `pointerWithin` still detects when the cursor enters any row's bounding box.
 
