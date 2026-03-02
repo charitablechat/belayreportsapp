@@ -1,4 +1,5 @@
 import { useSortable } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { GripVertical } from "lucide-react";
 import { ReactNode } from "react";
 
@@ -10,12 +11,13 @@ interface DraggableTableRowProps {
 }
 
 export function DraggableTableRow({ id, children, className = "", gridCols }: DraggableTableRowProps) {
-  const { attributes, listeners, setNodeRef, isDragging, isOver } = useSortable({ id });
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging, isOver } = useSortable({ id });
 
-  // CRITICAL: No transform/transition — rows stay perfectly static.
-  // useSortable is used only for ref registration, isOver, isDragging, and listener forwarding.
   const style = {
+    transform: CSS.Transform.toString(transform),
+    transition: transition || 'transform 200ms ease',
     opacity: isDragging ? 0.4 : 1,
+    zIndex: isDragging ? 50 : ('auto' as const),
   };
 
   return (
@@ -48,10 +50,13 @@ interface DraggableMobileCardProps {
 }
 
 export function DraggableMobileCard({ id, children }: DraggableMobileCardProps) {
-  const { attributes, listeners, setNodeRef, isDragging, isOver } = useSortable({ id });
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging, isOver } = useSortable({ id });
 
   const style = {
+    transform: CSS.Transform.toString(transform),
+    transition: transition || 'transform 200ms ease',
     opacity: isDragging ? 0.4 : 1,
+    zIndex: isDragging ? 50 : ('auto' as const),
   };
 
   return (
