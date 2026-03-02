@@ -22,17 +22,15 @@ export function DraggableTableRow({ id, children, className = "" }: DraggableTab
 
   const baseTransform = CSS.Transform.toString(transform);
   const style = {
-    transform: baseTransform ? (isDragging ? `${baseTransform} scale(1.01)` : baseTransform) : undefined,
-    transition: transition || 'transform 200ms cubic-bezier(0.25, 1, 0.5, 1), opacity 150ms ease, box-shadow 200ms ease',
+    transform: isDragging ? 'none' : (baseTransform || undefined),
+    transition: transition || 'transform 200ms cubic-bezier(0.25, 1, 0.5, 1), opacity 150ms ease',
     opacity: isDragging ? 0.15 : 1,
     zIndex: isDragging ? 50 : 'auto' as const,
     position: 'relative' as const,
     outline: isDragging ? '2px dashed hsl(var(--primary) / 0.4)' : 'none',
     outlineOffset: isDragging ? '-2px' : undefined,
     background: isDragging ? 'hsl(var(--muted) / 0.5)' : isOver && !isDragging ? 'hsl(var(--primary) / 0.08)' : undefined,
-    boxShadow: isOver && !isDragging
-      ? 'inset 0 4px 0 0 hsl(var(--primary)), 0 0 12px -2px hsl(var(--primary) / 0.35)'
-      : 'none',
+    borderTop: isOver && !isDragging ? '4px solid hsl(var(--primary))' : undefined,
   };
 
   return (
@@ -73,16 +71,14 @@ export function DraggableMobileCard({ id, children }: DraggableMobileCardProps) 
   } = useSortable({ id });
 
   const style = {
-    transform: CSS.Transform.toString(transform),
-    transition: transition || 'transform 200ms cubic-bezier(0.25, 1, 0.5, 1), opacity 150ms ease, box-shadow 200ms ease',
+    transform: isDragging ? 'none' : (CSS.Transform.toString(transform) || undefined),
+    transition: transition || 'transform 200ms cubic-bezier(0.25, 1, 0.5, 1), opacity 150ms ease',
     opacity: isDragging ? 0.15 : 1,
     zIndex: isDragging ? 50 : 'auto' as const,
     outline: isDragging ? '2px dashed hsl(var(--primary) / 0.4)' : 'none',
     outlineOffset: isDragging ? '-2px' : undefined,
-    boxShadow: isOver && !isDragging
-      ? 'inset 0 4px 0 0 hsl(var(--primary)), 0 0 12px -2px hsl(var(--primary) / 0.35)'
-      : 'none',
-    background: isOver && !isDragging ? 'hsl(var(--primary) / 0.08)' : undefined,
+    borderTop: isOver && !isDragging ? '4px solid hsl(var(--primary))' : undefined,
+    background: isDragging ? 'hsl(var(--muted) / 0.5)' : isOver && !isDragging ? 'hsl(var(--primary) / 0.08)' : undefined,
   };
 
   return (
