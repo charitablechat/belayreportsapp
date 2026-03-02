@@ -1,19 +1,28 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 
 export interface PWAUpdateStatus {
   needRefresh: boolean;
   offlineReady: boolean;
   updateServiceWorker: (reloadPage?: boolean) => Promise<void>;
+  lastChecked: Date | null;
+  isChecking: boolean;
+  checkForUpdates: () => Promise<void>;
 }
 
 export const usePWAUpdate = (): PWAUpdateStatus => {
   const [needRefresh, setNeedRefresh] = useState(false);
   const [offlineReady, setOfflineReady] = useState(false);
   const [registration, setRegistration] = useState<ServiceWorkerRegistration | null>(null);
+  const [lastChecked, setLastChecked] = useState<Date | null>(() => {
+    const stored = localStorage.getItem('pwa-last-update-check');
+    return stored ? new Date(stored) : null;
+  });
+  const [isChecking, setIsChecking] = useState(false);
+  const offlineReadyRef = useRef(offlineReady);
+  offlineReadyRef.current = offlineReady;
 
   useEffect(() => {
     if ('serviceWorker' in navigator) {
-      // Get the service worker registration
       Promise.race([
         navigator.serviceWorker.ready,
         new Promise((_, reject) =>
@@ -32,7 +41,7 @@ export const usePWAUpdate = (): PWAUpdateStatus => {
           }
         }
         
-        if (!offlineReady) {
+        if (!offlineReadyRef.current) {
           setOfflineReady(true);
         }
 
@@ -41,14 +50,16 @@ export const usePWAUpdate = (): PWAUpdateStatus => {
             console.log('[PWA Update] Auto-checking for updates...');
           }
           reg.update();
+          const now = new Date();
+          setLastChecked(now);
+          localStorage.setItem('pwa-last-update-check', now.toISOString());
         }, 60 * 60 * 1000);
 
         return () => clearInterval(intervalId);
       }).catch(() => {
-        // SW unavailable in this environment (e.g. preview iframe)
+        // SW unavailable in this environment
       });
 
-      // Listen for new service worker waiting to activate
       const handleControllerChange = () => {
         if (import.meta.env.DEV) {
           console.log('[PWA Update] New service worker activated');
@@ -58,7 +69,6 @@ export const usePWAUpdate = (): PWAUpdateStatus => {
 
       navigator.serviceWorker.addEventListener('controllerchange', handleControllerChange);
 
-      // Listen for updatefound events
       Promise.race([
         navigator.serviceWorker.ready,
         new Promise((_, reject) =>
@@ -79,23 +89,47 @@ export const usePWAUpdate = (): PWAUpdateStatus => {
           }
         });
       }).catch(() => {
-        // SW unavailable in this environment
+        // SW unavailable
       });
 
       return () => {
         navigator.serviceWorker.removeEventListener('controllerchange', handleControllerChange);
       };
     }
-  }, [offlineReady]);
+  }, []);
+
+  const checkForUpdates = useCallback(async () => {
+    setIsChecking(true);
+    try {
+      if ('serviceWorker' in navigator) {
+        const reg = await Promise.race([
+          navigator.serviceWorker.ready,
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('SW not available')), 5000)
+          )
+        ]) as ServiceWorkerRegistration;
+        await reg.update();
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+        if (reg.waiting || reg.installing) {
+          setNeedRefresh(true);
+        }
+      }
+    } catch (error) {
+      console.error('[PWA Update] Manual check failed:', error);
+    } finally {
+      const now = new Date();
+      setLastChecked(now);
+      localStorage.setItem('pwa-last-update-check', now.toISOString());
+      setIsChecking(false);
+    }
+  }, []);
 
   const updateServiceWorker = async (reloadPage = true) => {
     if (registration?.waiting) {
       console.log('[PWA Update] Activating new service worker');
-      
-      // Tell the waiting service worker to skip waiting
       registration.waiting.postMessage({ type: 'SKIP_WAITING' });
       
-      // Retry after a short delay if controller doesn't change
       setTimeout(() => {
         if (registration?.waiting) {
           console.log('[PWA Update] Retrying SKIP_WAITING');
@@ -104,7 +138,6 @@ export const usePWAUpdate = (): PWAUpdateStatus => {
       }, 1000);
       
       if (reloadPage) {
-        // Small delay to allow SW activation before reload
         setTimeout(() => window.location.reload(), 500);
       }
     } else {
@@ -116,5 +149,8 @@ export const usePWAUpdate = (): PWAUpdateStatus => {
     needRefresh,
     offlineReady,
     updateServiceWorker,
+    lastChecked,
+    isChecking,
+    checkForUpdates,
   };
 };

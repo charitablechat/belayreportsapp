@@ -38,6 +38,9 @@ class PWAErrorBoundary extends Component<
         needsUpdate: false,
         offlineReady: false,
         updateAndReload: async () => {},
+        lastUpdateCheck: null,
+        isCheckingForUpdate: false,
+        checkForUpdates: async () => {},
         isOnline: navigator.onLine,
         effectiveType: null,
         downlink: null,
@@ -80,6 +83,9 @@ export interface PWAContextType {
   needsUpdate: boolean;
   offlineReady: boolean;
   updateAndReload: () => Promise<void>;
+  lastUpdateCheck: Date | null;
+  isCheckingForUpdate: boolean;
+  checkForUpdates: () => Promise<void>;
   
   // Network state
   isOnline: boolean;
@@ -87,7 +93,7 @@ export interface PWAContextType {
   downlink: number | null;
   rtt: number | null;
   
-  // Sync state (automatic with manual force sync option)
+  // Sync state
   unsyncedCount: number;
   unsyncedInspections: any[];
   unsyncedTrainings: any[];
@@ -111,12 +117,10 @@ interface PWAProviderProps {
 }
 
 const PWAProviderContent = ({ children }: PWAProviderProps) => {
-  // Combine all PWA hooks (wrapped in error boundary)
   const { isInstallable, isInstalled, isDismissed, promptInstall, dismissPrompt } = usePWAInstall();
-  const { needRefresh: needsUpdate, offlineReady, updateServiceWorker } = usePWAUpdate();
+  const { needRefresh: needsUpdate, offlineReady, updateServiceWorker, lastChecked, isChecking, checkForUpdates } = usePWAUpdate();
   const { isOnline, effectiveType, downlink, rtt } = useNetworkStatus();
   
-  // Use the new automatic sync hook with manual force sync option
   const { 
     unsyncedCount,
     unsyncedInspections,
@@ -134,47 +138,39 @@ const PWAProviderContent = ({ children }: PWAProviderProps) => {
     updatePhotoCount
   } = useUnsyncedPhotos();
 
-  // Wrap updateServiceWorker to match the interface
   const updateAndReload = async () => {
     await updateServiceWorker(true);
   };
 
-  // Force sync function for manual trigger
   const forceSync = async () => {
-    await performSync(false); // Pass false for non-silent mode (will show errors if any)
+    await performSync(false);
   };
 
   const value: PWAContextType = {
-    // Install state
     isInstallable,
     isInstalled,
     isDismissed,
     promptInstall,
     dismissPrompt,
-    
-    // Update state
     needsUpdate,
     offlineReady,
     updateAndReload,
-    
-    // Network state
+    lastUpdateCheck: lastChecked,
+    isCheckingForUpdate: isChecking,
+    checkForUpdates,
     isOnline,
     effectiveType,
     downlink,
     rtt,
-    
-    // Sync state (automatic with manual force sync option)
     unsyncedCount,
     unsyncedInspections,
     unsyncedTrainings,
     unsyncedAssessments,
     isSyncing,
     lastSyncTime,
-    syncError: null, // Errors are handled silently in automatic sync
+    syncError: null,
     updateUnsyncedCount: updateUnsyncedCounts,
     forceSync,
-    
-    // Photo sync state
     unsyncedPhotoCount,
     photosByInspection,
     updatePhotoCount,

@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useQuery } from "@tanstack/react-query";
 import { getUserWithCache } from "@/lib/cached-auth";
 import { UserProfileDropdown } from "@/components/UserProfileDropdown";
+import { UpdateBadge } from "@/components/pwa/UpdateBadge";
 import { usePWA } from "@/hooks/usePWA";
 import { toast } from "sonner";
 
@@ -139,6 +140,7 @@ export function AuthenticatedHeader() {
       role="navigation"
       aria-label="User menu"
     >
+      <UpdateBadge />
       <UserProfileDropdown
         currentUser={currentUser}
         userProfile={userProfile}
