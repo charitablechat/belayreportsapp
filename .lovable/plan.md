@@ -1,64 +1,85 @@
 
 
-## Fix Drag-and-Drop: Enable Transforms and Mirror DraggablePhotoItem Pattern
+## Replace @dnd-kit with Native HTML5 Drag-and-Drop
 
-### Current State
+### Approach
 
-`DraggableTableRow.tsx` already uses `useSortable` but **explicitly ignores** the `transform` and `transition` outputs. This is why the ghost offset persists and the drop indicator is unreliable -- without transforms, `@dnd-kit`'s sorting layer cannot visually shift rows to "make room" for the dragged item, and the internal collision tracking doesn't stay in sync with the visual layout.
+Completely remove all `@dnd-kit` usage from the table row components and replace with native HTML5 drag events (`draggable`, `onDragStart`, `onDragOver`, `onDragEnter`, `onDragLeave`, `onDrop`, `onDragEnd`). The browser handles the ghost image natively with no offset issues. A blue insertion line is rendered based on cursor position relative to each row's midpoint.
 
-### Solution
+### File 1: `DraggableTableRow.tsx` -- Full Rewrite
 
-Enable `CSS.Transform.toString(transform)` and `transition` on the row container, exactly as `DraggablePhotoItem.tsx` does. This is the pattern that already works correctly for photo reordering in this same project.
+Remove all `@dnd-kit` imports. The components become simple wrappers that accept native drag event handlers from the parent.
 
-### File 1: `src/components/inspection/DraggableTableRow.tsx`
-
-**DraggableTableRow changes:**
-- Import `CSS` from `@dnd-kit/utilities`
-- Apply `CSS.Transform.toString(transform)` and `transition` to the row style
-- Keep `isDragging` for opacity (0.4) and dashed border on the source row
-- Keep `isOver` for the blue insertion line indicator
-- Add `position: relative` and `z-index` when dragging to float above siblings
-
-**DraggableMobileCard changes:**
-- Same transform/transition enablement
-- Same visual feedback (opacity, ring, indicator line)
-
-```text
-Key style object:
-{
-  transform: CSS.Transform.toString(transform),
-  transition: transition || 'transform 200ms ease',
-  opacity: isDragging ? 0.4 : 1,
-  zIndex: isDragging ? 50 : 'auto',
+```typescript
+// New props -- no library, just native event forwarding
+interface DraggableTableRowProps {
+  id: string;
+  children: ReactNode;
+  className?: string;
+  gridCols: string;
+  isDragging?: boolean;
+  dropIndicator?: 'above' | 'below' | null;
+  onDragStart: (e: React.DragEvent, id: string) => void;
+  onDragOver: (e: React.DragEvent, id: string) => void;
+  onDragLeave: () => void;
+  onDrop: (e: React.DragEvent, id: string) => void;
+  onDragEnd: () => void;
 }
 ```
 
-### Files 2-4: Table Components (no changes needed)
+- Row container: `draggable={true}`, wires all native drag events
+- Grip handle: `cursor-grab` / `cursor-grabbing` via CSS
+- `isDragging`: parent sets this when the row's id matches the dragged id (opacity 0.4)
+- `dropIndicator`: parent passes `'above'` or `'below'` -- renders a 3px blue line as `border-top` or `border-bottom`
+- Same pattern for `DraggableMobileCard`
 
-`OperatingSystemsTable.tsx`, `ZiplinesTable.tsx`, and `EquipmentTable.tsx` already have:
-- `SortableContext` with `verticalListSortingStrategy` wrapping rows
-- `closestCenter` collision detection
-- `DragOverlay` with ghost elements
-- Correct `handleDragEnd` using `arrayMove`
+### Files 2-4: Table Components (OperatingSystems, Ziplines, Equipment)
 
-These files need **no modifications** -- only the shared `DraggableTableRow.tsx` component needs updating.
+**Remove all @dnd-kit imports**: `DndContext`, `DragOverlay`, `SortableContext`, `PointerSensor`, `TouchSensor`, `closestCenter`, `useSensor`, `useSensors`, `arrayMove`, `verticalListSortingStrategy`.
 
-### Why This Works
+**Add state:**
+```typescript
+const draggedIdRef = useRef<string | null>(null);
+const [draggingId, setDraggingId] = useState<string | null>(null);
+const [dragOverId, setDragOverId] = useState<string | null>(null);
+const [dropPosition, setDropPosition] = useState<'above' | 'below' | null>(null);
+```
 
-1. **Ghost offset fixed**: With transforms enabled, `@dnd-kit` can properly calculate the drag offset relative to the grab point. The `DragOverlay` uses the measured rect of the full row (via `setNodeRef`) to position the ghost correctly under the cursor.
+**Handlers:**
+- `handleDragStart(e, id)`: Store id in ref and state, set `e.dataTransfer.effectAllowed = 'move'`
+- `handleDragOver(e, id)`: `e.preventDefault()`, calculate midpoint via `getBoundingClientRect()`, set `dragOverId` and `dropPosition`
+- `handleDragLeave()`: Clear `dragOverId` and `dropPosition`
+- `handleDrop(e, id)`: Reorder array -- remove dragged item, insert before or after target based on `dropPosition`. Clear all state.
+- `handleDragEnd()`: Clear all state (fires even if drop is cancelled)
 
-2. **Drop indicator reliable**: `isOver` from `useSortable` works correctly when transforms are enabled because the sorting layer can track which item the pointer is nearest to as rows shift position.
+**Reorder logic** (replaces `arrayMove`):
+```typescript
+const items = [...currentItems];
+const dragIdx = items.findIndex(i => i.id === draggedIdRef.current);
+const [draggedItem] = items.splice(dragIdx, 1);
+const targetIdx = items.findIndex(i => i.id === targetId);
+const insertIdx = dropPosition === 'below' ? targetIdx + 1 : targetIdx;
+items.splice(insertIdx, 0, draggedItem);
+```
 
-3. **Rows shift smoothly**: Neighboring rows animate out of the way (via CSS transform) to show where the dragged item will land, providing clear spatial feedback alongside the blue line indicator.
+For `EquipmentTable`, the same category-aware reorder logic is preserved -- filter by category, reorder within category, then reconstruct the full array.
 
-4. **Proven pattern**: This mirrors `DraggablePhotoItem.tsx` which uses the identical approach and works correctly in this project.
+**Remove `DragOverlay`**: No ghost element needed -- the browser provides the native drag image automatically.
+
+**Remove `SortableContext` wrapper**: Rows are just mapped directly.
 
 ### Changes Summary
 
 | File | Change |
 |------|--------|
-| `DraggableTableRow.tsx` | Enable `CSS.Transform.toString(transform)` and `transition` in both `DraggableTableRow` and `DraggableMobileCard`. Add z-index on drag. |
-| `OperatingSystemsTable.tsx` | No changes needed. |
-| `ZiplinesTable.tsx` | No changes needed. |
-| `EquipmentTable.tsx` | No changes needed. |
+| `DraggableTableRow.tsx` | Remove all `@dnd-kit` imports. Accept native drag event handlers + `isDragging` + `dropIndicator` as props. Use `draggable={true}` with native HTML5 events. Render blue 3px insertion line based on `dropIndicator` prop. |
+| `OperatingSystemsTable.tsx` | Remove all `@dnd-kit` imports. Add native drag state (`draggedIdRef`, `draggingId`, `dragOverId`, `dropPosition`). Implement `handleDragStart/Over/Leave/Drop/End`. Remove `DndContext`, `SortableContext`, `DragOverlay`. Pass native handlers to each row. |
+| `ZiplinesTable.tsx` | Same pattern as OperatingSystems. |
+| `EquipmentTable.tsx` | Same pattern, with category-aware reorder logic preserved. |
+
+### Why This Fixes Everything
+
+1. **Ghost offset**: The browser renders the native drag image at the cursor position automatically. No custom overlay, no scroll offset calculations, no portal needed.
+2. **Drop indicator**: Calculated from `e.clientY` vs row midpoint on every `dragOver` event. Renders as a visible 3px blue border on the correct side of the target row.
+3. **No library bugs**: Zero dependency on `@dnd-kit` transform/transition/collision detection systems that were causing persistent issues in scrollable containers.
 
