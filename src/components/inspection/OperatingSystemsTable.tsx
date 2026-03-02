@@ -20,11 +20,13 @@ import {
 import {
   DndContext,
   closestCenter,
+  DragOverlay,
   PointerSensor,
   TouchSensor,
   useSensor,
   useSensors,
   type DragEndEvent,
+  type DragStartEvent,
 } from "@dnd-kit/core";
 import {
   SortableContext,
@@ -41,6 +43,7 @@ interface OperatingSystemsTableProps {
 
 function OperatingSystemsTable({ systems, onUpdate, onImmediateSave }: OperatingSystemsTableProps) {
   const [itemToDelete, setItemToDelete] = useState<{ id: string; name: string } | null>(null);
+  const [activeId, setActiveId] = useState<string | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -76,7 +79,12 @@ function OperatingSystemsTable({ systems, onUpdate, onImmediateSave }: Operating
     }
   }, [itemToDelete, onUpdate, onImmediateSave]);
 
+  const handleDragStart = useCallback((event: DragStartEvent) => {
+    setActiveId(event.active.id as string);
+  }, []);
+
   const handleDragEnd = useCallback((event: DragEndEvent) => {
+    setActiveId(null);
     const { active, over } = event;
     if (!over || active.id === over.id) return;
     onUpdate(prev => {
@@ -85,6 +93,8 @@ function OperatingSystemsTable({ systems, onUpdate, onImmediateSave }: Operating
       return arrayMove(prev, oldIndex, newIndex);
     });
   }, [onUpdate]);
+
+  const activeSystem = useMemo(() => activeId ? systems.find(s => s.id === activeId) : null, [activeId, systems]);
 
   return (
     <Card>
@@ -98,7 +108,7 @@ function OperatingSystemsTable({ systems, onUpdate, onImmediateSave }: Operating
         </div>
       </CardHeader>
       <CardContent className="px-3 md:px-6">
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
           <SortableContext items={systemIds} strategy={verticalListSortingStrategy}>
             {/* Desktop table view */}
             <div className="hidden md:block overflow-x-auto">
@@ -218,6 +228,14 @@ function OperatingSystemsTable({ systems, onUpdate, onImmediateSave }: Operating
               ))}
             </div>
           </SortableContext>
+          <DragOverlay dropAnimation={{ duration: 200, easing: 'ease' }}>
+            {activeSystem ? (
+              <div className="flex items-center gap-3 px-4 py-3 rounded-lg border-l-4 border-l-primary bg-background shadow-2xl transform scale-105 rotate-1">
+                <span className="font-medium text-sm truncate">{activeSystem.name || activeSystem.system_name || 'System'}</span>
+                <span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground">{activeSystem.result}</span>
+              </div>
+            ) : null}
+          </DragOverlay>
         </DndContext>
         
         <div className="mt-6 text-xs text-muted-foreground border-t pt-4">

@@ -21,11 +21,13 @@ import {
 import {
   DndContext,
   closestCenter,
+  DragOverlay,
   PointerSensor,
   TouchSensor,
   useSensor,
   useSensors,
   type DragEndEvent,
+  type DragStartEvent,
 } from "@dnd-kit/core";
 import {
   SortableContext,
@@ -42,6 +44,7 @@ interface ZiplinesTableProps {
 
 function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: ZiplinesTableProps) {
   const [itemToDelete, setItemToDelete] = useState<{ id: string; name: string } | null>(null);
+  const [activeId, setActiveId] = useState<string | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -86,7 +89,12 @@ function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: ZiplinesTablePro
     }
   }, [itemToDelete, onUpdate, onImmediateSave]);
 
+  const handleDragStart = useCallback((event: DragStartEvent) => {
+    setActiveId(event.active.id as string);
+  }, []);
+
   const handleDragEnd = useCallback((event: DragEndEvent) => {
+    setActiveId(null);
     const { active, over } = event;
     if (!over || active.id === over.id) return;
     onUpdate(prev => {
@@ -95,6 +103,8 @@ function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: ZiplinesTablePro
       return arrayMove(prev, oldIndex, newIndex);
     });
   }, [onUpdate]);
+
+  const activeZipline = useMemo(() => activeId ? ziplines.find(z => z.id === activeId) : null, [activeId, ziplines]);
 
   return (
     <Card>
@@ -114,7 +124,7 @@ function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: ZiplinesTablePro
           <p><strong>Emergency Brake System KEY -</strong> ZS = Zip Stop, AP = Auto Prusik, SB = Spring Bank</p>
         </div>
 
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
           <SortableContext items={ziplineIds} strategy={verticalListSortingStrategy}>
             {/* Desktop table view */}
             <div className="hidden md:block overflow-x-auto">
@@ -444,6 +454,15 @@ function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: ZiplinesTablePro
               ))}
             </div>
           </SortableContext>
+          <DragOverlay dropAnimation={{ duration: 200, easing: 'ease' }}>
+            {activeZipline ? (
+              <div className="flex items-center gap-3 px-4 py-3 rounded-lg border-l-4 border-l-primary bg-background shadow-2xl transform scale-105 rotate-1">
+                <span className="font-medium text-sm truncate">{activeZipline.zipline_name || 'Zipline'}</span>
+                <span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground">{activeZipline.cable_type}</span>
+                <span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground">{activeZipline.result}</span>
+              </div>
+            ) : null}
+          </DragOverlay>
         </DndContext>
 
         <div className="mt-6 text-xs text-muted-foreground border-t pt-4">
