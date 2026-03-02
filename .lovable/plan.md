@@ -1,72 +1,77 @@
 
 
-## Improve Drag-and-Drop Feel with DragOverlay
+## Premium Drag-and-Drop Visual Refinement
 
-### Problem
+### Problems Identified
 
-The current drag-and-drop in the inspection tables (Systems, Ziplines, Equipment) lacks a `DragOverlay` -- the floating preview element that visually follows the cursor during a drag. Without it, the row just shifts in-place with subtle opacity/shadow changes, making it feel like nothing is being "held." The PhotoGallery already uses `DragOverlay` correctly and feels smooth; the inspection tables need the same treatment.
+After reviewing the current implementation, three root issues cause the poor experience:
 
-### Root Cause
+1. **Tiny overlay**: The `DragOverlay` renders a small pill-shaped summary card (just name + result badge) instead of a full-width row representation. This makes it feel disconnected from the actual row being dragged.
 
-`@dnd-kit` uses `DragOverlay` to render a floating clone of the dragged item above everything else. Without it, the only visual feedback is the in-place transform on the original row, which is barely noticeable inside a dense table.
+2. **Weak drop indicator**: The insertion point is shown as a `borderTop: 3px` on the `isOver` item with a faint `bg-primary/5` tint -- too subtle to read quickly during a drag.
+
+3. **No axis restriction**: Items can be dragged freely in both X and Y directions, causing visual wobble. Since these are vertical lists, constraining to the Y-axis would feel much tighter.
 
 ### Solution
 
-Add `DragOverlay` with `DragStartEvent` tracking to all three table components and the shared `DraggableTableRow` component. When a drag starts, store the active item; render a simplified floating preview in `DragOverlay`; clear it on drag end.
+#### 1. Improved DragOverlay content (all 3 tables)
 
----
+Replace the small pill overlay with a **full-width row card** that mirrors the actual row layout:
+- Full width with `w-full` / `min-w-[400px]`
+- Shows a GripVertical icon + item name + result badge in a row layout
+- Strong shadow (`shadow-2xl`), solid background, 2px primary left border
+- Slight scale (`scale-[1.02]`) and no rotation (rotation causes visual jank)
+- Rounded corners with `ring-2 ring-primary/30` for a "selected" glow
 
-### 1. Update `DraggableTableRow.tsx`
+#### 2. Enhanced drop target indicator (DraggableTableRow + DraggableMobileCard)
 
-- Make the dragging row nearly invisible (`opacity: 0.3`) since the `DragOverlay` will show the floating clone
-- Keep the `isOver` drop-target styling (top border + background tint)
+Replace the subtle `borderTop` with a **prominent animated insertion line**:
+- Use a `::before` pseudo-element approach via a wrapper div for the mobile card, and inline styles for the table row
+- **4px tall, full-width primary-colored bar** positioned at the top of the target row
+- Add a subtle **glow effect** using `box-shadow: 0 0 8px hsl(var(--primary) / 0.5)` on the indicator
+- Stronger background tint: `bg-primary/10` instead of `bg-primary/5`
+- Smooth transition on appearance
 
-### 2. Update `OperatingSystemsTable.tsx`
+#### 3. Add vertical axis restriction
 
-- Import `DragOverlay` and `DragStartEvent` from `@dnd-kit/core`
-- Add `useState` for `activeId` (the ID of the item currently being dragged)
-- Add `onDragStart` handler to set `activeId`
-- Update `onDragEnd` to clear `activeId`
-- Render `<DragOverlay>` after `</SortableContext>` showing a styled summary row of the active item (system name + result) with a lifted shadow appearance
-- The overlay renders a simplified card/row so the user sees exactly what they're moving
+Import `restrictToVerticalAxis` from `@dnd-kit/modifiers` and apply it to all three `DndContext` instances. This locks the drag to vertical movement only, eliminating horizontal wobble and making the interaction feel precise.
 
-### 3. Update `ZiplinesTable.tsx`
+#### 4. Reduce original row opacity further
 
-Same pattern: track `activeId`, render `DragOverlay` with a summary of the active zipline (name + type + result).
-
-### 4. Update `EquipmentTable.tsx`
-
-Same pattern: track `activeId`, render `DragOverlay` with a summary of the active equipment item (name + type + result).
-
-### Visual Design of the Drag Overlay
-
-The floating preview will be:
-- A compact card with rounded corners, strong shadow (`shadow-2xl`), slight scale (`scale-105`), and a subtle rotation (`rotate-1`) for a "picked up" feel
-- Background matches the app theme (`bg-background`)
-- Shows the item's key identifying info (name and result) so the user knows what they're holding
-- Has a primary-colored left border accent for visibility
-
-### Drop Target Enhancement
-
-The existing `isOver` border-top indicator is subtle. Enhance it:
-- Increase from `2px` to `3px` border
-- Add a transition so the indicator animates in smoothly
-
----
+The dragged row placeholder stays at `opacity: 0.3` (good) but add a **dashed border outline** to show the "slot" where the item came from -- a common Kanban pattern.
 
 ### Files Changed
 
 | File | Change |
 |------|--------|
-| `src/components/inspection/DraggableTableRow.tsx` | Lower dragging row opacity to 0.3 (since overlay shows the clone); add smooth transition for isOver styles |
-| `src/components/inspection/OperatingSystemsTable.tsx` | Add `DragOverlay` with floating preview card; track `activeId` via `onDragStart` |
-| `src/components/inspection/ZiplinesTable.tsx` | Add `DragOverlay` with floating preview card; track `activeId` via `onDragStart` |
-| `src/components/inspection/EquipmentTable.tsx` | Add `DragOverlay` with floating preview card; track `activeId` via `onDragStart` |
+| `src/components/inspection/DraggableTableRow.tsx` | Enhanced `isOver` indicator (4px glowing bar), dashed border on dragging placeholder, stronger background tint |
+| `src/components/inspection/OperatingSystemsTable.tsx` | Full-width overlay card, add `restrictToVerticalAxis` modifier |
+| `src/components/inspection/ZiplinesTable.tsx` | Full-width overlay card, add `restrictToVerticalAxis` modifier |
+| `src/components/inspection/EquipmentTable.tsx` | Full-width overlay card, add `restrictToVerticalAxis` modifier |
 
-### Technical Notes
+### Technical Details
 
-- Follows the exact same `DragOverlay` pattern already used in `PhotoGallery.tsx`
-- No new dependencies -- `DragOverlay` and `DragStartEvent` are already exported from `@dnd-kit/core`
-- The overlay is rendered outside the `SortableContext` but inside `DndContext`, which is the correct placement
-- Performance: `DragOverlay` uses a portal by default, avoiding layout thrashing
+- `restrictToVerticalAxis` is exported from `@dnd-kit/modifiers` -- this package is NOT currently installed and needs to be added (it's a tiny peer package of dnd-kit)
+- Alternative: If we want to avoid a new dependency, we can write a simple custom modifier inline: `({ transform }) => ({ ...transform, x: 0 })` -- same effect, zero dependencies
+- All changes use CSS properties that are GPU-composited (transform, opacity, box-shadow)
+- No new React state or event handlers added beyond what already exists
+
+### Visual Summary
+
+```text
+BEFORE (current):
+  [Row 1] ..................  opacity 0.3
+  [Row 2] ..................  borderTop: 3px (barely visible)
+  [Row 3] ..................
+  
+  Floating: [Name | Badge]  (tiny pill, can drift sideways)
+
+AFTER (proposed):
+  [Row 1] - - - - - - - - -  opacity 0.3, dashed outline (placeholder slot)
+  ========================== 4px glowing primary bar (insertion point)
+  [Row 2] ..................  bg-primary/10 tint
+  [Row 3] ..................
+  
+  Floating: [Grip | Name ........... | Badge]  (full-width card, Y-axis locked)
+```
 
