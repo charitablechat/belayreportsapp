@@ -17,18 +17,29 @@ export function DraggableTableRow({ id, children, className = "" }: DraggableTab
     transform,
     transition,
     isDragging,
+    isOver,
   } = useSortable({ id });
 
+  const baseTransform = CSS.Transform.toString(transform);
   const style = {
-    transform: CSS.Transform.toString(transform),
+    transform: baseTransform ? (isDragging ? `${baseTransform} scale(1.01)` : baseTransform) : undefined,
     transition: transition || 'transform 200ms ease',
-    opacity: isDragging ? 0.4 : 1,
+    opacity: isDragging ? 0.8 : 1,
     zIndex: isDragging ? 50 : 'auto' as const,
     position: 'relative' as const,
+    boxShadow: isDragging
+      ? '0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05)'
+      : 'none',
+    background: isDragging ? 'hsl(var(--background))' : undefined,
+    borderTop: isOver && !isDragging ? '2px solid hsl(var(--primary))' : undefined,
   };
 
   return (
-    <tr ref={setNodeRef} style={style} className={className}>
+    <tr
+      ref={setNodeRef}
+      style={style}
+      className={`${className} ${isOver && !isDragging ? 'bg-primary/5' : ''}`}
+    >
       <td className="border p-2 text-center w-10">
         <div
           {...attributes}
@@ -57,17 +68,26 @@ export function DraggableMobileCard({ id, children }: DraggableMobileCardProps) 
     transform,
     transition,
     isDragging,
+    isOver,
   } = useSortable({ id });
 
   const style = {
     transform: CSS.Transform.toString(transform),
     transition: transition || 'transform 200ms ease',
-    opacity: isDragging ? 0.4 : 1,
+    opacity: isDragging ? 0.8 : 1,
     zIndex: isDragging ? 50 : 'auto' as const,
+    boxShadow: isDragging
+      ? '0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05)'
+      : 'none',
+    borderTop: isOver && !isDragging ? '2px solid hsl(var(--primary))' : undefined,
   };
 
   return (
-    <div ref={setNodeRef} style={style} className={isDragging ? 'ring-2 ring-primary ring-offset-2 rounded-lg' : ''}>
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`${isDragging ? 'ring-2 ring-primary ring-offset-2 shadow-xl rounded-lg' : ''} ${isOver && !isDragging ? 'bg-primary/5' : ''}`}
+    >
       <div className="relative">
         <div
           {...attributes}
