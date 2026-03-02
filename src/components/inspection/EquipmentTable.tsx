@@ -22,7 +22,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import {
   DndContext,
-  closestCenter,
+  pointerWithin,
   DragOverlay,
   PointerSensor,
   TouchSensor,
@@ -61,7 +61,7 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
 
   const collisionDetection: CollisionDetection = useCallback((args) => {
     const filtered = args.droppableContainers.filter(c => c.id !== args.active.id);
-    return closestCenter({ ...args, droppableContainers: filtered });
+    return pointerWithin({ ...args, droppableContainers: filtered });
   }, []);
 
   const sensors = useSensors(
