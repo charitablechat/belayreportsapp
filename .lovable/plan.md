@@ -1,82 +1,54 @@
 
-## Fix: Return to useSortable with Transforms Enabled
 
-### Why Everything Has Failed So Far
+## Fix: Eliminate Row Transforms to Stop Jumping
 
-Every attempt has either:
-1. Used `useSortable` but **disabled transforms** (set to undefined) -- breaking collision detection
-2. Used `useDraggable`+`useDroppable` -- which has no sorting transform layer at all, so items never shift and collision detection sees stale rects
+### Problem
+The `verticalListSortingStrategy` applies large Y-axis transforms to ALL rows during drag (shifting them up/down to "make space"). This causes the visible jumping behavior. The DragOverlay already provides the visual ghost -- the rows themselves should stay put.
 
-The working `DraggablePhotoItem` + `PhotoGallery` pattern succeeds because it uses `useSortable` with **transforms ENABLED** via `CSS.Transform.toString(transform)`. This is the key: dnd-kit's sorting system needs to apply transforms to shift items during drag so its internal rect tracking stays accurate.
+### Changes: `DraggableTableRow.tsx` only
 
-### The Solution
+All three changes target the `style` object in both `DraggableTableRow` and `DraggableMobileCard`:
 
-Rewrite `DraggableTableRow` to mirror `DraggablePhotoItem` exactly, and re-add `SortableContext` to all three table components.
-
-### File 1: `DraggableTableRow.tsx` -- Full Rewrite
-
-Switch from `useDraggable`/`useDroppable` back to `useSortable`, matching the `DraggablePhotoItem` pattern:
+1. **Set `transform` to `undefined`** -- Rows stay in their original DOM position. The `DragOverlay` handles the moving visual. `useSortable` still tracks `isOver` for the drop indicator.
+2. **Lower opacity to `0.15`** -- Makes the source row nearly invisible so the DragOverlay ghost is the clear focal point.
+3. **Remove `transition`** -- No transition needed since there's no transform to animate. Prevents visual artifacts.
 
 ```typescript
-import { useSortable } from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
-import { GripVertical } from "lucide-react";
-
-// DraggableTableRow
-const { attributes, listeners, setNodeRef, transform, transition, isDragging, isOver } = useSortable({ id });
-
+// DraggableTableRow style (lines 24-29)
 const style = {
-  transform: CSS.Transform.toString(transform),  // KEY: transforms ENABLED
-  transition: transition || 'transform 200ms ease',
-  opacity: isDragging ? 0.3 : 1,
+  transform: undefined,        // was: CSS.Transform.toString(transform)
+  transition: undefined,       // was: transition || 'transform 200ms ease'
+  opacity: isDragging ? 0.15 : 1,  // was: 0.3
   zIndex: isDragging ? 50 : 'auto' as const,
 };
 
-// Render with ref={setNodeRef} style={style}
-// Show insertion indicator when isOver && !isDragging
-// Grip handle uses {...attributes} {...listeners} directly (no separate drag ref)
+// DraggableMobileCard style (lines 71-76) -- identical change
+const style = {
+  transform: undefined,
+  transition: undefined,
+  opacity: isDragging ? 0.15 : 1,
+  zIndex: isDragging ? 50 : 'auto' as const,
+};
 ```
 
-Same pattern for `DraggableMobileCard`.
+### What stays the same
+- `useSortable` hook stays (provides `isOver`, `isDragging`, `attributes`, `listeners`)
+- `SortableContext` in table components stays (provides collision detection)
+- Drop indicator (`isOver && !isDragging`) stays
+- `DragOverlay` in table components stays (cursor-following ghost)
+- All data mutation logic (`handleDragEnd`, `arrayMove`, `onUpdate`) untouched
+- CSS-Grid layout untouched
+- The `CSS` import from `@dnd-kit/utilities` can be removed since it's no longer used
 
-### Files 2-4: Table Components (OperatingSystems, Ziplines, Equipment)
+### Why this works
+- Rows don't move = no jumping
+- `isOver` still fires correctly because `useSortable` tracks pointer position against droppable rects (the rects don't change since rows are static)
+- DragOverlay follows cursor independently (already confirmed working in recording)
+- `handleDragEnd` receives correct `active.id` and `over.id` from the collision detection layer, so reordering logic works
 
-Re-add `SortableContext` with `verticalListSortingStrategy`:
-
-```typescript
-import { arrayMove, SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
-
-// Remove custom collisionDetection (use default closestCenter from SortableContext)
-// Remove CollisionDetection import and pointerWithin import
-
-// Wrap rows:
-<SortableContext items={systems.map(s => s.id)} strategy={verticalListSortingStrategy}>
-  {systems.map((system) => (
-    <DraggableTableRow key={system.id} id={system.id} ... />
-  ))}
-</SortableContext>
-```
-
-The collision detection import (`pointerWithin`) and custom `collisionDetection` callback are removed entirely -- `SortableContext` with `verticalListSortingStrategy` handles this internally and correctly.
-
-### Why This Will Work
-
-This is not another experiment. This is copying the exact pattern that already works in `PhotoGallery`:
-- `SortableContext` provides the sorting context with proper rect tracking
-- `useSortable` with transforms **enabled** means items visually shift to make space
-- `CSS.Transform.toString(transform)` applies the shift transforms
-- `isOver` from `useSortable` fires reliably because the sorting layer tracks rects correctly
-- `DragOverlay` provides the cursor-following ghost (already working)
-
-### Changes Summary
-
+### Files modified
 | File | Change |
 |------|--------|
-| `DraggableTableRow.tsx` | Replace `useDraggable`/`useDroppable` with `useSortable` + `CSS.Transform`. Apply transform+transition style. Use `isOver` from `useSortable` for indicator. Single `setNodeRef` on container. |
-| `OperatingSystemsTable.tsx` | Add `SortableContext` + `verticalListSortingStrategy`. Remove `pointerWithin`, `CollisionDetection` type, and custom collision callback. |
-| `ZiplinesTable.tsx` | Same as OperatingSystems. |
-| `EquipmentTable.tsx` | Same as OperatingSystems. |
+| `DraggableTableRow.tsx` | Set transform/transition to undefined, opacity to 0.15 in both components. Remove unused `CSS` import. |
 
-### Data Safety
-
-Zero risk. `handleDragEnd`, `arrayMove`, `onUpdate` callbacks are completely untouched.
+No changes needed in the three table components -- they already have `SortableContext` and `DragOverlay` set up correctly.
