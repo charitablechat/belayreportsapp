@@ -28,6 +28,8 @@ import {
   useSensors,
   type DragEndEvent,
   type DragStartEvent,
+  type DragOverEvent,
+  type CollisionDetection,
 } from "@dnd-kit/core";
 import {
   SortableContext,
@@ -47,6 +49,12 @@ const ZIP_GRID_COLS = "grid-cols-[40px_minmax(120px,1fr)_80px_80px_80px_80px_100
 function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: ZiplinesTableProps) {
   const [itemToDelete, setItemToDelete] = useState<{ id: string; name: string } | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [overId, setOverId] = useState<string | null>(null);
+
+  const collisionDetection: CollisionDetection = useCallback((args) => {
+    const filtered = args.droppableContainers.filter(c => c.id !== args.active.id);
+    return closestCenter({ ...args, droppableContainers: filtered });
+  }, []);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -97,6 +105,7 @@ function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: ZiplinesTablePro
 
   const handleDragEnd = useCallback((event: DragEndEvent) => {
     setActiveId(null);
+    setOverId(null);
     const { active, over } = event;
     if (!over || active.id === over.id) return;
     onUpdate(prev => {
@@ -126,7 +135,7 @@ function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: ZiplinesTablePro
           <p><strong>Emergency Brake System KEY -</strong> ZS = Zip Stop, AP = Auto Prusik, SB = Spring Bank</p>
         </div>
 
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragCancel={() => setActiveId(null)}>
+        <DndContext sensors={sensors} collisionDetection={collisionDetection} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragOver={(e) => setOverId(e.over?.id as string | null)} onDragCancel={() => { setActiveId(null); setOverId(null); }}>
           <SortableContext items={ziplineIds} strategy={verticalListSortingStrategy}>
             {/* Desktop grid view */}
             <div className="hidden md:block overflow-x-auto">
@@ -156,6 +165,7 @@ function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: ZiplinesTablePro
                       id={zipline.id}
                       className="hover:bg-muted/50 text-sm"
                       gridCols={ZIP_GRID_COLS}
+                      isDropTarget={overId === zipline.id && activeId !== zipline.id}
                     >
                       <div className="p-1 border-r border-border">
                         <GlobalAutocomplete
@@ -234,7 +244,7 @@ function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: ZiplinesTablePro
             {/* Mobile/Tablet card view */}
             <div className="md:hidden space-y-3">
               {ziplines.map((zipline) => (
-                <DraggableMobileCard key={zipline.id} id={zipline.id}>
+                <DraggableMobileCard key={zipline.id} id={zipline.id} isDropTarget={overId === zipline.id && activeId !== zipline.id}>
                   <div className="p-4 pl-12 relative border-l-4 border-l-primary/20 rounded-lg bg-muted/30 border border-border">
                     <Button
                       variant="ghost"

@@ -27,6 +27,8 @@ import {
   useSensors,
   type DragEndEvent,
   type DragStartEvent,
+  type DragOverEvent,
+  type CollisionDetection,
 } from "@dnd-kit/core";
 import {
   SortableContext,
@@ -46,6 +48,12 @@ const OS_GRID_COLS = "grid-cols-[40px_minmax(180px,1fr)_minmax(160px,1fr)_192px_
 function OperatingSystemsTable({ systems, onUpdate, onImmediateSave }: OperatingSystemsTableProps) {
   const [itemToDelete, setItemToDelete] = useState<{ id: string; name: string } | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [overId, setOverId] = useState<string | null>(null);
+
+  const collisionDetection: CollisionDetection = useCallback((args) => {
+    const filtered = args.droppableContainers.filter(c => c.id !== args.active.id);
+    return closestCenter({ ...args, droppableContainers: filtered });
+  }, []);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -87,6 +95,7 @@ function OperatingSystemsTable({ systems, onUpdate, onImmediateSave }: Operating
 
   const handleDragEnd = useCallback((event: DragEndEvent) => {
     setActiveId(null);
+    setOverId(null);
     const { active, over } = event;
     if (!over || active.id === over.id) return;
     onUpdate(prev => {
@@ -110,7 +119,7 @@ function OperatingSystemsTable({ systems, onUpdate, onImmediateSave }: Operating
         </div>
       </CardHeader>
       <CardContent className="px-3 md:px-6">
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragCancel={() => setActiveId(null)}>
+        <DndContext sensors={sensors} collisionDetection={collisionDetection} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragOver={(e) => setOverId(e.over?.id as string | null)} onDragCancel={() => { setActiveId(null); setOverId(null); }}>
           <SortableContext items={systemIds} strategy={verticalListSortingStrategy}>
             {/* Desktop grid view */}
             <div className="hidden md:block overflow-x-auto">
@@ -131,6 +140,7 @@ function OperatingSystemsTable({ systems, onUpdate, onImmediateSave }: Operating
                     id={system.id}
                     className="hover:bg-muted/50"
                     gridCols={OS_GRID_COLS}
+                    isDropTarget={overId === system.id && activeId !== system.id}
                   >
                     <div className="p-2 border-r border-border">
                       <GlobalAutocomplete
@@ -180,7 +190,7 @@ function OperatingSystemsTable({ systems, onUpdate, onImmediateSave }: Operating
             {/* Mobile card view */}
             <div className="md:hidden space-y-3">
               {systems.map((system) => (
-                <DraggableMobileCard key={system.id} id={system.id}>
+                <DraggableMobileCard key={system.id} id={system.id} isDropTarget={overId === system.id && activeId !== system.id}>
                   <div className="p-4 pl-12 relative border-l-4 border-l-primary/20 rounded-lg bg-muted/30 border border-border">
                     <Button
                       variant="ghost"
