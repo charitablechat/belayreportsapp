@@ -42,7 +42,7 @@ const OS_GRID_COLS = "grid-cols-[40px_minmax(180px,1fr)_minmax(160px,1fr)_192px_
 function OperatingSystemsTable({ systems, onUpdate, onImmediateSave }: OperatingSystemsTableProps) {
   const [itemToDelete, setItemToDelete] = useState<{ id: string; name: string } | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
-
+  const [overId, setOverId] = useState<string | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -81,8 +81,13 @@ function OperatingSystemsTable({ systems, onUpdate, onImmediateSave }: Operating
     setActiveId(event.active.id as string);
   }, []);
 
+  const handleDragOver = useCallback((event: any) => {
+    setOverId(event.over?.id as string ?? null);
+  }, []);
+
   const handleDragEnd = useCallback((event: DragEndEvent) => {
     setActiveId(null);
+    setOverId(null);
     const { active, over } = event;
     if (!over || active.id === over.id) return;
     onUpdate(prev => {
@@ -106,7 +111,7 @@ function OperatingSystemsTable({ systems, onUpdate, onImmediateSave }: Operating
         </div>
       </CardHeader>
       <CardContent className="px-3 md:px-6">
-        <DndContext sensors={sensors} collisionDetection={pointerWithin} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragCancel={() => setActiveId(null)}>
+        <DndContext sensors={sensors} collisionDetection={pointerWithin} onDragStart={handleDragStart} onDragOver={handleDragOver} onDragEnd={handleDragEnd} onDragCancel={() => { setActiveId(null); setOverId(null); }}>
             {/* Desktop grid view */}
             <div className="hidden md:block overflow-x-auto">
               {/* Header */}
@@ -126,6 +131,7 @@ function OperatingSystemsTable({ systems, onUpdate, onImmediateSave }: Operating
                     id={system.id}
                     className="hover:bg-muted/50"
                     gridCols={OS_GRID_COLS}
+                    isOver={overId === system.id}
                   >
                     <div className="p-2 border-r border-border">
                       <GlobalAutocomplete
@@ -175,7 +181,7 @@ function OperatingSystemsTable({ systems, onUpdate, onImmediateSave }: Operating
             {/* Mobile card view */}
             <div className="md:hidden space-y-3">
               {systems.map((system) => (
-                <DraggableMobileCard key={system.id} id={system.id}>
+                <DraggableMobileCard key={system.id} id={system.id} isOver={overId === system.id}>
                   <div className="p-4 pl-12 relative border-l-4 border-l-primary/20 rounded-lg bg-muted/30 border border-border">
                     <Button
                       variant="ghost"

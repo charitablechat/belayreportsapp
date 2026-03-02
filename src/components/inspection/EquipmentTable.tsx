@@ -57,7 +57,7 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
 
   const [itemToDelete, setItemToDelete] = useState<{ item: any; name: string } | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
-
+  const [overId, setOverId] = useState<string | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -98,8 +98,13 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
     setActiveId(event.active.id as string);
   }, []);
 
+  const handleDragOver = useCallback((event: any) => {
+    setOverId(event.over?.id as string ?? null);
+  }, []);
+
   const handleDragEnd = useCallback((event: DragEndEvent) => {
     setActiveId(null);
+    setOverId(null);
     const { active, over } = event;
     if (!over || active.id === over.id) return;
 
@@ -140,7 +145,7 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
         </div>
       </CardHeader>
       <CardContent className="px-3 md:px-6">
-        <DndContext sensors={sensors} collisionDetection={pointerWithin} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragCancel={() => setActiveId(null)}>
+        <DndContext sensors={sensors} collisionDetection={pointerWithin} onDragStart={handleDragStart} onDragOver={handleDragOver} onDragEnd={handleDragEnd} onDragCancel={() => { setActiveId(null); setOverId(null); }}>
             {/* Desktop grid view */}
             <div className="hidden md:block overflow-visible">
               {/* Header */}
@@ -161,6 +166,7 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
                     id={item.id}
                     className="hover:bg-muted/50"
                     gridCols={EQ_GRID_COLS}
+                    isOver={overId === item.id}
                   >
                     <div className="p-2 border-r border-border">
                       {typeOptions ? (
@@ -274,7 +280,7 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
             {/* Mobile card view */}
             <div className="md:hidden space-y-3">
               {categoryEquipment.map((item) => (
-                <DraggableMobileCard key={item.id} id={item.id}>
+                <DraggableMobileCard key={item.id} id={item.id} isOver={overId === item.id}>
                   <div className="p-4 pl-12 relative border-l-4 border-l-primary/20 rounded-lg bg-muted/30 border border-border">
                     <Button
                       variant="ghost"
