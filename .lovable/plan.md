@@ -1,51 +1,42 @@
 
 
-## Fix Drop Indicator Visibility and DragOverlay Positioning
+## Fix Drag-and-Drop: Ghost Offset and Drop Indicator
 
-### Problem 1: Drop indicator never appears
-The `isOver` from individual `useDroppable` hooks inside each row isn't reliably triggered. This is because `pointerWithin` collision detection fires at the `DndContext` level, but the individual `useDroppable` hooks may not receive `isOver=true` consistently when the `DragOverlay` portal sits above the rows.
+### Root Cause
 
-**Fix:** Track the "over" item ID centrally using `DndContext`'s `onDragOver` event in each table component. Pass the `overId` as a prop to `DraggableTableRow` instead of relying on `useDroppable`'s `isOver`.
+The current implementation uses separate `useDraggable` + `useDroppable` hooks, which fragments the node measurement. `DragOverlay` calculates its position from the draggable node's rect. When that ref is on a tiny grip icon, the offset math breaks -- the overlay renders hundreds of pixels from the cursor. Meanwhile, `useDroppable` combined with `pointerWithin` collision detection isn't reliably triggering `isOver` because collision detection and droppable registration are loosely coupled without `SortableContext`.
 
-### Problem 2: DragOverlay offset from cursor
-The draggable ref is on the full-width row container. When the user grabs the small grip handle, `DragOverlay` calculates the initial offset from the top-left of the entire row, causing the overlay to appear shifted.
+### Solution: Return to `useSortable` with Zeroed Transforms
 
-**Fix:** Remove `setDragRef` from the merged container ref and instead put it back on the grip handle div only. Keep `setDroppableRef` on the container. This way the DragOverlay measures position from the grip handle (which is where the user clicks), but collision detection still uses the full row rect.
+Use `useSortable` from `@dnd-kit/sortable` which bundles draggable + droppable into a single coordinated hook. The key insight the previous attempts missed: you CAN zero out the CSS transforms while keeping `isOver` working, because `isOver` is driven by collision detection against actual DOM rects, not by transform values.
 
----
+- `setNodeRef` on the row container (full-width measurement for DragOverlay positioning)
+- `listeners` + `attributes` on the grip handle only (handle-activated dragging)
+- `transform: undefined, transition: undefined` in style (rows stay static)
+- `isOver` from `useSortable` provides reliable drop indicator state
+- `DragOverlay` with `dropAnimation` for the floating ghost
 
-### File 1: `DraggableTableRow.tsx`
+### File 1: `DraggableTableRow.tsx` -- Rewrite
 
-**Changes:**
-- Remove `useDroppable` entirely -- the drop indicator will be driven by a prop instead
-- Split refs back: `setDragRef` goes on the grip handle, `setDroppableRef` stays on the container
-- Add `isOver` as a boolean prop passed from the parent table
-- Keep `useDraggable` for dragging behavior
+Replace `useDraggable` + `useDroppable` with `useSortable`:
 
 ```typescript
-// Before: merged ref, useDroppable for isOver
-const mergedRef = useCallback(...);
-const { isOver } = useDroppable({ id });
+import { useSortable } from "@dnd-kit/sortable";
 
-// After: droppable ref on container, drag ref on grip, isOver from prop
-interface DraggableTableRowProps {
-  id: string;
-  children: ReactNode;
-  className?: string;
-  gridCols: string;
-  isOver?: boolean;  // NEW - passed from parent
-}
+export function DraggableTableRow({ id, children, className, gridCols }) {
+  const { attributes, listeners, setNodeRef, isDragging, isOver } = useSortable({ id });
 
-export function DraggableTableRow({ id, children, className, gridCols, isOver }: ...) {
-  const { setNodeRef: setDroppableRef } = useDroppable({ id });
-  const { attributes, listeners, setNodeRef: setDragRef, isDragging } = useDraggable({ id });
+  // CRITICAL: No transform, no transition -- rows stay perfectly static
+  const style = {
+    opacity: isDragging ? 0.4 : 1,
+  };
 
   return (
-    <div ref={setDroppableRef} style={...} className={...}>
+    <div ref={setNodeRef} style={style} className={`relative grid ${gridCols} ...`}>
       {isOver && !isDragging && (
-        <div className="absolute top-0 left-0 right-0 h-[3px] bg-primary ..." />
+        <div className="absolute top-0 left-0 right-0 h-[3px] bg-primary z-50 ..." />
       )}
-      <div ref={setDragRef} {...attributes} {...listeners} className="cursor-grab ...">
+      <div {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing ...">
         <GripVertical />
       </div>
       {children}
@@ -54,61 +45,57 @@ export function DraggableTableRow({ id, children, className, gridCols, isOver }:
 }
 ```
 
-Same pattern for `DraggableMobileCard` -- add `isOver` prop, remove internal `useDroppable` isOver usage, put `setDragRef` on grip only.
+Same for `DraggableMobileCard` -- use `useSortable`, zero transforms, `isOver` for indicator.
 
-### Files 2-4: Table Components (OperatingSystems, Ziplines, Equipment)
+Remove the `isOver` prop from both components (it's now internal from `useSortable`).
 
-**Changes in each:**
-- Add `onDragOver` handler to `DndContext` to track the currently hovered item
-- Store `overId` in state alongside `activeId`
-- Pass `isOver={overId === item.id}` prop to each `DraggableTableRow` and `DraggableMobileCard`
+### Files 2-4: Table Components
+
+Restore `SortableContext` + `verticalListSortingStrategy` wrapping around rows. Use `closestCenter` collision detection (more reliable than `pointerWithin` when paired with `SortableContext`).
+
+Remove `overId` state and `handleDragOver` since `isOver` is now handled inside each row.
 
 ```typescript
-// Add state
-const [overId, setOverId] = useState<string | null>(null);
+import { SortableContext, verticalListSortingStrategy, arrayMove } from "@dnd-kit/sortable";
+import { closestCenter } from "@dnd-kit/core";
 
-// Add handler
-const handleDragOver = useCallback((event) => {
-  setOverId(event.over?.id as string ?? null);
-}, []);
-
-// Clear on end/cancel
-const handleDragEnd = useCallback((event) => {
-  setActiveId(null);
-  setOverId(null);  // ADD
-  // ... existing reorder logic
-}, [onUpdate]);
-
-// DndContext
 <DndContext
   sensors={sensors}
-  collisionDetection={pointerWithin}
+  collisionDetection={closestCenter}
   onDragStart={handleDragStart}
-  onDragOver={handleDragOver}    // NEW
   onDragEnd={handleDragEnd}
-  onDragCancel={() => { setActiveId(null); setOverId(null); }}
+  onDragCancel={() => setActiveId(null)}
 >
-
-// Each row
-<DraggableTableRow
-  key={item.id}
-  id={item.id}
-  gridCols={GRID_COLS}
-  isOver={overId === item.id}   // NEW
->
+  <SortableContext items={systems.map(s => s.id)} strategy={verticalListSortingStrategy}>
+    {systems.map((system) => (
+      <DraggableTableRow key={system.id} id={system.id} gridCols={OS_GRID_COLS}>
+        ...
+      </DraggableTableRow>
+    ))}
+  </SortableContext>
+  <DragOverlay dropAnimation={{ duration: 200, easing: '...' }}>
+    {activeSystem ? (...ghost element...) : null}
+  </DragOverlay>
+</DndContext>
 ```
 
-### Summary
+### Changes Summary
 
-| File | Changes |
-|------|---------|
-| `DraggableTableRow.tsx` | Add `isOver` prop. Put `setDragRef` on grip handle (fixes overlay offset). Keep `setDroppableRef` on container (for collision detection). |
-| `OperatingSystemsTable.tsx` | Add `overId` state, `onDragOver` handler, pass `isOver` prop to rows. |
-| `ZiplinesTable.tsx` | Same as above. |
-| `EquipmentTable.tsx` | Same as above. |
+| File | Change |
+|------|--------|
+| `DraggableTableRow.tsx` | Replace `useDraggable`+`useDroppable` with `useSortable`. Zero transforms. Internal `isOver` for drop line. Remove `isOver` prop. |
+| `OperatingSystemsTable.tsx` | Add `SortableContext` wrapper. Use `closestCenter`. Remove `overId` state and `handleDragOver`. Remove `isOver` prop from rows. |
+| `ZiplinesTable.tsx` | Same changes as OperatingSystems. |
+| `EquipmentTable.tsx` | Same changes as OperatingSystems (using `categoryEquipment` IDs for SortableContext items). |
 
-### Why this fixes both issues
-1. **Drop indicator**: `onDragOver` fires reliably from `DndContext` whenever collision detection matches a droppable. Passing it as a prop bypasses any issues with individual `useDroppable` hooks not receiving updates.
-2. **DragOverlay offset**: Moving `setDragRef` back to the grip handle means the overlay measures its initial position from where the user actually clicks, eliminating the horizontal offset.
-3. **Collision detection still works**: `setDroppableRef` remains on the full row container, so `pointerWithin` still detects when the cursor enters any row's bounding box.
+### Why This Fixes All Issues
+
+1. **Ghost offset**: `useSortable`'s `setNodeRef` goes on the full row. DragOverlay measures the row's rect and computes the initial grab offset (cursor minus row top-left), so the ghost stays pinned to where you grabbed.
+2. **Drop indicator**: `isOver` from `useSortable` is driven by `closestCenter` collision detection against row rects registered through `SortableContext`. No external state management needed -- each row knows when it's the drop target.
+3. **Rows stay static**: Explicitly setting no transform/transition means rows never jump or shift during drag. Only the DragOverlay moves.
+4. **Visual feedback**: Source row at 0.4 opacity with dashed border. Ghost has shadow + ring. Grip has grab/grabbing cursors.
+
+### Why Previous `useSortable` Attempt Failed
+
+The earlier attempt used `CSS.Transform.toString(transform)` which applied sorting transforms to rows, causing them to jump. This plan explicitly ignores the transform output from `useSortable`, using the hook only for `isOver`, `isDragging`, ref registration, and listener forwarding.
 
