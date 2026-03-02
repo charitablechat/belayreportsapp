@@ -17,22 +17,25 @@ export const DraggablePhotoItem = ({ id, children, disabled = false }: Draggable
     transform,
     transition,
     isDragging,
+    isOver,
   } = useSortable({ id, disabled });
 
   const style = {
     transform: CSS.Transform.toString(transform),
     transition: transition || 'transform 200ms ease',
-    opacity: isDragging ? 0.4 : 1,
+    opacity: isDragging ? 0.8 : 1,
     zIndex: isDragging ? 50 : 'auto',
+    boxShadow: isDragging
+      ? '0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05)'
+      : 'none',
   };
 
   return (
     <div 
       ref={setNodeRef} 
       style={style} 
-      className={`relative ${isDragging ? 'ring-2 ring-primary ring-offset-2' : ''}`}
+      className={`relative ${isDragging ? 'ring-2 ring-primary ring-offset-2' : ''} ${isOver && !isDragging ? 'ring-2 ring-primary bg-primary/5' : ''}`}
     >
-      {/* Drag Handle - positioned at top-left */}
       {!disabled && (
         <div
           {...attributes}
