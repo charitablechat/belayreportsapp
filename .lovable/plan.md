@@ -1,102 +1,122 @@
 
 
-## Comprehensive Drag-and-Drop Fix
+## Fix Drag-and-Drop: Eliminate Row Jumping and Restore Drop Indicator
 
-### Root Cause Analysis
+### True Root Cause (Different from All Previous Attempts)
 
-After thorough investigation, the persistent DnD issues stem from **one architectural problem**: trying to apply visual indicators (`outline`, `box-shadow`, `borderTop`) directly to `<tr>` elements inside a `border-collapse` table wrapped in an `overflow-x-auto` container.
+After deep analysis of the code, the session replay, and the dnd-kit architecture, the real problems are:
 
-- `box-shadow` on `<tr>`: clipped by `border-collapse`
-- `borderTop` on `<tr>`: shifts the table layout, causing row jumps
-- `outline` on `<tr>`: renders outside the box but gets clipped by the `overflow-x-auto` wrapper div
+**1. Row jumping**: The `verticalListSortingStrategy` calculates CSS transforms for ALL non-active sortable items to visually "make space" during a drag. These transforms (300+ pixels as seen in the session replay) cause the entire table to visually shift, which looks like "the row jumps to the top." This is the core visual chaos.
 
-No combination of these CSS properties will produce a reliable, visible indicator on table rows. Every "fix" so far has been a variation of the same broken approach.
+**2. Missing drop indicator**: The `isOver` flag from `useSortable` relies on dnd-kit's collision detection matching the pointer position to each droppable's measured rect. In `border-collapse` tables, row measurements can be unreliable, causing `isOver` to never become `true` for any row -- so the indicator div never renders.
 
-### Solution: Rendered Indicator Elements
+### Why Previous Fixes Failed
 
-Instead of CSS properties on `<tr>`, render actual DOM elements for the indicators:
+Every previous attempt kept the same two architectural mistakes:
+- Kept applying `CSS.Transform` sorting transforms to non-active items (causing the jumping)
+- Relied on `useSortable`'s `isOver` for the drop indicator (which doesn't fire reliably in tables)
 
-**1. Drop indicator bar** -- An absolutely-positioned `<div>` inside the grip `<td>` cell that extends visually across the full row width. This is a real DOM element, not a CSS pseudo-effect, so it cannot be clipped by table layout rules.
+No amount of CSS styling changes (outline, border, box-shadow, rendered divs) can fix a problem where the indicator simply never renders because `isOver` is always `false`.
 
-**2. Placeholder styling** -- Instead of `outline` on the `<tr>` (which gets clipped), apply a subtle dashed border to each `<td>` inside the dragging row via a CSS class, and reduce the row's background opacity.
+### Solution: Remove Sorting Transforms + Manual Drop Target Tracking
 
-**3. DragOverlay cursor attachment** -- Ensure the overlay renders with `position: fixed` (which `DragOverlay` does by default via a portal). No changes needed to overlay content, but add `onDragCancel` handlers to all three tables to prevent stale `activeId` state if a drag is aborted.
+**Approach**: Stop using dnd-kit's sorting transforms entirely. Table rows stay in their DOM positions during a drag. The DragOverlay follows the cursor. A manually tracked `overId` powers the insertion indicator. Reorder happens on drop (already works).
 
----
+This is how Notion, Linear, and other professional table UIs handle drag -- items don't slide around during the drag, they just show an insertion line.
 
-### File Changes
+#### Changes to `DraggableTableRow.tsx`
 
-#### `src/components/inspection/DraggableTableRow.tsx`
+- **Remove all transform application**: Set `transform` to `undefined` always (not just when `isDragging`). Items never move during drag -- they stay in place.
+- **Accept `isDropTarget` and `isDragActive` as props** instead of relying on `useSortable`'s unreliable `isOver`.
+- **Render the insertion indicator div** based on `isDropTarget` prop (not `isOver`).
+- **Keep the placeholder opacity (0.15)** for the active dragged item.
+- The `setNodeRef`, `attributes`, `listeners` from `useSortable` are still used for drag handle and droppable registration.
 
-**DraggableTableRow (desktop):**
-- Remove all `outline`, `outlineOffset`, `background` styles from the `<tr>` `style` prop
-- Keep `transform: isDragging ? 'none' : baseTransform` (this part is correct)
-- Keep `opacity: isDragging ? 0.15 : 1`
-- Inside the grip `<td>`, render a drop indicator `<div>` when `isOver && !isDragging`:
-  - Absolutely positioned at `top: 0, left: 0`
-  - `height: 4px`, `width: 200vw` (extends beyond cell), `background: hsl(var(--primary))`
-  - `boxShadow: 0 0 8px hsl(var(--primary) / 0.5)` for glow
-  - `pointerEvents: none`, `zIndex: 50`
-- The grip `<td>` gets `style={{ position: 'relative', overflow: 'visible' }}`
-- When `isOver && !isDragging`, add a subtle background tint to the `<tr>` via `className` instead of inline style (using a simple conditional class)
+#### Changes to all three table components (OperatingSystemsTable, ZiplinesTable, EquipmentTable)
 
-**DraggableMobileCard:**
-- Same approach: render indicator `<div>` inside the card when `isOver && !isDragging`
-- Remove unreliable `outline`/`outlineOffset` styles
-- Keep `transform: 'none'` when dragging
+- **Add `onDragOver` handler** to `DndContext` that tracks `overId` state.
+- **Pass `isDropTarget={overId === item.id && activeId !== item.id}`** and `isDragActive={activeId === item.id}` as props to each `DraggableTableRow`.
+- **Move `modifiers` from `DndContext` to `DragOverlay`** -- modifiers on DndContext can interfere with collision detection calculations. The Y-axis lock should only affect the visual overlay, not the sorting algorithm.
+- No changes to `onDragEnd` logic (reorder on drop stays identical -- zero risk of data loss).
 
-#### `src/components/inspection/OperatingSystemsTable.tsx`
-- Add `onDragCancel` handler that clears `activeId` (prevents stale overlay on drag abort)
+### Data Safety
 
-#### `src/components/inspection/ZiplinesTable.tsx`
-- Add `onDragCancel` handler that clears `activeId`
+- The `onDragEnd` handler is completely untouched -- it only calls `arrayMove` when `active.id !== over.id`
+- The `onUpdate` callbacks are unchanged
+- No database queries, sync logic, or storage code is modified
+- Only visual/UI code in the drag components is changed
 
-#### `src/components/inspection/EquipmentTable.tsx`
-- Add `onDragCancel` handler that clears `activeId`
+### Files Changed
 
----
+| File | What Changes |
+|------|-------------|
+| `DraggableTableRow.tsx` | Accept `isDropTarget`/`isDragActive` props; remove transform application; use props for indicator instead of `isOver` |
+| `OperatingSystemsTable.tsx` | Add `onDragOver` + `overId` state; pass new props to rows; move `modifiers` to `DragOverlay` |
+| `ZiplinesTable.tsx` | Same pattern as OperatingSystemsTable |
+| `EquipmentTable.tsx` | Same pattern as OperatingSystemsTable |
 
 ### Technical Details
 
-The indicator element approach inside the grip cell:
-
+**DraggableTableRow new prop interface:**
 ```text
-<tr style={{ transform: isDragging ? 'none' : baseTransform, opacity: isDragging ? 0.15 : 1 }}>
+interface DraggableTableRowProps {
+  id: string;
+  children: ReactNode;
+  className?: string;
+  isDropTarget?: boolean;   // NEW: controlled by parent via onDragOver
+  isDragActive?: boolean;   // NEW: controlled by parent via activeId
+}
+```
+
+**DraggableTableRow style (simplified):**
+```text
+<tr ref={setNodeRef} style={{
+  opacity: isDragActive ? 0.15 : 1,
+  background: isDragActive ? 'hsl(var(--muted) / 0.5)' : isDropTarget ? 'hsl(var(--primary) / 0.08)' : undefined,
+}}>
   <td style={{ position: 'relative', overflow: 'visible' }}>
-    {isOver && !isDragging && (
+    {isDropTarget && (
       <div style={{
-        position: 'absolute',
-        top: -1,
-        left: -1,
-        height: 4,
-        width: '200vw',     // extends far beyond cell boundaries
+        position: 'absolute', top: -2, left: -1,
+        height: 4, width: '200vw',
         background: 'hsl(var(--primary))',
         boxShadow: '0 0 8px hsl(var(--primary) / 0.5)',
-        zIndex: 50,
-        pointerEvents: 'none',
+        zIndex: 50, pointerEvents: 'none', borderRadius: 2,
       }} />
     )}
     <GripVertical /> (drag handle)
   </td>
-  {children}   (remaining <td> cells)
+  {children}
 </tr>
 ```
 
-This works because:
-- The `<div>` is a real DOM element, not a CSS property on `<tr>`
-- `overflow: visible` on the parent `<td>` lets the bar extend beyond the cell
-- `200vw` width ensures it covers any table width
-- The `overflow-x-auto` on the table wrapper clips horizontally at the wrapper edge, which is actually desirable (the bar spans the visible table width)
-- `position: absolute` + `zIndex: 50` ensures it paints above adjacent rows
+No transforms on any row. The `useSortable` hook is still used for its `setNodeRef` (droppable registration), `attributes`, and `listeners` (drag handle), but its `transform` output is ignored.
 
-For the mobile card, the same `<div>` indicator works trivially since `<div>` elements have no styling restrictions.
+**Table component onDragOver pattern:**
+```text
+const [overId, setOverId] = useState<string | null>(null);
 
-### Why This Will Work
+const handleDragOver = useCallback((event) => {
+  setOverId(event.over?.id as string ?? null);
+}, []);
 
-Previous approaches all tried to use CSS properties that are known to fail on `<tr>` in `border-collapse` tables:
-- `box-shadow`: clipped by collapsed borders
-- `outline`: painted outside the box, clipped by `overflow` containers  
-- `borderTop`: shifts layout, causes rows to jump
+<DndContext
+  sensors={sensors}
+  collisionDetection={closestCenter}
+  onDragStart={handleDragStart}
+  onDragOver={handleDragOver}
+  onDragEnd={handleDragEnd}
+  onDragCancel={() => { setActiveId(null); setOverId(null); }}
+>
+  ...
+  <DraggableTableRow
+    id={item.id}
+    isDropTarget={overId === item.id && activeId !== item.id}
+    isDragActive={activeId === item.id}
+  >
+  ...
+  <DragOverlay modifiers={[restrictToYAxis]} ...>
+```
 
-This approach uses an actual rendered DOM element that is not subject to any of those restrictions. It's the same technique used by professional Kanban boards (Trello, Linear, etc.) where the insertion indicator is always a separate rendered element, never a CSS property on the container.
+Note: `modifiers` moved from `DndContext` to `DragOverlay` so collision detection uses raw pointer position while the overlay visual is Y-axis locked.
 
