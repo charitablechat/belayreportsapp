@@ -2576,7 +2576,7 @@ serve(async (req) => {
       
       <div style="margin-top: 15px; padding: 12px; border: 1px solid #000;">
         <p style="font-size: 10pt; line-height: 1.5; margin: 0; color: #1a1a1a;">
-          <strong>Retirement Procedure:</strong> All retired equipment must be clearly marked "RETIRED - DO NOT USE", immediately removed from service, and physically destroyed or rendered permanently unusable to prevent accidental future use. Complete documentation of the retirement, including date, reason, and method of disposal, must be maintained in accordance with ACCT record-keeping requirements.
+          <strong>Retirement Procedure:</strong> All retired equipment must be clearly marked "RETIRED - DO NOT USE", immediately removed from service, and physically destroyed or rendered permanently unusable to prevent accidental future use. Complete documentation of the retirement, including date, reason, and method of disposal, must be maintained in accordance with record-keeping requirements.
         </p>
       </div>
     </div>
