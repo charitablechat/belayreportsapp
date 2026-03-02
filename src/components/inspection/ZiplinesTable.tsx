@@ -6,8 +6,8 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import ResultSelect from "@/components/ResultSelect";
 import { GlobalAutocomplete } from "@/components/GlobalAutocomplete";
-import { Plus, Trash2, GripVertical } from "lucide-react";
-import { useState, useCallback, memo, useMemo } from "react";
+import { Plus, Trash2 } from "lucide-react";
+import { useState, useCallback, memo } from "react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -18,19 +18,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import {
-  DndContext,
-  DragOverlay,
-  PointerSensor,
-  TouchSensor,
-  closestCenter,
-  useSensor,
-  useSensors,
-  type DragEndEvent,
-  type DragStartEvent,
-} from "@dnd-kit/core";
-import { SortableContext, verticalListSortingStrategy, arrayMove } from "@dnd-kit/sortable";
 import { DraggableTableRow, DraggableMobileCard } from "./DraggableTableRow";
+import { useNativeDrag } from "@/hooks/useNativeDrag";
 
 interface ZiplinesTableProps {
   ziplines: any[];
@@ -42,14 +31,8 @@ const ZIP_GRID_COLS = "grid-cols-[40px_minmax(120px,1fr)_80px_80px_80px_80px_100
 
 function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: ZiplinesTableProps) {
   const [itemToDelete, setItemToDelete] = useState<{ id: string; name: string } | null>(null);
-  const [activeId, setActiveId] = useState<string | null>(null);
 
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
-    useSensor(TouchSensor, { activationConstraint: { distance: 8 } })
-  );
-
-
+  const { getDragProps } = useNativeDrag(ziplines, (reordered) => onUpdate(reordered));
 
   const addZipline = useCallback(() => {
     onUpdate(prev => [
@@ -87,23 +70,6 @@ function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: ZiplinesTablePro
     }
   }, [itemToDelete, onUpdate, onImmediateSave]);
 
-  const handleDragStart = useCallback((event: DragStartEvent) => {
-    setActiveId(event.active.id as string);
-  }, []);
-
-  const handleDragEnd = useCallback((event: DragEndEvent) => {
-    setActiveId(null);
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
-    onUpdate(prev => {
-      const oldIndex = prev.findIndex(z => z.id === active.id);
-      const newIndex = prev.findIndex(z => z.id === over.id);
-      return arrayMove(prev, oldIndex, newIndex);
-    });
-  }, [onUpdate]);
-
-  const activeZipline = useMemo(() => activeId ? ziplines.find(z => z.id === activeId) : null, [activeId, ziplines]);
-
   return (
     <Card>
       <CardHeader className="px-4 md:px-6">
@@ -122,234 +88,218 @@ function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: ZiplinesTablePro
           <p><strong>Emergency Brake System KEY -</strong> ZS = Zip Stop, AP = Auto Prusik, SB = Spring Bank</p>
         </div>
 
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragCancel={() => setActiveId(null)}>
-            {/* Desktop grid view */}
-            <div className="hidden md:block overflow-x-auto">
-              <div className="min-w-[1200px]">
-                {/* Header */}
-                <div className={`grid ${ZIP_GRID_COLS} bg-blue-50 dark:bg-blue-950/20 border-b border-border text-xs`}>
-                  <div className="p-2 text-center font-semibold border-r border-border"></div>
-                  <div className="p-2 text-left font-semibold border-r border-border">Line Name</div>
-                  <div className="p-2 text-left font-semibold border-r border-border">Cable Type</div>
-                  <div className="p-2 text-left font-semibold border-r border-border">Length (ft)</div>
-                  <div className="p-2 text-left font-semibold border-r border-border">Unload (lbf)</div>
-                  <div className="p-2 text-left font-semibold border-r border-border">Load (lbf)</div>
-                  <div className="p-2 text-left font-semibold border-r border-border">Cable Result</div>
-                  <div className="p-2 text-left font-semibold border-r border-border">Braking Sys</div>
-                  <div className="p-2 text-left font-semibold border-r border-border">Braking Result</div>
-                  <div className="p-2 text-left font-semibold border-r border-border">EAD Sys</div>
-                  <div className="p-2 text-left font-semibold border-r border-border">EAD Result</div>
-                  <div className="p-2 text-left font-semibold border-r border-border">Overall</div>
-                  <div className="p-2 text-left font-semibold border-r border-border">Comments</div>
-                  <div className="p-2 text-center font-semibold"></div>
-                </div>
-                {/* Rows */}
-                <div className="border border-t-0 border-border rounded-b">
-                <SortableContext items={ziplines.map(z => z.id)} strategy={verticalListSortingStrategy}>
-                  {ziplines.map((zipline) => (
-                    <DraggableTableRow
-                      key={zipline.id}
-                      id={zipline.id}
-                      className="hover:bg-muted/50 text-sm"
-                      gridCols={ZIP_GRID_COLS}
-                    >
-                      <div className="p-1 border-r border-border">
-                        <GlobalAutocomplete
-                          value={zipline.zipline_name}
-                          onChange={(value) => updateZipline(zipline, "zipline_name", value)}
-                          onBlur={onImmediateSave}
-                          fieldType="zipline_name"
-                          placeholder="Name"
-                          className="border-0 bg-transparent h-8 text-xs"
-                        />
-                      </div>
-                      <div className="p-1 border-r border-border">
-                        <Select value={zipline.cable_type} onValueChange={(value) => updateZipline(zipline, "cable_type", value)}>
-                          <SelectTrigger className="h-8 text-xs border-0 bg-transparent"><SelectValue placeholder="Type" /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="GAC">GAC</SelectItem>
-                            <SelectItem value="SS">SS</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="p-1 border-r border-border">
-                        <Input type="number" value={zipline.cable_length || ""} onChange={(e) => updateZipline(zipline, "cable_length", parseFloat(e.target.value) || null)} onBlur={onImmediateSave} onKeyDown={(e) => e.key === 'Enter' && onImmediateSave?.()} placeholder="ft" className="border-0 bg-transparent h-8 text-xs" />
-                      </div>
-                      <div className="p-1 border-r border-border">
-                        <Input type="number" value={zipline.unload_tension || ""} onChange={(e) => updateZipline(zipline, "unload_tension", parseFloat(e.target.value) || null)} onBlur={onImmediateSave} onKeyDown={(e) => e.key === 'Enter' && onImmediateSave?.()} placeholder="lbf" className="border-0 bg-transparent h-8 text-xs" />
-                      </div>
-                      <div className="p-1 border-r border-border">
-                        <Input type="number" value={zipline.load_tension || ""} onChange={(e) => updateZipline(zipline, "load_tension", parseFloat(e.target.value) || null)} onBlur={onImmediateSave} onKeyDown={(e) => e.key === 'Enter' && onImmediateSave?.()} placeholder="lbf" className="border-0 bg-transparent h-8 text-xs" />
-                      </div>
-                      <div className="p-1 border-r border-border">
-                        <ResultSelect value={zipline.cable_result} onChange={(value) => updateZipline(zipline, "cable_result", value)} />
-                      </div>
-                      <div className="p-1 border-r border-border">
-                        <Select value={zipline.braking_system} onValueChange={(value) => updateZipline(zipline, "braking_system", value)}>
-                          <SelectTrigger className="h-8 text-xs border-0 bg-transparent"><SelectValue placeholder="Sys" /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="ZS">ZS</SelectItem>
-                            <SelectItem value="FB">FB</SelectItem>
-                            <SelectItem value="SB">SB</SelectItem>
-                            <SelectItem value="G">G</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="p-1 border-r border-border">
-                        <ResultSelect value={zipline.braking_result} onChange={(value) => updateZipline(zipline, "braking_result", value)} />
-                      </div>
-                      <div className="p-1 border-r border-border">
-                        <Select value={zipline.ead_system} onValueChange={(value) => updateZipline(zipline, "ead_system", value)}>
-                          <SelectTrigger className="h-8 text-xs border-0 bg-transparent"><SelectValue placeholder="Sys" /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="ZS">ZS</SelectItem>
-                            <SelectItem value="AP">AP</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="p-1 border-r border-border">
-                        <ResultSelect value={zipline.ead_result} onChange={(value) => updateZipline(zipline, "ead_result", value)} />
-                      </div>
-                      <div className="p-1 border-r border-border">
-                        <ResultSelect value={zipline.result} onChange={(value) => updateZipline(zipline, "result", value)} />
-                      </div>
-                      <div className="p-1 border-r border-border">
-                        <VoiceRichTextEditor content={zipline.comments || ""} onChange={(value) => updateZipline(zipline, "comments", value)} placeholder="Comments..." className="border-0 bg-transparent" />
-                      </div>
-                      <div className="p-1 text-center">
-                        <Button variant="ghost" size="sm" onClick={() => setItemToDelete({ id: zipline.id, name: zipline.zipline_name || "this zipline" })} className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10">
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </DraggableTableRow>
-                  ))}
-                </SortableContext>
-                </div>
-              </div>
+        {/* Desktop grid view */}
+        <div className="hidden md:block overflow-x-auto">
+          <div className="min-w-[1200px]">
+            {/* Header */}
+            <div className={`grid ${ZIP_GRID_COLS} bg-blue-50 dark:bg-blue-950/20 border-b border-border text-xs`}>
+              <div className="p-2 text-center font-semibold border-r border-border"></div>
+              <div className="p-2 text-left font-semibold border-r border-border">Line Name</div>
+              <div className="p-2 text-left font-semibold border-r border-border">Cable Type</div>
+              <div className="p-2 text-left font-semibold border-r border-border">Length (ft)</div>
+              <div className="p-2 text-left font-semibold border-r border-border">Unload (lbf)</div>
+              <div className="p-2 text-left font-semibold border-r border-border">Load (lbf)</div>
+              <div className="p-2 text-left font-semibold border-r border-border">Cable Result</div>
+              <div className="p-2 text-left font-semibold border-r border-border">Braking Sys</div>
+              <div className="p-2 text-left font-semibold border-r border-border">Braking Result</div>
+              <div className="p-2 text-left font-semibold border-r border-border">EAD Sys</div>
+              <div className="p-2 text-left font-semibold border-r border-border">EAD Result</div>
+              <div className="p-2 text-left font-semibold border-r border-border">Overall</div>
+              <div className="p-2 text-left font-semibold border-r border-border">Comments</div>
+              <div className="p-2 text-center font-semibold"></div>
             </div>
-            
-            {/* Mobile/Tablet card view */}
-            <div className="md:hidden space-y-3">
-              <SortableContext items={ziplines.map(z => z.id)} strategy={verticalListSortingStrategy}>
+            {/* Rows */}
+            <div className="border border-t-0 border-border rounded-b">
               {ziplines.map((zipline) => (
-                <DraggableMobileCard key={zipline.id} id={zipline.id}>
-                  <div className="p-4 pl-12 relative border-l-4 border-l-primary/20 rounded-lg bg-muted/30 border border-border">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setItemToDelete({ id: zipline.id, name: zipline.zipline_name || "this zipline" })}
-                      className="absolute top-3 right-3 h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
-                    >
+                <DraggableTableRow
+                  key={zipline.id}
+                  id={zipline.id}
+                  className="hover:bg-muted/50 text-sm"
+                  gridCols={ZIP_GRID_COLS}
+                  {...getDragProps(zipline.id)}
+                >
+                  <div className="p-1 border-r border-border">
+                    <GlobalAutocomplete
+                      value={zipline.zipline_name}
+                      onChange={(value) => updateZipline(zipline, "zipline_name", value)}
+                      onBlur={onImmediateSave}
+                      fieldType="zipline_name"
+                      placeholder="Name"
+                      className="border-0 bg-transparent h-8 text-xs"
+                    />
+                  </div>
+                  <div className="p-1 border-r border-border">
+                    <Select value={zipline.cable_type} onValueChange={(value) => updateZipline(zipline, "cable_type", value)}>
+                      <SelectTrigger className="h-8 text-xs border-0 bg-transparent"><SelectValue placeholder="Type" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="GAC">GAC</SelectItem>
+                        <SelectItem value="SS">SS</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="p-1 border-r border-border">
+                    <Input type="number" value={zipline.cable_length || ""} onChange={(e) => updateZipline(zipline, "cable_length", parseFloat(e.target.value) || null)} onBlur={onImmediateSave} onKeyDown={(e) => e.key === 'Enter' && onImmediateSave?.()} placeholder="ft" className="border-0 bg-transparent h-8 text-xs" />
+                  </div>
+                  <div className="p-1 border-r border-border">
+                    <Input type="number" value={zipline.unload_tension || ""} onChange={(e) => updateZipline(zipline, "unload_tension", parseFloat(e.target.value) || null)} onBlur={onImmediateSave} onKeyDown={(e) => e.key === 'Enter' && onImmediateSave?.()} placeholder="lbf" className="border-0 bg-transparent h-8 text-xs" />
+                  </div>
+                  <div className="p-1 border-r border-border">
+                    <Input type="number" value={zipline.load_tension || ""} onChange={(e) => updateZipline(zipline, "load_tension", parseFloat(e.target.value) || null)} onBlur={onImmediateSave} onKeyDown={(e) => e.key === 'Enter' && onImmediateSave?.()} placeholder="lbf" className="border-0 bg-transparent h-8 text-xs" />
+                  </div>
+                  <div className="p-1 border-r border-border">
+                    <ResultSelect value={zipline.cable_result} onChange={(value) => updateZipline(zipline, "cable_result", value)} />
+                  </div>
+                  <div className="p-1 border-r border-border">
+                    <Select value={zipline.braking_system} onValueChange={(value) => updateZipline(zipline, "braking_system", value)}>
+                      <SelectTrigger className="h-8 text-xs border-0 bg-transparent"><SelectValue placeholder="Sys" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="ZS">ZS</SelectItem>
+                        <SelectItem value="FB">FB</SelectItem>
+                        <SelectItem value="SB">SB</SelectItem>
+                        <SelectItem value="G">G</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="p-1 border-r border-border">
+                    <ResultSelect value={zipline.braking_result} onChange={(value) => updateZipline(zipline, "braking_result", value)} />
+                  </div>
+                  <div className="p-1 border-r border-border">
+                    <Select value={zipline.ead_system} onValueChange={(value) => updateZipline(zipline, "ead_system", value)}>
+                      <SelectTrigger className="h-8 text-xs border-0 bg-transparent"><SelectValue placeholder="Sys" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="ZS">ZS</SelectItem>
+                        <SelectItem value="AP">AP</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="p-1 border-r border-border">
+                    <ResultSelect value={zipline.ead_result} onChange={(value) => updateZipline(zipline, "ead_result", value)} />
+                  </div>
+                  <div className="p-1 border-r border-border">
+                    <ResultSelect value={zipline.result} onChange={(value) => updateZipline(zipline, "result", value)} />
+                  </div>
+                  <div className="p-1 border-r border-border">
+                    <VoiceRichTextEditor content={zipline.comments || ""} onChange={(value) => updateZipline(zipline, "comments", value)} placeholder="Comments..." className="border-0 bg-transparent" />
+                  </div>
+                  <div className="p-1 text-center">
+                    <Button variant="ghost" size="sm" onClick={() => setItemToDelete({ id: zipline.id, name: zipline.zipline_name || "this zipline" })} className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10">
                       <Trash2 className="h-4 w-4" />
                     </Button>
-                    <div className="space-y-3 pr-10">
-                      <div>
-                        <Label className="text-xs text-muted-foreground">Line Name</Label>
-                        <GlobalAutocomplete
-                          value={zipline.zipline_name}
-                          onChange={(value) => updateZipline(zipline, "zipline_name", value)}
-                          onBlur={onImmediateSave}
-                          fieldType="zipline_name"
-                          placeholder="Enter or select name"
-                        />
-                      </div>
-                      
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="min-w-0">
-                          <Label className="text-xs text-muted-foreground">Cable Type</Label>
-                          <Select value={zipline.cable_type} onValueChange={(value) => updateZipline(zipline, "cable_type", value)}>
-                            <SelectTrigger><SelectValue placeholder="Type" /></SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="GAC">GAC</SelectItem>
-                              <SelectItem value="SS">SS</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        <div className="min-w-0">
-                          <Label className="text-xs text-muted-foreground">Length (ft)</Label>
-                          <Input type="number" value={zipline.cable_length || ""} onChange={(e) => updateZipline(zipline, "cable_length", parseFloat(e.target.value) || null)} onBlur={onImmediateSave} onKeyDown={(e) => e.key === 'Enter' && onImmediateSave?.()} placeholder="Length" />
-                        </div>
-                      </div>
-                      
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="min-w-0">
-                          <Label className="text-xs text-muted-foreground">Unload</Label>
-                          <Input type="number" value={zipline.unload_tension || ""} onChange={(e) => updateZipline(zipline, "unload_tension", parseFloat(e.target.value) || null)} onBlur={onImmediateSave} onKeyDown={(e) => e.key === 'Enter' && onImmediateSave?.()} placeholder="Unload" />
-                        </div>
-                        <div className="min-w-0">
-                          <Label className="text-xs text-muted-foreground">Load</Label>
-                          <Input type="number" value={zipline.load_tension || ""} onChange={(e) => updateZipline(zipline, "load_tension", parseFloat(e.target.value) || null)} onBlur={onImmediateSave} onKeyDown={(e) => e.key === 'Enter' && onImmediateSave?.()} placeholder="Load" />
-                        </div>
-                      </div>
-                      
-                      <div>
-                        <Label className="text-xs text-muted-foreground">Cable Result</Label>
-                        <ResultSelect value={zipline.cable_result} onChange={(value) => updateZipline(zipline, "cable_result", value)} />
-                      </div>
-                      
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="min-w-0">
-                          <Label className="text-xs text-muted-foreground">Braking Sys</Label>
-                          <Select value={zipline.braking_system} onValueChange={(value) => updateZipline(zipline, "braking_system", value)}>
-                            <SelectTrigger><SelectValue placeholder="System" /></SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="ZS">ZS - Zip Stop</SelectItem>
-                              <SelectItem value="FB">FB - Friction Break</SelectItem>
-                              <SelectItem value="SB">SB - Spring Bank</SelectItem>
-                              <SelectItem value="G">G - Gravity</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        <div className="min-w-0">
-                          <Label className="text-xs text-muted-foreground">Brake Result</Label>
-                          <ResultSelect value={zipline.braking_result} onChange={(value) => updateZipline(zipline, "braking_result", value)} />
-                        </div>
-                      </div>
-                      
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="min-w-0">
-                          <Label className="text-xs text-muted-foreground">EAD Sys</Label>
-                          <Select value={zipline.ead_system} onValueChange={(value) => updateZipline(zipline, "ead_system", value)}>
-                            <SelectTrigger><SelectValue placeholder="System" /></SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="ZS">ZS - Zip Stop</SelectItem>
-                              <SelectItem value="AP">AP - Auto P</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        <div className="min-w-0">
-                          <Label className="text-xs text-muted-foreground">EAD Result</Label>
-                          <ResultSelect value={zipline.ead_result} onChange={(value) => updateZipline(zipline, "ead_result", value)} />
-                        </div>
-                      </div>
-                      
-                      <div>
-                        <Label className="text-xs text-muted-foreground">Overall Result</Label>
-                        <ResultSelect value={zipline.result} onChange={(value) => updateZipline(zipline, "result", value)} />
-                      </div>
-                      
-                      <div>
-                        <Label className="text-xs text-muted-foreground">Comments / Changes</Label>
-                        <VoiceRichTextEditor content={zipline.comments || ""} onChange={(value) => updateZipline(zipline, "comments", value)} placeholder="Enter comments..." />
-                      </div>
+                  </div>
+                </DraggableTableRow>
+              ))}
+            </div>
+          </div>
+        </div>
+        
+        {/* Mobile/Tablet card view */}
+        <div className="md:hidden space-y-3">
+          {ziplines.map((zipline) => (
+            <DraggableMobileCard key={zipline.id} id={zipline.id} {...getDragProps(zipline.id)}>
+              <div className="p-4 pl-12 relative border-l-4 border-l-primary/20 rounded-lg bg-muted/30 border border-border">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setItemToDelete({ id: zipline.id, name: zipline.zipline_name || "this zipline" })}
+                  className="absolute top-3 right-3 h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+                <div className="space-y-3 pr-10">
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Line Name</Label>
+                    <GlobalAutocomplete
+                      value={zipline.zipline_name}
+                      onChange={(value) => updateZipline(zipline, "zipline_name", value)}
+                      onBlur={onImmediateSave}
+                      fieldType="zipline_name"
+                      placeholder="Enter or select name"
+                    />
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="min-w-0">
+                      <Label className="text-xs text-muted-foreground">Cable Type</Label>
+                      <Select value={zipline.cable_type} onValueChange={(value) => updateZipline(zipline, "cable_type", value)}>
+                        <SelectTrigger><SelectValue placeholder="Type" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="GAC">GAC</SelectItem>
+                          <SelectItem value="SS">SS</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="min-w-0">
+                      <Label className="text-xs text-muted-foreground">Length (ft)</Label>
+                      <Input type="number" value={zipline.cable_length || ""} onChange={(e) => updateZipline(zipline, "cable_length", parseFloat(e.target.value) || null)} onBlur={onImmediateSave} onKeyDown={(e) => e.key === 'Enter' && onImmediateSave?.()} placeholder="Length" />
                     </div>
                   </div>
-                </DraggableMobileCard>
-              ))}
-              </SortableContext>
-            </div>
-          
-          <DragOverlay dropAnimation={{ duration: 200, easing: 'cubic-bezier(0.25, 1, 0.5, 1)' }}>
-            {activeZipline ? (
-              <div className="flex items-center gap-3 px-4 py-3 w-full min-w-[400px] rounded-lg border-l-4 border-l-primary bg-background shadow-2xl ring-2 ring-primary/30 scale-[1.02]">
-                <GripVertical className="w-4 h-4 text-muted-foreground shrink-0" />
-                <span className="font-medium text-sm truncate flex-1">{activeZipline.zipline_name || 'Zipline'}</span>
-                <span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground">{activeZipline.cable_type}</span>
-                <span className="text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary font-medium">{activeZipline.result}</span>
+                  
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="min-w-0">
+                      <Label className="text-xs text-muted-foreground">Unload</Label>
+                      <Input type="number" value={zipline.unload_tension || ""} onChange={(e) => updateZipline(zipline, "unload_tension", parseFloat(e.target.value) || null)} onBlur={onImmediateSave} onKeyDown={(e) => e.key === 'Enter' && onImmediateSave?.()} placeholder="Unload" />
+                    </div>
+                    <div className="min-w-0">
+                      <Label className="text-xs text-muted-foreground">Load</Label>
+                      <Input type="number" value={zipline.load_tension || ""} onChange={(e) => updateZipline(zipline, "load_tension", parseFloat(e.target.value) || null)} onBlur={onImmediateSave} onKeyDown={(e) => e.key === 'Enter' && onImmediateSave?.()} placeholder="Load" />
+                    </div>
+                  </div>
+                  
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Cable Result</Label>
+                    <ResultSelect value={zipline.cable_result} onChange={(value) => updateZipline(zipline, "cable_result", value)} />
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="min-w-0">
+                      <Label className="text-xs text-muted-foreground">Braking Sys</Label>
+                      <Select value={zipline.braking_system} onValueChange={(value) => updateZipline(zipline, "braking_system", value)}>
+                        <SelectTrigger><SelectValue placeholder="System" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="ZS">ZS - Zip Stop</SelectItem>
+                          <SelectItem value="FB">FB - Friction Break</SelectItem>
+                          <SelectItem value="SB">SB - Spring Bank</SelectItem>
+                          <SelectItem value="G">G - Gravity</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="min-w-0">
+                      <Label className="text-xs text-muted-foreground">Brake Result</Label>
+                      <ResultSelect value={zipline.braking_result} onChange={(value) => updateZipline(zipline, "braking_result", value)} />
+                    </div>
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="min-w-0">
+                      <Label className="text-xs text-muted-foreground">EAD Sys</Label>
+                      <Select value={zipline.ead_system} onValueChange={(value) => updateZipline(zipline, "ead_system", value)}>
+                        <SelectTrigger><SelectValue placeholder="System" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="ZS">ZS - Zip Stop</SelectItem>
+                          <SelectItem value="AP">AP - Auto P</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="min-w-0">
+                      <Label className="text-xs text-muted-foreground">EAD Result</Label>
+                      <ResultSelect value={zipline.ead_result} onChange={(value) => updateZipline(zipline, "ead_result", value)} />
+                    </div>
+                  </div>
+                  
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Overall Result</Label>
+                    <ResultSelect value={zipline.result} onChange={(value) => updateZipline(zipline, "result", value)} />
+                  </div>
+                  
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Comments / Changes</Label>
+                    <VoiceRichTextEditor content={zipline.comments || ""} onChange={(value) => updateZipline(zipline, "comments", value)} placeholder="Enter comments..." />
+                  </div>
+                </div>
               </div>
-            ) : null}
-          </DragOverlay>
-        </DndContext>
+            </DraggableMobileCard>
+          ))}
+        </div>
 
         <div className="mt-6 text-xs text-muted-foreground border-t pt-4">
           <p>

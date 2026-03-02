@@ -1,5 +1,3 @@
-import { useSortable } from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
 import { GripVertical } from "lucide-react";
 import { ReactNode } from "react";
 
@@ -8,32 +6,34 @@ interface DraggableTableRowProps {
   children: ReactNode;
   className?: string;
   gridCols: string;
+  isDragging?: boolean;
+  dropIndicator?: 'above' | 'below' | null;
+  onRowDragStart: (e: React.DragEvent, id: string) => void;
+  onRowDragOver: (e: React.DragEvent, id: string) => void;
+  onRowDragLeave: () => void;
+  onRowDrop: (e: React.DragEvent, id: string) => void;
+  onRowDragEnd: () => void;
 }
 
-export function DraggableTableRow({ id, children, className = "", gridCols }: DraggableTableRowProps) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging, isOver } = useSortable({ id });
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition: transition || 'transform 200ms ease',
-    opacity: isDragging ? 0.4 : 1,
-    zIndex: isDragging ? 50 : ('auto' as const),
-  };
-
+export function DraggableTableRow({
+  id, children, className = "", gridCols,
+  isDragging, dropIndicator,
+  onRowDragStart, onRowDragOver, onRowDragLeave, onRowDrop, onRowDragEnd,
+}: DraggableTableRowProps) {
   return (
     <div
-      ref={setNodeRef}
-      style={style}
-      className={`relative overflow-visible grid ${gridCols} border-b border-border bg-background ${className} ${isDragging ? 'border-dashed border-2 border-primary/30' : ''}`}
+      draggable
+      onDragStart={(e) => onRowDragStart(e, id)}
+      onDragOver={(e) => onRowDragOver(e, id)}
+      onDragLeave={onRowDragLeave}
+      onDrop={(e) => onRowDrop(e, id)}
+      onDragEnd={onRowDragEnd}
+      style={{ opacity: isDragging ? 0.4 : 1 }}
+      className={`relative grid ${gridCols} border-b border-border bg-background ${className} ${isDragging ? 'border-dashed border-2 border-primary/30' : ''} ${dropIndicator === 'above' ? 'border-t-[3px] border-t-[#2563EB]' : ''} ${dropIndicator === 'below' ? 'border-b-[3px] border-b-[#2563EB]' : ''}`}
     >
-      {isOver && !isDragging && (
-        <div className="absolute top-0 left-0 right-0 h-[3px] bg-primary z-50 -translate-y-1/2 rounded-full shadow-[0_0_8px_2px_hsl(var(--primary)/0.4)]" />
-      )}
       <div className="p-2 flex items-center justify-center border-r border-border">
         <div
-          {...attributes}
-          {...listeners}
-          className="cursor-grab active:cursor-grabbing touch-none inline-flex items-center justify-center"
+          className={`inline-flex items-center justify-center ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
           aria-label="Drag to reorder"
         >
           <GripVertical className="w-4 h-4 text-muted-foreground hover:text-foreground transition-colors" />
@@ -47,32 +47,33 @@ export function DraggableTableRow({ id, children, className = "", gridCols }: Dr
 interface DraggableMobileCardProps {
   id: string;
   children: ReactNode;
+  isDragging?: boolean;
+  dropIndicator?: 'above' | 'below' | null;
+  onRowDragStart: (e: React.DragEvent, id: string) => void;
+  onRowDragOver: (e: React.DragEvent, id: string) => void;
+  onRowDragLeave: () => void;
+  onRowDrop: (e: React.DragEvent, id: string) => void;
+  onRowDragEnd: () => void;
 }
 
-export function DraggableMobileCard({ id, children }: DraggableMobileCardProps) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging, isOver } = useSortable({ id });
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition: transition || 'transform 200ms ease',
-    opacity: isDragging ? 0.4 : 1,
-    zIndex: isDragging ? 50 : ('auto' as const),
-  };
-
+export function DraggableMobileCard({
+  id, children, isDragging, dropIndicator,
+  onRowDragStart, onRowDragOver, onRowDragLeave, onRowDrop, onRowDragEnd,
+}: DraggableMobileCardProps) {
   return (
     <div
-      ref={setNodeRef}
-      style={style}
-      className={`relative overflow-visible ${isDragging ? 'border-dashed border-2 border-primary/30 rounded-lg' : ''}`}
+      draggable
+      onDragStart={(e) => onRowDragStart(e, id)}
+      onDragOver={(e) => onRowDragOver(e, id)}
+      onDragLeave={onRowDragLeave}
+      onDrop={(e) => onRowDrop(e, id)}
+      onDragEnd={onRowDragEnd}
+      style={{ opacity: isDragging ? 0.4 : 1 }}
+      className={`relative ${isDragging ? 'border-dashed border-2 border-primary/30 rounded-lg' : ''} ${dropIndicator === 'above' ? 'border-t-[3px] border-t-[#2563EB]' : ''} ${dropIndicator === 'below' ? 'border-b-[3px] border-b-[#2563EB]' : ''}`}
     >
-      {isOver && !isDragging && (
-        <div className="absolute top-0 left-0 right-0 h-[3px] bg-primary z-50 -translate-y-1/2 rounded-full shadow-[0_0_8px_2px_hsl(var(--primary)/0.4)]" />
-      )}
       <div className="relative">
         <div
-          {...attributes}
-          {...listeners}
-          className="absolute top-3 left-3 z-10 p-1.5 bg-background/90 backdrop-blur-sm rounded-md cursor-grab active:cursor-grabbing touch-none shadow-sm border border-border hover:bg-accent transition-colors"
+          className={`absolute top-3 left-3 z-10 p-1.5 bg-background/90 backdrop-blur-sm rounded-md shadow-sm border border-border hover:bg-accent transition-colors ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
           aria-label="Drag to reorder"
         >
           <GripVertical className="w-4 h-4 text-muted-foreground" />
