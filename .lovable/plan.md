@@ -1,54 +1,83 @@
 
 
-## Fix: Eliminate Row Transforms to Stop Jumping
+## Fix: Replace @dnd-kit/sortable with @dnd-kit/core only
 
-### Problem
-The `verticalListSortingStrategy` applies large Y-axis transforms to ALL rows during drag (shifting them up/down to "make space"). This causes the visible jumping behavior. The DragOverlay already provides the visual ghost -- the rows themselves should stay put.
+### Root Cause
+`useSortable` from `@dnd-kit/sortable` bundles sorting transforms + collision detection together. You can't disable transforms without also breaking `isOver` and collision detection. This is why every attempt has failed — they're architecturally coupled.
 
-### Changes: `DraggableTableRow.tsx` only
+### Solution
+Use `@dnd-kit/core` primitives directly:
+- `useDraggable` on the grip handle -- provides dragging without any transform on the row
+- `useDroppable` on each row -- provides `isOver` independently of any sorting strategy
+- `DragOverlay` follows cursor naturally (no snapping)
+- No `SortableContext` or `verticalListSortingStrategy` needed
 
-All three changes target the `style` object in both `DraggableTableRow` and `DraggableMobileCard`:
+### File 1: `DraggableTableRow.tsx` -- Rewrite
 
-1. **Set `transform` to `undefined`** -- Rows stay in their original DOM position. The `DragOverlay` handles the moving visual. `useSortable` still tracks `isOver` for the drop indicator.
-2. **Lower opacity to `0.15`** -- Makes the source row nearly invisible so the DragOverlay ghost is the clear focal point.
-3. **Remove `transition`** -- No transition needed since there's no transform to animate. Prevents visual artifacts.
+Replace `useSortable` with separate `useDraggable` + `useDroppable`:
 
 ```typescript
-// DraggableTableRow style (lines 24-29)
-const style = {
-  transform: undefined,        // was: CSS.Transform.toString(transform)
-  transition: undefined,       // was: transition || 'transform 200ms ease'
-  opacity: isDragging ? 0.15 : 1,  // was: 0.3
-  zIndex: isDragging ? 50 : 'auto' as const,
-};
+import { useDraggable, useDroppable } from "@dnd-kit/core";
 
-// DraggableMobileCard style (lines 71-76) -- identical change
-const style = {
-  transform: undefined,
-  transition: undefined,
-  opacity: isDragging ? 0.15 : 1,
-  zIndex: isDragging ? 50 : 'auto' as const,
-};
+// DraggableTableRow
+const { setNodeRef: setDroppableRef, isOver } = useDroppable({ id });
+const { attributes, listeners, setNodeRef: setDragRef, isDragging } = useDraggable({ id });
+
+// No transform, no transition on the row -- rows stay completely static
+// isOver comes from useDroppable (works independently of sorting strategy)
+// Drag handle ref goes on the grip icon only
+// Droppable ref goes on the row container
 ```
 
-### What stays the same
-- `useSortable` hook stays (provides `isOver`, `isDragging`, `attributes`, `listeners`)
-- `SortableContext` in table components stays (provides collision detection)
-- Drop indicator (`isOver && !isDragging`) stays
-- `DragOverlay` in table components stays (cursor-following ghost)
-- All data mutation logic (`handleDragEnd`, `arrayMove`, `onUpdate`) untouched
-- CSS-Grid layout untouched
-- The `CSS` import from `@dnd-kit/utilities` can be removed since it's no longer used
+Key differences from previous attempts:
+- `useDroppable` provides `isOver` without needing sorting transforms
+- `useDraggable` only tracks the drag start/end, no transform applied to the source row
+- The grip handle uses `setDragRef` + `listeners` + `attributes`
+- The row container uses `setDroppableRef`
+- Opacity set to 0.15 when dragging (source row fades)
 
-### Why this works
-- Rows don't move = no jumping
-- `isOver` still fires correctly because `useSortable` tracks pointer position against droppable rects (the rects don't change since rows are static)
-- DragOverlay follows cursor independently (already confirmed working in recording)
-- `handleDragEnd` receives correct `active.id` and `over.id` from the collision detection layer, so reordering logic works
+### Files 2-4: Table Components (OperatingSystems, Ziplines, Equipment)
 
-### Files modified
+- Remove `SortableContext` and `verticalListSortingStrategy` imports
+- Remove `<SortableContext>` wrapper around rows
+- Add `closestCenter` import from `@dnd-kit/core` and pass as `collisionDetection` prop to `DndContext`
+- Keep `DragOverlay`, `handleDragStart`, `handleDragEnd`, `arrayMove` exactly as they are
+
+```typescript
+// Before
+import { arrayMove, SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
+
+// After
+import { arrayMove } from "@dnd-kit/sortable";  // only for the arrayMove utility
+import { closestCenter } from "@dnd-kit/core";   // add to existing core import
+
+// DndContext gets collisionDetection prop
+<DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={...} onDragEnd={...}>
+  {/* No SortableContext wrapper needed */}
+  {systems.map((system) => (
+    <DraggableTableRow key={system.id} id={system.id} ... />
+  ))}
+</DndContext>
+```
+
+### Why This Will Work
+
+This pattern separates the three concerns that `useSortable` bundles together:
+1. **Dragging** (`useDraggable`) -- only tracks grab/release, no row transforms
+2. **Drop targeting** (`useDroppable`) -- provides `isOver` based on pointer proximity to element rects (no transforms needed)
+3. **Visual feedback** (`DragOverlay`) -- follows cursor independently (already working)
+
+Since no transforms are applied to ANY rows, collision detection uses the actual static DOM rects, which are always accurate. `isOver` fires reliably. `DragOverlay` follows the cursor without snapping.
+
+### Changes Summary
+
 | File | Change |
 |------|--------|
-| `DraggableTableRow.tsx` | Set transform/transition to undefined, opacity to 0.15 in both components. Remove unused `CSS` import. |
+| `DraggableTableRow.tsx` | Replace `useSortable` with `useDraggable` + `useDroppable`. Drag ref on grip, droppable ref on container. No transforms. |
+| `OperatingSystemsTable.tsx` | Remove `SortableContext` wrapper. Add `closestCenter` to `DndContext`. Keep `arrayMove` import. |
+| `ZiplinesTable.tsx` | Same changes as OperatingSystems. |
+| `EquipmentTable.tsx` | Same changes as OperatingSystems. |
 
-No changes needed in the three table components -- they already have `SortableContext` and `DragOverlay` set up correctly.
+### Data Safety
+Zero changes to `handleDragEnd`, `arrayMove`, `onUpdate`, or any mutation logic. The `active.id` and `over.id` values passed to `handleDragEnd` come from `DndContext` collision detection, which works the same way with `closestCenter` + `useDroppable`.
+
