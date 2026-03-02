@@ -22,9 +22,9 @@ export function DraggableTableRow({ id, children, className = "", gridCols }: Dr
   } = useSortable({ id });
 
   const style = {
-    transform: CSS.Transform.toString(transform),
-    transition: transition || 'transform 200ms ease',
-    opacity: isDragging ? 0.5 : 1,
+    transform: undefined,
+    transition: undefined,
+    opacity: isDragging ? 0.15 : 1,
     zIndex: isDragging ? 50 : ('auto' as const),
     boxShadow: isDragging
       ? '0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05)'
@@ -69,9 +69,9 @@ export function DraggableMobileCard({ id, children }: DraggableMobileCardProps) 
   } = useSortable({ id });
 
   const style = {
-    transform: CSS.Transform.toString(transform),
-    transition: transition || 'transform 200ms ease',
-    opacity: isDragging ? 0.5 : 1,
+    transform: undefined,
+    transition: undefined,
+    opacity: isDragging ? 0.15 : 1,
     zIndex: isDragging ? 50 : ('auto' as const),
     boxShadow: isDragging
       ? '0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05)'
