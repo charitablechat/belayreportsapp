@@ -11,6 +11,10 @@ export function useNativeDrag<T extends { id: string }>(
   const [dragOverId, setDragOverId] = useState<string | null>(null);
   const [dropPosition, setDropPosition] = useState<'above' | 'below' | null>(null);
 
+  // Refs mirroring state for synchronous access in handleTouchEnd
+  const dragOverIdRef = useRef<string | null>(null);
+  const dropPositionRef = useRef<'above' | 'below' | null>(null);
+
   // Touch-specific refs
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const touchActiveRef = useRef(false);
@@ -18,6 +22,8 @@ export function useNativeDrag<T extends { id: string }>(
 
   const clearState = useCallback(() => {
     draggedIdRef.current = null;
+    dragOverIdRef.current = null;
+    dropPositionRef.current = null;
     touchActiveRef.current = false;
     touchStartPosRef.current = null;
     if (longPressTimerRef.current) {
@@ -119,10 +125,15 @@ export function useNativeDrag<T extends { id: string }>(
       if (targetId !== draggedIdRef.current) {
         const rect = rowEl.getBoundingClientRect();
         const midpoint = rect.top + rect.height / 2;
+        const pos = touch.clientY < midpoint ? 'above' : 'below';
+        dragOverIdRef.current = targetId;
+        dropPositionRef.current = pos;
         setDragOverId(targetId);
-        setDropPosition(touch.clientY < midpoint ? 'above' : 'below');
+        setDropPosition(pos);
       }
     } else {
+      dragOverIdRef.current = null;
+      dropPositionRef.current = null;
       setDragOverId(null);
       setDropPosition(null);
     }
@@ -134,12 +145,12 @@ export function useNativeDrag<T extends { id: string }>(
       longPressTimerRef.current = null;
     }
 
-    if (touchActiveRef.current && dragOverId && dropPosition) {
-      performReorder(dragOverId, dropPosition);
+    if (touchActiveRef.current && dragOverIdRef.current && dropPositionRef.current) {
+      performReorder(dragOverIdRef.current, dropPositionRef.current);
     }
 
     clearState();
-  }, [dragOverId, dropPosition, performReorder, clearState]);
+  }, [performReorder, clearState]);
 
   const handleTouchCancel = useCallback(() => {
     clearState();
