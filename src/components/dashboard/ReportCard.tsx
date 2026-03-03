@@ -191,7 +191,7 @@ export function ReportCard({ report, type, onDelete, onClick, getStatusBadge }: 
           {getReportLocation() && (
             <p className="text-muted-foreground line-clamp-1">{getReportLocation()}</p>
           )}
-          <p className="text-muted-foreground">
+          <p className="text-muted-foreground font-mono">
             Date: {parseLocalDate(getReportDate()) ? format(parseLocalDate(getReportDate())!, "PPP") : 'No date'}
           </p>
           <div className="flex items-center gap-2">
@@ -201,7 +201,7 @@ export function ReportCard({ report, type, onDelete, onClick, getStatusBadge }: 
                 {getInspectorInitials()}
               </AvatarFallback>
             </Avatar>
-            <span className="text-muted-foreground">
+            <span className="text-muted-foreground font-mono">
               {getInspectorName()}
             </span>
           </div>

@@ -1210,7 +1210,11 @@ export default function Dashboard() {
         </section>
 
         {/* Reports Section */}
-        <section>
+        <section className="border-2 border-foreground rounded-lg p-4">
+          {/* Brutalist loading bar */}
+          {loading && (
+            <div className="w-full h-[2px] bg-foreground mb-4 animate-pulse" />
+          )}
           <div className="mb-6">
             {/* Section Toggle: Recent / All Reports */}
             <Tabs value={reportSection} onValueChange={(v) => setReportSection(v as "recent" | "all")}>
