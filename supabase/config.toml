@@ -41,3 +41,9 @@ verify_jwt = true
  
  [functions.send-report-email]
  verify_jwt = true
+
+[functions.generate-og-image]
+verify_jwt = false
+
+[functions.og-meta]
+verify_jwt = false
