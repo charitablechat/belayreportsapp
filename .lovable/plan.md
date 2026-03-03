@@ -1,83 +1,85 @@
 
 
-## Add Touch Support to Native HTML5 Drag-and-Drop
+## Fix Touch Drag on Mobile: Replace Passive Listeners with Active Refs
 
-### Problem
+### Root Cause
 
-The current implementation uses native HTML5 drag events (`dragstart`, `dragover`, `drop`). These events **do not fire on mobile touch devices** (iOS Safari, Chrome for Android). This is a fundamental browser limitation — not a bug in the code. Touch devices use `touchstart`/`touchmove`/`touchend` instead.
+React registers `onTouchMove` as a **passive** event listener. Passive listeners cannot call `e.preventDefault()` -- the browser silently ignores it. This means:
+1. The page scrolls during a touch drag, causing `elementFromPoint()` to return wrong targets
+2. The drag feels unresponsive or broken on iOS/Android
+
+Additionally, `touch-action: none` is set via React state (`isDragging`), but the re-render happens too late -- the browser has already begun its native scroll gesture by then.
 
 ### Solution
 
-Add touch event handlers alongside the existing drag handlers. The touch handlers will:
-1. Detect a long-press on the grip handle to initiate a drag (to distinguish from scroll)
-2. Track finger position during `touchmove` to determine which row is being hovered and whether the drop position is above/below
-3. Reorder on `touchend` using the same logic as the existing `handleDrop`
+Use `useEffect` + `addEventListener('touchmove', handler, { passive: false })` on the row container via a ref, instead of React's `onTouchMove` prop. This gives us a non-passive listener where `preventDefault()` actually works.
 
-### File Changes
+### File 1: `src/hooks/useNativeDrag.tsx`
 
-#### 1. `src/hooks/useNativeDrag.tsx` — Add touch support
+**Changes:**
+- Remove `handleTouchMove` from the returned `getDragProps` (it will be attached via ref instead)
+- Export a new `touchMoveHandler` function that can be attached imperatively
+- Add a `containerRef` callback pattern: return a `getContainerProps(id)` that includes a ref callback which attaches the non-passive `touchmove` listener
+- Alternatively (simpler): return the raw `handleTouchMove` function so `DraggableTableRow` can attach it via `useEffect`
 
-- Add a `longPressTimeout` ref and `LONG_PRESS_MS` constant (e.g., 200ms) to distinguish drag intent from scrolling
-- Add `handleTouchStart(id)`: starts a timer; if finger stays still for 200ms, set `draggingId`
-- Add `handleTouchMove(e)`: use `document.elementFromPoint(touch.clientX, touch.clientY)` to find which row the finger is over, then calculate midpoint for above/below positioning (same logic as `handleDragOver`)
-- Add `handleTouchEnd()`: if a valid drag was in progress, perform the reorder (same logic as `handleDrop`), then clear state
-- Add `handleTouchCancel()`: clear all state
-- Rows being dragged over need a `data-drag-id` attribute so `elementFromPoint` can identify them
-- Return these touch handlers alongside existing drag handlers in `getDragProps`
+Chosen approach -- return the handler and let the row component attach it:
 
-#### 2. `src/components/inspection/DraggableTableRow.tsx` — Wire touch events
-
-- Accept new touch handler props: `onTouchDragStart`, `onTouchDragMove`, `onTouchDragEnd`, `onTouchDragCancel`
-- Attach `onTouchStart` to the **grip handle only** (not the whole row, so form inputs remain interactive)
-- Attach `onTouchMove` and `onTouchEnd` to the row container
-- Add `data-drag-id={id}` attribute to the row container for element detection
-- When touch-dragging is active, add `touch-action: none` to prevent page scrolling
-- Same changes for `DraggableMobileCard`
-
-#### 3. `src/components/inspection/EquipmentTable.tsx` — Wire touch props
-
-- EquipmentTable has inline drag handlers (not using `useNativeDrag` hook). Add the same touch handlers inline, or refactor to use `useNativeDrag`.
-- Pass touch handler props to `DraggableTableRow` and `DraggableMobileCard`
-
-#### 4. No changes needed for `OperatingSystemsTable.tsx` and `ZiplinesTable.tsx`
-- They already use `useNativeDrag` hook, so they automatically get touch support once the hook and `DraggableTableRow` are updated.
-
-### Touch Interaction Flow
-
-```text
-User touches grip handle
-        |
-   200ms hold?
-   /         \
-  No          Yes
-  |            |
-Normal      Set draggingId,
-scroll      prevent scroll
-              |
-        touchmove fires
-              |
-        elementFromPoint()
-        finds target row
-              |
-        Calculate midpoint
-        Set dropIndicator
-              |
-        touchend fires
-              |
-        Reorder array
-        Clear state
+```typescript
+// getDragProps returns:
+{
+  ...existingProps,
+  onTouchDragMove: handleTouchMove,  // still returned, but NOT used as React prop
+  touchMoveRef: handleTouchMove,     // same function, used by DraggableTableRow via useEffect
+}
 ```
 
-### Visual Feedback During Touch Drag
+No logic changes to the handler itself -- the midpoint detection and `elementFromPoint` logic is correct. The only issue is the passive listener.
 
-- Source row: opacity 0.4 + dashed border (same as desktop)
-- Target row: 3px blue line above or below (same as desktop)
-- No custom ghost element needed — the visual indicators are sufficient for touch
+### File 2: `src/components/inspection/DraggableTableRow.tsx`
 
-### Key Technical Details
+**DraggableTableRow changes:**
+- Add a `useRef` for the row container div
+- Add a `useEffect` that attaches `addEventListener('touchmove', handler, { passive: false })` to the ref element
+- Remove `onTouchMove={onTouchDragMove}` from the JSX (this was the passive listener)
+- Set `touch-action: none` on the grip handle element always (not conditionally via state), so the browser never initiates a scroll gesture when the user touches the grip. This is safe because the grip handle is small and not scrollable content.
 
-- `touch-action: none` CSS is applied dynamically only during an active drag to prevent scroll interference while allowing normal scrolling when not dragging
-- `document.elementFromPoint()` is used during `touchmove` because touch events don't have a natural "target changes as you move" behavior like `dragover` does
-- The long-press threshold prevents accidental drags when the user just wants to scroll past the grip handle
-- `e.preventDefault()` is called in `touchmove` only after drag is confirmed to avoid blocking scroll
+```typescript
+// Key pattern:
+const rowRef = useRef<HTMLDivElement>(null);
+
+useEffect(() => {
+  const el = rowRef.current;
+  if (!el || !onTouchDragMove) return;
+  const handler = (e: TouchEvent) => {
+    onTouchDragMove(e as unknown as React.TouchEvent);
+  };
+  el.addEventListener('touchmove', handler, { passive: false });
+  return () => el.removeEventListener('touchmove', handler);
+}, [onTouchDragMove]);
+```
+
+- Apply `touch-action: none` to the grip handle div (always), not to the row container conditionally
+
+**DraggableMobileCard changes:**
+- Same ref + useEffect pattern for non-passive touchmove
+- Same `touch-action: none` on the grip handle
+
+### File 3: `src/components/inspection/EquipmentTable.tsx`
+
+- Same change: the inline `handleTouchMove` is already correct, but the `DraggableTableRow` it passes it to will now use it via ref instead of React prop. No changes needed in EquipmentTable itself -- the fix is entirely in DraggableTableRow.
+
+### Changes Summary
+
+| File | Change |
+|------|--------|
+| `DraggableTableRow.tsx` | Add `useRef` + `useEffect` to attach `touchmove` with `{ passive: false }`. Remove `onTouchMove` React prop from the div. Add `touch-action: none` to grip handle. Same for `DraggableMobileCard`. |
+| `useNativeDrag.tsx` | No logic changes. The `handleTouchMove` function is already correct -- it just needs to be called from a non-passive listener. |
+| `EquipmentTable.tsx` | No changes needed. |
+
+### Why This Fixes Mobile
+
+1. **`preventDefault()` works**: Non-passive listener means the browser actually stops scrolling during a drag
+2. **`elementFromPoint()` accurate**: Without scroll interference, the finger position maps correctly to row elements
+3. **No timing race**: `touch-action: none` on the grip handle prevents the browser from ever initiating a scroll gesture when the drag starts from the grip, eliminating the state-update-too-late problem
+4. **Desktop unaffected**: Native HTML5 drag events continue to work as before
 
