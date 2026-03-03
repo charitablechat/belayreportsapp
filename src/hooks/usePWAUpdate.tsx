@@ -62,9 +62,9 @@ export const usePWAUpdate = (): PWAUpdateStatus => {
 
       const handleControllerChange = () => {
         if (import.meta.env.DEV) {
-          console.log('[PWA Update] New service worker activated');
+          console.log('[PWA Update] New service worker activated — flagging for user-initiated reload');
         }
-        window.location.reload();
+        setNeedRefresh(true);
       };
 
       navigator.serviceWorker.addEventListener('controllerchange', handleControllerChange);
