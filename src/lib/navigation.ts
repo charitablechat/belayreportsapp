@@ -14,10 +14,6 @@ export function trackNavigation() {
  * otherwise fall back to /dashboard.
  */
 export function goBack(navigate: (to: string | number) => void) {
-  if (navigationDepth > 0) {
-    navigationDepth--;
-    navigate(-1);
-  } else {
-    navigate("/dashboard");
-  }
+  navigationDepth = 0;
+  navigate("/dashboard");
 }
