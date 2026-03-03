@@ -136,6 +136,7 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
   // --- Touch handlers ---
 
   const handleTouchStart = useCallback((e: React.TouchEvent, id: string) => {
+    e.preventDefault();
     const touch = e.touches[0];
     touchStartPosRef.current = { x: touch.clientX, y: touch.clientY };
     longPressTimerRef.current = setTimeout(() => {

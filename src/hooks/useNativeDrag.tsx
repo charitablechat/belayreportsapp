@@ -87,6 +87,7 @@ export function useNativeDrag<T extends { id: string }>(
   // --- Touch handlers (mobile) ---
 
   const handleTouchStart = useCallback((e: React.TouchEvent, id: string) => {
+    e.preventDefault();
     const touch = e.touches[0];
     touchStartPosRef.current = { x: touch.clientX, y: touch.clientY };
     
