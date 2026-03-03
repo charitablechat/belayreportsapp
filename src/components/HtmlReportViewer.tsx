@@ -4,13 +4,15 @@
  */
 
  import { useEffect, useRef, useState } from 'react';
- import { X, Download, Share2, Mail, MessageSquare } from 'lucide-react';
+ import { X, Download, Share2, Mail, MessageSquare, Link2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { downloadHtmlReport, shareHtmlReport, printFromIframe, generateSmsLink, canShareViaSms } from '@/lib/html-report-viewer';
+ import { copyShareLink } from '@/lib/og-share';
  import { EmailReportDialog } from './EmailReportDialog';
  import { useNetworkStatus } from '@/hooks/useNetworkStatus';
 import { isMobile, isPWA } from '@/lib/mobile-detection';
+import { toast } from 'sonner';
 
 interface HtmlReportViewerProps {
   html: string;
@@ -22,6 +24,7 @@ interface HtmlReportViewerProps {
    reportType?: 'inspection' | 'training' | 'daily_assessment';
    organization?: string;
    date?: string;
+   reportId?: string;
 }
 
 export function HtmlReportViewer({
@@ -33,6 +36,7 @@ export function HtmlReportViewer({
    reportType,
    organization,
    date,
+   reportId,
 }: HtmlReportViewerProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const isMobileOrPWA = isMobile() || isPWA();
@@ -51,6 +55,16 @@ export function HtmlReportViewer({
   const handleSms = () => {
     if (smsLink) {
       window.open(smsLink, '_self');
+    }
+  };
+
+  const handleCopyShareLink = async () => {
+    if (!reportType || !reportId) return;
+    const success = await copyShareLink(reportType, reportId);
+    if (success) {
+      toast.success('Share link copied to clipboard');
+    } else {
+      toast.error('Failed to copy link');
     }
   };
 
@@ -288,6 +302,19 @@ export function HtmlReportViewer({
            <div className="flex items-center justify-between p-4 pt-[max(1rem,env(safe-area-inset-top))] border-b bg-background print:hidden">
              <h2 className="text-lg font-semibold truncate flex-1">{title}</h2>
              <div className="flex items-center gap-2 ml-4">
+              {Boolean(reportType && reportId) && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleCopyShareLink}
+                    className="gap-2 border-2 border-foreground hover:bg-foreground hover:text-background transition-colors duration-100"
+                    title="Copy shareable link with rich preview"
+                  >
+                    <Link2 className="h-4 w-4" />
+                    <span className="hidden sm:inline">Share Link</span>
+                  </Button>
+                )}
+
               {Boolean(reportType) && (
                   <Button
                     variant="outline"
