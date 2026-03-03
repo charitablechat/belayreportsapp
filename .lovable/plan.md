@@ -1,64 +1,78 @@
 
 
-## Fix Mobile Drag: Browser Text Selection Stealing Touch Sequence
+## Fix Mobile Touch Drag: Dragged Element Blocking `elementFromPoint`
 
 ### Root Cause
 
-The screenshot reveals the exact problem: the browser's **native long-press behavior** (text selection + context menu popup "Copy Share Select all Web search") is hijacking the touch sequence before the custom drag handlers can operate.
+The core bug is that `document.elementFromPoint()` during `touchmove` hits the **dragged element itself**, not the row underneath. Here's why:
 
-Here's the sequence of failure:
-1. User long-presses the grip handle (200ms timer starts)
-2. Browser simultaneously interprets the long-press as a **text selection gesture**
-3. Browser shows context menu and highlights nearby text ("Element Name")
-4. Browser takes ownership of the touch sequence
-5. Subsequent `touchmove` events are consumed by the browser's selection drag, not the custom handler
-6. `isDragging` visual state activates (opacity 0.4) but no `touchmove` target detection occurs
-7. On `touchend`, refs are still null, so no reorder executes
+1. User long-presses grip on Row A -- drag activates, Row A gets `opacity: 0.4`
+2. User slides finger down toward Row B
+3. `elementFromPoint(touch.clientX, touch.clientY)` fires
+4. Row A is still in normal document flow (just visually transparent) -- it still receives hit-testing
+5. `closest('[data-drag-id]')` finds Row A
+6. Code checks `targetId !== draggedIdRef.current` -- this is FALSE (same element), so it **skips** updating state
+7. Drop indicator never appears on any other row
 
-The grip handle has `touchAction: 'none'` (prevents scroll/zoom) but this does NOT prevent text selection or context menus.
+On mobile cards this is especially bad because each card is tall (multiple fields stacked), so the finger stays within the dragged card's bounds for a long movement distance.
 
-### Fix
+Additionally, the browser context menu (visible in the screenshot) can still appear despite `e.preventDefault()` on `touchstart`, because the `contextmenu` event itself is not being intercepted.
 
-Three complementary changes to block all browser interference:
+### Fix: Two Changes
 
-### File 1: `src/hooks/useNativeDrag.tsx`
+#### 1. Add `pointer-events: none` to the dragged element during touch drag
 
-- In `handleTouchStart`: call `e.preventDefault()` to suppress the browser's default long-press behavior (text selection, context menu). This is the critical fix.
+This makes `elementFromPoint` "see through" the dragged element to the row underneath. Touch event dispatching is unaffected because touch events follow the original target element, not hit-testing. Desktop drag is also unaffected because it uses `onDragOver` per-element, not `elementFromPoint`.
 
-### File 2: `src/components/inspection/EquipmentTable.tsx`
+**Files:** `src/components/inspection/DraggableTableRow.tsx`
 
-- Same change in its inline `handleTouchStart`: add `e.preventDefault()`.
+For both `DraggableTableRow` and `DraggableMobileCard`, change the inline style from:
+```
+style={{ opacity: isDragging ? 0.4 : 1 }}
+```
+to:
+```
+style={{
+  opacity: isDragging ? 0.4 : 1,
+  pointerEvents: isTouchDragging ? 'none' : undefined,
+}}
+```
 
-### File 3: `src/components/inspection/DraggableTableRow.tsx`
+This uses the existing `isTouchDragging` prop (already passed from `getDragProps`) to only disable pointer-events during touch-initiated drags, preserving desktop behavior.
 
-- Add CSS `userSelect: 'none'` and `WebkitTouchCallout: 'none'` to the grip handle's inline style (alongside the existing `touchAction: 'none'`). This provides a CSS-level defense against text selection for both iOS (`-webkit-touch-callout`) and Android (`user-select`).
-- Apply to both `DraggableTableRow` and `DraggableMobileCard` grip handles.
+For `DraggableMobileCard`, `isTouchDragging` is currently not destructured from props -- it needs to be added to the destructuring.
 
-### Why These Three Together
+#### 2. Prevent the `contextmenu` event on grip handles
 
-| Defense Layer | What it blocks | Where |
-|---|---|---|
-| `e.preventDefault()` on touchstart | Browser default action (text select, context menu) | Event handler |
-| `user-select: none` | CSS text selection on drag handle | Grip handle style |
-| `-webkit-touch-callout: none` | iOS long-press callout menu | Grip handle style |
+Add an `onContextMenu={(e) => e.preventDefault()}` handler to both grip handle divs to block the browser's long-press context menu that's visible in the screenshot.
 
-### No changes needed to
+**File:** `src/components/inspection/DraggableTableRow.tsx`
 
-- `useNativeDrag` touch logic (ref mirroring, drop detection) -- already correct from previous fixes
-- `OperatingSystemsTable` / `ZiplinesTable` -- they use `useNativeDrag` hook which gets the fix automatically
+On both grip handle `<div>` elements (DraggableTableRow line ~60, DraggableMobileCard line ~127), add:
+```
+onContextMenu={(e) => e.preventDefault()}
+```
 
-### Technical Detail
+### Summary of Changes
+
+| File | Change |
+|------|--------|
+| `DraggableTableRow.tsx` (DraggableTableRow) | Add `pointerEvents: isTouchDragging ? 'none' : undefined` to row style; add `onContextMenu` to grip |
+| `DraggableTableRow.tsx` (DraggableMobileCard) | Destructure `isTouchDragging` from props; add `pointerEvents` to card style; add `onContextMenu` to grip |
+
+No changes needed to `useNativeDrag.tsx` or `EquipmentTable.tsx` -- the `isTouchDragging` prop is already computed and passed correctly.
+
+### Why This Works
 
 ```text
 Before (broken):
-  touchstart on grip -> browser starts text selection timer
-  200ms later -> both isDragging=true AND browser shows context menu
-  touchmove -> browser handles it for selection drag, custom handler starved
+  touchmove -> elementFromPoint -> hits dragged row (opacity 0.4 but still in flow)
+  -> targetId === draggedId -> SKIP -> no indicator ever appears
 
 After (fixed):
-  touchstart on grip -> e.preventDefault() blocks browser defaults
-  200ms later -> isDragging=true, no competing browser behavior
-  touchmove -> custom handler receives events, detects targets
-  touchend -> refs have valid target, reorder executes
+  touchmove -> elementFromPoint -> dragged row has pointer-events:none, skipped
+  -> hits row underneath -> targetId !== draggedId -> state updates -> indicator renders
 ```
+
+Desktop behavior is completely unaffected: `isTouchDragging` is false on desktop, so `pointer-events` stays at default.
 
