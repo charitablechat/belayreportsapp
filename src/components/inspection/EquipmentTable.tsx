@@ -53,6 +53,8 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
   const dragOverIdRef = useRef<string | null>(null);
   const dropPositionRef = useRef<'above' | 'below' | null>(null);
 
+  const [isTouchMode, setIsTouchMode] = useState(false);
+
   // Touch-specific refs
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const touchActiveRef = useRef(false);
@@ -71,6 +73,7 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
     setDraggingId(null);
     setDragOverId(null);
     setDropPosition(null);
+    setIsTouchMode(false);
   }, []);
 
   const handleDragStart = useCallback((e: React.DragEvent, id: string) => {
@@ -139,6 +142,7 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
       draggedIdRef.current = id;
       touchActiveRef.current = true;
       setDraggingId(id);
+      setIsTouchMode(true);
     }, 200);
   }, []);
 
@@ -198,7 +202,8 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
     onTouchDragMove: handleTouchMove,
     onTouchDragEnd: handleTouchEnd,
     onTouchDragCancel: handleTouchCancel,
-  }), [draggingId, dragOverId, dropPosition, handleDragStart, handleDragOver, handleDragLeave, handleDrop, handleDragEnd, handleTouchStart, handleTouchMove, handleTouchEnd, handleTouchCancel]);
+    isTouchDragging: isTouchMode && draggingId === id,
+  }), [draggingId, dragOverId, dropPosition, isTouchMode, handleDragStart, handleDragOver, handleDragLeave, handleDrop, handleDragEnd, handleTouchStart, handleTouchMove, handleTouchEnd, handleTouchCancel]);
 
   const addEquipment = useCallback(() => {
     onUpdate(prev => [
