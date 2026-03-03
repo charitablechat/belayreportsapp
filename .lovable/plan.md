@@ -1,78 +1,56 @@
 
 
-## Fix Mobile Touch Drag: Dragged Element Blocking `elementFromPoint`
+## Fix: Prevent Text Selection on All Draggable Rows During Touch Drag
 
-### Root Cause
+### Remaining Problem
 
-The core bug is that `document.elementFromPoint()` during `touchmove` hits the **dragged element itself**, not the row underneath. Here's why:
+All five implementation points are verified as correctly coded. The **remaining failure** visible in the screenshot is that text on *other* cards (the ones being dragged *over*) gets selected during touch movement. The word "Element" is highlighted blue on the target card.
 
-1. User long-presses grip on Row A -- drag activates, Row A gets `opacity: 0.4`
-2. User slides finger down toward Row B
-3. `elementFromPoint(touch.clientX, touch.clientY)` fires
-4. Row A is still in normal document flow (just visually transparent) -- it still receives hit-testing
-5. `closest('[data-drag-id]')` finds Row A
-6. Code checks `targetId !== draggedIdRef.current` -- this is FALSE (same element), so it **skips** updating state
-7. Drop indicator never appears on any other row
+This causes two problems:
+1. Browser text selection competes with custom drag handling
+2. `elementFromPoint()` may hit selected text overlays instead of the card container
 
-On mobile cards this is especially bad because each card is tall (multiple fields stacked), so the finger stays within the dragged card's bounds for a long movement distance.
+The root cause: `user-select: none` is only applied to the grip handle divs, not to the card/row containers. During a touch drag, the finger slides over other cards' content areas which still have default `user-select: auto`.
 
-Additionally, the browser context menu (visible in the screenshot) can still appear despite `e.preventDefault()` on `touchstart`, because the `contextmenu` event itself is not being intercepted.
+### Fix Strategy
 
-### Fix: Two Changes
+Apply `user-select: none` to ALL draggable row/card containers unconditionally (not just during drag). These are interactive data-entry rows — text selection on them is never the desired behavior (inputs handle their own selection). This is a single-file change.
 
-#### 1. Add `pointer-events: none` to the dragged element during touch drag
+### Changes: `src/components/inspection/DraggableTableRow.tsx`
 
-This makes `elementFromPoint` "see through" the dragged element to the row underneath. Touch event dispatching is unaffected because touch events follow the original target element, not hit-testing. Desktop drag is also unaffected because it uses `onDragOver` per-element, not `elementFromPoint`.
+**DraggableTableRow** — add `userSelect: 'none'` and `WebkitTouchCallout: 'none'` to the container's inline style (the `div` with `ref={rowRef}`):
 
-**Files:** `src/components/inspection/DraggableTableRow.tsx`
-
-For both `DraggableTableRow` and `DraggableMobileCard`, change the inline style from:
-```
-style={{ opacity: isDragging ? 0.4 : 1 }}
-```
-to:
-```
+```typescript
 style={{
   opacity: isDragging ? 0.4 : 1,
   pointerEvents: isTouchDragging ? 'none' : undefined,
-}}
+  userSelect: 'none',
+  WebkitTouchCallout: 'none',
+} as React.CSSProperties}
 ```
 
-This uses the existing `isTouchDragging` prop (already passed from `getDragProps`) to only disable pointer-events during touch-initiated drags, preserving desktop behavior.
+**DraggableMobileCard** — same change on the container `div` with `ref={cardRef}`:
 
-For `DraggableMobileCard`, `isTouchDragging` is currently not destructured from props -- it needs to be added to the destructuring.
-
-#### 2. Prevent the `contextmenu` event on grip handles
-
-Add an `onContextMenu={(e) => e.preventDefault()}` handler to both grip handle divs to block the browser's long-press context menu that's visible in the screenshot.
-
-**File:** `src/components/inspection/DraggableTableRow.tsx`
-
-On both grip handle `<div>` elements (DraggableTableRow line ~60, DraggableMobileCard line ~127), add:
+```typescript
+style={{
+  opacity: isDragging ? 0.4 : 1,
+  pointerEvents: isTouchDragging ? 'none' : undefined,
+  userSelect: 'none',
+  WebkitTouchCallout: 'none',
+} as React.CSSProperties}
 ```
-onContextMenu={(e) => e.preventDefault()}
-```
-
-### Summary of Changes
-
-| File | Change |
-|------|--------|
-| `DraggableTableRow.tsx` (DraggableTableRow) | Add `pointerEvents: isTouchDragging ? 'none' : undefined` to row style; add `onContextMenu` to grip |
-| `DraggableTableRow.tsx` (DraggableMobileCard) | Destructure `isTouchDragging` from props; add `pointerEvents` to card style; add `onContextMenu` to grip |
-
-No changes needed to `useNativeDrag.tsx` or `EquipmentTable.tsx` -- the `isTouchDragging` prop is already computed and passed correctly.
 
 ### Why This Works
 
-```text
-Before (broken):
-  touchmove -> elementFromPoint -> hits dragged row (opacity 0.4 but still in flow)
-  -> targetId === draggedId -> SKIP -> no indicator ever appears
+- Text selection is disabled on ALL draggable containers (both the dragged one and the ones being dragged over)
+- `elementFromPoint()` will cleanly hit the container divs without text selection overlays interfering
+- Input fields, textareas, and rich text editors inside the rows handle their own selection independently — `user-select: none` on the container does not prevent typing or selecting within focused inputs
+- No other files need changes — `useNativeDrag.tsx`, `EquipmentTable.tsx`, and the table components remain untouched
 
-After (fixed):
-  touchmove -> elementFromPoint -> dragged row has pointer-events:none, skipped
-  -> hits row underneath -> targetId !== draggedId -> state updates -> indicator renders
-```
+### Files Changed
 
-Desktop behavior is completely unaffected: `isTouchDragging` is false on desktop, so `pointer-events` stays at default.
+| File | Change |
+|------|--------|
+| `DraggableTableRow.tsx` (DraggableTableRow) | Add `userSelect: 'none'` and `WebkitTouchCallout: 'none'` to container style |
+| `DraggableTableRow.tsx` (DraggableMobileCard) | Same two CSS properties on container style |
 
