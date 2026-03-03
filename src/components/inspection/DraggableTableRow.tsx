@@ -17,6 +17,7 @@ interface DraggableTableRowProps {
   onTouchDragMove?: (e: React.TouchEvent) => void;
   onTouchDragEnd?: () => void;
   onTouchDragCancel?: () => void;
+  isTouchDragging?: boolean;
 }
 
 export function DraggableTableRow({
@@ -24,6 +25,7 @@ export function DraggableTableRow({
   isDragging, dropIndicator,
   onRowDragStart, onRowDragOver, onRowDragLeave, onRowDrop, onRowDragEnd,
   onTouchDragStart, onTouchDragMove, onTouchDragEnd, onTouchDragCancel,
+  isTouchDragging,
 }: DraggableTableRowProps) {
   const rowRef = useRef<HTMLDivElement>(null);
 
@@ -41,7 +43,7 @@ export function DraggableTableRow({
     <div
       ref={rowRef}
       data-drag-id={id}
-      draggable
+      draggable={!isTouchDragging}
       onDragStart={(e) => onRowDragStart(e, id)}
       onDragOver={(e) => onRowDragOver(e, id)}
       onDragLeave={onRowDragLeave}
@@ -83,6 +85,7 @@ interface DraggableMobileCardProps {
   onTouchDragMove?: (e: React.TouchEvent) => void;
   onTouchDragEnd?: () => void;
   onTouchDragCancel?: () => void;
+  isTouchDragging?: boolean;
 }
 
 export function DraggableMobileCard({
@@ -106,7 +109,7 @@ export function DraggableMobileCard({
     <div
       ref={cardRef}
       data-drag-id={id}
-      draggable
+      draggable={false}
       onDragStart={(e) => onRowDragStart(e, id)}
       onDragOver={(e) => onRowDragOver(e, id)}
       onDragLeave={onRowDragLeave}

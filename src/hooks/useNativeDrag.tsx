@@ -10,6 +10,7 @@ export function useNativeDrag<T extends { id: string }>(
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
   const [dropPosition, setDropPosition] = useState<'above' | 'below' | null>(null);
+  const [isTouchMode, setIsTouchMode] = useState(false);
 
   // Refs mirroring state for synchronous access in handleTouchEnd
   const dragOverIdRef = useRef<string | null>(null);
@@ -33,6 +34,7 @@ export function useNativeDrag<T extends { id: string }>(
     setDraggingId(null);
     setDragOverId(null);
     setDropPosition(null);
+    setIsTouchMode(false);
   }, []);
 
   // --- Native HTML5 drag handlers (desktop) ---
@@ -92,6 +94,7 @@ export function useNativeDrag<T extends { id: string }>(
       draggedIdRef.current = id;
       touchActiveRef.current = true;
       setDraggingId(id);
+      setIsTouchMode(true);
     }, LONG_PRESS_MS);
   }, []);
 
@@ -168,8 +171,8 @@ export function useNativeDrag<T extends { id: string }>(
     onTouchDragMove: handleTouchMove,
     onTouchDragEnd: handleTouchEnd,
     onTouchDragCancel: handleTouchCancel,
-    isTouchDragging: touchActiveRef.current && draggingId === id,
-  }), [draggingId, dragOverId, dropPosition, handleDragStart, handleDragOver, handleDragLeave, handleDrop, handleDragEnd, handleTouchStart, handleTouchMove, handleTouchEnd, handleTouchCancel]);
+    isTouchDragging: isTouchMode && draggingId === id,
+  }), [draggingId, dragOverId, dropPosition, isTouchMode, handleDragStart, handleDragOver, handleDragLeave, handleDrop, handleDragEnd, handleTouchStart, handleTouchMove, handleTouchEnd, handleTouchCancel]);
 
   return { getDragProps };
 }
