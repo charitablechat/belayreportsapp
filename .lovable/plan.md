@@ -1,50 +1,48 @@
 
 
-## Auto-Refresh Recent Reports on Return to Dashboard
+## Disable Automatic Update Reloads — User-Initiated Only
 
-### Root Cause
+### Problem
 
-When you navigate back from a report form, the `goBack()` helper calls `navigate(-1)` (browser back). This returns to the **existing** Dashboard history entry with the **same** `location.key`. Since the Dashboard's data-loading effect depends on `[location.key]`, it does NOT re-run -- so the report list stays stale.
+There are **two** places that auto-reload the page when a new service worker activates, bypassing user consent:
 
-The fix already documented in the project's own architecture notes states: "report forms use `navigate('/dashboard')` instead of `navigate(-1)` upon exit" to force a fresh `location.key` and trigger re-fetching. The `goBack()` helper contradicts this by using `navigate(-1)`.
+1. **`src/components/pwa/UpdateNotification.tsx`** — Listens for `controllerchange` and calls `window.location.reload()` unconditionally.
+2. **`src/hooks/usePWAUpdate.tsx` (line 63-68)** — Also listens for `controllerchange` and calls `window.location.reload()`.
+
+Both fire the moment a new service worker takes control, which can happen in the background without user action. This disrupts active workflows.
 
 ### Fix
 
-**File: `src/lib/navigation.ts`**
+#### 1. Remove auto-reload from `UpdateNotification.tsx`
 
-Change `goBack()` to always navigate to `/dashboard` instead of using `navigate(-1)`. This ensures every return to the Dashboard creates a new history entry with a unique `location.key`, triggering the data-loading effect.
+Replace the auto-reload `controllerchange` listener with a component that renders nothing (or a visible banner — see step 3). The component currently renders `null` and only exists for its side effect of reloading; that side effect is removed.
 
-```text
-Before:  navigate(-1)   -> reuses old location.key -> no refetch
-After:   navigate("/dashboard") -> new location.key -> data reloads
-```
+#### 2. Remove auto-reload from `usePWAUpdate.tsx`
 
-### Visual Loading Indicator
+Remove the `controllerchange` -> `window.location.reload()` listener (lines 63-68, 70, 95-96). Instead, when `controllerchange` fires, just set `needRefresh` to `true` so the existing `UpdateBadge` appears. The reload only happens when the user explicitly clicks "Apply Update" in the `UpdateControlPanel`.
 
-**File: `src/pages/Dashboard.tsx`**
+#### 3. Add a prominent update banner to `UpdateNotification.tsx`
 
-Add a thin, high-contrast loading bar at the top of the reports section that appears during data fetches:
+Convert the empty component into a visible, fixed-position banner that appears when `needsUpdate` is true. The banner will:
+- Be fixed at the top of the viewport, full-width, high-contrast (black background, amber text, monospace font — matching the existing Minimal Brutalism aesthetic)
+- Display: "UPDATE AVAILABLE — v{version}"
+- Include an "Install Update" button that calls `updateAndReload()`
+- Include a dismiss "X" button that hides the banner for that session
+- Be non-intrusive (does not block interaction with the app beneath)
 
-- A 2px-tall black progress bar across the full width of the reports container
-- Visible only while `loading` is true
-- Monospaced font (`font-mono`) applied to report metadata (date, inspector name, status) in the report cards for the developer-focused aesthetic
-- Stark border treatment on the reports section container (`border-2 border-foreground`)
+This uses the existing `usePWA()` hook which already exposes `needsUpdate` and `updateAndReload`.
 
-**File: `src/components/dashboard/ReportCard.tsx`**
-
-Apply `font-mono` class to the metadata text elements (date, inspector name) for the monospaced data presentation style requested.
-
-### Summary of Changes
+### Files Changed
 
 | File | Change |
 |------|--------|
-| `src/lib/navigation.ts` | `goBack()` always uses `navigate("/dashboard")` |
-| `src/pages/Dashboard.tsx` | Add brutalist loading bar at top of reports section |
-| `src/components/dashboard/ReportCard.tsx` | Apply `font-mono` to data fields |
+| `src/hooks/usePWAUpdate.tsx` | Remove `controllerchange` auto-reload; set `needRefresh = true` instead |
+| `src/components/pwa/UpdateNotification.tsx` | Replace auto-reload with a visible update banner using `usePWA()` |
 
-### What This Does NOT Change
+### What Stays the Same
 
-- No changes to report creation or editing flows
-- No changes to the existing pull-to-refresh, sync-complete, or visibility-change refresh mechanisms
-- No changes to offline storage or data loading functions
+- `UpdateBadge` and `UpdateControlPanel` continue to work as before (amber dot in header, CRT-styled panel)
+- Background update checking interval (hourly) is unchanged
+- `updateServiceWorker()` still sends `SKIP_WAITING` and reloads — but only when the user clicks "Apply Update" or "Install Update"
+- No changes to service worker registration, offline storage, or sync logic
 
