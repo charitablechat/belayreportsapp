@@ -49,8 +49,19 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
   const [dragOverId, setDragOverId] = useState<string | null>(null);
   const [dropPosition, setDropPosition] = useState<'above' | 'below' | null>(null);
 
+  // Touch-specific refs
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const touchActiveRef = useRef(false);
+  const touchStartPosRef = useRef<{ x: number; y: number } | null>(null);
+
   const clearDragState = useCallback(() => {
     draggedIdRef.current = null;
+    touchActiveRef.current = false;
+    touchStartPosRef.current = null;
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
     setDraggingId(null);
     setDragOverId(null);
     setDropPosition(null);
@@ -77,10 +88,9 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
     setDropPosition(null);
   }, []);
 
-  const handleDrop = useCallback((e: React.DragEvent, targetId: string) => {
-    e.preventDefault();
+  const performCategoryReorder = useCallback((targetId: string, pos: 'above' | 'below' | null) => {
     const dragId = draggedIdRef.current;
-    if (!dragId || dragId === targetId) { clearDragState(); return; }
+    if (!dragId || dragId === targetId || !pos) return;
 
     onUpdate(prev => {
       const catItems = prev.filter(eq => eq.equipment_category === category);
@@ -88,10 +98,9 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
       if (dragIdx === -1) return prev;
       const [draggedItem] = catItems.splice(dragIdx, 1);
       const targetIdx = catItems.findIndex(eq => eq.id === targetId);
-      const insertIdx = dropPosition === 'below' ? targetIdx + 1 : targetIdx;
+      const insertIdx = pos === 'below' ? targetIdx + 1 : targetIdx;
       catItems.splice(insertIdx, 0, draggedItem);
 
-      // Reconstruct full array preserving other categories' positions
       const result: any[] = [];
       let catIdx = 0;
       for (const item of prev) {
@@ -103,10 +112,66 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
       }
       return result;
     });
+  }, [category, onUpdate]);
+
+  const handleDrop = useCallback((e: React.DragEvent, targetId: string) => {
+    e.preventDefault();
+    performCategoryReorder(targetId, dropPosition);
     clearDragState();
-  }, [category, dropPosition, onUpdate, clearDragState]);
+  }, [dropPosition, performCategoryReorder, clearDragState]);
 
   const handleDragEnd = useCallback(() => {
+    clearDragState();
+  }, [clearDragState]);
+
+  // --- Touch handlers ---
+
+  const handleTouchStart = useCallback((e: React.TouchEvent, id: string) => {
+    const touch = e.touches[0];
+    touchStartPosRef.current = { x: touch.clientX, y: touch.clientY };
+    longPressTimerRef.current = setTimeout(() => {
+      draggedIdRef.current = id;
+      touchActiveRef.current = true;
+      setDraggingId(id);
+    }, 200);
+  }, []);
+
+  const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    const touch = e.touches[0];
+    if (!touchActiveRef.current && longPressTimerRef.current) {
+      const start = touchStartPosRef.current;
+      if (start && (Math.abs(touch.clientX - start.x) > 10 || Math.abs(touch.clientY - start.y) > 10)) {
+        clearTimeout(longPressTimerRef.current);
+        longPressTimerRef.current = null;
+        return;
+      }
+    }
+    if (!touchActiveRef.current) return;
+    e.preventDefault();
+    const el = document.elementFromPoint(touch.clientX, touch.clientY);
+    const rowEl = el?.closest('[data-drag-id]') as HTMLElement | null;
+    if (rowEl) {
+      const tid = rowEl.getAttribute('data-drag-id')!;
+      if (tid !== draggedIdRef.current) {
+        const rect = rowEl.getBoundingClientRect();
+        setDragOverId(tid);
+        setDropPosition(touch.clientY < rect.top + rect.height / 2 ? 'above' : 'below');
+      }
+    } else {
+      setDragOverId(null);
+      setDropPosition(null);
+    }
+  }, []);
+
+  const handleTouchEnd = useCallback(() => {
+    if (longPressTimerRef.current) { clearTimeout(longPressTimerRef.current); longPressTimerRef.current = null; }
+    if (touchActiveRef.current && dragOverId && dropPosition) {
+      performCategoryReorder(dragOverId, dropPosition);
+    }
+    clearDragState();
+  }, [dragOverId, dropPosition, performCategoryReorder, clearDragState]);
+
+  const handleTouchCancel = useCallback(() => {
     clearDragState();
   }, [clearDragState]);
 
@@ -118,7 +183,11 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
     onRowDragLeave: handleDragLeave,
     onRowDrop: handleDrop,
     onRowDragEnd: handleDragEnd,
-  }), [draggingId, dragOverId, dropPosition, handleDragStart, handleDragOver, handleDragLeave, handleDrop, handleDragEnd]);
+    onTouchDragStart: handleTouchStart,
+    onTouchDragMove: handleTouchMove,
+    onTouchDragEnd: handleTouchEnd,
+    onTouchDragCancel: handleTouchCancel,
+  }), [draggingId, dragOverId, dropPosition, handleDragStart, handleDragOver, handleDragLeave, handleDrop, handleDragEnd, handleTouchStart, handleTouchMove, handleTouchEnd, handleTouchCancel]);
 
   const addEquipment = useCallback(() => {
     onUpdate(prev => [
