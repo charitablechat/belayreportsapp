@@ -53,6 +53,7 @@ export function DraggableTableRow({
       onTouchCancel={onTouchDragCancel}
       style={{
         opacity: isDragging ? 0.4 : 1,
+        pointerEvents: isTouchDragging ? 'none' : undefined,
       }}
       className={`relative grid ${gridCols} border-b border-border bg-background ${className} ${isDragging ? 'border-dashed border-2 border-primary/30' : ''} ${dropIndicator === 'above' ? 'border-t-[3px] border-t-[#2563EB]' : ''} ${dropIndicator === 'below' ? 'border-b-[3px] border-b-[#2563EB]' : ''}`}
     >
@@ -62,6 +63,7 @@ export function DraggableTableRow({
           style={{ touchAction: 'none', userSelect: 'none', WebkitTouchCallout: 'none' } as React.CSSProperties}
           aria-label="Drag to reorder"
           onTouchStart={onTouchDragStart ? (e) => onTouchDragStart(e, id) : undefined}
+          onContextMenu={(e) => e.preventDefault()}
         >
           <GripVertical className="w-4 h-4 text-muted-foreground hover:text-foreground transition-colors" />
         </div>
@@ -92,6 +94,7 @@ export function DraggableMobileCard({
   id, children, isDragging, dropIndicator,
   onRowDragStart, onRowDragOver, onRowDragLeave, onRowDrop, onRowDragEnd,
   onTouchDragStart, onTouchDragMove, onTouchDragEnd, onTouchDragCancel,
+  isTouchDragging,
 }: DraggableMobileCardProps) {
   const cardRef = useRef<HTMLDivElement>(null);
 
@@ -119,6 +122,7 @@ export function DraggableMobileCard({
       onTouchCancel={onTouchDragCancel}
       style={{
         opacity: isDragging ? 0.4 : 1,
+        pointerEvents: isTouchDragging ? 'none' : undefined,
       }}
       className={`relative ${isDragging ? 'border-dashed border-2 border-primary/30 rounded-lg' : ''} ${dropIndicator === 'above' ? 'border-t-[3px] border-t-[#2563EB]' : ''} ${dropIndicator === 'below' ? 'border-b-[3px] border-b-[#2563EB]' : ''}`}
     >
@@ -128,6 +132,7 @@ export function DraggableMobileCard({
           style={{ touchAction: 'none', userSelect: 'none', WebkitTouchCallout: 'none' } as React.CSSProperties}
           aria-label="Drag to reorder"
           onTouchStart={onTouchDragStart ? (e) => onTouchDragStart(e, id) : undefined}
+          onContextMenu={(e) => e.preventDefault()}
         >
           <GripVertical className="w-4 h-4 text-muted-foreground" />
         </div>
