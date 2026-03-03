@@ -49,6 +49,10 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
   const [dragOverId, setDragOverId] = useState<string | null>(null);
   const [dropPosition, setDropPosition] = useState<'above' | 'below' | null>(null);
 
+  // Refs mirroring state for synchronous access in handleTouchEnd
+  const dragOverIdRef = useRef<string | null>(null);
+  const dropPositionRef = useRef<'above' | 'below' | null>(null);
+
   // Touch-specific refs
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const touchActiveRef = useRef(false);
@@ -56,6 +60,8 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
 
   const clearDragState = useCallback(() => {
     draggedIdRef.current = null;
+    dragOverIdRef.current = null;
+    dropPositionRef.current = null;
     touchActiveRef.current = false;
     touchStartPosRef.current = null;
     if (longPressTimerRef.current) {
@@ -154,10 +160,15 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
       const tid = rowEl.getAttribute('data-drag-id')!;
       if (tid !== draggedIdRef.current) {
         const rect = rowEl.getBoundingClientRect();
+        const pos = touch.clientY < rect.top + rect.height / 2 ? 'above' : 'below';
+        dragOverIdRef.current = tid;
+        dropPositionRef.current = pos;
         setDragOverId(tid);
-        setDropPosition(touch.clientY < rect.top + rect.height / 2 ? 'above' : 'below');
+        setDropPosition(pos);
       }
     } else {
+      dragOverIdRef.current = null;
+      dropPositionRef.current = null;
       setDragOverId(null);
       setDropPosition(null);
     }
@@ -165,11 +176,11 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
 
   const handleTouchEnd = useCallback(() => {
     if (longPressTimerRef.current) { clearTimeout(longPressTimerRef.current); longPressTimerRef.current = null; }
-    if (touchActiveRef.current && dragOverId && dropPosition) {
-      performCategoryReorder(dragOverId, dropPosition);
+    if (touchActiveRef.current && dragOverIdRef.current && dropPositionRef.current) {
+      performCategoryReorder(dragOverIdRef.current, dropPositionRef.current);
     }
     clearDragState();
-  }, [dragOverId, dropPosition, performCategoryReorder, clearDragState]);
+  }, [performCategoryReorder, clearDragState]);
 
   const handleTouchCancel = useCallback(() => {
     clearDragState();
