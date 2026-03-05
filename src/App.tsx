@@ -95,14 +95,22 @@ const RootLayout = () => {
   }, []);
 
   return (
-    <>
-      {/* PWA Notifications */}
-      <InstallBanner />
-      <UpdateNotification />
-      <InstallSuccessNotification />
-      <AuthenticatedHeader />
-      <Outlet />
-    </>
+    <ThemeProvider attribute="class" defaultTheme="light" enableSystem>
+      <QueryClientProvider client={queryClient}>
+        <PWAProvider>
+          <TooltipProvider>
+            <MobileAwareToaster />
+            <MobileAwareSonner />
+            {/* PWA Notifications */}
+            <InstallBanner />
+            <UpdateNotification />
+            <InstallSuccessNotification />
+            <AuthenticatedHeader />
+            <Outlet />
+          </TooltipProvider>
+        </PWAProvider>
+      </QueryClientProvider>
+    </ThemeProvider>
   );
 };
 
@@ -134,17 +142,7 @@ const router = createBrowserRouter([
 ]);
 
 const App = () => (
-  <ThemeProvider attribute="class" defaultTheme="light" enableSystem>
-    <QueryClientProvider client={queryClient}>
-      <PWAProvider>
-        <TooltipProvider>
-          <MobileAwareToaster />
-          <MobileAwareSonner />
-          <RouterProvider router={router} />
-        </TooltipProvider>
-      </PWAProvider>
-    </QueryClientProvider>
-  </ThemeProvider>
+  <RouterProvider router={router} />
 );
 
 export default App;
