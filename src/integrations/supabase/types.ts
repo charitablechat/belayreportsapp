@@ -1285,6 +1285,71 @@ export type Database = {
         }
         Relationships: []
       }
+      onboarding_progress: {
+        Row: {
+          completed_at: string
+          id: string
+          resource_id: string
+          user_id: string
+        }
+        Insert: {
+          completed_at?: string
+          id?: string
+          resource_id: string
+          user_id: string
+        }
+        Update: {
+          completed_at?: string
+          id?: string
+          resource_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "onboarding_progress_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "onboarding_resources"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      onboarding_resources: {
+        Row: {
+          created_at: string
+          description: string | null
+          display_order: number
+          file_type: string
+          file_url: string
+          id: string
+          is_published: boolean
+          title: string
+          uploaded_by: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          display_order?: number
+          file_type: string
+          file_url: string
+          id?: string
+          is_published?: boolean
+          title: string
+          uploaded_by: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          display_order?: number
+          file_type?: string
+          file_url?: string
+          id?: string
+          is_published?: boolean
+          title?: string
+          uploaded_by?: string
+        }
+        Relationships: []
+      }
       organization_members: {
         Row: {
           created_at: string | null

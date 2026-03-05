@@ -20,6 +20,7 @@ import SuperAdminDashboard from "./pages/SuperAdminDashboard";
 import Profile from "./pages/Profile";
 import NotFound from "./pages/NotFound";
 import Base64Converter from "./pages/Base64Converter";
+import Onboarding from "./pages/Onboarding";
 import UploadLogos from "./pages/UploadLogos";
 import UploadLogosToStorage from "./pages/UploadLogosToStorage";
 import AdminLogoManagement from "./pages/AdminLogoManagement";
@@ -121,6 +122,7 @@ const router = createBrowserRouter([
       { path: "/install", element: <Install /> },
       { path: "/capabilities", element: <Capabilities /> },
       { path: "/profile", element: <Profile /> },
+      { path: "/onboarding", element: <Onboarding /> },
       { path: "/admin", element: <SuperAdminDashboard /> },
       { path: "/base64-converter", element: <Base64Converter /> },
       { path: "/upload-logos", element: <UploadLogos /> },

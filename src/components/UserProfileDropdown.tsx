@@ -10,7 +10,7 @@
    DropdownMenuSeparator,
    DropdownMenuTrigger,
  } from "@/components/ui/dropdown-menu";
-import { LogOut, User, Bell, Settings, FileText, Download, MessageCircle, Loader2, Shield, Monitor, MoreVertical, Database, Sun, Moon } from "lucide-react";
+import { LogOut, User, Bell, Settings, FileText, Download, MessageCircle, Loader2, Shield, Monitor, MoreVertical, Database, Sun, Moon, BookOpen } from "lucide-react";
 import { useTheme } from "next-themes";
  import { UserAvatar } from "@/components/ui/user-avatar";
 import { usePWAInstall } from "@/hooks/usePWAInstall";
@@ -114,11 +114,17 @@ import { VersionBadge } from "@/components/VersionBadge";
              </>
            )}
            
-            {/* Profile */}
-            <DropdownMenuItem onClick={() => navigate('/profile')}>
-              <User className="w-4 h-4 mr-2" />
-              Profile
-            </DropdownMenuItem>
+             {/* Profile */}
+             <DropdownMenuItem onClick={() => navigate('/profile')}>
+               <User className="w-4 h-4 mr-2" />
+               Profile
+             </DropdownMenuItem>
+
+             {/* Onboarding */}
+             <DropdownMenuItem onClick={() => navigate('/onboarding')}>
+               <BookOpen className="w-4 h-4 mr-2" />
+               Onboarding
+             </DropdownMenuItem>
             
             {/* Check for Updates */}
             <DropdownMenuItem asChild>
