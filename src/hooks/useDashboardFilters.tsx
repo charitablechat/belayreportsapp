@@ -1,0 +1,378 @@
+import { useMemo, useState, useCallback } from "react";
+import { differenceInDays, isWithinInterval, startOfWeek, endOfWeek, startOfMonth, endOfMonth, parseISO } from "date-fns";
+import { getReportAgeState, type ReportAgeState } from "@/components/dashboard/ReportCard";
+
+export type SortOption = 'priority' | 'date-asc' | 'date-desc' | 'title-az' | 'assignee';
+export type GroupOption = 'none' | 'status' | 'date' | 'assignee' | 'region';
+export type ViewMode = 'grid' | 'list';
+export type SyncFilter = 'all' | 'synced' | 'local';
+
+export interface DashboardFilterState {
+  search: string;
+  statusFilter: string;
+  assigneeFilter: string[];
+  dateRange: { from?: Date; to?: Date };
+  syncFilter: SyncFilter;
+  quickFilters: {
+    myCards: boolean;
+    dueThisWeek: boolean;
+    draftsOnly: boolean;
+    needsAttention: boolean;
+  };
+  sortBy: SortOption;
+  groupBy: GroupOption;
+  viewMode: ViewMode;
+  page: number;
+}
+
+export interface GroupedReports {
+  label: string;
+  count: number;
+  items: any[];
+  isCollapsed?: boolean;
+}
+
+const GRID_PAGE_SIZE = 24;
+const LIST_PAGE_SIZE = 50;
+
+function tierOf(r: any): number {
+  if (r.status === 'completed') return 3;
+  const age = differenceInDays(new Date(), new Date(r.created_at));
+  if (age > 5) return 0; // critical
+  if (age > 3) return 1; // warning
+  return 2; // default
+}
+
+function getReportDate(report: any, type: string): string {
+  if (type === 'inspection') return report.inspection_date;
+  if (type === 'daily') return report.assessment_date;
+  return report.training?.start_date || report.start_date || report.created_at;
+}
+
+function getAssigneeName(report: any, type: string): string {
+  if (type === 'training') {
+    const t = report.trainer;
+    return t ? `${t.first_name || ''} ${t.last_name || ''}`.trim() || 'Unknown' : 'Unknown';
+  }
+  const i = report.inspector;
+  return i ? `${i.first_name || ''} ${i.last_name || ''}`.trim() || 'Unknown' : 'Unknown';
+}
+
+function getOrganization(report: any): string {
+  return report.organization || '';
+}
+
+function getLocation(report: any): string {
+  return report.location || '';
+}
+
+function getRegion(report: any): string {
+  const loc = report.location || '';
+  // Try to extract state from "City, State" pattern
+  const parts = loc.split(',').map((s: string) => s.trim());
+  return parts.length >= 2 ? parts[parts.length - 1] : loc || 'Unknown';
+}
+
+export function useDashboardFilters(
+  reports: any[],
+  type: string,
+  currentUserId: string | null
+) {
+  const [filters, setFilters] = useState<DashboardFilterState>({
+    search: '',
+    statusFilter: 'all',
+    assigneeFilter: [],
+    dateRange: {},
+    syncFilter: 'all',
+    quickFilters: { myCards: false, dueThisWeek: false, draftsOnly: false, needsAttention: false },
+    sortBy: 'priority',
+    groupBy: 'none',
+    viewMode: 'grid',
+    page: 1,
+  });
+
+  const [completedCollapsed, setCompletedCollapsed] = useState(true);
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+
+  const updateFilter = useCallback(<K extends keyof DashboardFilterState>(
+    key: K,
+    value: DashboardFilterState[K]
+  ) => {
+    setFilters(prev => ({ ...prev, [key]: value, page: key !== 'page' ? 1 : (value as number) }));
+  }, []);
+
+  const toggleQuickFilter = useCallback((key: keyof DashboardFilterState['quickFilters']) => {
+    setFilters(prev => ({
+      ...prev,
+      page: 1,
+      quickFilters: { ...prev.quickFilters, [key]: !prev.quickFilters[key] },
+    }));
+  }, []);
+
+  const clearAllFilters = useCallback(() => {
+    setFilters(prev => ({
+      ...prev,
+      search: '',
+      statusFilter: 'all',
+      assigneeFilter: [],
+      dateRange: {},
+      syncFilter: 'all',
+      quickFilters: { myCards: false, dueThisWeek: false, draftsOnly: false, needsAttention: false },
+      page: 1,
+    }));
+  }, []);
+
+  const toggleGroupCollapse = useCallback((label: string) => {
+    setCollapsedGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(label)) next.delete(label);
+      else next.add(label);
+      return next;
+    });
+  }, []);
+
+  const hasActiveFilters = useMemo(() => {
+    const { search, statusFilter, assigneeFilter, dateRange, syncFilter, quickFilters } = filters;
+    return !!(
+      search ||
+      statusFilter !== 'all' ||
+      assigneeFilter.length > 0 ||
+      dateRange.from ||
+      dateRange.to ||
+      syncFilter !== 'all' ||
+      quickFilters.myCards ||
+      quickFilters.dueThisWeek ||
+      quickFilters.draftsOnly ||
+      quickFilters.needsAttention
+    );
+  }, [filters]);
+
+  const result = useMemo(() => {
+    let filtered = [...reports];
+    const { search, statusFilter, assigneeFilter, dateRange, syncFilter, quickFilters, sortBy, groupBy, viewMode, page } = filters;
+
+    // 1. Text search
+    if (search) {
+      const q = search.toLowerCase();
+      filtered = filtered.filter(r =>
+        getOrganization(r).toLowerCase().includes(q) ||
+        getLocation(r).toLowerCase().includes(q) ||
+        getAssigneeName(r, type).toLowerCase().includes(q)
+      );
+    }
+
+    // 2. Status filter
+    if (statusFilter !== 'all') {
+      filtered = filtered.filter(r => r.status === statusFilter);
+    }
+
+    // 3. Assignee filter
+    if (assigneeFilter.length > 0) {
+      filtered = filtered.filter(r => assigneeFilter.includes(r.inspector_id));
+    }
+
+    // 4. Date range
+    if (dateRange.from || dateRange.to) {
+      filtered = filtered.filter(r => {
+        const d = getReportDate(r, type);
+        if (!d) return false;
+        const date = new Date(d);
+        if (dateRange.from && date < dateRange.from) return false;
+        if (dateRange.to && date > dateRange.to) return false;
+        return true;
+      });
+    }
+
+    // 5. Sync filter
+    if (syncFilter === 'synced') {
+      filtered = filtered.filter(r => !!r.synced_at);
+    } else if (syncFilter === 'local') {
+      filtered = filtered.filter(r => !r.synced_at);
+    }
+
+    // 6. Quick filters (AND logic)
+    if (quickFilters.myCards && currentUserId) {
+      filtered = filtered.filter(r => r.inspector_id === currentUserId);
+    }
+    if (quickFilters.dueThisWeek) {
+      const weekStart = startOfWeek(new Date());
+      const weekEnd = endOfWeek(new Date());
+      filtered = filtered.filter(r => {
+        if (r.status === 'completed') return false;
+        const d = getReportDate(r, type);
+        if (!d) return true; // drafts without dates
+        try {
+          return isWithinInterval(new Date(d), { start: weekStart, end: weekEnd });
+        } catch {
+          return false;
+        }
+      });
+    }
+    if (quickFilters.draftsOnly) {
+      filtered = filtered.filter(r => r.status === 'draft');
+    }
+    if (quickFilters.needsAttention) {
+      filtered = filtered.filter(r => {
+        const t = tierOf(r);
+        return t === 0 || t === 1;
+      });
+    }
+
+    // 7. Sort - critical always first regardless of sort mode
+    const sortFn = (a: any, b: any): number => {
+      // Primary: critical tier always wins
+      const ta = tierOf(a);
+      const tb = tierOf(b);
+      if (ta <= 1 || tb <= 1) {
+        // At least one is critical/warning — sort by tier first
+        if (ta !== tb) return ta - tb;
+      }
+
+      switch (sortBy) {
+        case 'priority':
+          if (ta !== tb) return ta - tb;
+          return 0;
+        case 'date-asc': {
+          const da = getReportDate(a, type) || '';
+          const db = getReportDate(b, type) || '';
+          return da.localeCompare(db);
+        }
+        case 'date-desc': {
+          const da = getReportDate(a, type) || '';
+          const db = getReportDate(b, type) || '';
+          return db.localeCompare(da);
+        }
+        case 'title-az':
+          return getOrganization(a).localeCompare(getOrganization(b));
+        case 'assignee':
+          return getAssigneeName(a, type).localeCompare(getAssigneeName(b, type));
+        default:
+          return 0;
+      }
+    };
+
+    filtered.sort(sortFn);
+
+    // 8. Separate completed into bottom section
+    const criticalItems = filtered.filter(r => tierOf(r) === 0);
+    const warningItems = filtered.filter(r => tierOf(r) === 1);
+    const activeItems = filtered.filter(r => tierOf(r) === 2);
+    const completedItems = filtered.filter(r => tierOf(r) === 3);
+
+    // 9. Grouping
+    let groups: GroupedReports[] = [];
+    const needsAttentionItems = [...criticalItems, ...warningItems];
+    const nonAttentionActive = activeItems;
+
+    if (groupBy === 'none') {
+      // Flat list: attention first, then active, then completed collapsed
+      const mainItems = [...needsAttentionItems, ...nonAttentionActive];
+      if (mainItems.length > 0) {
+        groups.push({ label: 'Reports', count: mainItems.length, items: mainItems });
+      }
+      if (completedItems.length > 0) {
+        groups.push({ label: `Completed (${completedItems.length})`, count: completedItems.length, items: completedItems, isCollapsed: completedCollapsed });
+      }
+    } else {
+      // Always add Needs Attention group first
+      if (needsAttentionItems.length > 0) {
+        groups.push({ label: '⚠️ Needs Attention', count: needsAttentionItems.length, items: needsAttentionItems });
+      }
+
+      // Group the remaining active items
+      const allActive = nonAttentionActive;
+      const groupMap = new Map<string, any[]>();
+
+      for (const r of allActive) {
+        let key = '';
+        switch (groupBy) {
+          case 'status':
+            key = r.status || 'Unknown';
+            break;
+          case 'date': {
+            const d = getReportDate(r, type);
+            if (!d) { key = 'No Date'; break; }
+            const date = new Date(d);
+            const now = new Date();
+            const weekEnd = endOfWeek(now);
+            const monthEnd = endOfMonth(now);
+            if (date <= weekEnd) key = 'This Week';
+            else if (date <= monthEnd) key = 'This Month';
+            else if (date > now) key = 'Upcoming';
+            else key = 'Past';
+            break;
+          }
+          case 'assignee':
+            key = getAssigneeName(r, type);
+            break;
+          case 'region':
+            key = getRegion(r);
+            break;
+        }
+        if (!groupMap.has(key)) groupMap.set(key, []);
+        groupMap.get(key)!.push(r);
+      }
+
+      for (const [label, items] of groupMap) {
+        groups.push({ label, count: items.length, items, isCollapsed: collapsedGroups.has(label) });
+      }
+
+      // Completed at bottom
+      if (completedItems.length > 0) {
+        groups.push({ label: `Completed (${completedItems.length})`, count: completedItems.length, items: completedItems, isCollapsed: completedCollapsed });
+      }
+    }
+
+    // 10. Pagination
+    const pageSize = viewMode === 'grid' ? GRID_PAGE_SIZE : LIST_PAGE_SIZE;
+    const allItems = groups.flatMap(g => g.items);
+    const totalItems = allItems.length;
+    const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+    const currentPage = Math.min(page, totalPages);
+
+    // For flat (no grouping) mode, paginate the main group items
+    // Critical items always stay on page 1
+    let paginatedGroups = groups;
+    if (groupBy === 'none' && groups.length > 0) {
+      const mainGroup = groups[0];
+      const startIdx = (currentPage - 1) * pageSize;
+      const pageItems = mainGroup.items.slice(startIdx, startIdx + pageSize);
+
+      // Force critical items onto page 1
+      if (currentPage === 1) {
+        paginatedGroups = [{ ...mainGroup, items: pageItems, count: mainGroup.count }];
+      } else {
+        // On page 2+, remove criticals from the page (they're already on page 1)
+        const nonCritical = pageItems.filter(r => tierOf(r) > 1);
+        paginatedGroups = [{ ...mainGroup, items: nonCritical, count: mainGroup.count }];
+      }
+      // Keep completed group as-is (always collapsed at bottom)
+      if (groups.length > 1) {
+        paginatedGroups.push(groups[groups.length - 1]);
+      }
+    }
+
+    return {
+      groups: paginatedGroups,
+      totalItems,
+      totalPages,
+      currentPage,
+      filteredCount: filtered.length,
+      criticalCount: criticalItems.length,
+      warningCount: warningItems.length,
+    };
+  }, [reports, filters, type, currentUserId, completedCollapsed, collapsedGroups]);
+
+  return {
+    filters,
+    updateFilter,
+    toggleQuickFilter,
+    clearAllFilters,
+    completedCollapsed,
+    setCompletedCollapsed,
+    toggleGroupCollapse,
+    collapsedGroups,
+    hasActiveFilters,
+    ...result,
+  };
+}
