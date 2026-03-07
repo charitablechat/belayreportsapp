@@ -2,7 +2,7 @@ import { useMemo, useState, useCallback } from "react";
 import { differenceInDays, isWithinInterval, startOfWeek, endOfWeek, startOfMonth, endOfMonth, parseISO } from "date-fns";
 import { getReportAgeState, type ReportAgeState } from "@/components/dashboard/ReportCard";
 
-export type SortOption = 'priority' | 'date-asc' | 'date-desc' | 'title-az' | 'assignee';
+export type SortOption = 'priority' | 'completed' | 'date-asc' | 'date-desc' | 'title-az' | 'assignee';
 export type GroupOption = 'none' | 'status' | 'date' | 'assignee' | 'region';
 export type ViewMode = 'grid' | 'list';
 export type SyncFilter = 'all' | 'synced' | 'local';
