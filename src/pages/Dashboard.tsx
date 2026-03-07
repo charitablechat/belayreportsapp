@@ -1237,222 +1237,40 @@ export default function Dashboard() {
             </Tabs>
             
             {(() => {
-              const filteredInspections = inspectorFilter !== "all" ? inspections.filter(i => i.inspector_id === inspectorFilter) : inspections;
-              const filteredTrainings = inspectorFilter !== "all" ? trainings.filter(t => t.inspector_id === inspectorFilter) : trainings;
-              const filteredDailyAssessments = inspectorFilter !== "all" ? dailyAssessments.filter(d => d.inspector_id === inspectorFilter) : dailyAssessments;
-              const displayInspections = reportSection === "recent" ? filteredInspections.slice(0, 9) : filteredInspections;
-              const displayTrainings = reportSection === "recent" ? filteredTrainings.slice(0, 9) : filteredTrainings;
-              const displayDailyAssessments = reportSection === "recent" ? filteredDailyAssessments.slice(0, 9) : filteredDailyAssessments;
+              const baseInspections = reportSection === "recent" ? inspections.slice(0, 50) : inspections;
+              const baseTrainings = reportSection === "recent" ? trainings.slice(0, 50) : trainings;
+              const baseDailyAssessments = reportSection === "recent" ? dailyAssessments.slice(0, 50) : dailyAssessments;
+              
+              const currentReports = activeReportTab === 'inspections' ? baseInspections
+                : activeReportTab === 'training' ? baseTrainings
+                : baseDailyAssessments;
+              
+              const currentType = activeReportTab === 'inspections' ? 'inspection'
+                : activeReportTab === 'training' ? 'training'
+                : 'daily';
+              
+              // Get unique statuses
+              const statuses = [...new Set(currentReports.map(r => r.status).filter(Boolean))];
               
               return (
-            <Tabs value={activeReportTab} onValueChange={setActiveReportTab}>
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-                <TabsList className="w-full sm:w-auto">
-                  <TabsTrigger value="inspections" className="flex items-center gap-2">
-                    <FileText className="w-4 h-4" />
-                    Inspections ({displayInspections.length})
-                  </TabsTrigger>
-                  <TabsTrigger value="training" className="flex items-center gap-2">
-                    <GraduationCap className="w-4 h-4" />
-                    Training ({displayTrainings.length})
-                  </TabsTrigger>
-                  <TabsTrigger value="daily" className="flex items-center gap-2">
-                    <FileText className="w-4 h-4" />
-                    Daily ({displayDailyAssessments.length})
-                  </TabsTrigger>
-                </TabsList>
-                
-                {isSuperAdmin && (
-                  <Select value={inspectorFilter} onValueChange={setInspectorFilter}>
-                    <SelectTrigger className="w-full sm:w-[220px] bg-card border-border">
-                      <SelectValue placeholder="Filter by inspector" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-card border-border">
-                      <SelectItem value="all">All Inspectors</SelectItem>
-                      {uniqueInspectors.map(({ id, name }) => (
-                        <SelectItem key={id} value={id}>{name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
-              </div>
-
-              <TabsContent value="inspections">
-                {loading ? (
-                  <div className="grid gap-4">
-                    {Array.from({ length: 3 }).map((_, i) => (
-                      <ReportCardSkeleton key={i} />
-                    ))}
-                  </div>
-                ) : displayInspections.length === 0 ? (
-                  <Card>
-                    <CardContent className="p-0">
-                      <InspectionsEmptyState 
-                        onAction={() => {
-                          triggerHaptic('light');
-                          navigate("/inspection/new");
-                        }}
-                      />
-                    </CardContent>
-                  </Card>
-                ) : (
-                  <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                    {displayInspections
-                      .sort((a, b) => {
-                        const getInspectorName = (inspection: any) => {
-                          const inspector = (inspection as any).inspector;
-                          if (inspector?.first_name && inspector?.last_name) {
-                            return `${inspector.first_name} ${inspector.last_name}`;
-                          }
-                          return 'Unknown';
-                        };
-
-                        // Age-priority tier: critical=0, warning=1, rest=2
-                        const tierOf = (r: any) => {
-                          if (r.status === 'completed') return 2;
-                          const age = differenceInDays(new Date(), new Date(r.created_at));
-                          if (age > 5) return 0;
-                          if (age > 3) return 1;
-                          return 2;
-                        };
-                        const tierDiff = tierOf(a) - tierOf(b);
-                        if (tierDiff !== 0) return tierDiff;
-
-                        return 0;
-                      })
-                      .map((inspection) => (
-                        <ReportCard
-                          key={inspection.id}
-                          report={inspection}
-                          type="inspection"
-                          onDelete={(report) => {
-                            setInspectionToDelete(report);
-                            setDeleteDialogOpen(true);
-                          }}
-                          onClick={(report) => navigate(`/inspection/${report.id}`)}
-                          getStatusBadge={getStatusBadge}
-                        />
-                      ))}
-                  </div>
-                )}
-              </TabsContent>
-
-              <TabsContent value="training">
-                {loading ? (
-                  <div className="grid gap-4">
-                    {Array.from({ length: 3 }).map((_, i) => (
-                      <ReportCardSkeleton key={i} />
-                    ))}
-                  </div>
-                ) : displayTrainings.length === 0 ? (
-                  <Card>
-                    <CardContent className="p-0">
-                      <TrainingsEmptyState 
-                        onAction={() => {
-                          triggerHaptic('light');
-                          navigate("/training/new");
-                        }}
-                      />
-                    </CardContent>
-                  </Card>
-                ) : (
-                  <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                    {displayTrainings
-                      .sort((a, b) => {
-                        const getTrainerName = (training: any) => {
-                          const trainer = training.trainer;
-                          if (trainer?.first_name && trainer?.last_name) {
-                            return `${trainer.first_name} ${trainer.last_name}`;
-                          }
-                          return 'Unknown';
-                        };
-
-                        const tierOf = (r: any) => {
-                          if (r.status === 'completed') return 2;
-                          const age = differenceInDays(new Date(), new Date(r.created_at));
-                          if (age > 5) return 0;
-                          if (age > 3) return 1;
-                          return 2;
-                        };
-                        const tierDiff = tierOf(a) - tierOf(b);
-                        if (tierDiff !== 0) return tierDiff;
-
-                        return 0;
-                      })
-                      .map((training) => (
-                        <ReportCard
-                          key={training.id}
-                          report={training}
-                          type="training"
-                          onDelete={(report) => {
-                            setReportToDelete(report);
-                            setDeleteDialogOpen(true);
-                          }}
-                          onClick={(report) => navigate(`/training/${report.id}`)}
-                        />
-                      ))}
-                  </div>
-                )}
-              </TabsContent>
-
-              <TabsContent value="daily">
-                {loading ? (
-                  <div className="grid gap-4">
-                    {Array.from({ length: 3 }).map((_, i) => (
-                      <ReportCardSkeleton key={i} />
-                    ))}
-                  </div>
-                ) : displayDailyAssessments.length === 0 ? (
-                  <Card>
-                    <CardContent className="p-0">
-                      <DailyAssessmentsEmptyState 
-                        onAction={() => {
-                          triggerHaptic('light');
-                          navigate("/daily-assessment/new");
-                        }}
-                      />
-                    </CardContent>
-                  </Card>
-) : (
-                  <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                    {displayDailyAssessments
-                      .sort((a, b) => {
-                        const getInspectorName = (assessment: any) => {
-                          const inspector = assessment.inspector;
-                          if (inspector?.first_name && inspector?.last_name) {
-                            return `${inspector.first_name} ${inspector.last_name}`;
-                          }
-                          return 'Unknown';
-                        };
-
-                        const tierOf = (r: any) => {
-                          if (r.status === 'completed') return 2;
-                          const age = differenceInDays(new Date(), new Date(r.created_at));
-                          if (age > 5) return 0;
-                          if (age > 3) return 1;
-                          return 2;
-                        };
-                        const tierDiff = tierOf(a) - tierOf(b);
-                        if (tierDiff !== 0) return tierDiff;
-
-                        return 0;
-                      })
-                      .map((assessment) => (
-                        <ReportCard
-                          key={assessment.id}
-                          report={assessment}
-                          type="daily"
-                          onClick={() => navigate(`/daily-assessment/${assessment.id}`)}
-                          onDelete={(report) => {
-                            setReportToDelete(report);
-                            setDeleteDialogOpen(true);
-                          }}
-                        />
-                      ))}
-                  </div>
-                )}
-              </TabsContent>
-            </Tabs>
+                <DashboardReportsSection
+                  inspections={baseInspections}
+                  trainings={baseTrainings}
+                  dailyAssessments={baseDailyAssessments}
+                  activeReportTab={activeReportTab}
+                  setActiveReportTab={setActiveReportTab}
+                  loading={loading}
+                  currentUserId={currentUser?.id || null}
+                  uniqueInspectors={uniqueInspectors}
+                  isSuperAdmin={!!isSuperAdmin}
+                  inspectorFilter={inspectorFilter}
+                  setInspectorFilter={setInspectorFilter}
+                  navigate={navigate}
+                  getStatusBadge={getStatusBadge}
+                  setInspectionToDelete={setInspectionToDelete}
+                  setReportToDelete={setReportToDelete}
+                  setDeleteDialogOpen={setDeleteDialogOpen}
+                />
               );
             })()}
           </div>
