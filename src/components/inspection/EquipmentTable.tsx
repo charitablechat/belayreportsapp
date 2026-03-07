@@ -216,7 +216,7 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
         production_year: null,
         quantity: null,
         result: "pass",
-        comments: "<p>Tightened bolts and connectors as needed</p>",
+        comments: "",
       },
       ...prev,
     ]);
