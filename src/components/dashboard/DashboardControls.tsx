@@ -28,7 +28,7 @@ export function DashboardControls({
           <SelectItem value="none">No Grouping</SelectItem>
           <SelectItem value="status">Status</SelectItem>
           <SelectItem value="date">Date</SelectItem>
-          <SelectItem value="assignee">Assignee</SelectItem>
+          <SelectItem value="assignee">Inspector/Trainer</SelectItem>
           <SelectItem value="region">Region / State</SelectItem>
         </SelectContent>
       </Select>
