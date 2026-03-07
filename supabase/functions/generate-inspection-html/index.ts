@@ -219,12 +219,7 @@ function formatCommentsAsBullets(comments: string | null | undefined): string {
   const items = parseTextToList(comments);
   if (items.length === 0) return "—";
   
-  if (items.length === 1) {
-    // Single line - return as-is
-    return items[0];
-  }
-  
-  // Multiple lines - render as bullet list
+  // Always render as bullet list
   return `<ul class="comment-bullets" style="list-style: disc; padding-left: 16px; margin: 0;">
     ${items.map(item => `<li style="padding: 2px 0; line-height: 1.4;">${item}</li>`).join('')}
   </ul>`;
