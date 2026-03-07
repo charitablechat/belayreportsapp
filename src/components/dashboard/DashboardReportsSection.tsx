@@ -1,0 +1,306 @@
+import { useMemo, useState } from "react";
+import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { FileText, GraduationCap, ChevronDown, ChevronRight, X, Filter } from "lucide-react";
+import { ReportCard } from "@/components/dashboard/ReportCard";
+import { ReportCardSkeleton } from "@/components/dashboard/ReportCardSkeleton";
+import { ReportListView } from "@/components/dashboard/ReportListView";
+import { DashboardSearchBar } from "@/components/dashboard/DashboardSearchBar";
+import { DashboardFilters } from "@/components/dashboard/DashboardFilters";
+import { DashboardQuickFilters } from "@/components/dashboard/DashboardQuickFilters";
+import { DashboardControls } from "@/components/dashboard/DashboardControls";
+import { DashboardPagination } from "@/components/dashboard/DashboardPagination";
+import { useDashboardFilters } from "@/hooks/useDashboardFilters";
+import { InspectionsEmptyState, TrainingsEmptyState, DailyAssessmentsEmptyState } from "@/components/EmptyState";
+import { triggerHaptic } from "@/lib/haptics";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+
+interface DashboardReportsSectionProps {
+  inspections: any[];
+  trainings: any[];
+  dailyAssessments: any[];
+  activeReportTab: string;
+  setActiveReportTab: (tab: string) => void;
+  loading: boolean;
+  currentUserId: string | null;
+  uniqueInspectors: { id: string; name: string }[];
+  isSuperAdmin: boolean;
+  inspectorFilter: string;
+  setInspectorFilter: (v: string) => void;
+  navigate: (path: string) => void;
+  getStatusBadge: (report: any) => React.ReactNode;
+  setInspectionToDelete: (report: any) => void;
+  setReportToDelete: (report: any) => void;
+  setDeleteDialogOpen: (open: boolean) => void;
+}
+
+export function DashboardReportsSection({
+  inspections,
+  trainings,
+  dailyAssessments,
+  activeReportTab,
+  setActiveReportTab,
+  loading,
+  currentUserId,
+  uniqueInspectors,
+  isSuperAdmin,
+  inspectorFilter,
+  setInspectorFilter,
+  navigate,
+  getStatusBadge,
+  setInspectionToDelete,
+  setReportToDelete,
+  setDeleteDialogOpen,
+}: DashboardReportsSectionProps) {
+  const [showFilters, setShowFilters] = useState(false);
+
+  const currentReports = activeReportTab === 'inspections' ? inspections
+    : activeReportTab === 'training' ? trainings
+    : dailyAssessments;
+
+  const currentType = (activeReportTab === 'inspections' ? 'inspection'
+    : activeReportTab === 'training' ? 'training'
+    : 'daily') as 'inspection' | 'training' | 'daily';
+
+  const statuses = useMemo(() => [...new Set(currentReports.map(r => r.status).filter(Boolean))], [currentReports]);
+
+  const {
+    filters,
+    updateFilter,
+    toggleQuickFilter,
+    clearAllFilters,
+    completedCollapsed,
+    setCompletedCollapsed,
+    toggleGroupCollapse,
+    collapsedGroups,
+    hasActiveFilters,
+    groups,
+    totalPages,
+    currentPage,
+    filteredCount,
+    criticalCount,
+    warningCount,
+  } = useDashboardFilters(currentReports, currentType, currentUserId);
+
+  const handleDelete = (report: any) => {
+    if (currentType === 'inspection') {
+      setInspectionToDelete(report);
+    } else {
+      setReportToDelete(report);
+    }
+    setDeleteDialogOpen(true);
+  };
+
+  const handleClick = (report: any) => {
+    if (currentType === 'inspection') navigate(`/inspection/${report.id}`);
+    else if (currentType === 'training') navigate(`/training/${report.id}`);
+    else navigate(`/daily-assessment/${report.id}`);
+  };
+
+  const EmptyState = activeReportTab === 'inspections' ? InspectionsEmptyState
+    : activeReportTab === 'training' ? TrainingsEmptyState
+    : DailyAssessmentsEmptyState;
+
+  const newPath = activeReportTab === 'inspections' ? '/inspection/new'
+    : activeReportTab === 'training' ? '/training/new'
+    : '/daily-assessment/new';
+
+  return (
+    <div>
+      {/* Sticky filter bar */}
+      <div className="sticky top-0 z-20 bg-background/95 backdrop-blur-sm pb-4 space-y-3 -mx-4 px-4 pt-2 border-b border-border/50 mb-4">
+        <DashboardSearchBar
+          value={filters.search}
+          onChange={(v) => updateFilter('search', v)}
+        />
+
+        <div className="flex items-center justify-between gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 text-xs gap-1.5"
+            onClick={() => setShowFilters(!showFilters)}
+          >
+            <Filter className="w-3.5 h-3.5" />
+            Filters
+            {hasActiveFilters && (
+              <span className="ml-1 w-2 h-2 rounded-full bg-primary" />
+            )}
+          </Button>
+
+          <DashboardControls
+            sortBy={filters.sortBy}
+            onSortChange={(v) => updateFilter('sortBy', v)}
+            groupBy={filters.groupBy}
+            onGroupChange={(v) => updateFilter('groupBy', v)}
+            viewMode={filters.viewMode}
+            onViewModeChange={(v) => updateFilter('viewMode', v)}
+          />
+        </div>
+
+        {showFilters && (
+          <div className="space-y-3 pt-1">
+            <DashboardFilters
+              statusFilter={filters.statusFilter}
+              onStatusChange={(v) => updateFilter('statusFilter', v)}
+              assigneeFilter={filters.assigneeFilter}
+              onAssigneeChange={(v) => updateFilter('assigneeFilter', v)}
+              dateRange={filters.dateRange}
+              onDateRangeChange={(v) => updateFilter('dateRange', v)}
+              syncFilter={filters.syncFilter}
+              onSyncChange={(v) => updateFilter('syncFilter', v)}
+              uniqueInspectors={uniqueInspectors}
+              statuses={statuses}
+            />
+
+            <DashboardQuickFilters
+              quickFilters={filters.quickFilters}
+              onToggle={toggleQuickFilter}
+              criticalCount={criticalCount}
+              warningCount={warningCount}
+            />
+          </div>
+        )}
+
+        {hasActiveFilters && (
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">{filteredCount} results</span>
+            <Button variant="ghost" size="sm" className="h-6 text-xs gap-1" onClick={clearAllFilters}>
+              <X className="w-3 h-3" />
+              Clear filters
+            </Button>
+          </div>
+        )}
+      </div>
+
+      {/* Report type tabs */}
+      <Tabs value={activeReportTab} onValueChange={setActiveReportTab}>
+        <TabsList className="w-full sm:w-auto mb-4">
+          <TabsTrigger value="inspections" className="flex items-center gap-2">
+            <FileText className="w-4 h-4" />
+            Inspections ({inspections.length})
+          </TabsTrigger>
+          <TabsTrigger value="training" className="flex items-center gap-2">
+            <GraduationCap className="w-4 h-4" />
+            Training ({trainings.length})
+          </TabsTrigger>
+          <TabsTrigger value="daily" className="flex items-center gap-2">
+            <FileText className="w-4 h-4" />
+            Daily ({dailyAssessments.length})
+          </TabsTrigger>
+        </TabsList>
+
+        {/* Content for all tabs - rendered by the same logic */}
+        {['inspections', 'training', 'daily'].map((tab) => (
+          <TabsContent key={tab} value={tab}>
+            {loading ? (
+              <div className="grid gap-4">
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <ReportCardSkeleton key={i} />
+                ))}
+              </div>
+            ) : filteredCount === 0 ? (
+              hasActiveFilters ? (
+                <Card>
+                  <CardContent className="p-8 text-center">
+                    <p className="text-muted-foreground mb-4">No reports match your filters</p>
+                    <Button variant="outline" onClick={clearAllFilters}>Clear all filters</Button>
+                  </CardContent>
+                </Card>
+              ) : (
+                <Card>
+                  <CardContent className="p-0">
+                    <EmptyState
+                      onAction={() => {
+                        triggerHaptic('light');
+                        navigate(newPath);
+                      }}
+                    />
+                  </CardContent>
+                </Card>
+              )
+            ) : (
+              <div className="space-y-6">
+                {groups.map((group, gi) => {
+                  const isCompleted = group.label.startsWith('Completed');
+                  const isCollapsed = isCompleted ? completedCollapsed : collapsedGroups.has(group.label);
+                  const showHeader = groups.length > 1 || filters.groupBy !== 'none';
+
+                  return (
+                    <div key={group.label}>
+                      {showHeader && (
+                        <Collapsible
+                          open={!isCollapsed}
+                          onOpenChange={() => isCompleted ? setCompletedCollapsed(!completedCollapsed) : toggleGroupCollapse(group.label)}
+                        >
+                          <CollapsibleTrigger className="flex items-center gap-2 mb-3 w-full text-left hover:opacity-80 transition-opacity">
+                            {isCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                            <span className="font-semibold text-sm">{group.label}</span>
+                            <Badge variant="secondary" className="text-xs">{group.count}</Badge>
+                          </CollapsibleTrigger>
+                          <CollapsibleContent>
+                            {filters.viewMode === 'list' ? (
+                              <ReportListView
+                                reports={group.items}
+                                type={currentType}
+                                onRowClick={handleClick}
+                              />
+                            ) : (
+                              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                                {group.items.map((report: any) => (
+                                  <ReportCard
+                                    key={report.id}
+                                    report={report}
+                                    type={currentType}
+                                    onDelete={handleDelete}
+                                    onClick={handleClick}
+                                    getStatusBadge={currentType === 'inspection' ? getStatusBadge : undefined}
+                                  />
+                                ))}
+                              </div>
+                            )}
+                          </CollapsibleContent>
+                        </Collapsible>
+                      )}
+                      {!showHeader && (
+                        filters.viewMode === 'list' ? (
+                          <ReportListView
+                            reports={group.items}
+                            type={currentType}
+                            onRowClick={handleClick}
+                          />
+                        ) : (
+                          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                            {group.items.map((report: any) => (
+                              <ReportCard
+                                key={report.id}
+                                report={report}
+                                type={currentType}
+                                onDelete={handleDelete}
+                                onClick={handleClick}
+                                getStatusBadge={currentType === 'inspection' ? getStatusBadge : undefined}
+                              />
+                            ))}
+                          </div>
+                        )
+                      )}
+                    </div>
+                  );
+                })}
+
+                <DashboardPagination
+                  currentPage={currentPage}
+                  totalPages={totalPages}
+                  onPageChange={(p) => updateFilter('page', p)}
+                />
+              </div>
+            )}
+          </TabsContent>
+        ))}
+      </Tabs>
+    </div>
+  );
+}
