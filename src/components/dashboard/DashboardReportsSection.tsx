@@ -83,7 +83,7 @@ export function DashboardReportsSection({
     filteredCount,
     criticalCount,
     warningCount,
-  } = useDashboardFilters(currentReports, currentType, currentUserId);
+  } = useDashboardFilters(currentReports, currentType, currentUserId, isSuperAdmin);
 
   const handleDelete = (report: any) => {
     if (currentType === 'inspection') {
