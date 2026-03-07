@@ -1,30 +1,66 @@
 
 
-## Always Render Comments as Bullet Lists in Reports
+## Onboarding Resource Center
 
-### Problem
+A dedicated `/onboarding` page where users can browse videos and PDFs you've uploaded, and mark items as completed.
 
-In `formatCommentsAsBullets()` (line 222-224 of `generate-inspection-html/index.ts`), single-item comments are returned as plain text. This means entries with only "Tightened bolts and connectors as needed" appear without a bullet, while entries with additional user text get bullets. The screenshot confirms this inconsistency.
+### Database
 
-### Fix
+**1. `onboarding_resources` table** — stores metadata for each uploaded file
 
-**File: `supabase/functions/generate-inspection-html/index.ts`** — lines 222-225
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | PK |
+| title | text | Display name |
+| description | text | Optional summary |
+| file_type | text | 'video' or 'pdf' |
+| file_url | text | Storage path |
+| display_order | integer | Sort order |
+| is_published | boolean | Only published items shown to users |
+| uploaded_by | uuid | References auth.users |
+| created_at | timestamptz | |
 
-Remove the single-item special case. Always render as a `<ul>` bullet list regardless of item count:
+RLS: Super admins can CRUD. Authenticated users can SELECT where `is_published = true`.
 
-```typescript
-// Before:
-if (items.length === 1) {
-  return items[0];
-}
+**2. `onboarding_progress` table** — tracks per-user completion
 
-// After: remove this block entirely — all items fall through to the bullet list rendering below
-```
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | PK |
+| user_id | uuid | References auth.users |
+| resource_id | uuid | FK to onboarding_resources |
+| completed_at | timestamptz | When marked complete |
+| unique(user_id, resource_id) | | Prevents duplicates |
 
-This single change ensures every comment (1 item or many) is wrapped in `<ul><li>` markup, matching the reference screenshot.
+RLS: Users can manage their own rows only.
 
-### No other changes needed
+**3. `onboarding-files` storage bucket** — private bucket for the actual video/PDF files. Super admins can upload; authenticated users can read.
 
-- The PDF generator uses a separate rendering path but pulls from the same data — verify if it also needs the same treatment. (It uses `stripHtml` so bullets don't apply there.)
-- Database content is unchanged.
+### Frontend
+
+**`/onboarding` page** — accessible from the dashboard header navigation:
+- Lists all published resources grouped by type (Videos section, Documents section)
+- Each card shows: title, description, file type icon, and a checkbox to mark complete
+- Clicking a video opens an inline `<video>` player; clicking a PDF downloads it
+- A progress bar at the top shows "X of Y completed"
+- Matches existing app styling (cards, borders, monospace metadata)
+
+**Admin upload UI** — visible only to super admins on the same page:
+- "Add Resource" button opens a form: title, description, file type selector, file upload input, display order
+- Drag-to-reorder support using existing drag patterns
+- Toggle publish/unpublish per resource
+- Delete resource (removes from storage + DB)
+
+### Route Addition
+
+Add `/onboarding` to `App.tsx` router, import the new `Onboarding.tsx` page component. Add a navigation link in `AuthenticatedHeader.tsx`.
+
+### Files
+
+| File | Action |
+|------|--------|
+| Migration SQL | Create tables, bucket, RLS policies |
+| `src/pages/Onboarding.tsx` | New page component |
+| `src/App.tsx` | Add route |
+| `src/components/AuthenticatedHeader.tsx` | Add nav link |
 
