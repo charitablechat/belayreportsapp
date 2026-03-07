@@ -266,6 +266,29 @@ export function useDashboardFilters(
 
     filtered.sort(sortFn);
 
+    // 7b. "Completed" sort: show only last 9 completed reports
+    if (sortBy === 'completed') {
+      let completed = filtered.filter(r => r.status === 'completed');
+      if (!isSuperAdmin && currentUserId) {
+        completed = completed.filter(r => r.inspector_id === currentUserId);
+      }
+      completed.sort((a: any, b: any) => {
+        const da = getReportDate(a, type) || '';
+        const db = getReportDate(b, type) || '';
+        return db.localeCompare(da);
+      });
+      completed = completed.slice(0, 9);
+      return {
+        groups: [{ label: 'Last 9 Completed', count: completed.length, items: completed }],
+        totalItems: completed.length,
+        totalPages: 1,
+        currentPage: 1,
+        filteredCount: completed.length,
+        criticalCount: 0,
+        warningCount: 0,
+      };
+    }
+
     // 8. Separate completed into bottom section
     const criticalItems = filtered.filter(r => tierOf(r) === 0);
     const warningItems = filtered.filter(r => tierOf(r) === 1);
