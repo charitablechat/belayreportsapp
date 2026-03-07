@@ -1,43 +1,66 @@
 
 
-## Retroactive Default Comment for All Existing Equipment & Zipline Entries
+## Onboarding Resource Center
 
-### Data Summary
+A dedicated `/onboarding` page where users can browse videos and PDFs you've uploaded, and mark items as completed.
 
-| Table | Total Rows | Empty Comments | Has Comments | Already Has Default |
-|-------|-----------|----------------|--------------|---------------------|
-| inspection_equipment | 200 | 153 | 47 | 0 |
-| inspection_ziplines | 21 | all need check | some | 0 |
+### Database
 
-### Approach
+**1. `onboarding_resources` table** — stores metadata for each uploaded file
 
-Run two UPDATE statements via the insert tool (data operation, not schema change):
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | PK |
+| title | text | Display name |
+| description | text | Optional summary |
+| file_type | text | 'video' or 'pdf' |
+| file_url | text | Storage path |
+| display_order | integer | Sort order |
+| is_published | boolean | Only published items shown to users |
+| uploaded_by | uuid | References auth.users |
+| created_at | timestamptz | |
 
-**1. Empty/blank comments** — replace with just the default text:
-```sql
-UPDATE inspection_equipment
-SET comments = '<p>Tightened bolts and connectors as needed</p>'
-WHERE comments IS NULL OR comments = '' OR comments = '<p></p>';
-```
+RLS: Super admins can CRUD. Authenticated users can SELECT where `is_published = true`.
 
-**2. Existing comments** — prepend default text before existing content:
-```sql
-UPDATE inspection_equipment
-SET comments = '<p>Tightened bolts and connectors as needed</p>' || comments
-WHERE comments IS NOT NULL AND comments != '' AND comments != '<p></p>'
-  AND comments NOT LIKE '%Tightened bolts and connectors as needed%';
-```
+**2. `onboarding_progress` table** — tracks per-user completion
 
-Same two queries for `inspection_ziplines`.
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | PK |
+| user_id | uuid | References auth.users |
+| resource_id | uuid | FK to onboarding_resources |
+| completed_at | timestamptz | When marked complete |
+| unique(user_id, resource_id) | | Prevents duplicates |
 
-### Impact
+RLS: Users can manage their own rows only.
 
-- 200 equipment rows and 21 zipline rows updated
-- Existing user comments preserved — default text prepended above them
-- Already-applied rows (if any) skipped via the `NOT LIKE` guard
-- Reports (HTML/PDF) will reflect the change automatically since they read from the database
+**3. `onboarding-files` storage bucket** — private bucket for the actual video/PDF files. Super admins can upload; authenticated users can read.
 
-### No Code Changes
+### Frontend
 
-No frontend or edge function changes needed — this is a data-only update.
+**`/onboarding` page** — accessible from the dashboard header navigation:
+- Lists all published resources grouped by type (Videos section, Documents section)
+- Each card shows: title, description, file type icon, and a checkbox to mark complete
+- Clicking a video opens an inline `<video>` player; clicking a PDF downloads it
+- A progress bar at the top shows "X of Y completed"
+- Matches existing app styling (cards, borders, monospace metadata)
+
+**Admin upload UI** — visible only to super admins on the same page:
+- "Add Resource" button opens a form: title, description, file type selector, file upload input, display order
+- Drag-to-reorder support using existing drag patterns
+- Toggle publish/unpublish per resource
+- Delete resource (removes from storage + DB)
+
+### Route Addition
+
+Add `/onboarding` to `App.tsx` router, import the new `Onboarding.tsx` page component. Add a navigation link in `AuthenticatedHeader.tsx`.
+
+### Files
+
+| File | Action |
+|------|--------|
+| Migration SQL | Create tables, bucket, RLS policies |
+| `src/pages/Onboarding.tsx` | New page component |
+| `src/App.tsx` | Add route |
+| `src/components/AuthenticatedHeader.tsx` | Add nav link |
 
