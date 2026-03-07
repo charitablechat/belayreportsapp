@@ -28,7 +28,7 @@ export function DashboardControls({
           <SelectItem value="none">No Grouping</SelectItem>
           <SelectItem value="status">Status</SelectItem>
           <SelectItem value="date">Date</SelectItem>
-          <SelectItem value="assignee">Assignee</SelectItem>
+          <SelectItem value="assignee">Inspector/Trainer</SelectItem>
           <SelectItem value="region">Region / State</SelectItem>
         </SelectContent>
       </Select>
@@ -39,10 +39,11 @@ export function DashboardControls({
         </SelectTrigger>
         <SelectContent>
           <SelectItem value="priority">Priority</SelectItem>
+          <SelectItem value="completed">Completed</SelectItem>
           <SelectItem value="date-asc">Date ↑</SelectItem>
           <SelectItem value="date-desc">Date ↓</SelectItem>
           <SelectItem value="title-az">Title A–Z</SelectItem>
-          <SelectItem value="assignee">Assignee</SelectItem>
+          <SelectItem value="assignee">Inspector/Trainer</SelectItem>
         </SelectContent>
       </Select>
 
