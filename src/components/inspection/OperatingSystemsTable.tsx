@@ -40,7 +40,7 @@ function OperatingSystemsTable({ systems, onUpdate, onImmediateSave }: Operating
         inspection_id: window.location.pathname.split('/').pop(),
         system_name: "", 
         result: "pass", 
-        comments: "" 
+        comments: "<p>Tightened bolts and connectors as needed</p>" 
       },
       ...prev
     ]);
