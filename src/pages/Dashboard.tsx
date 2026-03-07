@@ -16,6 +16,7 @@ import { ReportListView } from "@/components/dashboard/ReportListView";
 import { DashboardPagination } from "@/components/dashboard/DashboardPagination";
 import { useDashboardFilters } from "@/hooks/useDashboardFilters";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { DashboardReportsSection } from "@/components/dashboard/DashboardReportsSection";
 import { UserAvatar } from "@/components/ui/user-avatar";
 import { toast } from "sonner";
 import { format, differenceInDays } from "date-fns";
