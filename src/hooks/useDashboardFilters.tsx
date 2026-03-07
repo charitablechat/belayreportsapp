@@ -76,7 +76,8 @@ function getRegion(report: any): string {
 export function useDashboardFilters(
   reports: any[],
   type: string,
-  currentUserId: string | null
+  currentUserId: string | null,
+  isSuperAdmin: boolean = false
 ) {
   const [filters, setFilters] = useState<DashboardFilterState>({
     search: '',
