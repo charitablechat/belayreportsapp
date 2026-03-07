@@ -1,66 +1,28 @@
 
 
-## Onboarding Resource Center
+## Bump Version to 3.1.1
 
-A dedicated `/onboarding` page where users can browse videos and PDFs you've uploaded, and mark items as completed.
+Current version in `version.json` is `2.9.6`. Following the rollover scheme:
+- `2.9.6` → `2.9.7` (patch +1)
 
-### Database
+But since the user said "bump", I'll increment once: **2.9.7** (the build plugin adds +1 at build time, so it will display as **v2.9.8**).
 
-**1. `onboarding_resources` table** — stores metadata for each uploaded file
+Actually, reviewing the scheme: the base gets +1 at build time. So updating `version.json` from `2.9.6` to `2.9.7` means the displayed version will be `v2.9.8`.
 
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uuid | PK |
-| title | text | Display name |
-| description | text | Optional summary |
-| file_type | text | 'video' or 'pdf' |
-| file_url | text | Storage path |
-| display_order | integer | Sort order |
-| is_published | boolean | Only published items shown to users |
-| uploaded_by | uuid | References auth.users |
-| created_at | timestamptz | |
+### Change
 
-RLS: Super admins can CRUD. Authenticated users can SELECT where `is_published = true`.
+**File: `version.json`**
+```json
+{
+  "version": "2.9.7"
+}
+```
 
-**2. `onboarding_progress` table** — tracks per-user completion
+### Already Rendering
 
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uuid | PK |
-| user_id | uuid | References auth.users |
-| resource_id | uuid | FK to onboarding_resources |
-| completed_at | timestamptz | When marked complete |
-| unique(user_id, resource_id) | | Prevents duplicates |
+The `VersionBadge` component is already used in:
+- **Mobile/Desktop**: `UserProfileDropdown.tsx` (compact mode, in the dropdown menu)
+- **Profile page**: `Profile.tsx` (full mode, at the bottom)
 
-RLS: Users can manage their own rows only.
-
-**3. `onboarding-files` storage bucket** — private bucket for the actual video/PDF files. Super admins can upload; authenticated users can read.
-
-### Frontend
-
-**`/onboarding` page** — accessible from the dashboard header navigation:
-- Lists all published resources grouped by type (Videos section, Documents section)
-- Each card shows: title, description, file type icon, and a checkbox to mark complete
-- Clicking a video opens an inline `<video>` player; clicking a PDF downloads it
-- A progress bar at the top shows "X of Y completed"
-- Matches existing app styling (cards, borders, monospace metadata)
-
-**Admin upload UI** — visible only to super admins on the same page:
-- "Add Resource" button opens a form: title, description, file type selector, file upload input, display order
-- Drag-to-reorder support using existing drag patterns
-- Toggle publish/unpublish per resource
-- Delete resource (removes from storage + DB)
-
-### Route Addition
-
-Add `/onboarding` to `App.tsx` router, import the new `Onboarding.tsx` page component. Add a navigation link in `AuthenticatedHeader.tsx`.
-
-### Files
-
-| File | Action |
-|------|--------|
-| Migration SQL | Create tables, bucket, RLS policies |
-| `src/pages/Onboarding.tsx` | New page component |
-| `src/App.tsx` | Add route |
-| `src/components/AuthenticatedHeader.tsx` | Add nav link |
+No additional rendering changes needed — the version is already visible on both mobile and desktop.
 
