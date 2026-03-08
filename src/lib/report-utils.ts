@@ -1,4 +1,30 @@
 /**
+ * Shared utility functions for report data access and emptiness checks.
+ */
+
+/**
+ * Get the primary date for a report based on its type.
+ * Unified fallback chain used by both filters and list views.
+ */
+export function getReportDate(report: any, type: string): string {
+  if (type === 'inspection') return report.inspection_date;
+  if (type === 'daily') return report.assessment_date;
+  return report.training?.start_date || report.start_date || report.created_at || '';
+}
+
+/**
+ * Get the assignee/inspector/trainer display name for a report.
+ */
+export function getAssigneeName(report: any, type: string): string {
+  if (type === 'training') {
+    const t = report.trainer;
+    return t ? `${t.first_name || ''} ${t.last_name || ''}`.trim() || 'Unknown' : 'Unknown';
+  }
+  const i = report.inspector;
+  return i ? `${i.first_name || ''} ${i.last_name || ''}`.trim() || 'Unknown' : 'Unknown';
+}
+
+/**
  * Utility functions for checking if reports have meaningful content.
  * Used to prevent saving/displaying empty reports on the dashboard.
  */

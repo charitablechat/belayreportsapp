@@ -7,27 +7,7 @@ import { format } from "date-fns";
 import { parseLocalDate } from "@/lib/date-utils";
 import { cn } from "@/lib/utils";
 import { triggerHaptic } from "@/lib/haptics";
-
-interface ReportListViewProps {
-  reports: any[];
-  type: 'inspection' | 'training' | 'daily';
-  onRowClick: (report: any) => void;
-}
-
-function getReportDate(r: any, type: string): string {
-  if (type === 'inspection') return r.inspection_date;
-  if (type === 'daily') return r.assessment_date;
-  return r.training?.start_date || r.start_date || '';
-}
-
-function getAssigneeName(r: any, type: string): string {
-  if (type === 'training') {
-    const t = r.trainer;
-    return t ? `${t.first_name || ''} ${t.last_name || ''}`.trim() || 'Unknown' : 'Unknown';
-  }
-  const i = r.inspector;
-  return i ? `${i.first_name || ''} ${i.last_name || ''}`.trim() || 'Unknown' : 'Unknown';
-}
+import { getReportDate, getAssigneeName } from "@/lib/report-utils";
 
 function getAvatarUrl(r: any, type: string): string | null {
   if (type === 'training') return r.trainer?.avatar_url || null;

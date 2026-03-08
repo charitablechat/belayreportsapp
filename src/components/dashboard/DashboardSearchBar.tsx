@@ -14,10 +14,12 @@ export function DashboardSearchBar({ value, onChange }: DashboardSearchBarProps)
   useEffect(() => {
     const t = setTimeout(() => onChange(local), 300);
     return () => clearTimeout(t);
-  }, [local]);
+  }, [local, onChange]);
 
   useEffect(() => {
+    // Intentionally omitting `local` from deps to avoid infinite loops
     if (value !== local) setLocal(value);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value]);
 
   return (
