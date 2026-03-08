@@ -8,7 +8,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { format, differenceInDays } from "date-fns";
+import { format, differenceInDays, formatDistanceToNow } from "date-fns";
 import { FileText, MoreVertical, Trash2, Download, Check, Cloud } from "lucide-react";
 import { triggerHaptic } from "@/lib/haptics";
 import { parseLocalDate } from "@/lib/date-utils";
@@ -33,9 +33,10 @@ interface ReportCardProps {
   onDelete: (report: any) => void;
   onClick: (report: any) => void;
   getStatusBadge?: (report: any) => React.ReactNode;
+  compact?: boolean;
 }
 
-export function ReportCard({ report, type, onDelete, onClick, getStatusBadge }: ReportCardProps) {
+export function ReportCard({ report, type, onDelete, onClick, getStatusBadge, compact }: ReportCardProps) {
   const { sparkles, triggerSparkles, handleMouseMove } = useClickAndHoverSparkles();
   const isInspection = type === 'inspection';
   const isDaily = type === 'daily';
@@ -115,11 +116,30 @@ export function ReportCard({ report, type, onDelete, onClick, getStatusBadge }: 
   const ageState = getReportAgeState(report.created_at, getReportStatus());
 
   const ageStateClasses: Record<ReportAgeState, string> = {
-    critical: 'bg-red-200 dark:bg-red-900/40 border-red-400 dark:border-red-800',
-    warning: 'bg-yellow-50 dark:bg-yellow-950/30 border-yellow-300 dark:border-yellow-700',
+    critical: 'border-l-4 border-l-destructive bg-red-200 dark:bg-red-900/40',
+    warning: 'border-l-4 border-l-amber-500 bg-yellow-50 dark:bg-yellow-950/30',
     completed: 'border-l-4 border-l-green-500',
-    default: '',
+    default: 'border-l-4 border-l-muted-foreground/30',
   };
+
+  const getRelativeDate = () => {
+    const dateStr = getReportDate();
+    if (!dateStr) return null;
+    const parsed = parseLocalDate(dateStr);
+    if (!parsed) return null;
+    return { full: format(parsed, "PPP"), relative: formatDistanceToNow(parsed, { addSuffix: true }) };
+  };
+
+  const getLastActivity = () => {
+    const updatedAt = report.updated_at;
+    if (!updatedAt) return null;
+    try {
+      return formatDistanceToNow(new Date(updatedAt), { addSuffix: true });
+    } catch { return null; }
+  };
+
+  const dateInfo = getRelativeDate();
+  const lastActivity = getLastActivity();
 
   return (
     <Card 
@@ -144,7 +164,7 @@ export function ReportCard({ report, type, onDelete, onClick, getStatusBadge }: 
           </span>
         </div>
       )}
-      <CardContent className="p-4 md:p-6">
+      <CardContent className={cn("p-4 md:p-6", compact && "p-2.5 md:p-3")}>
         <div className="flex items-start justify-between gap-2 mb-4">
           <div className="flex items-center gap-2">
             <FileText className="w-5 h-5 text-primary" />
@@ -191,9 +211,14 @@ export function ReportCard({ report, type, onDelete, onClick, getStatusBadge }: 
           {getReportLocation() && (
             <p className="text-muted-foreground line-clamp-1">{getReportLocation()}</p>
           )}
-          <p className="text-muted-foreground font-mono">
-            Date: {parseLocalDate(getReportDate()) ? format(parseLocalDate(getReportDate())!, "PPP") : 'No date'}
+          <p className="text-muted-foreground" title={dateInfo?.full}>
+            {dateInfo ? dateInfo.relative : 'No date'}
           </p>
+          {lastActivity && getReportStatus() !== 'completed' && (
+            <p className="text-muted-foreground/70 text-[11px]">
+              Edited {lastActivity}
+            </p>
+          )}
           <div className="flex items-center gap-2">
             <Avatar className="h-6 w-6">
               <AvatarImage src={getInspectorAvatar() || undefined} alt={getInspectorName()} />

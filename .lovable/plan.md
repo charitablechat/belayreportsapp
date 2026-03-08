@@ -1,63 +1,66 @@
 
 
-# Dashboard Reports Section — UX Improvement Suggestions
+## Onboarding Resource Center
 
-Here are concrete, high-impact improvements to make the reports section more organized, professional, and glanceable:
+A dedicated `/onboarding` page where users can browse videos and PDFs you've uploaded, and mark items as completed.
 
----
+### Database
 
-## 1. Summary Stats Bar (At-a-Glance)
-Add a compact stats strip above the tabs showing key metrics at a glance:
-```text
-┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐
-│  12      │ │  3       │ │  2       │ │  7       │
-│  Total   │ │  Drafts  │ │ Overdue  │ │ Complete │
-└──────────┘ └──────────┘ └──────────┘ └──────────┘
-```
-- Numbers update per active tab (Inspections/Training/Daily)
-- Overdue count uses the existing `tierOf()` critical+warning logic
-- Clicking a stat acts as a quick filter
+**1. `onboarding_resources` table** — stores metadata for each uploaded file
 
-## 2. Progress Indicator per Report Card
-Add a thin progress bar or completion percentage to each card showing how "filled out" the report is (e.g., required fields completed). This gives instant visual feedback on which drafts need attention vs. which are nearly done.
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | PK |
+| title | text | Display name |
+| description | text | Optional summary |
+| file_type | text | 'video' or 'pdf' |
+| file_url | text | Storage path |
+| display_order | integer | Sort order |
+| is_published | boolean | Only published items shown to users |
+| uploaded_by | uuid | References auth.users |
+| created_at | timestamptz | |
 
-## 3. Relative Time Labels
-Replace or supplement the monospaced date with relative labels like "2 days ago", "Last week" — faster to parse at a glance than "Mar 6, 2026". Keep the full date in a tooltip.
+RLS: Super admins can CRUD. Authenticated users can SELECT where `is_published = true`.
 
-## 4. Color-Coded Status Dots (Not Just Badges)
-Replace the text badges with small colored dots + concise labels on the card. A left-border color stripe (already partially there for completed) could extend to all statuses:
-- Green left border = completed
-- Amber left border = warning (3-5 days)
-- Red left border = critical (5+ days)
-- Gray left border = fresh draft
+**2. `onboarding_progress` table** — tracks per-user completion
 
-## 5. "Last Activity" Timestamp
-Show "Last edited 2h ago" below the date to indicate recency of work. Uses the existing `updated_at` field. Helps distinguish stale drafts from actively worked-on ones.
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | PK |
+| user_id | uuid | References auth.users |
+| resource_id | uuid | FK to onboarding_resources |
+| completed_at | timestamptz | When marked complete |
+| unique(user_id, resource_id) | | Prevents duplicates |
 
-## 6. Compact Card Layout Option
-Current cards have generous padding. Add a "compact" density toggle (alongside grid/list) that reduces padding and font sizes, fitting more cards on screen — useful for power users with many reports.
+RLS: Users can manage their own rows only.
 
-## 7. Improved Empty/Zero States per Group
-When a collapsible group (e.g., "Completed") is collapsed, show a one-line summary: "8 completed reports — last: Acme Corp, Mar 5" so you get info without expanding.
+**3. `onboarding-files` storage bucket** — private bucket for the actual video/PDF files. Super admins can upload; authenticated users can read.
 
-## 8. Keyboard Navigation
-Add arrow-key navigation between cards and Enter to open. Improves accessibility and power-user workflow.
+### Frontend
 
----
+**`/onboarding` page** — accessible from the dashboard header navigation:
+- Lists all published resources grouped by type (Videos section, Documents section)
+- Each card shows: title, description, file type icon, and a checkbox to mark complete
+- Clicking a video opens an inline `<video>` player; clicking a PDF downloads it
+- A progress bar at the top shows "X of Y completed"
+- Matches existing app styling (cards, borders, monospace metadata)
 
-## Recommended Priority Order
-1. **Summary Stats Bar** — highest impact, lowest effort
-2. **Relative Time Labels** — quick win, big readability improvement
-3. **Left-Border Color Coding for all states** — extends existing pattern
-4. **Last Activity timestamp** — small addition, high utility
-5. **Compact density toggle** — medium effort, nice for power users
+**Admin upload UI** — visible only to super admins on the same page:
+- "Add Resource" button opens a form: title, description, file type selector, file upload input, display order
+- Drag-to-reorder support using existing drag patterns
+- Toggle publish/unpublish per resource
+- Delete resource (removes from storage + DB)
 
-## Technical Approach
-- Stats bar: New `DashboardStatsBar` component, computed from existing `useDashboardFilters` outputs (criticalCount, warningCount, filteredCount)
-- Relative time: `formatDistanceToNow` from date-fns (already installed)
-- Color borders: Extend `ageStateClasses` in `ReportCard.tsx` to cover all tiers
-- Last activity: Read `updated_at` from report object, display with `formatDistanceToNow`
-- Compact toggle: Add a `density` state to `DashboardFilterState`, apply conditional padding classes
+### Route Addition
 
-All changes are frontend-only — no database or backend modifications needed.
+Add `/onboarding` to `App.tsx` router, import the new `Onboarding.tsx` page component. Add a navigation link in `AuthenticatedHeader.tsx`.
+
+### Files
+
+| File | Action |
+|------|--------|
+| Migration SQL | Create tables, bucket, RLS policies |
+| `src/pages/Onboarding.tsx` | New page component |
+| `src/App.tsx` | Add route |
+| `src/components/AuthenticatedHeader.tsx` | Add nav link |
 
