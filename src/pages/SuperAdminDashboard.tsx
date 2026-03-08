@@ -131,6 +131,18 @@ export default function SuperAdminDashboard() {
     enabled: !loading && managedUsers !== undefined,
   });
 
+  // Trigger health check (P2)
+  const { data: triggerHealth } = useQuery({
+    queryKey: ["trigger-health"],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('check_trigger_health');
+      if (error) throw error;
+      return data as { healthy: boolean; active_count: number; expected_count: number };
+    },
+    enabled: !loading,
+    refetchInterval: 300000, // recheck every 5 minutes
+  });
+
   // Organizations query with trainings and daily assessments
   const { data: organizations, refetch: refetchOrganizations } = useQuery({
     queryKey: ["admin-organizations"],
