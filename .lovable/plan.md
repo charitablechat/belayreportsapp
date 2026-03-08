@@ -1,15 +1,18 @@
 
 
-## Update MAKE_CONTACT_WEBHOOK_URL Secret
+## Fix: Add User Feedback to Contact Developer Sheet
 
-### Single Step
-Update the `MAKE_CONTACT_WEBHOOK_URL` secret value to: `https://hook.us2.make.com/hh432mxuv8nb4qgydogej8u5qwyjhewo`
+### Problem
+The `ContactDeveloperSheet.tsx` component (opened from the profile dropdown) has no toast notifications. The webhook fires successfully (confirmed in logs), but the user gets zero visual feedback — no success message, no error message, no validation warnings. This makes it appear broken.
 
-No code changes needed. This ensures the Contact Developer form (`send-contact-email` edge function) routes to the correct Make.com scenario.
+Compare with `ContactDeveloper.tsx` (the FAB version) which correctly shows `toast.success` and `toast.error`.
 
-### Final State
-| Secret | Webhook URL | Used By |
-|--------|------------|---------|
-| `MAKE_WEBHOOK_URL` | `https://hook.us2.make.com/3rj4hu9v5uapnxyu34dcgadmm67wie7x` | Report completions (all 3 types) |
-| `MAKE_CONTACT_WEBHOOK_URL` | `https://hook.us2.make.com/hh432mxuv8nb4qgydogej8u5qwyjhewo` | Contact Developer form |
+### Fix
+Add toast notifications to `ContactDeveloperSheet.tsx` for:
+1. **Success**: "Message sent successfully!" after webhook completes
+2. **Error**: "Failed to send message. Please try again." on failure
+3. **Validation**: Missing fields, message too long, offline warnings
+4. **File upload errors**: Size limit exceeded
+
+Single file change: `src/components/ContactDeveloperSheet.tsx` — import `toast` from sonner and add toast calls matching the pattern in `ContactDeveloper.tsx`.
 
