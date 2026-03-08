@@ -203,6 +203,7 @@ export function LocalSnapshotsPanel({ allowDelete = true }: SnapshotsPanelProps)
 
   const handleDelete = (reportType: ReportType, reportId: string) => {
     deleteReportSnapshot(reportType, reportId);
+    refreshSnapshots();
     toast.success("Snapshot deleted");
   };
 
