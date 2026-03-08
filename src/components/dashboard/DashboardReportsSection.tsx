@@ -187,7 +187,7 @@ export function DashboardReportsSection({
               onDateRangeChange={(v) => updateFilter('dateRange', v)}
               syncFilter={filters.syncFilter}
               onSyncChange={(v) => updateFilter('syncFilter', v)}
-              uniqueInspectors={uniqueInspectors}
+              uniqueInspectors={scopedInspectors}
               statuses={statuses}
             />
 
