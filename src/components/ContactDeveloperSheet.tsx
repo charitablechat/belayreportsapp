@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { supabase } from "@/integrations/supabase/client";
 import { usePWA } from "@/hooks/usePWA";
+import { toast } from "@/components/ui/sonner";
 
 interface ContactForm {
   subject: string;
