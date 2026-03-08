@@ -1,50 +1,66 @@
 
 
-## Replace Resend with Make.com Webhook
+## Onboarding Resource Center
 
-Replace the Resend email API call in the `send-contact-email` edge function with a POST to a Make.com webhook URL. All existing validation, rate limiting, honeypot detection, and attachment handling remain unchanged.
+A dedicated `/onboarding` page where users can browse videos and PDFs you've uploaded, and mark items as completed.
 
-### What Changes
+### Database
 
-**`supabase/functions/send-contact-email/index.ts`** (lines 165-216)
+**1. `onboarding_resources` table** — stores metadata for each uploaded file
 
-Remove:
-- `RESEND_API_KEY` lookup and Resend `fetch` call
-- HTML email template construction
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | PK |
+| title | text | Display name |
+| description | text | Optional summary |
+| file_type | text | 'video' or 'pdf' |
+| file_url | text | Storage path |
+| display_order | integer | Sort order |
+| is_published | boolean | Only published items shown to users |
+| uploaded_by | uuid | References auth.users |
+| created_at | timestamptz | |
 
-Replace with:
-- `MAKE_WEBHOOK_URL` secret lookup
-- Single `fetch` POST to the Make.com webhook with a JSON payload containing: `name`, `email`, `subject` (human-readable), `message`, `attachmentUrl`, `attachmentName`, `attachmentType`
+RLS: Super admins can CRUD. Authenticated users can SELECT where `is_published = true`.
 
-### Secret Required
+**2. `onboarding_progress` table** — tracks per-user completion
 
-A new secret `MAKE_WEBHOOK_URL` needs to be added. You'll create a Make.com scenario with a "Custom Webhook" trigger module and paste the generated URL as the secret value.
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | PK |
+| user_id | uuid | References auth.users |
+| resource_id | uuid | FK to onboarding_resources |
+| completed_at | timestamptz | When marked complete |
+| unique(user_id, resource_id) | | Prevents duplicates |
 
-### Edge Function Change (Conceptual)
+RLS: Users can manage their own rows only.
 
-```typescript
-// BEFORE (lines 165-216):
-const resendApiKey = Deno.env.get("RESEND_API_KEY");
-// ... Resend fetch ...
+**3. `onboarding-files` storage bucket** — private bucket for the actual video/PDF files. Super admins can upload; authenticated users can read.
 
-// AFTER:
-const makeWebhookUrl = Deno.env.get("MAKE_WEBHOOK_URL");
-if (!makeWebhookUrl) throw new Error("MAKE_WEBHOOK_URL not configured");
+### Frontend
 
-const webhookResponse = await fetch(makeWebhookUrl, {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({
-    name, email, subject: subjectText, message,
-    attachmentUrl, attachmentName, attachmentType,
-    timestamp: new Date().toISOString(),
-  }),
-});
+**`/onboarding` page** — accessible from the dashboard header navigation:
+- Lists all published resources grouped by type (Videos section, Documents section)
+- Each card shows: title, description, file type icon, and a checkbox to mark complete
+- Clicking a video opens an inline `<video>` player; clicking a PDF downloads it
+- A progress bar at the top shows "X of Y completed"
+- Matches existing app styling (cards, borders, monospace metadata)
 
-if (!webhookResponse.ok) {
-  throw new Error(`Make.com webhook failed: ${webhookResponse.status}`);
-}
-```
+**Admin upload UI** — visible only to super admins on the same page:
+- "Add Resource" button opens a form: title, description, file type selector, file upload input, display order
+- Drag-to-reorder support using existing drag patterns
+- Toggle publish/unpublish per resource
+- Delete resource (removes from storage + DB)
 
-Everything upstream (CORS, rate limiting, honeypot, validation, attachment URL verification) stays exactly as-is.
+### Route Addition
+
+Add `/onboarding` to `App.tsx` router, import the new `Onboarding.tsx` page component. Add a navigation link in `AuthenticatedHeader.tsx`.
+
+### Files
+
+| File | Action |
+|------|--------|
+| Migration SQL | Create tables, bucket, RLS policies |
+| `src/pages/Onboarding.tsx` | New page component |
+| `src/App.tsx` | Add route |
+| `src/components/AuthenticatedHeader.tsx` | Add nav link |
 

@@ -162,58 +162,35 @@ const handler = async (req: Request): Promise<Response> => {
 
     const subjectText = subjectMap[subject] || subject;
 
-    // Send email using Resend API directly
-    const resendApiKey = Deno.env.get("RESEND_API_KEY");
+    // Send to Make.com webhook
+    const makeWebhookUrl = Deno.env.get("MAKE_WEBHOOK_URL");
     
-    if (!resendApiKey) {
-      throw new Error("RESEND_API_KEY not configured");
+    if (!makeWebhookUrl) {
+      throw new Error("MAKE_WEBHOOK_URL not configured");
     }
 
-    // Send email to developer (using verified test email for Resend test mode)
-    // NOTE: For production, verify your domain at resend.com/domains and update the 'from' address
-    const emailResponse = await fetch("https://api.resend.com/emails", {
+    const webhookResponse = await fetch(makeWebhookUrl, {
       method: "POST",
-      headers: {
-        "Authorization": `Bearer ${resendApiKey}`,
-        "Content-Type": "application/json",
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        from: "ACCT Inspector <onboarding@resend.dev>",
-        to: ["kale@myaisummit.dev"], // Using verified email for test mode
-        subject: `[ACCT Inspector] ${subjectText} from ${name}`,
-        html: `
-          <h2>New Contact Form Submission</h2>
-          <p><strong>From:</strong> ${escapeHtml(name)} (${escapeHtml(email)})</p>
-          <p><strong>Subject:</strong> ${escapeHtml(subjectText)}</p>
-          <p><strong>Message:</strong></p>
-          <p>${escapeHtml(message).replace(/\n/g, "<br>")}</p>
-          ${attachmentUrl ? `
-            <h3>Attached File:</h3>
-            <p><strong>File:</strong> ${escapeHtml(attachmentName || 'attachment')}</p>
-            <p><a href="${escapeHtml(attachmentUrl)}" style="color: #0066cc; text-decoration: underline;">
-              📎 Download/View Attachment
-            </a></p>
-            ${attachmentType?.startsWith('image/') ? `
-              <img src="${escapeHtml(attachmentUrl)}" alt="Attachment" style="max-width: 600px; height: auto; margin-top: 10px; border: 1px solid #ddd; border-radius: 4px;" />
-            ` : ''}
-          ` : ''}
-          <hr>
-          <p style="color: #666; font-size: 12px;">
-            Reply to this email to respond directly to ${escapeHtml(email)}
-          </p>
-        `,
-        reply_to: email,
+        name,
+        email,
+        subject: subjectText,
+        message,
+        attachmentUrl,
+        attachmentName,
+        attachmentType,
+        timestamp: new Date().toISOString(),
       }),
     });
 
-    if (!emailResponse.ok) {
-      const errorText = await emailResponse.text();
-      console.error("Resend API error:", errorText);
-      throw new Error(`Failed to send email: ${errorText}`);
+    if (!webhookResponse.ok) {
+      const errorText = await webhookResponse.text();
+      console.error("Make.com webhook error:", errorText);
+      throw new Error(`Make.com webhook failed: ${webhookResponse.status}`);
     }
 
-    const emailResult = await emailResponse.json();
-    console.log("Contact email sent successfully:", emailResult);
+    console.log("Contact form sent to Make.com successfully");
 
     return new Response(JSON.stringify({ success: true }), {
       status: 200,
