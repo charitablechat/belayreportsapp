@@ -254,11 +254,24 @@ export function getCircuitBreakerStatus(): { open: boolean; failureCount: number
 /**
  * Helper to wrap a promise with a timeout
  */
+// Track timeout suppression to avoid console spam
+let timeoutWarningCount = 0;
+let lastTimeoutLogAt = 0;
+const TIMEOUT_LOG_INTERVAL = 30000; // Only log once per 30s
+
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, fallbackValue: T): Promise<T> {
   return Promise.race([
     promise,
     new Promise<T>((resolve) => setTimeout(() => {
-      console.warn(`[Offline Storage] Operation timed out after ${timeoutMs}ms, returning fallback`);
+      // Suppress repeated timeout warnings to reduce console noise
+      timeoutWarningCount++;
+      const now = Date.now();
+      if (now - lastTimeoutLogAt > TIMEOUT_LOG_INTERVAL) {
+        const suppressed = timeoutWarningCount - 1;
+        console.warn(`[Offline Storage] Operation timed out after ${timeoutMs}ms${suppressed > 0 ? ` (${suppressed} similar warnings suppressed)` : ''}`);
+        timeoutWarningCount = 0;
+        lastTimeoutLogAt = now;
+      }
       resolve(fallbackValue);
     }, timeoutMs))
   ]);

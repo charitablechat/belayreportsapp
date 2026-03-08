@@ -533,6 +533,7 @@ export const useAutoSync = () => {
       
       if (isIOSDevice) {
         window.removeEventListener('pageshow', handlePageShow);
+        window.removeEventListener('focus', handleFocus);
       }
       
       if (debounceTimerRef.current) {

@@ -970,7 +970,7 @@ export default function Dashboard() {
           }
 
           // Update UI
-          setTrainings(trainings.filter(t => t.id !== reportToDelete.id));
+          setTrainings(prev => prev.filter(t => t.id !== reportToDelete.id));
         }
       }
 
