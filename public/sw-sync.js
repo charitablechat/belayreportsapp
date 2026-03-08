@@ -294,7 +294,7 @@ async function syncPhotos() {
   console.log('[SW Sync] Starting photo sync...');
   
   try {
-    const db = await openDB('rope-works-inspections', 8);
+    const db = await openDB(DB_NAME, DB_VERSION);
     const allPhotos = await getAllFromStore(db, 'photos');
     const unuploaded = allPhotos.filter(p => !p.uploaded);
     
