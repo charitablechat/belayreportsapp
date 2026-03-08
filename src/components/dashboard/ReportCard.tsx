@@ -115,11 +115,30 @@ export function ReportCard({ report, type, onDelete, onClick, getStatusBadge }: 
   const ageState = getReportAgeState(report.created_at, getReportStatus());
 
   const ageStateClasses: Record<ReportAgeState, string> = {
-    critical: 'bg-red-200 dark:bg-red-900/40 border-red-400 dark:border-red-800',
-    warning: 'bg-yellow-50 dark:bg-yellow-950/30 border-yellow-300 dark:border-yellow-700',
+    critical: 'border-l-4 border-l-destructive bg-red-200 dark:bg-red-900/40',
+    warning: 'border-l-4 border-l-amber-500 bg-yellow-50 dark:bg-yellow-950/30',
     completed: 'border-l-4 border-l-green-500',
-    default: '',
+    default: 'border-l-4 border-l-muted-foreground/30',
   };
+
+  const getRelativeDate = () => {
+    const dateStr = getReportDate();
+    if (!dateStr) return null;
+    const parsed = parseLocalDate(dateStr);
+    if (!parsed) return null;
+    return { full: format(parsed, "PPP"), relative: formatDistanceToNow(parsed, { addSuffix: true }) };
+  };
+
+  const getLastActivity = () => {
+    const updatedAt = report.updated_at;
+    if (!updatedAt) return null;
+    try {
+      return formatDistanceToNow(new Date(updatedAt), { addSuffix: true });
+    } catch { return null; }
+  };
+
+  const dateInfo = getRelativeDate();
+  const lastActivity = getLastActivity();
 
   return (
     <Card 
