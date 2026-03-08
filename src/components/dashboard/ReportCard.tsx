@@ -164,7 +164,7 @@ export function ReportCard({ report, type, onDelete, onClick, getStatusBadge, co
           </span>
         </div>
       )}
-      <CardContent className="p-4 md:p-6">
+      <CardContent className={cn("p-4 md:p-6", compact && "p-2.5 md:p-3")}>
         <div className="flex items-start justify-between gap-2 mb-4">
           <div className="flex items-center gap-2">
             <FileText className="w-5 h-5 text-primary" />
