@@ -210,9 +210,14 @@ export function ReportCard({ report, type, onDelete, onClick, getStatusBadge }: 
           {getReportLocation() && (
             <p className="text-muted-foreground line-clamp-1">{getReportLocation()}</p>
           )}
-          <p className="text-muted-foreground font-mono">
-            Date: {parseLocalDate(getReportDate()) ? format(parseLocalDate(getReportDate())!, "PPP") : 'No date'}
+          <p className="text-muted-foreground" title={dateInfo?.full}>
+            {dateInfo ? dateInfo.relative : 'No date'}
           </p>
+          {lastActivity && getReportStatus() !== 'completed' && (
+            <p className="text-muted-foreground/70 text-[11px]">
+              Edited {lastActivity}
+            </p>
+          )}
           <div className="flex items-center gap-2">
             <Avatar className="h-6 w-6">
               <AvatarImage src={getInspectorAvatar() || undefined} alt={getInspectorName()} />
