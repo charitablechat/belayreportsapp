@@ -481,11 +481,13 @@ export const useAutoSync = () => {
       }
     };
     
+    const handleFocus = () => {
+      if (navigator.onLine) performSync(true);
+    };
+    
     if (isIOSDevice) {
       window.addEventListener('pageshow', handlePageShow);
-      window.addEventListener('focus', () => {
-        if (navigator.onLine) performSync(true);
-      });
+      window.addEventListener('focus', handleFocus);
     }
     
     // Periodic sync polling with mobile-aware interval
