@@ -31,7 +31,7 @@ export function DashboardStatsBar({ total, drafts, overdue, completed, onFilterC
             className={cn(
               "flex flex-col items-center gap-1 rounded-lg border p-2.5 transition-all text-center",
               "hover:bg-accent/50 hover:border-primary/30",
-              isActive && "bg-accent border-primary/50 ring-1 ring-primary/20",
+              isActive && "bg-primary/10 border-primary/40 ring-1 ring-primary/15",
               !isActive && "bg-card border-border"
             )}
           >
