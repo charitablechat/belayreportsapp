@@ -22,6 +22,9 @@ interface DashboardReportsSectionProps {
   inspections: any[];
   trainings: any[];
   dailyAssessments: any[];
+  totalInspections?: number;
+  totalTrainings?: number;
+  totalDailyAssessments?: number;
   activeReportTab: string;
   setActiveReportTab: (tab: string) => void;
   loading: boolean;
