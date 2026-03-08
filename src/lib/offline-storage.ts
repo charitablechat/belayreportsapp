@@ -1671,7 +1671,7 @@ export async function getUnsyncedCounts(userId?: string): Promise<{
   );
 }
 
-
+export async function queueTrainingOperation(type: 'create' | 'update' | 'delete', trainingId: string, data: any) {
   return withIndexedDBErrorBoundary(
     async () => {
       const db = await getDB();
