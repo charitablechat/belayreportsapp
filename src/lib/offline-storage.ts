@@ -1626,7 +1626,52 @@ export async function getUnsyncedTrainings(userId?: string) {
   );
 }
 
-export async function queueTrainingOperation(type: 'create' | 'update' | 'delete', trainingId: string, data: any) {
+/**
+ * Batched unsynced counts — single IndexedDB transaction instead of 3 separate calls.
+ * Reduces timeout storm when multiple hooks poll concurrently.
+ */
+export async function getUnsyncedCounts(userId?: string): Promise<{
+  inspections: any[];
+  trainings: any[];
+  assessments: any[];
+}> {
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      
+      const filterUnsynced = (items: any[], ownerField = 'inspector_id') => {
+        let unsynced = items.filter(i => {
+          if (!i.synced_at) return true;
+          if (!i.updated_at) return false;
+          const drift = new Date(i.updated_at).getTime() - new Date(i.synced_at).getTime();
+          return drift > 2000;
+        });
+        if (userId) {
+          const owned = unsynced.filter(i => i[ownerField] === userId);
+          const orphaned = unsynced.filter(i => i[ownerField] !== userId && i.id.startsWith('temp-'));
+          unsynced = [...owned, ...orphaned];
+        }
+        return unsynced;
+      };
+      
+      const [allInspections, allTrainings, allAssessments] = await Promise.all([
+        db.getAll('inspections'),
+        db.getAll('trainings'),
+        db.getAll('daily_assessments'),
+      ]);
+      
+      return {
+        inspections: filterUnsynced(allInspections),
+        trainings: filterUnsynced(allTrainings),
+        assessments: filterUnsynced(allAssessments),
+      };
+    },
+    { inspections: [], trainings: [], assessments: [] },
+    'getUnsyncedCounts'
+  );
+}
+
+
   return withIndexedDBErrorBoundary(
     async () => {
       const db = await getDB();
