@@ -1,63 +1,66 @@
 
 
-## Root Cause Analysis: Contact Developer Feature
+## Onboarding Resource Center
 
-### Bug: Field Name Mismatch Between Frontend and Edge Function
+A dedicated `/onboarding` page where users can browse videos and PDFs you've uploaded, and mark items as completed.
 
-**Frontend (`ContactDeveloper.tsx` line 104)** sends:
-```typescript
-body: {
-  name: "Kale Dabling",
-  email: "kale@myaisummit.dev",
-  subject: form.subject,
-  message: form.message,
-  imageUrl,          // ← sends "imageUrl"
-  website: form.website,
-}
-```
+### Database
 
-**Edge function (`send-contact-email/index.ts` line 50)** destructures:
-```typescript
-const { name, email, subject, message, attachmentUrl, attachmentName, attachmentType, website } = await req.json();
-//                                      ^^^^^^^^^^^^^ expects "attachmentUrl"
-```
+**1. `onboarding_resources` table** — stores metadata for each uploaded file
 
-The image URL is sent as `imageUrl` but the function reads `attachmentUrl` — so it's always `undefined`. This doesn't cause a crash (the function proceeds without an attachment), but the image is silently dropped.
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | PK |
+| title | text | Display name |
+| description | text | Optional summary |
+| file_type | text | 'video' or 'pdf' |
+| file_url | text | Storage path |
+| display_order | integer | Sort order |
+| is_published | boolean | Only published items shown to users |
+| uploaded_by | uuid | References auth.users |
+| created_at | timestamptz | |
 
-**However, this alone wouldn't cause the submission to fail.** The validation and Make.com webhook call should still succeed for text-only submissions. The edge function logs show only `shutdown` events with no error traces, suggesting the function may not be receiving invocations at all — or Make.com is rejecting the POST.
+RLS: Super admins can CRUD. Authenticated users can SELECT where `is_published = true`.
 
-### Additional Finding: No User Feedback on Errors
+**2. `onboarding_progress` table** — tracks per-user completion
 
-The frontend `catch` block (line 114) only does `console.error` — no toast or UI feedback. If the function returns an error, the user sees "Sending..." briefly then nothing happens. This makes failures invisible.
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | PK |
+| user_id | uuid | References auth.users |
+| resource_id | uuid | FK to onboarding_resources |
+| completed_at | timestamptz | When marked complete |
+| unique(user_id, resource_id) | | Prevents duplicates |
 
-### Fix Plan (2 changes)
+RLS: Users can manage their own rows only.
 
-**1. Fix field name mismatch in `ContactDeveloper.tsx` (line 98-107)**
+**3. `onboarding-files` storage bucket** — private bucket for the actual video/PDF files. Super admins can upload; authenticated users can read.
 
-Change `imageUrl` to `attachmentUrl` (and add `attachmentName` and `attachmentType` which the edge function also expects):
+### Frontend
 
-```typescript
-const { error } = await supabase.functions.invoke("send-contact-email", {
-  body: {
-    name: "Kale Dabling",
-    email: "kale@myaisummit.dev",
-    subject: form.subject,
-    message: form.message,
-    attachmentUrl: imageUrl,
-    attachmentName: imageFile?.name,
-    attachmentType: imageFile?.type,
-    website: form.website,
-  },
-});
-```
+**`/onboarding` page** — accessible from the dashboard header navigation:
+- Lists all published resources grouped by type (Videos section, Documents section)
+- Each card shows: title, description, file type icon, and a checkbox to mark complete
+- Clicking a video opens an inline `<video>` player; clicking a PDF downloads it
+- A progress bar at the top shows "X of Y completed"
+- Matches existing app styling (cards, borders, monospace metadata)
 
-**2. Add toast feedback for success and failure**
+**Admin upload UI** — visible only to super admins on the same page:
+- "Add Resource" button opens a form: title, description, file type selector, file upload input, display order
+- Drag-to-reorder support using existing drag patterns
+- Toggle publish/unpublish per resource
+- Delete resource (removes from storage + DB)
 
-Import `toast` from sonner and add user-visible feedback in both the success and error paths so submissions aren't silently swallowed.
+### Route Addition
 
-### Verification Checklist
-- `MAKE_CONTACT_WEBHOOK_URL` secret exists — confirmed in secrets list.
-- Edge function logic is correct — validation, rate limiting, honeypot, and webhook POST are all properly implemented.
-- Separation of concerns — this function uses `MAKE_CONTACT_WEBHOOK_URL`, completely isolated from the report notification pipeline (`MAKE_WEBHOOK_URL`).
-- The only code bug is the field name mismatch and missing user feedback.
+Add `/onboarding` to `App.tsx` router, import the new `Onboarding.tsx` page component. Add a navigation link in `AuthenticatedHeader.tsx`.
+
+### Files
+
+| File | Action |
+|------|--------|
+| Migration SQL | Create tables, bucket, RLS policies |
+| `src/pages/Onboarding.tsx` | New page component |
+| `src/App.tsx` | Add route |
+| `src/components/AuthenticatedHeader.tsx` | Add nav link |
 
