@@ -68,7 +68,7 @@ export async function syncPhotos(): Promise<{ remaining: number }> {
 
     let successCount = 0;
 
-    for (const photo of unuploadedPhotos) {
+    for (const photo of batch) {
       try {
         const user = await getUserWithCache();
         if (!user) throw new Error("Not authenticated");
@@ -108,10 +108,13 @@ export async function syncPhotos(): Promise<{ remaining: number }> {
     }
 
     if (import.meta.env.DEV) {
-      console.log('[Sync Manager] Photo sync completed:', successCount, 'photos');
+      console.log(`[Sync Manager] Photo sync completed: ${successCount} photos, ${remaining} remaining`);
     }
+    
+    return { remaining };
   } catch (error) {
     console.error('[Sync Manager] Photo sync error:', error);
+    return { remaining: 0 };
   }
 }
 
