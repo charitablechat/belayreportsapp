@@ -1,66 +1,35 @@
 
 
-## Onboarding Resource Center
+## Fix: PWA "INSTALL UPDATE" Button Non-Functional
 
-A dedicated `/onboarding` page where users can browse videos and PDFs you've uploaded, and mark items as completed.
+### Root Cause
 
-### Database
+There is a conflict between the PWA configuration and the manual update UI:
 
-**1. `onboarding_resources` table** — stores metadata for each uploaded file
+1. **`vite-pwa-config.ts`** sets `registerType: 'autoUpdate'` with `skipWaiting: true` and `clientsClaim: true`
+2. This means every new service worker **immediately activates** — there is never a `waiting` worker
+3. The `controllerchange` event fires → `needRefresh` becomes `true` → banner shows
+4. User clicks "INSTALL UPDATE" → `updateServiceWorker(true)` runs → checks `registration?.waiting` → **it's null** (SW already activated itself)
+5. Falls through to `window.location.reload()` → page reloads → `controllerchange` fires again → banner reappears
 
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uuid | PK |
-| title | text | Display name |
-| description | text | Optional summary |
-| file_type | text | 'video' or 'pdf' |
-| file_url | text | Storage path |
-| display_order | integer | Sort order |
-| is_published | boolean | Only published items shown to users |
-| uploaded_by | uuid | References auth.users |
-| created_at | timestamptz | |
+**The button reloads the page, but the update was already applied before the user even saw the banner.** The banner then reappears on reload because the same `controllerchange` pattern repeats if any cache difference is detected.
 
-RLS: Super admins can CRUD. Authenticated users can SELECT where `is_published = true`.
+### Fix (2 files)
 
-**2. `onboarding_progress` table** — tracks per-user completion
+**1. `vite-pwa-config.ts`** — Change to `prompt` mode, remove auto-skip:
+- `registerType: 'prompt'` (user controls activation)
+- Remove `skipWaiting: true` and `clientsClaim: true`
+- This ensures new SWs **wait** until the user clicks "INSTALL UPDATE"
 
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uuid | PK |
-| user_id | uuid | References auth.users |
-| resource_id | uuid | FK to onboarding_resources |
-| completed_at | timestamptz | When marked complete |
-| unique(user_id, resource_id) | | Prevents duplicates |
+**2. `src/hooks/usePWAUpdate.tsx`** — Harden the update flow:
+- After posting `SKIP_WAITING`, listen for `controllerchange` before reloading (instead of a blind 500ms timeout)
+- Add a `controllerchange` one-shot listener that triggers reload, with a 3s safety timeout
+- Clear `needRefresh` when the update completes so the banner doesn't reappear
 
-RLS: Users can manage their own rows only.
-
-**3. `onboarding-files` storage bucket** — private bucket for the actual video/PDF files. Super admins can upload; authenticated users can read.
-
-### Frontend
-
-**`/onboarding` page** — accessible from the dashboard header navigation:
-- Lists all published resources grouped by type (Videos section, Documents section)
-- Each card shows: title, description, file type icon, and a checkbox to mark complete
-- Clicking a video opens an inline `<video>` player; clicking a PDF downloads it
-- A progress bar at the top shows "X of Y completed"
-- Matches existing app styling (cards, borders, monospace metadata)
-
-**Admin upload UI** — visible only to super admins on the same page:
-- "Add Resource" button opens a form: title, description, file type selector, file upload input, display order
-- Drag-to-reorder support using existing drag patterns
-- Toggle publish/unpublish per resource
-- Delete resource (removes from storage + DB)
-
-### Route Addition
-
-Add `/onboarding` to `App.tsx` router, import the new `Onboarding.tsx` page component. Add a navigation link in `AuthenticatedHeader.tsx`.
-
-### Files
-
-| File | Action |
-|------|--------|
-| Migration SQL | Create tables, bucket, RLS policies |
-| `src/pages/Onboarding.tsx` | New page component |
-| `src/App.tsx` | Add route |
-| `src/components/AuthenticatedHeader.tsx` | Add nav link |
+### Result
+- New SW installs → enters `waiting` state → banner shows
+- User clicks "INSTALL UPDATE" → `SKIP_WAITING` posted → SW activates → page reloads
+- After reload: no waiting worker, no controllerchange → banner gone
+- Orange styling preserved (no CSS changes)
+- Works identically on desktop and mobile (SW API is cross-platform)
 
