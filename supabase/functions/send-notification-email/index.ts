@@ -271,24 +271,45 @@ serve(async (req) => {
 
     console.log(`Sending webhook to Make.com with ${recipients.length} recipients`);
 
-    // POST to Make.com webhook
-    const makeResponse = await fetch(makeWebhookUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        recipients,
-        subject: title,
-        html: genericHtml,
-        notificationType,
-        data: data || {},
-      }),
-    });
+    // POST to Make.com webhook with exponential backoff (3 attempts)
+    const MAX_RETRIES = 3;
+    let lastError = '';
+    let makeResponse: Response | null = null;
 
-    if (!makeResponse.ok) {
-      const errorText = await makeResponse.text();
-      console.error(`Make.com webhook failed [${makeResponse.status}]: ${errorText}`);
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        makeResponse = await fetch(makeWebhookUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            recipients,
+            subject: title,
+            html: genericHtml,
+            notificationType,
+            data: data || {},
+          }),
+        });
+
+        if (makeResponse.ok) break;
+
+        lastError = await makeResponse.text();
+        console.warn(`Make.com attempt ${attempt}/${MAX_RETRIES} failed [${makeResponse.status}]: ${lastError}`);
+      } catch (fetchErr) {
+        lastError = fetchErr instanceof Error ? fetchErr.message : String(fetchErr);
+        console.warn(`Make.com attempt ${attempt}/${MAX_RETRIES} network error: ${lastError}`);
+      }
+
+      if (attempt < MAX_RETRIES) {
+        const delayMs = Math.pow(2, attempt) * 1000; // 2s, 4s
+        console.log(`Retrying in ${delayMs}ms...`);
+        await new Promise(r => setTimeout(r, delayMs));
+      }
+    }
+
+    if (!makeResponse?.ok) {
+      console.error(`Make.com webhook failed after ${MAX_RETRIES} attempts: ${lastError}`);
       return new Response(
-        JSON.stringify({ success: false, error: `Make.com webhook failed: ${makeResponse.status}` }),
+        JSON.stringify({ success: false, error: `Make.com webhook failed after ${MAX_RETRIES} attempts` }),
         { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
