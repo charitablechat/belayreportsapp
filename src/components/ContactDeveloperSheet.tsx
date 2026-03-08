@@ -74,8 +74,8 @@ export function ContactDeveloperSheet({ open, onOpenChange }: ContactDeveloperSh
     }
 
     if (!isOnline) {
+      toast.error("You're offline. Connect to the internet to send your message.");
       return;
-    }
 
     setLoading(true);
 
