@@ -102,18 +102,22 @@ export default function ContactDeveloper() {
           email: "kale@myaisummit.dev",
           subject: form.subject,
           message: form.message,
-          imageUrl,
-          website: form.website, // Honeypot field
+          attachmentUrl: imageUrl,
+          attachmentName: imageFile?.name,
+          attachmentType: imageFile?.type,
+          website: form.website,
         },
       });
 
       if (error) throw error;
 
+      toast.success("Message sent successfully!");
       setForm({ subject: "", message: "", website: "" });
       clearImage();
       setOpen(false);
     } catch (error: any) {
       console.error("Error sending message:", error);
+      toast.error("Failed to send message. Please try again.");
     } finally {
       setLoading(false);
     }
