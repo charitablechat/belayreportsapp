@@ -1,34 +1,66 @@
 
 
-## Separate Contact Developer Webhook
+## Onboarding Resource Center
 
-### Problem
-Both the contact developer form (`send-contact-email`) and the completed report notifications (`send-notification-email`) use the same `MAKE_WEBHOOK_URL` secret, meaning they hit the same Make.com scenario.
+A dedicated `/onboarding` page where users can browse videos and PDFs you've uploaded, and mark items as completed.
 
-### Fix
-Introduce a new secret `MAKE_CONTACT_WEBHOOK_URL` and update `send-contact-email` to use it instead. The report notification function keeps using `MAKE_WEBHOOK_URL` unchanged.
+### Database
 
-### Changes
+**1. `onboarding_resources` table** — stores metadata for each uploaded file
 
-**1. Add new secret:** `MAKE_CONTACT_WEBHOOK_URL`
-- You'll create a separate Make.com scenario with a Custom Webhook trigger for contact form submissions and paste its URL as the secret value.
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | PK |
+| title | text | Display name |
+| description | text | Optional summary |
+| file_type | text | 'video' or 'pdf' |
+| file_url | text | Storage path |
+| display_order | integer | Sort order |
+| is_published | boolean | Only published items shown to users |
+| uploaded_by | uuid | References auth.users |
+| created_at | timestamptz | |
 
-**2. Edit `supabase/functions/send-contact-email/index.ts`** (lines 165-170)
-- Replace `MAKE_WEBHOOK_URL` with `MAKE_CONTACT_WEBHOOK_URL`
+RLS: Super admins can CRUD. Authenticated users can SELECT where `is_published = true`.
 
-```typescript
-// BEFORE
-const makeWebhookUrl = Deno.env.get("MAKE_WEBHOOK_URL");
-if (!makeWebhookUrl) {
-  throw new Error("MAKE_WEBHOOK_URL not configured");
-}
+**2. `onboarding_progress` table** — tracks per-user completion
 
-// AFTER
-const makeWebhookUrl = Deno.env.get("MAKE_CONTACT_WEBHOOK_URL");
-if (!makeWebhookUrl) {
-  throw new Error("MAKE_CONTACT_WEBHOOK_URL not configured");
-}
-```
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | PK |
+| user_id | uuid | References auth.users |
+| resource_id | uuid | FK to onboarding_resources |
+| completed_at | timestamptz | When marked complete |
+| unique(user_id, resource_id) | | Prevents duplicates |
 
-No other files change. `send-notification-email` continues using `MAKE_WEBHOOK_URL`.
+RLS: Users can manage their own rows only.
+
+**3. `onboarding-files` storage bucket** — private bucket for the actual video/PDF files. Super admins can upload; authenticated users can read.
+
+### Frontend
+
+**`/onboarding` page** — accessible from the dashboard header navigation:
+- Lists all published resources grouped by type (Videos section, Documents section)
+- Each card shows: title, description, file type icon, and a checkbox to mark complete
+- Clicking a video opens an inline `<video>` player; clicking a PDF downloads it
+- A progress bar at the top shows "X of Y completed"
+- Matches existing app styling (cards, borders, monospace metadata)
+
+**Admin upload UI** — visible only to super admins on the same page:
+- "Add Resource" button opens a form: title, description, file type selector, file upload input, display order
+- Drag-to-reorder support using existing drag patterns
+- Toggle publish/unpublish per resource
+- Delete resource (removes from storage + DB)
+
+### Route Addition
+
+Add `/onboarding` to `App.tsx` router, import the new `Onboarding.tsx` page component. Add a navigation link in `AuthenticatedHeader.tsx`.
+
+### Files
+
+| File | Action |
+|------|--------|
+| Migration SQL | Create tables, bucket, RLS policies |
+| `src/pages/Onboarding.tsx` | New page component |
+| `src/App.tsx` | Add route |
+| `src/components/AuthenticatedHeader.tsx` | Add nav link |
 

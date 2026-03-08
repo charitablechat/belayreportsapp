@@ -163,10 +163,10 @@ const handler = async (req: Request): Promise<Response> => {
     const subjectText = subjectMap[subject] || subject;
 
     // Send to Make.com webhook
-    const makeWebhookUrl = Deno.env.get("MAKE_WEBHOOK_URL");
+    const makeWebhookUrl = Deno.env.get("MAKE_CONTACT_WEBHOOK_URL");
     
     if (!makeWebhookUrl) {
-      throw new Error("MAKE_WEBHOOK_URL not configured");
+      throw new Error("MAKE_CONTACT_WEBHOOK_URL not configured");
     }
 
     const webhookResponse = await fetch(makeWebhookUrl, {
