@@ -22,7 +22,7 @@ function validateNotificationPayload(payload: any): payload is NotificationPaylo
   
   // Validate required fields
   if (typeof organizationId !== 'string' || organizationId.length === 0 || organizationId.length > 100) return false;
-  if (typeof notificationType !== 'string' || !['inspection_completed', 'training_completed', 'sync_conflict'].includes(notificationType)) return false;
+  if (typeof notificationType !== 'string' || !['inspection_completed', 'training_completed', 'daily_assessment_completed', 'sync_conflict'].includes(notificationType)) return false;
   if (typeof title !== 'string' || title.length === 0 || title.length > 200) return false;
   if (typeof body !== 'string' || body.length === 0 || body.length > 500) return false;
   
@@ -168,6 +168,7 @@ serve(async (req) => {
       const shouldSend = 
         (notificationType === 'inspection_completed' && prefs?.inspection_completed !== false) ||
         (notificationType === 'training_completed' && prefs?.training_completed !== false) ||
+        (notificationType === 'daily_assessment_completed' && prefs?.inspection_completed !== false) ||
         (notificationType === 'sync_conflict' && prefs?.sync_conflicts !== false);
 
       if (!shouldSend) {

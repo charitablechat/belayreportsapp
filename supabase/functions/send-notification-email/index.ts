@@ -9,7 +9,7 @@ const corsHeaders = {
 
 interface NotificationEmailRequest {
   organizationId: string;
-  notificationType: 'inspection_completed' | 'training_completed' | 'sync_conflict';
+  notificationType: 'inspection_completed' | 'training_completed' | 'daily_assessment_completed' | 'sync_conflict';
   title: string;
   body: string;
   data?: {
@@ -204,6 +204,16 @@ serve(async (req) => {
         detailsHtml = `
           <ul style="list-style: none; padding: 0; margin: 0;">
             ${data.trainer ? `<li style="padding: 8px 0; border-bottom: 1px solid #eee;"><strong>Trainer:</strong> ${data.trainer}</li>` : ''}
+            ${data.organization ? `<li style="padding: 8px 0; border-bottom: 1px solid #eee;"><strong>Organization:</strong> ${data.organization}</li>` : ''}
+            <li style="padding: 8px 0;"><strong>Date:</strong> ${new Date().toLocaleDateString()}</li>
+          </ul>
+        `;
+      } else if (notificationType === 'daily_assessment_completed' && data?.assessmentId) {
+        viewLink = `${appUrl}/daily-assessment/${data.assessmentId}`;
+        detailsHtml = `
+          <ul style="list-style: none; padding: 0; margin: 0;">
+            ${data.inspector ? `<li style="padding: 8px 0; border-bottom: 1px solid #eee;"><strong>Inspector:</strong> ${data.inspector}</li>` : ''}
+            ${data.location ? `<li style="padding: 8px 0; border-bottom: 1px solid #eee;"><strong>Site:</strong> ${data.location}</li>` : ''}
             ${data.organization ? `<li style="padding: 8px 0; border-bottom: 1px solid #eee;"><strong>Organization:</strong> ${data.organization}</li>` : ''}
             <li style="padding: 8px 0;"><strong>Date:</strong> ${new Date().toLocaleDateString()}</li>
           </ul>
