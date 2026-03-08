@@ -946,7 +946,9 @@ export default function Dashboard() {
           // Update UI
           setDailyAssessments(dailyAssessments.filter(a => a.id !== reportToDelete.id));
         } else if (isTraining) {
-          // Soft delete training report
+          // Soft delete training report - remove from offline storage first
+          await deleteOfflineTraining(reportToDelete.id);
+          
           if (navigator.onLine) {
             const { error } = await supabase
               .from("trainings")
