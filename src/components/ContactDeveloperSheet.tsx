@@ -38,8 +38,8 @@ export function ContactDeveloperSheet({ open, onOpenChange }: ContactDeveloperSh
 
     // Validate file size (10MB max for all file types)
     if (file.size > 10 * 1024 * 1024) {
+      toast.error("File too large. Maximum size is 10MB.");
       return;
-    }
 
     setAttachedFile(file);
     
