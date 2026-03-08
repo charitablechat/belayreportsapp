@@ -9,6 +9,12 @@ import { cn } from "@/lib/utils";
 import { triggerHaptic } from "@/lib/haptics";
 import { getReportDate, getAssigneeName } from "@/lib/report-utils";
 
+interface ReportListViewProps {
+  reports: any[];
+  type: 'inspection' | 'training' | 'daily';
+  onRowClick: (report: any) => void;
+}
+
 function getAvatarUrl(r: any, type: string): string | null {
   if (type === 'training') return r.trainer?.avatar_url || null;
   return r.inspector?.avatar_url || null;
