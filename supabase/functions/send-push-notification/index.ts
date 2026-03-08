@@ -87,23 +87,10 @@ serve(async (req) => {
 
     const { organizationId, notificationType, title, body, data } = payload;
 
-    // Get all super_admins for the organization with their push subscriptions
-    const { data: superAdmins, error: fetchRolesError } = await supabaseServiceClient
+    // Step 1: Get super_admin user_ids for the organization
+    const { data: adminRoles, error: fetchRolesError } = await supabaseServiceClient
       .from('user_roles')
-      .select(`
-        user_id,
-        push_subscriptions (
-          id,
-          endpoint,
-          p256dh,
-          auth
-        ),
-        notification_preferences (
-          inspection_completed,
-          training_completed,
-          sync_conflicts
-        )
-      `)
+      .select('user_id')
       .eq('organization_id', organizationId)
       .eq('role', 'super_admin');
 
@@ -112,14 +99,56 @@ serve(async (req) => {
       throw fetchRolesError;
     }
 
-    console.log(`Found ${superAdmins?.length || 0} super admins for organization ${organizationId}`);
+    const adminUserIds = (adminRoles || []).map((r: any) => r.user_id);
+    console.log(`Found ${adminUserIds.length} super admins for organization ${organizationId}`);
 
-    if (!superAdmins || superAdmins.length === 0) {
+    if (adminUserIds.length === 0) {
       return new Response(
         JSON.stringify({ message: 'No super admins found for organization' }),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+
+    // Step 2: Fetch push subscriptions and notification preferences in parallel
+    const [subsResult, prefsResult] = await Promise.all([
+      supabaseServiceClient
+        .from('push_subscriptions')
+        .select('id, user_id, endpoint, p256dh, auth')
+        .in('user_id', adminUserIds),
+      supabaseServiceClient
+        .from('notification_preferences')
+        .select('user_id, inspection_completed, training_completed, sync_conflicts')
+        .in('user_id', adminUserIds),
+    ]);
+
+    if (subsResult.error) {
+      console.error('Error fetching push subscriptions:', subsResult.error);
+      throw subsResult.error;
+    }
+    if (prefsResult.error) {
+      console.error('Error fetching notification preferences:', prefsResult.error);
+      throw prefsResult.error;
+    }
+
+    // Step 3: Build per-admin lookup maps
+    const subsByUser = new Map<string, any[]>();
+    for (const sub of (subsResult.data || [])) {
+      const list = subsByUser.get(sub.user_id) || [];
+      list.push(sub);
+      subsByUser.set(sub.user_id, list);
+    }
+
+    const prefsByUser = new Map<string, any>();
+    for (const pref of (prefsResult.data || [])) {
+      prefsByUser.set(pref.user_id, pref);
+    }
+
+    // Build unified admin list matching original structure
+    const superAdmins = adminUserIds.map((uid: string) => ({
+      user_id: uid,
+      push_subscriptions: subsByUser.get(uid) || [],
+      notification_preferences: prefsByUser.get(uid) ? [prefsByUser.get(uid)] : [],
+    }));
 
     const vapidPublicKey = Deno.env.get('VAPID_PUBLIC_KEY');
     const vapidPrivateKey = Deno.env.get('VAPID_PRIVATE_KEY');
