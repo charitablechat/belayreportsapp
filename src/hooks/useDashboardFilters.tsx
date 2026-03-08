@@ -294,7 +294,7 @@ export function useDashboardFilters(
       // Flat list: attention first, then active, then completed collapsed
       const mainItems = [...needsAttentionItems, ...nonAttentionActive];
       if (mainItems.length > 0) {
-        groups.push({ label: 'Reports', count: mainItems.length, items: mainItems });
+        groups.push({ label: 'Drafts', count: mainItems.length, items: mainItems });
       }
       if (completedItems.length > 0) {
         groups.push({ label: 'Completed', count: completedItems.length, items: completedItems, isCollapsed: completedCollapsed });
