@@ -194,18 +194,30 @@ export function DashboardReportsSection({
         />
 
         <div className="flex items-center justify-between gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-8 text-xs gap-1.5"
-            onClick={() => setShowFilters(!showFilters)}
-          >
-            <Filter className="w-3.5 h-3.5" />
-            Filters
-            {hasActiveFilters && (
-              <span className="ml-1 w-2 h-2 rounded-full bg-primary" />
-            )}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 text-xs gap-1.5"
+              onClick={() => setShowFilters(!showFilters)}
+            >
+              <Filter className="w-3.5 h-3.5" />
+              Filters
+              {hasActiveFilters && (
+                <span className="ml-1 w-2 h-2 rounded-full bg-primary" />
+              )}
+            </Button>
+
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => setCompact(!compact)}
+              title={compact ? 'Normal density' : 'Compact density'}
+            >
+              {compact ? <Maximize2 className="w-3.5 h-3.5" /> : <Minimize2 className="w-3.5 h-3.5" />}
+            </Button>
+          </div>
 
           <DashboardControls
             sortBy={filters.sortBy}
