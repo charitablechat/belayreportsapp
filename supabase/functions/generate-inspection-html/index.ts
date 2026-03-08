@@ -212,6 +212,16 @@ function renderBulletList(items: string[], fallbackHtml: string): string {
   return fallbackHtml;
 }
 
+// Helper: prepend default bolt text for systems/ziplines in reports
+function prependDefaultBolt(comments: string | null | undefined): string {
+  const defaultText = "Tightened bolts and connectors as needed";
+  if (!comments || comments.trim() === "" || comments === "—") {
+    return `<p>${defaultText}</p>`;
+  }
+  if (comments.includes(defaultText)) return comments;
+  return `<p>${defaultText}</p>${comments}`;
+}
+
 // Helper to format comments as bullet points for table cells
 function formatCommentsAsBullets(comments: string | null | undefined): string {
   if (!comments || comments === "—" || comments.trim() === "") return "—";
@@ -1888,7 +1898,7 @@ serve(async (req) => {
           ${systems
             .map((sys) => {
               const resultData = formatResultCheckbox(sys.result);
-              const formattedComments = formatCommentsAsBullets(sys.comments);
+              const formattedComments = formatCommentsAsBullets(prependDefaultBolt(sys.comments));
               return `
               <tr>
                 <td>${sys.name || "N/A"}</td>
@@ -1941,7 +1951,7 @@ serve(async (req) => {
                 const brakingResultData = formatResultCheckbox(zip.braking_result || "Pass");
                 const eadResultData = formatResultCheckbox(zip.ead_result || "Pass");
                 const overallResultData = formatResultCheckbox(zip.result || "Pass");
-                const formattedComments = formatCommentsAsBullets(zip.comments);
+                const formattedComments = formatCommentsAsBullets(prependDefaultBolt(zip.comments));
                 return `
                 <tr>
                   <td><strong>${zip.zipline_name}</strong></td>
@@ -2012,7 +2022,7 @@ serve(async (req) => {
           ${systems
             .map((sys) => {
               const resultData = formatResultCheckbox(sys.result);
-              const formattedComments = formatCommentsAsBullets(sys.comments);
+              const formattedComments = formatCommentsAsBullets(prependDefaultBolt(sys.comments));
               return `
               <tr>
                 <td>${sys.name || "N/A"}</td>
@@ -2092,7 +2102,7 @@ serve(async (req) => {
               const brakingResultData = formatResultCheckbox(zip.braking_result || "Pass");
               const eadResultData = formatResultCheckbox(zip.ead_result || "Pass");
               const overallResultData = formatResultCheckbox(zip.result || "Pass");
-              const formattedComments = formatCommentsAsBullets(zip.comments);
+              const formattedComments = formatCommentsAsBullets(prependDefaultBolt(zip.comments));
               return `
               <tr>
                 <td><strong>${zip.zipline_name}</strong></td>

@@ -50,7 +50,7 @@ function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: ZiplinesTablePro
         ead_system: "",
         ead_result: "pass",
         result: "pass",
-        comments: "<p>Tightened bolts and connectors as needed</p>",
+        comments: "",
       },
       ...prev,
     ]);
