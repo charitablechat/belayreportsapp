@@ -1,5 +1,9 @@
 // Background Sync API handler for offline data synchronization with atomic operations
 
+// Import shared DB config (set by db-config.js loaded before this script, or fallback)
+var DB_NAME = (typeof DB_CONFIG !== 'undefined' && DB_CONFIG.name) || 'rope-works-inspections';
+var DB_VERSION = (typeof DB_CONFIG !== 'undefined' && DB_CONFIG.version) || 8;
+
 // Helper function to open IndexedDB
 function openDB(name, version) {
   return new Promise((resolve, reject) => {
