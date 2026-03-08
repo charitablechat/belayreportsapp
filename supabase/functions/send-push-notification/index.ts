@@ -168,6 +168,7 @@ serve(async (req) => {
       const shouldSend = 
         (notificationType === 'inspection_completed' && prefs?.inspection_completed !== false) ||
         (notificationType === 'training_completed' && prefs?.training_completed !== false) ||
+        (notificationType === 'daily_assessment_completed' && prefs?.inspection_completed !== false) ||
         (notificationType === 'sync_conflict' && prefs?.sync_conflicts !== false);
 
       if (!shouldSend) {
