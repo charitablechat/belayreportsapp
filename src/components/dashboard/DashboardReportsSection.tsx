@@ -63,6 +63,8 @@ export function DashboardReportsSection({
   setDeleteDialogOpen,
 }: DashboardReportsSectionProps) {
   const [showFilters, setShowFilters] = useState(false);
+  const [compact, setCompact] = useState(false);
+  const [statsFilter, setStatsFilter] = useState<string | null>(null);
   const prevTabRef = useRef(activeReportTab);
 
   const currentReports = activeReportTab === 'inspections' ? inspections
