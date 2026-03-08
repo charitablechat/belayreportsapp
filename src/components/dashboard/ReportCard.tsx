@@ -33,9 +33,10 @@ interface ReportCardProps {
   onDelete: (report: any) => void;
   onClick: (report: any) => void;
   getStatusBadge?: (report: any) => React.ReactNode;
+  compact?: boolean;
 }
 
-export function ReportCard({ report, type, onDelete, onClick, getStatusBadge }: ReportCardProps) {
+export function ReportCard({ report, type, onDelete, onClick, getStatusBadge, compact }: ReportCardProps) {
   const { sparkles, triggerSparkles, handleMouseMove } = useClickAndHoverSparkles();
   const isInspection = type === 'inspection';
   const isDaily = type === 'daily';
