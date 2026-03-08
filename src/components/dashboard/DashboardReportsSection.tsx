@@ -264,6 +264,18 @@ export function DashboardReportsSection({
         )}
       </div>
 
+      {/* Stats bar */}
+      {!loading && (
+        <DashboardStatsBar
+          total={statsData.total}
+          drafts={statsData.drafts}
+          overdue={statsData.overdue}
+          completed={statsData.completed}
+          onFilterClick={handleStatsFilter}
+          activeFilter={statsFilter}
+        />
+      )}
+
       {/* Report type tabs */}
       <Tabs value={activeReportTab} onValueChange={setActiveReportTab}>
         <TabsList className="w-full sm:w-auto mb-4">
@@ -295,7 +307,7 @@ export function DashboardReportsSection({
                 <Card>
                   <CardContent className="p-8 text-center">
                     <p className="text-muted-foreground mb-4">No reports match your filters</p>
-                    <Button variant="outline" onClick={clearAllFilters}>Clear all filters</Button>
+                    <Button variant="outline" onClick={() => { clearAllFilters(); setStatsFilter(null); }}>Clear all filters</Button>
                   </CardContent>
                 </Card>
               ) : (
@@ -311,11 +323,24 @@ export function DashboardReportsSection({
                 </Card>
               )
             ) : (
-              <div className="space-y-6">
+              <div className={cn("space-y-6", compact && "space-y-3")}>
                 {groups.map((group, gi) => {
                   const isCompleted = group.label.startsWith('Completed');
                   const isCollapsed = isCompleted ? completedCollapsed : collapsedGroups.has(group.label);
                   const showHeader = groups.length > 1 || filters.groupBy !== 'none';
+
+                  // Get summary for collapsed groups
+                  const getCollapsedSummary = () => {
+                    if (!isCollapsed || group.items.length === 0) return null;
+                    const last = group.items[0];
+                    const org = last?.organization || 'Unknown';
+                    return `${group.count} reports — latest: ${org}`;
+                  };
+
+                  const gridClass = cn(
+                    "grid md:grid-cols-2 lg:grid-cols-3",
+                    compact ? "gap-2" : "gap-4"
+                  );
 
                   return (
                     <div key={group.label}>
@@ -328,6 +353,9 @@ export function DashboardReportsSection({
                             {isCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                             <span className="font-semibold text-sm">{group.label}</span>
                             <Badge variant="secondary" className="text-xs">{group.count}</Badge>
+                            {isCollapsed && getCollapsedSummary() && (
+                              <span className="text-xs text-muted-foreground ml-2 truncate">{getCollapsedSummary()}</span>
+                            )}
                           </CollapsibleTrigger>
                           <CollapsibleContent>
                             {filters.viewMode === 'list' ? (
@@ -337,7 +365,7 @@ export function DashboardReportsSection({
                                 onRowClick={handleClick}
                               />
                             ) : (
-                              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                              <div className={gridClass}>
                                 {group.items.map((report: any) => (
                                   <ReportCard
                                     key={report.id}
@@ -346,6 +374,7 @@ export function DashboardReportsSection({
                                     onDelete={handleDelete}
                                     onClick={handleClick}
                                     getStatusBadge={currentType === 'inspection' ? getStatusBadge : undefined}
+                                    compact={compact}
                                   />
                                 ))}
                               </div>
@@ -361,7 +390,7 @@ export function DashboardReportsSection({
                             onRowClick={handleClick}
                           />
                         ) : (
-                          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                          <div className={gridClass}>
                             {group.items.map((report: any) => (
                               <ReportCard
                                 key={report.id}
@@ -370,6 +399,7 @@ export function DashboardReportsSection({
                                 onDelete={handleDelete}
                                 onClick={handleClick}
                                 getStatusBadge={currentType === 'inspection' ? getStatusBadge : undefined}
+                                compact={compact}
                               />
                             ))}
                           </div>
