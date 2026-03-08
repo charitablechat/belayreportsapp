@@ -473,8 +473,11 @@ export async function getDB() {
     // Apply 5-second timeout to the entire DB opening process
     // If IndexedDB hangs, we'll reject and the app can proceed with network-only mode
     // Version 8: Add report_versions store for append-only versioning
+    // DB_NAME and DB_VERSION shared with public/db-config.js for SW consistency
+    const DB_NAME = 'rope-works-inspections';
+    const DB_VERSION = 8;
     const openDBV8WithTimeout = async () => {
-      return openDB<InspectionDB>('rope-works-inspections', 8, {
+      return openDB<InspectionDB>(DB_NAME, DB_VERSION, {
         upgrade(db, oldVersion, newVersion, transaction) {
           // === All existing v6 upgrade logic ===
           let inspectionStore;

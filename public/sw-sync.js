@@ -1,5 +1,9 @@
 // Background Sync API handler for offline data synchronization with atomic operations
 
+// Import shared DB config (set by db-config.js loaded before this script, or fallback)
+var DB_NAME = (typeof DB_CONFIG !== 'undefined' && DB_CONFIG.name) || 'rope-works-inspections';
+var DB_VERSION = (typeof DB_CONFIG !== 'undefined' && DB_CONFIG.version) || 8;
+
 // Helper function to open IndexedDB
 function openDB(name, version) {
   return new Promise((resolve, reject) => {
@@ -207,7 +211,7 @@ async function syncInspectionsAtomic() {
   console.log('[SW Atomic Sync] Starting atomic inspection sync...');
   
   try {
-    const db = await openDB('rope-works-inspections', 8);
+    const db = await openDB(DB_NAME, DB_VERSION);
     const allInspections = await getAllFromStore(db, 'inspections');
     const unsynced = allInspections.filter(i => !i.synced_at || new Date(i.updated_at) > new Date(i.synced_at));
     
@@ -290,7 +294,7 @@ async function syncPhotos() {
   console.log('[SW Sync] Starting photo sync...');
   
   try {
-    const db = await openDB('rope-works-inspections', 8);
+    const db = await openDB(DB_NAME, DB_VERSION);
     const allPhotos = await getAllFromStore(db, 'photos');
     const unuploaded = allPhotos.filter(p => !p.uploaded);
     
@@ -380,7 +384,7 @@ async function syncTrainingsAtomic() {
   console.log('[SW Atomic Sync] Starting atomic training sync...');
   
   try {
-    const db = await openDB('rope-works-inspections', 8);
+    const db = await openDB(DB_NAME, DB_VERSION);
     const allTrainings = await getAllFromStore(db, 'trainings');
     const unsynced = allTrainings.filter(t => !t.synced_at || new Date(t.updated_at) > new Date(t.synced_at));
     
@@ -509,7 +513,7 @@ async function syncDailyAssessmentsAtomic() {
   console.log('[SW Atomic Sync] Starting atomic daily assessment sync...');
   
   try {
-    const db = await openDB('rope-works-inspections', 8);
+    const db = await openDB(DB_NAME, DB_VERSION);
     const allAssessments = await getAllFromStore(db, 'daily_assessments');
     const unsynced = allAssessments.filter(a => !a.synced_at || new Date(a.updated_at) > new Date(a.synced_at));
     
