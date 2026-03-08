@@ -254,11 +254,24 @@ export function getCircuitBreakerStatus(): { open: boolean; failureCount: number
 /**
  * Helper to wrap a promise with a timeout
  */
+// Track timeout suppression to avoid console spam
+let timeoutWarningCount = 0;
+let lastTimeoutLogAt = 0;
+const TIMEOUT_LOG_INTERVAL = 30000; // Only log once per 30s
+
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, fallbackValue: T): Promise<T> {
   return Promise.race([
     promise,
     new Promise<T>((resolve) => setTimeout(() => {
-      console.warn(`[Offline Storage] Operation timed out after ${timeoutMs}ms, returning fallback`);
+      // Suppress repeated timeout warnings to reduce console noise
+      timeoutWarningCount++;
+      const now = Date.now();
+      if (now - lastTimeoutLogAt > TIMEOUT_LOG_INTERVAL) {
+        const suppressed = timeoutWarningCount - 1;
+        console.warn(`[Offline Storage] Operation timed out after ${timeoutMs}ms${suppressed > 0 ? ` (${suppressed} similar warnings suppressed)` : ''}`);
+        timeoutWarningCount = 0;
+        lastTimeoutLogAt = now;
+      }
       resolve(fallbackValue);
     }, timeoutMs))
   ]);
@@ -1610,6 +1623,51 @@ export async function getUnsyncedTrainings(userId?: string) {
     },
     [],
     'getUnsyncedTrainings'
+  );
+}
+
+/**
+ * Batched unsynced counts — single IndexedDB transaction instead of 3 separate calls.
+ * Reduces timeout storm when multiple hooks poll concurrently.
+ */
+export async function getUnsyncedCounts(userId?: string): Promise<{
+  inspections: any[];
+  trainings: any[];
+  assessments: any[];
+}> {
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      
+      const filterUnsynced = (items: any[], ownerField = 'inspector_id') => {
+        let unsynced = items.filter(i => {
+          if (!i.synced_at) return true;
+          if (!i.updated_at) return false;
+          const drift = new Date(i.updated_at).getTime() - new Date(i.synced_at).getTime();
+          return drift > 2000;
+        });
+        if (userId) {
+          const owned = unsynced.filter(i => i[ownerField] === userId);
+          const orphaned = unsynced.filter(i => i[ownerField] !== userId && i.id.startsWith('temp-'));
+          unsynced = [...owned, ...orphaned];
+        }
+        return unsynced;
+      };
+      
+      const [allInspections, allTrainings, allAssessments] = await Promise.all([
+        db.getAll('inspections'),
+        db.getAll('trainings'),
+        db.getAll('daily_assessments'),
+      ]);
+      
+      return {
+        inspections: filterUnsynced(allInspections),
+        trainings: filterUnsynced(allTrainings),
+        assessments: filterUnsynced(allAssessments),
+      };
+    },
+    { inspections: [], trainings: [], assessments: [] },
+    'getUnsyncedCounts'
   );
 }
 

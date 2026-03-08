@@ -2,7 +2,7 @@ import { useEffect, useCallback, useRef, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { syncAllInspectionsAtomic, syncAllTrainingsAtomic, syncAllDailyAssessmentsAtomic } from '@/lib/atomic-sync-manager';
 import { syncPhotos } from '@/lib/sync-manager';
-import { getUnsyncedInspections, getUnsyncedTrainings, getUnsyncedDailyAssessments } from '@/lib/offline-storage';
+import { getUnsyncedInspections, getUnsyncedTrainings, getUnsyncedDailyAssessments, getUnsyncedCounts } from '@/lib/offline-storage';
 import { getUserWithCache } from '@/lib/cached-auth';
 import { hasPendingOfflineAuth, verifyAndReconcileOfflineAuth } from '@/lib/offline-auth';
 import { useQueryClient } from '@tanstack/react-query';
@@ -340,20 +340,17 @@ export const useAutoSync = () => {
       const user = await getUserWithCache();
       if (!user) return;
       
-      const [inspections, trainings, assessments] = await Promise.all([
-        getUnsyncedInspections(user.id),
-        getUnsyncedTrainings(user.id),
-        getUnsyncedDailyAssessments(user.id),
-      ]);
+      // Use batched read — single IndexedDB transaction instead of 3 separate calls
+      const counts = await getUnsyncedCounts(user.id);
       
-      const total = inspections.length + trainings.length + assessments.length;
+      const total = counts.inspections.length + counts.trainings.length + counts.assessments.length;
       
       setState(prev => ({
         ...prev,
         unsyncedCount: total,
-        unsyncedInspections: inspections,
-        unsyncedTrainings: trainings,
-        unsyncedAssessments: assessments,
+        unsyncedInspections: counts.inspections,
+        unsyncedTrainings: counts.trainings,
+        unsyncedAssessments: counts.assessments,
       }));
       
       if (import.meta.env.DEV && total > 0) {
@@ -481,11 +478,13 @@ export const useAutoSync = () => {
       }
     };
     
+    const handleFocus = () => {
+      if (navigator.onLine) performSync(true);
+    };
+    
     if (isIOSDevice) {
       window.addEventListener('pageshow', handlePageShow);
-      window.addEventListener('focus', () => {
-        if (navigator.onLine) performSync(true);
-      });
+      window.addEventListener('focus', handleFocus);
     }
     
     // Periodic sync polling with mobile-aware interval
@@ -531,6 +530,7 @@ export const useAutoSync = () => {
       
       if (isIOSDevice) {
         window.removeEventListener('pageshow', handlePageShow);
+        window.removeEventListener('focus', handleFocus);
       }
       
       if (debounceTimerRef.current) {

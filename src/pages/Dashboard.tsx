@@ -909,7 +909,7 @@ export default function Dashboard() {
         }
 
         // Update UI
-        setInspections(inspections.filter(i => i.id !== inspectionToDelete.id));
+        setInspections(prev => prev.filter(i => i.id !== inspectionToDelete.id));
       } else if (reportToDelete) {
         // Determine if it's a training or daily assessment
         const isTraining = 'start_date' in reportToDelete;
@@ -944,9 +944,11 @@ export default function Dashboard() {
           }
 
           // Update UI
-          setDailyAssessments(dailyAssessments.filter(a => a.id !== reportToDelete.id));
+          setDailyAssessments(prev => prev.filter(a => a.id !== reportToDelete.id));
         } else if (isTraining) {
-          // Soft delete training report
+          // Soft delete training report - remove from offline storage first
+          await deleteOfflineTraining(reportToDelete.id);
+          
           if (navigator.onLine) {
             const { error } = await supabase
               .from("trainings")
@@ -968,7 +970,7 @@ export default function Dashboard() {
           }
 
           // Update UI
-          setTrainings(trainings.filter(t => t.id !== reportToDelete.id));
+          setTrainings(prev => prev.filter(t => t.id !== reportToDelete.id));
         }
       }
 
