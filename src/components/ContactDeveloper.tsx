@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { MessageCircle, Send, X, Upload, Image as ImageIcon } from "lucide-react";
+import { toast } from "@/components/ui/sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
