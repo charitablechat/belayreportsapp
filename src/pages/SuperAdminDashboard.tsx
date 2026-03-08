@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Building2, Users, FileText, Bell, UserPlus, Pencil, Trash2, ClipboardList, ArrowLeft, Merge, Clock, Calendar, Wrench, Loader2, Image, Shield, ShieldOff, GraduationCap, ClipboardCheck, Check, Settings, RotateCcw, UserCog } from "lucide-react";
+import { Building2, Users, FileText, Bell, UserPlus, Pencil, Trash2, ClipboardList, ArrowLeft, Merge, Clock, Calendar, Wrench, Loader2, Image, Shield, ShieldOff, GraduationCap, ClipboardCheck, Check, Settings, RotateCcw, UserCog, AlertTriangle } from "lucide-react";
 import { format } from "date-fns";
 import { useNavigate } from "react-router-dom";
 import { goBack } from "@/lib/navigation";
@@ -129,6 +129,18 @@ export default function SuperAdminDashboard() {
       };
     },
     enabled: !loading && managedUsers !== undefined,
+  });
+
+  // Trigger health check (P2)
+  const { data: triggerHealth } = useQuery({
+    queryKey: ["trigger-health"],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('check_trigger_health');
+      if (error) throw error;
+      return data as { healthy: boolean; active_count: number; expected_count: number };
+    },
+    enabled: !loading,
+    refetchInterval: 300000, // recheck every 5 minutes
   });
 
   // Organizations query with trainings and daily assessments
@@ -605,6 +617,17 @@ export default function SuperAdminDashboard() {
           <p className="text-muted-foreground/70 text-sm tracking-wide">Manage all organizations, users, and inspections</p>
         </div>
       </div>
+
+      {/* Trigger Health Warning */}
+      {triggerHealth && !triggerHealth.healthy && (
+        <div className="flex items-center gap-3 rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive">
+          <AlertTriangle className="h-5 w-5 shrink-0" />
+          <div>
+            <strong>Database triggers degraded:</strong> {triggerHealth.active_count}/{triggerHealth.expected_count} active.
+            Notifications, audit logging, and automated field management may not be working. Contact your developer.
+          </div>
+        </div>
+      )}
 
       {/* Overview Stats - Row 1 */}
       <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">

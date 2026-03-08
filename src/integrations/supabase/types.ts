@@ -2121,6 +2121,7 @@ export type Database = {
           updated_at: string
         }[]
       }
+      check_trigger_health: { Args: never; Returns: Json }
       cleanup_expired_deleted_records: {
         Args: never
         Returns: {

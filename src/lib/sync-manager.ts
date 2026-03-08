@@ -43,12 +43,14 @@ export async function syncTrainings(): Promise<never> {
 }
 
 // Photo sync manager - still valid, not deprecated
-export async function syncPhotos() {
+const MAX_PHOTO_BATCH_SIZE = 10;
+
+export async function syncPhotos(): Promise<{ remaining: number }> {
   if (!navigator.onLine) {
     if (import.meta.env.DEV) {
       console.log('[Sync Manager] Offline - skipping photo sync');
     }
-    return;
+    return { remaining: 0 };
   }
 
   if (import.meta.env.DEV) {
@@ -57,14 +59,16 @@ export async function syncPhotos() {
 
   try {
     const unuploadedPhotos = await getUnuploadedPhotos();
+    const batch = unuploadedPhotos.slice(0, MAX_PHOTO_BATCH_SIZE);
+    const remaining = Math.max(0, unuploadedPhotos.length - MAX_PHOTO_BATCH_SIZE);
     
     if (import.meta.env.DEV) {
-      console.log('[Sync Manager] Uploading photos:', unuploadedPhotos.length);
+      console.log(`[Sync Manager] Uploading photos: ${batch.length} of ${unuploadedPhotos.length} (${remaining} remaining)`);
     }
 
     let successCount = 0;
 
-    for (const photo of unuploadedPhotos) {
+    for (const photo of batch) {
       try {
         const user = await getUserWithCache();
         if (!user) throw new Error("Not authenticated");
@@ -104,35 +108,16 @@ export async function syncPhotos() {
     }
 
     if (import.meta.env.DEV) {
-      console.log('[Sync Manager] Photo sync completed:', successCount, 'photos');
+      console.log(`[Sync Manager] Photo sync completed: ${successCount} photos, ${remaining} remaining`);
     }
+    
+    return { remaining };
   } catch (error) {
     console.error('[Sync Manager] Photo sync error:', error);
+    return { remaining: 0 };
   }
 }
 
-// Auto-sync when coming online - use atomic sync for all report types
-if (typeof window !== "undefined") {
-  window.addEventListener("online", async () => {
-    if (import.meta.env.DEV) {
-      console.log('[Sync Manager] Network online, triggering sync...');
-    }
-    
-    // Import atomic sync functions
-    const { syncAllInspectionsAtomic, syncAllTrainingsAtomic, syncAllDailyAssessmentsAtomic } = await import('./atomic-sync-manager');
-    
-    setTimeout(async () => {
-      try {
-        // Use atomic sync for all data types
-        await Promise.all([
-          syncAllInspectionsAtomic(),
-          syncAllTrainingsAtomic(),
-          syncAllDailyAssessmentsAtomic(),
-          syncPhotos()
-        ]);
-      } catch (error) {
-        console.error('[Sync Manager] Auto-sync failed:', error);
-      }
-    }, 1000);
-  });
-}
+// NOTE: The duplicate "online" listener that was here has been removed (P1).
+// All sync orchestration (including photo sync) is handled by useAutoSync.tsx
+// which provides proper guards: cooldown, batch limits, syncInProgressRef.
