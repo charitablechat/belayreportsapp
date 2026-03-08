@@ -513,7 +513,7 @@ async function syncDailyAssessmentsAtomic() {
   console.log('[SW Atomic Sync] Starting atomic daily assessment sync...');
   
   try {
-    const db = await openDB('rope-works-inspections', 8);
+    const db = await openDB(DB_NAME, DB_VERSION);
     const allAssessments = await getAllFromStore(db, 'daily_assessments');
     const unsynced = allAssessments.filter(a => !a.synced_at || new Date(a.updated_at) > new Date(a.synced_at));
     
