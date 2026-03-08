@@ -1240,9 +1240,14 @@ export default function Dashboard() {
             </Tabs>
             
             {(() => {
-              const baseInspections = reportSection === "recent" ? inspections.slice(0, 50) : inspections;
-              const baseTrainings = reportSection === "recent" ? trainings.slice(0, 50) : trainings;
-              const baseDailyAssessments = reportSection === "recent" ? dailyAssessments.slice(0, 50) : dailyAssessments;
+              const sortByMostRecent = (arr: any[]) => [...arr].sort((a, b) => {
+                const dateA = a.updated_at || a.created_at || '';
+                const dateB = b.updated_at || b.created_at || '';
+                return dateB.localeCompare(dateA);
+              });
+              const baseInspections = reportSection === "recent" ? sortByMostRecent(inspections).slice(0, 9) : inspections;
+              const baseTrainings = reportSection === "recent" ? sortByMostRecent(trainings).slice(0, 9) : trainings;
+              const baseDailyAssessments = reportSection === "recent" ? sortByMostRecent(dailyAssessments).slice(0, 9) : dailyAssessments;
               
               const currentReports = activeReportTab === 'inspections' ? baseInspections
                 : activeReportTab === 'training' ? baseTrainings
