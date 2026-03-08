@@ -43,12 +43,14 @@ export async function syncTrainings(): Promise<never> {
 }
 
 // Photo sync manager - still valid, not deprecated
-export async function syncPhotos() {
+const MAX_PHOTO_BATCH_SIZE = 10;
+
+export async function syncPhotos(): Promise<{ remaining: number }> {
   if (!navigator.onLine) {
     if (import.meta.env.DEV) {
       console.log('[Sync Manager] Offline - skipping photo sync');
     }
-    return;
+    return { remaining: 0 };
   }
 
   if (import.meta.env.DEV) {
@@ -57,9 +59,11 @@ export async function syncPhotos() {
 
   try {
     const unuploadedPhotos = await getUnuploadedPhotos();
+    const batch = unuploadedPhotos.slice(0, MAX_PHOTO_BATCH_SIZE);
+    const remaining = Math.max(0, unuploadedPhotos.length - MAX_PHOTO_BATCH_SIZE);
     
     if (import.meta.env.DEV) {
-      console.log('[Sync Manager] Uploading photos:', unuploadedPhotos.length);
+      console.log(`[Sync Manager] Uploading photos: ${batch.length} of ${unuploadedPhotos.length} (${remaining} remaining)`);
     }
 
     let successCount = 0;
