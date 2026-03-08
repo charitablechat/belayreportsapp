@@ -38,25 +38,13 @@ const LIST_PAGE_SIZE = 50;
 
 function tierOf(r: any): number {
   if (r.status === 'completed') return 3;
-  const age = differenceInDays(new Date(), new Date(r.created_at));
+  // Guard against missing/invalid dates — default to critical to avoid hiding overdue reports
+  const createdAt = r.created_at ? new Date(r.created_at) : null;
+  if (!createdAt || isNaN(createdAt.getTime())) return 0; // critical — safer to over-escalate
+  const age = differenceInDays(new Date(), createdAt);
   if (age > 5) return 0; // critical
   if (age > 3) return 1; // warning
   return 2; // default
-}
-
-function getReportDate(report: any, type: string): string {
-  if (type === 'inspection') return report.inspection_date;
-  if (type === 'daily') return report.assessment_date;
-  return report.training?.start_date || report.start_date || report.created_at;
-}
-
-function getAssigneeName(report: any, type: string): string {
-  if (type === 'training') {
-    const t = report.trainer;
-    return t ? `${t.first_name || ''} ${t.last_name || ''}`.trim() || 'Unknown' : 'Unknown';
-  }
-  const i = report.inspector;
-  return i ? `${i.first_name || ''} ${i.last_name || ''}`.trim() || 'Unknown' : 'Unknown';
 }
 
 function getOrganization(report: any): string {
