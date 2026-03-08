@@ -297,7 +297,7 @@ export function useDashboardFilters(
         groups.push({ label: 'Reports', count: mainItems.length, items: mainItems });
       }
       if (completedItems.length > 0) {
-        groups.push({ label: `Completed (${completedItems.length})`, count: completedItems.length, items: completedItems, isCollapsed: completedCollapsed });
+        groups.push({ label: 'Completed', count: completedItems.length, items: completedItems, isCollapsed: completedCollapsed });
       }
     } else {
       // Always add Needs Attention group first
