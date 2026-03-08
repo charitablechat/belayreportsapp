@@ -161,14 +161,15 @@ export function useDashboardFilters(
       filtered = filtered.filter(r => assigneeFilter.includes(r.inspector_id));
     }
 
-    // 4. Date range
+    // 4. Date range (normalize to end-of-day for inclusive boundary)
     if (dateRange.from || dateRange.to) {
+      const toEndOfDay = dateRange.to ? endOfDay(dateRange.to) : undefined;
       filtered = filtered.filter(r => {
         const d = getReportDate(r, type);
         if (!d) return false;
         const date = new Date(d);
         if (dateRange.from && date < dateRange.from) return false;
-        if (dateRange.to && date > dateRange.to) return false;
+        if (toEndOfDay && date > toEndOfDay) return false;
         return true;
       });
     }
