@@ -1,5 +1,6 @@
-import { useMemo, useState, useCallback } from "react";
-import { differenceInDays, isWithinInterval, startOfWeek, endOfWeek, startOfMonth, endOfMonth, parseISO } from "date-fns";
+import { useMemo, useState, useCallback, useEffect, useRef } from "react";
+import { differenceInDays, isWithinInterval, startOfWeek, endOfWeek, startOfMonth, endOfMonth, endOfDay, parseISO } from "date-fns";
+import { getReportDate, getAssigneeName } from "@/lib/report-utils";
 import { getReportAgeState, type ReportAgeState } from "@/components/dashboard/ReportCard";
 
 export type SortOption = 'priority' | 'completed' | 'date-asc' | 'date-desc' | 'title-az' | 'assignee';
@@ -37,25 +38,13 @@ const LIST_PAGE_SIZE = 50;
 
 function tierOf(r: any): number {
   if (r.status === 'completed') return 3;
-  const age = differenceInDays(new Date(), new Date(r.created_at));
+  // Guard against missing/invalid dates — default to critical to avoid hiding overdue reports
+  const createdAt = r.created_at ? new Date(r.created_at) : null;
+  if (!createdAt || isNaN(createdAt.getTime())) return 0; // critical — safer to over-escalate
+  const age = differenceInDays(new Date(), createdAt);
   if (age > 5) return 0; // critical
   if (age > 3) return 1; // warning
   return 2; // default
-}
-
-function getReportDate(report: any, type: string): string {
-  if (type === 'inspection') return report.inspection_date;
-  if (type === 'daily') return report.assessment_date;
-  return report.training?.start_date || report.start_date || report.created_at;
-}
-
-function getAssigneeName(report: any, type: string): string {
-  if (type === 'training') {
-    const t = report.trainer;
-    return t ? `${t.first_name || ''} ${t.last_name || ''}`.trim() || 'Unknown' : 'Unknown';
-  }
-  const i = report.inspector;
-  return i ? `${i.first_name || ''} ${i.last_name || ''}`.trim() || 'Unknown' : 'Unknown';
 }
 
 function getOrganization(report: any): string {
@@ -172,14 +161,15 @@ export function useDashboardFilters(
       filtered = filtered.filter(r => assigneeFilter.includes(r.inspector_id));
     }
 
-    // 4. Date range
+    // 4. Date range (normalize to end-of-day for inclusive boundary)
     if (dateRange.from || dateRange.to) {
+      const toEndOfDay = dateRange.to ? endOfDay(dateRange.to) : undefined;
       filtered = filtered.filter(r => {
         const d = getReportDate(r, type);
         if (!d) return false;
         const date = new Date(d);
         if (dateRange.from && date < dateRange.from) return false;
-        if (dateRange.to && date > dateRange.to) return false;
+        if (toEndOfDay && date > toEndOfDay) return false;
         return true;
       });
     }
@@ -307,7 +297,7 @@ export function useDashboardFilters(
         groups.push({ label: 'Reports', count: mainItems.length, items: mainItems });
       }
       if (completedItems.length > 0) {
-        groups.push({ label: `Completed (${completedItems.length})`, count: completedItems.length, items: completedItems, isCollapsed: completedCollapsed });
+        groups.push({ label: 'Completed', count: completedItems.length, items: completedItems, isCollapsed: completedCollapsed });
       }
     } else {
       // Always add Needs Attention group first
@@ -355,7 +345,7 @@ export function useDashboardFilters(
 
       // Completed at bottom
       if (completedItems.length > 0) {
-        groups.push({ label: `Completed (${completedItems.length})`, count: completedItems.length, items: completedItems, isCollapsed: completedCollapsed });
+        groups.push({ label: 'Completed', count: completedItems.length, items: completedItems, isCollapsed: completedCollapsed });
       }
     }
 

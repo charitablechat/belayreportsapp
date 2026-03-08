@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -56,6 +56,7 @@ export function DashboardReportsSection({
   setDeleteDialogOpen,
 }: DashboardReportsSectionProps) {
   const [showFilters, setShowFilters] = useState(false);
+  const prevTabRef = useRef(activeReportTab);
 
   const currentReports = activeReportTab === 'inspections' ? inspections
     : activeReportTab === 'training' ? trainings
@@ -66,6 +67,20 @@ export function DashboardReportsSection({
     : 'daily') as 'inspection' | 'training' | 'daily';
 
   const statuses = useMemo(() => [...new Set(currentReports.map(r => r.status).filter(Boolean))], [currentReports]);
+
+  // Scope uniqueInspectors to the current tab's data (Issue 4)
+  const scopedInspectors = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const r of currentReports) {
+      const person = currentType === 'training' ? r.trainer : r.inspector;
+      if (person?.first_name || person?.last_name) {
+        map.set(r.inspector_id, `${person.first_name || ''} ${person.last_name || ''}`.trim());
+      }
+    }
+    return Array.from(map.entries())
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [currentReports, currentType]);
 
   const {
     filters,
@@ -84,6 +99,26 @@ export function DashboardReportsSection({
     criticalCount,
     warningCount,
   } = useDashboardFilters(currentReports, currentType, currentUserId, isSuperAdmin);
+
+  // Reset filters when switching tabs to avoid stale filter state (Issue 1)
+  useEffect(() => {
+    if (prevTabRef.current !== activeReportTab) {
+      prevTabRef.current = activeReportTab;
+      clearAllFilters();
+    }
+  }, [activeReportTab, clearAllFilters]);
+
+  // Auto-clear conflicting filters when "Completed" sort is selected (Issue 2)
+  useEffect(() => {
+    if (filters.sortBy === 'completed') {
+      if (filters.quickFilters.draftsOnly) {
+        toggleQuickFilter('draftsOnly');
+      }
+      if (filters.statusFilter !== 'all' && filters.statusFilter !== 'completed') {
+        updateFilter('statusFilter', 'all');
+      }
+    }
+  }, [filters.sortBy]);
 
   const handleDelete = (report: any) => {
     if (currentType === 'inspection') {
@@ -152,7 +187,7 @@ export function DashboardReportsSection({
               onDateRangeChange={(v) => updateFilter('dateRange', v)}
               syncFilter={filters.syncFilter}
               onSyncChange={(v) => updateFilter('syncFilter', v)}
-              uniqueInspectors={uniqueInspectors}
+              uniqueInspectors={scopedInspectors}
               statuses={statuses}
             />
 
