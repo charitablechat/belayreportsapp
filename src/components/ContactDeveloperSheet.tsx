@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { supabase } from "@/integrations/supabase/client";
 import { usePWA } from "@/hooks/usePWA";
+import { toast } from "@/components/ui/sonner";
 
 interface ContactForm {
   subject: string;
@@ -37,6 +38,7 @@ export function ContactDeveloperSheet({ open, onOpenChange }: ContactDeveloperSh
 
     // Validate file size (10MB max for all file types)
     if (file.size > 10 * 1024 * 1024) {
+      toast.error("File too large. Maximum size is 10MB.");
       return;
     }
 
@@ -63,14 +65,17 @@ export function ContactDeveloperSheet({ open, onOpenChange }: ContactDeveloperSh
     e.preventDefault();
 
     if (!form.subject || !form.message) {
+      toast.error("Please fill in all required fields.");
       return;
     }
 
     if (form.message.length > 1000) {
+      toast.error("Message is too long. Maximum 1000 characters.");
       return;
     }
 
     if (!isOnline) {
+      toast.error("You're offline. Connect to the internet to send your message.");
       return;
     }
 
@@ -119,11 +124,13 @@ export function ContactDeveloperSheet({ open, onOpenChange }: ContactDeveloperSh
 
       if (error) throw error;
 
+      toast.success("Message sent successfully!");
       setForm({ subject: "", message: "", website: "" });
       clearFile();
       onOpenChange(false);
     } catch (error: any) {
       console.error("Error sending message:", error);
+      toast.error("Failed to send message. Please try again.");
     } finally {
       setLoading(false);
     }
