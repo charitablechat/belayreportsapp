@@ -211,7 +211,7 @@ async function syncInspectionsAtomic() {
   console.log('[SW Atomic Sync] Starting atomic inspection sync...');
   
   try {
-    const db = await openDB('rope-works-inspections', 8);
+    const db = await openDB(DB_NAME, DB_VERSION);
     const allInspections = await getAllFromStore(db, 'inspections');
     const unsynced = allInspections.filter(i => !i.synced_at || new Date(i.updated_at) > new Date(i.synced_at));
     
