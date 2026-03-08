@@ -9,6 +9,8 @@ export interface PWAUpdateStatus {
   checkForUpdates: () => Promise<void>;
 }
 
+const UPDATE_APPLIED_KEY = 'pwa-update-just-applied';
+
 export const usePWAUpdate = (): PWAUpdateStatus => {
   const [needRefresh, setNeedRefresh] = useState(false);
   const [offlineReady, setOfflineReady] = useState(false);
@@ -21,81 +23,76 @@ export const usePWAUpdate = (): PWAUpdateStatus => {
   const offlineReadyRef = useRef(offlineReady);
   offlineReadyRef.current = offlineReady;
 
+  // On mount, suppress banner if we just applied an update before reload
   useEffect(() => {
-    if ('serviceWorker' in navigator) {
-      Promise.race([
-        navigator.serviceWorker.ready,
-        new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('SW timeout')), 5000)
-        )
-      ]).then((reg: ServiceWorkerRegistration) => {
-        if (import.meta.env.DEV) {
-          console.log('[PWA Update] Service Worker ready');
-        }
-        setRegistration(reg);
-        
-        if (reg.waiting) {
-          setNeedRefresh(true);
-          if (import.meta.env.DEV) {
-            console.log('[PWA Update] Update already waiting');
-          }
-        }
-        
-        if (!offlineReadyRef.current) {
-          setOfflineReady(true);
-        }
-
-        const intervalId = setInterval(() => {
-          if (import.meta.env.DEV) {
-            console.log('[PWA Update] Auto-checking for updates...');
-          }
-          reg.update();
-          const now = new Date();
-          setLastChecked(now);
-          localStorage.setItem('pwa-last-update-check', now.toISOString());
-        }, 60 * 60 * 1000);
-
-        return () => clearInterval(intervalId);
-      }).catch(() => {
-        // SW unavailable in this environment
-      });
-
-      const handleControllerChange = () => {
-        if (import.meta.env.DEV) {
-          console.log('[PWA Update] New service worker activated — flagging for user-initiated reload');
-        }
-        setNeedRefresh(true);
-      };
-
-      navigator.serviceWorker.addEventListener('controllerchange', handleControllerChange);
-
-      Promise.race([
-        navigator.serviceWorker.ready,
-        new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('SW timeout')), 5000)
-        )
-      ]).then((reg: ServiceWorkerRegistration) => {
-        reg.addEventListener('updatefound', () => {
-          const newWorker = reg.installing;
-          if (newWorker) {
-            newWorker.addEventListener('statechange', () => {
-              if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                setNeedRefresh(true);
-                if (import.meta.env.DEV) {
-                  console.log('[PWA Update] New version available');
-                }
-              }
-            });
-          }
-        });
-      }).catch(() => {
-        // SW unavailable
-      });
-
-      return () => {
-        navigator.serviceWorker.removeEventListener('controllerchange', handleControllerChange);
-      };
+    if (localStorage.getItem(UPDATE_APPLIED_KEY)) {
+      localStorage.removeItem(UPDATE_APPLIED_KEY);
+      // Don't set needRefresh — the update is already active
     }
+  }, []);
+
+  useEffect(() => {
+    if (!('serviceWorker' in navigator)) return;
+
+    let intervalId: ReturnType<typeof setInterval>;
+
+    const swReady = Promise.race([
+      navigator.serviceWorker.ready,
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('SW timeout')), 5000)
+      )
+    ]) as Promise<ServiceWorkerRegistration>;
+
+    swReady.then((reg) => {
+      if (import.meta.env.DEV) {
+        console.log('[PWA Update] Service Worker ready');
+      }
+      setRegistration(reg);
+
+      // Check if a new SW is already waiting
+      if (reg.waiting) {
+        setNeedRefresh(true);
+        if (import.meta.env.DEV) {
+          console.log('[PWA Update] Update already waiting');
+        }
+      }
+
+      if (!offlineReadyRef.current) {
+        setOfflineReady(true);
+      }
+
+      // Listen for future updates
+      reg.addEventListener('updatefound', () => {
+        const newWorker = reg.installing;
+        if (newWorker) {
+          newWorker.addEventListener('statechange', () => {
+            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+              setNeedRefresh(true);
+              if (import.meta.env.DEV) {
+                console.log('[PWA Update] New version available (waiting)');
+              }
+            }
+          });
+        }
+      });
+
+      // Hourly auto-check
+      intervalId = setInterval(() => {
+        if (import.meta.env.DEV) {
+          console.log('[PWA Update] Auto-checking for updates...');
+        }
+        reg.update();
+        const now = new Date();
+        setLastChecked(now);
+        localStorage.setItem('pwa-last-update-check', now.toISOString());
+      }, 60 * 60 * 1000);
+    }).catch(() => {
+      // SW unavailable
+    });
+
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+    };
   }, []);
 
   const checkForUpdates = useCallback(async () => {
@@ -104,13 +101,13 @@ export const usePWAUpdate = (): PWAUpdateStatus => {
       if ('serviceWorker' in navigator) {
         const reg = await Promise.race([
           navigator.serviceWorker.ready,
-          new Promise((_, reject) =>
+          new Promise<never>((_, reject) =>
             setTimeout(() => reject(new Error('SW not available')), 5000)
           )
         ]) as ServiceWorkerRegistration;
         await reg.update();
         await new Promise(resolve => setTimeout(resolve, 2000));
-        
+
         if (reg.waiting || reg.installing) {
           setNeedRefresh(true);
         }
@@ -125,29 +122,45 @@ export const usePWAUpdate = (): PWAUpdateStatus => {
     }
   }, []);
 
-  const updateServiceWorker = async (reloadPage = true) => {
+  const updateServiceWorker = useCallback(async (reloadPage = true) => {
     if (registration?.waiting) {
-      console.log('[PWA Update] Activating new service worker');
-      registration.waiting.postMessage({ type: 'SKIP_WAITING' });
-      
-      setTimeout(() => {
-        if (registration?.waiting) {
-          console.log('[PWA Update] Retrying SKIP_WAITING');
-          registration.waiting.postMessage({ type: 'SKIP_WAITING' });
-        }
-      }, 1000);
-      
+      console.log('[PWA Update] Activating waiting service worker');
+
+      // Mark that we're applying an update so post-reload doesn't re-show the banner
       if (reloadPage) {
-        setTimeout(() => window.location.reload(), 500);
+        localStorage.setItem(UPDATE_APPLIED_KEY, 'true');
       }
-    } else if (needRefresh && reloadPage) {
-      // New SW already active (triggered via controllerchange) — just reload
-      console.log('[PWA Update] New SW already active, reloading');
-      window.location.reload();
+
+      // Clear banner immediately
+      setNeedRefresh(false);
+
+      // Listen for the new SW to take control, then reload
+      if (reloadPage) {
+        const reloadOnce = () => {
+          navigator.serviceWorker.removeEventListener('controllerchange', reloadOnce);
+          window.location.reload();
+        };
+        navigator.serviceWorker.addEventListener('controllerchange', reloadOnce);
+
+        // Safety timeout — reload anyway after 3s if controllerchange doesn't fire
+        setTimeout(() => {
+          navigator.serviceWorker.removeEventListener('controllerchange', reloadOnce);
+          window.location.reload();
+        }, 3000);
+      }
+
+      // Tell the waiting SW to activate
+      registration.waiting.postMessage({ type: 'SKIP_WAITING' });
     } else {
       console.log('[PWA Update] No waiting service worker found');
+      // If needRefresh was set by controllerchange (SW already active), just reload
+      if (needRefresh && reloadPage) {
+        localStorage.setItem(UPDATE_APPLIED_KEY, 'true');
+        setNeedRefresh(false);
+        window.location.reload();
+      }
     }
-  };
+  }, [registration, needRefresh]);
 
   return {
     needRefresh,

@@ -1,7 +1,7 @@
 import { VitePWA } from 'vite-plugin-pwa';
 
 export const pwaConfig = VitePWA({
-  registerType: 'autoUpdate',
+  registerType: 'prompt',
   includeAssets: ['favicon.ico', 'sw-push.js', 'sw-sync.js'],
   manifest: {
     name: 'Rope Works Inspection',
@@ -42,8 +42,6 @@ export const pwaConfig = VitePWA({
   },
   workbox: {
     maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
-    skipWaiting: true,
-    clientsClaim: true,
     globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
     navigateFallback: '/',
     navigateFallbackDenylist: [/^\/api/, /offline\.html$/],
@@ -51,7 +49,6 @@ export const pwaConfig = VitePWA({
     // All sync is now handled by main-thread useAutoSync hook which has auth context
     importScripts: ['/sw-push.js'],
     runtimeCaching: [
-      // API calls - Network first with 1 hour cache
       {
         urlPattern: /^https:\/\/.*\.supabase\.co\/.*/i,
         handler: 'NetworkFirst',
@@ -59,14 +56,13 @@ export const pwaConfig = VitePWA({
           cacheName: 'supabase-cache',
           expiration: {
             maxEntries: 50,
-            maxAgeSeconds: 60 * 60 // 1 hour
+            maxAgeSeconds: 60 * 60
           },
           cacheableResponse: {
             statuses: [0, 200]
           }
         }
       },
-      // Images - Cache first with 30 day expiration
       {
         urlPattern: /\.(?:png|jpg|jpeg|svg|gif|webp)$/,
         handler: 'CacheFirst',
@@ -74,11 +70,10 @@ export const pwaConfig = VitePWA({
           cacheName: 'image-cache',
           expiration: {
             maxEntries: 100,
-            maxAgeSeconds: 60 * 60 * 24 * 30 // 30 days
+            maxAgeSeconds: 60 * 60 * 24 * 30
           }
         }
       },
-      // Fonts - Cache first with 1 year expiration
       {
         urlPattern: /\.(?:woff|woff2|ttf|otf)$/,
         handler: 'CacheFirst',
@@ -86,7 +81,7 @@ export const pwaConfig = VitePWA({
           cacheName: 'font-cache',
           expiration: {
             maxEntries: 20,
-            maxAgeSeconds: 60 * 60 * 24 * 365 // 1 year
+            maxAgeSeconds: 60 * 60 * 24 * 365
           }
         }
       }
