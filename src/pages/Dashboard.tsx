@@ -1265,6 +1265,9 @@ export default function Dashboard() {
                   inspections={baseInspections}
                   trainings={baseTrainings}
                   dailyAssessments={baseDailyAssessments}
+                  totalInspections={inspections.length}
+                  totalTrainings={trainings.length}
+                  totalDailyAssessments={dailyAssessments.length}
                   activeReportTab={activeReportTab}
                   setActiveReportTab={setActiveReportTab}
                   loading={loading}

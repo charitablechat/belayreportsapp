@@ -222,15 +222,15 @@ export function DashboardReportsSection({
         <TabsList className="w-full sm:w-auto mb-4">
           <TabsTrigger value="inspections" className="flex items-center gap-2">
             <FileText className="w-4 h-4" />
-            Inspections ({inspections.length})
+            Inspections ({totalInspections ?? inspections.length})
           </TabsTrigger>
           <TabsTrigger value="training" className="flex items-center gap-2">
             <GraduationCap className="w-4 h-4" />
-            Training ({trainings.length})
+            Training ({totalTrainings ?? trainings.length})
           </TabsTrigger>
           <TabsTrigger value="daily" className="flex items-center gap-2">
             <FileText className="w-4 h-4" />
-            Daily ({dailyAssessments.length})
+            Daily ({totalDailyAssessments ?? dailyAssessments.length})
           </TabsTrigger>
         </TabsList>
 
