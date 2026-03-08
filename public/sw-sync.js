@@ -384,7 +384,7 @@ async function syncTrainingsAtomic() {
   console.log('[SW Atomic Sync] Starting atomic training sync...');
   
   try {
-    const db = await openDB('rope-works-inspections', 8);
+    const db = await openDB(DB_NAME, DB_VERSION);
     const allTrainings = await getAllFromStore(db, 'trainings');
     const unsynced = allTrainings.filter(t => !t.synced_at || new Date(t.updated_at) > new Date(t.synced_at));
     
