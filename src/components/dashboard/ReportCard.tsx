@@ -8,7 +8,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { format, differenceInDays } from "date-fns";
+import { format, differenceInDays, formatDistanceToNow } from "date-fns";
 import { FileText, MoreVertical, Trash2, Download, Check, Cloud } from "lucide-react";
 import { triggerHaptic } from "@/lib/haptics";
 import { parseLocalDate } from "@/lib/date-utils";
