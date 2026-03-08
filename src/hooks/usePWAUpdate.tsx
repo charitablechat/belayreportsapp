@@ -140,6 +140,10 @@ export const usePWAUpdate = (): PWAUpdateStatus => {
       if (reloadPage) {
         setTimeout(() => window.location.reload(), 500);
       }
+    } else if (needRefresh && reloadPage) {
+      // New SW already active (triggered via controllerchange) — just reload
+      console.log('[PWA Update] New SW already active, reloading');
+      window.location.reload();
     } else {
       console.log('[PWA Update] No waiting service worker found');
     }
