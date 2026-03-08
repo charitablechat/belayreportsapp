@@ -122,11 +122,13 @@ export function ContactDeveloperSheet({ open, onOpenChange }: ContactDeveloperSh
 
       if (error) throw error;
 
+      toast.success("Message sent successfully!");
       setForm({ subject: "", message: "", website: "" });
       clearFile();
       onOpenChange(false);
     } catch (error: any) {
       console.error("Error sending message:", error);
+      toast.error("Failed to send message. Please try again.");
     } finally {
       setLoading(false);
     }
