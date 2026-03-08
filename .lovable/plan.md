@@ -1,66 +1,43 @@
 
 
-## Onboarding Resource Center
+## Ensuring Attachments Reach the Email
 
-A dedicated `/onboarding` page where users can browse videos and PDFs you've uploaded, and mark items as completed.
+### Current Flow (Already Working Code-Side)
+1. Frontend uploads file to `contact-attachments` bucket
+2. Generates a signed URL (7-day expiry)
+3. Edge function sends `attachmentUrl`, `attachmentName`, `attachmentType` to Make.com webhook
 
-### Database
+### The Problem
+Make.com receives the signed URL as a string, but it doesn't automatically download and attach the file to the outgoing email. You need to configure Make.com to fetch the file.
 
-**1. `onboarding_resources` table** — stores metadata for each uploaded file
+### Option A: Make.com Configuration (No Code Changes)
+In your Make.com scenario, between the Webhook module and the Gmail/Email module:
+1. Add an **HTTP > Get a file** module
+2. Set its URL to `{{attachmentUrl}}` from the webhook data
+3. In the Gmail module, map the downloaded file as an attachment using the output of the HTTP module
 
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uuid | PK |
-| title | text | Display name |
-| description | text | Optional summary |
-| file_type | text | 'video' or 'pdf' |
-| file_url | text | Storage path |
-| display_order | integer | Sort order |
-| is_published | boolean | Only published items shown to users |
-| uploaded_by | uuid | References auth.users |
-| created_at | timestamptz | |
+### Option B: Send Base64 Inline (Code Change)
+Modify the edge function to download the file from the signed URL and convert it to base64 before sending to Make.com. This eliminates the need for Make.com to fetch anything — the file data arrives inline.
 
-RLS: Super admins can CRUD. Authenticated users can SELECT where `is_published = true`.
+**File:** `supabase/functions/send-contact-email/index.ts`
 
-**2. `onboarding_progress` table** — tracks per-user completion
+After the existing validation, before sending to Make.com:
+- If `attachmentUrl` is present, fetch the file content
+- Convert to base64
+- Include `attachmentBase64`, `attachmentName`, and `attachmentType` in the webhook payload
 
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uuid | PK |
-| user_id | uuid | References auth.users |
-| resource_id | uuid | FK to onboarding_resources |
-| completed_at | timestamptz | When marked complete |
-| unique(user_id, resource_id) | | Prevents duplicates |
+This makes the Make.com scenario simpler — the Gmail module can directly use the base64 data as an attachment without an extra HTTP module.
 
-RLS: Users can manage their own rows only.
+### Recommendation
+**Option B** is more reliable because:
+- The edge function has direct access to the storage URL (same infrastructure, no CORS issues)
+- Make.com doesn't need to handle authentication or URL expiry
+- Simpler Make.com scenario configuration
+- The 10MB file size limit is already enforced, so base64 overhead is manageable
 
-**3. `onboarding-files` storage bucket** — private bucket for the actual video/PDF files. Super admins can upload; authenticated users can read.
-
-### Frontend
-
-**`/onboarding` page** — accessible from the dashboard header navigation:
-- Lists all published resources grouped by type (Videos section, Documents section)
-- Each card shows: title, description, file type icon, and a checkbox to mark complete
-- Clicking a video opens an inline `<video>` player; clicking a PDF downloads it
-- A progress bar at the top shows "X of Y completed"
-- Matches existing app styling (cards, borders, monospace metadata)
-
-**Admin upload UI** — visible only to super admins on the same page:
-- "Add Resource" button opens a form: title, description, file type selector, file upload input, display order
-- Drag-to-reorder support using existing drag patterns
-- Toggle publish/unpublish per resource
-- Delete resource (removes from storage + DB)
-
-### Route Addition
-
-Add `/onboarding` to `App.tsx` router, import the new `Onboarding.tsx` page component. Add a navigation link in `AuthenticatedHeader.tsx`.
-
-### Files
-
-| File | Action |
-|------|--------|
-| Migration SQL | Create tables, bucket, RLS policies |
-| `src/pages/Onboarding.tsx` | New page component |
-| `src/App.tsx` | Add route |
-| `src/components/AuthenticatedHeader.tsx` | Add nav link |
+### Implementation (Option B)
+Single file change to `supabase/functions/send-contact-email/index.ts`:
+- Add a helper to fetch and base64-encode the attachment
+- Replace `attachmentUrl` with `attachmentBase64` in the webhook payload
+- Keep `attachmentName` and `attachmentType` for Make.com to reconstruct the file
 
