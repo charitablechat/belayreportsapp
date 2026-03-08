@@ -618,6 +618,17 @@ export default function SuperAdminDashboard() {
         </div>
       </div>
 
+      {/* Trigger Health Warning */}
+      {triggerHealth && !triggerHealth.healthy && (
+        <div className="flex items-center gap-3 rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive">
+          <AlertTriangle className="h-5 w-5 shrink-0" />
+          <div>
+            <strong>Database triggers degraded:</strong> {triggerHealth.active_count}/{triggerHealth.expected_count} active.
+            Notifications, audit logging, and automated field management may not be working. Contact your developer.
+          </div>
+        </div>
+      )}
+
       {/* Overview Stats - Row 1 */}
       <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
         <StatCard
