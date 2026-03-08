@@ -9,7 +9,7 @@ const corsHeaders = {
 
 interface NotificationEmailRequest {
   organizationId: string;
-  notificationType: 'inspection_completed' | 'training_completed' | 'sync_conflict';
+  notificationType: 'inspection_completed' | 'training_completed' | 'daily_assessment_completed' | 'sync_conflict';
   title: string;
   body: string;
   data?: {
