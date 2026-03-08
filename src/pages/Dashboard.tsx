@@ -944,7 +944,7 @@ export default function Dashboard() {
           }
 
           // Update UI
-          setDailyAssessments(dailyAssessments.filter(a => a.id !== reportToDelete.id));
+          setDailyAssessments(prev => prev.filter(a => a.id !== reportToDelete.id));
         } else if (isTraining) {
           // Soft delete training report - remove from offline storage first
           await deleteOfflineTraining(reportToDelete.id);
