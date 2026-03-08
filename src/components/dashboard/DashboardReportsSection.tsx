@@ -109,11 +109,43 @@ export function DashboardReportsSection({
     warningCount,
   } = useDashboardFilters(currentReports, currentType, currentUserId, isSuperAdmin);
 
+  // Compute stats for the stats bar
+  const statsData = useMemo(() => {
+    const total = currentReports.length;
+    const drafts = currentReports.filter(r => r.status === 'draft').length;
+    const completed = currentReports.filter(r => r.status === 'completed').length;
+    const overdue = criticalCount + warningCount;
+    return { total, drafts, overdue, completed };
+  }, [currentReports, criticalCount, warningCount]);
+
+  // Handle stats bar filter clicks
+  const handleStatsFilter = (filter: 'all' | 'drafts' | 'overdue' | 'completed') => {
+    if (statsFilter === filter) {
+      // Toggle off
+      setStatsFilter(null);
+      updateFilter('statusFilter', 'all');
+      if (filters.quickFilters.draftsOnly) toggleQuickFilter('draftsOnly');
+      if (filters.quickFilters.needsAttention) toggleQuickFilter('needsAttention');
+    } else {
+      setStatsFilter(filter);
+      // Reset conflicting filters first
+      if (filters.quickFilters.draftsOnly) toggleQuickFilter('draftsOnly');
+      if (filters.quickFilters.needsAttention) toggleQuickFilter('needsAttention');
+      updateFilter('statusFilter', 'all');
+
+      if (filter === 'drafts') toggleQuickFilter('draftsOnly');
+      else if (filter === 'overdue') toggleQuickFilter('needsAttention');
+      else if (filter === 'completed') updateFilter('statusFilter', 'completed');
+      // 'all' clears everything
+    }
+  };
+
   // Reset filters when switching tabs to avoid stale filter state (Issue 1)
   useEffect(() => {
     if (prevTabRef.current !== activeReportTab) {
       prevTabRef.current = activeReportTab;
       clearAllFilters();
+      setStatsFilter(null);
     }
   }, [activeReportTab, clearAllFilters]);
 
