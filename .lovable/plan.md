@@ -1,66 +1,50 @@
 
 
-## Onboarding Resource Center
+## Investigation: Completed Reports Webhook — Root Cause Found
 
-A dedicated `/onboarding` page where users can browse videos and PDFs you've uploaded, and mark items as completed.
+### Finding: All 18 Database Triggers Are Still Missing
 
-### Database
+**Evidence:**
+- `information_schema.triggers WHERE trigger_schema = 'public'` returns **0 rows**
+- The migration file `20260308165236_*.sql` exists in the repo but was **never applied to the live database**
+- This has now failed to apply across **two separate migration attempts**
 
-**1. `onboarding_resources` table** — stores metadata for each uploaded file
+### What IS Working
+| Component | Status |
+|-----------|--------|
+| `pg_net` extension | Installed (v0.19.5) — HTTP calls from triggers will work once triggers exist |
+| 7 trigger functions (`notify_super_admins_*`) | All present in `pg_proc` |
+| `webhook_config` table | `WEBHOOK_SECRET` set (64 chars) |
+| `MAKE_WEBHOOK_URL` secret | Configured |
+| Edge functions deployed | `send-notification-email`, `send-push-notification` — no logs (never invoked) |
 
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uuid | PK |
-| title | text | Display name |
-| description | text | Optional summary |
-| file_type | text | 'video' or 'pdf' |
-| file_url | text | Storage path |
-| display_order | integer | Sort order |
-| is_published | boolean | Only published items shown to users |
-| uploaded_by | uuid | References auth.users |
-| created_at | timestamptz | |
+### Why It Fails
 
-RLS: Super admins can CRUD. Authenticated users can SELECT where `is_published = true`.
+The entire notification pipeline is dead at step 1:
 
-**2. `onboarding_progress` table** — tracks per-user completion
+```text
+[Report marked complete]
+       ↓
+  ❌ TRIGGER (missing) ── nothing fires
+       ↓
+  ✗ net.http_post never called
+       ↓
+  ✗ Edge function never invoked
+       ↓
+  ✗ Make.com never receives webhook
+       ↓
+  ✗ No email sent
+```
 
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uuid | PK |
-| user_id | uuid | References auth.users |
-| resource_id | uuid | FK to onboarding_resources |
-| completed_at | timestamptz | When marked complete |
-| unique(user_id, resource_id) | | Prevents duplicates |
+All downstream components (functions, secrets, Make.com) are correctly configured. The **sole blocker** is that triggers do not exist in the live database.
 
-RLS: Users can manage their own rows only.
+### Remediation
 
-**3. `onboarding-files` storage bucket** — private bucket for the actual video/PDF files. Super admins can upload; authenticated users can read.
+Re-apply the same 18 `CREATE TRIGGER` statements via a new migration. The SQL is identical to the existing file — the content is correct, it just needs to land on the database.
 
-### Frontend
+This is the third attempt. If the migration tool reports success but triggers still show 0, we have a platform-level migration application issue that needs escalation.
 
-**`/onboarding` page** — accessible from the dashboard header navigation:
-- Lists all published resources grouped by type (Videos section, Documents section)
-- Each card shows: title, description, file type icon, and a checkbox to mark complete
-- Clicking a video opens an inline `<video>` player; clicking a PDF downloads it
-- A progress bar at the top shows "X of Y completed"
-- Matches existing app styling (cards, borders, monospace metadata)
+### No Code Changes Required
 
-**Admin upload UI** — visible only to super admins on the same page:
-- "Add Resource" button opens a form: title, description, file type selector, file upload input, display order
-- Drag-to-reorder support using existing drag patterns
-- Toggle publish/unpublish per resource
-- Delete resource (removes from storage + DB)
-
-### Route Addition
-
-Add `/onboarding` to `App.tsx` router, import the new `Onboarding.tsx` page component. Add a navigation link in `AuthenticatedHeader.tsx`.
-
-### Files
-
-| File | Action |
-|------|--------|
-| Migration SQL | Create tables, bucket, RLS policies |
-| `src/pages/Onboarding.tsx` | New page component |
-| `src/App.tsx` | Add route |
-| `src/components/AuthenticatedHeader.tsx` | Add nav link |
+All trigger functions, edge functions, webhook secrets, and frontend code are correctly implemented. The only action is a database migration to create the trigger bindings.
 
