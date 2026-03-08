@@ -1,22 +1,66 @@
 
 
-## Re-apply the Missing Triggers Migration
+## Onboarding Resource Center
 
-The migration SQL file exists but the database still has zero triggers. The fix is to execute the same 18-trigger creation SQL via the migration tool to ensure it actually lands on the live database.
+A dedicated `/onboarding` page where users can browse videos and PDFs you've uploaded, and mark items as completed.
 
-### Migration SQL (identical to what was previously generated)
+### Database
 
-All 18 `DROP TRIGGER IF EXISTS` + `CREATE TRIGGER` statements for:
-- 3x `update_*_updated_at` (BEFORE UPDATE)
-- 1x `trigger_auto_link_organization` (BEFORE INSERT OR UPDATE)  
-- 3x `prevent_inspector_id_change_*` (BEFORE UPDATE)
-- 3x push notification triggers (AFTER UPDATE / AFTER INSERT)
-- 3x email notification triggers (AFTER UPDATE)
-- 1x sync conflict trigger (AFTER INSERT)
-- 3x audit triggers (AFTER UPDATE / INSERT / DELETE)
-- 1x profile name history trigger (AFTER INSERT OR UPDATE)
+**1. `onboarding_resources` table** — stores metadata for each uploaded file
 
-### No code changes needed
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | PK |
+| title | text | Display name |
+| description | text | Optional summary |
+| file_type | text | 'video' or 'pdf' |
+| file_url | text | Storage path |
+| display_order | integer | Sort order |
+| is_published | boolean | Only published items shown to users |
+| uploaded_by | uuid | References auth.users |
+| created_at | timestamptz | |
 
-This is database-only. All trigger functions already exist and are verified correct. The only gap is the trigger bindings themselves.
+RLS: Super admins can CRUD. Authenticated users can SELECT where `is_published = true`.
+
+**2. `onboarding_progress` table** — tracks per-user completion
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | PK |
+| user_id | uuid | References auth.users |
+| resource_id | uuid | FK to onboarding_resources |
+| completed_at | timestamptz | When marked complete |
+| unique(user_id, resource_id) | | Prevents duplicates |
+
+RLS: Users can manage their own rows only.
+
+**3. `onboarding-files` storage bucket** — private bucket for the actual video/PDF files. Super admins can upload; authenticated users can read.
+
+### Frontend
+
+**`/onboarding` page** — accessible from the dashboard header navigation:
+- Lists all published resources grouped by type (Videos section, Documents section)
+- Each card shows: title, description, file type icon, and a checkbox to mark complete
+- Clicking a video opens an inline `<video>` player; clicking a PDF downloads it
+- A progress bar at the top shows "X of Y completed"
+- Matches existing app styling (cards, borders, monospace metadata)
+
+**Admin upload UI** — visible only to super admins on the same page:
+- "Add Resource" button opens a form: title, description, file type selector, file upload input, display order
+- Drag-to-reorder support using existing drag patterns
+- Toggle publish/unpublish per resource
+- Delete resource (removes from storage + DB)
+
+### Route Addition
+
+Add `/onboarding` to `App.tsx` router, import the new `Onboarding.tsx` page component. Add a navigation link in `AuthenticatedHeader.tsx`.
+
+### Files
+
+| File | Action |
+|------|--------|
+| Migration SQL | Create tables, bucket, RLS policies |
+| `src/pages/Onboarding.tsx` | New page component |
+| `src/App.tsx` | Add route |
+| `src/components/AuthenticatedHeader.tsx` | Add nav link |
 
