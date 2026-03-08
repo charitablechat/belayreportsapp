@@ -145,8 +145,13 @@ interface SnapshotsPanelProps {
 }
 
 export function LocalSnapshotsPanel({ allowDelete = true }: SnapshotsPanelProps) {
-  const snapshots = listAllSnapshots();
-  const storageInfo = getBackupStorageInfo();
+  const [snapshots, setSnapshots] = useState(() => listAllSnapshots());
+  const [storageInfo, setStorageInfo] = useState(() => getBackupStorageInfo());
+
+  const refreshSnapshots = useCallback(() => {
+    setSnapshots(listAllSnapshots());
+    setStorageInfo(getBackupStorageInfo());
+  }, []);
 
   const handleExport = (reportType: ReportType, reportId: string) => {
     const snapshot = getReportSnapshot(reportType, reportId);
