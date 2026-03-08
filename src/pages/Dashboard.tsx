@@ -909,7 +909,7 @@ export default function Dashboard() {
         }
 
         // Update UI
-        setInspections(inspections.filter(i => i.id !== inspectionToDelete.id));
+        setInspections(prev => prev.filter(i => i.id !== inspectionToDelete.id));
       } else if (reportToDelete) {
         // Determine if it's a training or daily assessment
         const isTraining = 'start_date' in reportToDelete;
