@@ -1,5 +1,6 @@
-import { useMemo, useState, useCallback } from "react";
-import { differenceInDays, isWithinInterval, startOfWeek, endOfWeek, startOfMonth, endOfMonth, parseISO } from "date-fns";
+import { useMemo, useState, useCallback, useEffect, useRef } from "react";
+import { differenceInDays, isWithinInterval, startOfWeek, endOfWeek, startOfMonth, endOfMonth, endOfDay, parseISO } from "date-fns";
+import { getReportDate, getAssigneeName } from "@/lib/report-utils";
 import { getReportAgeState, type ReportAgeState } from "@/components/dashboard/ReportCard";
 
 export type SortOption = 'priority' | 'completed' | 'date-asc' | 'date-desc' | 'title-az' | 'assignee';
