@@ -340,20 +340,17 @@ export const useAutoSync = () => {
       const user = await getUserWithCache();
       if (!user) return;
       
-      const [inspections, trainings, assessments] = await Promise.all([
-        getUnsyncedInspections(user.id),
-        getUnsyncedTrainings(user.id),
-        getUnsyncedDailyAssessments(user.id),
-      ]);
+      // Use batched read — single IndexedDB transaction instead of 3 separate calls
+      const counts = await getUnsyncedCounts(user.id);
       
-      const total = inspections.length + trainings.length + assessments.length;
+      const total = counts.inspections.length + counts.trainings.length + counts.assessments.length;
       
       setState(prev => ({
         ...prev,
         unsyncedCount: total,
-        unsyncedInspections: inspections,
-        unsyncedTrainings: trainings,
-        unsyncedAssessments: assessments,
+        unsyncedInspections: counts.inspections,
+        unsyncedTrainings: counts.trainings,
+        unsyncedAssessments: counts.assessments,
       }));
       
       if (import.meta.env.DEV && total > 0) {
