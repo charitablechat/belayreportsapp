@@ -162,6 +162,28 @@ const handler = async (req: Request): Promise<Response> => {
 
     const subjectText = subjectMap[subject] || subject;
 
+    // If attachment exists, fetch and convert to base64
+    let attachmentBase64: string | undefined;
+    if (attachmentUrl) {
+      try {
+        const fileResponse = await fetch(attachmentUrl);
+        if (fileResponse.ok) {
+          const arrayBuffer = await fileResponse.arrayBuffer();
+          const uint8Array = new Uint8Array(arrayBuffer);
+          let binary = "";
+          for (let i = 0; i < uint8Array.length; i++) {
+            binary += String.fromCharCode(uint8Array[i]);
+          }
+          attachmentBase64 = btoa(binary);
+          console.log(`Attachment fetched and encoded: ${attachmentName} (${uint8Array.length} bytes)`);
+        } else {
+          console.warn(`Failed to fetch attachment: ${fileResponse.status}`);
+        }
+      } catch (e) {
+        console.warn("Could not fetch attachment for base64 encoding:", e);
+      }
+    }
+
     // Send to Make.com webhook
     const makeWebhookUrl = Deno.env.get("MAKE_CONTACT_WEBHOOK_URL");
     
@@ -169,19 +191,23 @@ const handler = async (req: Request): Promise<Response> => {
       throw new Error("MAKE_CONTACT_WEBHOOK_URL not configured");
     }
 
+    const payload = {
+      name,
+      email,
+      subject: subjectText,
+      message,
+      attachmentBase64,
+      attachmentName,
+      attachmentType,
+      timestamp: new Date().toISOString(),
+    };
+
+    console.log("Sending payload to Make.com (attachment size:", attachmentBase64 ? `${attachmentBase64.length} chars` : "none", ")");
+
     const webhookResponse = await fetch(makeWebhookUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name,
-        email,
-        subject: subjectText,
-        message,
-        attachmentUrl,
-        attachmentName,
-        attachmentType,
-        timestamp: new Date().toISOString(),
-      }),
+      body: JSON.stringify(payload),
     });
 
     if (!webhookResponse.ok) {
