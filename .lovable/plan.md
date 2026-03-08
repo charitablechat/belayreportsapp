@@ -1,25 +1,15 @@
 
 
-## Fix: Update MAKE_WEBHOOK_URL Secret to Correct Reports Webhook
+## Update MAKE_CONTACT_WEBHOOK_URL Secret
 
-### Problem
-The `MAKE_WEBHOOK_URL` secret (used by `send-notification-email` for all 3 report completions) is currently set to the **Contact Developer** Make.com webhook URL. This causes training/inspection/daily assessment completions to arrive in the wrong Make.com scenario.
+### Single Step
+Update the `MAKE_CONTACT_WEBHOOK_URL` secret value to: `https://hook.us2.make.com/hh432mxuv8nb4qgydogej8u5qwyjhewo`
 
-### Evidence
-- Code is correct: `send-notification-email` uses `MAKE_WEBHOOK_URL`, `send-contact-email` uses `MAKE_CONTACT_WEBHOOK_URL` — fully isolated
-- All 6 triggers (push + email for each of 3 report types) correctly call the right edge functions
-- The issue is purely a **misconfigured secret value**
+No code changes needed. This ensures the Contact Developer form (`send-contact-email` edge function) routes to the correct Make.com scenario.
 
-### Fix (Single Step)
-Update the `MAKE_WEBHOOK_URL` secret to: `https://hook.us2.make.com/3rj4hu9v5uapnxyu34dcgadmm67wie7x`
-
-No code changes needed. No migration needed. Just the secret value update.
-
-### After the Fix
-All three report types will route to the correct Make.com scenario:
-- `inspection_completed` → reports webhook
-- `training_completed` → reports webhook  
-- `daily_assessment_completed` → reports webhook
-
-The Contact Developer form will continue using its own separate `MAKE_CONTACT_WEBHOOK_URL` secret, unaffected.
+### Final State
+| Secret | Webhook URL | Used By |
+|--------|------------|---------|
+| `MAKE_WEBHOOK_URL` | `https://hook.us2.make.com/3rj4hu9v5uapnxyu34dcgadmm67wie7x` | Report completions (all 3 types) |
+| `MAKE_CONTACT_WEBHOOK_URL` | `https://hook.us2.make.com/hh432mxuv8nb4qgydogej8u5qwyjhewo` | Contact Developer form |
 
