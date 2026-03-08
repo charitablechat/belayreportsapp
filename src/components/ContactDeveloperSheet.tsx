@@ -64,10 +64,12 @@ export function ContactDeveloperSheet({ open, onOpenChange }: ContactDeveloperSh
     e.preventDefault();
 
     if (!form.subject || !form.message) {
+      toast.error("Please fill in all required fields.");
       return;
     }
 
     if (form.message.length > 1000) {
+      toast.error("Message is too long. Maximum 1000 characters.");
       return;
     }
 
