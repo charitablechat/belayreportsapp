@@ -1187,7 +1187,7 @@ serve(async (req) => {
       }
 
       .info-grid {
-        background: #f9fafb !important;
+        background: #c2c2c2 !important;
       }
 
       /* Table styling for print */
