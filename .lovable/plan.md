@@ -1,44 +1,66 @@
 
 
-# Investigation: Operating Systems Order Jumbled on Refresh
+## Onboarding Resource Center
 
-## Root Cause
+A dedicated `/onboarding` page where users can browse videos and PDFs you've uploaded, and mark items as completed.
 
-The `display_order` column exists and the InspectionForm correctly **saves** it (line 1475: `systems.map((s, i) => ({ ...s, display_order: i }))`), and **loads** with `.order("display_order")` from the database. However, **multiple other code paths ignore `display_order`**, causing the order to break.
+### Database
 
-### Gap 1: IndexedDB reads return unsorted data
-`getRelatedDataOffline()` uses `index.getAll(inspectionId)` which returns items in IndexedDB insertion order — **not** by `display_order`. When the form loads from IndexedDB (offline-first path), or when the sync manager reads data to push to the server, the array order is arbitrary.
+**1. `onboarding_resources` table** — stores metadata for each uploaded file
 
-### Gap 2: Sync manager doesn't sort before upserting
-`atomic-sync-manager.ts` line 484-489 pushes `systems` directly to the upsert steps without sorting by `display_order`. If IndexedDB returned them jumbled, the `display_order` values in each object are correct, so this path is actually OK — the values are persisted. But the **recovery path** (line 418+) that pulls server data back into IndexedDB doesn't sort either, and any code that reads from IndexedDB and renders directly will show wrong order.
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | PK |
+| title | text | Display name |
+| description | text | Optional summary |
+| file_type | text | 'video' or 'pdf' |
+| file_url | text | Storage path |
+| display_order | integer | Sort order |
+| is_published | boolean | Only published items shown to users |
+| uploaded_by | uuid | References auth.users |
+| created_at | timestamptz | |
 
-### Gap 3: HTML report generator has no ordering
-`generate-inspection-html/index.ts` line 285 fetches `inspection_systems` without `.order("display_order")` — systems appear in arbitrary database order in generated reports.
+RLS: Super admins can CRUD. Authenticated users can SELECT where `is_published = true`.
 
-### Gap 4: PDF generator has no ordering  
-`generate-inspection-pdf/index.ts` line 65 — same problem, no `.order("display_order")`.
+**2. `onboarding_progress` table** — tracks per-user completion
 
-### Gap 5: Service Worker sync reads from IndexedDB unsorted
-`sw-sync.js` line 310 reads via `getAllRelatedData` which has no sort — if it upserts these items and they had stale/missing `display_order` values, the database state could be corrupted.
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | PK |
+| user_id | uuid | References auth.users |
+| resource_id | uuid | FK to onboarding_resources |
+| completed_at | timestamptz | When marked complete |
+| unique(user_id, resource_id) | | Prevents duplicates |
 
-## Plan
+RLS: Users can manage their own rows only.
 
-### 1. Sort IndexedDB reads by `display_order` (`src/lib/offline-storage.ts`)
-In `getRelatedDataOffline()`, after fetching from IndexedDB, sort the result array by `display_order` before returning. This fixes all consumers (form load, sync manager reads, version snapshots).
+**3. `onboarding-files` storage bucket** — private bucket for the actual video/PDF files. Super admins can upload; authenticated users can read.
 
-### 2. Add `.order("display_order")` to HTML generator (`supabase/functions/generate-inspection-html/index.ts`)
-Add `.order("display_order")` to the `inspection_systems`, `inspection_ziplines`, and `inspection_equipment` queries.
+### Frontend
 
-### 3. Add `.order("display_order")` to PDF generator (`supabase/functions/generate-inspection-pdf/index.ts`)
-Same fix for all three child table queries.
+**`/onboarding` page** — accessible from the dashboard header navigation:
+- Lists all published resources grouped by type (Videos section, Documents section)
+- Each card shows: title, description, file type icon, and a checkbox to mark complete
+- Clicking a video opens an inline `<video>` player; clicking a PDF downloads it
+- A progress bar at the top shows "X of Y completed"
+- Matches existing app styling (cards, borders, monospace metadata)
 
-### 4. Sort in Service Worker after IndexedDB read (`public/sw-sync.js`)
-After `getAllRelatedData`, sort systems/ziplines/equipment by `display_order` to ensure consistent upsert ordering.
+**Admin upload UI** — visible only to super admins on the same page:
+- "Add Resource" button opens a form: title, description, file type selector, file upload input, display order
+- Drag-to-reorder support using existing drag patterns
+- Toggle publish/unpublish per resource
+- Delete resource (removes from storage + DB)
 
-## Files Changed
+### Route Addition
 
-- `src/lib/offline-storage.ts` — sort `getRelatedDataOffline` results by `display_order`
-- `supabase/functions/generate-inspection-html/index.ts` — add `.order("display_order")` to systems, ziplines, equipment queries
-- `supabase/functions/generate-inspection-pdf/index.ts` — add `.order("display_order")` to systems, ziplines, equipment queries
-- `public/sw-sync.js` — sort child data by `display_order` after IndexedDB read
+Add `/onboarding` to `App.tsx` router, import the new `Onboarding.tsx` page component. Add a navigation link in `AuthenticatedHeader.tsx`.
+
+### Files
+
+| File | Action |
+|------|--------|
+| Migration SQL | Create tables, bucket, RLS policies |
+| `src/pages/Onboarding.tsx` | New page component |
+| `src/App.tsx` | Add route |
+| `src/components/AuthenticatedHeader.tsx` | Add nav link |
 

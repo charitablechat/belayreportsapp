@@ -62,9 +62,9 @@ serve(async (req) => {
       { data: summary, error: summaryError }
     ] = await Promise.all([
       supabase.from('inspections').select('*').eq('id', inspectionId).single(),
-      supabase.from('inspection_systems').select('*').eq('inspection_id', inspectionId),
-      supabase.from('inspection_ziplines').select('*').eq('inspection_id', inspectionId),
-      supabase.from('inspection_equipment').select('*').eq('inspection_id', inspectionId),
+      supabase.from('inspection_systems').select('*').eq('inspection_id', inspectionId).order('display_order'),
+      supabase.from('inspection_ziplines').select('*').eq('inspection_id', inspectionId).order('display_order'),
+      supabase.from('inspection_equipment').select('*').eq('inspection_id', inspectionId).order('display_order'),
       supabase.from('inspection_standards').select('*').eq('inspection_id', inspectionId),
       supabase.from('inspection_summary').select('*').eq('inspection_id', inspectionId).maybeSingle()
     ]);
