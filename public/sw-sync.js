@@ -575,6 +575,12 @@ async function syncTrainingsAtomic() {
 async function syncDailyAssessmentsAtomic() {
   console.log('[SW Atomic Sync] Starting atomic daily assessment sync...');
   
+  const authHeaders = getAuthHeaders();
+  if (!authHeaders) {
+    console.warn('[SW Atomic Sync] No valid auth token — skipping assessment sync');
+    return;
+  }
+  
   try {
     const db = await openDB(DB_NAME, DB_VERSION);
     const allAssessments = await getAllFromStore(db, 'daily_assessments');
@@ -583,14 +589,10 @@ async function syncDailyAssessmentsAtomic() {
     console.log('[SW Atomic Sync] Found', unsynced.length, 'unsynced daily assessments');
     if (unsynced.length === 0) return;
     
-    const supabaseUrl = 'https://ssgzcgvygnsrqalisshx.supabase.co';
-    const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNzZ3pjZ3Z5Z25zcnFhbGlzc2h4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIyMzM5NjksImV4cCI6MjA3NzgwOTk2OX0.buTFy44tZdRIlRSFIm5BqeOGb4nX3ARuHawWA9hZN54';
-    
     let syncedCount = 0;
     
     for (const assessment of unsynced) {
       try {
-        // Gather child data
         const beginningOfDay = await getAllRelatedData(db, 'daily_assessment_beginning_of_day', assessment.id).catch(() => []);
         const endOfDay = await getAllRelatedData(db, 'daily_assessment_end_of_day', assessment.id).catch(() => []);
         const environmentChecks = await getAllRelatedData(db, 'daily_assessment_environment_checks', assessment.id).catch(() => []);
@@ -598,7 +600,6 @@ async function syncDailyAssessmentsAtomic() {
         const structureChecks = await getAllRelatedData(db, 'daily_assessment_structure_checks', assessment.id).catch(() => []);
         const operatingSystems = await getAllRelatedData(db, 'daily_assessment_operating_systems', assessment.id).catch(() => []);
         
-        // SUSPICIOUS EMPTY GUARD for daily assessments
         const assessmentChildEmpty = beginningOfDay.length === 0 && endOfDay.length === 0 && 
           environmentChecks.length === 0 && equipmentChecks.length === 0 && 
           structureChecks.length === 0 && operatingSystems.length === 0;
@@ -612,17 +613,14 @@ async function syncDailyAssessmentsAtomic() {
           continue;
         }
         
-        // Step 1: Upsert assessment WITHOUT synced_at (deferred marking)
-        // Uses POST + merge-duplicates instead of PATCH to handle offline-created records
         const assessmentData = { ...assessment };
         delete assessmentData.synced_at;
         
-        const response = await fetch(`${supabaseUrl}/rest/v1/daily_assessments`, {
+        const response = await fetch(`${SUPABASE_URL}/rest/v1/daily_assessments`, {
           method: 'POST',
           headers: {
+            ...authHeaders,
             'Content-Type': 'application/json',
-            'apikey': supabaseKey,
-            'Authorization': `Bearer ${supabaseKey}`,
             'Prefer': 'resolution=merge-duplicates,return=representation'
           },
           body: JSON.stringify(assessmentData)
@@ -630,24 +628,21 @@ async function syncDailyAssessmentsAtomic() {
         
         await verifyResponseRows(response, 'Assessment parent upsert');
         
-        // Step 2: Upsert all children (no deletes)
         await Promise.all([
-          upsertRelatedData(supabaseUrl, supabaseKey, 'daily_assessment_beginning_of_day', beginningOfDay),
-          upsertRelatedData(supabaseUrl, supabaseKey, 'daily_assessment_end_of_day', endOfDay),
-          upsertRelatedData(supabaseUrl, supabaseKey, 'daily_assessment_environment_checks', environmentChecks),
-          upsertRelatedData(supabaseUrl, supabaseKey, 'daily_assessment_equipment_checks', equipmentChecks),
-          upsertRelatedData(supabaseUrl, supabaseKey, 'daily_assessment_structure_checks', structureChecks),
-          upsertRelatedData(supabaseUrl, supabaseKey, 'daily_assessment_operating_systems', operatingSystems),
+          upsertRelatedData(SUPABASE_URL, authHeaders, 'daily_assessment_beginning_of_day', beginningOfDay),
+          upsertRelatedData(SUPABASE_URL, authHeaders, 'daily_assessment_end_of_day', endOfDay),
+          upsertRelatedData(SUPABASE_URL, authHeaders, 'daily_assessment_environment_checks', environmentChecks),
+          upsertRelatedData(SUPABASE_URL, authHeaders, 'daily_assessment_equipment_checks', equipmentChecks),
+          upsertRelatedData(SUPABASE_URL, authHeaders, 'daily_assessment_structure_checks', structureChecks),
+          upsertRelatedData(SUPABASE_URL, authHeaders, 'daily_assessment_operating_systems', operatingSystems),
         ]);
         
-        // Step 3: NOW mark as synced (deferred synced_at)
         const now = new Date().toISOString();
-        const syncStampResponse = await fetch(`${supabaseUrl}/rest/v1/daily_assessments?id=eq.${assessment.id}`, {
+        const syncStampResponse = await fetch(`${SUPABASE_URL}/rest/v1/daily_assessments?id=eq.${assessment.id}`, {
           method: 'PATCH',
           headers: {
+            ...authHeaders,
             'Content-Type': 'application/json',
-            'apikey': supabaseKey,
-            'Authorization': `Bearer ${supabaseKey}`,
             'Prefer': 'return=representation'
           },
           body: JSON.stringify({ synced_at: now, updated_at: now, last_sync_source: 'service_worker' })
@@ -655,23 +650,15 @@ async function syncDailyAssessmentsAtomic() {
         
         await verifyResponseRows(syncStampResponse, 'Assessment sync stamp');
         
-        // Step 4: Post-sync verification
         const verifyResponse = await fetch(
-          `${supabaseUrl}/rest/v1/daily_assessments?id=eq.${assessment.id}&select=id,synced_at&synced_at=not.is.null`,
-          {
-            method: 'GET',
-            headers: {
-              'apikey': supabaseKey,
-              'Authorization': `Bearer ${supabaseKey}`
-            }
-          }
+          `${SUPABASE_URL}/rest/v1/daily_assessments?id=eq.${assessment.id}&select=id,synced_at&synced_at=not.is.null`,
+          { method: 'GET', headers: authHeaders }
         );
         const verifyRows = await verifyResponse.json();
         if (!Array.isArray(verifyRows) || verifyRows.length === 0) {
           throw new Error('Post-sync verification failed: assessment not found with synced_at on server');
         }
         
-        // Align local timestamps
         assessment.synced_at = now;
         assessment.updated_at = now;
         await updateInStore(db, 'daily_assessments', assessment);
@@ -683,15 +670,9 @@ async function syncDailyAssessmentsAtomic() {
       }
     }
     
-    // Notify clients
     const clients = await self.clients.matchAll();
     clients.forEach(client => {
-      client.postMessage({
-        type: 'SYNC_COMPLETED',
-        tag: 'assessment-sync',
-        success: true,
-        count: syncedCount
-      });
+      client.postMessage({ type: 'SYNC_COMPLETED', tag: 'assessment-sync', success: true, count: syncedCount });
     });
     
   } catch (error) {
