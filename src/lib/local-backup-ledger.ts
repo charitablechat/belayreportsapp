@@ -310,3 +310,44 @@ export function getBackupStorageInfo(): {
     return { totalBytes: 0, snapshotCount: 0, unsyncedCount: 0 };
   }
 }
+
+/**
+ * Download a single report's snapshot as a JSON file to the user's device.
+ * Returns true on success, false if no snapshot exists.
+ */
+export function downloadReportBackup(
+  reportType: ReportType,
+  reportId: string
+): boolean {
+  try {
+    const snapshot = getReportSnapshot(reportType, reportId);
+    if (!snapshot) return false;
+
+    const payload = {
+      exportedAt: new Date().toISOString(),
+      reportType,
+      reportId,
+      snapshot,
+    };
+
+    const json = JSON.stringify(payload, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `backup_${reportType}_${reportId.substring(0, 8)}_${Date.now()}.json`;
+    link.style.display = 'none';
+    document.body.appendChild(link);
+    link.click();
+
+    setTimeout(() => {
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    }, 100);
+
+    return true;
+  } catch (error) {
+    console.warn('[Backup Ledger] Failed to download report backup:', error);
+    return false;
+  }
+}
