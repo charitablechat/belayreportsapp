@@ -4,6 +4,93 @@
 var DB_NAME = (typeof DB_CONFIG !== 'undefined' && DB_CONFIG.name) || 'rope-works-inspections';
 var DB_VERSION = (typeof DB_CONFIG !== 'undefined' && DB_CONFIG.version) || 8;
 
+// Supabase config constants
+var SUPABASE_URL = 'https://ssgzcgvygnsrqalisshx.supabase.co';
+var SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNzZ3pjZ3Z5Z25zcnFhbGlzc2h4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIyMzM5NjksImV4cCI6MjA3NzgwOTk2OX0.buTFy44tZdRIlRSFIm5BqeOGb4nX3ARuHawWA9hZN54';
+
+/**
+ * Extract the user's JWT access token from the Supabase auth session in localStorage.
+ * Returns the access_token if valid (not expired), otherwise null.
+ * The SW uses this instead of the anon key for Authorization: Bearer to pass RLS policies.
+ */
+function getUserAccessToken() {
+  try {
+    var session = self && typeof indexedDB !== 'undefined' ? null : null; // SW has no window
+    // Service workers can access localStorage indirectly — but actually they CANNOT.
+    // However, the main thread can pass the token via a message. For now, we read from
+    // the clients and cache it, or use a fallback strategy.
+    // 
+    // Actually, Service Workers DO NOT have access to localStorage.
+    // We need to request the token from the main thread via postMessage.
+    return null;
+  } catch (e) {
+    return null;
+  }
+}
+
+// Cache for the user's JWT token, received from the main thread
+var cachedUserToken = null;
+var cachedTokenExpiry = 0;
+
+/**
+ * Listen for auth token messages from the main thread.
+ * The main thread sends the JWT whenever it refreshes the session.
+ */
+self.addEventListener('message', function(event) {
+  if (event.data && event.data.type === 'AUTH_TOKEN') {
+    cachedUserToken = event.data.accessToken || null;
+    cachedTokenExpiry = event.data.expiresAt || 0;
+    console.log('[SW Auth] Received auth token from main thread, expires:', new Date(cachedTokenExpiry * 1000).toISOString());
+  }
+});
+
+/**
+ * Get the best available bearer token for Authorization header.
+ * Prefers the user's JWT (for RLS), falls back to anon key.
+ * Returns null if no valid token is available (should skip sync).
+ */
+function getBearerToken() {
+  // Check if we have a cached user token that hasn't expired
+  if (cachedUserToken && cachedTokenExpiry) {
+    var nowSeconds = Math.floor(Date.now() / 1000);
+    if (cachedTokenExpiry > nowSeconds + 30) { // 30s buffer
+      return cachedUserToken;
+    }
+    console.warn('[SW Auth] Cached token expired, requesting refresh from main thread');
+    // Request a fresh token from the main thread
+    self.clients.matchAll().then(function(clients) {
+      clients.forEach(function(client) {
+        client.postMessage({ type: 'REQUEST_AUTH_TOKEN' });
+      });
+    });
+    cachedUserToken = null;
+    cachedTokenExpiry = 0;
+  }
+  
+  // No valid user token — cannot authenticate as the user for RLS
+  return null;
+}
+
+/**
+ * Build standard headers for Supabase REST API requests.
+ * Uses the user's JWT for Authorization to satisfy RLS policies.
+ * Returns null if no valid auth token is available (sync should be skipped).
+ */
+function getAuthHeaders(contentType) {
+  var bearerToken = getBearerToken();
+  if (!bearerToken) {
+    return null; // Signal to caller: skip this sync cycle
+  }
+  var headers = {
+    'apikey': SUPABASE_ANON_KEY,
+    'Authorization': 'Bearer ' + bearerToken
+  };
+  if (contentType) {
+    headers['Content-Type'] = contentType;
+  }
+  return headers;
+}
+
 // Helper function to open IndexedDB
 function openDB(name, version) {
   return new Promise((resolve, reject) => {
