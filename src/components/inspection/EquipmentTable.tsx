@@ -174,8 +174,9 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
       touchActiveRef.current = true;
       setDraggingId(id);
       setIsTouchMode(true);
+      startAutoScroll();
     }, 200);
-  }, []);
+  }, [startAutoScroll]);
 
   const handleTouchMove = useCallback((e: React.TouchEvent) => {
     const touch = e.touches[0];
