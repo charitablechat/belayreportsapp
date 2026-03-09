@@ -351,3 +351,82 @@ export function downloadReportBackup(
     return false;
   }
 }
+
+/**
+ * Import a previously exported JSON backup file.
+ * Validates structure, writes to localStorage, IndexedDB, and cloud.
+ * Returns { success, reportType, reportId } or throws with a user-friendly message.
+ */
+export async function importReportBackup(jsonString: string): Promise<{
+  reportType: ReportType;
+  reportId: string;
+}> {
+  let parsed: any;
+  try {
+    parsed = JSON.parse(jsonString);
+  } catch {
+    throw new Error('Invalid JSON file — could not parse contents.');
+  }
+
+  // Support both downloadReportBackup format ({ exportedAt, reportType, reportId, snapshot })
+  // and raw snapshot format (direct ReportSnapshot object with parent/children)
+  const reportType = parsed.reportType as ReportType;
+  const reportId = parsed.reportId as string;
+  const snapshot = parsed.snapshot as ReportSnapshot | undefined;
+
+  if (!reportType || !['inspection', 'training', 'daily_assessment'].includes(reportType)) {
+    throw new Error('Missing or invalid reportType. Expected: inspection, training, or daily_assessment.');
+  }
+  if (!reportId || typeof reportId !== 'string') {
+    throw new Error('Missing or invalid reportId.');
+  }
+  if (!snapshot || typeof snapshot !== 'object' || !snapshot.parent || !snapshot.children) {
+    throw new Error('Missing or invalid snapshot data (expected parent + children).');
+  }
+
+  // 1. Write to localStorage
+  saveReportSnapshot(
+    reportType,
+    reportId,
+    snapshot.parent,
+    snapshot.children,
+    snapshot.synced ?? false,
+    snapshot.photoMetadata
+  );
+
+  // 2. Write to IndexedDB
+  const {
+    saveInspectionOffline, saveRelatedDataOffline,
+    saveTrainingOffline, saveTrainingDataOffline,
+    saveDailyAssessmentOffline, saveAssessmentDataOffline,
+  } = await import('@/lib/offline-storage');
+
+  if (reportType === 'inspection') {
+    await saveInspectionOffline(snapshot.parent);
+    for (const [key, data] of Object.entries(snapshot.children)) {
+      if (Array.isArray(data) && data.length > 0) {
+        await saveRelatedDataOffline(key as any, reportId, data);
+      }
+    }
+  } else if (reportType === 'training') {
+    await saveTrainingOffline(snapshot.parent);
+    for (const [key, data] of Object.entries(snapshot.children)) {
+      if (Array.isArray(data) && data.length > 0) {
+        await saveTrainingDataOffline(key as any, reportId, data);
+      }
+    }
+  } else if (reportType === 'daily_assessment') {
+    await saveDailyAssessmentOffline(snapshot.parent);
+    for (const [key, data] of Object.entries(snapshot.children)) {
+      if (Array.isArray(data) && data.length > 0) {
+        await saveAssessmentDataOffline(key as any, reportId, data);
+      }
+    }
+  }
+
+  // 3. Fire-and-forget cloud upload
+  const { uploadSnapshotToCloud } = await import('@/lib/cloud-backup');
+  uploadSnapshotToCloud(reportType, reportId, snapshot);
+
+  return { reportType, reportId };
+}

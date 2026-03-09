@@ -10,7 +10,7 @@ import { RefreshCw, Upload, Trash2, AlertTriangle, Database, HardDrive, CheckCir
 import { toast } from "sonner";
 import { format, formatDistanceToNow } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
-import { listAllSnapshots, getReportSnapshot, deleteReportSnapshot, getBackupStorageInfo, type ReportType } from "@/lib/local-backup-ledger";
+import { listAllSnapshots, getReportSnapshot, deleteReportSnapshot, getBackupStorageInfo, importReportBackup, type ReportType } from "@/lib/local-backup-ledger";
 import {
   getOfflineTrainings,
   getOfflineDailyAssessments,
@@ -147,11 +147,32 @@ interface SnapshotsPanelProps {
 export function LocalSnapshotsPanel({ allowDelete = true }: SnapshotsPanelProps) {
   const [snapshots, setSnapshots] = useState(() => listAllSnapshots());
   const [storageInfo, setStorageInfo] = useState(() => getBackupStorageInfo());
+  const [importing, setImporting] = useState(false);
 
   const refreshSnapshots = useCallback(() => {
     setSnapshots(listAllSnapshots());
     setStorageInfo(getBackupStorageInfo());
   }, []);
+
+  const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    // Reset input so the same file can be re-selected
+    e.target.value = '';
+    setImporting(true);
+    try {
+      const text = await file.text();
+      const { reportType, reportId } = await importReportBackup(text);
+      refreshSnapshots();
+      toast.success(`Imported ${reportType.replace('_', ' ')} backup`, {
+        description: `Report ${reportId.substring(0, 8)}… restored to local + cloud storage.`,
+      });
+    } catch (err: any) {
+      toast.error('Import failed', { description: err?.message || 'Unknown error' });
+    } finally {
+      setImporting(false);
+    }
+  }, [refreshSnapshots]);
 
   const handleExport = (reportType: ReportType, reportId: string) => {
     const snapshot = getReportSnapshot(reportType, reportId);
@@ -225,25 +246,45 @@ export function LocalSnapshotsPanel({ allowDelete = true }: SnapshotsPanelProps)
               {storageInfo.unsyncedCount > 0 && <Badge variant="destructive" className="ml-2">{storageInfo.unsyncedCount} unsynced</Badge>}
             </CardDescription>
           </div>
-          {snapshots.length > 0 && (
-            <Button variant="outline" size="sm" onClick={() => {
-              const allData = snapshots.map(s => ({
-                ...s,
-                snapshotData: getReportSnapshot(s.reportType, s.reportId),
-              }));
-              const blob = new Blob([JSON.stringify(allData, null, 2)], { type: 'application/json' });
-              const url = URL.createObjectURL(blob);
-              const a = document.createElement('a');
-              a.href = url;
-              a.download = `local-backups-${new Date().toISOString().split('T')[0]}.json`;
-              a.click();
-              URL.revokeObjectURL(url);
-              toast.success("All local snapshots downloaded");
-            }} title="Download all snapshots to device">
-              <HardDrive className="h-4 w-4 mr-2" />
-              Save All
+          <div className="flex gap-2 shrink-0">
+            {/* Hidden file input for import */}
+            <input
+              type="file"
+              accept=".json"
+              className="hidden"
+              id="import-backup-file"
+              onChange={handleImportFile}
+            />
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={importing}
+              onClick={() => document.getElementById('import-backup-file')?.click()}
+              title="Import a previously exported backup JSON file"
+            >
+              {importing ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Upload className="h-4 w-4 mr-2" />}
+              Import
             </Button>
-          )}
+            {snapshots.length > 0 && (
+              <Button variant="outline" size="sm" onClick={() => {
+                const allData = snapshots.map(s => ({
+                  ...s,
+                  snapshotData: getReportSnapshot(s.reportType, s.reportId),
+                }));
+                const blob = new Blob([JSON.stringify(allData, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `local-backups-${new Date().toISOString().split('T')[0]}.json`;
+                a.click();
+                URL.revokeObjectURL(url);
+                toast.success("All local snapshots downloaded");
+              }} title="Download all snapshots to device">
+                <HardDrive className="h-4 w-4 mr-2" />
+                Save All
+              </Button>
+            )}
+          </div>
         </div>
       </CardHeader>
       <CardContent className="px-3 md:px-6 pb-4 md:pb-6 pt-0">
