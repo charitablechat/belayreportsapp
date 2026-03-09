@@ -1,61 +1,53 @@
 
 
-# Clean Default Bolt Text from Database Records
+# Enforce Default Bolt Text in Inspection Reports
 
-## Problem
-76 records in `inspection_systems` and 11 in `inspection_ziplines` contain the default text `<p>Tightened bolts and connectors as needed</p>` stored in the `comments` column. This text should only appear during report generation (already handled by `prependDefaultBolt` in the edge function).
+## Current State
 
-## Data Patterns Found
+- **Database**: Already clean. Zero records in `inspection_systems` or `inspection_ziplines` contain the bolt text (cleaned in prior session).
+- **Individual table rows**: `prependDefaultBolt()` already prepends the text to each system/zipline row's comments column during report generation. This is working correctly.
+- **Summary "Repairs, Alterations" box**: Currently renders only `summary.repairs_performed` — the bolt text is **not** injected here.
 
-All instances are HTML-wrapped: `<p>Tightened bolts and connectors as needed</p>`
+## What Needs to Change
 
-Two cases:
-1. **Only bolt text** (14 systems records): `<p>Tightened bolts and connectors as needed</p>` → set to `NULL`
-2. **Bolt text + real comments** (62 systems, 11 ziplines): `<p>Tightened bolts and connectors as needed</p><p>Real comment here</p>` → strip the bolt paragraph, keep the rest
+### 1. Inject bolt text into the Repairs summary box (edge function)
 
-## Plan
+In `supabase/functions/generate-inspection-html/index.ts`, the summary section (line 2456-2467) conditionally renders `summary.repairs_performed`. Two changes:
 
-### Step 1: Database cleanup via data update tool (2 queries)
+**a)** Always render the Repairs box (even if `repairs_performed` is empty), since the bolt text must appear on every report.
 
-**Systems — records with ONLY bolt text:**
-```sql
-UPDATE inspection_systems 
-SET comments = NULL 
-WHERE comments = '<p>Tightened bolts and connectors as needed</p>';
+**b)** Prepend the bolt text before rendering:
+
+```typescript
+// Before (line 2456-2467):
+${summary.repairs_performed ? `<div>...</div>` : ""}
+
+// After:
+// Always show the repairs box with bolt text prepended
+<div style="margin-bottom: 20px;">
+  <div class="text-block" style="...">
+    ${renderBulletList(
+      parseTextToList(prependDefaultBolt(summary?.repairs_performed || "")),
+      deduplicateHtmlContent(prependDefaultBolt(summary?.repairs_performed || ""))
+    )}
+  </div>
+</div>
 ```
 
-**Systems — records with bolt text + real content:**
-```sql
-UPDATE inspection_systems 
-SET comments = REPLACE(comments, '<p>Tightened bolts and connectors as needed</p>', '')
-WHERE comments ILIKE '%tightened bolts and connectors as needed%'
-  AND comments != '<p>Tightened bolts and connectors as needed</p>';
-```
+This reuses the existing `prependDefaultBolt` helper, which already deduplicates (skips if already present).
 
-**Ziplines — same two queries:**
-```sql
-UPDATE inspection_ziplines 
-SET comments = NULL 
-WHERE comments = '<p>Tightened bolts and connectors as needed</p>';
+### 2. Redeploy the edge function
 
-UPDATE inspection_ziplines 
-SET comments = REPLACE(comments, '<p>Tightened bolts and connectors as needed</p>', '')
-WHERE comments ILIKE '%tightened bolts and connectors as needed%'
-  AND comments != '<p>Tightened bolts and connectors as needed</p>';
-```
+After the code change, redeploy `generate-inspection-html` to activate the updated logic.
 
-### Step 2: No code changes needed
+### 3. No database changes needed
 
-- The edge function `prependDefaultBolt` already re-adds the text during HTML report generation
-- No frontend code sets this default text (verified — zero matches in `src/`)
-- The date-saving fix from the previous session is unrelated and unaffected
+The previous cleanup session already removed all instances. Verification queries confirm 0 matches.
 
-### Verification
+## Scope
 
-After cleanup, run:
-```sql
-SELECT COUNT(*) FROM inspection_systems WHERE comments ILIKE '%tightened bolts%';
-SELECT COUNT(*) FROM inspection_ziplines WHERE comments ILIKE '%tightened bolts%';
-```
-Both should return 0.
+- **1 file changed**: `supabase/functions/generate-inspection-html/index.ts` (lines 2456-2467)
+- **1 redeployment**: `generate-inspection-html` edge function
+- No database migrations
+- No frontend changes
 
