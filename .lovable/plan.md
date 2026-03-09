@@ -1,66 +1,61 @@
 
 
-## Onboarding Resource Center
+# Clean Default Bolt Text from Database Records
 
-A dedicated `/onboarding` page where users can browse videos and PDFs you've uploaded, and mark items as completed.
+## Problem
+76 records in `inspection_systems` and 11 in `inspection_ziplines` contain the default text `<p>Tightened bolts and connectors as needed</p>` stored in the `comments` column. This text should only appear during report generation (already handled by `prependDefaultBolt` in the edge function).
 
-### Database
+## Data Patterns Found
 
-**1. `onboarding_resources` table** — stores metadata for each uploaded file
+All instances are HTML-wrapped: `<p>Tightened bolts and connectors as needed</p>`
 
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uuid | PK |
-| title | text | Display name |
-| description | text | Optional summary |
-| file_type | text | 'video' or 'pdf' |
-| file_url | text | Storage path |
-| display_order | integer | Sort order |
-| is_published | boolean | Only published items shown to users |
-| uploaded_by | uuid | References auth.users |
-| created_at | timestamptz | |
+Two cases:
+1. **Only bolt text** (14 systems records): `<p>Tightened bolts and connectors as needed</p>` → set to `NULL`
+2. **Bolt text + real comments** (62 systems, 11 ziplines): `<p>Tightened bolts and connectors as needed</p><p>Real comment here</p>` → strip the bolt paragraph, keep the rest
 
-RLS: Super admins can CRUD. Authenticated users can SELECT where `is_published = true`.
+## Plan
 
-**2. `onboarding_progress` table** — tracks per-user completion
+### Step 1: Database cleanup via data update tool (2 queries)
 
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uuid | PK |
-| user_id | uuid | References auth.users |
-| resource_id | uuid | FK to onboarding_resources |
-| completed_at | timestamptz | When marked complete |
-| unique(user_id, resource_id) | | Prevents duplicates |
+**Systems — records with ONLY bolt text:**
+```sql
+UPDATE inspection_systems 
+SET comments = NULL 
+WHERE comments = '<p>Tightened bolts and connectors as needed</p>';
+```
 
-RLS: Users can manage their own rows only.
+**Systems — records with bolt text + real content:**
+```sql
+UPDATE inspection_systems 
+SET comments = REPLACE(comments, '<p>Tightened bolts and connectors as needed</p>', '')
+WHERE comments ILIKE '%tightened bolts and connectors as needed%'
+  AND comments != '<p>Tightened bolts and connectors as needed</p>';
+```
 
-**3. `onboarding-files` storage bucket** — private bucket for the actual video/PDF files. Super admins can upload; authenticated users can read.
+**Ziplines — same two queries:**
+```sql
+UPDATE inspection_ziplines 
+SET comments = NULL 
+WHERE comments = '<p>Tightened bolts and connectors as needed</p>';
 
-### Frontend
+UPDATE inspection_ziplines 
+SET comments = REPLACE(comments, '<p>Tightened bolts and connectors as needed</p>', '')
+WHERE comments ILIKE '%tightened bolts and connectors as needed%'
+  AND comments != '<p>Tightened bolts and connectors as needed</p>';
+```
 
-**`/onboarding` page** — accessible from the dashboard header navigation:
-- Lists all published resources grouped by type (Videos section, Documents section)
-- Each card shows: title, description, file type icon, and a checkbox to mark complete
-- Clicking a video opens an inline `<video>` player; clicking a PDF downloads it
-- A progress bar at the top shows "X of Y completed"
-- Matches existing app styling (cards, borders, monospace metadata)
+### Step 2: No code changes needed
 
-**Admin upload UI** — visible only to super admins on the same page:
-- "Add Resource" button opens a form: title, description, file type selector, file upload input, display order
-- Drag-to-reorder support using existing drag patterns
-- Toggle publish/unpublish per resource
-- Delete resource (removes from storage + DB)
+- The edge function `prependDefaultBolt` already re-adds the text during HTML report generation
+- No frontend code sets this default text (verified — zero matches in `src/`)
+- The date-saving fix from the previous session is unrelated and unaffected
 
-### Route Addition
+### Verification
 
-Add `/onboarding` to `App.tsx` router, import the new `Onboarding.tsx` page component. Add a navigation link in `AuthenticatedHeader.tsx`.
-
-### Files
-
-| File | Action |
-|------|--------|
-| Migration SQL | Create tables, bucket, RLS policies |
-| `src/pages/Onboarding.tsx` | New page component |
-| `src/App.tsx` | Add route |
-| `src/components/AuthenticatedHeader.tsx` | Add nav link |
+After cleanup, run:
+```sql
+SELECT COUNT(*) FROM inspection_systems WHERE comments ILIKE '%tightened bolts%';
+SELECT COUNT(*) FROM inspection_ziplines WHERE comments ILIKE '%tightened bolts%';
+```
+Both should return 0.
 
