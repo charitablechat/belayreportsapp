@@ -2458,7 +2458,7 @@ serve(async (req) => {
           ? `
       <div style="margin-bottom: 20px;">
         
-        <div class="text-block" style="padding: 10px 15px; background: #f9f9f9; border-left: 4px solid #16a34a;">
+        <div class="text-block" style="padding: 10px 15px; background: #c2c2c2; border-left: 4px solid #16a34a;">
           ${renderBulletList(parseTextToList(summary.repairs_performed), deduplicateHtmlContent(summary.repairs_performed))}
         </div>
       </div>
