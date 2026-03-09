@@ -4,6 +4,93 @@
 var DB_NAME = (typeof DB_CONFIG !== 'undefined' && DB_CONFIG.name) || 'rope-works-inspections';
 var DB_VERSION = (typeof DB_CONFIG !== 'undefined' && DB_CONFIG.version) || 8;
 
+// Supabase config constants
+var SUPABASE_URL = 'https://ssgzcgvygnsrqalisshx.supabase.co';
+var SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNzZ3pjZ3Z5Z25zcnFhbGlzc2h4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIyMzM5NjksImV4cCI6MjA3NzgwOTk2OX0.buTFy44tZdRIlRSFIm5BqeOGb4nX3ARuHawWA9hZN54';
+
+/**
+ * Extract the user's JWT access token from the Supabase auth session in localStorage.
+ * Returns the access_token if valid (not expired), otherwise null.
+ * The SW uses this instead of the anon key for Authorization: Bearer to pass RLS policies.
+ */
+function getUserAccessToken() {
+  try {
+    var session = self && typeof indexedDB !== 'undefined' ? null : null; // SW has no window
+    // Service workers can access localStorage indirectly — but actually they CANNOT.
+    // However, the main thread can pass the token via a message. For now, we read from
+    // the clients and cache it, or use a fallback strategy.
+    // 
+    // Actually, Service Workers DO NOT have access to localStorage.
+    // We need to request the token from the main thread via postMessage.
+    return null;
+  } catch (e) {
+    return null;
+  }
+}
+
+// Cache for the user's JWT token, received from the main thread
+var cachedUserToken = null;
+var cachedTokenExpiry = 0;
+
+/**
+ * Listen for auth token messages from the main thread.
+ * The main thread sends the JWT whenever it refreshes the session.
+ */
+self.addEventListener('message', function(event) {
+  if (event.data && event.data.type === 'AUTH_TOKEN') {
+    cachedUserToken = event.data.accessToken || null;
+    cachedTokenExpiry = event.data.expiresAt || 0;
+    console.log('[SW Auth] Received auth token from main thread, expires:', new Date(cachedTokenExpiry * 1000).toISOString());
+  }
+});
+
+/**
+ * Get the best available bearer token for Authorization header.
+ * Prefers the user's JWT (for RLS), falls back to anon key.
+ * Returns null if no valid token is available (should skip sync).
+ */
+function getBearerToken() {
+  // Check if we have a cached user token that hasn't expired
+  if (cachedUserToken && cachedTokenExpiry) {
+    var nowSeconds = Math.floor(Date.now() / 1000);
+    if (cachedTokenExpiry > nowSeconds + 30) { // 30s buffer
+      return cachedUserToken;
+    }
+    console.warn('[SW Auth] Cached token expired, requesting refresh from main thread');
+    // Request a fresh token from the main thread
+    self.clients.matchAll().then(function(clients) {
+      clients.forEach(function(client) {
+        client.postMessage({ type: 'REQUEST_AUTH_TOKEN' });
+      });
+    });
+    cachedUserToken = null;
+    cachedTokenExpiry = 0;
+  }
+  
+  // No valid user token — cannot authenticate as the user for RLS
+  return null;
+}
+
+/**
+ * Build standard headers for Supabase REST API requests.
+ * Uses the user's JWT for Authorization to satisfy RLS policies.
+ * Returns null if no valid auth token is available (sync should be skipped).
+ */
+function getAuthHeaders(contentType) {
+  var bearerToken = getBearerToken();
+  if (!bearerToken) {
+    return null; // Signal to caller: skip this sync cycle
+  }
+  var headers = {
+    'apikey': SUPABASE_ANON_KEY,
+    'Authorization': 'Bearer ' + bearerToken
+  };
+  if (contentType) {
+    headers['Content-Type'] = contentType;
+  }
+  return headers;
+}
+
 // Helper function to open IndexedDB
 function openDB(name, version) {
   return new Promise((resolve, reject) => {
@@ -113,7 +200,7 @@ async function verifyResponseRows(response, context) {
 }
 
 // SAFETY: Upsert related data using PostgREST merge-duplicates (never deletes)
-async function upsertRelatedData(supabaseUrl, supabaseKey, table, data) {
+async function upsertRelatedData(supabaseUrl, authHeaders, table, data) {
   if (!data || data.length === 0) {
     console.log(`[SW Upsert] Skipping ${table} -- empty array, preserving server data`);
     return true;
@@ -122,9 +209,8 @@ async function upsertRelatedData(supabaseUrl, supabaseKey, table, data) {
   const response = await fetch(`${supabaseUrl}/rest/v1/${table}`, {
     method: 'POST',
     headers: {
+      ...authHeaders,
       'Content-Type': 'application/json',
-      'apikey': supabaseKey,
-      'Authorization': `Bearer ${supabaseKey}`,
       'Prefer': 'resolution=merge-duplicates,return=representation'
     },
     body: JSON.stringify(data)
@@ -136,21 +222,22 @@ async function upsertRelatedData(supabaseUrl, supabaseKey, table, data) {
 
 // Sync inspection with all related data using upsert-only (no deletes)
 async function syncInspectionWithTransaction(inspection, systems, ziplines, equipment, standards, summary) {
-  const supabaseUrl = 'https://ssgzcgvygnsrqalisshx.supabase.co';
-  const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNzZ3pjZ3Z5Z25zcnFhbGlzc2h4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIyMzM5NjksImV4cCI6MjA3NzgwOTk2OX0.buTFy44tZdRIlRSFIm5BqeOGb4nX3ARuHawWA9hZN54';
+  const authHeaders = getAuthHeaders();
+  if (!authHeaders) {
+    console.warn('[SW Transaction] No valid auth token — skipping inspection sync');
+    return false;
+  }
   
   try {
     // Step 1: Upsert inspection data WITHOUT synced_at (deferred marking pattern)
-    // Uses POST + merge-duplicates instead of PATCH to handle offline-created records
     const inspData = { ...inspection };
-    delete inspData.synced_at; // Don't mark as synced yet
+    delete inspData.synced_at;
     
-    const inspResponse = await fetch(`${supabaseUrl}/rest/v1/inspections`, {
+    const inspResponse = await fetch(`${SUPABASE_URL}/rest/v1/inspections`, {
       method: 'POST',
       headers: {
+        ...authHeaders,
         'Content-Type': 'application/json',
-        'apikey': supabaseKey,
-        'Authorization': `Bearer ${supabaseKey}`,
         'Prefer': 'resolution=merge-duplicates,return=representation'
       },
       body: JSON.stringify(inspData)
@@ -160,21 +247,20 @@ async function syncInspectionWithTransaction(inspection, systems, ziplines, equi
     
     // Step 2: Upsert all child data (NO deletes -- upsert-only for zero data loss)
     await Promise.all([
-      upsertRelatedData(supabaseUrl, supabaseKey, 'inspection_systems', systems),
-      upsertRelatedData(supabaseUrl, supabaseKey, 'inspection_ziplines', ziplines),
-      upsertRelatedData(supabaseUrl, supabaseKey, 'inspection_equipment', equipment),
-      upsertRelatedData(supabaseUrl, supabaseKey, 'inspection_standards', standards),
-      summary ? upsertRelatedData(supabaseUrl, supabaseKey, 'inspection_summary', [summary]) : Promise.resolve(true),
+      upsertRelatedData(SUPABASE_URL, authHeaders, 'inspection_systems', systems),
+      upsertRelatedData(SUPABASE_URL, authHeaders, 'inspection_ziplines', ziplines),
+      upsertRelatedData(SUPABASE_URL, authHeaders, 'inspection_equipment', equipment),
+      upsertRelatedData(SUPABASE_URL, authHeaders, 'inspection_standards', standards),
+      summary ? upsertRelatedData(SUPABASE_URL, authHeaders, 'inspection_summary', [summary]) : Promise.resolve(true),
     ]);
     
     // Step 3: ONLY NOW mark as synced on the server (deferred synced_at)
     const now = new Date().toISOString();
-    const syncStampResponse = await fetch(`${supabaseUrl}/rest/v1/inspections?id=eq.${inspection.id}`, {
+    const syncStampResponse = await fetch(`${SUPABASE_URL}/rest/v1/inspections?id=eq.${inspection.id}`, {
       method: 'PATCH',
       headers: {
+        ...authHeaders,
         'Content-Type': 'application/json',
-        'apikey': supabaseKey,
-        'Authorization': `Bearer ${supabaseKey}`,
         'Prefer': 'return=representation'
       },
       body: JSON.stringify({ synced_at: now, updated_at: now, last_sync_source: 'service_worker' })
@@ -182,15 +268,12 @@ async function syncInspectionWithTransaction(inspection, systems, ziplines, equi
     
     await verifyResponseRows(syncStampResponse, 'Inspection sync stamp');
     
-    // Step 4: Post-sync verification — confirm the record exists with synced_at set
+    // Step 4: Post-sync verification
     const verifyResponse = await fetch(
-      `${supabaseUrl}/rest/v1/inspections?id=eq.${inspection.id}&select=id,synced_at&synced_at=not.is.null`,
+      `${SUPABASE_URL}/rest/v1/inspections?id=eq.${inspection.id}&select=id,synced_at&synced_at=not.is.null`,
       {
         method: 'GET',
-        headers: {
-          'apikey': supabaseKey,
-          'Authorization': `Bearer ${supabaseKey}`
-        }
+        headers: authHeaders
       }
     );
     const verifyRows = await verifyResponse.json();
@@ -198,7 +281,7 @@ async function syncInspectionWithTransaction(inspection, systems, ziplines, equi
       throw new Error('Post-sync verification failed: record not found with synced_at on server');
     }
     
-    return now; // Return the aligned timestamp for local IndexedDB update
+    return now;
     
   } catch (error) {
     console.error('[SW Transaction] Failed:', error);
@@ -293,6 +376,12 @@ async function syncInspectionsAtomic() {
 async function syncPhotos() {
   console.log('[SW Sync] Starting photo sync...');
   
+  const authHeaders = getAuthHeaders();
+  if (!authHeaders) {
+    console.warn('[SW Sync] No valid auth token — skipping photo sync');
+    return;
+  }
+  
   try {
     const db = await openDB(DB_NAME, DB_VERSION);
     const allPhotos = await getAllFromStore(db, 'photos');
@@ -309,18 +398,14 @@ async function syncPhotos() {
     
     for (const photo of unuploaded) {
       try {
-        const supabaseUrl = 'https://ssgzcgvygnsrqalisshx.supabase.co';
-        const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNzZ3pjZ3Z5Z25zcnFhbGlzc2h4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIyMzM5NjksImV4cCI6MjA3NzgwOTk2OX0.buTFy44tZdRIlRSFIm5BqeOGb4nX3ARuHawWA9hZN54';
-        
         // Upload to storage
         const fileExt = photo.fileName.split('.').pop();
         const fileName = `${photo.inspectionId}/${Date.now()}.${fileExt}`;
         
-        const uploadResponse = await fetch(`${supabaseUrl}/storage/v1/object/inspection-photos/${fileName}`, {
+        const uploadResponse = await fetch(`${SUPABASE_URL}/storage/v1/object/inspection-photos/${fileName}`, {
           method: 'POST',
           headers: {
-            'apikey': supabaseKey,
-            'Authorization': `Bearer ${supabaseKey}`,
+            ...authHeaders,
             'Content-Type': photo.blob.type
           },
           body: photo.blob
@@ -331,13 +416,12 @@ async function syncPhotos() {
           continue;
         }
         
-        // Save metadata to database with file path only (signed URLs generated on read)
-        const metadataResponse = await fetch(`${supabaseUrl}/rest/v1/inspection_photos`, {
+        // Save metadata to database
+        const metadataResponse = await fetch(`${SUPABASE_URL}/rest/v1/inspection_photos`, {
           method: 'POST',
           headers: {
+            ...authHeaders,
             'Content-Type': 'application/json',
-            'apikey': supabaseKey,
-            'Authorization': `Bearer ${supabaseKey}`,
             'Prefer': 'return=representation'
           },
           body: JSON.stringify({
@@ -348,7 +432,6 @@ async function syncPhotos() {
         });
         
         if (metadataResponse.ok) {
-          // Mark as uploaded in IndexedDB
           photo.uploaded = true;
           photo.photoUrl = fileName;
           await updateInStore(db, 'photos', photo);
@@ -360,7 +443,6 @@ async function syncPhotos() {
       }
     }
     
-    // Notify all clients
     const clients = await self.clients.matchAll();
     clients.forEach(client => {
       client.postMessage({
@@ -383,6 +465,12 @@ async function syncPhotos() {
 async function syncTrainingsAtomic() {
   console.log('[SW Atomic Sync] Starting atomic training sync...');
   
+  const authHeaders = getAuthHeaders();
+  if (!authHeaders) {
+    console.warn('[SW Atomic Sync] No valid auth token — skipping training sync');
+    return;
+  }
+  
   try {
     const db = await openDB(DB_NAME, DB_VERSION);
     const allTrainings = await getAllFromStore(db, 'trainings');
@@ -391,14 +479,10 @@ async function syncTrainingsAtomic() {
     console.log('[SW Atomic Sync] Found', unsynced.length, 'unsynced trainings');
     if (unsynced.length === 0) return;
     
-    const supabaseUrl = 'https://ssgzcgvygnsrqalisshx.supabase.co';
-    const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNzZ3pjZ3Z5Z25zcnFhbGlzc2h4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIyMzM5NjksImV4cCI6MjA3NzgwOTk2OX0.buTFy44tZdRIlRSFIm5BqeOGb4nX3ARuHawWA9hZN54';
-    
     let syncedCount = 0;
     
     for (const training of unsynced) {
       try {
-        // Gather child data
         const deliveryApproaches = await getAllRelatedData(db, 'training_delivery_approaches', training.id).catch(() => []);
         const operatingSystems = await getAllRelatedData(db, 'training_operating_systems', training.id).catch(() => []);
         const immediateAttention = await getAllRelatedData(db, 'training_immediate_attention', training.id).catch(() => []);
@@ -406,7 +490,6 @@ async function syncTrainingsAtomic() {
         const systemsInPlace = await getAllRelatedData(db, 'training_systems_in_place', training.id).catch(() => []);
         const summaryArray = await getAllRelatedData(db, 'training_summary', training.id).catch(() => []);
         
-        // SUSPICIOUS EMPTY GUARD for trainings
         const trainingChildEmpty = deliveryApproaches.length === 0 && operatingSystems.length === 0 && 
           immediateAttention.length === 0 && verifiableItems.length === 0 && 
           systemsInPlace.length === 0 && summaryArray.length === 0;
@@ -420,17 +503,14 @@ async function syncTrainingsAtomic() {
           continue;
         }
         
-        // Step 1: Upsert training WITHOUT synced_at (deferred marking)
-        // Uses POST + merge-duplicates instead of PATCH to handle offline-created records
         const trainingData = { ...training };
         delete trainingData.synced_at;
         
-        const response = await fetch(`${supabaseUrl}/rest/v1/trainings`, {
+        const response = await fetch(`${SUPABASE_URL}/rest/v1/trainings`, {
           method: 'POST',
           headers: {
+            ...authHeaders,
             'Content-Type': 'application/json',
-            'apikey': supabaseKey,
-            'Authorization': `Bearer ${supabaseKey}`,
             'Prefer': 'resolution=merge-duplicates,return=representation'
           },
           body: JSON.stringify(trainingData)
@@ -438,48 +518,37 @@ async function syncTrainingsAtomic() {
         
         await verifyResponseRows(response, 'Training parent upsert');
         
-        // Step 2: Upsert all children (no deletes)
         await Promise.all([
-          upsertRelatedData(supabaseUrl, supabaseKey, 'training_delivery_approaches', deliveryApproaches),
-          upsertRelatedData(supabaseUrl, supabaseKey, 'training_operating_systems', operatingSystems),
-          upsertRelatedData(supabaseUrl, supabaseKey, 'training_immediate_attention', immediateAttention),
-          upsertRelatedData(supabaseUrl, supabaseKey, 'training_verifiable_items', verifiableItems),
-          upsertRelatedData(supabaseUrl, supabaseKey, 'training_systems_in_place', systemsInPlace),
-          summaryArray.length > 0 ? upsertRelatedData(supabaseUrl, supabaseKey, 'training_summary', summaryArray) : Promise.resolve(true),
+          upsertRelatedData(SUPABASE_URL, authHeaders, 'training_delivery_approaches', deliveryApproaches),
+          upsertRelatedData(SUPABASE_URL, authHeaders, 'training_operating_systems', operatingSystems),
+          upsertRelatedData(SUPABASE_URL, authHeaders, 'training_immediate_attention', immediateAttention),
+          upsertRelatedData(SUPABASE_URL, authHeaders, 'training_verifiable_items', verifiableItems),
+          upsertRelatedData(SUPABASE_URL, authHeaders, 'training_systems_in_place', systemsInPlace),
+          summaryArray.length > 0 ? upsertRelatedData(SUPABASE_URL, authHeaders, 'training_summary', summaryArray) : Promise.resolve(true),
         ]);
         
-        // Step 3: NOW mark as synced (deferred synced_at)
         const now = new Date().toISOString();
-        const syncStampResponse = await fetch(`${supabaseUrl}/rest/v1/trainings?id=eq.${training.id}`, {
+        const syncStampResponse = await fetch(`${SUPABASE_URL}/rest/v1/trainings?id=eq.${training.id}`, {
           method: 'PATCH',
           headers: {
+            ...authHeaders,
             'Content-Type': 'application/json',
-            'apikey': supabaseKey,
-            'Authorization': `Bearer ${supabaseKey}`,
             'Prefer': 'return=representation'
           },
-           body: JSON.stringify({ synced_at: now, updated_at: now, last_sync_source: 'service_worker' })
+          body: JSON.stringify({ synced_at: now, updated_at: now, last_sync_source: 'service_worker' })
         });
         
         await verifyResponseRows(syncStampResponse, 'Training sync stamp');
         
-        // Step 4: Post-sync verification
         const verifyResponse = await fetch(
-          `${supabaseUrl}/rest/v1/trainings?id=eq.${training.id}&select=id,synced_at&synced_at=not.is.null`,
-          {
-            method: 'GET',
-            headers: {
-              'apikey': supabaseKey,
-              'Authorization': `Bearer ${supabaseKey}`
-            }
-          }
+          `${SUPABASE_URL}/rest/v1/trainings?id=eq.${training.id}&select=id,synced_at&synced_at=not.is.null`,
+          { method: 'GET', headers: authHeaders }
         );
         const verifyRows = await verifyResponse.json();
         if (!Array.isArray(verifyRows) || verifyRows.length === 0) {
           throw new Error('Post-sync verification failed: training not found with synced_at on server');
         }
         
-        // Align local timestamps
         training.synced_at = now;
         training.updated_at = now;
         await updateInStore(db, 'trainings', training);
@@ -491,15 +560,9 @@ async function syncTrainingsAtomic() {
       }
     }
     
-    // Notify clients
     const clients = await self.clients.matchAll();
     clients.forEach(client => {
-      client.postMessage({
-        type: 'SYNC_COMPLETED',
-        tag: 'training-sync',
-        success: true,
-        count: syncedCount
-      });
+      client.postMessage({ type: 'SYNC_COMPLETED', tag: 'training-sync', success: true, count: syncedCount });
     });
     
   } catch (error) {
@@ -512,6 +575,12 @@ async function syncTrainingsAtomic() {
 async function syncDailyAssessmentsAtomic() {
   console.log('[SW Atomic Sync] Starting atomic daily assessment sync...');
   
+  const authHeaders = getAuthHeaders();
+  if (!authHeaders) {
+    console.warn('[SW Atomic Sync] No valid auth token — skipping assessment sync');
+    return;
+  }
+  
   try {
     const db = await openDB(DB_NAME, DB_VERSION);
     const allAssessments = await getAllFromStore(db, 'daily_assessments');
@@ -520,14 +589,10 @@ async function syncDailyAssessmentsAtomic() {
     console.log('[SW Atomic Sync] Found', unsynced.length, 'unsynced daily assessments');
     if (unsynced.length === 0) return;
     
-    const supabaseUrl = 'https://ssgzcgvygnsrqalisshx.supabase.co';
-    const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNzZ3pjZ3Z5Z25zcnFhbGlzc2h4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIyMzM5NjksImV4cCI6MjA3NzgwOTk2OX0.buTFy44tZdRIlRSFIm5BqeOGb4nX3ARuHawWA9hZN54';
-    
     let syncedCount = 0;
     
     for (const assessment of unsynced) {
       try {
-        // Gather child data
         const beginningOfDay = await getAllRelatedData(db, 'daily_assessment_beginning_of_day', assessment.id).catch(() => []);
         const endOfDay = await getAllRelatedData(db, 'daily_assessment_end_of_day', assessment.id).catch(() => []);
         const environmentChecks = await getAllRelatedData(db, 'daily_assessment_environment_checks', assessment.id).catch(() => []);
@@ -535,7 +600,6 @@ async function syncDailyAssessmentsAtomic() {
         const structureChecks = await getAllRelatedData(db, 'daily_assessment_structure_checks', assessment.id).catch(() => []);
         const operatingSystems = await getAllRelatedData(db, 'daily_assessment_operating_systems', assessment.id).catch(() => []);
         
-        // SUSPICIOUS EMPTY GUARD for daily assessments
         const assessmentChildEmpty = beginningOfDay.length === 0 && endOfDay.length === 0 && 
           environmentChecks.length === 0 && equipmentChecks.length === 0 && 
           structureChecks.length === 0 && operatingSystems.length === 0;
@@ -549,17 +613,14 @@ async function syncDailyAssessmentsAtomic() {
           continue;
         }
         
-        // Step 1: Upsert assessment WITHOUT synced_at (deferred marking)
-        // Uses POST + merge-duplicates instead of PATCH to handle offline-created records
         const assessmentData = { ...assessment };
         delete assessmentData.synced_at;
         
-        const response = await fetch(`${supabaseUrl}/rest/v1/daily_assessments`, {
+        const response = await fetch(`${SUPABASE_URL}/rest/v1/daily_assessments`, {
           method: 'POST',
           headers: {
+            ...authHeaders,
             'Content-Type': 'application/json',
-            'apikey': supabaseKey,
-            'Authorization': `Bearer ${supabaseKey}`,
             'Prefer': 'resolution=merge-duplicates,return=representation'
           },
           body: JSON.stringify(assessmentData)
@@ -567,24 +628,21 @@ async function syncDailyAssessmentsAtomic() {
         
         await verifyResponseRows(response, 'Assessment parent upsert');
         
-        // Step 2: Upsert all children (no deletes)
         await Promise.all([
-          upsertRelatedData(supabaseUrl, supabaseKey, 'daily_assessment_beginning_of_day', beginningOfDay),
-          upsertRelatedData(supabaseUrl, supabaseKey, 'daily_assessment_end_of_day', endOfDay),
-          upsertRelatedData(supabaseUrl, supabaseKey, 'daily_assessment_environment_checks', environmentChecks),
-          upsertRelatedData(supabaseUrl, supabaseKey, 'daily_assessment_equipment_checks', equipmentChecks),
-          upsertRelatedData(supabaseUrl, supabaseKey, 'daily_assessment_structure_checks', structureChecks),
-          upsertRelatedData(supabaseUrl, supabaseKey, 'daily_assessment_operating_systems', operatingSystems),
+          upsertRelatedData(SUPABASE_URL, authHeaders, 'daily_assessment_beginning_of_day', beginningOfDay),
+          upsertRelatedData(SUPABASE_URL, authHeaders, 'daily_assessment_end_of_day', endOfDay),
+          upsertRelatedData(SUPABASE_URL, authHeaders, 'daily_assessment_environment_checks', environmentChecks),
+          upsertRelatedData(SUPABASE_URL, authHeaders, 'daily_assessment_equipment_checks', equipmentChecks),
+          upsertRelatedData(SUPABASE_URL, authHeaders, 'daily_assessment_structure_checks', structureChecks),
+          upsertRelatedData(SUPABASE_URL, authHeaders, 'daily_assessment_operating_systems', operatingSystems),
         ]);
         
-        // Step 3: NOW mark as synced (deferred synced_at)
         const now = new Date().toISOString();
-        const syncStampResponse = await fetch(`${supabaseUrl}/rest/v1/daily_assessments?id=eq.${assessment.id}`, {
+        const syncStampResponse = await fetch(`${SUPABASE_URL}/rest/v1/daily_assessments?id=eq.${assessment.id}`, {
           method: 'PATCH',
           headers: {
+            ...authHeaders,
             'Content-Type': 'application/json',
-            'apikey': supabaseKey,
-            'Authorization': `Bearer ${supabaseKey}`,
             'Prefer': 'return=representation'
           },
           body: JSON.stringify({ synced_at: now, updated_at: now, last_sync_source: 'service_worker' })
@@ -592,23 +650,15 @@ async function syncDailyAssessmentsAtomic() {
         
         await verifyResponseRows(syncStampResponse, 'Assessment sync stamp');
         
-        // Step 4: Post-sync verification
         const verifyResponse = await fetch(
-          `${supabaseUrl}/rest/v1/daily_assessments?id=eq.${assessment.id}&select=id,synced_at&synced_at=not.is.null`,
-          {
-            method: 'GET',
-            headers: {
-              'apikey': supabaseKey,
-              'Authorization': `Bearer ${supabaseKey}`
-            }
-          }
+          `${SUPABASE_URL}/rest/v1/daily_assessments?id=eq.${assessment.id}&select=id,synced_at&synced_at=not.is.null`,
+          { method: 'GET', headers: authHeaders }
         );
         const verifyRows = await verifyResponse.json();
         if (!Array.isArray(verifyRows) || verifyRows.length === 0) {
           throw new Error('Post-sync verification failed: assessment not found with synced_at on server');
         }
         
-        // Align local timestamps
         assessment.synced_at = now;
         assessment.updated_at = now;
         await updateInStore(db, 'daily_assessments', assessment);
@@ -620,15 +670,9 @@ async function syncDailyAssessmentsAtomic() {
       }
     }
     
-    // Notify clients
     const clients = await self.clients.matchAll();
     clients.forEach(client => {
-      client.postMessage({
-        type: 'SYNC_COMPLETED',
-        tag: 'assessment-sync',
-        success: true,
-        count: syncedCount
-      });
+      client.postMessage({ type: 'SYNC_COMPLETED', tag: 'assessment-sync', success: true, count: syncedCount });
     });
     
   } catch (error) {
