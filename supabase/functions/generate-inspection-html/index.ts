@@ -739,7 +739,7 @@ serve(async (req) => {
     }
 
     table th {
-      background: #e5e7eb;
+      background: #c2c2c2;
       color: #000;
       padding: 6px 8px;
       text-align: left;
