@@ -1271,12 +1271,13 @@ export default function InspectionForm() {
       
       // Validate before saving
       // Only include summary in validation if it has required fields and content
-      const hasSummaryContent = summary.repairs_performed || 
-                                summary.critical_actions || 
-                                summary.future_considerations || 
-                                summary.next_inspection_date;
-      const summaryForValidation = (summary.id && summary.inspection_id && hasSummaryContent) 
-        ? summary 
+      const currentSummary = summaryRef.current;
+      const hasSummaryContent = currentSummary.repairs_performed || 
+                                currentSummary.critical_actions || 
+                                currentSummary.future_considerations || 
+                                currentSummary.next_inspection_date;
+      const summaryForValidation = (currentSummary.id && currentSummary.inspection_id && hasSummaryContent) 
+        ? currentSummary 
         : null;
       
       // Filter out incomplete equipment items before validation (allows saving work-in-progress)
