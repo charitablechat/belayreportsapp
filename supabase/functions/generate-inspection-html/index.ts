@@ -1175,7 +1175,7 @@ serve(async (req) => {
 
       /* Ensure colored backgrounds print properly */
       .key-section {
-        background: #f8f9fa !important;
+        background: #c2c2c2 !important;
         border: 1px solid #333 !important;
         page-break-inside: avoid;
       }
