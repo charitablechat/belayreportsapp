@@ -342,7 +342,7 @@ export default function TrainingForm() {
 
   // Auto-populate person submitting (from report creator) and submission date
   useEffect(() => {
-    if (!summary || isLoading || !inspectorProfile) return;
+    if (!summary || isLoading || !inspectorProfile || summaryAutoPopulatedRef.current) return;
 
     const updates: any = {};
 
@@ -363,6 +363,8 @@ export default function TrainingForm() {
       isInternalUpdateRef.current = true;
       setSummary({ ...summary, ...updates });
     }
+
+    summaryAutoPopulatedRef.current = true;
   }, [summary?.id, isLoading, inspectorProfile]);
 
   // Load training data
