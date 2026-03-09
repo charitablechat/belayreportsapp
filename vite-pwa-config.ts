@@ -45,9 +45,8 @@ export const pwaConfig = VitePWA({
     globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
     navigateFallback: '/',
     navigateFallbackDenylist: [/^\/api/, /offline\.html$/],
-    // NOTE: sw-sync.js removed - it uses anon key without user JWT, causing RLS failures
-    // All sync is now handled by main-thread useAutoSync hook which has auth context
-    importScripts: ['/sw-push.js'],
+    // sw-sync.js re-enabled: now uses user JWT from main thread via postMessage (F2 fix)
+    importScripts: ['/sw-push.js', '/sw-sync.js'],
     runtimeCaching: [
       {
         urlPattern: /^https:\/\/.*\.supabase\.co\/.*/i,
