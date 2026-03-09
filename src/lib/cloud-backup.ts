@@ -75,7 +75,7 @@ async function _doUpload(
  */
 export async function fetchCloudSnapshots(): Promise<CloudBackupEntry[]> {
   const { data, error } = await (supabase.from('report_cloud_backups') as any)
-    .select('id, report_type, report_id, device, synced, snapshot_ts, created_at')
+    .select('id, report_type, report_id, device, synced, snapshot_ts, created_at, user_id, snapshot_data')
     .order('snapshot_ts', { ascending: false })
     .limit(50);
 
@@ -83,7 +83,37 @@ export async function fetchCloudSnapshots(): Promise<CloudBackupEntry[]> {
     console.warn('[Cloud Backup] Failed to fetch snapshots:', error.message);
     return [];
   }
-  return (data ?? []) as CloudBackupEntry[];
+
+  if (!data || data.length === 0) return [];
+
+  const { getCachedProfile } = await import('@/lib/profile-cache');
+  const uniqueUserIds = [...new Set((data as any[]).map((d: any) => d.user_id))] as string[];
+  const profileMap = new Map<string, string>();
+
+  await Promise.all(
+    uniqueUserIds.map(async (uid) => {
+      const profile = await getCachedProfile(uid);
+      const name = profile
+        ? [profile.first_name, profile.last_name].filter(Boolean).join(' ').trim()
+        : 'Unknown';
+      profileMap.set(uid, name || 'Unknown');
+    })
+  );
+
+  return (data as any[]).map((row: any) => ({
+    id: row.id,
+    report_type: row.report_type,
+    report_id: row.report_id,
+    device: row.device,
+    synced: row.synced,
+    snapshot_ts: row.snapshot_ts,
+    created_at: row.created_at,
+    user_name: profileMap.get(row.user_id) || 'Unknown',
+    facility: row.snapshot_data?.parent?.organization
+      || row.snapshot_data?.parent?.location
+      || row.snapshot_data?.parent?.site
+      || 'N/A',
+  })) as CloudBackupEntry[];
 }
 
 /**
