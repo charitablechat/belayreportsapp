@@ -200,7 +200,7 @@ async function verifyResponseRows(response, context) {
 }
 
 // SAFETY: Upsert related data using PostgREST merge-duplicates (never deletes)
-async function upsertRelatedData(supabaseUrl, supabaseKey, table, data) {
+async function upsertRelatedData(supabaseUrl, authHeaders, table, data) {
   if (!data || data.length === 0) {
     console.log(`[SW Upsert] Skipping ${table} -- empty array, preserving server data`);
     return true;
@@ -209,9 +209,8 @@ async function upsertRelatedData(supabaseUrl, supabaseKey, table, data) {
   const response = await fetch(`${supabaseUrl}/rest/v1/${table}`, {
     method: 'POST',
     headers: {
+      ...authHeaders,
       'Content-Type': 'application/json',
-      'apikey': supabaseKey,
-      'Authorization': `Bearer ${supabaseKey}`,
       'Prefer': 'resolution=merge-duplicates,return=representation'
     },
     body: JSON.stringify(data)
