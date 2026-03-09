@@ -152,6 +152,7 @@ export default function TrainingForm() {
 
   const autoSaveTimer = useRef<NodeJS.Timeout | null>(null);
   const isInternalUpdateRef = useRef(false);
+  const summaryAutoPopulatedRef = useRef(false);
 
   // Track which child data types loaded successfully (not from timeout fallback)
   const childDataLoadedRef = useRef<Record<string, boolean>>({
@@ -341,7 +342,7 @@ export default function TrainingForm() {
 
   // Auto-populate person submitting (from report creator) and submission date
   useEffect(() => {
-    if (!summary || isLoading || !inspectorProfile) return;
+    if (!summary || isLoading || !inspectorProfile || summaryAutoPopulatedRef.current) return;
 
     const updates: any = {};
 
@@ -362,6 +363,8 @@ export default function TrainingForm() {
       isInternalUpdateRef.current = true;
       setSummary({ ...summary, ...updates });
     }
+
+    summaryAutoPopulatedRef.current = true;
   }, [summary?.id, isLoading, inspectorProfile]);
 
   // Load training data
