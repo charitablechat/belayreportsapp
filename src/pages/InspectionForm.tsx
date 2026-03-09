@@ -1378,8 +1378,8 @@ export default function InspectionForm() {
         } else {
           console.warn('[InspectionForm Save] Skipping standards save — empty array not confirmed as loaded');
         }
-        if ([summary].length > 0 || childDataLoadedRef.current.summary) {
-          childSaveOps.push(saveRelatedDataOffline('summary', id!, [summary]));
+        if ([currentSummary].length > 0 || childDataLoadedRef.current.summary) {
+          childSaveOps.push(saveRelatedDataOffline('summary', id!, [currentSummary]));
         } else {
           console.warn('[InspectionForm Save] Skipping summary save — empty array not confirmed as loaded');
         }
@@ -1387,7 +1387,7 @@ export default function InspectionForm() {
         // Written BEFORE IndexedDB writes complete so backup always has latest React state
         try {
           saveReportSnapshot('inspection', id!, inspectionToSave, {
-            systems, ziplines, equipment, standards, summary: [summary],
+            systems, ziplines, equipment, standards, summary: [currentSummary],
           }, !!inspectionToSave.synced_at);
         } catch {
           // Never let snapshot failure block the save
@@ -1399,7 +1399,7 @@ export default function InspectionForm() {
 
         // Layer 2: Append-only version history (fire-and-forget)
         appendVersion('inspection', id!, inspectionToSave, {
-          systems, ziplines, equipment, standards, summary: [summary],
+          systems, ziplines, equipment, standards, summary: [currentSummary],
         }, silent ? 'auto_save' : 'manual_save').then((v) => {
           if (v) {
             setLastVersionNumber(v.versionNumber);
