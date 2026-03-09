@@ -147,11 +147,32 @@ interface SnapshotsPanelProps {
 export function LocalSnapshotsPanel({ allowDelete = true }: SnapshotsPanelProps) {
   const [snapshots, setSnapshots] = useState(() => listAllSnapshots());
   const [storageInfo, setStorageInfo] = useState(() => getBackupStorageInfo());
+  const [importing, setImporting] = useState(false);
 
   const refreshSnapshots = useCallback(() => {
     setSnapshots(listAllSnapshots());
     setStorageInfo(getBackupStorageInfo());
   }, []);
+
+  const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    // Reset input so the same file can be re-selected
+    e.target.value = '';
+    setImporting(true);
+    try {
+      const text = await file.text();
+      const { reportType, reportId } = await importReportBackup(text);
+      refreshSnapshots();
+      toast.success(`Imported ${reportType.replace('_', ' ')} backup`, {
+        description: `Report ${reportId.substring(0, 8)}… restored to local + cloud storage.`,
+      });
+    } catch (err: any) {
+      toast.error('Import failed', { description: err?.message || 'Unknown error' });
+    } finally {
+      setImporting(false);
+    }
+  }, [refreshSnapshots]);
 
   const handleExport = (reportType: ReportType, reportId: string) => {
     const snapshot = getReportSnapshot(reportType, reportId);
