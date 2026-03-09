@@ -39,8 +39,8 @@ export function uploadSnapshotToCloud(
   snapshot: ReportSnapshot
 ): void {
   // Fire-and-forget — don't await
-  _doUpload(reportType, reportId, snapshot).catch(() => {
-    // Silent failure — local backup is the safety net
+  _doUpload(reportType, reportId, snapshot).catch((err) => {
+    console.warn('[Cloud Backup] Upload failed (non-blocking):', err);
   });
 }
 

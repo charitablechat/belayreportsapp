@@ -225,6 +225,25 @@ export function LocalSnapshotsPanel({ allowDelete = true }: SnapshotsPanelProps)
               {storageInfo.unsyncedCount > 0 && <Badge variant="destructive" className="ml-2">{storageInfo.unsyncedCount} unsynced</Badge>}
             </CardDescription>
           </div>
+          {snapshots.length > 0 && (
+            <Button variant="outline" size="sm" onClick={() => {
+              const allData = snapshots.map(s => ({
+                ...s,
+                snapshotData: getReportSnapshot(s.reportType, s.reportId),
+              }));
+              const blob = new Blob([JSON.stringify(allData, null, 2)], { type: 'application/json' });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = `local-backups-${new Date().toISOString().split('T')[0]}.json`;
+              a.click();
+              URL.revokeObjectURL(url);
+              toast.success("All local snapshots downloaded");
+            }} title="Download all snapshots to device">
+              <HardDrive className="h-4 w-4 mr-2" />
+              Save All
+            </Button>
+          )}
         </div>
       </CardHeader>
       <CardContent className="px-3 md:px-6 pb-4 md:pb-6 pt-0">
