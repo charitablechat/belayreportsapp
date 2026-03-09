@@ -875,7 +875,7 @@ serve(async (req) => {
     .key-section {
       margin: 10px 0;
       padding: 10px 14px;
-      background: #f8f9fa;
+      background: #c2c2c2;
       border: 1px solid #ddd;
       border-radius: 2px;
     }
