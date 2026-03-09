@@ -465,6 +465,12 @@ async function syncPhotos() {
 async function syncTrainingsAtomic() {
   console.log('[SW Atomic Sync] Starting atomic training sync...');
   
+  const authHeaders = getAuthHeaders();
+  if (!authHeaders) {
+    console.warn('[SW Atomic Sync] No valid auth token — skipping training sync');
+    return;
+  }
+  
   try {
     const db = await openDB(DB_NAME, DB_VERSION);
     const allTrainings = await getAllFromStore(db, 'trainings');
@@ -473,14 +479,10 @@ async function syncTrainingsAtomic() {
     console.log('[SW Atomic Sync] Found', unsynced.length, 'unsynced trainings');
     if (unsynced.length === 0) return;
     
-    const supabaseUrl = 'https://ssgzcgvygnsrqalisshx.supabase.co';
-    const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNzZ3pjZ3Z5Z25zcnFhbGlzc2h4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIyMzM5NjksImV4cCI6MjA3NzgwOTk2OX0.buTFy44tZdRIlRSFIm5BqeOGb4nX3ARuHawWA9hZN54';
-    
     let syncedCount = 0;
     
     for (const training of unsynced) {
       try {
-        // Gather child data
         const deliveryApproaches = await getAllRelatedData(db, 'training_delivery_approaches', training.id).catch(() => []);
         const operatingSystems = await getAllRelatedData(db, 'training_operating_systems', training.id).catch(() => []);
         const immediateAttention = await getAllRelatedData(db, 'training_immediate_attention', training.id).catch(() => []);
@@ -488,7 +490,6 @@ async function syncTrainingsAtomic() {
         const systemsInPlace = await getAllRelatedData(db, 'training_systems_in_place', training.id).catch(() => []);
         const summaryArray = await getAllRelatedData(db, 'training_summary', training.id).catch(() => []);
         
-        // SUSPICIOUS EMPTY GUARD for trainings
         const trainingChildEmpty = deliveryApproaches.length === 0 && operatingSystems.length === 0 && 
           immediateAttention.length === 0 && verifiableItems.length === 0 && 
           systemsInPlace.length === 0 && summaryArray.length === 0;
@@ -502,17 +503,14 @@ async function syncTrainingsAtomic() {
           continue;
         }
         
-        // Step 1: Upsert training WITHOUT synced_at (deferred marking)
-        // Uses POST + merge-duplicates instead of PATCH to handle offline-created records
         const trainingData = { ...training };
         delete trainingData.synced_at;
         
-        const response = await fetch(`${supabaseUrl}/rest/v1/trainings`, {
+        const response = await fetch(`${SUPABASE_URL}/rest/v1/trainings`, {
           method: 'POST',
           headers: {
+            ...authHeaders,
             'Content-Type': 'application/json',
-            'apikey': supabaseKey,
-            'Authorization': `Bearer ${supabaseKey}`,
             'Prefer': 'resolution=merge-duplicates,return=representation'
           },
           body: JSON.stringify(trainingData)
@@ -520,48 +518,37 @@ async function syncTrainingsAtomic() {
         
         await verifyResponseRows(response, 'Training parent upsert');
         
-        // Step 2: Upsert all children (no deletes)
         await Promise.all([
-          upsertRelatedData(supabaseUrl, supabaseKey, 'training_delivery_approaches', deliveryApproaches),
-          upsertRelatedData(supabaseUrl, supabaseKey, 'training_operating_systems', operatingSystems),
-          upsertRelatedData(supabaseUrl, supabaseKey, 'training_immediate_attention', immediateAttention),
-          upsertRelatedData(supabaseUrl, supabaseKey, 'training_verifiable_items', verifiableItems),
-          upsertRelatedData(supabaseUrl, supabaseKey, 'training_systems_in_place', systemsInPlace),
-          summaryArray.length > 0 ? upsertRelatedData(supabaseUrl, supabaseKey, 'training_summary', summaryArray) : Promise.resolve(true),
+          upsertRelatedData(SUPABASE_URL, authHeaders, 'training_delivery_approaches', deliveryApproaches),
+          upsertRelatedData(SUPABASE_URL, authHeaders, 'training_operating_systems', operatingSystems),
+          upsertRelatedData(SUPABASE_URL, authHeaders, 'training_immediate_attention', immediateAttention),
+          upsertRelatedData(SUPABASE_URL, authHeaders, 'training_verifiable_items', verifiableItems),
+          upsertRelatedData(SUPABASE_URL, authHeaders, 'training_systems_in_place', systemsInPlace),
+          summaryArray.length > 0 ? upsertRelatedData(SUPABASE_URL, authHeaders, 'training_summary', summaryArray) : Promise.resolve(true),
         ]);
         
-        // Step 3: NOW mark as synced (deferred synced_at)
         const now = new Date().toISOString();
-        const syncStampResponse = await fetch(`${supabaseUrl}/rest/v1/trainings?id=eq.${training.id}`, {
+        const syncStampResponse = await fetch(`${SUPABASE_URL}/rest/v1/trainings?id=eq.${training.id}`, {
           method: 'PATCH',
           headers: {
+            ...authHeaders,
             'Content-Type': 'application/json',
-            'apikey': supabaseKey,
-            'Authorization': `Bearer ${supabaseKey}`,
             'Prefer': 'return=representation'
           },
-           body: JSON.stringify({ synced_at: now, updated_at: now, last_sync_source: 'service_worker' })
+          body: JSON.stringify({ synced_at: now, updated_at: now, last_sync_source: 'service_worker' })
         });
         
         await verifyResponseRows(syncStampResponse, 'Training sync stamp');
         
-        // Step 4: Post-sync verification
         const verifyResponse = await fetch(
-          `${supabaseUrl}/rest/v1/trainings?id=eq.${training.id}&select=id,synced_at&synced_at=not.is.null`,
-          {
-            method: 'GET',
-            headers: {
-              'apikey': supabaseKey,
-              'Authorization': `Bearer ${supabaseKey}`
-            }
-          }
+          `${SUPABASE_URL}/rest/v1/trainings?id=eq.${training.id}&select=id,synced_at&synced_at=not.is.null`,
+          { method: 'GET', headers: authHeaders }
         );
         const verifyRows = await verifyResponse.json();
         if (!Array.isArray(verifyRows) || verifyRows.length === 0) {
           throw new Error('Post-sync verification failed: training not found with synced_at on server');
         }
         
-        // Align local timestamps
         training.synced_at = now;
         training.updated_at = now;
         await updateInStore(db, 'trainings', training);
@@ -573,15 +560,9 @@ async function syncTrainingsAtomic() {
       }
     }
     
-    // Notify clients
     const clients = await self.clients.matchAll();
     clients.forEach(client => {
-      client.postMessage({
-        type: 'SYNC_COMPLETED',
-        tag: 'training-sync',
-        success: true,
-        count: syncedCount
-      });
+      client.postMessage({ type: 'SYNC_COMPLETED', tag: 'training-sync', success: true, count: syncedCount });
     });
     
   } catch (error) {
