@@ -1323,7 +1323,7 @@ export default function InspectionForm() {
         ziplines,
         equipment,
         standards,
-        summary,
+        summary: currentSummary,
         updated_at: new Date().toISOString(),
       };
 
