@@ -289,6 +289,7 @@ export const FormCMSManager = () => {
               sensors={sensors}
               collisionDetection={closestCenter}
               onDragEnd={handleSectionDragEnd}
+              autoScroll={{ threshold: { x: 0.1, y: 0.15 }, acceleration: 15 }}
             >
               <SortableContext
                 items={localSections.map(s => s.id)}
