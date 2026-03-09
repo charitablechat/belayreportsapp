@@ -8,7 +8,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { getUserWithCache, getOfflineUserId } from "@/lib/cached-auth";
 import { useFormConfiguration } from "@/hooks/useFormConfiguration";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Save, FileText, Loader2, WifiOff, Check, Sunrise, Sunset, Settings, Package, Building, Cloud, LogOut, User, CloudOff, CheckCircle, Camera, RefreshCw, AlertTriangle } from "lucide-react";
+import { ArrowLeft, Save, FileText, Loader2, WifiOff, Check, Sunrise, Sunset, Settings, Package, Building, Cloud, LogOut, User, CloudOff, CheckCircle, Camera, RefreshCw, AlertTriangle, HardDrive } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { AutoSaveIndicator } from "@/components/AutoSaveIndicator";
@@ -60,7 +60,8 @@ import { Lock } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { reconcileAllChildTables } from "@/lib/sync-reconciliation";
 import { useEmergencySave } from "@/hooks/useEmergencySave";
-import { saveReportSnapshot, getReportSnapshot, markSnapshotSynced } from "@/lib/local-backup-ledger";
+import { saveReportSnapshot, getReportSnapshot, markSnapshotSynced, downloadReportBackup } from "@/lib/local-backup-ledger";
+import { onCloudBackupError } from "@/lib/cloud-backup";
 import { appendVersion } from "@/lib/report-version-manager";
 import { showHardSavedToast } from "@/lib/toast-helpers";
 import { DataIntegrityBadge, type IntegrityStatus } from "@/components/ui/data-integrity-badge";
@@ -1473,6 +1474,28 @@ export default function DailyAssessmentForm() {
                 <Save className={isMobileView ? "w-5 h-5 mr-1.5" : "w-4 h-4 mr-2"} />
                 {isMobileView ? (saving ? "..." : "Save") : (saving ? "Saving..." : "Save Progress")}
               </Button>
+              {id && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                title="Force Local Backup"
+                onClick={() => {
+                  const ok = downloadReportBackup('daily_assessment', id);
+                  if (ok) {
+                    toast.success('BACKUP SAVED', {
+                      description: 'Snapshot downloaded to device',
+                      duration: 2000,
+                      style: { background: 'hsl(0, 0%, 5%)', color: 'hsl(120, 100%, 56%)', border: '1px solid hsl(120, 100%, 50%, 0.3)', fontFamily: 'monospace', fontSize: '12px' },
+                    });
+                  } else {
+                    toast.warning('No snapshot available to download');
+                  }
+                }}
+              >
+                <HardDrive className="w-4 h-4" />
+              </Button>
+              )}
               <Button 
                 size={isMobileView ? "default" : "sm"} 
                 onClick={() => setShowSubmitDialog(true)} 

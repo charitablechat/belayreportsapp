@@ -14,7 +14,7 @@ import { getUserWithCache, getOfflineUserId } from "@/lib/cached-auth";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Save, FileDown, FileText, ChevronLeft, WifiOff, Wifi, Mail, CheckCircle, Info, Users, Settings, AlertTriangle, ClipboardCheck, FileCheck, LogOut, User, CloudOff, ArrowLeft, Camera, RefreshCw } from "lucide-react";
+import { Loader2, Save, FileDown, FileText, ChevronLeft, WifiOff, Wifi, Mail, CheckCircle, Info, Users, Settings, AlertTriangle, ClipboardCheck, FileCheck, LogOut, User, CloudOff, ArrowLeft, Camera, RefreshCw, HardDrive } from "lucide-react";
 import { toast } from "@/components/ui/sonner";
 import ropeWorksLogo from "@/assets/rope-works-logo.png";
 
@@ -65,7 +65,8 @@ import { Lock } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { reconcileAllChildTables } from "@/lib/sync-reconciliation";
 import { useEmergencySave } from "@/hooks/useEmergencySave";
-import { saveReportSnapshot, getReportSnapshot, markSnapshotSynced } from "@/lib/local-backup-ledger";
+import { saveReportSnapshot, getReportSnapshot, markSnapshotSynced, downloadReportBackup } from "@/lib/local-backup-ledger";
+import { onCloudBackupError } from "@/lib/cloud-backup";
 import { appendVersion } from "@/lib/report-version-manager";
 import { showHardSavedToast } from "@/lib/toast-helpers";
 import { DataIntegrityBadge, type IntegrityStatus } from "@/components/ui/data-integrity-badge";
@@ -1390,6 +1391,28 @@ export default function TrainingForm() {
                 <Save className={isMobile ? "w-5 h-5 mr-1.5" : "w-4 h-4 mr-2"} />
                 {isMobile ? (isSaving ? "..." : "Save") : (isSaving ? "Saving..." : "Save Progress")}
               </Button>
+              {id && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                title="Force Local Backup"
+                onClick={() => {
+                  const ok = downloadReportBackup('training', id);
+                  if (ok) {
+                    toast.success('BACKUP SAVED', {
+                      description: 'Snapshot downloaded to device',
+                      duration: 2000,
+                      style: { background: 'hsl(0, 0%, 5%)', color: 'hsl(120, 100%, 56%)', border: '1px solid hsl(120, 100%, 50%, 0.3)', fontFamily: 'monospace', fontSize: '12px' },
+                    });
+                  } else {
+                    toast.warning('No snapshot available to download');
+                  }
+                }}
+              >
+                <HardDrive className="w-4 h-4" />
+              </Button>
+              )}
               <Button 
                 size={isMobile ? "default" : "sm"} 
                 onClick={() => setShowCompleteDialog(true)} 

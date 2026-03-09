@@ -33,6 +33,26 @@ export interface CloudBackupFull extends CloudBackupEntry {
  * Upload a snapshot to the cloud. Fire-and-forget — failures are silent.
  * Called after every successful localStorage snapshot write.
  */
+// ── Error callback registry with rate limiting ──────────────────
+type CloudBackupErrorCallback = (error: string) => void;
+const _errorCallbacks = new Set<CloudBackupErrorCallback>();
+let _lastErrorNotifiedAt = 0;
+const ERROR_THROTTLE_MS = 60_000; // 1 warning per minute max
+
+export function onCloudBackupError(cb: CloudBackupErrorCallback): () => void {
+  _errorCallbacks.add(cb);
+  return () => { _errorCallbacks.delete(cb); };
+}
+
+function _notifyError(message: string): void {
+  const now = Date.now();
+  if (now - _lastErrorNotifiedAt < ERROR_THROTTLE_MS) return;
+  _lastErrorNotifiedAt = now;
+  for (const cb of _errorCallbacks) {
+    try { cb(message); } catch { /* swallow */ }
+  }
+}
+
 export function uploadSnapshotToCloud(
   reportType: ReportType,
   reportId: string,
@@ -41,6 +61,7 @@ export function uploadSnapshotToCloud(
   // Fire-and-forget — don't await
   _doUpload(reportType, reportId, snapshot).catch((err) => {
     console.warn('[Cloud Backup] Upload failed (non-blocking):', err);
+    _notifyError(String(err?.message ?? err));
   });
 }
 
@@ -52,7 +73,7 @@ async function _doUpload(
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return;
 
-  await (supabase.from('report_cloud_backups') as any).upsert(
+  const { error } = await (supabase.from('report_cloud_backups') as any).upsert(
     {
       user_id: user.id,
       report_type: reportType,
@@ -68,6 +89,8 @@ async function _doUpload(
     },
     { onConflict: 'user_id,report_type,report_id' }
   );
+
+  if (error) throw new Error(error.message);
 }
 
 /**
