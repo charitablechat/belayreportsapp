@@ -1,66 +1,29 @@
 
 
-## Onboarding Resource Center
+## Glassmorphism Headers — Across All Pages
 
-A dedicated `/onboarding` page where users can browse videos and PDFs you've uploaded, and mark items as completed.
+**Goal**: Apply the same frosted-glass aesthetic used on the Dashboard header to every `<header>` element in the app.
 
-### Database
+**Reference style** (from Dashboard.tsx):
+```
+border-b border-white/20 bg-white/10 dark:bg-black/20 backdrop-blur-[12px] shadow-md shadow-black/5
+```
 
-**1. `onboarding_resources` table** — stores metadata for each uploaded file
+### Files to Update
 
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uuid | PK |
-| title | text | Display name |
-| description | text | Optional summary |
-| file_type | text | 'video' or 'pdf' |
-| file_url | text | Storage path |
-| display_order | integer | Sort order |
-| is_published | boolean | Only published items shown to users |
-| uploaded_by | uuid | References auth.users |
-| created_at | timestamptz | |
+| File | Current Style | Notes |
+|------|--------------|-------|
+| `src/pages/InspectionForm.tsx` | `border-b bg-card sticky top-0 z-20` | Keep sticky + z-20 |
+| `src/pages/TrainingForm.tsx` | `border-b bg-card sticky top-0 z-20` | Keep sticky + z-20 |
+| `src/pages/DailyAssessmentForm.tsx` | `border-b bg-card sticky top-0 z-20` | Keep sticky + z-20 |
+| `src/pages/Capabilities.tsx` | `border-b bg-card sticky top-0 z-10` | Keep sticky + z-10 |
+| `src/pages/NewInspection.tsx` | `border-b bg-card` | Non-sticky |
+| `src/pages/NewTraining.tsx` | `border-b bg-card` | Non-sticky |
+| `src/pages/NewDailyAssessment.tsx` | `border-b bg-card` | Non-sticky |
+| `src/pages/Profile.tsx` | `border-b bg-card` | Non-sticky |
+| `src/pages/Install.tsx` | `border-b bg-background/95 backdrop-blur ...` | Already partial glass; unify |
 
-RLS: Super admins can CRUD. Authenticated users can SELECT where `is_published = true`.
+**9 files**, one class swap each. Replace `border-b bg-card` with `border-b border-white/20 bg-white/10 dark:bg-black/20 backdrop-blur-[12px] shadow-md shadow-black/5` while preserving any existing `sticky`, `top-0`, and `z-*` classes.
 
-**2. `onboarding_progress` table** — tracks per-user completion
-
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uuid | PK |
-| user_id | uuid | References auth.users |
-| resource_id | uuid | FK to onboarding_resources |
-| completed_at | timestamptz | When marked complete |
-| unique(user_id, resource_id) | | Prevents duplicates |
-
-RLS: Users can manage their own rows only.
-
-**3. `onboarding-files` storage bucket** — private bucket for the actual video/PDF files. Super admins can upload; authenticated users can read.
-
-### Frontend
-
-**`/onboarding` page** — accessible from the dashboard header navigation:
-- Lists all published resources grouped by type (Videos section, Documents section)
-- Each card shows: title, description, file type icon, and a checkbox to mark complete
-- Clicking a video opens an inline `<video>` player; clicking a PDF downloads it
-- A progress bar at the top shows "X of Y completed"
-- Matches existing app styling (cards, borders, monospace metadata)
-
-**Admin upload UI** — visible only to super admins on the same page:
-- "Add Resource" button opens a form: title, description, file type selector, file upload input, display order
-- Drag-to-reorder support using existing drag patterns
-- Toggle publish/unpublish per resource
-- Delete resource (removes from storage + DB)
-
-### Route Addition
-
-Add `/onboarding` to `App.tsx` router, import the new `Onboarding.tsx` page component. Add a navigation link in `AuthenticatedHeader.tsx`.
-
-### Files
-
-| File | Action |
-|------|--------|
-| Migration SQL | Create tables, bucket, RLS policies |
-| `src/pages/Onboarding.tsx` | New page component |
-| `src/App.tsx` | Add route |
-| `src/components/AuthenticatedHeader.tsx` | Add nav link |
+No functional or data-flow changes -- purely cosmetic className updates on `<header>` elements.
 
