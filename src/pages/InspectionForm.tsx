@@ -151,6 +151,8 @@ export default function InspectionForm() {
     future_considerations: "",
     next_inspection_date: null,
   });
+  const summaryRef = useRef(summary);
+  useEffect(() => { summaryRef.current = summary; }, [summary]);
 
   // Completion lock derived values (after report state is declared)
   const isCompletionLocked = inspection?.status === 'completed' && !completionLockOverridden;
