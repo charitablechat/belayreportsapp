@@ -17,6 +17,8 @@ export interface CloudBackupEntry {
   synced: boolean;
   snapshot_ts: number;
   created_at: string;
+  user_name: string;
+  facility: string;
 }
 
 export interface CloudBackupFull extends CloudBackupEntry {
