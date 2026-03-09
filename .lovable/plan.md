@@ -1,47 +1,66 @@
 
 
-# Auto-Scroll During Drag-and-Drop
+## Onboarding Resource Center
 
-## Problem
-When dragging items in lists that exceed the viewport, users cannot reach the top/bottom of the list because scrolling stops — the drag interaction blocks natural scroll behavior.
+A dedicated `/onboarding` page where users can browse videos and PDFs you've uploaded, and mark items as completed.
 
-## Two Drag Systems to Fix
+### Database
 
-### 1. `useNativeDrag` (inspection tables: Systems, Ziplines, Equipment)
-The custom hook handles both desktop HTML5 drag and mobile touch drag but has zero auto-scroll logic. Need to add edge-detection scrolling.
+**1. `onboarding_resources` table** — stores metadata for each uploaded file
 
-**Approach**: Add a `requestAnimationFrame` auto-scroll loop that activates when the pointer/touch is within an edge zone (e.g., 60px from top/bottom of the scroll container or viewport). Scroll speed accelerates the closer the pointer is to the edge.
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | PK |
+| title | text | Display name |
+| description | text | Optional summary |
+| file_type | text | 'video' or 'pdf' |
+| file_url | text | Storage path |
+| display_order | integer | Sort order |
+| is_published | boolean | Only published items shown to users |
+| uploaded_by | uuid | References auth.users |
+| created_at | timestamptz | |
 
-- Add a `scrollContainerRef` parameter to `useNativeDrag` so callers can pass their scrollable parent
-- In `handleDragOver` (desktop): check `e.clientY` against viewport edges, start/stop scroll loop
-- In `handleTouchMove` (touch): same edge detection using `touch.clientY`
-- On `clearState`: cancel any running animation frame
-- Fallback to `window` scrolling if no container ref provided
+RLS: Super admins can CRUD. Authenticated users can SELECT where `is_published = true`.
 
-### 2. `@dnd-kit` (PhotoGallery, FormCMSManager)
-`@dnd-kit`'s `DndContext` supports an `autoScroll` prop out of the box but neither usage configures it. The default auto-scroll may work but can be improved.
+**2. `onboarding_progress` table** — tracks per-user completion
 
-**Approach**: Add explicit `autoScroll` configuration to both `DndContext` instances with tuned thresholds and acceleration for smooth edge scrolling inside `ScrollArea` containers.
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | PK |
+| user_id | uuid | References auth.users |
+| resource_id | uuid | FK to onboarding_resources |
+| completed_at | timestamptz | When marked complete |
+| unique(user_id, resource_id) | | Prevents duplicates |
 
-## Files Changed
+RLS: Users can manage their own rows only.
 
-- `src/hooks/useNativeDrag.tsx` — add auto-scroll engine with edge detection for both desktop drag and touch drag, using `requestAnimationFrame` loop and configurable edge zone/speed
-- `src/components/inspection/OperatingSystemsTable.tsx` — pass scroll container ref to `useNativeDrag`
-- `src/components/inspection/ZiplinesTable.tsx` — pass scroll container ref to `useNativeDrag`
-- `src/components/inspection/EquipmentTable.tsx` — pass scroll container ref to `useNativeDrag`
-- `src/components/PhotoGallery.tsx` — add `autoScroll` prop to `DndContext`
-- `src/components/admin/FormCMSManager.tsx` — add `autoScroll` prop to `DndContext` instances
+**3. `onboarding-files` storage bucket** — private bucket for the actual video/PDF files. Super admins can upload; authenticated users can read.
 
-## Auto-Scroll Logic Detail
+### Frontend
 
-```text
-Edge zone: 60px from top/bottom of container (or viewport)
-Speed: linear interpolation — max 12px/frame at edge, 0 at zone boundary
-Loop: requestAnimationFrame, cancelled on drag end / clear state
+**`/onboarding` page** — accessible from the dashboard header navigation:
+- Lists all published resources grouped by type (Videos section, Documents section)
+- Each card shows: title, description, file type icon, and a checkbox to mark complete
+- Clicking a video opens an inline `<video>` player; clicking a PDF downloads it
+- A progress bar at the top shows "X of Y completed"
+- Matches existing app styling (cards, borders, monospace metadata)
 
-Desktop: clientY checked in handleDragOver
-Touch:   clientY checked in handleTouchMove
-```
+**Admin upload UI** — visible only to super admins on the same page:
+- "Add Resource" button opens a form: title, description, file type selector, file upload input, display order
+- Drag-to-reorder support using existing drag patterns
+- Toggle publish/unpublish per resource
+- Delete resource (removes from storage + DB)
 
-No new dependencies. No new features — purely improving existing drag interactions.
+### Route Addition
+
+Add `/onboarding` to `App.tsx` router, import the new `Onboarding.tsx` page component. Add a navigation link in `AuthenticatedHeader.tsx`.
+
+### Files
+
+| File | Action |
+|------|--------|
+| Migration SQL | Create tables, bucket, RLS policies |
+| `src/pages/Onboarding.tsx` | New page component |
+| `src/App.tsx` | Add route |
+| `src/components/AuthenticatedHeader.tsx` | Add nav link |
 

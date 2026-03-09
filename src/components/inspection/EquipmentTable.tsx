@@ -60,6 +60,33 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
   const touchActiveRef = useRef(false);
   const touchStartPosRef = useRef<{ x: number; y: number } | null>(null);
 
+  // --- Auto-scroll engine ---
+  const scrollRafRef = useRef<number | null>(null);
+  const pointerYRef = useRef<number | null>(null);
+  const EDGE_ZONE = 60;
+  const MAX_SCROLL_SPEED = 14;
+
+  const startAutoScroll = useCallback(() => {
+    if (scrollRafRef.current !== null) return;
+    const tick = () => {
+      const y = pointerYRef.current;
+      if (y !== null) {
+        const vh = window.innerHeight;
+        let speed = 0;
+        if (y < EDGE_ZONE) speed = -MAX_SCROLL_SPEED * ((EDGE_ZONE - y) / EDGE_ZONE);
+        else if (y > vh - EDGE_ZONE) speed = MAX_SCROLL_SPEED * ((y - (vh - EDGE_ZONE)) / EDGE_ZONE);
+        if (speed !== 0) window.scrollBy({ top: speed, behavior: 'instant' as ScrollBehavior });
+      }
+      scrollRafRef.current = requestAnimationFrame(tick);
+    };
+    scrollRafRef.current = requestAnimationFrame(tick);
+  }, []);
+
+  const stopAutoScroll = useCallback(() => {
+    if (scrollRafRef.current !== null) { cancelAnimationFrame(scrollRafRef.current); scrollRafRef.current = null; }
+    pointerYRef.current = null;
+  }, []);
+
   const clearDragState = useCallback(() => {
     draggedIdRef.current = null;
     dragOverIdRef.current = null;
@@ -70,21 +97,24 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
       clearTimeout(longPressTimerRef.current);
       longPressTimerRef.current = null;
     }
+    stopAutoScroll();
     setDraggingId(null);
     setDragOverId(null);
     setDropPosition(null);
     setIsTouchMode(false);
-  }, []);
+  }, [stopAutoScroll]);
 
   const handleDragStart = useCallback((e: React.DragEvent, id: string) => {
     draggedIdRef.current = id;
     setDraggingId(id);
     e.dataTransfer.effectAllowed = 'move';
-  }, []);
+    startAutoScroll();
+  }, [startAutoScroll]);
 
   const handleDragOver = useCallback((e: React.DragEvent, id: string) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
+    pointerYRef.current = e.clientY;
     if (id === draggedIdRef.current) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const midpoint = rect.top + rect.height / 2;
@@ -144,8 +174,9 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
       touchActiveRef.current = true;
       setDraggingId(id);
       setIsTouchMode(true);
+      startAutoScroll();
     }, 200);
-  }, []);
+  }, [startAutoScroll]);
 
   const handleTouchMove = useCallback((e: React.TouchEvent) => {
     const touch = e.touches[0];
@@ -159,6 +190,7 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
     }
     if (!touchActiveRef.current) return;
     e.preventDefault();
+    pointerYRef.current = touch.clientY;
     const el = document.elementFromPoint(touch.clientX, touch.clientY);
     const rowEl = el?.closest('[data-drag-id]') as HTMLElement | null;
     if (rowEl) {
