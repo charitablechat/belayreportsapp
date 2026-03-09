@@ -190,6 +190,7 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
     }
     if (!touchActiveRef.current) return;
     e.preventDefault();
+    pointerYRef.current = touch.clientY;
     const el = document.elementFromPoint(touch.clientX, touch.clientY);
     const rowEl = el?.closest('[data-drag-id]') as HTMLElement | null;
     if (rowEl) {

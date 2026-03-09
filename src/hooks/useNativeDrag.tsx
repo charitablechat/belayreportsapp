@@ -1,6 +1,8 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 
 const LONG_PRESS_MS = 200;
+const EDGE_ZONE = 60; // px from viewport edge to trigger scroll
+const MAX_SCROLL_SPEED = 14; // px per frame at the very edge
 
 export function useNativeDrag<T extends { id: string }>(
   items: T[],
@@ -21,6 +23,56 @@ export function useNativeDrag<T extends { id: string }>(
   const touchActiveRef = useRef(false);
   const touchStartPosRef = useRef<{ x: number; y: number } | null>(null);
 
+  // --- Auto-scroll engine ---
+  const scrollRafRef = useRef<number | null>(null);
+  const pointerYRef = useRef<number | null>(null);
+
+  const startAutoScroll = useCallback(() => {
+    if (scrollRafRef.current !== null) return; // already running
+
+    const tick = () => {
+      const y = pointerYRef.current;
+      if (y === null) {
+        scrollRafRef.current = requestAnimationFrame(tick);
+        return;
+      }
+
+      const vh = window.innerHeight;
+      let speed = 0;
+
+      if (y < EDGE_ZONE) {
+        // Near top — scroll up (negative)
+        speed = -MAX_SCROLL_SPEED * ((EDGE_ZONE - y) / EDGE_ZONE);
+      } else if (y > vh - EDGE_ZONE) {
+        // Near bottom — scroll down (positive)
+        speed = MAX_SCROLL_SPEED * ((y - (vh - EDGE_ZONE)) / EDGE_ZONE);
+      }
+
+      if (speed !== 0) {
+        window.scrollBy({ top: speed, behavior: 'instant' as ScrollBehavior });
+      }
+
+      scrollRafRef.current = requestAnimationFrame(tick);
+    };
+
+    scrollRafRef.current = requestAnimationFrame(tick);
+  }, []);
+
+  const stopAutoScroll = useCallback(() => {
+    if (scrollRafRef.current !== null) {
+      cancelAnimationFrame(scrollRafRef.current);
+      scrollRafRef.current = null;
+    }
+    pointerYRef.current = null;
+  }, []);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      stopAutoScroll();
+    };
+  }, [stopAutoScroll]);
+
   const clearState = useCallback(() => {
     draggedIdRef.current = null;
     dragOverIdRef.current = null;
@@ -31,11 +83,12 @@ export function useNativeDrag<T extends { id: string }>(
       clearTimeout(longPressTimerRef.current);
       longPressTimerRef.current = null;
     }
+    stopAutoScroll();
     setDraggingId(null);
     setDragOverId(null);
     setDropPosition(null);
     setIsTouchMode(false);
-  }, []);
+  }, [stopAutoScroll]);
 
   // --- Native HTML5 drag handlers (desktop) ---
 
@@ -43,11 +96,16 @@ export function useNativeDrag<T extends { id: string }>(
     draggedIdRef.current = id;
     setDraggingId(id);
     e.dataTransfer.effectAllowed = 'move';
-  }, []);
+    startAutoScroll();
+  }, [startAutoScroll]);
 
   const handleDragOver = useCallback((e: React.DragEvent, id: string) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
+
+    // Feed pointer position to auto-scroll engine
+    pointerYRef.current = e.clientY;
+
     if (id === draggedIdRef.current) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const midpoint = rect.top + rect.height / 2;
@@ -96,8 +154,9 @@ export function useNativeDrag<T extends { id: string }>(
       touchActiveRef.current = true;
       setDraggingId(id);
       setIsTouchMode(true);
+      startAutoScroll();
     }, LONG_PRESS_MS);
-  }, []);
+  }, [startAutoScroll]);
 
   const handleTouchMove = useCallback((e: React.TouchEvent) => {
     const touch = e.touches[0];
@@ -120,6 +179,9 @@ export function useNativeDrag<T extends { id: string }>(
 
     // Prevent scrolling during active drag
     e.preventDefault();
+
+    // Feed pointer position to auto-scroll engine
+    pointerYRef.current = touch.clientY;
 
     const el = document.elementFromPoint(touch.clientX, touch.clientY);
     const rowEl = el?.closest('[data-drag-id]') as HTMLElement | null;
