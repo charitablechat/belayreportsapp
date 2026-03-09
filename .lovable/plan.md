@@ -1,53 +1,66 @@
 
 
-# Enforce Default Bolt Text in Inspection Reports
+## Onboarding Resource Center
 
-## Current State
+A dedicated `/onboarding` page where users can browse videos and PDFs you've uploaded, and mark items as completed.
 
-- **Database**: Already clean. Zero records in `inspection_systems` or `inspection_ziplines` contain the bolt text (cleaned in prior session).
-- **Individual table rows**: `prependDefaultBolt()` already prepends the text to each system/zipline row's comments column during report generation. This is working correctly.
-- **Summary "Repairs, Alterations" box**: Currently renders only `summary.repairs_performed` — the bolt text is **not** injected here.
+### Database
 
-## What Needs to Change
+**1. `onboarding_resources` table** — stores metadata for each uploaded file
 
-### 1. Inject bolt text into the Repairs summary box (edge function)
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | PK |
+| title | text | Display name |
+| description | text | Optional summary |
+| file_type | text | 'video' or 'pdf' |
+| file_url | text | Storage path |
+| display_order | integer | Sort order |
+| is_published | boolean | Only published items shown to users |
+| uploaded_by | uuid | References auth.users |
+| created_at | timestamptz | |
 
-In `supabase/functions/generate-inspection-html/index.ts`, the summary section (line 2456-2467) conditionally renders `summary.repairs_performed`. Two changes:
+RLS: Super admins can CRUD. Authenticated users can SELECT where `is_published = true`.
 
-**a)** Always render the Repairs box (even if `repairs_performed` is empty), since the bolt text must appear on every report.
+**2. `onboarding_progress` table** — tracks per-user completion
 
-**b)** Prepend the bolt text before rendering:
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | PK |
+| user_id | uuid | References auth.users |
+| resource_id | uuid | FK to onboarding_resources |
+| completed_at | timestamptz | When marked complete |
+| unique(user_id, resource_id) | | Prevents duplicates |
 
-```typescript
-// Before (line 2456-2467):
-${summary.repairs_performed ? `<div>...</div>` : ""}
+RLS: Users can manage their own rows only.
 
-// After:
-// Always show the repairs box with bolt text prepended
-<div style="margin-bottom: 20px;">
-  <div class="text-block" style="...">
-    ${renderBulletList(
-      parseTextToList(prependDefaultBolt(summary?.repairs_performed || "")),
-      deduplicateHtmlContent(prependDefaultBolt(summary?.repairs_performed || ""))
-    )}
-  </div>
-</div>
-```
+**3. `onboarding-files` storage bucket** — private bucket for the actual video/PDF files. Super admins can upload; authenticated users can read.
 
-This reuses the existing `prependDefaultBolt` helper, which already deduplicates (skips if already present).
+### Frontend
 
-### 2. Redeploy the edge function
+**`/onboarding` page** — accessible from the dashboard header navigation:
+- Lists all published resources grouped by type (Videos section, Documents section)
+- Each card shows: title, description, file type icon, and a checkbox to mark complete
+- Clicking a video opens an inline `<video>` player; clicking a PDF downloads it
+- A progress bar at the top shows "X of Y completed"
+- Matches existing app styling (cards, borders, monospace metadata)
 
-After the code change, redeploy `generate-inspection-html` to activate the updated logic.
+**Admin upload UI** — visible only to super admins on the same page:
+- "Add Resource" button opens a form: title, description, file type selector, file upload input, display order
+- Drag-to-reorder support using existing drag patterns
+- Toggle publish/unpublish per resource
+- Delete resource (removes from storage + DB)
 
-### 3. No database changes needed
+### Route Addition
 
-The previous cleanup session already removed all instances. Verification queries confirm 0 matches.
+Add `/onboarding` to `App.tsx` router, import the new `Onboarding.tsx` page component. Add a navigation link in `AuthenticatedHeader.tsx`.
 
-## Scope
+### Files
 
-- **1 file changed**: `supabase/functions/generate-inspection-html/index.ts` (lines 2456-2467)
-- **1 redeployment**: `generate-inspection-html` edge function
-- No database migrations
-- No frontend changes
+| File | Action |
+|------|--------|
+| Migration SQL | Create tables, bucket, RLS policies |
+| `src/pages/Onboarding.tsx` | New page component |
+| `src/App.tsx` | Add route |
+| `src/components/AuthenticatedHeader.tsx` | Add nav link |
 
