@@ -1206,7 +1206,7 @@ serve(async (req) => {
       }
 
       table tr:nth-child(even) {
-        background: #f9f9f9 !important;
+        background: #c2c2c2 !important;
       }
 
       .result-attention {
