@@ -376,6 +376,12 @@ async function syncInspectionsAtomic() {
 async function syncPhotos() {
   console.log('[SW Sync] Starting photo sync...');
   
+  const authHeaders = getAuthHeaders();
+  if (!authHeaders) {
+    console.warn('[SW Sync] No valid auth token — skipping photo sync');
+    return;
+  }
+  
   try {
     const db = await openDB(DB_NAME, DB_VERSION);
     const allPhotos = await getAllFromStore(db, 'photos');
@@ -392,18 +398,14 @@ async function syncPhotos() {
     
     for (const photo of unuploaded) {
       try {
-        const supabaseUrl = 'https://ssgzcgvygnsrqalisshx.supabase.co';
-        const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNzZ3pjZ3Z5Z25zcnFhbGlzc2h4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIyMzM5NjksImV4cCI6MjA3NzgwOTk2OX0.buTFy44tZdRIlRSFIm5BqeOGb4nX3ARuHawWA9hZN54';
-        
         // Upload to storage
         const fileExt = photo.fileName.split('.').pop();
         const fileName = `${photo.inspectionId}/${Date.now()}.${fileExt}`;
         
-        const uploadResponse = await fetch(`${supabaseUrl}/storage/v1/object/inspection-photos/${fileName}`, {
+        const uploadResponse = await fetch(`${SUPABASE_URL}/storage/v1/object/inspection-photos/${fileName}`, {
           method: 'POST',
           headers: {
-            'apikey': supabaseKey,
-            'Authorization': `Bearer ${supabaseKey}`,
+            ...authHeaders,
             'Content-Type': photo.blob.type
           },
           body: photo.blob
@@ -414,13 +416,12 @@ async function syncPhotos() {
           continue;
         }
         
-        // Save metadata to database with file path only (signed URLs generated on read)
-        const metadataResponse = await fetch(`${supabaseUrl}/rest/v1/inspection_photos`, {
+        // Save metadata to database
+        const metadataResponse = await fetch(`${SUPABASE_URL}/rest/v1/inspection_photos`, {
           method: 'POST',
           headers: {
+            ...authHeaders,
             'Content-Type': 'application/json',
-            'apikey': supabaseKey,
-            'Authorization': `Bearer ${supabaseKey}`,
             'Prefer': 'return=representation'
           },
           body: JSON.stringify({
@@ -431,7 +432,6 @@ async function syncPhotos() {
         });
         
         if (metadataResponse.ok) {
-          // Mark as uploaded in IndexedDB
           photo.uploaded = true;
           photo.photoUrl = fileName;
           await updateInStore(db, 'photos', photo);
@@ -443,7 +443,6 @@ async function syncPhotos() {
       }
     }
     
-    // Notify all clients
     const clients = await self.clients.matchAll();
     clients.forEach(client => {
       client.postMessage({
