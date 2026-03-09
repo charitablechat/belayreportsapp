@@ -1,66 +1,59 @@
 
 
-## Onboarding Resource Center
+# Add Facility & User Columns to Cloud Backup Snapshots Table
 
-A dedicated `/onboarding` page where users can browse videos and PDFs you've uploaded, and mark items as completed.
+## What Changes
 
-### Database
+**1. Update `fetchCloudSnapshots()` in `src/lib/cloud-backup.ts`**
+- Add `user_id` and `snapshot_data` to the select query (currently only metadata is fetched)
+- Extract facility from `snapshot_data.parent.organization` (or `.location` / `.site` as fallback)
+- Look up user names via the existing `getCachedProfile` pattern (same as `fetchAllCloudSnapshots` already does)
+- Return two new fields on `CloudBackupEntry`: `facility: string` and `user_name: string`
 
-**1. `onboarding_resources` table** — stores metadata for each uploaded file
+**2. Update `CloudSnapshotsPanel` in `src/components/admin/DataRecoveryTool.tsx`**
 
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uuid | PK |
-| title | text | Display name |
-| description | text | Optional summary |
-| file_type | text | 'video' or 'pdf' |
-| file_url | text | Storage path |
-| display_order | integer | Sort order |
-| is_published | boolean | Only published items shown to users |
-| uploaded_by | uuid | References auth.users |
-| created_at | timestamptz | |
+Desktop table — new column order:
+`Type | Facility | User | Device | Sync | Last Saved | Actions`
 
-RLS: Super admins can CRUD. Authenticated users can SELECT where `is_published = true`.
+Mobile card layout — add Facility and User rows to the detail section.
 
-**2. `onboarding_progress` table** — tracks per-user completion
+Apply glassmorphism styling to table headers and rows:
+- Table wrapper: `border-white/10 bg-white/5 dark:bg-white/[0.02]`
+- Header row: `bg-white/5 dark:bg-white/[0.03] backdrop-blur-sm`
+- Cells: reduced padding, `text-xs font-mono` for data density
 
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uuid | PK |
-| user_id | uuid | References auth.users |
-| resource_id | uuid | FK to onboarding_resources |
-| completed_at | timestamptz | When marked complete |
-| unique(user_id, resource_id) | | Prevents duplicates |
+## Technical Details
 
-RLS: Users can manage their own rows only.
+### `cloud-backup.ts` changes (~lines 56-69, 12-19)
 
-**3. `onboarding-files` storage bucket** — private bucket for the actual video/PDF files. Super admins can upload; authenticated users can read.
+Extend `CloudBackupEntry` interface:
+```typescript
+export interface CloudBackupEntry {
+  // ...existing fields...
+  user_name: string;
+  facility: string;
+}
+```
 
-### Frontend
+Update `fetchCloudSnapshots` to select `user_id, snapshot_data` alongside existing columns, then:
+```typescript
+// Extract facility from snapshot parent
+const facility = row.snapshot_data?.parent?.organization 
+  || row.snapshot_data?.parent?.location 
+  || row.snapshot_data?.parent?.site 
+  || 'N/A';
 
-**`/onboarding` page** — accessible from the dashboard header navigation:
-- Lists all published resources grouped by type (Videos section, Documents section)
-- Each card shows: title, description, file type icon, and a checkbox to mark complete
-- Clicking a video opens an inline `<video>` player; clicking a PDF downloads it
-- A progress bar at the top shows "X of Y completed"
-- Matches existing app styling (cards, borders, monospace metadata)
+// Batch-fetch profiles (reuse existing pattern from fetchAllCloudSnapshots)
+const profile = await getCachedProfile(row.user_id);
+const userName = profile ? [profile.first_name, profile.last_name].filter(Boolean).join(' ') : 'Unknown';
+```
 
-**Admin upload UI** — visible only to super admins on the same page:
-- "Add Resource" button opens a form: title, description, file type selector, file upload input, display order
-- Drag-to-reorder support using existing drag patterns
-- Toggle publish/unpublish per resource
-- Delete resource (removes from storage + DB)
+### `DataRecoveryTool.tsx` CloudSnapshotsPanel changes (~lines 486-526)
 
-### Route Addition
+Desktop table gets two new `<TableHead>` columns and corresponding `<TableCell>` entries. Mobile card layout gets two new detail rows. Glass styling applied to the table border/header.
 
-Add `/onboarding` to `App.tsx` router, import the new `Onboarding.tsx` page component. Add a navigation link in `AuthenticatedHeader.tsx`.
-
-### Files
-
-| File | Action |
-|------|--------|
-| Migration SQL | Create tables, bucket, RLS policies |
-| `src/pages/Onboarding.tsx` | New page component |
-| `src/App.tsx` | Add route |
-| `src/components/AuthenticatedHeader.tsx` | Add nav link |
+## Scope
+- 2 files modified: `src/lib/cloud-backup.ts`, `src/components/admin/DataRecoveryTool.tsx`
+- No database changes
+- No new dependencies
 
