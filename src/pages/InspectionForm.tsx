@@ -18,7 +18,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { ArrowLeft, Save, CheckCircle, Loader2, WifiOff, CloudOff, LogOut, User, FileText, Settings, Package, ClipboardList, FileCheck, RefreshCw, AlertTriangle } from "lucide-react";
+import { ArrowLeft, Save, CheckCircle, Loader2, WifiOff, CloudOff, LogOut, User, FileText, Settings, Package, ClipboardList, FileCheck, RefreshCw, AlertTriangle, HardDrive } from "lucide-react";
 import { AutoSaveIndicator } from "@/components/AutoSaveIndicator";
 import { useActiveTimer } from "@/hooks/useActiveTimer";
 import { ActiveTimerDisplay } from "@/components/ActiveTimerDisplay";
