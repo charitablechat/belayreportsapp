@@ -923,7 +923,7 @@ serve(async (req) => {
     }
 
     .section-divider {
-      border-top: 2px solid #e5e7eb;
+      border-top: 2px solid #c2c2c2;
       margin: 20px 0;
       page-break-after: auto;
       page-break-before: auto;
