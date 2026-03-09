@@ -449,10 +449,38 @@ export function CloudSnapshotsPanel({ allowDelete = true }: CloudSnapshotsPanelP
               Snapshots synced to the central database. Accessible from any device.
             </CardDescription>
           </div>
-          <Button variant="outline" size="sm" onClick={loadSnapshots} disabled={loading}>
-            <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-            Refresh
-          </Button>
+          <div className="flex gap-2">
+            {snapshots.length > 0 && (
+              <Button variant="outline" size="sm" onClick={async () => {
+                try {
+                  const { fetchCloudSnapshot } = await import('@/lib/cloud-backup');
+                  const fullSnapshots = await Promise.all(
+                    snapshots.map(async (s: any) => {
+                      const full = await fetchCloudSnapshot(s.id);
+                      return { ...s, snapshot_data: full?.snapshot_data };
+                    })
+                  );
+                  const blob = new Blob([JSON.stringify(fullSnapshots, null, 2)], { type: 'application/json' });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = `cloud-backups-${new Date().toISOString().split('T')[0]}.json`;
+                  a.click();
+                  URL.revokeObjectURL(url);
+                  toast.success("All cloud snapshots downloaded");
+                } catch {
+                  toast.error("Failed to download cloud snapshots");
+                }
+              }} title="Download all cloud snapshots to device">
+                <HardDrive className="h-4 w-4 mr-2" />
+                Save All
+              </Button>
+            )}
+            <Button variant="outline" size="sm" onClick={loadSnapshots} disabled={loading}>
+              <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+              Refresh
+            </Button>
+          </div>
         </div>
       </CardHeader>
       <CardContent className="px-3 md:px-6 pb-4 md:pb-6 pt-0">
