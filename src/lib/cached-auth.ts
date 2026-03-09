@@ -39,9 +39,17 @@ function initAuthListener() {
   authListenerInitialized = true;
   
   try {
-    supabase.auth.onAuthStateChange((event) => {
+    supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'SIGNED_OUT') {
         invalidateUserCache();
+      }
+      // Forward fresh JWT to service worker on every auth event (login, refresh, etc.)
+      if (session?.access_token && 'serviceWorker' in navigator && navigator.serviceWorker.controller) {
+        navigator.serviceWorker.controller.postMessage({
+          type: 'AUTH_TOKEN',
+          accessToken: session.access_token,
+          expiresAt: session.expires_at
+        });
       }
     });
   } catch (error) {
