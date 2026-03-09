@@ -1636,7 +1636,7 @@ export default function InspectionForm() {
             
             // Summary
             parallelOperations.push(
-              dbOp(supabase.from("inspection_summary").upsert(sanitizeSummary({ ...summary, inspection_id: id }), { onConflict: 'inspection_id' }))
+              dbOp(supabase.from("inspection_summary").upsert(sanitizeSummary({ ...currentSummary, inspection_id: id }), { onConflict: 'inspection_id' }))
             );
 
             // Execute all in parallel
