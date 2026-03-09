@@ -1532,7 +1532,7 @@ serve(async (req) => {
       object-fit: contain;
       display: block;
       margin: 0 auto;
-      background: #f8fafc;
+      background: #c2c2c2;
       border-radius: 4px;
     }
 
