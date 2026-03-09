@@ -20,7 +20,7 @@ export function UserDataRecoverySheet({ open, onOpenChange }: UserDataRecoverySh
         <ScrollArea className="h-[calc(85vh-120px)] px-2 sm:px-6 pb-6 [&>div]:!overflow-x-hidden">
           <div className="space-y-6 pt-2">
             <RecoveryErrorBoundary panelName="Local Backup Snapshots">
-              <LocalSnapshotsPanel allowDelete={false} />
+              <LocalSnapshotsPanel allowDelete={true} />
             </RecoveryErrorBoundary>
             <RecoveryErrorBoundary panelName="Cloud Backup Snapshots">
               <CloudSnapshotsPanel allowDelete={false} />
