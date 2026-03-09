@@ -1,40 +1,66 @@
 
 
-# Fix Snapshot Reliability & Add Hard Save to Device
+## Onboarding Resource Center
 
-## Problem Analysis
+A dedicated `/onboarding` page where users can browse videos and PDFs you've uploaded, and mark items as completed.
 
-The snapshot pipeline (`performSave` → `saveReportSnapshot` → `uploadSnapshotToCloud`) is already wired in all three form types. However:
+### Database
 
-1. **Cloud upload failures are completely silent** — the `_doUpload` catch swallows all errors with no logging, making it impossible to diagnose why cloud snapshots aren't appearing
-2. **No bulk "Save to Device" action** — individual export buttons exist but there's no way to download all snapshots at once as a device backup
-3. **No visibility into snapshot health** — users can't tell if snapshots are actually being written on each save
+**1. `onboarding_resources` table** — stores metadata for each uploaded file
 
-## Changes
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | PK |
+| title | text | Display name |
+| description | text | Optional summary |
+| file_type | text | 'video' or 'pdf' |
+| file_url | text | Storage path |
+| display_order | integer | Sort order |
+| is_published | boolean | Only published items shown to users |
+| uploaded_by | uuid | References auth.users |
+| created_at | timestamptz | |
 
-### 1. Add error logging to cloud upload (`src/lib/cloud-backup.ts`)
+RLS: Super admins can CRUD. Authenticated users can SELECT where `is_published = true`.
 
-The fire-and-forget catch currently swallows errors silently. Add `console.warn` so failures are diagnosable:
+**2. `onboarding_progress` table** — tracks per-user completion
 
-```typescript
-_doUpload(reportType, reportId, snapshot).catch((err) => {
-  console.warn('[Cloud Backup] Upload failed (non-blocking):', err);
-});
-```
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | PK |
+| user_id | uuid | References auth.users |
+| resource_id | uuid | FK to onboarding_resources |
+| completed_at | timestamptz | When marked complete |
+| unique(user_id, resource_id) | | Prevents duplicates |
 
-### 2. Add "Download All to Device" button (`src/components/admin/DataRecoveryTool.tsx`)
+RLS: Users can manage their own rows only.
 
-Add a button to `LocalSnapshotsPanel` header that bundles all local snapshots into a single JSON file and triggers a browser download. This serves as the "hard save/backup to local drive" feature.
+**3. `onboarding-files` storage bucket** — private bucket for the actual video/PDF files. Super admins can upload; authenticated users can read.
 
-Also add the same capability to `CloudSnapshotsPanel` — download all cloud snapshots as a single JSON bundle.
+### Frontend
 
-### 3. Add production-level snapshot logging (`src/lib/local-backup-ledger.ts`)
+**`/onboarding` page** — accessible from the dashboard header navigation:
+- Lists all published resources grouped by type (Videos section, Documents section)
+- Each card shows: title, description, file type icon, and a checkbox to mark complete
+- Clicking a video opens an inline `<video>` player; clicking a PDF downloads it
+- A progress bar at the top shows "X of Y completed"
+- Matches existing app styling (cards, borders, monospace metadata)
 
-Remove the `DEV`-only gate on the console.log so snapshot writes are visible in production logs too (helps diagnose "not saving" issues). Change to a lightweight `console.debug` that won't clutter but is available when needed.
+**Admin upload UI** — visible only to super admins on the same page:
+- "Add Resource" button opens a form: title, description, file type selector, file upload input, display order
+- Drag-to-reorder support using existing drag patterns
+- Toggle publish/unpublish per resource
+- Delete resource (removes from storage + DB)
 
-## Files Changed
+### Route Addition
 
-- `src/lib/cloud-backup.ts` — add error logging to catch block
-- `src/lib/local-backup-ledger.ts` — upgrade snapshot write logging from DEV-only to console.debug
-- `src/components/admin/DataRecoveryTool.tsx` — add "Download All to Device" button to both Local and Cloud snapshot panels
+Add `/onboarding` to `App.tsx` router, import the new `Onboarding.tsx` page component. Add a navigation link in `AuthenticatedHeader.tsx`.
+
+### Files
+
+| File | Action |
+|------|--------|
+| Migration SQL | Create tables, bucket, RLS policies |
+| `src/pages/Onboarding.tsx` | New page component |
+| `src/App.tsx` | Add route |
+| `src/components/AuthenticatedHeader.tsx` | Add nav link |
 

@@ -136,10 +136,8 @@ export function saveReportSnapshot(
 
     localStorage.setItem(key, json);
 
-    if (import.meta.env.DEV) {
-      console.log(`[Backup Ledger] Saved ${reportType} snapshot:`, reportId.substring(0, 8), 
-        `(${(json.length / 1024).toFixed(1)}KB, synced=${isSynced})`);
-    }
+    console.debug(`[Backup Ledger] Saved ${reportType} snapshot:`, reportId.substring(0, 8), 
+      `(${(json.length / 1024).toFixed(1)}KB, synced=${isSynced})`);
 
     // Fire-and-forget cloud upload — non-blocking, silent on failure
     uploadSnapshotToCloud(reportType, reportId, snapshot);
