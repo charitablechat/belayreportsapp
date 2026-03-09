@@ -10,7 +10,7 @@ import { RefreshCw, Upload, Trash2, AlertTriangle, Database, HardDrive, CheckCir
 import { toast } from "sonner";
 import { format, formatDistanceToNow } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
-import { listAllSnapshots, getReportSnapshot, deleteReportSnapshot, getBackupStorageInfo, type ReportType } from "@/lib/local-backup-ledger";
+import { listAllSnapshots, getReportSnapshot, deleteReportSnapshot, getBackupStorageInfo, importReportBackup, type ReportType } from "@/lib/local-backup-ledger";
 import {
   getOfflineTrainings,
   getOfflineDailyAssessments,
