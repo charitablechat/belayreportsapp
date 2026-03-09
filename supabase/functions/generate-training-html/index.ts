@@ -91,7 +91,7 @@ serve(async (req) => {
     const systemsInPlaceHtml = ALL_SYSTEMS_IN_PLACE.map(item => {
       const isChecked = content.systemsInPlace.includes(item);
       const checkmark = isChecked ? '☑' : '☐';
-      const style = isChecked ? '' : 'style="border-left-color: #94a3b8; background: #f1f5f9;"';
+      const style = isChecked ? '' : 'style="border-left-color: #94a3b8; background: #c2c2c2;"';
       return `<li ${style}>${checkmark} ${item}</li>`;
     }).join('');
 
