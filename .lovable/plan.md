@@ -1,32 +1,21 @@
 
-## Fix: Complete Removal of Default Bolt Text from Database
 
-**Problem**: The previous reversal migration didn't account for HTML-formatted versions of the text. The database contains `<p>Tightened bolts and connectors as needed</p>` in the `comments` field.
+## Fix: "Tightened bolts and connectors as needed" Missing from Report
+
+### Root Cause
+
+The code in `generate-inspection-html/index.ts` is correct — `prependDefaultBolt()` properly handles NULL/empty comments and is called for every system and zipline row. However, the deployed edge function likely does not reflect the latest code containing this helper.
 
 ### Solution
 
-Run a SQL UPDATE that handles both plain text AND HTML-wrapped variants:
+**Redeploy the edge function** — no code changes needed. The `prependDefaultBolt` function already:
+- Returns `<p>Tightened bolts and connectors as needed</p>` for NULL/empty/dash comments
+- Prepends the text to existing comments if not already present
+- Skips if already present
 
-```sql
--- inspection_systems
-UPDATE inspection_systems
-SET comments = CASE
-  -- Exact HTML match
-  WHEN TRIM(comments) = '<p>Tightened bolts and connectors as needed</p>' THEN NULL
-  -- Plain text match
-  WHEN TRIM(comments) = 'Tightened bolts and connectors as needed' THEN NULL
-  -- HTML prefix with newline
-  WHEN comments LIKE '<p>Tightened bolts and connectors as needed</p>' || E'\n' || '%'
-    THEN SUBSTRING(comments FROM LENGTH('<p>Tightened bolts and connectors as needed</p>' || E'\n') + 1)
-  -- Plain text prefix with newline
-  WHEN comments LIKE 'Tightened bolts and connectors as needed' || E'\n' || '%'
-    THEN SUBSTRING(comments FROM LENGTH('Tightened bolts and connectors as needed' || E'\n') + 1)
-  ELSE comments
-END;
+It's applied at all 4 call sites (systems x2, ziplines x2 for page 1 and page 2 layouts).
 
--- inspection_ziplines (same pattern)
-```
+### Verification
 
-**Records affected**: All `inspection_systems` and `inspection_ziplines` rows containing the default bolt text in any format.
+After redeployment, re-generate the HTML report for the current inspection (`3980644b-...`). All rows — including Mohawk Walk, High Crawl, Vertical Playpen, Swinging Ladders, Low Wild Woozie, and Inverted Catwalk (which have NULL comments in the database) — should display the default bullet.
 
-**No code changes needed** — the `prependDefaultBolt()` helper in `generate-inspection-html` already handles injecting this text at report generation time only.
