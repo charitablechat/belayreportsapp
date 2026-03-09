@@ -151,6 +151,8 @@ export default function InspectionForm() {
     future_considerations: "",
     next_inspection_date: null,
   });
+  const summaryRef = useRef(summary);
+  useEffect(() => { summaryRef.current = summary; }, [summary]);
 
   // Completion lock derived values (after report state is declared)
   const isCompletionLocked = inspection?.status === 'completed' && !completionLockOverridden;
@@ -1269,12 +1271,13 @@ export default function InspectionForm() {
       
       // Validate before saving
       // Only include summary in validation if it has required fields and content
-      const hasSummaryContent = summary.repairs_performed || 
-                                summary.critical_actions || 
-                                summary.future_considerations || 
-                                summary.next_inspection_date;
-      const summaryForValidation = (summary.id && summary.inspection_id && hasSummaryContent) 
-        ? summary 
+      const currentSummary = summaryRef.current;
+      const hasSummaryContent = currentSummary.repairs_performed || 
+                                currentSummary.critical_actions || 
+                                currentSummary.future_considerations || 
+                                currentSummary.next_inspection_date;
+      const summaryForValidation = (currentSummary.id && currentSummary.inspection_id && hasSummaryContent) 
+        ? currentSummary 
         : null;
       
       // Filter out incomplete equipment items before validation (allows saving work-in-progress)
@@ -1320,7 +1323,7 @@ export default function InspectionForm() {
         ziplines,
         equipment,
         standards,
-        summary,
+        summary: currentSummary,
         updated_at: new Date().toISOString(),
       };
 
@@ -1375,8 +1378,8 @@ export default function InspectionForm() {
         } else {
           console.warn('[InspectionForm Save] Skipping standards save — empty array not confirmed as loaded');
         }
-        if ([summary].length > 0 || childDataLoadedRef.current.summary) {
-          childSaveOps.push(saveRelatedDataOffline('summary', id!, [summary]));
+        if ([currentSummary].length > 0 || childDataLoadedRef.current.summary) {
+          childSaveOps.push(saveRelatedDataOffline('summary', id!, [currentSummary]));
         } else {
           console.warn('[InspectionForm Save] Skipping summary save — empty array not confirmed as loaded');
         }
@@ -1384,7 +1387,7 @@ export default function InspectionForm() {
         // Written BEFORE IndexedDB writes complete so backup always has latest React state
         try {
           saveReportSnapshot('inspection', id!, inspectionToSave, {
-            systems, ziplines, equipment, standards, summary: [summary],
+            systems, ziplines, equipment, standards, summary: [currentSummary],
           }, !!inspectionToSave.synced_at);
         } catch {
           // Never let snapshot failure block the save
@@ -1396,7 +1399,7 @@ export default function InspectionForm() {
 
         // Layer 2: Append-only version history (fire-and-forget)
         appendVersion('inspection', id!, inspectionToSave, {
-          systems, ziplines, equipment, standards, summary: [summary],
+          systems, ziplines, equipment, standards, summary: [currentSummary],
         }, silent ? 'auto_save' : 'manual_save').then((v) => {
           if (v) {
             setLastVersionNumber(v.versionNumber);
@@ -1633,7 +1636,7 @@ export default function InspectionForm() {
             
             // Summary
             parallelOperations.push(
-              dbOp(supabase.from("inspection_summary").upsert(sanitizeSummary({ ...summary, inspection_id: id }), { onConflict: 'inspection_id' }))
+              dbOp(supabase.from("inspection_summary").upsert(sanitizeSummary({ ...currentSummary, inspection_id: id }), { onConflict: 'inspection_id' }))
             );
 
             // Execute all in parallel

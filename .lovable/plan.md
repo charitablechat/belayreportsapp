@@ -1,56 +1,66 @@
 
 
-# Fix: Next Inspection Date Not Persisting After Year Change
+## Onboarding Resource Center
 
-## Root Cause
+A dedicated `/onboarding` page where users can browse videos and PDFs you've uploaded, and mark items as completed.
 
-**Stale closure in `performSave`**: When the user selects a date in `SummarySection`, two things happen synchronously in the same event handler:
+### Database
 
-1. `setSummary({...summary, next_inspection_date: "2027-03-09"})` — React **queues** this state update
-2. `onImmediateSave()` — calls `performSave()` which reads `summary` from its **closure** — still the OLD value
+**1. `onboarding_resources` table** — stores metadata for each uploaded file
 
-The save fires before React commits the new state, so the old `next_inspection_date` is written to both IndexedDB and the database. The 1.5s debounced auto-save would eventually write the correct value, but it can be blocked by the `anySaveInProgressRef` mutex if the stale save is still running.
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | PK |
+| title | text | Display name |
+| description | text | Optional summary |
+| file_type | text | 'video' or 'pdf' |
+| file_url | text | Storage path |
+| display_order | integer | Sort order |
+| is_published | boolean | Only published items shown to users |
+| uploaded_by | uuid | References auth.users |
+| created_at | timestamptz | |
 
-This affects ALL immediate-save fields (rich text editors on blur, date pickers), but date fields are most noticeable because the entire value changes in a single click.
+RLS: Super admins can CRUD. Authenticated users can SELECT where `is_published = true`.
 
-## Fix
+**2. `onboarding_progress` table** — tracks per-user completion
 
-Add a `useRef` that always mirrors the latest `summary` state. Update `performSave` to read from the ref instead of the closure.
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | PK |
+| user_id | uuid | References auth.users |
+| resource_id | uuid | FK to onboarding_resources |
+| completed_at | timestamptz | When marked complete |
+| unique(user_id, resource_id) | | Prevents duplicates |
 
-**File: `src/pages/InspectionForm.tsx`**
+RLS: Users can manage their own rows only.
 
-1. Add a ref near the state declaration (~line 153):
-```typescript
-const summaryRef = useRef(summary);
-```
+**3. `onboarding-files` storage bucket** — private bucket for the actual video/PDF files. Super admins can upload; authenticated users can read.
 
-2. Keep the ref in sync with state (after the `summary` useState):
-```typescript
-useEffect(() => { summaryRef.current = summary; }, [summary]);
-```
+### Frontend
 
-3. In `performSave` (~line 1318-1323), read from the ref:
-```typescript
-const currentSummary = summaryRef.current;
-const saveData = {
-  systems,
-  ziplines,
-  equipment,
-  standards,
-  summary: currentSummary,
-  updated_at: new Date().toISOString(),
-};
-```
+**`/onboarding` page** — accessible from the dashboard header navigation:
+- Lists all published resources grouped by type (Videos section, Documents section)
+- Each card shows: title, description, file type icon, and a checkbox to mark complete
+- Clicking a video opens an inline `<video>` player; clicking a PDF downloads it
+- A progress bar at the top shows "X of Y completed"
+- Matches existing app styling (cards, borders, monospace metadata)
 
-4. Update all other references to `summary` within `performSave` to use `currentSummary` (validation block at ~line 1272, sanitization at ~line 1504, IndexedDB writes at ~line 1379-1399, and the server upsert at ~line 1636).
+**Admin upload UI** — visible only to super admins on the same page:
+- "Add Resource" button opens a form: title, description, file type selector, file upload input, display order
+- Drag-to-reorder support using existing drag patterns
+- Toggle publish/unpublish per resource
+- Delete resource (removes from storage + DB)
 
-This same ref pattern should also be applied to `systems`, `ziplines`, `equipment`, and `standards` for full consistency — but `summary` is the immediate fix for the reported bug since it's the only one where a single-click triggers both state update + immediate save.
+### Route Addition
 
-## Scope
+Add `/onboarding` to `App.tsx` router, import the new `Onboarding.tsx` page component. Add a navigation link in `AuthenticatedHeader.tsx`.
 
-- **1 file changed**: `src/pages/InspectionForm.tsx`
-- ~15 line additions/modifications
-- No database changes
-- No new dependencies
-- No impact on report generation, comment handling, or sync logic
+### Files
+
+| File | Action |
+|------|--------|
+| Migration SQL | Create tables, bucket, RLS policies |
+| `src/pages/Onboarding.tsx` | New page component |
+| `src/App.tsx` | Add route |
+| `src/components/AuthenticatedHeader.tsx` | Add nav link |
 
