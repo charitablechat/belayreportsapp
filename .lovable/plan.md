@@ -1,39 +1,35 @@
 
-## Retroactive Default Comment Migration
 
-**Goal**: Update all existing `inspection_systems` and `inspection_ziplines` records to prepend "Tightened bolts and connectors as needed" to their `comments` field.
+## Fix: Remove "Tightened bolts and connectors as needed" from Database Records
 
-### Database Migration
+**Problem**: The retroactive migration wrote the default bolt text directly into the `comments` column of `inspection_systems` and `inspection_ziplines`. This causes it to appear in the editing UI. The text should only appear in generated HTML/PDF reports via the `prependDefaultBolt()` helper in `generate-inspection-html`.
 
-A single SQL migration will:
+**Fix**: Run a reversal migration to undo the retroactive changes:
 
-1. **Update `inspection_systems`** — Prepend the default text to all rows where it doesn't already exist
-2. **Update `inspection_ziplines`** — Same logic
-
-**SQL Logic**:
 ```sql
--- inspection_systems
+-- Remove from inspection_systems
 UPDATE inspection_systems
 SET comments = CASE
-  WHEN comments IS NULL OR TRIM(comments) = '' THEN 'Tightened bolts and connectors as needed'
-  WHEN comments LIKE '%Tightened bolts and connectors as needed%' THEN comments
-  ELSE 'Tightened bolts and connectors as needed' || E'\n' || comments
+  WHEN TRIM(comments) = 'Tightened bolts and connectors as needed' THEN NULL
+  WHEN comments LIKE 'Tightened bolts and connectors as needed' || E'\n' || '%'
+    THEN SUBSTRING(comments FROM LENGTH('Tightened bolts and connectors as needed' || E'\n') + 1)
+  ELSE comments
 END;
 
--- inspection_ziplines (same pattern)
+-- Remove from inspection_ziplines (same logic)
+UPDATE inspection_ziplines
+SET comments = CASE
+  WHEN TRIM(comments) = 'Tightened bolts and connectors as needed' THEN NULL
+  WHEN comments LIKE 'Tightened bolts and connectors as needed' || E'\n' || '%'
+    THEN SUBSTRING(comments FROM LENGTH('Tightened bolts and connectors as needed' || E'\n') + 1)
+  ELSE comments
+END;
 ```
 
-### Safety Considerations
+**Logic**:
+- If the comment is *only* the default text → set to NULL (restores original empty state)
+- If it was prepended before other comments → strip the prefix, keep the rest
+- Otherwise → leave unchanged
 
-- **Idempotent**: The query checks if the text already exists before prepending
-- **Preserves existing data**: Appends to existing comments, doesn't overwrite
-- **Handles nulls/empty**: Sets the default text directly for empty fields
-- **No FK changes**: Only modifies `comments` column values
+**No code changes needed** — the `prependDefaultBolt()` helper in `generate-inspection-html` already handles injecting this text at report generation time.
 
-### Tables Affected
-| Table | Column | Records |
-|-------|--------|---------|
-| `inspection_systems` | `comments` | All rows |
-| `inspection_ziplines` | `comments` | All rows |
-
-Equipment and Standards tables remain untouched per the original requirement.
