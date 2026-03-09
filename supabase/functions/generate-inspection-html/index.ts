@@ -739,7 +739,7 @@ serve(async (req) => {
     }
 
     table th {
-      background: #e5e7eb;
+      background: #c2c2c2;
       color: #000;
       padding: 6px 8px;
       text-align: left;
@@ -875,7 +875,7 @@ serve(async (req) => {
     .key-section {
       margin: 10px 0;
       padding: 10px 14px;
-      background: #f8f9fa;
+      background: #c2c2c2;
       border: 1px solid #ddd;
       border-radius: 2px;
     }
@@ -923,7 +923,7 @@ serve(async (req) => {
     }
 
     .section-divider {
-      border-top: 2px solid #e5e7eb;
+      border-top: 2px solid #c2c2c2;
       margin: 20px 0;
       page-break-after: auto;
       page-break-before: auto;
@@ -1175,7 +1175,7 @@ serve(async (req) => {
 
       /* Ensure colored backgrounds print properly */
       .key-section {
-        background: #f8f9fa !important;
+        background: #c2c2c2 !important;
         border: 1px solid #333 !important;
         page-break-inside: avoid;
       }
@@ -1187,7 +1187,7 @@ serve(async (req) => {
       }
 
       .info-grid {
-        background: #f9fafb !important;
+        background: #c2c2c2 !important;
       }
 
       /* Table styling for print */
@@ -1206,7 +1206,7 @@ serve(async (req) => {
       }
 
       table tr:nth-child(even) {
-        background: #f9f9f9 !important;
+        background: #c2c2c2 !important;
       }
 
       .result-attention {
@@ -1256,7 +1256,7 @@ serve(async (req) => {
       
       /* Section headers */
       .section-header {
-        background-color: #f3f4f6 !important;
+        background-color: #c2c2c2 !important;
         padding: 8px !important;
         margin: 10px 0 6px 0 !important;
         border-left: 4px solid #3b82f6 !important;
@@ -1462,7 +1462,7 @@ serve(async (req) => {
       .info-cell {
         display: block !important;
         margin-bottom: 12px !important;
-        border-bottom: 1px solid #e5e7eb !important;
+        border-bottom: 1px solid #c2c2c2 !important;
         padding-bottom: 8px !important;
       }
       
@@ -1532,7 +1532,7 @@ serve(async (req) => {
       object-fit: contain;
       display: block;
       margin: 0 auto;
-      background: #f8fafc;
+      background: #c2c2c2;
       border-radius: 4px;
     }
 
@@ -1921,7 +1921,7 @@ serve(async (req) => {
       <div class="combined-section">
         <h2>ZIPLINES</h2>
         
-        <div style="margin-bottom: 12px; font-size: 9.5pt; padding: 10px; background: #f8f9fa; border-left: 3px solid #1e40af;">
+        <div style="margin-bottom: 12px; font-size: 9.5pt; padding: 10px; background: #c2c2c2; border-left: 3px solid #1e40af;">
           <strong>Key Abbreviations:</strong><br>
           <strong>Cable Type:</strong> GAC = Galvanized Aircraft Cable, SS = Stainless Steel<br>
           <strong>Braking System:</strong> ZS = Zipstop, FB = Friction Brake, SB = Spring Brake, G = Gravity<br>
@@ -2072,7 +2072,7 @@ serve(async (req) => {
     <div class="page-content">
       <h2>ZIPLINES</h2>
       
-      <div style="margin-bottom: 15px; font-size: 9.5pt; padding: 10px; background: #f8f9fa; border-left: 3px solid #1e40af;">
+      <div style="margin-bottom: 15px; font-size: 9.5pt; padding: 10px; background: #c2c2c2; border-left: 3px solid #1e40af;">
         <strong>Key Abbreviations:</strong><br>
         <strong>Cable Type:</strong> GAC = Galvanized Aircraft Cable, SS = Stainless Steel<br>
         <strong>Braking System:</strong> ZS = Zipstop, FB = Friction Brake, SB = Spring Brake, G = Gravity<br>
@@ -2458,7 +2458,7 @@ serve(async (req) => {
           ? `
       <div style="margin-bottom: 20px;">
         
-        <div class="text-block" style="padding: 10px 15px; background: #f9f9f9; border-left: 4px solid #16a34a;">
+        <div class="text-block" style="padding: 10px 15px; background: #c2c2c2; border-left: 4px solid #16a34a;">
           ${renderBulletList(parseTextToList(summary.repairs_performed), deduplicateHtmlContent(summary.repairs_performed))}
         </div>
       </div>
@@ -2543,8 +2543,8 @@ serve(async (req) => {
       <table style="width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 10pt;">
         <thead>
           <tr>
-            <th style="background: #e5e7eb; color: #000; padding: 8px; text-align: left; font-weight: bold; border: 1px solid #000; width: 40%;">Retirement Criteria</th>
-            <th style="background: #e5e7eb; color: #000; padding: 8px; text-align: left; font-weight: bold; border: 1px solid #000; width: 60%;">Description</th>
+            <th style="background: #c2c2c2; color: #000; padding: 8px; text-align: left; font-weight: bold; border: 1px solid #000; width: 40%;">Retirement Criteria</th>
+            <th style="background: #c2c2c2; color: #000; padding: 8px; text-align: left; font-weight: bold; border: 1px solid #000; width: 60%;">Description</th>
           </tr>
         </thead>
         <tbody>

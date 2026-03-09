@@ -217,7 +217,7 @@ serve(async (req) => {
       font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
       line-height: 1.6;
       color: #333;
-      background: #f5f5f5;
+      background: #c2c2c2;
       padding: 10px;
     }
 
@@ -368,7 +368,7 @@ serve(async (req) => {
 
     .info-item {
       padding: 10px;
-      background: #f8fafc;
+      background: #c2c2c2;
       border-left: 3px solid #1e40af;
     }
 
@@ -398,7 +398,7 @@ serve(async (req) => {
       gap: 10px;
       padding: 8px 10px;
       margin-bottom: 6px;
-      background: #f8fafc;
+      background: #c2c2c2;
       border-left: 3px solid #3b82f6;
       border-radius: 2px;
       align-items: flex-start;
@@ -463,7 +463,7 @@ serve(async (req) => {
       align-items: center;
       gap: 8px;
       padding: 8px 10px;
-      background: #f8fafc;
+      background: #c2c2c2;
       border-left: 3px solid #22c55e;
       border-radius: 2px;
       font-size: 13px;

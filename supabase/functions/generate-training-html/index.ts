@@ -91,7 +91,7 @@ serve(async (req) => {
     const systemsInPlaceHtml = ALL_SYSTEMS_IN_PLACE.map(item => {
       const isChecked = content.systemsInPlace.includes(item);
       const checkmark = isChecked ? '☑' : '☐';
-      const style = isChecked ? '' : 'style="border-left-color: #94a3b8; background: #f1f5f9;"';
+      const style = isChecked ? '' : 'style="border-left-color: #94a3b8; background: #c2c2c2;"';
       return `<li ${style}>${checkmark} ${item}</li>`;
     }).join('');
 
@@ -131,7 +131,7 @@ serve(async (req) => {
       font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
       line-height: 1.6;
       color: #333;
-      background: #f5f5f5;
+      background: #c2c2c2;
       padding: 10px;
     }
     
@@ -282,7 +282,7 @@ serve(async (req) => {
     }
     .info-item {
       padding: 10px;
-      background: #f8fafc;
+      background: #c2c2c2;
       border-left: 3px solid #1e40af;
     }
     .info-label {
@@ -301,7 +301,7 @@ serve(async (req) => {
     li {
       padding: 8px 12px;
       margin-bottom: 6px;
-      background: #f8fafc;
+      background: #c2c2c2;
       border-left: 3px solid #3b82f6;
       border-radius: 2px;
     }
@@ -321,7 +321,7 @@ serve(async (req) => {
     }
     .text-content {
       padding: 15px;
-      background: #f8fafc;
+      background: #c2c2c2;
       border-radius: 4px;
       white-space: pre-wrap;
       line-height: 1.8;
@@ -569,7 +569,7 @@ serve(async (req) => {
       .info-item {
         display: block !important;
         margin-bottom: 12px !important;
-        border-bottom: 1px solid #e5e7eb !important;
+        border-bottom: 1px solid #c2c2c2 !important;
         padding-bottom: 8px !important;
       }
       
