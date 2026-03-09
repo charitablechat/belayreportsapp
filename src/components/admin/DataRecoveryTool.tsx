@@ -460,6 +460,14 @@ export function CloudSnapshotsPanel({ allowDelete = true }: CloudSnapshotsPanelP
                   </div>
                   <div className="space-y-1.5 min-w-0">
                     <div className="flex justify-between gap-2 text-xs">
+                      <span className="text-muted-foreground shrink-0">Facility</span>
+                      <span className="text-right min-w-0 break-words" style={{ overflowWrap: 'anywhere' }}>{s.facility || 'N/A'}</span>
+                    </div>
+                    <div className="flex justify-between gap-2 text-xs">
+                      <span className="text-muted-foreground shrink-0">User</span>
+                      <span className="text-right min-w-0 break-words" style={{ overflowWrap: 'anywhere' }}>{s.user_name || 'Unknown'}</span>
+                    </div>
+                    <div className="flex justify-between gap-2 text-xs">
                       <span className="text-muted-foreground shrink-0">Device</span>
                       <span className="text-right min-w-0 break-words" style={{ overflowWrap: 'anywhere' }}>{s.device}</span>
                     </div>
@@ -483,31 +491,35 @@ export function CloudSnapshotsPanel({ allowDelete = true }: CloudSnapshotsPanelP
               ))}
             </div>
             {/* Desktop table layout */}
-            <div className="hidden md:block rounded-md border">
+            <div className="hidden md:block rounded-lg border border-white/10 bg-white/5 dark:bg-white/[0.02] overflow-hidden">
               <Table>
                 <TableHeader>
-                  <TableRow>
-                    <TableHead>Type</TableHead>
-                    <TableHead>Device</TableHead>
-                    <TableHead>Sync</TableHead>
-                    <TableHead>Last Saved</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
+                  <TableRow className="bg-white/5 dark:bg-white/[0.03] backdrop-blur-sm border-white/10 hover:bg-white/5">
+                    <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/70 py-2.5 px-3">Type</TableHead>
+                    <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/70 py-2.5 px-3">Facility</TableHead>
+                    <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/70 py-2.5 px-3">User</TableHead>
+                    <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/70 py-2.5 px-3">Device</TableHead>
+                    <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/70 py-2.5 px-3">Sync</TableHead>
+                    <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/70 py-2.5 px-3">Last Saved</TableHead>
+                    <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/70 py-2.5 px-3 text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {snapshots.map((s) => (
-                    <TableRow key={s.id}>
-                      <TableCell>
-                        <Badge variant="outline">{(s.report_type || '').replace('_', ' ')}</Badge>
+                    <TableRow key={s.id} className="border-white/5 hover:bg-white/[0.03]">
+                      <TableCell className="py-2.5 px-3">
+                        <Badge variant="outline" className="text-xs font-mono">{(s.report_type || '').replace('_', ' ')}</Badge>
                       </TableCell>
-                      <TableCell>{s.device}</TableCell>
-                      <TableCell>
-                        <Badge variant={s.synced ? "default" : "destructive"}>
+                      <TableCell className="py-2.5 px-3 text-xs font-mono max-w-[180px] truncate" title={s.facility}>{s.facility || 'N/A'}</TableCell>
+                      <TableCell className="py-2.5 px-3 text-xs font-mono">{s.user_name || 'Unknown'}</TableCell>
+                      <TableCell className="py-2.5 px-3 text-xs font-mono">{s.device}</TableCell>
+                      <TableCell className="py-2.5 px-3">
+                        <Badge variant={s.synced ? "default" : "destructive"} className="text-xs">
                           {s.synced ? "Synced" : "Unsynced"}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">{formatDate(s.snapshot_ts)}</TableCell>
-                      <TableCell className="text-right">
+                      <TableCell className="py-2.5 px-3 text-xs text-muted-foreground font-mono">{formatDate(s.snapshot_ts)}</TableCell>
+                      <TableCell className="py-2.5 px-3 text-right">
                         <div className="flex justify-end gap-1">
                           <Button size="sm" variant="outline" onClick={() => handleRestore(s.id)} title="Restore to IndexedDB">
                             <RotateCcw className="h-4 w-4" />
