@@ -210,7 +210,7 @@ export default function NewDailyAssessment() {
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="border-b bg-card">
+      <header className="border-b border-white/20 bg-white/10 dark:bg-black/20 backdrop-blur-[12px] shadow-md shadow-black/5">
         <div className="container mx-auto px-2 md:px-4 py-4 flex items-center justify-between">
           <Button variant="ghost" size="sm" onClick={handleBack}>
             <ArrowLeft className="w-4 h-4" />

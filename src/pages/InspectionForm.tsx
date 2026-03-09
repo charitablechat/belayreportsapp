@@ -2396,7 +2396,7 @@ export default function InspectionForm() {
         </div>
       )}
       
-      <header className="border-b bg-card sticky top-0 z-20">
+      <header className="border-b border-white/20 bg-white/10 dark:bg-black/20 backdrop-blur-[12px] shadow-md shadow-black/5 sticky top-0 z-20">
         <div className="container mx-auto px-2 sm:px-4 py-2 sm:py-4">
           {/* Top row - Back button, Logo, User Avatar */}
           <div className="flex items-center justify-between mb-2 sm:mb-0">

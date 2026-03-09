@@ -259,7 +259,7 @@ export default function Profile() {
         <img src={getSessionBackground()} alt="" className="w-full h-full object-cover" />
       </div>
       <div className="relative z-10 min-h-screen bg-gradient-to-b from-background/50 via-background/60 to-background/80 backdrop-blur-sm">
-      <header className="border-b bg-card">
+      <header className="border-b border-white/20 bg-white/10 dark:bg-black/20 backdrop-blur-[12px] shadow-md shadow-black/5">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <Button variant="ghost" size="icon" onClick={() => goBack(navigate)}>
