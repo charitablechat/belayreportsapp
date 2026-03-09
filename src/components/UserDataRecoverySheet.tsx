@@ -23,7 +23,7 @@ export function UserDataRecoverySheet({ open, onOpenChange }: UserDataRecoverySh
               <LocalSnapshotsPanel allowDelete={true} />
             </RecoveryErrorBoundary>
             <RecoveryErrorBoundary panelName="Cloud Backup Snapshots">
-              <CloudSnapshotsPanel allowDelete={false} />
+              <CloudSnapshotsPanel allowDelete={true} />
             </RecoveryErrorBoundary>
           </div>
         </ScrollArea>
