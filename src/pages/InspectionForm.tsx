@@ -2489,6 +2489,34 @@ export default function InspectionForm() {
                 {isMobileView ? (saving ? "..." : "Save") : (saving ? "Saving..." : isOnline ? "Save Progress" : "Save Locally")}
               </Button>
               )}
+              {id && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={() => {
+                        const ok = downloadReportBackup('inspection', id);
+                        if (ok) {
+                          toast.success('BACKUP SAVED', {
+                            description: 'Snapshot downloaded to device',
+                            duration: 2000,
+                            style: { background: 'hsl(0, 0%, 5%)', color: 'hsl(120, 100%, 56%)', border: '1px solid hsl(120, 100%, 50%, 0.3)', fontFamily: 'monospace', fontSize: '12px' },
+                          });
+                        } else {
+                          toast.warning('No snapshot available to download');
+                        }
+                      }}
+                    >
+                      <HardDrive className="w-4 h-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Force Local Backup</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+              )}
               {!effectiveReadOnly && (
                 <Button 
                   size={isMobileView ? "default" : "sm"} 

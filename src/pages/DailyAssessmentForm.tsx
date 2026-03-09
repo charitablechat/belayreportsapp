@@ -1474,6 +1474,28 @@ export default function DailyAssessmentForm() {
                 <Save className={isMobileView ? "w-5 h-5 mr-1.5" : "w-4 h-4 mr-2"} />
                 {isMobileView ? (saving ? "..." : "Save") : (saving ? "Saving..." : "Save Progress")}
               </Button>
+              {id && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                title="Force Local Backup"
+                onClick={() => {
+                  const ok = downloadReportBackup('daily_assessment', id);
+                  if (ok) {
+                    toast.success('BACKUP SAVED', {
+                      description: 'Snapshot downloaded to device',
+                      duration: 2000,
+                      style: { background: 'hsl(0, 0%, 5%)', color: 'hsl(120, 100%, 56%)', border: '1px solid hsl(120, 100%, 50%, 0.3)', fontFamily: 'monospace', fontSize: '12px' },
+                    });
+                  } else {
+                    toast.warning('No snapshot available to download');
+                  }
+                }}
+              >
+                <HardDrive className="w-4 h-4" />
+              </Button>
+              )}
               <Button 
                 size={isMobileView ? "default" : "sm"} 
                 onClick={() => setShowSubmitDialog(true)} 
