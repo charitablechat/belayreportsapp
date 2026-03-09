@@ -301,7 +301,7 @@ serve(async (req) => {
     li {
       padding: 8px 12px;
       margin-bottom: 6px;
-      background: #f8fafc;
+      background: #c2c2c2;
       border-left: 3px solid #3b82f6;
       border-radius: 2px;
     }
