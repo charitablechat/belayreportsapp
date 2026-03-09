@@ -1,66 +1,58 @@
 
 
-## Onboarding Resource Center
+# Fix: Future Date Persistence Across Report Forms
 
-A dedicated `/onboarding` page where users can browse videos and PDFs you've uploaded, and mark items as completed.
+## Root Cause
 
-### Database
+The training form's `submission_date` auto-population `useEffect` (TrainingForm.tsx:343-365) fires whenever `summary?.id` changes. When server data replaces the summary object via `setSummary(summaryResult)` at line 549, React sees a new `summary.id` reference change (even if the UUID is the same), triggering the effect. If the server-side `submission_date` is `null` (not yet synced), the effect overwrites the user's future date with `new Date()`.
 
-**1. `onboarding_resources` table** — stores metadata for each uploaded file
+The inspection and daily assessment date pickers themselves are correctly wired — their state flows through `handleHeaderUpdate` → debounced save → IndexedDB → sync. The `parseLocalDate` utility is timezone-safe. No issue found in those components.
 
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uuid | PK |
-| title | text | Display name |
-| description | text | Optional summary |
-| file_type | text | 'video' or 'pdf' |
-| file_url | text | Storage path |
-| display_order | integer | Sort order |
-| is_published | boolean | Only published items shown to users |
-| uploaded_by | uuid | References auth.users |
-| created_at | timestamptz | |
+## Affected Components
 
-RLS: Super admins can CRUD. Authenticated users can SELECT where `is_published = true`.
+| Component | Field | Issue |
+|-----------|-------|-------|
+| `TrainingForm.tsx` | `submission_date` | Auto-populate effect re-fires after server hydration, resetting to today |
+| `TrainingSummarySection.tsx` | `submission_date` | No issue — correctly displays and saves |
+| `InspectionHeader.tsx` | `inspection_date` | No issue — hydration respects local-first |
+| `SummarySection.tsx` | `next_inspection_date` | No issue — correctly persisted |
+| `DailyAssessmentHeader.tsx` | `assessment_date` | No issue — correctly persisted |
 
-**2. `onboarding_progress` table** — tracks per-user completion
+## Fix (Single Change)
 
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uuid | PK |
-| user_id | uuid | References auth.users |
-| resource_id | uuid | FK to onboarding_resources |
-| completed_at | timestamptz | When marked complete |
-| unique(user_id, resource_id) | | Prevents duplicates |
+**File**: `src/pages/TrainingForm.tsx`, lines 343-365
 
-RLS: Users can manage their own rows only.
+**Current** (buggy):
+```typescript
+useEffect(() => {
+  if (!summary || isLoading || !inspectorProfile) return;
+  const updates: any = {};
+  if (!summary.person_submitting) {
+    // ... auto-populate name
+  }
+  if (!summary.submission_date) {
+    updates.submission_date = format(new Date(), 'yyyy-MM-dd');
+  }
+  if (Object.keys(updates).length > 0) {
+    isInternalUpdateRef.current = true;
+    setSummary({ ...summary, ...updates });
+  }
+}, [summary?.id, isLoading, inspectorProfile]);
+```
 
-**3. `onboarding-files` storage bucket** — private bucket for the actual video/PDF files. Super admins can upload; authenticated users can read.
+**Fixed**: Add a guard that only auto-populates on **first mount** (not on subsequent re-renders caused by server hydration). Use a ref to track whether the initial auto-populate has already run.
 
-### Frontend
+1. Add a ref: `const summaryAutoPopulatedRef = useRef(false);`
+2. Guard the effect: skip if `summaryAutoPopulatedRef.current` is already `true`
+3. Set the ref to `true` after first auto-populate runs
+4. Reset the ref in cleanup (not needed since it's per-mount)
 
-**`/onboarding` page** — accessible from the dashboard header navigation:
-- Lists all published resources grouped by type (Videos section, Documents section)
-- Each card shows: title, description, file type icon, and a checkbox to mark complete
-- Clicking a video opens an inline `<video>` player; clicking a PDF downloads it
-- A progress bar at the top shows "X of Y completed"
-- Matches existing app styling (cards, borders, monospace metadata)
+This ensures the auto-populate only fires once per form session, preventing server hydration from triggering a date reset.
 
-**Admin upload UI** — visible only to super admins on the same page:
-- "Add Resource" button opens a form: title, description, file type selector, file upload input, display order
-- Drag-to-reorder support using existing drag patterns
-- Toggle publish/unpublish per resource
-- Delete resource (removes from storage + DB)
+## Scope
 
-### Route Addition
-
-Add `/onboarding` to `App.tsx` router, import the new `Onboarding.tsx` page component. Add a navigation link in `AuthenticatedHeader.tsx`.
-
-### Files
-
-| File | Action |
-|------|--------|
-| Migration SQL | Create tables, bucket, RLS policies |
-| `src/pages/Onboarding.tsx` | New page component |
-| `src/App.tsx` | Add route |
-| `src/components/AuthenticatedHeader.tsx` | Add nav link |
+- **1 file changed**: `src/pages/TrainingForm.tsx`
+- **No database changes**
+- **No new dependencies**
+- **No impact on comment handling, report generation, or sync logic**
 
