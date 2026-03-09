@@ -222,21 +222,22 @@ async function upsertRelatedData(supabaseUrl, authHeaders, table, data) {
 
 // Sync inspection with all related data using upsert-only (no deletes)
 async function syncInspectionWithTransaction(inspection, systems, ziplines, equipment, standards, summary) {
-  const supabaseUrl = 'https://ssgzcgvygnsrqalisshx.supabase.co';
-  const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNzZ3pjZ3Z5Z25zcnFhbGlzc2h4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIyMzM5NjksImV4cCI6MjA3NzgwOTk2OX0.buTFy44tZdRIlRSFIm5BqeOGb4nX3ARuHawWA9hZN54';
+  const authHeaders = getAuthHeaders();
+  if (!authHeaders) {
+    console.warn('[SW Transaction] No valid auth token — skipping inspection sync');
+    return false;
+  }
   
   try {
     // Step 1: Upsert inspection data WITHOUT synced_at (deferred marking pattern)
-    // Uses POST + merge-duplicates instead of PATCH to handle offline-created records
     const inspData = { ...inspection };
-    delete inspData.synced_at; // Don't mark as synced yet
+    delete inspData.synced_at;
     
-    const inspResponse = await fetch(`${supabaseUrl}/rest/v1/inspections`, {
+    const inspResponse = await fetch(`${SUPABASE_URL}/rest/v1/inspections`, {
       method: 'POST',
       headers: {
+        ...authHeaders,
         'Content-Type': 'application/json',
-        'apikey': supabaseKey,
-        'Authorization': `Bearer ${supabaseKey}`,
         'Prefer': 'resolution=merge-duplicates,return=representation'
       },
       body: JSON.stringify(inspData)
@@ -246,21 +247,20 @@ async function syncInspectionWithTransaction(inspection, systems, ziplines, equi
     
     // Step 2: Upsert all child data (NO deletes -- upsert-only for zero data loss)
     await Promise.all([
-      upsertRelatedData(supabaseUrl, supabaseKey, 'inspection_systems', systems),
-      upsertRelatedData(supabaseUrl, supabaseKey, 'inspection_ziplines', ziplines),
-      upsertRelatedData(supabaseUrl, supabaseKey, 'inspection_equipment', equipment),
-      upsertRelatedData(supabaseUrl, supabaseKey, 'inspection_standards', standards),
-      summary ? upsertRelatedData(supabaseUrl, supabaseKey, 'inspection_summary', [summary]) : Promise.resolve(true),
+      upsertRelatedData(SUPABASE_URL, authHeaders, 'inspection_systems', systems),
+      upsertRelatedData(SUPABASE_URL, authHeaders, 'inspection_ziplines', ziplines),
+      upsertRelatedData(SUPABASE_URL, authHeaders, 'inspection_equipment', equipment),
+      upsertRelatedData(SUPABASE_URL, authHeaders, 'inspection_standards', standards),
+      summary ? upsertRelatedData(SUPABASE_URL, authHeaders, 'inspection_summary', [summary]) : Promise.resolve(true),
     ]);
     
     // Step 3: ONLY NOW mark as synced on the server (deferred synced_at)
     const now = new Date().toISOString();
-    const syncStampResponse = await fetch(`${supabaseUrl}/rest/v1/inspections?id=eq.${inspection.id}`, {
+    const syncStampResponse = await fetch(`${SUPABASE_URL}/rest/v1/inspections?id=eq.${inspection.id}`, {
       method: 'PATCH',
       headers: {
+        ...authHeaders,
         'Content-Type': 'application/json',
-        'apikey': supabaseKey,
-        'Authorization': `Bearer ${supabaseKey}`,
         'Prefer': 'return=representation'
       },
       body: JSON.stringify({ synced_at: now, updated_at: now, last_sync_source: 'service_worker' })
@@ -268,15 +268,12 @@ async function syncInspectionWithTransaction(inspection, systems, ziplines, equi
     
     await verifyResponseRows(syncStampResponse, 'Inspection sync stamp');
     
-    // Step 4: Post-sync verification — confirm the record exists with synced_at set
+    // Step 4: Post-sync verification
     const verifyResponse = await fetch(
-      `${supabaseUrl}/rest/v1/inspections?id=eq.${inspection.id}&select=id,synced_at&synced_at=not.is.null`,
+      `${SUPABASE_URL}/rest/v1/inspections?id=eq.${inspection.id}&select=id,synced_at&synced_at=not.is.null`,
       {
         method: 'GET',
-        headers: {
-          'apikey': supabaseKey,
-          'Authorization': `Bearer ${supabaseKey}`
-        }
+        headers: authHeaders
       }
     );
     const verifyRows = await verifyResponse.json();
@@ -284,7 +281,7 @@ async function syncInspectionWithTransaction(inspection, systems, ziplines, equi
       throw new Error('Post-sync verification failed: record not found with synced_at on server');
     }
     
-    return now; // Return the aligned timestamp for local IndexedDB update
+    return now;
     
   } catch (error) {
     console.error('[SW Transaction] Failed:', error);
