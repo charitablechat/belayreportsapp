@@ -280,10 +280,10 @@ serve(async (req) => {
 
     // Fetch related data including photos
     const [equipmentRes, standardsRes, systemsRes, ziplinesRes, summaryRes, photosRes] = await Promise.all([
-      supabase.from("inspection_equipment").select("*").eq("inspection_id", inspectionId),
+      supabase.from("inspection_equipment").select("*").eq("inspection_id", inspectionId).order("display_order"),
       supabase.from("inspection_standards").select("*").eq("inspection_id", inspectionId),
-      supabase.from("inspection_systems").select("*").eq("inspection_id", inspectionId),
-      supabase.from("inspection_ziplines").select("*").eq("inspection_id", inspectionId),
+      supabase.from("inspection_systems").select("*").eq("inspection_id", inspectionId).order("display_order"),
+      supabase.from("inspection_ziplines").select("*").eq("inspection_id", inspectionId).order("display_order"),
       supabase.from("inspection_summary").select("*").eq("inspection_id", inspectionId).single(),
       supabase.from("inspection_photos").select("*").eq("inspection_id", inspectionId),
     ]);

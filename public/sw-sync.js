@@ -306,10 +306,11 @@ async function syncInspectionsAtomic() {
     
     for (const inspection of unsynced) {
       try {
-        // Gather all related data
-        const systems = await getAllRelatedData(db, 'inspection_systems', inspection.id);
-        const ziplines = await getAllRelatedData(db, 'inspection_ziplines', inspection.id);
-        const equipment = await getAllRelatedData(db, 'inspection_equipment', inspection.id);
+        // Gather all related data and sort by display_order for consistent ordering
+        const sortByDisplayOrder = (arr) => arr.sort((a, b) => (a.display_order ?? 0) - (b.display_order ?? 0));
+        const systems = sortByDisplayOrder(await getAllRelatedData(db, 'inspection_systems', inspection.id));
+        const ziplines = sortByDisplayOrder(await getAllRelatedData(db, 'inspection_ziplines', inspection.id));
+        const equipment = sortByDisplayOrder(await getAllRelatedData(db, 'inspection_equipment', inspection.id));
         const standards = await getAllRelatedData(db, 'inspection_standards', inspection.id);
         const summaryArray = await getAllRelatedData(db, 'inspection_summary', inspection.id);
         const summary = summaryArray[0] || null;

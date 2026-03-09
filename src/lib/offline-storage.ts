@@ -1157,7 +1157,9 @@ export async function getRelatedDataOffline(
       const db = await getDB();
       const storeName = storeNameMap[type];
       const index = db.transaction(storeName).store.index('by-inspection');
-      return await index.getAll(inspectionId);
+      const results = await index.getAll(inspectionId);
+      // Sort by display_order to maintain consistent ordering
+      return results.sort((a: any, b: any) => (a.display_order ?? 0) - (b.display_order ?? 0));
     },
     [],
     `getRelatedDataOffline:${type}`
