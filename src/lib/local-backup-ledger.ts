@@ -43,7 +43,15 @@ function makeKey(type: ReportType, id: string): string {
 /**
  * Estimate total bytes used by all backup keys in localStorage
  */
+let _cachedStorageBytes = 0;
+let _storageBytesTs = 0;
+const STORAGE_BYTES_CACHE_TTL = 5000; // 5 seconds
+
 function estimateBackupStorageBytes(): number {
+  const now = Date.now();
+  if (_cachedStorageBytes > 0 && (now - _storageBytesTs) < STORAGE_BYTES_CACHE_TTL) {
+    return _cachedStorageBytes;
+  }
   let total = 0;
   for (let i = 0; i < localStorage.length; i++) {
     const key = localStorage.key(i);
@@ -54,6 +62,8 @@ function estimateBackupStorageBytes(): number {
       }
     }
   }
+  _cachedStorageBytes = total;
+  _storageBytesTs = now;
   return total;
 }
 

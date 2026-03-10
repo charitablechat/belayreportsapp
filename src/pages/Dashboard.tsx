@@ -522,6 +522,12 @@ export default function Dashboard() {
                 }
               } catch (cleanupErr) {
                 console.warn('[Dashboard] Orphan cleanup failed:', cleanupErr);
+              } };
+              // Yield to UI thread before running cleanup
+              if ('requestIdleCallback' in window) {
+                (window as any).requestIdleCallback(() => runOrphanCleanup());
+              } else {
+                setTimeout(runOrphanCleanup, 0);
               }
             })
             .catch(err => console.error('[Dashboard] Error batch saving inspections:', err));

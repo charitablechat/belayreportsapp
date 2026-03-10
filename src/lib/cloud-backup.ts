@@ -133,10 +133,7 @@ export async function fetchCloudSnapshots(): Promise<CloudBackupEntry[]> {
     snapshot_ts: row.snapshot_ts,
     created_at: row.created_at,
     user_name: profileMap.get(row.user_id) || 'Unknown',
-    facility: row.snapshot_data?.parent?.organization
-      || row.snapshot_data?.parent?.location
-      || row.snapshot_data?.parent?.site
-      || 'N/A',
+    facility: 'N/A',
   })) as CloudBackupEntry[];
 }
 
