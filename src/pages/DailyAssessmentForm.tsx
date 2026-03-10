@@ -612,9 +612,8 @@ export default function DailyAssessmentForm() {
     } catch (error) {
       console.error('Error updating assessment:', error);
       try {
-        const { queueAssessmentOperation: queueOp } = await import('@/lib/offline-storage');
         await Promise.race([
-          queueOp('update', id!, updatedAssessment),
+          queueAssessmentOperation('update', id!, updatedAssessment),
           new Promise((_, reject) => setTimeout(() => reject(new Error('Queue timeout')), 5000)),
         ]);
       } catch (e) {
