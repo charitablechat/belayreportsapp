@@ -657,17 +657,8 @@ export default function DailyAssessmentForm() {
     }, 8000);
     
     try {
-      // Import offline storage module - wrap in try-catch to handle import failures
-      let offlineStorage: any;
-      try {
-        offlineStorage = await Promise.race([
-          import('@/lib/offline-storage'),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('Import timeout')), 5000))
-        ]);
-      } catch (importError) {
-        console.warn('[Save] Failed to import offline storage:', importError);
-        offlineStorage = null;
-      }
+      // offline storage is statically imported — no dynamic import overhead
+      const offlineStorage = { saveDailyAssessmentOffline, saveAssessmentDataOffline, queueAssessmentOperation };
       
       // Save related data offline (fire-and-forget for UI responsiveness)
       // Guard: Only write child data if it was successfully loaded OR has items
