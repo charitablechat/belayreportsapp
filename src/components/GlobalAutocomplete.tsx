@@ -56,6 +56,9 @@ interface HistoryItem {
   usage_count: number;
 }
 
+// Module-level cache: shared across all GlobalAutocomplete instances
+const _globalHistoryCache = new Map<string, HistoryItem[]>();
+
 /**
  * GlobalAutocomplete - Unified, globally-shared autocomplete component.
  * 
@@ -83,31 +86,44 @@ export function GlobalAutocomplete({
   const hasFetchedFromDb = useRef(false);
   const lastSavedValue = useRef<string | null>(null);
   const triggerInputRef = useRef<HTMLInputElement>(null);
+
+  // Module-level cache for fetched results by fieldType
+  const cacheRef = useRef(_globalHistoryCache);
   
   // LocalStorage key for offline fallback
   const storageKey = `global-autocomplete-${fieldType}`;
 
-  // Load from localStorage on mount (offline fallback)
+  // Load from localStorage on mount AND check module-level cache
   useEffect(() => {
-    const loadLocalHistory = () => {
-      const saved = localStorage.getItem(storageKey);
-      if (saved) {
-        try {
-          const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed)) {
-            setHistoryOptions(parsed.map((v: string, i: number) => ({
-              id: `local-${i}`,
-              value: v,
-              usage_count: 1
-            })));
-          }
-        } catch (e) {
-          console.error("Failed to load local history", e);
+    // Check module-level cache first (instant, cross-instance)
+    const cached = cacheRef.current.get(fieldType);
+    if (cached) {
+      setHistoryOptions(cached);
+      hasFetchedFromDb.current = true;
+      setIsLoading(false);
+      return;
+    }
+    // Fallback to localStorage
+    const saved = localStorage.getItem(storageKey);
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          setHistoryOptions(parsed.map((v: string, i: number) => ({
+            id: `local-${i}`,
+            value: v,
+            usage_count: 1
+          })));
         }
+      } catch (e) {
+        console.error("Failed to load local history", e);
       }
-    };
-    loadLocalHistory();
-  }, [storageKey]);
+    }
+    // Pre-fetch from DB eagerly on mount (not on focus)
+    if (!hasFetchedFromDb.current) {
+      fetchGlobalHistory();
+    }
+  }, [storageKey, fieldType]);
 
   // Fetch global history from database (on-demand when popover opens)
   const fetchGlobalHistory = async () => {
@@ -139,9 +155,12 @@ export function GlobalAutocomplete({
               uniqueMap.set(key, item);
             }
           });
-          return Array.from(uniqueMap.values()).sort((a, b) => 
+          const merged = Array.from(uniqueMap.values()).sort((a, b) => 
             (b.usage_count || 0) - (a.usage_count || 0)
           );
+          // Store in module-level cache for instant access across instances
+          _globalHistoryCache.set(fieldType, merged);
+          return merged;
         });
         
         // Update localStorage with merged results

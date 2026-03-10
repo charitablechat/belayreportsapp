@@ -7,6 +7,7 @@
  */
 
 import { supabase } from '@/integrations/supabase/client';
+import { getUserWithCache } from '@/lib/cached-auth';
 import type { ReportType, ReportSnapshot } from './local-backup-ledger';
 
 export interface CloudBackupEntry {
@@ -70,7 +71,7 @@ async function _doUpload(
   reportId: string,
   snapshot: ReportSnapshot
 ): Promise<void> {
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getUserWithCache();
   if (!user) return;
 
   const { error } = await (supabase.from('report_cloud_backups') as any).upsert(
@@ -98,7 +99,7 @@ async function _doUpload(
  */
 export async function fetchCloudSnapshots(): Promise<CloudBackupEntry[]> {
   const { data, error } = await (supabase.from('report_cloud_backups') as any)
-    .select('id, report_type, report_id, device, synced, snapshot_ts, created_at, user_id, snapshot_data')
+    .select('id, report_type, report_id, device, synced, snapshot_ts, created_at, user_id')
     .order('snapshot_ts', { ascending: false })
     .limit(50);
 
@@ -132,10 +133,7 @@ export async function fetchCloudSnapshots(): Promise<CloudBackupEntry[]> {
     snapshot_ts: row.snapshot_ts,
     created_at: row.created_at,
     user_name: profileMap.get(row.user_id) || 'Unknown',
-    facility: row.snapshot_data?.parent?.organization
-      || row.snapshot_data?.parent?.location
-      || row.snapshot_data?.parent?.site
-      || 'N/A',
+    facility: 'N/A',
   })) as CloudBackupEntry[];
 }
 
