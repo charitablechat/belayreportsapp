@@ -1,66 +1,72 @@
 
 
-## Onboarding Resource Center
+# Robust Calendar Dropdown Navigation
 
-A dedicated `/onboarding` page where users can browse videos and PDFs you've uploaded, and mark items as completed.
+## Problem
 
-### Database
+The `Calendar` component uses `captionLayout="dropdown-buttons"` from react-day-picker v8, which renders separate Month and Year dropdowns. When a user changes one dropdown (e.g., Month to "February"), then changes the other (e.g., Year to "2023"), the uncontrolled internal state can behave unpredictably — the month may reset, or the calendar view may not reflect both selections together. This affects all 6 calendar instances across the app.
 
-**1. `onboarding_resources` table** — stores metadata for each uploaded file
+## Root Cause
 
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uuid | PK |
-| title | text | Display name |
-| description | text | Optional summary |
-| file_type | text | 'video' or 'pdf' |
-| file_url | text | Storage path |
-| display_order | integer | Sort order |
-| is_published | boolean | Only published items shown to users |
-| uploaded_by | uuid | References auth.users |
-| created_at | timestamptz | |
+The `Calendar` component passes no `month` or `onMonthChange` props to `DayPicker`. It runs fully uncontrolled. React-day-picker v8's dropdown mode manages its own displayed month state, which can produce inconsistent results when month and year dropdowns are changed in sequence — particularly when the selected day doesn't exist in the new month/year combination.
 
-RLS: Super admins can CRUD. Authenticated users can SELECT where `is_published = true`.
+## Affected Components (6 Calendar instances)
 
-**2. `onboarding_progress` table** — tracks per-user completion
+1. `InspectionHeader.tsx` — Inspection Date
+2. `PreviousInspectionDatePicker.tsx` — Previous Inspection Date
+3. `TrainingHeader.tsx` — Start Date
+4. `TrainingHeader.tsx` — End Date
+5. `DailyAssessmentHeader.tsx` — Assessment Date
+6. `DataRecoveryTool.tsx` — any date filtering (if present)
 
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uuid | PK |
-| user_id | uuid | References auth.users |
-| resource_id | uuid | FK to onboarding_resources |
-| completed_at | timestamptz | When marked complete |
-| unique(user_id, resource_id) | | Prevents duplicates |
+## Solution
 
-RLS: Users can manage their own rows only.
+**Single change in `src/components/ui/calendar.tsx`**: Add internal controlled state for the displayed month. This makes every Calendar instance automatically robust without touching any consumer code.
 
-**3. `onboarding-files` storage bucket** — private bucket for the actual video/PDF files. Super admins can upload; authenticated users can read.
+### Implementation
 
-### Frontend
+Add `month` and `onMonthChange` as controlled state inside the Calendar component, defaulting to the `selected` date (if provided) or `defaultMonth` or `new Date()`. This ensures both dropdowns compose correctly:
 
-**`/onboarding` page** — accessible from the dashboard header navigation:
-- Lists all published resources grouped by type (Videos section, Documents section)
-- Each card shows: title, description, file type icon, and a checkbox to mark complete
-- Clicking a video opens an inline `<video>` player; clicking a PDF downloads it
-- A progress bar at the top shows "X of Y completed"
-- Matches existing app styling (cards, borders, monospace metadata)
+```typescript
+function Calendar({ className, classNames, showOutsideDays = true, ...props }: CalendarProps) {
+  // Controlled month state for robust dropdown navigation
+  const [displayMonth, setDisplayMonth] = React.useState<Date>(
+    () => (props as any).selected instanceof Date 
+      ? (props as any).selected 
+      : (props as any).defaultMonth ?? new Date()
+  );
 
-**Admin upload UI** — visible only to super admins on the same page:
-- "Add Resource" button opens a form: title, description, file type selector, file upload input, display order
-- Drag-to-reorder support using existing drag patterns
-- Toggle publish/unpublish per resource
-- Delete resource (removes from storage + DB)
+  // Sync when selected date changes externally
+  React.useEffect(() => {
+    if ((props as any).selected instanceof Date) {
+      setDisplayMonth((props as any).selected);
+    }
+  }, [(props as any).selected]);
 
-### Route Addition
+  const handleMonthChange = React.useCallback((date: Date) => {
+    setDisplayMonth(date);
+    (props as any).onMonthChange?.(date);
+  }, [(props as any).onMonthChange]);
 
-Add `/onboarding` to `App.tsx` router, import the new `Onboarding.tsx` page component. Add a navigation link in `AuthenticatedHeader.tsx`.
+  return (
+    <DayPicker
+      month={displayMonth}
+      onMonthChange={handleMonthChange}
+      // ... rest unchanged
+    />
+  );
+}
+```
 
-### Files
+### What This Fixes
 
-| File | Action |
-|------|--------|
-| Migration SQL | Create tables, bucket, RLS policies |
-| `src/pages/Onboarding.tsx` | New page component |
-| `src/App.tsx` | Add route |
-| `src/components/AuthenticatedHeader.tsx` | Add nav link |
+- **Month-first then Year**: The month selection is preserved in `displayMonth` state. When the year dropdown changes, `onMonthChange` fires with the composed date (correct month + new year), and `setDisplayMonth` captures it.
+- **Year-first then Month**: Same mechanism in reverse.
+- **No consumer changes needed**: All 6 calendar instances inherit the fix automatically.
+
+## Files Changed
+
+- `src/components/ui/calendar.tsx` — Add controlled `month`/`onMonthChange` state with sync to `selected` prop
+
+One file. No new dependencies. No changes to any consumer component.
 
