@@ -9,7 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Eye, EyeOff, WifiOff, ArrowRight } from "lucide-react";
 import { usePWA } from "@/hooks/usePWA";
-import ropeWorksLogo from "@/assets/rope-works-logo.png";
+const ropeWorksLogo = "/rope-works-logo.avif";
 import authVideo from "@/assets/auth-background.mp4";
 import { hasCachedSessionForOffline } from "@/lib/cached-auth";
 import { createOfflineSession } from "@/lib/offline-auth";
