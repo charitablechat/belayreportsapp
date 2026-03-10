@@ -63,19 +63,35 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
   // --- Auto-scroll engine ---
   const scrollRafRef = useRef<number | null>(null);
   const pointerYRef = useRef<number | null>(null);
-  const EDGE_ZONE = 60;
-  const MAX_SCROLL_SPEED = 14;
+  const edgeEnteredAtRef = useRef<number | null>(null);
+  const EDGE_ZONE = 80;
+  const MAX_SCROLL_SPEED = 25;
 
   const startAutoScroll = useCallback(() => {
     if (scrollRafRef.current !== null) return;
+    edgeEnteredAtRef.current = null;
     const tick = () => {
       const y = pointerYRef.current;
       if (y !== null) {
         const vh = window.innerHeight;
         let speed = 0;
-        if (y < EDGE_ZONE) speed = -MAX_SCROLL_SPEED * ((EDGE_ZONE - y) / EDGE_ZONE);
-        else if (y > vh - EDGE_ZONE) speed = MAX_SCROLL_SPEED * ((y - (vh - EDGE_ZONE)) / EDGE_ZONE);
+        let ratio = 0;
+        let direction = 0;
+        if (y < EDGE_ZONE) { ratio = (EDGE_ZONE - y) / EDGE_ZONE; direction = -1; }
+        else if (y > vh - EDGE_ZONE) { ratio = (y - (vh - EDGE_ZONE)) / EDGE_ZONE; direction = 1; }
+        if (direction !== 0) {
+          const now = performance.now();
+          if (edgeEnteredAtRef.current === null) edgeEnteredAtRef.current = now;
+          const elapsed = now - edgeEnteredAtRef.current;
+          const accel = Math.min(3, 1 + (elapsed / 500));
+          const eased = Math.pow(ratio, 1.5);
+          speed = direction * MAX_SCROLL_SPEED * eased * accel;
+        } else {
+          edgeEnteredAtRef.current = null;
+        }
         if (speed !== 0) window.scrollBy({ top: speed, behavior: 'instant' as ScrollBehavior });
+      } else {
+        edgeEnteredAtRef.current = null;
       }
       scrollRafRef.current = requestAnimationFrame(tick);
     };

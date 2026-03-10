@@ -1,8 +1,8 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 
 const LONG_PRESS_MS = 200;
-const EDGE_ZONE = 60; // px from viewport edge to trigger scroll
-const MAX_SCROLL_SPEED = 14; // px per frame at the very edge
+const EDGE_ZONE = 80; // px from viewport edge to trigger scroll
+const MAX_SCROLL_SPEED = 25; // px per frame at the very edge
 
 export function useNativeDrag<T extends { id: string }>(
   items: T[],
@@ -26,26 +26,42 @@ export function useNativeDrag<T extends { id: string }>(
   // --- Auto-scroll engine ---
   const scrollRafRef = useRef<number | null>(null);
   const pointerYRef = useRef<number | null>(null);
+  const edgeEnteredAtRef = useRef<number | null>(null);
 
   const startAutoScroll = useCallback(() => {
     if (scrollRafRef.current !== null) return; // already running
+    edgeEnteredAtRef.current = null;
 
     const tick = () => {
       const y = pointerYRef.current;
       if (y === null) {
+        edgeEnteredAtRef.current = null;
         scrollRafRef.current = requestAnimationFrame(tick);
         return;
       }
 
       const vh = window.innerHeight;
       let speed = 0;
+      let ratio = 0;
+      let direction = 0;
 
       if (y < EDGE_ZONE) {
-        // Near top — scroll up (negative)
-        speed = -MAX_SCROLL_SPEED * ((EDGE_ZONE - y) / EDGE_ZONE);
+        ratio = (EDGE_ZONE - y) / EDGE_ZONE;
+        direction = -1;
       } else if (y > vh - EDGE_ZONE) {
-        // Near bottom — scroll down (positive)
-        speed = MAX_SCROLL_SPEED * ((y - (vh - EDGE_ZONE)) / EDGE_ZONE);
+        ratio = (y - (vh - EDGE_ZONE)) / EDGE_ZONE;
+        direction = 1;
+      }
+
+      if (direction !== 0) {
+        const now = performance.now();
+        if (edgeEnteredAtRef.current === null) edgeEnteredAtRef.current = now;
+        const elapsed = now - edgeEnteredAtRef.current;
+        const accel = Math.min(3, 1 + (elapsed / 500));
+        const eased = Math.pow(ratio, 1.5);
+        speed = direction * MAX_SCROLL_SPEED * eased * accel;
+      } else {
+        edgeEnteredAtRef.current = null;
       }
 
       if (speed !== 0) {
