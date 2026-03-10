@@ -90,6 +90,22 @@ export function useNativeDrag<T extends { id: string }>(
     };
   }, [stopAutoScroll]);
 
+  const removeGlobalDragListener = useCallback(() => {
+    if (globalDragHandlerRef.current) {
+      document.removeEventListener('dragover', globalDragHandlerRef.current);
+      globalDragHandlerRef.current = null;
+    }
+  }, []);
+
+  const addGlobalDragListener = useCallback(() => {
+    removeGlobalDragListener();
+    const handler = (e: DragEvent) => {
+      pointerYRef.current = e.clientY;
+    };
+    globalDragHandlerRef.current = handler;
+    document.addEventListener('dragover', handler);
+  }, [removeGlobalDragListener]);
+
   const clearState = useCallback(() => {
     draggedIdRef.current = null;
     dragOverIdRef.current = null;
@@ -100,12 +116,13 @@ export function useNativeDrag<T extends { id: string }>(
       clearTimeout(longPressTimerRef.current);
       longPressTimerRef.current = null;
     }
+    removeGlobalDragListener();
     stopAutoScroll();
     setDraggingId(null);
     setDragOverId(null);
     setDropPosition(null);
     setIsTouchMode(false);
-  }, [stopAutoScroll]);
+  }, [stopAutoScroll, removeGlobalDragListener]);
 
   // --- Native HTML5 drag handlers (desktop) ---
 
