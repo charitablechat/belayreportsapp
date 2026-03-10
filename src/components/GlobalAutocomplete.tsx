@@ -155,9 +155,12 @@ export function GlobalAutocomplete({
               uniqueMap.set(key, item);
             }
           });
-          return Array.from(uniqueMap.values()).sort((a, b) => 
+          const merged = Array.from(uniqueMap.values()).sort((a, b) => 
             (b.usage_count || 0) - (a.usage_count || 0)
           );
+          // Store in module-level cache for instant access across instances
+          _globalHistoryCache.set(fieldType, merged);
+          return merged;
         });
         
         // Update localStorage with merged results
