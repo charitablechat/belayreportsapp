@@ -99,7 +99,7 @@ async function _doUpload(
  */
 export async function fetchCloudSnapshots(): Promise<CloudBackupEntry[]> {
   const { data, error } = await (supabase.from('report_cloud_backups') as any)
-    .select('id, report_type, report_id, device, synced, snapshot_ts, created_at, user_id, snapshot_data')
+    .select('id, report_type, report_id, device, synced, snapshot_ts, created_at, user_id')
     .order('snapshot_ts', { ascending: false })
     .limit(50);
 
