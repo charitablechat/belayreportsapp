@@ -409,7 +409,6 @@ export default function DailyAssessmentForm() {
     try {
       // Try loading from offline storage first
       const offlineAssessment = await getOfflineDailyAssessment(id!);
-      const offlineAssessment = await getOfflineDailyAssessment(id!);
       
       if (offlineAssessment) {
         setAssessment(offlineAssessment);
