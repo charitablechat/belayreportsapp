@@ -18,7 +18,7 @@ export const useUnsyncedPhotos = () => {
       // Get current user to filter photos - uses cached auth
       const user = await getUserWithCache();
       if (!user) {
-        console.error('[Unsynced Photos] No authenticated user');
+        console.warn('[Unsynced Photos] No authenticated user');
         setStatus({
           unsyncedPhotoCount: 0,
           photosByInspection: {},
