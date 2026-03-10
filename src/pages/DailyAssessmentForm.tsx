@@ -868,15 +868,13 @@ export default function DailyAssessmentForm() {
            toast.success("Progress saved");
         } catch (error) {
           console.error('[Save] Error syncing to database:', error);
-          if (offlineStorage) {
-            try {
-              await Promise.race([
-                offlineStorage.queueAssessmentOperation('update', id!, updatedAssessment),
-                new Promise((_, reject) => setTimeout(() => reject(new Error('Queue timeout')), 5000)),
-              ]);
-            } catch (queueError) {
-              console.warn('[Save] Failed to queue operation:', queueError);
-            }
+          try {
+            await Promise.race([
+              queueAssessmentOperation('update', id!, updatedAssessment),
+              new Promise((_, reject) => setTimeout(() => reject(new Error('Queue timeout')), 5000)),
+            ]);
+          } catch (queueError) {
+            console.warn('[Save] Failed to queue operation:', queueError);
           }
           if (isMobile()) {
             addSyncNotification("Saved locally, will sync when connection improves");
