@@ -1,8 +1,8 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 
 const LONG_PRESS_MS = 200;
-const EDGE_ZONE = 60; // px from viewport edge to trigger scroll
-const MAX_SCROLL_SPEED = 14; // px per frame at the very edge
+const EDGE_ZONE = 80; // px from viewport edge to trigger scroll
+const MAX_SCROLL_SPEED = 25; // px per frame at the very edge
 
 export function useNativeDrag<T extends { id: string }>(
   items: T[],
