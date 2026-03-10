@@ -71,7 +71,7 @@ async function _doUpload(
   reportId: string,
   snapshot: ReportSnapshot
 ): Promise<void> {
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getUserWithCache();
   if (!user) return;
 
   const { error } = await (supabase.from('report_cloud_backups') as any).upsert(
