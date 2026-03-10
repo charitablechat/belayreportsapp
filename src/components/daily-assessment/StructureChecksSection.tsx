@@ -21,7 +21,9 @@ interface StructureChecksSectionProps {
   onSectionCommentsChange: (value: string) => void;
 }
 
-export default function StructureChecksSection({ checks, onUpdate, sectionComments, onSectionCommentsChange }: StructureChecksSectionProps) {
+import React from "react";
+
+const StructureChecksSection = React.memo(function StructureChecksSection({ checks, onUpdate, sectionComments, onSectionCommentsChange }: StructureChecksSectionProps) {
   const handleToggle = (itemKey: string) => {
     triggerHaptic('light');
     const existingCheck = checks.find(c => c.item_key === itemKey);
