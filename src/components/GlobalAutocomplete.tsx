@@ -56,6 +56,9 @@ interface HistoryItem {
   usage_count: number;
 }
 
+// Module-level cache: shared across all GlobalAutocomplete instances
+const _globalHistoryCache = new Map<string, HistoryItem[]>();
+
 /**
  * GlobalAutocomplete - Unified, globally-shared autocomplete component.
  * 
