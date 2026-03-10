@@ -72,4 +72,6 @@ const EnvironmentChecksSection = React.memo(function EnvironmentChecksSection({ 
       </CardContent>
     </Card>
   );
-}
+});
+
+export default EnvironmentChecksSection;

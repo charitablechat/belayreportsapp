@@ -96,4 +96,6 @@ const BeginningOfDaySection = React.memo(function BeginningOfDaySection({ items,
       </CardContent>
     </Card>
   );
-}
+});
+
+export default BeginningOfDaySection;

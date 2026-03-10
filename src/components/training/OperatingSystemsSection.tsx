@@ -133,4 +133,6 @@ const OperatingSystemsSection = React.memo(function OperatingSystemsSection({ sy
       </CardContent>
     </Card>
   );
-}
+});
+
+export default OperatingSystemsSection;

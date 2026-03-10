@@ -95,4 +95,6 @@ const EndOfDaySection = React.memo(function EndOfDaySection({ items, onUpdate }:
       </CardContent>
     </Card>
   );
-}
+});
+
+export default EndOfDaySection;

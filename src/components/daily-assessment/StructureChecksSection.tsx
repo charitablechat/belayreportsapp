@@ -76,4 +76,6 @@ const StructureChecksSection = React.memo(function StructureChecksSection({ chec
       </CardContent>
     </Card>
   );
-}
+});
+
+export default StructureChecksSection;

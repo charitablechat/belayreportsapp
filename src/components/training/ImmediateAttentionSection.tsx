@@ -60,4 +60,6 @@ const ImmediateAttentionSection = React.memo(function ImmediateAttentionSection(
       </CardContent>
     </Card>
   );
-}
+});
+
+export default ImmediateAttentionSection;

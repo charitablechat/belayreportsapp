@@ -58,4 +58,6 @@ const SystemsInPlaceSection = React.memo(function SystemsInPlaceSection({ items,
       </CardContent>
     </Card>
   );
-}
+});
+
+export default SystemsInPlaceSection;

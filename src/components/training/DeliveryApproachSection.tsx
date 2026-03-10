@@ -54,4 +54,6 @@ const DeliveryApproachSection = React.memo(function DeliveryApproachSection({ ap
       </CardContent>
     </Card>
   );
-}
+});
+
+export default DeliveryApproachSection;

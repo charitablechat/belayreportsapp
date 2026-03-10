@@ -124,4 +124,6 @@ const VerifiableItemsSection = React.memo(function VerifiableItemsSection({ item
       </CardContent>
     </Card>
   );
-}
+});
+
+export default VerifiableItemsSection;

@@ -66,4 +66,6 @@ const EquipmentChecksSection = React.memo(function EquipmentChecksSection({ chec
       </CardContent>
     </Card>
   );
-}
+});
+
+export default EquipmentChecksSection;

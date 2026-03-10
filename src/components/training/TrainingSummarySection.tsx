@@ -88,4 +88,6 @@ const TrainingSummarySection = React.memo(function TrainingSummarySection({ summ
       </CardContent>
     </Card>
   );
-}
+});
+
+export default TrainingSummarySection;
