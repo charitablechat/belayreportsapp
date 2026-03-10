@@ -50,6 +50,14 @@ import { isMobile } from "@/lib/mobile-detection";
 import { addSyncNotification, addSaveNotification, addNotification } from "@/lib/notification-center";
 import { useReportSync } from "@/hooks/useReportSync";
 
+import {
+  getOfflineDailyAssessment,
+  getAssessmentDataOffline,
+  saveDailyAssessmentOffline,
+  saveAssessmentDataOffline,
+  queueAssessmentOperation,
+} from "@/lib/offline-storage";
+
 import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
 import { UnsavedChangesDialog } from "@/components/UnsavedChangesDialog";
 import { useSaveShortcut } from "@/hooks/useKeyboardShortcuts";
