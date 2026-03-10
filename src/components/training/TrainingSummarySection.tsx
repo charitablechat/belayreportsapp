@@ -14,7 +14,9 @@ interface TrainingSummarySectionProps {
   onUpdate: (field: string, value: any) => void;
 }
 
-export default function TrainingSummarySection({ summary, onUpdate }: TrainingSummarySectionProps) {
+import React from "react";
+
+const TrainingSummarySection = React.memo(function TrainingSummarySection({ summary, onUpdate }: TrainingSummarySectionProps) {
   return (
     <Card>
       <CardHeader>
@@ -86,4 +88,6 @@ export default function TrainingSummarySection({ summary, onUpdate }: TrainingSu
       </CardContent>
     </Card>
   );
-}
+});
+
+export default TrainingSummarySection;

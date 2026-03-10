@@ -16,7 +16,9 @@ const IMMEDIATE_ATTENTION_ITEMS = [
   'No Immediate Attention needed at this time'
 ];
 
-export default function ImmediateAttentionSection({ items, onUpdate }: ImmediateAttentionSectionProps) {
+import React from "react";
+
+const ImmediateAttentionSection = React.memo(function ImmediateAttentionSection({ items, onUpdate }: ImmediateAttentionSectionProps) {
   const handleToggle = (item: string, checked: boolean) => {
     triggerHaptic('light');
     if (checked) {
@@ -58,4 +60,6 @@ export default function ImmediateAttentionSection({ items, onUpdate }: Immediate
       </CardContent>
     </Card>
   );
-}
+});
+
+export default ImmediateAttentionSection;

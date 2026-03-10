@@ -50,6 +50,14 @@ import { isMobile } from "@/lib/mobile-detection";
 import { addSyncNotification, addSaveNotification, addNotification } from "@/lib/notification-center";
 import { useReportSync } from "@/hooks/useReportSync";
 
+import {
+  getOfflineDailyAssessment,
+  getAssessmentDataOffline,
+  saveDailyAssessmentOffline,
+  saveAssessmentDataOffline,
+  queueAssessmentOperation,
+} from "@/lib/offline-storage";
+
 import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
 import { UnsavedChangesDialog } from "@/components/UnsavedChangesDialog";
 import { useSaveShortcut } from "@/hooks/useKeyboardShortcuts";
@@ -400,7 +408,6 @@ export default function DailyAssessmentForm() {
   const loadAssessment = async () => {
     try {
       // Try loading from offline storage first
-      const { getOfflineDailyAssessment, getAssessmentDataOffline } = await import('@/lib/offline-storage');
       const offlineAssessment = await getOfflineDailyAssessment(id!);
       
       if (offlineAssessment) {
@@ -441,7 +448,7 @@ export default function DailyAssessmentForm() {
         const backup = getReportSnapshot('daily_assessment', id!);
         if (backup) {
           console.log('[DailyAssessmentForm] IndexedDB empty but localStorage backup found — auto-restoring');
-          const { saveDailyAssessmentOffline, saveAssessmentDataOffline } = await import('@/lib/offline-storage');
+          
           saveDailyAssessmentOffline(backup.parent).catch(() => {});
           isInternalUpdateRef.current = true;
           setAssessment(backup.parent);
@@ -526,7 +533,7 @@ export default function DailyAssessmentForm() {
           childDataLoadedRef.current.equipment_checks = true;
           childDataLoadedRef.current.structure_checks = true;
           childDataLoadedRef.current.environment_checks = true;
-          const { saveDailyAssessmentOffline, saveAssessmentDataOffline } = await import('@/lib/offline-storage');
+          
           saveDailyAssessmentOffline({ ...assessmentData, synced_at: assessmentData.synced_at || new Date().toISOString() }).catch(e =>
             console.warn('[DailyAssessmentForm] Non-critical: failed to cache assessment', e)
           );
@@ -574,7 +581,7 @@ export default function DailyAssessmentForm() {
     setHasUnsavedChanges(true);
     try {
       // Save offline first
-      const { saveDailyAssessmentOffline, queueAssessmentOperation } = await import('@/lib/offline-storage');
+      await saveDailyAssessmentOffline(updatedAssessment);
       await saveDailyAssessmentOffline(updatedAssessment);
 
       if (navigator.onLine) {
@@ -604,9 +611,8 @@ export default function DailyAssessmentForm() {
     } catch (error) {
       console.error('Error updating assessment:', error);
       try {
-        const { queueAssessmentOperation: queueOp } = await import('@/lib/offline-storage');
         await Promise.race([
-          queueOp('update', id!, updatedAssessment),
+          queueAssessmentOperation('update', id!, updatedAssessment),
           new Promise((_, reject) => setTimeout(() => reject(new Error('Queue timeout')), 5000)),
         ]);
       } catch (e) {
@@ -650,26 +656,12 @@ export default function DailyAssessmentForm() {
     }, 8000);
     
     try {
-      // Import offline storage module - wrap in try-catch to handle import failures
-      let offlineStorage: any;
-      try {
-        offlineStorage = await Promise.race([
-          import('@/lib/offline-storage'),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('Import timeout')), 5000))
-        ]);
-      } catch (importError) {
-        console.warn('[Save] Failed to import offline storage:', importError);
-        offlineStorage = null;
-      }
-      
-      // Save related data offline (fire-and-forget for UI responsiveness)
-      // Guard: Only write child data if it was successfully loaded OR has items
-      if (offlineStorage) {
-        if (import.meta.env.DEV) console.log('[Save] Saving to offline storage...');
-        const childOps: Promise<any>[] = [];
-        const guardedSave = (key: string, data: any[]) => {
-          if (data.length > 0 || childDataLoadedRef.current[key]) {
-            childOps.push(offlineStorage.saveAssessmentDataOffline(key, id!, data));
+      // offline storage is statically imported — no dynamic import overhead
+      if (import.meta.env.DEV) console.log('[Save] Saving to offline storage...');
+      const childOps: Promise<any>[] = [];
+      const guardedSave = (key: Parameters<typeof saveAssessmentDataOffline>[0], data: any[]) => {
+        if (data.length > 0 || childDataLoadedRef.current[key]) {
+          childOps.push(saveAssessmentDataOffline(key, id!, data));
           } else {
             console.warn(`[DailyAssessment Save] Skipping ${key} save — empty array not confirmed as loaded`);
           }
@@ -712,7 +704,7 @@ export default function DailyAssessmentForm() {
         }).catch((offlineError) => {
           console.warn('[Save] Offline storage failed:', offlineError);
         });
-      }
+      
 
       // Save assessment without changing status
       const updatedAssessment = { 
@@ -725,12 +717,10 @@ export default function DailyAssessmentForm() {
           : {}),
       };
       
-      if (offlineStorage) {
-        try {
-          await withTimeout(offlineStorage.saveDailyAssessmentOffline(updatedAssessment), 3000, 'Assessment offline save');
-        } catch (e) {
-          console.warn('[Save] Assessment offline save timed out:', e);
-        }
+      try {
+        await withTimeout(saveDailyAssessmentOffline(updatedAssessment), 3000, 'Assessment offline save');
+      } catch (e) {
+        console.warn('[Save] Assessment offline save timed out:', e);
       }
 
       if (navigator.onLine) {
@@ -868,27 +858,23 @@ export default function DailyAssessmentForm() {
 
           // Only mark local as synced after server confirmation
           updatedAssessment.synced_at = saveSyncTimestamp;
-          if (offlineStorage) {
-            try {
-              await withTimeout(offlineStorage.saveDailyAssessmentOffline(updatedAssessment), 2000, 'Synced_at update');
-            } catch (e) {
-              console.warn('[Save] Synced_at offline update timed out');
-            }
+          try {
+            await withTimeout(saveDailyAssessmentOffline(updatedAssessment), 2000, 'Synced_at update');
+          } catch (e) {
+            console.warn('[Save] Synced_at offline update timed out');
           }
           
            markSnapshotSynced('daily_assessment', id!);
            toast.success("Progress saved");
         } catch (error) {
           console.error('[Save] Error syncing to database:', error);
-          if (offlineStorage) {
-            try {
-              await Promise.race([
-                offlineStorage.queueAssessmentOperation('update', id!, updatedAssessment),
-                new Promise((_, reject) => setTimeout(() => reject(new Error('Queue timeout')), 5000)),
-              ]);
-            } catch (queueError) {
-              console.warn('[Save] Failed to queue operation:', queueError);
-            }
+          try {
+            await Promise.race([
+              queueAssessmentOperation('update', id!, updatedAssessment),
+              new Promise((_, reject) => setTimeout(() => reject(new Error('Queue timeout')), 5000)),
+            ]);
+          } catch (queueError) {
+            console.warn('[Save] Failed to queue operation:', queueError);
           }
           if (isMobile()) {
             addSyncNotification("Saved locally, will sync when connection improves");
@@ -898,15 +884,13 @@ export default function DailyAssessmentForm() {
         }
       } else {
         console.log('[Save] Offline - queuing for sync');
-        if (offlineStorage) {
-          try {
-            await Promise.race([
-              offlineStorage.queueAssessmentOperation('update', id!, updatedAssessment),
-              new Promise((_, reject) => setTimeout(() => reject(new Error('Queue timeout')), 5000)),
-            ]);
-          } catch (queueError) {
-            console.warn('[Save] Failed to queue operation:', queueError);
-          }
+        try {
+          await Promise.race([
+            queueAssessmentOperation('update', id!, updatedAssessment),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Queue timeout')), 5000)),
+          ]);
+        } catch (queueError) {
+          console.warn('[Save] Failed to queue operation:', queueError);
         }
         if (isMobile()) {
           addSaveNotification("Saved offline");
@@ -972,7 +956,7 @@ export default function DailyAssessmentForm() {
     setShowSubmitDialog(false);
     
     try {
-      const { saveDailyAssessmentOffline, saveAssessmentDataOffline, queueAssessmentOperation } = await import('@/lib/offline-storage');
+      
       
       // Save related data offline with timeout protection (non-blocking)
       console.log('[Submit] Saving to offline storage...');

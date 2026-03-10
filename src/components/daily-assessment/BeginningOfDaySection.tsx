@@ -19,7 +19,9 @@ interface BeginningOfDaySectionProps {
   onUpdate: (items: any[]) => void;
 }
 
-export default function BeginningOfDaySection({ items, onUpdate }: BeginningOfDaySectionProps) {
+import React from "react";
+
+const BeginningOfDaySection = React.memo(function BeginningOfDaySection({ items, onUpdate }: BeginningOfDaySectionProps) {
   const handleToggle = (itemKey: string) => {
     triggerHaptic('light');
     const existingItem = items.find(i => i.item_key === itemKey);
@@ -94,4 +96,6 @@ export default function BeginningOfDaySection({ items, onUpdate }: BeginningOfDa
       </CardContent>
     </Card>
   );
-}
+});
+
+export default BeginningOfDaySection;

@@ -26,7 +26,9 @@ interface OperatingSystemsSectionProps {
   onSectionCommentsChange: (value: string) => void;
 }
 
-export default function OperatingSystemsSection({ systems, onUpdate, sectionComments, onSectionCommentsChange }: OperatingSystemsSectionProps) {
+import React from "react";
+
+const OperatingSystemsSection = React.memo(function OperatingSystemsSection({ systems, onUpdate, sectionComments, onSectionCommentsChange }: OperatingSystemsSectionProps) {
   const handleToggle = (systemName: string) => {
     triggerHaptic('light');
     const exists = systems.some(s => s.system_name === systemName);
@@ -141,4 +143,6 @@ export default function OperatingSystemsSection({ systems, onUpdate, sectionComm
       </CardContent>
     </Card>
   );
-}
+});
+
+export default OperatingSystemsSection;

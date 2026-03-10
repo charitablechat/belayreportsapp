@@ -26,7 +26,9 @@ const SYSTEMS_IN_PLACE = [
   'Unable to check any of the above at this time'
 ];
 
-export default function VerifiableItemsSection({ items, onUpdate, systemsInPlace, onUpdateSystemsInPlace }: VerifiableItemsSectionProps) {
+import React from "react";
+
+const VerifiableItemsSection = React.memo(function VerifiableItemsSection({ items, onUpdate, systemsInPlace, onUpdateSystemsInPlace }: VerifiableItemsSectionProps) {
   const handleToggle = (item: string, checked: boolean) => {
     triggerHaptic('light');
     if (checked) {
@@ -122,4 +124,6 @@ export default function VerifiableItemsSection({ items, onUpdate, systemsInPlace
       </CardContent>
     </Card>
   );
-}
+});
+
+export default VerifiableItemsSection;

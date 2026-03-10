@@ -18,7 +18,9 @@ interface EndOfDaySectionProps {
   onUpdate: (items: any[]) => void;
 }
 
-export default function EndOfDaySection({ items, onUpdate }: EndOfDaySectionProps) {
+import React from "react";
+
+const EndOfDaySection = React.memo(function EndOfDaySection({ items, onUpdate }: EndOfDaySectionProps) {
   const handleToggle = (itemKey: string) => {
     triggerHaptic('light');
     const existingItem = items.find(i => i.item_key === itemKey);
@@ -93,4 +95,6 @@ export default function EndOfDaySection({ items, onUpdate }: EndOfDaySectionProp
       </CardContent>
     </Card>
   );
-}
+});
+
+export default EndOfDaySection;

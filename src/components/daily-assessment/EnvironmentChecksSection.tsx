@@ -17,7 +17,9 @@ interface EnvironmentChecksSectionProps {
   onSectionCommentsChange: (value: string) => void;
 }
 
-export default function EnvironmentChecksSection({ checks, onUpdate, sectionComments, onSectionCommentsChange }: EnvironmentChecksSectionProps) {
+import React from "react";
+
+const EnvironmentChecksSection = React.memo(function EnvironmentChecksSection({ checks, onUpdate, sectionComments, onSectionCommentsChange }: EnvironmentChecksSectionProps) {
   const handleToggle = (itemKey: string) => {
     triggerHaptic('light');
     const existingCheck = checks.find(c => c.item_key === itemKey);
@@ -70,4 +72,6 @@ export default function EnvironmentChecksSection({ checks, onUpdate, sectionComm
       </CardContent>
     </Card>
   );
-}
+});
+
+export default EnvironmentChecksSection;

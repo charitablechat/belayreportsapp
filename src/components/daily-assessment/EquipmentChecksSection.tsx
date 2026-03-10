@@ -18,7 +18,9 @@ interface EquipmentChecksSectionProps {
   onUpdate: (checks: any[]) => void;
 }
 
-export default function EquipmentChecksSection({ checks, onUpdate }: EquipmentChecksSectionProps) {
+import React from "react";
+
+const EquipmentChecksSection = React.memo(function EquipmentChecksSection({ checks, onUpdate }: EquipmentChecksSectionProps) {
   const handleToggle = (itemKey: string) => {
     triggerHaptic('light');
     const existingCheck = checks.find(c => c.item_key === itemKey);
@@ -64,4 +66,6 @@ export default function EquipmentChecksSection({ checks, onUpdate }: EquipmentCh
       </CardContent>
     </Card>
   );
-}
+});
+
+export default EquipmentChecksSection;

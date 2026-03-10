@@ -17,7 +17,9 @@ const SYSTEMS_IN_PLACE = [
   'Unable to check any of the above at this time'
 ];
 
-export default function SystemsInPlaceSection({ items, onUpdate }: SystemsInPlaceSectionProps) {
+import React from "react";
+
+const SystemsInPlaceSection = React.memo(function SystemsInPlaceSection({ items, onUpdate }: SystemsInPlaceSectionProps) {
   const handleToggle = (item: string, checked: boolean) => {
     triggerHaptic('light');
     if (checked) {
@@ -56,4 +58,6 @@ export default function SystemsInPlaceSection({ items, onUpdate }: SystemsInPlac
       </CardContent>
     </Card>
   );
-}
+});
+
+export default SystemsInPlaceSection;
