@@ -128,7 +128,7 @@ export function useDashboardFilters(
   }, []);
 
   const hasActiveFilters = useMemo(() => {
-    const { search, statusFilter, assigneeFilter, dateRange, syncFilter, quickFilters } = filters;
+    const { search, statusFilter, assigneeFilter, dateRange, syncFilter, quickFilters, alphabeticalFilter, facilityFilter } = filters;
     return !!(
       search ||
       statusFilter !== 'all' ||
@@ -136,6 +136,8 @@ export function useDashboardFilters(
       dateRange.from ||
       dateRange.to ||
       syncFilter !== 'all' ||
+      alphabeticalFilter ||
+      facilityFilter ||
       quickFilters.myCards ||
       quickFilters.dueThisWeek ||
       quickFilters.draftsOnly ||
