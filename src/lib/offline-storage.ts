@@ -614,7 +614,7 @@ export async function getDB() {
       openDBV8WithTimeout(),
       new Promise<never>((_, reject) => 
         setTimeout(() => {
-          console.error('[Offline Storage] IndexedDB open timed out after 3 seconds');
+          console.warn('[Offline Storage] IndexedDB open timed out after 3 seconds');
           reject(new Error('IndexedDB open timed out'));
         }, 3000)
       )
