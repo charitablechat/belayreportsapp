@@ -249,6 +249,11 @@ export function DashboardReportsSection({
               onSyncChange={(v) => updateFilter('syncFilter', v)}
               uniqueInspectors={scopedInspectors}
               statuses={statuses}
+              alphabeticalFilter={filters.alphabeticalFilter}
+              onAlphabeticalChange={(v) => updateFilter('alphabeticalFilter', v)}
+              facilityFilter={filters.facilityFilter}
+              onFacilityChange={(v) => updateFilter('facilityFilter', v)}
+              uniqueFacilities={uniqueFacilities}
             />
 
             <DashboardQuickFilters
