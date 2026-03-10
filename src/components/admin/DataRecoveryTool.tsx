@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, Component, type ReactNode } from "react";
+import { useState, useEffect, useCallback, useRef, Component, type ReactNode } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
