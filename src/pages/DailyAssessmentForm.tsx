@@ -657,16 +657,11 @@ export default function DailyAssessmentForm() {
     
     try {
       // offline storage is statically imported — no dynamic import overhead
-      const offlineStorage = { saveDailyAssessmentOffline, saveAssessmentDataOffline, queueAssessmentOperation };
-      
-      // Save related data offline (fire-and-forget for UI responsiveness)
-      // Guard: Only write child data if it was successfully loaded OR has items
-      if (offlineStorage) {
-        if (import.meta.env.DEV) console.log('[Save] Saving to offline storage...');
-        const childOps: Promise<any>[] = [];
-        const guardedSave = (key: string, data: any[]) => {
-          if (data.length > 0 || childDataLoadedRef.current[key]) {
-            childOps.push(offlineStorage.saveAssessmentDataOffline(key, id!, data));
+      if (import.meta.env.DEV) console.log('[Save] Saving to offline storage...');
+      const childOps: Promise<any>[] = [];
+      const guardedSave = (key: Parameters<typeof saveAssessmentDataOffline>[0], data: any[]) => {
+        if (data.length > 0 || childDataLoadedRef.current[key]) {
+          childOps.push(saveAssessmentDataOffline(key, id!, data));
           } else {
             console.warn(`[DailyAssessment Save] Skipping ${key} save — empty array not confirmed as loaded`);
           }
