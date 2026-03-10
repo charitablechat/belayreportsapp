@@ -408,7 +408,7 @@ export default function DailyAssessmentForm() {
   const loadAssessment = async () => {
     try {
       // Try loading from offline storage first
-      const { getOfflineDailyAssessment, getAssessmentDataOffline } = await import('@/lib/offline-storage');
+      const offlineAssessment = await getOfflineDailyAssessment(id!);
       const offlineAssessment = await getOfflineDailyAssessment(id!);
       
       if (offlineAssessment) {
