@@ -31,7 +31,9 @@ const OPERATING_SYSTEMS = [
   'Hydraulic Zip Line'
 ];
 
-export default function OperatingSystemsSection({ systems, onUpdate }: OperatingSystemsSectionProps) {
+import React from "react";
+
+const OperatingSystemsSection = React.memo(function OperatingSystemsSection({ systems, onUpdate }: OperatingSystemsSectionProps) {
   const otherEntries = systems.filter(s => s.system_name === 'Other');
   const predefinedSystems = systems.filter(s => s.system_name !== 'Other');
 
