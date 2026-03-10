@@ -631,56 +631,54 @@ export default function InspectionForm() {
     });
   };
 
+  // Memoize the fail/provisions signature to avoid recomputing on every render
+  const failProvisionsSignature = useMemo(() => {
+    const items: string[] = [];
+    
+    // Equipment items
+    equipment.forEach(item => {
+      const result = item.result?.toLowerCase();
+      if (result === 'fail' || result === 'pass w/provisions' || (result === 'pass' && item.comments?.trim())) {
+        items.push(`eq:${item.id}:${result}:${item.comments || ''}`);
+      }
+    });
+    
+    // Operating systems
+    systems.forEach(item => {
+      const result = item.result?.toLowerCase();
+      if (result === 'fail' || result === 'pass w/provisions' || (result === 'pass' && item.comments?.trim())) {
+        items.push(`sys:${item.id}:${result}:${item.comments || ''}`);
+      }
+    });
+    
+    // Ziplines (including component results)
+    ziplines.forEach(item => {
+      const results = [
+        item.result?.toLowerCase(),
+        item.cable_result?.toLowerCase(),
+        item.braking_result?.toLowerCase(),
+        item.ead_result?.toLowerCase()
+      ];
+      
+      const hasFail = results.some(r => r === 'fail');
+      const hasProvisions = results.some(r => r === 'pass w/provisions');
+      const hasPassWithComments = !hasFail && !hasProvisions && item.result?.toLowerCase() === 'pass' && item.comments?.trim();
+      
+      if (hasFail || hasProvisions || hasPassWithComments) {
+        items.push(`zip:${item.id}:${item.result}:${item.cable_result}:${item.braking_result}:${item.ead_result}:${item.comments || ''}`);
+      }
+    });
+    
+    return items.sort().join('|');
+  }, [equipment, systems, ziplines]);
+
   // Real-time summary auto-regeneration when fail/provisions items change
   useEffect(() => {
     // Skip during initial load
     if (loading || !inspection?.id || !isOwner) return;
     
-    // Build a signature of all fail/provisions items with their comments
-    const getFailProvisionsSignature = () => {
-      const items: string[] = [];
-      
-      // Equipment items
-      equipment.forEach(item => {
-        const result = item.result?.toLowerCase();
-        if (result === 'fail' || result === 'pass w/provisions' || (result === 'pass' && item.comments?.trim())) {
-          items.push(`eq:${item.id}:${result}:${item.comments || ''}`);
-        }
-      });
-      
-      // Operating systems
-      systems.forEach(item => {
-        const result = item.result?.toLowerCase();
-        if (result === 'fail' || result === 'pass w/provisions' || (result === 'pass' && item.comments?.trim())) {
-          items.push(`sys:${item.id}:${result}:${item.comments || ''}`);
-        }
-      });
-      
-      // Ziplines (including component results)
-      ziplines.forEach(item => {
-        const results = [
-          item.result?.toLowerCase(),
-          item.cable_result?.toLowerCase(),
-          item.braking_result?.toLowerCase(),
-          item.ead_result?.toLowerCase()
-        ];
-        
-        const hasFail = results.some(r => r === 'fail');
-        const hasProvisions = results.some(r => r === 'pass w/provisions');
-        const hasPassWithComments = !hasFail && !hasProvisions && item.result?.toLowerCase() === 'pass' && item.comments?.trim();
-        
-        if (hasFail || hasProvisions || hasPassWithComments) {
-          items.push(`zip:${item.id}:${item.result}:${item.cable_result}:${item.braking_result}:${item.ead_result}:${item.comments || ''}`);
-        }
-      });
-      
-      return items.sort().join('|');
-    };
-    
-    const currentSignature = getFailProvisionsSignature();
-    
     // Only regenerate if signature changed and there are items
-    if (currentSignature !== previousFailProvisionsRef.current) {
+    if (failProvisionsSignature !== previousFailProvisionsRef.current) {
       // Clear any pending timer
       if (summaryRegenerateTimerRef.current) {
         clearTimeout(summaryRegenerateTimerRef.current);
@@ -702,7 +700,7 @@ export default function InspectionForm() {
       }, 800);
     }
     
-    previousFailProvisionsRef.current = currentSignature;
+    previousFailProvisionsRef.current = failProvisionsSignature;
     
     // Cleanup timer on unmount
     return () => {
@@ -710,7 +708,7 @@ export default function InspectionForm() {
         clearTimeout(summaryRegenerateTimerRef.current);
       }
     };
-  }, [equipment, systems, ziplines, loading, inspection?.id, isOwner]);
+  }, [failProvisionsSignature, loading, inspection?.id, isOwner]);
 
   // Original manual regenerate handler wrapper (for button click)
   const handleManualRegenerateSummary = () => {

@@ -406,23 +406,30 @@ interface CloudSnapshotsPanelProps {
 export function CloudSnapshotsPanel({ allowDelete = true }: CloudSnapshotsPanelProps) {
   const [snapshots, setSnapshots] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const lastFetchedAt = useRef<number>(0);
+  const STALE_TIME = 30000; // 30 seconds
 
-  const loadSnapshots = useCallback(async () => {
+  const loadSnapshots = useCallback(async (force = false) => {
+    // Skip if data is fresh (stale-while-revalidate)
+    if (!force && Date.now() - lastFetchedAt.current < STALE_TIME && snapshots.length > 0) {
+      return;
+    }
     setLoading(true);
     try {
       const { fetchCloudSnapshots } = await import('@/lib/cloud-backup');
       const data = await fetchCloudSnapshots();
       setSnapshots(data);
+      lastFetchedAt.current = Date.now();
     } catch {
       toast.error("Failed to load cloud backups");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [snapshots.length]);
 
   useEffect(() => {
     loadSnapshots();
-  }, [loadSnapshots]);
+  }, []);
 
   const handleRestore = async (snapshotId: string) => {
     try {
