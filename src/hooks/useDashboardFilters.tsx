@@ -111,6 +111,8 @@ export function useDashboardFilters(
       assigneeFilter: [],
       dateRange: {},
       syncFilter: 'all',
+      alphabeticalFilter: '',
+      facilityFilter: '',
       quickFilters: { myCards: false, dueThisWeek: false, draftsOnly: false, needsAttention: false },
       page: 1,
     }));
