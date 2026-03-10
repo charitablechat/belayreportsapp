@@ -1,6 +1,17 @@
+import { lazy, Suspense } from "react";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { LocalSnapshotsPanel, CloudSnapshotsPanel, RecoveryErrorBoundary } from "@/components/admin/DataRecoveryTool";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Loader2 } from "lucide-react";
+
+const LazyLocalSnapshotsPanel = lazy(() =>
+  import("@/components/admin/DataRecoveryTool").then(m => ({ default: m.LocalSnapshotsPanel }))
+);
+const LazyCloudSnapshotsPanel = lazy(() =>
+  import("@/components/admin/DataRecoveryTool").then(m => ({ default: m.CloudSnapshotsPanel }))
+);
+const LazyRecoveryErrorBoundary = lazy(() =>
+  import("@/components/admin/DataRecoveryTool").then(m => ({ default: m.RecoveryErrorBoundary }))
+);
 
 interface UserDataRecoverySheetProps {
   open: boolean;
