@@ -704,7 +704,7 @@ export default function DailyAssessmentForm() {
         }).catch((offlineError) => {
           console.warn('[Save] Offline storage failed:', offlineError);
         });
-      }
+      
 
       // Save assessment without changing status
       const updatedAssessment = { 
