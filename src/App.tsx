@@ -109,7 +109,9 @@ const RootLayout = () => {
             <UpdateNotification />
             <InstallSuccessNotification />
             <AuthenticatedHeader />
-            <Outlet />
+            <Suspense fallback={null}>
+              <Outlet />
+            </Suspense>
           </TooltipProvider>
         </PWAProvider>
       </QueryClientProvider>
