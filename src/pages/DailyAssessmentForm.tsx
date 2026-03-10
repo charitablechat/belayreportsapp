@@ -884,15 +884,13 @@ export default function DailyAssessmentForm() {
         }
       } else {
         console.log('[Save] Offline - queuing for sync');
-        if (offlineStorage) {
-          try {
-            await Promise.race([
-              offlineStorage.queueAssessmentOperation('update', id!, updatedAssessment),
-              new Promise((_, reject) => setTimeout(() => reject(new Error('Queue timeout')), 5000)),
-            ]);
-          } catch (queueError) {
-            console.warn('[Save] Failed to queue operation:', queueError);
-          }
+        try {
+          await Promise.race([
+            queueAssessmentOperation('update', id!, updatedAssessment),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Queue timeout')), 5000)),
+          ]);
+        } catch (queueError) {
+          console.warn('[Save] Failed to queue operation:', queueError);
         }
         if (isMobile()) {
           addSaveNotification("Saved offline");
