@@ -27,6 +27,7 @@ export function useNativeDrag<T extends { id: string }>(
   const scrollRafRef = useRef<number | null>(null);
   const pointerYRef = useRef<number | null>(null);
   const edgeEnteredAtRef = useRef<number | null>(null);
+  const globalDragHandlerRef = useRef<((e: DragEvent) => void) | null>(null);
 
   const startAutoScroll = useCallback(() => {
     if (scrollRafRef.current !== null) return; // already running
@@ -89,6 +90,22 @@ export function useNativeDrag<T extends { id: string }>(
     };
   }, [stopAutoScroll]);
 
+  const removeGlobalDragListener = useCallback(() => {
+    if (globalDragHandlerRef.current) {
+      document.removeEventListener('dragover', globalDragHandlerRef.current);
+      globalDragHandlerRef.current = null;
+    }
+  }, []);
+
+  const addGlobalDragListener = useCallback(() => {
+    removeGlobalDragListener();
+    const handler = (e: DragEvent) => {
+      pointerYRef.current = e.clientY;
+    };
+    globalDragHandlerRef.current = handler;
+    document.addEventListener('dragover', handler);
+  }, [removeGlobalDragListener]);
+
   const clearState = useCallback(() => {
     draggedIdRef.current = null;
     dragOverIdRef.current = null;
@@ -99,12 +116,13 @@ export function useNativeDrag<T extends { id: string }>(
       clearTimeout(longPressTimerRef.current);
       longPressTimerRef.current = null;
     }
+    removeGlobalDragListener();
     stopAutoScroll();
     setDraggingId(null);
     setDragOverId(null);
     setDropPosition(null);
     setIsTouchMode(false);
-  }, [stopAutoScroll]);
+  }, [stopAutoScroll, removeGlobalDragListener]);
 
   // --- Native HTML5 drag handlers (desktop) ---
 
@@ -112,15 +130,13 @@ export function useNativeDrag<T extends { id: string }>(
     draggedIdRef.current = id;
     setDraggingId(id);
     e.dataTransfer.effectAllowed = 'move';
+    addGlobalDragListener();
     startAutoScroll();
-  }, [startAutoScroll]);
+  }, [startAutoScroll, addGlobalDragListener]);
 
   const handleDragOver = useCallback((e: React.DragEvent, id: string) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
-
-    // Feed pointer position to auto-scroll engine
-    pointerYRef.current = e.clientY;
 
     if (id === draggedIdRef.current) return;
     const rect = e.currentTarget.getBoundingClientRect();

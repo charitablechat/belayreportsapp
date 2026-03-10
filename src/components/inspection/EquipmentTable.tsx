@@ -64,6 +64,7 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
   const scrollRafRef = useRef<number | null>(null);
   const pointerYRef = useRef<number | null>(null);
   const edgeEnteredAtRef = useRef<number | null>(null);
+  const globalDragHandlerRef = useRef<((e: DragEvent) => void) | null>(null);
   const EDGE_ZONE = 80;
   const MAX_SCROLL_SPEED = 25;
 
@@ -103,6 +104,22 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
     pointerYRef.current = null;
   }, []);
 
+  const removeGlobalDragListener = useCallback(() => {
+    if (globalDragHandlerRef.current) {
+      document.removeEventListener('dragover', globalDragHandlerRef.current);
+      globalDragHandlerRef.current = null;
+    }
+  }, []);
+
+  const addGlobalDragListener = useCallback(() => {
+    removeGlobalDragListener();
+    const handler = (e: DragEvent) => {
+      pointerYRef.current = e.clientY;
+    };
+    globalDragHandlerRef.current = handler;
+    document.addEventListener('dragover', handler);
+  }, [removeGlobalDragListener]);
+
   const clearDragState = useCallback(() => {
     draggedIdRef.current = null;
     dragOverIdRef.current = null;
@@ -113,24 +130,25 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
       clearTimeout(longPressTimerRef.current);
       longPressTimerRef.current = null;
     }
+    removeGlobalDragListener();
     stopAutoScroll();
     setDraggingId(null);
     setDragOverId(null);
     setDropPosition(null);
     setIsTouchMode(false);
-  }, [stopAutoScroll]);
+  }, [stopAutoScroll, removeGlobalDragListener]);
 
   const handleDragStart = useCallback((e: React.DragEvent, id: string) => {
     draggedIdRef.current = id;
     setDraggingId(id);
     e.dataTransfer.effectAllowed = 'move';
+    addGlobalDragListener();
     startAutoScroll();
-  }, [startAutoScroll]);
+  }, [startAutoScroll, addGlobalDragListener]);
 
   const handleDragOver = useCallback((e: React.DragEvent, id: string) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
-    pointerYRef.current = e.clientY;
     if (id === draggedIdRef.current) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const midpoint = rect.top + rect.height / 2;
