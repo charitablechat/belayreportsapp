@@ -14,6 +14,8 @@ export interface DashboardFilterState {
   assigneeFilter: string[];
   dateRange: { from?: Date; to?: Date };
   syncFilter: SyncFilter;
+  alphabeticalFilter: string;
+  facilityFilter: string;
   quickFilters: {
     myCards: boolean;
     dueThisWeek: boolean;
@@ -74,6 +76,8 @@ export function useDashboardFilters(
     assigneeFilter: [],
     dateRange: {},
     syncFilter: 'all',
+    alphabeticalFilter: '',
+    facilityFilter: '',
     quickFilters: { myCards: false, dueThisWeek: false, draftsOnly: false, needsAttention: false },
     sortBy: 'priority',
     groupBy: 'none',
@@ -107,6 +111,8 @@ export function useDashboardFilters(
       assigneeFilter: [],
       dateRange: {},
       syncFilter: 'all',
+      alphabeticalFilter: '',
+      facilityFilter: '',
       quickFilters: { myCards: false, dueThisWeek: false, draftsOnly: false, needsAttention: false },
       page: 1,
     }));
@@ -122,7 +128,7 @@ export function useDashboardFilters(
   }, []);
 
   const hasActiveFilters = useMemo(() => {
-    const { search, statusFilter, assigneeFilter, dateRange, syncFilter, quickFilters } = filters;
+    const { search, statusFilter, assigneeFilter, dateRange, syncFilter, quickFilters, alphabeticalFilter, facilityFilter } = filters;
     return !!(
       search ||
       statusFilter !== 'all' ||
@@ -130,6 +136,8 @@ export function useDashboardFilters(
       dateRange.from ||
       dateRange.to ||
       syncFilter !== 'all' ||
+      alphabeticalFilter ||
+      facilityFilter ||
       quickFilters.myCards ||
       quickFilters.dueThisWeek ||
       quickFilters.draftsOnly ||
@@ -139,7 +147,7 @@ export function useDashboardFilters(
 
   const result = useMemo(() => {
     let filtered = [...reports];
-    const { search, statusFilter, assigneeFilter, dateRange, syncFilter, quickFilters, sortBy, groupBy, viewMode, page } = filters;
+    const { search, statusFilter, assigneeFilter, dateRange, syncFilter, quickFilters, sortBy, groupBy, viewMode, page, alphabeticalFilter, facilityFilter } = filters;
 
     // 1. Text search
     if (search) {
@@ -149,6 +157,16 @@ export function useDashboardFilters(
         getLocation(r).toLowerCase().includes(q) ||
         getAssigneeName(r, type).toLowerCase().includes(q)
       );
+    }
+
+    // 1b. Alphabetical filter
+    if (alphabeticalFilter) {
+      filtered = filtered.filter(r => getOrganization(r).toUpperCase().startsWith(alphabeticalFilter));
+    }
+
+    // 1c. Facility filter
+    if (facilityFilter) {
+      filtered = filtered.filter(r => getLocation(r) === facilityFilter);
     }
 
     // 2. Status filter
