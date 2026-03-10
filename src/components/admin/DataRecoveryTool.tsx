@@ -524,7 +524,7 @@ export function CloudSnapshotsPanel({ allowDelete = true }: CloudSnapshotsPanelP
                 Save All
               </Button>
             )}
-            <Button variant="outline" size="sm" onClick={loadSnapshots} disabled={loading}>
+            <Button variant="outline" size="sm" onClick={() => loadSnapshots(true)} disabled={loading}>
               <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
               Refresh
             </Button>
