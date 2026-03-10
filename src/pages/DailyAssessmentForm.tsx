@@ -970,7 +970,7 @@ export default function DailyAssessmentForm() {
     setShowSubmitDialog(false);
     
     try {
-      const { saveDailyAssessmentOffline, saveAssessmentDataOffline, queueAssessmentOperation } = await import('@/lib/offline-storage');
+      
       
       // Save related data offline with timeout protection (non-blocking)
       console.log('[Submit] Saving to offline storage...');
