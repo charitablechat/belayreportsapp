@@ -463,8 +463,8 @@ export default function Dashboard() {
             return saveInspectionOffline({ ...inspection, synced_at: inspection.synced_at || now });
           }))
             .then(async () => {
-              // ORPHAN CLEANUP with threshold guard + rate limiting (Vector 4)
-              try {
+              // ORPHAN CLEANUP — deferred to avoid blocking render
+              const runOrphanCleanup = async () => { try {
                 // Rate limit: only run orphan cleanup once per hour
                 const ORPHAN_CLEANUP_COOLDOWN = 3600000; // 1 hour
                 const lastCleanupKey = 'lastOrphanCleanup_inspections';
