@@ -3,27 +3,30 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ThemeProvider } from "next-themes";
 import { createBrowserRouter, RouterProvider, useNavigate, Outlet, useLocation } from "react-router-dom";
-import { useEffect, useRef } from "react";
+import { lazy, Suspense, useEffect, useRef } from "react";
 import { trackNavigation } from "@/lib/navigation";
 import Index from "./pages/Index";
-import Dashboard from "./pages/Dashboard";
-import NewInspection from "./pages/NewInspection";
-import InspectionForm from "./pages/InspectionForm";
-import TrainingForm from "./pages/TrainingForm";
-import NewTraining from "./pages/NewTraining";
-import NewDailyAssessment from "./pages/NewDailyAssessment";
-import DailyAssessmentForm from "./pages/DailyAssessmentForm";
-import Install from "./pages/Install";
-import Capabilities from "./pages/Capabilities";
-import AuroraLanding from "./pages/AuroraLanding";
-import SuperAdminDashboard from "./pages/SuperAdminDashboard";
-import Profile from "./pages/Profile";
-import NotFound from "./pages/NotFound";
-import Base64Converter from "./pages/Base64Converter";
-import Onboarding from "./pages/Onboarding";
-import UploadLogos from "./pages/UploadLogos";
-import UploadLogosToStorage from "./pages/UploadLogosToStorage";
-import AdminLogoManagement from "./pages/AdminLogoManagement";
+
+// Lazy-loaded routes for code splitting
+const Dashboard = lazy(() => import("./pages/Dashboard"));
+const NewInspection = lazy(() => import("./pages/NewInspection"));
+const InspectionForm = lazy(() => import("./pages/InspectionForm"));
+const TrainingForm = lazy(() => import("./pages/TrainingForm"));
+const NewTraining = lazy(() => import("./pages/NewTraining"));
+const NewDailyAssessment = lazy(() => import("./pages/NewDailyAssessment"));
+const DailyAssessmentForm = lazy(() => import("./pages/DailyAssessmentForm"));
+const Install = lazy(() => import("./pages/Install"));
+const Capabilities = lazy(() => import("./pages/Capabilities"));
+const AuroraLanding = lazy(() => import("./pages/AuroraLanding"));
+const SuperAdminDashboard = lazy(() => import("./pages/SuperAdminDashboard"));
+const Profile = lazy(() => import("./pages/Profile"));
+const NotFound = lazy(() => import("./pages/NotFound"));
+const Base64Converter = lazy(() => import("./pages/Base64Converter"));
+const Onboarding = lazy(() => import("./pages/Onboarding"));
+const UploadLogos = lazy(() => import("./pages/UploadLogos"));
+const UploadLogosToStorage = lazy(() => import("./pages/UploadLogosToStorage"));
+const AdminLogoManagement = lazy(() => import("./pages/AdminLogoManagement"));
+
 import { InstallBanner } from "@/components/pwa/InstallBanner";
 import { UpdateNotification } from "@/components/pwa/UpdateNotification";
 import { InstallSuccessNotification } from "@/components/pwa/InstallSuccessNotification";
@@ -106,7 +109,9 @@ const RootLayout = () => {
             <UpdateNotification />
             <InstallSuccessNotification />
             <AuthenticatedHeader />
-            <Outlet />
+            <Suspense fallback={null}>
+              <Outlet />
+            </Suspense>
           </TooltipProvider>
         </PWAProvider>
       </QueryClientProvider>
