@@ -858,12 +858,10 @@ export default function DailyAssessmentForm() {
 
           // Only mark local as synced after server confirmation
           updatedAssessment.synced_at = saveSyncTimestamp;
-          if (offlineStorage) {
-            try {
-              await withTimeout(offlineStorage.saveDailyAssessmentOffline(updatedAssessment), 2000, 'Synced_at update');
-            } catch (e) {
-              console.warn('[Save] Synced_at offline update timed out');
-            }
+          try {
+            await withTimeout(saveDailyAssessmentOffline(updatedAssessment), 2000, 'Synced_at update');
+          } catch (e) {
+            console.warn('[Save] Synced_at offline update timed out');
           }
           
            markSnapshotSynced('daily_assessment', id!);
