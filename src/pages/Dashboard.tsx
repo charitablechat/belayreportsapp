@@ -574,7 +574,7 @@ export default function Dashboard() {
               `)
               .is('deleted_at', null)
               .order("created_at", { ascending: false })
-              .limit(10000)
+              .limit(500)
           ).then(({ data, error }) => {
             if (error) throw error;
             return data || [];
