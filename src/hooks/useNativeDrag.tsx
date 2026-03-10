@@ -130,8 +130,9 @@ export function useNativeDrag<T extends { id: string }>(
     draggedIdRef.current = id;
     setDraggingId(id);
     e.dataTransfer.effectAllowed = 'move';
+    addGlobalDragListener();
     startAutoScroll();
-  }, [startAutoScroll]);
+  }, [startAutoScroll, addGlobalDragListener]);
 
   const handleDragOver = useCallback((e: React.DragEvent, id: string) => {
     e.preventDefault();
