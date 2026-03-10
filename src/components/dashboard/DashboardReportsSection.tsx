@@ -77,6 +77,13 @@ export function DashboardReportsSection({
 
   const statuses = useMemo(() => [...new Set(currentReports.map(r => r.status).filter(Boolean))], [currentReports]);
 
+  const uniqueFacilities = useMemo(() => {
+    const locations = currentReports
+      .map(r => r.location || '')
+      .filter(Boolean);
+    return [...new Set(locations)].sort((a, b) => a.localeCompare(b));
+  }, [currentReports]);
+
   // Scope uniqueInspectors to the current tab's data (Issue 4)
   const scopedInspectors = useMemo(() => {
     const map = new Map<string, string>();
