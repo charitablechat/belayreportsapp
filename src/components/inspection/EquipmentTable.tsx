@@ -64,6 +64,7 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
   const scrollRafRef = useRef<number | null>(null);
   const pointerYRef = useRef<number | null>(null);
   const edgeEnteredAtRef = useRef<number | null>(null);
+  const globalDragHandlerRef = useRef<((e: DragEvent) => void) | null>(null);
   const EDGE_ZONE = 80;
   const MAX_SCROLL_SPEED = 25;
 
