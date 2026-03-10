@@ -159,6 +159,16 @@ export function useDashboardFilters(
       );
     }
 
+    // 1b. Alphabetical filter
+    if (alphabeticalFilter) {
+      filtered = filtered.filter(r => getOrganization(r).toUpperCase().startsWith(alphabeticalFilter));
+    }
+
+    // 1c. Facility filter
+    if (facilityFilter) {
+      filtered = filtered.filter(r => getLocation(r) === facilityFilter);
+    }
+
     // 2. Status filter
     if (statusFilter !== 'all') {
       filtered = filtered.filter(r => r.status === statusFilter);
