@@ -27,6 +27,7 @@ export function useNativeDrag<T extends { id: string }>(
   const scrollRafRef = useRef<number | null>(null);
   const pointerYRef = useRef<number | null>(null);
   const edgeEnteredAtRef = useRef<number | null>(null);
+  const globalDragHandlerRef = useRef<((e: DragEvent) => void) | null>(null);
 
   const startAutoScroll = useCallback(() => {
     if (scrollRafRef.current !== null) return; // already running
