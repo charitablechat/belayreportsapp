@@ -173,7 +173,7 @@ export default function Auth() {
       <Card className="relative z-10 w-full max-w-md shadow-2xl backdrop-blur-sm bg-card/95 mx-2">
         <CardHeader className="space-y-4 text-center">
           <div className="mx-auto w-48 h-24 flex items-center justify-center">
-            <img src={ropeWorksLogo} alt="Rope Works Logo" className="w-full h-full object-contain" fetchPriority="high" />
+            <img src={ropeWorksLogo} alt="Rope Works Logo" width={192} height={93} className="w-full h-full object-contain" fetchPriority="high" />
           </div>
           <CardTitle className="text-2xl font-bold">Rope Works Inspection</CardTitle>
           <CardDescription>
