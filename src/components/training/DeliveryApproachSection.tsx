@@ -14,7 +14,9 @@ const DELIVERY_APPROACHES = [
   'Self-Guided'
 ];
 
-export default function DeliveryApproachSection({ approaches, onUpdate }: DeliveryApproachSectionProps) {
+import React from "react";
+
+const DeliveryApproachSection = React.memo(function DeliveryApproachSection({ approaches, onUpdate }: DeliveryApproachSectionProps) {
   const handleToggle = (approach: string, checked: boolean) => {
     triggerHaptic('light');
     if (checked) {
