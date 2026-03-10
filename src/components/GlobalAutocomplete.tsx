@@ -83,6 +83,9 @@ export function GlobalAutocomplete({
   const hasFetchedFromDb = useRef(false);
   const lastSavedValue = useRef<string | null>(null);
   const triggerInputRef = useRef<HTMLInputElement>(null);
+
+  // Module-level cache for fetched results by fieldType
+  const cacheRef = useRef(_globalHistoryCache);
   
   // LocalStorage key for offline fallback
   const storageKey = `global-autocomplete-${fieldType}`;
