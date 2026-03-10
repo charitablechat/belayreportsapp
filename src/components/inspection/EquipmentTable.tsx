@@ -104,6 +104,22 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
     pointerYRef.current = null;
   }, []);
 
+  const removeGlobalDragListener = useCallback(() => {
+    if (globalDragHandlerRef.current) {
+      document.removeEventListener('dragover', globalDragHandlerRef.current);
+      globalDragHandlerRef.current = null;
+    }
+  }, []);
+
+  const addGlobalDragListener = useCallback(() => {
+    removeGlobalDragListener();
+    const handler = (e: DragEvent) => {
+      pointerYRef.current = e.clientY;
+    };
+    globalDragHandlerRef.current = handler;
+    document.addEventListener('dragover', handler);
+  }, [removeGlobalDragListener]);
+
   const clearDragState = useCallback(() => {
     draggedIdRef.current = null;
     dragOverIdRef.current = null;
@@ -114,12 +130,13 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
       clearTimeout(longPressTimerRef.current);
       longPressTimerRef.current = null;
     }
+    removeGlobalDragListener();
     stopAutoScroll();
     setDraggingId(null);
     setDragOverId(null);
     setDropPosition(null);
     setIsTouchMode(false);
-  }, [stopAutoScroll]);
+  }, [stopAutoScroll, removeGlobalDragListener]);
 
   const handleDragStart = useCallback((e: React.DragEvent, id: string) => {
     draggedIdRef.current = id;
