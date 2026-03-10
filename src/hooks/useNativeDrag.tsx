@@ -138,9 +138,6 @@ export function useNativeDrag<T extends { id: string }>(
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
 
-    // Feed pointer position to auto-scroll engine
-    pointerYRef.current = e.clientY;
-
     if (id === draggedIdRef.current) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const midpoint = rect.top + rect.height / 2;

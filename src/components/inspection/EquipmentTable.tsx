@@ -149,7 +149,6 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
   const handleDragOver = useCallback((e: React.DragEvent, id: string) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
-    pointerYRef.current = e.clientY;
     if (id === draggedIdRef.current) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const midpoint = rect.top + rect.height / 2;
