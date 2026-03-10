@@ -582,7 +582,7 @@ export default function DailyAssessmentForm() {
     setHasUnsavedChanges(true);
     try {
       // Save offline first
-      const { saveDailyAssessmentOffline, queueAssessmentOperation } = await import('@/lib/offline-storage');
+      await saveDailyAssessmentOffline(updatedAssessment);
       await saveDailyAssessmentOffline(updatedAssessment);
 
       if (navigator.onLine) {
