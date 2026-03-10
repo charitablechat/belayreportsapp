@@ -717,12 +717,10 @@ export default function DailyAssessmentForm() {
           : {}),
       };
       
-      if (offlineStorage) {
-        try {
-          await withTimeout(offlineStorage.saveDailyAssessmentOffline(updatedAssessment), 3000, 'Assessment offline save');
-        } catch (e) {
-          console.warn('[Save] Assessment offline save timed out:', e);
-        }
+      try {
+        await withTimeout(saveDailyAssessmentOffline(updatedAssessment), 3000, 'Assessment offline save');
+      } catch (e) {
+        console.warn('[Save] Assessment offline save timed out:', e);
       }
 
       if (navigator.onLine) {
