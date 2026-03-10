@@ -129,7 +129,10 @@ export function GlobalAutocomplete({
   const fetchGlobalHistory = async () => {
     if (hasFetchedFromDb.current) return;
     
-    setIsLoading(true);
+    // Only show spinner if we have no cached items to display
+    if (historyOptions.length === 0) {
+      setIsLoading(true);
+    }
     try {
       const { data, error } = await supabase
         .from('global_field_history')
