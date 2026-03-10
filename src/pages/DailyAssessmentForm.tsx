@@ -449,7 +449,7 @@ export default function DailyAssessmentForm() {
         const backup = getReportSnapshot('daily_assessment', id!);
         if (backup) {
           console.log('[DailyAssessmentForm] IndexedDB empty but localStorage backup found — auto-restoring');
-          const { saveDailyAssessmentOffline, saveAssessmentDataOffline } = await import('@/lib/offline-storage');
+          
           saveDailyAssessmentOffline(backup.parent).catch(() => {});
           isInternalUpdateRef.current = true;
           setAssessment(backup.parent);
