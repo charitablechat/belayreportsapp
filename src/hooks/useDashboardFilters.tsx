@@ -14,6 +14,8 @@ export interface DashboardFilterState {
   assigneeFilter: string[];
   dateRange: { from?: Date; to?: Date };
   syncFilter: SyncFilter;
+  alphabeticalFilter: string;
+  facilityFilter: string;
   quickFilters: {
     myCards: boolean;
     dueThisWeek: boolean;
