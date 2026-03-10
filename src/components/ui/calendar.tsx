@@ -8,9 +8,28 @@ import { buttonVariants } from "@/components/ui/button";
 export type CalendarProps = React.ComponentProps<typeof DayPicker>;
 
 function Calendar({ className, classNames, showOutsideDays = true, ...props }: CalendarProps) {
+  const selected = (props as any).selected;
+
+  const [displayMonth, setDisplayMonth] = React.useState<Date>(
+    () => selected instanceof Date ? selected : (props as any).defaultMonth ?? new Date()
+  );
+
+  React.useEffect(() => {
+    if (selected instanceof Date) {
+      setDisplayMonth(selected);
+    }
+  }, [selected]);
+
+  const handleMonthChange = React.useCallback((date: Date) => {
+    setDisplayMonth(date);
+    (props as any).onMonthChange?.(date);
+  }, [(props as any).onMonthChange]);
+
   return (
     <DayPicker
       showOutsideDays={showOutsideDays}
+      month={displayMonth}
+      onMonthChange={handleMonthChange}
       className={cn("p-3 pointer-events-auto", className)}
       captionLayout="dropdown-buttons"
       fromYear={2000}
