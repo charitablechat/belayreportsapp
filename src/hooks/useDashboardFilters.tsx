@@ -147,7 +147,7 @@ export function useDashboardFilters(
 
   const result = useMemo(() => {
     let filtered = [...reports];
-    const { search, statusFilter, assigneeFilter, dateRange, syncFilter, quickFilters, sortBy, groupBy, viewMode, page } = filters;
+    const { search, statusFilter, assigneeFilter, dateRange, syncFilter, quickFilters, sortBy, groupBy, viewMode, page, alphabeticalFilter, facilityFilter } = filters;
 
     // 1. Text search
     if (search) {
