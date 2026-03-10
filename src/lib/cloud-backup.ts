@@ -7,6 +7,7 @@
  */
 
 import { supabase } from '@/integrations/supabase/client';
+import { getUserWithCache } from '@/lib/cached-auth';
 import type { ReportType, ReportSnapshot } from './local-backup-ledger';
 
 export interface CloudBackupEntry {
