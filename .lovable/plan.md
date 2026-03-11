@@ -1,66 +1,46 @@
 
 
-## Onboarding Resource Center
+## Inspection Ordering: Gap Found in Offline Save Path
 
-A dedicated `/onboarding` page where users can browse videos and PDFs you've uploaded, and mark items as completed.
+### Current State
 
-### Database
+**Online save path (works correctly):**
+- `InspectionForm.tsx` line 1517-1519 stamps `display_order: i` from array index before upserting to the server
+- Server queries and edge functions sort by `display_order` — correct
 
-**1. `onboarding_resources` table** — stores metadata for each uploaded file
+**Offline save path (GAP):**
+- `saveRelatedDataOffline('systems', id!, systems)` at line 1405 saves the React state array **without** stamping `display_order`
+- New items created in `OperatingSystemsTable`, `ZiplinesTable`, and `EquipmentTable` have **no `display_order` field**
+- `getRelatedDataOffline` (line 1162) sorts by `display_order ?? 0` — all items without it collapse to position 0, making order non-deterministic
+- The `atomic-sync-manager` reads from IndexedDB and upserts to server **without** re-stamping `display_order`
 
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uuid | PK |
-| title | text | Display name |
-| description | text | Optional summary |
-| file_type | text | 'video' or 'pdf' |
-| file_url | text | Storage path |
-| display_order | integer | Sort order |
-| is_published | boolean | Only published items shown to users |
-| uploaded_by | uuid | References auth.users |
-| created_at | timestamptz | |
+**Failure scenario:**
+1. User adds 3 systems offline → state is `[A, B, C]` with no `display_order`
+2. Auto-save writes to IndexedDB without `display_order`
+3. User closes form, reopens → `getRelatedDataOffline` sorts by `display_order ?? 0` → all items tied at 0 → order depends on IndexedDB key enumeration (UUID-alphabetical)
+4. Background sync pushes to server without `display_order` → server has no ordering info
 
-RLS: Super admins can CRUD. Authenticated users can SELECT where `is_published = true`.
+### Proposed Fix
 
-**2. `onboarding_progress` table** — tracks per-user completion
+Stamp `display_order` from array index **at the offline save site** in `InspectionForm.tsx`. This is the single choke-point where all data flows through before hitting IndexedDB.
 
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uuid | PK |
-| user_id | uuid | References auth.users |
-| resource_id | uuid | FK to onboarding_resources |
-| completed_at | timestamptz | When marked complete |
-| unique(user_id, resource_id) | | Prevents duplicates |
+**File: `src/pages/InspectionForm.tsx`** — In the offline save block (~line 1404-1417), stamp `display_order` before calling `saveRelatedDataOffline`:
 
-RLS: Users can manage their own rows only.
+```ts
+// Before:
+childSaveOps.push(saveRelatedDataOffline('systems', id!, systems));
 
-**3. `onboarding-files` storage bucket** — private bucket for the actual video/PDF files. Super admins can upload; authenticated users can read.
+// After:
+childSaveOps.push(saveRelatedDataOffline('systems', id!, systems.map((s, i) => ({ ...s, display_order: i }))));
+```
 
-### Frontend
+Same for ziplines and equipment (3 lines changed total).
 
-**`/onboarding` page** — accessible from the dashboard header navigation:
-- Lists all published resources grouped by type (Videos section, Documents section)
-- Each card shows: title, description, file type icon, and a checkbox to mark complete
-- Clicking a video opens an inline `<video>` player; clicking a PDF downloads it
-- A progress bar at the top shows "X of Y completed"
-- Matches existing app styling (cards, borders, monospace metadata)
+This ensures:
+- IndexedDB always has `display_order` stamped → offline reads return correct order
+- `atomic-sync-manager` picks up the stamped `display_order` from IndexedDB → server gets correct order
+- No changes needed to edge functions, retrieval logic, or components
+- Drag-and-drop reordering already updates the array order in React state, so stamping from index captures the new order
 
-**Admin upload UI** — visible only to super admins on the same page:
-- "Add Resource" button opens a form: title, description, file type selector, file upload input, display order
-- Drag-to-reorder support using existing drag patterns
-- Toggle publish/unpublish per resource
-- Delete resource (removes from storage + DB)
-
-### Route Addition
-
-Add `/onboarding` to `App.tsx` router, import the new `Onboarding.tsx` page component. Add a navigation link in `AuthenticatedHeader.tsx`.
-
-### Files
-
-| File | Action |
-|------|--------|
-| Migration SQL | Create tables, bucket, RLS policies |
-| `src/pages/Onboarding.tsx` | New page component |
-| `src/App.tsx` | Add route |
-| `src/components/AuthenticatedHeader.tsx` | Add nav link |
+No database migration needed. No component changes needed.
 
