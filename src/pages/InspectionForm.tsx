@@ -1238,6 +1238,43 @@ export default function InspectionForm() {
     }
   };
 
+  // Listen for JSON import events — reload form state from IndexedDB to prevent
+  // stale React state from overwriting imported data on next save
+  useEffect(() => {
+    const handleReportImported = async (event: Event) => {
+      const { reportType, reportId } = (event as CustomEvent).detail;
+      if (reportType !== 'inspection' || reportId !== id) return;
+
+      console.log('[InspectionForm] Detected JSON import — reloading state from IndexedDB');
+      try {
+        const offlineData = await getOfflineInspection(id!);
+        const [offSystems, offZiplines, offEquipment, offStandards, offSummary] = await Promise.all([
+          getRelatedDataOffline('systems', id!),
+          getRelatedDataOffline('ziplines', id!),
+          getRelatedDataOffline('equipment', id!),
+          getRelatedDataOffline('standards', id!),
+          getRelatedDataOffline('summary', id!),
+        ]);
+
+        isInternalUpdateRef.current = true;
+        if (offlineData) setInspection(offlineData);
+        if (offSystems.length > 0) { setSystems(offSystems); childDataLoadedRef.current.systems = true; }
+        if (offZiplines.length > 0) { setZiplines(offZiplines); childDataLoadedRef.current.ziplines = true; }
+        if (offEquipment.length > 0) { setEquipment(offEquipment); childDataLoadedRef.current.equipment = true; }
+        if (offStandards.length > 0) { setStandards(offStandards); childDataLoadedRef.current.standards = true; }
+        if (offSummary.length > 0) { setSummary(offSummary[0]); childDataLoadedRef.current.summary = true; }
+
+        setHasUnsavedChanges(false);
+        toast.success("Imported data loaded into form");
+      } catch (e) {
+        console.warn('[InspectionForm] Failed to reload after import:', e);
+      }
+    };
+
+    window.addEventListener('report-data-imported', handleReportImported);
+    return () => window.removeEventListener('report-data-imported', handleReportImported);
+  }, [id]);
+
   const performSave = async (silent: boolean = false) => {
     // Block all writes in Lovable preview to protect production data
     if ((await import('@/lib/environment')).isLovablePreview()) return;
