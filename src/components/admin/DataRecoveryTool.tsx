@@ -181,7 +181,9 @@ export function LocalSnapshotsPanel({ allowDelete = true }: SnapshotsPanelProps)
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `backup_${reportType}_${reportId.substring(0, 8)}_${new Date(snapshot.ts).toISOString().split('T')[0]}.json`;
+    const org = snapshot.parent?.organization;
+    const orgPart = org ? `_${sanitizeFilename(org)}` : '';
+    a.download = `backup_${reportType}${orgPart}_${reportId.substring(0, 8)}_${new Date(snapshot.ts).toISOString().split('T')[0]}.json`;
     a.click();
     URL.revokeObjectURL(url);
     toast.success("Snapshot exported as JSON");
