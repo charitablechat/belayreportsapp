@@ -652,7 +652,10 @@ export default function DailyAssessmentForm() {
         ]);
 
         isInternalUpdateRef.current = true;
-        if (offlineData) setAssessment(offlineData);
+        if (offlineData) {
+          setAssessment(offlineData);
+          setInspectorId(offlineData.inspector_id);
+        }
         if (bod.length > 0) { setBeginningOfDay(bod); childDataLoadedRef.current.beginning_of_day = true; }
         if (eod.length > 0) { setEndOfDay(eod); childDataLoadedRef.current.end_of_day = true; }
         if (os.length > 0) { setOperatingSystems(os); childDataLoadedRef.current.operating_systems = true; }
@@ -660,7 +663,7 @@ export default function DailyAssessmentForm() {
         if (st.length > 0) { setStructureChecks(st); childDataLoadedRef.current.structure_checks = true; }
         if (env.length > 0) { setEnvironmentChecks(env); childDataLoadedRef.current.environment_checks = true; }
 
-        setHasUnsavedChanges(false);
+        setHasUnsavedChanges(true);
         toast.success("Imported data loaded into form");
       } catch (e) {
         console.warn('[DailyAssessmentForm] Failed to reload after import:', e);

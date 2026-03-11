@@ -601,7 +601,10 @@ export default function TrainingForm() {
         ]);
 
         isInternalUpdateRef.current = true;
-        if (offlineData) setTraining(offlineData);
+        if (offlineData) {
+          setTraining(offlineData);
+          setInspectorId(offlineData.inspector_id);
+        }
         if (da.length > 0) { setDeliveryApproaches(da); childDataLoadedRef.current.delivery_approaches = true; }
         if (os.length > 0) { setOperatingSystems(os); childDataLoadedRef.current.operating_systems = true; }
         if (ia.length > 0) { setImmediateAttention(ia); childDataLoadedRef.current.immediate_attention = true; }
@@ -609,7 +612,7 @@ export default function TrainingForm() {
         if (sp.length > 0) { setSystemsInPlace(sp); childDataLoadedRef.current.systems_in_place = true; }
         if (sm) { setSummary(sm); childDataLoadedRef.current.summary = true; }
 
-        setHasUnsavedChanges(false);
+        setHasUnsavedChanges(true);
         toast.success("Imported data loaded into form");
       } catch (e) {
         console.warn('[TrainingForm] Failed to reload after import:', e);
