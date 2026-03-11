@@ -1,66 +1,25 @@
 
 
-## Onboarding Resource Center
+## Include facility name in exported JSON filenames
 
-A dedicated `/onboarding` page where users can browse videos and PDFs you've uploaded, and mark items as completed.
+### Problem
+All JSON backup exports use generic filenames like `backup_inspection_abc12345_1710000000.json`. The user wants the facility/organization name included.
 
-### Database
+### Changes
 
-**1. `onboarding_resources` table** — stores metadata for each uploaded file
+**`src/lib/local-backup-ledger.ts`** — `downloadReportBackup()`
+- Extract `snapshot.parent?.organization` and sanitize it (replace non-alphanumeric chars with underscores, trim)
+- Change filename from `backup_${reportType}_${reportId.substring(0,8)}_${Date.now()}.json` to `backup_${reportType}_${sanitizedOrg}_${reportId.substring(0,8)}_${Date.now()}.json`
 
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uuid | PK |
-| title | text | Display name |
-| description | text | Optional summary |
-| file_type | text | 'video' or 'pdf' |
-| file_url | text | Storage path |
-| display_order | integer | Sort order |
-| is_published | boolean | Only published items shown to users |
-| uploaded_by | uuid | References auth.users |
-| created_at | timestamptz | |
+**`src/components/admin/DataRecoveryTool.tsx`** — 4 download locations:
+1. **Single snapshot export** (line ~184): Include organization from snapshot data
+2. **Bulk local backups** (line ~278): Include "all" or keep as-is (bulk export)
+3. **Bulk cloud backups** (line ~515): Same as above
+4. **Individual cloud backup** (line ~693): Include organization from the backup record
+5. **Admin edit snapshot** (line ~866): Include organization if available
 
-RLS: Super admins can CRUD. Authenticated users can SELECT where `is_published = true`.
+For all single-report downloads, extract the organization from the snapshot/record data and include it in the filename. Bulk exports that contain multiple facilities will keep their current generic naming.
 
-**2. `onboarding_progress` table** — tracks per-user completion
-
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uuid | PK |
-| user_id | uuid | References auth.users |
-| resource_id | uuid | FK to onboarding_resources |
-| completed_at | timestamptz | When marked complete |
-| unique(user_id, resource_id) | | Prevents duplicates |
-
-RLS: Users can manage their own rows only.
-
-**3. `onboarding-files` storage bucket** — private bucket for the actual video/PDF files. Super admins can upload; authenticated users can read.
-
-### Frontend
-
-**`/onboarding` page** — accessible from the dashboard header navigation:
-- Lists all published resources grouped by type (Videos section, Documents section)
-- Each card shows: title, description, file type icon, and a checkbox to mark complete
-- Clicking a video opens an inline `<video>` player; clicking a PDF downloads it
-- A progress bar at the top shows "X of Y completed"
-- Matches existing app styling (cards, borders, monospace metadata)
-
-**Admin upload UI** — visible only to super admins on the same page:
-- "Add Resource" button opens a form: title, description, file type selector, file upload input, display order
-- Drag-to-reorder support using existing drag patterns
-- Toggle publish/unpublish per resource
-- Delete resource (removes from storage + DB)
-
-### Route Addition
-
-Add `/onboarding` to `App.tsx` router, import the new `Onboarding.tsx` page component. Add a navigation link in `AuthenticatedHeader.tsx`.
-
-### Files
-
-| File | Action |
-|------|--------|
-| Migration SQL | Create tables, bucket, RLS policies |
-| `src/pages/Onboarding.tsx` | New page component |
-| `src/App.tsx` | Add route |
-| `src/components/AuthenticatedHeader.tsx` | Add nav link |
+### Sanitization helper
+A small `sanitizeFilename(name: string)` utility that strips/replaces special characters to produce filesystem-safe names (e.g., `"Camp ABC & Co."` → `Camp_ABC_Co`).
 
