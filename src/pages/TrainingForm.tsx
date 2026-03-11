@@ -216,9 +216,9 @@ export default function TrainingForm() {
   saveBeforeLeaveRef.current = handleSaveAndLeave;
 
   // Unsaved changes protection
-  const { isBlocked, confirmNavigation, cancelNavigation, saveAndLeave } = useUnsavedChanges({
+  const { isBlocked, confirmNavigation, cancelNavigation, saveAndLeave, bypassAndProceed } = useUnsavedChanges({
     hasUnsavedChanges: hasUnsavedChanges && (training?.status !== 'completed' || completionLockOverridden),
-    alwaysBlock: !isLeaving,
+    alwaysBlock: true,
     message: "You have unsaved changes to this training report. Are you sure you want to leave?",
     onSaveAndLeave: async () => { await saveBeforeLeaveRef.current?.(); },
   });
