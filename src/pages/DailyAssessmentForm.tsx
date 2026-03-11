@@ -221,7 +221,7 @@ export default function DailyAssessmentForm() {
   // Unsaved changes protection
   const { isBlocked, confirmNavigation, cancelNavigation, saveAndLeave } = useUnsavedChanges({
     hasUnsavedChanges: hasUnsavedChanges && (assessment?.status !== 'completed' || completionLockOverridden),
-    alwaysBlock: !leavingRef.current,
+    alwaysBlock: !isLeaving,
     message: "You have unsaved changes to this assessment. Are you sure you want to leave?",
     onSaveAndLeave: async () => { await saveBeforeLeaveRef.current?.(); },
   });
