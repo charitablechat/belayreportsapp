@@ -10,7 +10,7 @@ import { RefreshCw, Upload, Trash2, AlertTriangle, Database, HardDrive, CheckCir
 import { toast } from "sonner";
 import { format, formatDistanceToNow } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
-import { listAllSnapshots, getReportSnapshot, deleteReportSnapshot, getBackupStorageInfo, importReportBackup, type ReportType } from "@/lib/local-backup-ledger";
+import { listAllSnapshots, getReportSnapshot, deleteReportSnapshot, getBackupStorageInfo, importReportBackup, sanitizeFilename, type ReportType } from "@/lib/local-backup-ledger";
 import {
   getOfflineTrainings,
   getOfflineDailyAssessments,
@@ -181,7 +181,9 @@ export function LocalSnapshotsPanel({ allowDelete = true }: SnapshotsPanelProps)
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `backup_${reportType}_${reportId.substring(0, 8)}_${new Date(snapshot.ts).toISOString().split('T')[0]}.json`;
+    const org = snapshot.parent?.organization;
+    const orgPart = org ? `_${sanitizeFilename(org)}` : '';
+    a.download = `backup_${reportType}${orgPart}_${reportId.substring(0, 8)}_${new Date(snapshot.ts).toISOString().split('T')[0]}.json`;
     a.click();
     URL.revokeObjectURL(url);
     toast.success("Snapshot exported as JSON");
@@ -690,7 +692,9 @@ function AllUserSnapshotsPanel() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `backup_${reportType}_${reportId.substring(0, 8)}.json`;
+      const org = full?.snapshot_data?.parent?.organization;
+      const orgPart = org ? `_${sanitizeFilename(org)}` : '';
+      a.download = `backup_${reportType}${orgPart}_${reportId.substring(0, 8)}.json`;
       a.click();
       URL.revokeObjectURL(url);
       toast.success("Exported as JSON");
@@ -863,7 +867,9 @@ function AdminEditHistoryPanel() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `admin_edit_${reportType}_${snapshotId.substring(0, 8)}.json`;
+      const org = data.snapshot_data?.parent?.organization;
+      const orgPart = org ? `_${sanitizeFilename(org)}` : '';
+      a.download = `admin_edit_${reportType}${orgPart}_${snapshotId.substring(0, 8)}.json`;
       a.click();
       URL.revokeObjectURL(url);
       toast.success("Exported as JSON");
