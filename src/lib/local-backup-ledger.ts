@@ -382,6 +382,22 @@ export function downloadReportBackup(
  * Validates structure, writes to localStorage, IndexedDB, and cloud.
  * Returns { success, reportType, reportId } or throws with a user-friendly message.
  */
+/**
+ * Infer reportType from a parent record's fields.
+ */
+function inferReportType(parent: Record<string, any>): ReportType | null {
+  if ('inspection_date' in parent || ('location' in parent && 'acct_number' in parent)) {
+    return 'inspection';
+  }
+  if ('start_date' in parent && 'end_date' in parent && 'trainee_names' in parent) {
+    return 'training';
+  }
+  if ('assessment_date' in parent || ('site' in parent && 'environment_comments' in parent)) {
+    return 'daily_assessment';
+  }
+  return null;
+}
+
 export async function importReportBackup(jsonString: string): Promise<{
   reportType: ReportType;
   reportId: string;
@@ -393,17 +409,47 @@ export async function importReportBackup(jsonString: string): Promise<{
     throw new Error('Invalid JSON file — could not parse contents.');
   }
 
-  // Support both downloadReportBackup format ({ exportedAt, reportType, reportId, snapshot })
-  // and raw snapshot format (direct ReportSnapshot object with parent/children)
-  const reportType = parsed.reportType as ReportType;
-  const reportId = parsed.reportId as string;
-  const snapshot = parsed.snapshot as ReportSnapshot | undefined;
+  // Reject arrays (bulk exports)
+  if (Array.isArray(parsed)) {
+    throw new Error('This looks like a bulk export containing multiple reports. Please import individual report files instead.');
+  }
 
+  // --- Normalize: support multiple export formats ---
+  let reportType: ReportType | undefined = parsed.reportType ?? parsed.report_type;
+  let reportId: string | undefined = parsed.reportId ?? parsed.report_id;
+  let snapshot: ReportSnapshot | undefined = parsed.snapshot;
+
+  // Format A: wrapper { reportType, reportId, snapshot } — standard downloadReportBackup format
+  // Already extracted above.
+
+  // Format B: cloud/admin export { snapshot_data, report_type, report_id, ... }
+  if (!snapshot && parsed.snapshot_data && typeof parsed.snapshot_data === 'object') {
+    snapshot = parsed.snapshot_data as ReportSnapshot;
+    reportType = reportType ?? parsed.report_type;
+    reportId = reportId ?? parsed.report_id;
+  }
+
+  // Format C: raw ReportSnapshot { v, ts, parent, children, ... } — DataRecoveryTool exports
+  if (!snapshot && parsed.parent && parsed.children) {
+    snapshot = parsed as ReportSnapshot;
+    // Infer type and id from parent data
+    if (!reportType) {
+      reportType = inferReportType(parsed.parent) ?? undefined;
+    }
+    if (!reportId) {
+      reportId = parsed.parent?.id;
+    }
+  }
+
+  // --- Validate ---
   if (!reportType || !['inspection', 'training', 'daily_assessment'].includes(reportType)) {
-    throw new Error('Missing or invalid reportType. Expected: inspection, training, or daily_assessment.');
+    throw new Error(
+      'Could not determine report type. The file may be in an unsupported format. ' +
+      'Expected an inspection, training, or daily assessment backup.'
+    );
   }
   if (!reportId || typeof reportId !== 'string') {
-    throw new Error('Missing or invalid reportId.');
+    throw new Error('Could not determine the report ID from this file.');
   }
   if (!snapshot || typeof snapshot !== 'object' || !snapshot.parent || !snapshot.children) {
     throw new Error('Missing or invalid snapshot data (expected parent + children).');
