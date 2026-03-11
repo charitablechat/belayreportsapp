@@ -256,7 +256,8 @@ export default function InspectionForm() {
 
   // Unsaved changes protection
   const { isBlocked, confirmNavigation, cancelNavigation, saveAndLeave } = useUnsavedChanges({
-    hasUnsavedChanges: hasUnsavedChanges && (inspection?.status !== 'completed' || completionLockOverridden) && !leavingRef.current,
+    hasUnsavedChanges: hasUnsavedChanges && (inspection?.status !== 'completed' || completionLockOverridden),
+    alwaysBlock: !leavingRef.current,
     message: "You have unsaved changes to this inspection. Are you sure you want to leave?",
     onSaveAndLeave: async () => { await saveBeforeLeaveRef.current?.(); },
   });
