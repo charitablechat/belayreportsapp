@@ -605,12 +605,16 @@ export default function TrainingForm() {
           setTraining(offlineData);
           setInspectorId(offlineData.inspector_id);
         }
-        if (da.length > 0) { setDeliveryApproaches(da); childDataLoadedRef.current.delivery_approaches = true; }
-        if (os.length > 0) { setOperatingSystems(os); childDataLoadedRef.current.operating_systems = true; }
-        if (ia.length > 0) { setImmediateAttention(ia); childDataLoadedRef.current.immediate_attention = true; }
-        if (vi.length > 0) { setVerifiableItems(vi); childDataLoadedRef.current.verifiable_items = true; }
-        if (sp.length > 0) { setSystemsInPlace(sp); childDataLoadedRef.current.systems_in_place = true; }
-        if (sm) { setSummary(sm); childDataLoadedRef.current.summary = true; }
+        setDeliveryApproaches(da); childDataLoadedRef.current.delivery_approaches = true;
+        setOperatingSystems(os); childDataLoadedRef.current.operating_systems = true;
+        setImmediateAttention(ia); childDataLoadedRef.current.immediate_attention = true;
+        setVerifiableItems(vi); childDataLoadedRef.current.verifiable_items = true;
+        setSystemsInPlace(sp); childDataLoadedRef.current.systems_in_place = true;
+        if (sm) { setSummary(sm); }
+        childDataLoadedRef.current.summary = true;
+
+        // Refresh photo galleries to pick up any imported photo metadata
+        setPhotoRefreshKey(prev => prev + 1);
 
         setHasUnsavedChanges(true);
         toast.success("Imported data loaded into form");

@@ -1261,11 +1261,15 @@ export default function InspectionForm() {
           setInspection(offlineData);
           setInspectorId(offlineData.inspector_id);
         }
-        if (offSystems.length > 0) { setSystems(offSystems); childDataLoadedRef.current.systems = true; }
-        if (offZiplines.length > 0) { setZiplines(offZiplines); childDataLoadedRef.current.ziplines = true; }
-        if (offEquipment.length > 0) { setEquipment(offEquipment); childDataLoadedRef.current.equipment = true; }
-        if (offStandards.length > 0) { setStandards(offStandards); childDataLoadedRef.current.standards = true; }
-        if (offSummary.length > 0) { setSummary(offSummary[0]); childDataLoadedRef.current.summary = true; }
+        setSystems(offSystems); childDataLoadedRef.current.systems = true;
+        setZiplines(offZiplines); childDataLoadedRef.current.ziplines = true;
+        setEquipment(offEquipment); childDataLoadedRef.current.equipment = true;
+        setStandards(offStandards); childDataLoadedRef.current.standards = true;
+        if (offSummary.length > 0) { setSummary(offSummary[0]); }
+        childDataLoadedRef.current.summary = true;
+
+        // Refresh photo galleries to pick up any imported photo metadata
+        setPhotoRefreshKey(prev => prev + 1);
 
         setHasUnsavedChanges(true);
         toast.success("Imported data loaded into form");
@@ -2502,7 +2506,7 @@ export default function InspectionForm() {
               )}
               <AutoSaveIndicator
                 lastSaved={lastManuallySaved}
-                isSaving={autoSaving}
+                isSaving={saving}
                 hasUnsavedChanges={hasUnsavedChanges}
                 error={saveError}
                 className="flex"
