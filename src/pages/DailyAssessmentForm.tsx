@@ -371,7 +371,7 @@ export default function DailyAssessmentForm() {
         if (import.meta.env.DEV) {
           console.log('[DailyAssessment AutoSave] Debounced save triggered');
         }
-        handleSaveProgress();
+        handleSaveProgress(true);
       }
     }, 1500);
     
