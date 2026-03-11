@@ -1866,6 +1866,7 @@ export default function InspectionForm() {
     try {
       await performSave(false); // Show warnings on manual save
       setLastSaved(new Date());
+      setLastManuallySaved(new Date());
       setHasUnsavedChanges(false);
       if (import.meta.env.DEV) {
         console.log('[InspectionForm] Progress saved:', isOnline ? 'online' : 'offline');
