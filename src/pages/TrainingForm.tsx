@@ -101,6 +101,7 @@ export default function TrainingForm() {
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
   const [isGeneratingHTML, setIsGeneratingHTML] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
+  const [lastManuallySaved, setLastManuallySaved] = useState<Date | null>(null);
   const [showEmailDialog, setShowEmailDialog] = useState(false);
   const [isSendingEmail, setIsSendingEmail] = useState(false);
   const [emailForm, setEmailForm] = useState({

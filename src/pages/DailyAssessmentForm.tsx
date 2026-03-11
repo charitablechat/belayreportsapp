@@ -105,6 +105,7 @@ export default function DailyAssessmentForm() {
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
+  const [lastManuallySaved, setLastManuallySaved] = useState<Date | null>(null);
   const [generating, setGenerating] = useState(false);
   const [assessment, setAssessment] = useState<any>(null);
   const [beginningOfDay, setBeginningOfDay] = useState<any[]>([]);
