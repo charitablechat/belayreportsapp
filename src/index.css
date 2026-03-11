@@ -689,6 +689,15 @@ input[type="number"] {
 }
 
 
+/* Flash highlight for imported backup entries */
+@keyframes import-flash {
+  0%   { background-color: hsl(var(--success) / 0.25); }
+  100% { background-color: transparent; }
+}
+.import-flash {
+  animation: import-flash 500ms ease-out forwards;
+}
+
 /* Active Timer — terminal blink for cursor and REC dot */
 @keyframes terminal-blink {
   0%, 50% { opacity: 1; }

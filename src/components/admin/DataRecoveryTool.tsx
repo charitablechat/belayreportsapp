@@ -148,6 +148,7 @@ export function LocalSnapshotsPanel({ allowDelete = true }: SnapshotsPanelProps)
   const [snapshots, setSnapshots] = useState(() => listAllSnapshots());
   const [storageInfo, setStorageInfo] = useState(() => getBackupStorageInfo());
   const [importing, setImporting] = useState(false);
+  const [highlightedId, setHighlightedId] = useState<string | null>(null);
 
   const refreshSnapshots = useCallback(() => {
     setSnapshots(listAllSnapshots());
@@ -164,6 +165,8 @@ export function LocalSnapshotsPanel({ allowDelete = true }: SnapshotsPanelProps)
       const text = await file.text();
       const { reportType, reportId } = await importReportBackup(text);
       refreshSnapshots();
+      setHighlightedId(reportId);
+      setTimeout(() => setHighlightedId(null), 600);
       toast.success(`Imported ${reportType.replace('_', ' ')} backup`, {
         description: `Report ${reportId.substring(0, 8)}… restored to local + cloud storage.`,
       });
@@ -299,7 +302,7 @@ export function LocalSnapshotsPanel({ allowDelete = true }: SnapshotsPanelProps)
             {/* Mobile card layout */}
             <div className="md:hidden space-y-3">
               {snapshots.map((s) => (
-                <div key={s.key} className="rounded-lg border border-white/10 bg-white/5 dark:bg-white/[0.02] p-3 space-y-2.5 min-w-0 overflow-hidden font-mono">
+                <div key={s.key} className={`rounded-lg border border-white/10 bg-white/5 dark:bg-white/[0.02] p-3 space-y-2.5 min-w-0 overflow-hidden font-mono ${s.reportId === highlightedId ? 'import-flash' : ''}`}>
                   <div className="flex items-center justify-between gap-2 flex-wrap">
                     <Badge variant="outline" className="text-xs">{s.reportType.replace('_', ' ')}</Badge>
                     <Badge variant={s.synced ? "default" : "destructive"} className="text-xs">
@@ -359,7 +362,7 @@ export function LocalSnapshotsPanel({ allowDelete = true }: SnapshotsPanelProps)
                 </TableHeader>
                 <TableBody>
                   {snapshots.map((s) => (
-                    <TableRow key={s.key}>
+                    <TableRow key={s.key} className={s.reportId === highlightedId ? 'import-flash' : ''}>
                       <TableCell>
                         <Badge variant="outline">{s.reportType.replace('_', ' ')}</Badge>
                       </TableCell>
