@@ -1365,7 +1365,7 @@ export default function TrainingForm() {
                 </Badge>
               )}
               <AutoSaveIndicator
-                lastSaved={lastSaved}
+                lastSaved={lastManuallySaved}
                 isSaving={isSaving}
                 hasUnsavedChanges={hasUnsavedChanges}
                 className="flex"

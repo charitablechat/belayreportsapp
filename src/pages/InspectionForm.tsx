@@ -2461,7 +2461,7 @@ export default function InspectionForm() {
                 </>
               )}
               <AutoSaveIndicator
-                lastSaved={lastSaved}
+                lastSaved={lastManuallySaved}
                 isSaving={autoSaving}
                 hasUnsavedChanges={hasUnsavedChanges}
                 error={saveError}

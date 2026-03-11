@@ -1432,7 +1432,7 @@ export default function DailyAssessmentForm() {
                 </Badge>
               )}
               <AutoSaveIndicator
-                lastSaved={lastSaved}
+                lastSaved={lastManuallySaved}
                 isSaving={saving}
                 hasUnsavedChanges={hasUnsavedChanges}
                 className="flex"
