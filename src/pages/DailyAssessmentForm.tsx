@@ -632,6 +632,45 @@ export default function DailyAssessmentForm() {
     ]);
   };
 
+  // Listen for JSON import events — reload form state from IndexedDB to prevent
+  // stale React state from overwriting imported data on next save
+  useEffect(() => {
+    const handleReportImported = async (event: Event) => {
+      const { reportType, reportId } = (event as CustomEvent).detail;
+      if (reportType !== 'daily_assessment' || reportId !== id) return;
+
+      console.log('[DailyAssessmentForm] Detected JSON import — reloading state from IndexedDB');
+      try {
+        const offlineData = await getOfflineDailyAssessment(id!);
+        const [bod, eod, os, eq, st, env] = await Promise.all([
+          getAssessmentDataOffline('beginning_of_day', id!),
+          getAssessmentDataOffline('end_of_day', id!),
+          getAssessmentDataOffline('operating_systems', id!),
+          getAssessmentDataOffline('equipment_checks', id!),
+          getAssessmentDataOffline('structure_checks', id!),
+          getAssessmentDataOffline('environment_checks', id!),
+        ]);
+
+        isInternalUpdateRef.current = true;
+        if (offlineData) setAssessment(offlineData);
+        if (bod.length > 0) { setBeginningOfDay(bod); childDataLoadedRef.current.beginning_of_day = true; }
+        if (eod.length > 0) { setEndOfDay(eod); childDataLoadedRef.current.end_of_day = true; }
+        if (os.length > 0) { setOperatingSystems(os); childDataLoadedRef.current.operating_systems = true; }
+        if (eq.length > 0) { setEquipmentChecks(eq); childDataLoadedRef.current.equipment_checks = true; }
+        if (st.length > 0) { setStructureChecks(st); childDataLoadedRef.current.structure_checks = true; }
+        if (env.length > 0) { setEnvironmentChecks(env); childDataLoadedRef.current.environment_checks = true; }
+
+        setHasUnsavedChanges(false);
+        toast.success("Imported data loaded into form");
+      } catch (e) {
+        console.warn('[DailyAssessmentForm] Failed to reload after import:', e);
+      }
+    };
+
+    window.addEventListener('report-data-imported', handleReportImported);
+    return () => window.removeEventListener('report-data-imported', handleReportImported);
+  }, [id]);
+
   // Track if save is in progress to prevent duplicate calls
   const saveInProgressRef = useRef(false);
 
