@@ -2354,8 +2354,6 @@ export default function InspectionForm() {
         onSave={async () => {
           if (isSavingBeforeLeave) return;
           setIsSavingBeforeLeave(true);
-           leavingRef.current = true;
-           setIsLeaving(true);
           try {
             await Promise.race([
               handleSaveAndLeave(),
@@ -2363,30 +2361,19 @@ export default function InspectionForm() {
             ]);
             emitSyncComplete();
             markPendingDashboardRefresh();
-            flushSync(() => {
-              setShowLeaveDialog(false);
-              setHasUnsavedChanges(false);
-            });
-            navigate('/dashboard');
           } catch (e) {
             console.warn('[InspectionForm] Save-before-leave error:', e);
-            flushSync(() => {
-              setShowLeaveDialog(false);
-              setHasUnsavedChanges(false);
-            });
-            navigate('/dashboard');
           } finally {
             setIsSavingBeforeLeave(false);
           }
+          setShowLeaveDialog(false);
+          bypassAndProceed();
+          navigate('/dashboard');
         }}
         onLeave={() => {
-          leavingRef.current = true;
-          setIsLeaving(true);
-          flushSync(() => {
-            setShowLeaveDialog(false);
-            setHasUnsavedChanges(false);
-          });
           markPendingDashboardRefresh();
+          setShowLeaveDialog(false);
+          bypassAndProceed();
           navigate('/dashboard');
         }}
         onCancel={() => setShowLeaveDialog(false)}
