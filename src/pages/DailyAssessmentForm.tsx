@@ -773,22 +773,8 @@ export default function DailyAssessmentForm() {
           });
         }
 
-      // Save assessment without changing status
-      const updatedAssessment = { 
-        ...assessment, 
-        updated_at: new Date().toISOString(),
-        // DISABLED: active_duration_seconds: getElapsedSeconds(),
-        // Track who modified the report if current user is not the owner
-        ...(currentUser?.id && currentUser.id !== assessment.inspector_id 
-          ? { last_modified_by: currentUser.id } 
-          : {}),
-      };
-      
-      try {
-        await withTimeout(saveDailyAssessmentOffline(updatedAssessment), 3000, 'Assessment offline save');
-      } catch (e) {
-        console.warn('[Save] Assessment offline save timed out:', e);
-      }
+
+
 
       if (navigator.onLine && localSaveSucceeded) {
         // Pre-edit snapshot: capture server state before admin overwrites it
