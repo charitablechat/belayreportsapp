@@ -739,7 +739,7 @@ export default function TrainingForm() {
       }
 
       // If online AND local save succeeded, try to sync to Supabase
-      if (isOnline) {
+      if (isOnline && localSaveSucceeded) {
         // Pre-edit snapshot: capture server state before admin overwrites it
         if (currentUser?.id && training?.inspector_id && currentUser.id !== training.inspector_id) {
           const { capturePreEditSnapshot } = await import('@/lib/admin-edit-snapshot');

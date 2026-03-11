@@ -919,7 +919,6 @@ export default function DailyAssessmentForm() {
           }
           
            markSnapshotSynced('daily_assessment', id!);
-           toast.success("Progress saved");
         } catch (error) {
           console.error('[Save] Error syncing to database:', error);
           try {
