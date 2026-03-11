@@ -37,6 +37,7 @@ export const NOTIFICATION_CONFIG: NotificationConfig = {
       /network (error|issue|problem)/i,
       /could not|unable to/i,
       /permission denied|access denied/i,
+      /hard-saved/i,
     ],
     // Never show as toast - notification center only
     silent: [
