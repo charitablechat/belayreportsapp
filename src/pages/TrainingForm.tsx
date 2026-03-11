@@ -710,8 +710,8 @@ export default function TrainingForm() {
       Promise.all(childOps).then(() => {
         if (import.meta.env.DEV) console.log('[Training Save] Offline storage completed');
 
-        // Show hard-saved toast on successful local save
-        showHardSavedToast(lastVersionNumber ? lastVersionNumber + 1 : undefined, undefined);
+        // Show hard-saved toast only on manual saves to avoid toast flooding
+        if (!silent) showHardSavedToast(lastVersionNumber ? lastVersionNumber + 1 : undefined, undefined);
 
         // Layer 2: Append-only version history (metadata only)
         appendVersion('training', id, updatedTraining, {
