@@ -1,56 +1,66 @@
 
 
-## UUID Ordering Gap Analysis — Report
+## Onboarding Resource Center
 
-### Status: 1 GAP FOUND
+A dedicated `/onboarding` page where users can browse videos and PDFs you've uploaded, and mark items as completed.
 
----
+### Database
 
-### What's Stable (No Gaps)
+**1. `onboarding_resources` table** — stores metadata for each uploaded file
 
-**Inspection forms** — Fully deterministic. `display_order` is stamped from array index on every save (line 1518: `systems.map((s, i) => ({ ...s, display_order: i }))`). All retrieval paths sort by `display_order`: `getRelatedDataOffline`, server queries, edge functions. UUIDs are never used for ordering.
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | PK |
+| title | text | Display name |
+| description | text | Optional summary |
+| file_type | text | 'video' or 'pdf' |
+| file_url | text | Storage path |
+| display_order | integer | Sort order |
+| is_published | boolean | Only published items shown to users |
+| uploaded_by | uuid | References auth.users |
+| created_at | timestamptz | |
 
-**Training forms** — Stable. Components stamp `created_at: new Date().toISOString()` on every new item (training `OperatingSystemsSection` line 47, 60). Both IndexedDB reads (`getTrainingDataOffline`) and server queries sort by `created_at`. Since each item gets a unique timestamp at creation time, order is preserved across all state transitions.
+RLS: Super admins can CRUD. Authenticated users can SELECT where `is_published = true`.
 
-**Photo galleries** — Stable. Uses explicit `display_order` column, persisted on drag-end and sorted on load.
+**2. `onboarding_progress` table** — tracks per-user completion
 
----
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | PK |
+| user_id | uuid | References auth.users |
+| resource_id | uuid | FK to onboarding_resources |
+| completed_at | timestamptz | When marked complete |
+| unique(user_id, resource_id) | | Prevents duplicates |
 
-### GAP: Daily Assessment Components Do Not Stamp `created_at`
+RLS: Users can manage their own rows only.
 
-**Severity: Medium — causes random reordering of custom "Other" entries after save/reload**
+**3. `onboarding-files` storage bucket** — private bucket for the actual video/PDF files. Super admins can upload; authenticated users can read.
 
-All 6 daily assessment child components create items **without** a `created_at` field:
+### Frontend
 
-| Component | Creates items without `created_at` |
-|---|---|
-| `OperatingSystemsSection.tsx` (daily) | Lines 40-43, 50-54 |
-| `BeginningOfDaySection.tsx` | Lines 37-40, 57-60 |
-| `EndOfDaySection.tsx` | Lines 37-39, 57-59 |
-| `EquipmentChecksSection.tsx` | Lines 36-39 |
-| `StructureChecksSection.tsx` | Lines 40-42 |
-| `EnvironmentChecksSection.tsx` | Lines 36-38 |
+**`/onboarding` page** — accessible from the dashboard header navigation:
+- Lists all published resources grouped by type (Videos section, Documents section)
+- Each card shows: title, description, file type icon, and a checkbox to mark complete
+- Clicking a video opens an inline `<video>` player; clicking a PDF downloads it
+- A progress bar at the top shows "X of Y completed"
+- Matches existing app styling (cards, borders, monospace metadata)
 
-**Why this breaks ordering:**
+**Admin upload UI** — visible only to super admins on the same page:
+- "Add Resource" button opens a form: title, description, file type selector, file upload input, display order
+- Drag-to-reorder support using existing drag patterns
+- Toggle publish/unpublish per resource
+- Delete resource (removes from storage + DB)
 
-1. User creates items → stored in React state (ordered by insertion) → saved to IndexedDB without `created_at`
-2. On reload, `getAssessmentDataOffline` sorts by `created_at` (line 1477): `new Date(a.created_at || 0).getTime()`
-3. All items have `created_at = null` → all sort to `new Date(0)` → **order is determined by IndexedDB key enumeration**, which is UUID-alphabetical, not insertion order
-4. On server save, the DB auto-sets `created_at = now()` via column default, but all items in a single upsert batch get the **same timestamp** → order is again non-deterministic on reload
+### Route Addition
 
-**Contrast with training:** The training `OperatingSystemsSection` (line 47) stamps `created_at: new Date().toISOString()` at creation — daily assessment does not.
+Add `/onboarding` to `App.tsx` router, import the new `Onboarding.tsx` page component. Add a navigation link in `AuthenticatedHeader.tsx`.
 
-### Proposed Fix
+### Files
 
-Add `created_at: new Date().toISOString()` to every item creation call in all 6 daily assessment components. This is a one-line addition per creation site (~10 sites total), matching the pattern already used in the training components.
-
-**Files to change:**
-- `src/components/daily-assessment/OperatingSystemsSection.tsx` — 2 sites
-- `src/components/daily-assessment/BeginningOfDaySection.tsx` — 2 sites
-- `src/components/daily-assessment/EndOfDaySection.tsx` — 2 sites
-- `src/components/daily-assessment/EquipmentChecksSection.tsx` — 1 site
-- `src/components/daily-assessment/StructureChecksSection.tsx` — 1 site
-- `src/components/daily-assessment/EnvironmentChecksSection.tsx` — 1 site
-
-No database migration needed. No changes to save handlers or retrieval logic — the sort-by-`created_at` path already exists and will work correctly once the field is populated.
+| File | Action |
+|------|--------|
+| Migration SQL | Create tables, bucket, RLS policies |
+| `src/pages/Onboarding.tsx` | New page component |
+| `src/App.tsx` | Add route |
+| `src/components/AuthenticatedHeader.tsx` | Add nav link |
 

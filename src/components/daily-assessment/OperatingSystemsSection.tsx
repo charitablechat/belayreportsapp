@@ -39,7 +39,8 @@ const OperatingSystemsSection = React.memo(function OperatingSystemsSection({ sy
       // Generate stable ID immediately when creating new item
       onUpdate([{ 
         id: crypto.randomUUID(),
-        system_name: systemName 
+        system_name: systemName,
+        created_at: new Date().toISOString()
       }, ...systems]);
     }
   };
@@ -50,7 +51,8 @@ const OperatingSystemsSection = React.memo(function OperatingSystemsSection({ sy
     onUpdate([{ 
       id: crypto.randomUUID(),
       system_name: 'Other', 
-      other_description: '' 
+      other_description: '',
+      created_at: new Date().toISOString()
     }, ...systems]);
   };
 

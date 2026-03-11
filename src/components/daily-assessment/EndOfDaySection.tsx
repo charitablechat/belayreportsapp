@@ -37,7 +37,8 @@ const EndOfDaySection = React.memo(function EndOfDaySection({ items, onUpdate }:
         id: crypto.randomUUID(),
         item_key: itemKey, 
         is_complete: true, 
-        comments: '' 
+        comments: '',
+        created_at: new Date().toISOString()
       }, ...items]);
     }
   };
@@ -57,7 +58,8 @@ const EndOfDaySection = React.memo(function EndOfDaySection({ items, onUpdate }:
         id: crypto.randomUUID(),
         item_key: itemKey, 
         is_complete: false, 
-        comments 
+        comments,
+        created_at: new Date().toISOString()
       }, ...items]);
     }
   };

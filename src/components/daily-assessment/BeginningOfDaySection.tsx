@@ -38,7 +38,8 @@ const BeginningOfDaySection = React.memo(function BeginningOfDaySection({ items,
         id: crypto.randomUUID(),
         item_key: itemKey, 
         is_complete: true, 
-        comments: '' 
+        comments: '',
+        created_at: new Date().toISOString()
       }, ...items]);
     }
   };
@@ -58,7 +59,8 @@ const BeginningOfDaySection = React.memo(function BeginningOfDaySection({ items,
         id: crypto.randomUUID(),
         item_key: itemKey, 
         is_complete: false, 
-        comments 
+        comments,
+        created_at: new Date().toISOString()
       }, ...items]);
     }
   };
