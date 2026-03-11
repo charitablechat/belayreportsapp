@@ -1,66 +1,34 @@
 
 
-## Onboarding Resource Center
+## Verification: Ziplines & Operating Systems Ordering Persistence
 
-A dedicated `/onboarding` page where users can browse videos and PDFs you've uploaded, and mark items as completed.
+### Result: All 8 layers are correctly covered
 
-### Database
+The ordering pipeline is sound across all persistence and retrieval paths. Here is the layer-by-layer verification:
 
-**1. `onboarding_resources` table** — stores metadata for each uploaded file
+| # | Layer | Stamps `display_order`? | Reads by `display_order`? | Status |
+|---|-------|------------------------|--------------------------|--------|
+| 1 | **New item creation** (ZiplinesTable, OperatingSystemsTable) | No — items get no `display_order` field initially | N/A — order is implicit in array position | OK (stamped at save) |
+| 2 | **Offline save** (InspectionForm ~line 1410) | Yes — `ziplines.map((z, i) => ({ ...z, display_order: i }))` | N/A | OK (fixed in prior change) |
+| 3 | **Offline read** (getRelatedDataOffline, offline-storage.ts line 1162) | N/A | Yes — `.sort((a, b) => (a.display_order ?? 0) - (b.display_order ?? 0))` | OK |
+| 4 | **Online save** (InspectionForm ~line 1518) | Yes — `ziplines.map((z, i) => ({ ...z, display_order: i }))` | N/A | OK |
+| 5 | **Online load** (InspectionForm ~line 1036-1039) | N/A | Yes — `.order("display_order")` on server query | OK |
+| 6 | **Server → IndexedDB cache** (InspectionForm ~line 1159) | Preserved — server data already has `display_order` from DB column | N/A | OK |
+| 7 | **Atomic Sync Manager** (~line 163-165) | Reads from IndexedDB via `getRelatedDataOffline` which sorts by `display_order`; upserts data as-is (with `display_order` field intact) | Yes | OK |
+| 8 | **Report generation** (edge functions) | N/A | Yes — `.order("display_order")` | OK |
 
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uuid | PK |
-| title | text | Display name |
-| description | text | Optional summary |
-| file_type | text | 'video' or 'pdf' |
-| file_url | text | Storage path |
-| display_order | integer | Sort order |
-| is_published | boolean | Only published items shown to users |
-| uploaded_by | uuid | References auth.users |
-| created_at | timestamptz | |
+### Local-is-newer guard (line 1084)
 
-RLS: Super admins can CRUD. Authenticated users can SELECT where `is_published = true`.
+When `isLocalDataNewer` returns `true`, server child data is **skipped entirely** — local IndexedDB state (which has `display_order` stamped) is preserved. No stale server data overwrites the order.
 
-**2. `onboarding_progress` table** — tracks per-user completion
+### Drag-and-drop reorder flow
 
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uuid | PK |
-| user_id | uuid | References auth.users |
-| resource_id | uuid | FK to onboarding_resources |
-| completed_at | timestamptz | When marked complete |
-| unique(user_id, resource_id) | | Prevents duplicates |
+1. User drags item → `useNativeDrag` reorders the React state array
+2. `onUpdate(reordered)` sets the new array order in React state
+3. Auto-save (or manual save) triggers → offline save path stamps `display_order: i` from new array index
+4. Background sync picks up the stamped order from IndexedDB → upserts to server with correct `display_order`
 
-RLS: Users can manage their own rows only.
+### Conclusion
 
-**3. `onboarding-files` storage bucket** — private bucket for the actual video/PDF files. Super admins can upload; authenticated users can read.
-
-### Frontend
-
-**`/onboarding` page** — accessible from the dashboard header navigation:
-- Lists all published resources grouped by type (Videos section, Documents section)
-- Each card shows: title, description, file type icon, and a checkbox to mark complete
-- Clicking a video opens an inline `<video>` player; clicking a PDF downloads it
-- A progress bar at the top shows "X of Y completed"
-- Matches existing app styling (cards, borders, monospace metadata)
-
-**Admin upload UI** — visible only to super admins on the same page:
-- "Add Resource" button opens a form: title, description, file type selector, file upload input, display order
-- Drag-to-reorder support using existing drag patterns
-- Toggle publish/unpublish per resource
-- Delete resource (removes from storage + DB)
-
-### Route Addition
-
-Add `/onboarding` to `App.tsx` router, import the new `Onboarding.tsx` page component. Add a navigation link in `AuthenticatedHeader.tsx`.
-
-### Files
-
-| File | Action |
-|------|--------|
-| Migration SQL | Create tables, bucket, RLS policies |
-| `src/pages/Onboarding.tsx` | New page component |
-| `src/App.tsx` | Add route |
-| `src/components/AuthenticatedHeader.tsx` | Add nav link |
+**No changes needed.** The recent fix (stamping `display_order` in the offline save path) closed the last gap. All paths now correctly persist and respect user-defined ordering for ziplines, operating systems, and equipment.
 
