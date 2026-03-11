@@ -1,43 +1,66 @@
 
 
-## Show Timestamp Only on Manual Save
+## Onboarding Resource Center
 
-### Problem
-Currently, `lastSaved` is updated by auto-save, immediate save (checkbox/date), AND manual save — all feeding the same visible `AutoSaveIndicator`. The user wants the visible timestamp to reflect **only** explicit manual saves (button click or Ctrl/Cmd+S).
+A dedicated `/onboarding` page where users can browse videos and PDFs you've uploaded, and mark items as completed.
 
-### Approach
-Add a separate `lastManuallySaved` state in each form. Only manual save paths update it. Pass this to `AutoSaveIndicator` instead of `lastSaved`. Auto-save continues to update the internal `lastSaved` (used for `hasUnsavedChanges` tracking) but no longer drives the visible indicator. Update the label to say "Manually Saved".
+### Database
 
-### Changes
+**1. `onboarding_resources` table** — stores metadata for each uploaded file
 
-**`src/components/AutoSaveIndicator.tsx`**
-- Change the "Saved" label to "Manually Saved" for desktop and mobile variants
-- No prop changes needed — the forms will simply pass the manual timestamp
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | PK |
+| title | text | Display name |
+| description | text | Optional summary |
+| file_type | text | 'video' or 'pdf' |
+| file_url | text | Storage path |
+| display_order | integer | Sort order |
+| is_published | boolean | Only published items shown to users |
+| uploaded_by | uuid | References auth.users |
+| created_at | timestamptz | |
 
-**`src/pages/InspectionForm.tsx`**
-1. Add state: `const [lastManuallySaved, setLastManuallySaved] = useState<Date | null>(null)`
-2. In `saveProgress()` (the manual save function, ~line 1867): also call `setLastManuallySaved(new Date())`
-3. In `autoSaveProgress()` (~line 1827): keep `setLastSaved(new Date())` but do NOT set `lastManuallySaved`
-4. In `triggerImmediateSave()` (~line 1785): same — do NOT set `lastManuallySaved`
-5. In load completion (~line 1235): do NOT set `lastManuallySaved`
-6. Pass `lastManuallySaved` to `<AutoSaveIndicator lastSaved={lastManuallySaved} ...>` instead of `lastSaved`
+RLS: Super admins can CRUD. Authenticated users can SELECT where `is_published = true`.
 
-**`src/pages/TrainingForm.tsx`**
-1. Add `lastManuallySaved` state
-2. Only set it in the manual `saveTraining()` path
-3. Pass `lastManuallySaved` to `AutoSaveIndicator`
+**2. `onboarding_progress` table** — tracks per-user completion
 
-**`src/pages/DailyAssessmentForm.tsx`**
-1. Add `lastManuallySaved` state
-2. Only set it in the manual save path
-3. Pass `lastManuallySaved` to `AutoSaveIndicator`
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | PK |
+| user_id | uuid | References auth.users |
+| resource_id | uuid | FK to onboarding_resources |
+| completed_at | timestamptz | When marked complete |
+| unique(user_id, resource_id) | | Prevents duplicates |
 
-**`src/hooks/useKeyboardShortcuts.tsx`**
-- No change needed — `useSaveShortcut` already calls `saveProgress`/`saveTraining` which is the manual path
+RLS: Users can manage their own rows only.
 
-### What stays the same
-- Auto-save continues running on the 1.5s debounce — just doesn't update the visible timestamp
-- `hasUnsavedChanges` tracking unchanged
-- Emergency save unchanged
-- `lastSaved` internal state still tracks all saves for logic purposes
+**3. `onboarding-files` storage bucket** — private bucket for the actual video/PDF files. Super admins can upload; authenticated users can read.
+
+### Frontend
+
+**`/onboarding` page** — accessible from the dashboard header navigation:
+- Lists all published resources grouped by type (Videos section, Documents section)
+- Each card shows: title, description, file type icon, and a checkbox to mark complete
+- Clicking a video opens an inline `<video>` player; clicking a PDF downloads it
+- A progress bar at the top shows "X of Y completed"
+- Matches existing app styling (cards, borders, monospace metadata)
+
+**Admin upload UI** — visible only to super admins on the same page:
+- "Add Resource" button opens a form: title, description, file type selector, file upload input, display order
+- Drag-to-reorder support using existing drag patterns
+- Toggle publish/unpublish per resource
+- Delete resource (removes from storage + DB)
+
+### Route Addition
+
+Add `/onboarding` to `App.tsx` router, import the new `Onboarding.tsx` page component. Add a navigation link in `AuthenticatedHeader.tsx`.
+
+### Files
+
+| File | Action |
+|------|--------|
+| Migration SQL | Create tables, bucket, RLS policies |
+| `src/pages/Onboarding.tsx` | New page component |
+| `src/App.tsx` | Add route |
+| `src/components/AuthenticatedHeader.tsx` | Add nav link |
 

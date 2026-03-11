@@ -114,6 +114,7 @@ export default function InspectionForm() {
   const [generatingPdf, setGeneratingPdf] = useState(false);
   const [generatingHtml, setGeneratingHtml] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
+  const [lastManuallySaved, setLastManuallySaved] = useState<Date | null>(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [photoRefreshKey, setPhotoRefreshKey] = useState(0);
   const [versionPanelOpen, setVersionPanelOpen] = useState(false);
@@ -1865,6 +1866,7 @@ export default function InspectionForm() {
     try {
       await performSave(false); // Show warnings on manual save
       setLastSaved(new Date());
+      setLastManuallySaved(new Date());
       setHasUnsavedChanges(false);
       if (import.meta.env.DEV) {
         console.log('[InspectionForm] Progress saved:', isOnline ? 'online' : 'offline');
@@ -2459,7 +2461,7 @@ export default function InspectionForm() {
                 </>
               )}
               <AutoSaveIndicator
-                lastSaved={lastSaved}
+                lastSaved={lastManuallySaved}
                 isSaving={autoSaving}
                 hasUnsavedChanges={hasUnsavedChanges}
                 error={saveError}

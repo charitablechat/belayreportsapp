@@ -101,6 +101,7 @@ export default function TrainingForm() {
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
   const [isGeneratingHTML, setIsGeneratingHTML] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
+  const [lastManuallySaved, setLastManuallySaved] = useState<Date | null>(null);
   const [showEmailDialog, setShowEmailDialog] = useState(false);
   const [isSendingEmail, setIsSendingEmail] = useState(false);
   const [emailForm, setEmailForm] = useState({
@@ -339,7 +340,7 @@ export default function TrainingForm() {
   // Emergency save via useEmergencySave handles data preservation on navigation
 
   // Keyboard shortcut for save (Ctrl/Cmd+S)
-  useSaveShortcut(() => saveTraining(), hasUnsavedChanges && !isSaving);
+  useSaveShortcut(async () => { await saveTraining(); setLastManuallySaved(new Date()); }, hasUnsavedChanges && !isSaving);
 
   // Auto-populate person submitting (from report creator) and submission date
   useEffect(() => {
@@ -1364,7 +1365,7 @@ export default function TrainingForm() {
                 </Badge>
               )}
               <AutoSaveIndicator
-                lastSaved={lastSaved}
+                lastSaved={lastManuallySaved}
                 isSaving={isSaving}
                 hasUnsavedChanges={hasUnsavedChanges}
                 className="flex"
@@ -1385,7 +1386,7 @@ export default function TrainingForm() {
               <Button 
                 variant="outline" 
                 size={isMobile ? "default" : "sm"} 
-                onClick={saveTraining} 
+                onClick={async () => { await saveTraining(); setLastManuallySaved(new Date()); }} 
                 disabled={isSaving || !isOnline}
               >
                 <Save className={isMobile ? "w-5 h-5 mr-1.5" : "w-4 h-4 mr-2"} />

@@ -105,6 +105,7 @@ export default function DailyAssessmentForm() {
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
+  const [lastManuallySaved, setLastManuallySaved] = useState<Date | null>(null);
   const [generating, setGenerating] = useState(false);
   const [assessment, setAssessment] = useState<any>(null);
   const [beginningOfDay, setBeginningOfDay] = useState<any[]>([]);
@@ -1128,7 +1129,7 @@ export default function DailyAssessmentForm() {
 
   // Set save ref for keyboard shortcut (save progress, not submit)
   useEffect(() => {
-    saveRef.current = handleSaveProgress;
+    saveRef.current = async () => { await handleSaveProgress(); setLastManuallySaved(new Date()); };
   });
 
   // Verify that database has the expected data
@@ -1431,7 +1432,7 @@ export default function DailyAssessmentForm() {
                 </Badge>
               )}
               <AutoSaveIndicator
-                lastSaved={lastSaved}
+                lastSaved={lastManuallySaved}
                 isSaving={saving}
                 hasUnsavedChanges={hasUnsavedChanges}
                 className="flex"
@@ -1452,7 +1453,7 @@ export default function DailyAssessmentForm() {
               <Button 
                 variant="outline"
                 size={isMobileView ? "default" : "sm"} 
-                onClick={handleSaveProgress} 
+                onClick={async () => { await handleSaveProgress(); setLastManuallySaved(new Date()); }} 
                 disabled={saving || submitting}
               >
                 <Save className={isMobileView ? "w-5 h-5 mr-1.5" : "w-4 h-4 mr-2"} />
