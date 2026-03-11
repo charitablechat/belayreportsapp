@@ -396,7 +396,7 @@ export default function DailyAssessmentForm() {
         if (import.meta.env.DEV) console.log('[DailyAssessment AutoSave] Interval save triggered');
         handleSaveProgress(true);
       }
-    }, 10000);
+    }, 30000);
 
     return () => {
       if (autoSaveIntervalRef.current) {
