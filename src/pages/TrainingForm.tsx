@@ -93,6 +93,7 @@ export default function TrainingForm() {
   const [showCompletionLockDialog, setShowCompletionLockDialog] = useState(false);
   const [showLeaveDialog, setShowLeaveDialog] = useState(false);
   const [showCompleteDialog, setShowCompleteDialog] = useState(false);
+  const [isLeaving, setIsLeaving] = useState(false);
   const leavingRef = useRef(false);
   const [isSavingBeforeLeave, setIsSavingBeforeLeave] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -219,7 +220,8 @@ export default function TrainingForm() {
 
   // Unsaved changes protection
   const { isBlocked, confirmNavigation, cancelNavigation, saveAndLeave } = useUnsavedChanges({
-    hasUnsavedChanges: hasUnsavedChanges && (training?.status !== 'completed' || completionLockOverridden) && !leavingRef.current,
+    hasUnsavedChanges: hasUnsavedChanges && (training?.status !== 'completed' || completionLockOverridden),
+    alwaysBlock: !isLeaving,
     message: "You have unsaved changes to this training report. Are you sure you want to leave?",
     onSaveAndLeave: async () => { await saveBeforeLeaveRef.current?.(); },
   });
@@ -1283,6 +1285,7 @@ export default function TrainingForm() {
         onConfirm={confirmNavigation}
         onCancel={cancelNavigation}
         onSaveAndLeave={saveAndLeave}
+        hasUnsavedChanges={hasUnsavedChanges && (training?.status !== 'completed' || completionLockOverridden)}
         message="You have unsaved changes to this training report. Are you sure you want to leave?"
       />
       <CompletionLockDialog
@@ -1297,6 +1300,7 @@ export default function TrainingForm() {
           if (isSavingBeforeLeave) return;
           setIsSavingBeforeLeave(true);
           leavingRef.current = true;
+          setIsLeaving(true);
           try {
             await Promise.race([
               handleSaveAndLeave(),
@@ -1322,6 +1326,7 @@ export default function TrainingForm() {
         }}
         onLeave={() => {
           leavingRef.current = true;
+          setIsLeaving(true);
           flushSync(() => {
             setShowLeaveDialog(false);
             setHasUnsavedChanges(false);

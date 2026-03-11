@@ -96,6 +96,7 @@ export default function DailyAssessmentForm() {
   const [completionLockOverridden, setCompletionLockOverridden] = useState(false);
   const [showCompletionLockDialog, setShowCompletionLockDialog] = useState(false);
   const [showLeaveDialog, setShowLeaveDialog] = useState(false);
+  const [isLeaving, setIsLeaving] = useState(false);
   const leavingRef = useRef(false);
   const [isSavingBeforeLeave, setIsSavingBeforeLeave] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -219,7 +220,8 @@ export default function DailyAssessmentForm() {
 
   // Unsaved changes protection
   const { isBlocked, confirmNavigation, cancelNavigation, saveAndLeave } = useUnsavedChanges({
-    hasUnsavedChanges: hasUnsavedChanges && (assessment?.status !== 'completed' || completionLockOverridden) && !leavingRef.current,
+    hasUnsavedChanges: hasUnsavedChanges && (assessment?.status !== 'completed' || completionLockOverridden),
+    alwaysBlock: !isLeaving,
     message: "You have unsaved changes to this assessment. Are you sure you want to leave?",
     onSaveAndLeave: async () => { await saveBeforeLeaveRef.current?.(); },
   });
@@ -1331,6 +1333,7 @@ export default function DailyAssessmentForm() {
         onConfirm={confirmNavigation}
         onCancel={cancelNavigation}
         onSaveAndLeave={saveAndLeave}
+        hasUnsavedChanges={hasUnsavedChanges && (assessment?.status !== 'completed' || completionLockOverridden)}
         message="You have unsaved changes to this assessment. Are you sure you want to leave?"
       />
       
@@ -1362,6 +1365,7 @@ export default function DailyAssessmentForm() {
           if (isSavingBeforeLeave) return;
           setIsSavingBeforeLeave(true);
           leavingRef.current = true;
+          setIsLeaving(true);
           try {
             await Promise.race([
               handleSaveAndLeave(),
@@ -1387,6 +1391,7 @@ export default function DailyAssessmentForm() {
         }}
         onLeave={() => {
           leavingRef.current = true;
+          setIsLeaving(true);
           flushSync(() => {
             setShowLeaveDialog(false);
             setHasUnsavedChanges(false);

@@ -15,6 +15,7 @@ interface UnsavedChangesDialogProps {
   onCancel: () => void;
   onSaveAndLeave?: () => void;
   message?: string;
+  hasUnsavedChanges?: boolean;
 }
 
 export function UnsavedChangesDialog({
@@ -22,22 +23,27 @@ export function UnsavedChangesDialog({
   onConfirm,
   onCancel,
   onSaveAndLeave,
-  message = "You have unsaved progress in this report. Do you want to Save and Exit or Discard Changes and Exit?",
+  message,
+  hasUnsavedChanges = true,
 }: UnsavedChangesDialogProps) {
+  const displayMessage = hasUnsavedChanges
+    ? (message || "You have unsaved progress in this report. Do you want to Save and Exit or Discard Changes and Exit?")
+    : "Are you sure you want to leave this report?";
+
   return (
     <AlertDialog open={isOpen} onOpenChange={(open) => !open && onCancel()}>
       <AlertDialogContent className="bg-slate-900/95 backdrop-blur-xl border border-white/20 shadow-2xl max-w-sm rounded-none sm:rounded-none">
         <AlertDialogHeader>
           <AlertDialogTitle className="text-lg flex items-center gap-2 text-white font-bold tracking-tight">
             <AlertTriangle className="h-5 w-5 text-amber-400" />
-            Unsaved Changes Detected
+            {hasUnsavedChanges ? "Unsaved Changes Detected" : "Leaving Report"}
           </AlertDialogTitle>
           <AlertDialogDescription className="text-slate-300">
-            {message}
+            {displayMessage}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter className="flex-col gap-2 sm:flex-col">
-          {onSaveAndLeave && (
+          {hasUnsavedChanges && onSaveAndLeave && (
             <Button
               onClick={onSaveAndLeave}
               className="w-full bg-emerald-500 hover:bg-emerald-400 text-white border-0 rounded-none font-semibold"
@@ -52,7 +58,7 @@ export function UnsavedChangesDialog({
             className="w-full rounded-none font-semibold"
           >
             <LogOut className="w-4 h-4 mr-2" />
-            Exit — Nothing to Save
+            {hasUnsavedChanges ? "Exit — Nothing to Save" : "Exit Report"}
           </Button>
           <Button
             variant="outline"

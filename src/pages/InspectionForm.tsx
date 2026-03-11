@@ -100,6 +100,7 @@ export default function InspectionForm() {
   const [showCompletionLockDialog, setShowCompletionLockDialog] = useState(false);
   const [showLeaveDialog, setShowLeaveDialog] = useState(false);
   const [showCompleteDialog, setShowCompleteDialog] = useState(false);
+  const [isLeaving, setIsLeaving] = useState(false);
   const leavingRef = useRef(false);
   const [isSavingBeforeLeave, setIsSavingBeforeLeave] = useState(false);
   // Enable keyboard avoidance for mobile
@@ -256,7 +257,8 @@ export default function InspectionForm() {
 
   // Unsaved changes protection
   const { isBlocked, confirmNavigation, cancelNavigation, saveAndLeave } = useUnsavedChanges({
-    hasUnsavedChanges: hasUnsavedChanges && (inspection?.status !== 'completed' || completionLockOverridden) && !leavingRef.current,
+    hasUnsavedChanges: hasUnsavedChanges && (inspection?.status !== 'completed' || completionLockOverridden),
+    alwaysBlock: !isLeaving,
     message: "You have unsaved changes to this inspection. Are you sure you want to leave?",
     onSaveAndLeave: async () => { await saveBeforeLeaveRef.current?.(); },
   });
@@ -2341,6 +2343,7 @@ export default function InspectionForm() {
         onConfirm={confirmNavigation}
         onCancel={cancelNavigation}
         onSaveAndLeave={saveAndLeave}
+        hasUnsavedChanges={hasUnsavedChanges && (inspection?.status !== 'completed' || completionLockOverridden)}
         message="You have unsaved changes to this inspection. Are you sure you want to leave?"
       />
       <CompletionLockDialog
@@ -2354,7 +2357,8 @@ export default function InspectionForm() {
         onSave={async () => {
           if (isSavingBeforeLeave) return;
           setIsSavingBeforeLeave(true);
-          leavingRef.current = true;
+           leavingRef.current = true;
+           setIsLeaving(true);
           try {
             await Promise.race([
               handleSaveAndLeave(),
@@ -2380,6 +2384,7 @@ export default function InspectionForm() {
         }}
         onLeave={() => {
           leavingRef.current = true;
+          setIsLeaving(true);
           flushSync(() => {
             setShowLeaveDialog(false);
             setHasUnsavedChanges(false);
