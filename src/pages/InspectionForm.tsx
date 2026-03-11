@@ -1440,18 +1440,29 @@ export default function InspectionForm() {
         localSaveSucceeded = true;
         console.log('[InspectionForm Save] Offline storage completed');
 
-        // Layer 2: Append-only version history (fire-and-forget)
+        // Show hard-saved toast immediately on successful local save
+        if (!silent) {
+          showHardSavedToast(lastVersionNumber ? lastVersionNumber + 1 : undefined, undefined);
+        }
+
+        // Layer 2: Append-only version history (fire-and-forget, metadata only)
         appendVersion('inspection', id!, inspectionToSave, {
           systems, ziplines, equipment, standards, summary: [currentSummary],
         }, silent ? 'auto_save' : 'manual_save').then((v) => {
           if (v) {
             setLastVersionNumber(v.versionNumber);
             setLastFieldCount(v.fieldCount);
-            if (!silent) showHardSavedToast(v.versionNumber, v.fieldCount);
           }
         }).catch(() => {});
       } catch (offlineError) {
         console.warn('[InspectionForm Save] Offline storage failed:', offlineError);
+        if (!silent) {
+          toast.error("Save failed", {
+            description: "Local storage is unavailable. Please try again.",
+            duration: 5000,
+          });
+        }
+        setSaveError('Local save failed — please retry');
       }
 
       // DEV: warn if filtering excludes items from server sync

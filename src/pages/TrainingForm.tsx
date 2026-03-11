@@ -709,7 +709,10 @@ export default function TrainingForm() {
       Promise.all(childOps).then(() => {
         if (import.meta.env.DEV) console.log('[Training Save] Offline storage completed');
 
-        // Layer 2: Append-only version history
+        // Show hard-saved toast on successful local save
+        showHardSavedToast(lastVersionNumber ? lastVersionNumber + 1 : undefined, undefined);
+
+        // Layer 2: Append-only version history (metadata only)
         appendVersion('training', id, updatedTraining, {
           delivery_approaches: deliveryApproaches,
           operating_systems: operatingSystems,
@@ -725,6 +728,10 @@ export default function TrainingForm() {
         }).catch(() => {});
       }).catch((offlineError) => {
         console.warn('[Training Save] Offline storage failed:', offlineError);
+        toast.error("Save failed", {
+          description: "Local storage is unavailable. Please try again.",
+          duration: 5000,
+        });
       });
 
       // If online, try to sync to Supabase
