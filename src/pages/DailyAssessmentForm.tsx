@@ -517,12 +517,12 @@ export default function DailyAssessmentForm() {
 
           // Load all related data
           const [bodData, eodData, osData, eqData, stData, envData] = await Promise.all([
-            supabase.from('daily_assessment_beginning_of_day').select('*').eq('assessment_id', id),
-            supabase.from('daily_assessment_end_of_day').select('*').eq('assessment_id', id),
-            supabase.from('daily_assessment_operating_systems').select('*').eq('assessment_id', id),
-            supabase.from('daily_assessment_equipment_checks').select('*').eq('assessment_id', id),
-            supabase.from('daily_assessment_structure_checks').select('*').eq('assessment_id', id),
-            supabase.from('daily_assessment_environment_checks').select('*').eq('assessment_id', id),
+            supabase.from('daily_assessment_beginning_of_day').select('*').eq('assessment_id', id).order('created_at'),
+            supabase.from('daily_assessment_end_of_day').select('*').eq('assessment_id', id).order('created_at'),
+            supabase.from('daily_assessment_operating_systems').select('*').eq('assessment_id', id).order('created_at'),
+            supabase.from('daily_assessment_equipment_checks').select('*').eq('assessment_id', id).order('created_at'),
+            supabase.from('daily_assessment_structure_checks').select('*').eq('assessment_id', id).order('created_at'),
+            supabase.from('daily_assessment_environment_checks').select('*').eq('assessment_id', id).order('created_at'),
           ]);
 
           // Vector 2: Non-regression guard — don't overwrite local data with empty server arrays

@@ -497,11 +497,11 @@ export default function TrainingForm() {
               { data: systemsPlaceData },
               { data: summaryResult }
             ] = await Promise.all([
-              supabase.from('training_delivery_approaches').select('*').eq('training_id', id),
-              supabase.from('training_operating_systems').select('*').eq('training_id', id),
-              supabase.from('training_immediate_attention').select('*').eq('training_id', id),
-              supabase.from('training_verifiable_items').select('*').eq('training_id', id),
-              supabase.from('training_systems_in_place').select('*').eq('training_id', id),
+              supabase.from('training_delivery_approaches').select('*').eq('training_id', id).order('created_at'),
+              supabase.from('training_operating_systems').select('*').eq('training_id', id).order('created_at'),
+              supabase.from('training_immediate_attention').select('*').eq('training_id', id).order('created_at'),
+              supabase.from('training_verifiable_items').select('*').eq('training_id', id).order('created_at'),
+              supabase.from('training_systems_in_place').select('*').eq('training_id', id).order('created_at'),
               supabase.from('training_summary').select('*').eq('training_id', id).maybeSingle()
             ]);
 
