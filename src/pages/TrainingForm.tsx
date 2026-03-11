@@ -628,9 +628,10 @@ export default function TrainingForm() {
 
   // Track if save is in progress to prevent duplicate calls
   const saveInProgressRef = useRef(false);
+  const isManualSaveRef = useRef(false);
 
   // Auto-save functionality with safety timeout and duplicate prevention
-  const saveTraining = useCallback(async () => {
+  const saveTraining = useCallback(async (silent = false) => {
     // Block all writes in Lovable preview to protect production data
     if ((await import('@/lib/environment')).isLovablePreview()) return;
     if (!training || !id) return;
