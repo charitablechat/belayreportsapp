@@ -777,7 +777,7 @@ export default function DailyAssessmentForm() {
         console.warn('[Save] Assessment offline save timed out:', e);
       }
 
-      if (navigator.onLine) {
+      if (navigator.onLine && localSaveSucceeded) {
         // Pre-edit snapshot: capture server state before admin overwrites it
         if (currentUser?.id && assessment?.inspector_id && currentUser.id !== assessment.inspector_id) {
           const { capturePreEditSnapshot } = await import('@/lib/admin-edit-snapshot');
