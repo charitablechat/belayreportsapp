@@ -1836,7 +1836,10 @@ export async function getTrainingDataOffline(
       const db = await getDB();
       const storeName = trainingStoreNameMap[type];
       const index = db.transaction(storeName).store.index('by-training');
-      return await index.getAll(trainingId);
+      const results = await index.getAll(trainingId);
+      return results.sort((a: any, b: any) => 
+        new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime()
+      );
     },
     [],
     `getTrainingDataOffline:${type}`
