@@ -84,7 +84,7 @@ export function AutoSaveIndicator({
       <div className={cn("flex items-center gap-1.5 text-xs font-mono text-emerald-400", mobilePill, className)}>
         <CheckCircle className="w-3 h-3" />
         <span className="sm:hidden">Saved {formatTimeMobile(lastSaved)}</span>
-        <span className="hidden sm:inline">Saved at {formatTimeDesktop(lastSaved)}</span>
+        <span className="hidden sm:inline">Manually Saved at {formatTimeDesktop(lastSaved)}</span>
       </div>
     );
   }
