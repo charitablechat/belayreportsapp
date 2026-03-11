@@ -1402,17 +1402,17 @@ export default function InspectionForm() {
           saveInspectionOffline(inspectionToSave),
         ];
         if (systems.length > 0 || childDataLoadedRef.current.systems) {
-          childSaveOps.push(saveRelatedDataOffline('systems', id!, systems));
+          childSaveOps.push(saveRelatedDataOffline('systems', id!, systems.map((s, i) => ({ ...s, display_order: i }))));
         } else {
           console.warn('[InspectionForm Save] Skipping systems save — empty array not confirmed as loaded');
         }
         if (ziplines.length > 0 || childDataLoadedRef.current.ziplines) {
-          childSaveOps.push(saveRelatedDataOffline('ziplines', id!, ziplines));
+          childSaveOps.push(saveRelatedDataOffline('ziplines', id!, ziplines.map((z, i) => ({ ...z, display_order: i }))));
         } else {
           console.warn('[InspectionForm Save] Skipping ziplines save — empty array not confirmed as loaded');
         }
         if (equipment.length > 0 || childDataLoadedRef.current.equipment) {
-          childSaveOps.push(saveRelatedDataOffline('equipment', id!, equipment));
+          childSaveOps.push(saveRelatedDataOffline('equipment', id!, equipment.map((e, i) => ({ ...e, display_order: i }))));
         } else {
           console.warn('[InspectionForm Save] Skipping equipment save — empty array not confirmed as loaded');
         }
