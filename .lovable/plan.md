@@ -1,66 +1,66 @@
 
 
-## Onboarding Resource Center
+## Remaining Gaps Found
 
-A dedicated `/onboarding` page where users can browse videos and PDFs you've uploaded, and mark items as completed.
+After a thorough audit of the import-to-save flow, the `AutoSaveIndicator`, the `performSave` guard logic, and the child data lifecycle, I identified **three gaps**. Two are in the import handler, one is in the `AutoSaveIndicator` state precedence.
 
-### Database
+---
 
-**1. `onboarding_resources` table** — stores metadata for each uploaded file
+### Gap 1: Empty child arrays from imports leave stale React state (All three forms)
 
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uuid | PK |
-| title | text | Display name |
-| description | text | Optional summary |
-| file_type | text | 'video' or 'pdf' |
-| file_url | text | Storage path |
-| display_order | integer | Sort order |
-| is_published | boolean | Only published items shown to users |
-| uploaded_by | uuid | References auth.users |
-| created_at | timestamptz | |
+**Severity: High — causes data corruption on save after import**
 
-RLS: Super admins can CRUD. Authenticated users can SELECT where `is_published = true`.
+Both `importReportBackup` (local-backup-ledger.ts, line 478) and all three form import handlers use `if (array.length > 0)` guards. If the imported snapshot legitimately contains empty child arrays (e.g., a report with no systems added yet), the import:
+1. Skips writing empty arrays to IndexedDB (line 478: `if (Array.isArray(data) && data.length > 0)`)
+2. Reads from IndexedDB and gets the OLD data back
+3. Skips updating React state (handler: `if (offSystems.length > 0)`)
 
-**2. `onboarding_progress` table** — tracks per-user completion
+Result: stale React state from the previous load persists. On next save, those stale child items are written back — corrupting the imported report.
 
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uuid | PK |
-| user_id | uuid | References auth.users |
-| resource_id | uuid | FK to onboarding_resources |
-| completed_at | timestamptz | When marked complete |
-| unique(user_id, resource_id) | | Prevents duplicates |
+**Fix:**
 
-RLS: Users can manage their own rows only.
+**`src/lib/local-backup-ledger.ts`** — In `importReportBackup`, write ALL child arrays to IndexedDB, including empty ones. Change the guard from `if (data.length > 0)` to always write. Empty arrays should clear old data.
 
-**3. `onboarding-files` storage bucket** — private bucket for the actual video/PDF files. Super admins can upload; authenticated users can read.
+**All three form handlers** — Update the `if (arr.length > 0)` guards to unconditionally update React state and `childDataLoadedRef`. Use pattern:
+```ts
+setSystems(offSystems); // Always set, even if empty
+childDataLoadedRef.current.systems = true; // Mark as loaded either way
+```
 
-### Frontend
+This aligns with how the `performSave` guard works (line 1401): `if (systems.length > 0 || childDataLoadedRef.current.systems)` — an empty array IS saved to IndexedDB as long as `childDataLoadedRef` is `true`.
 
-**`/onboarding` page** — accessible from the dashboard header navigation:
-- Lists all published resources grouped by type (Videos section, Documents section)
-- Each card shows: title, description, file type icon, and a checkbox to mark complete
-- Clicking a video opens an inline `<video>` player; clicking a PDF downloads it
-- A progress bar at the top shows "X of Y completed"
-- Matches existing app styling (cards, borders, monospace metadata)
+---
 
-**Admin upload UI** — visible only to super admins on the same page:
-- "Add Resource" button opens a form: title, description, file type selector, file upload input, display order
-- Drag-to-reorder support using existing drag patterns
-- Toggle publish/unpublish per resource
-- Delete resource (removes from storage + DB)
+### Gap 2: `AutoSaveIndicator` shows "Saving..." during auto-save but user only wants manual save feedback
 
-### Route Addition
+**Severity: Low — cosmetic confusion**
 
-Add `/onboarding` to `App.tsx` router, import the new `Onboarding.tsx` page component. Add a navigation link in `AuthenticatedHeader.tsx`.
+`AutoSaveIndicator` receives `isSaving={autoSaving}` (InspectionForm line 2505). When auto-save fires, the spinner and "Saving..." text appear even though the user explicitly asked the visible indicator to only reflect manual saves. This contradicts the intent of the `lastManuallySaved` change.
 
-### Files
+**Fix:** Pass `isSaving={saving}` instead of `isSaving={autoSaving}` so the spinner only appears during manual save clicks. The `autoSaving` state should remain invisible to the user.
 
-| File | Action |
+Apply to all three forms.
+
+---
+
+### Gap 3: Photo metadata not refreshed on import (All three forms)
+
+**Severity: Medium — photos from imported backup don't appear until form reload**
+
+The import handler reloads parent + child data from IndexedDB but does NOT reload photo data. Photos are managed by `PhotoCapture`/`PhotoGallery` components with their own queries. If the imported file contains photo metadata (in `snapshot.children.photos`), the IndexedDB gets the data but the React photo state is stale.
+
+**Fix:** In each form's import handler, also reload photos from IndexedDB and trigger a refresh of the photo components. This can be done by dispatching a state change or incrementing a refresh key that the photo components depend on.
+
+---
+
+### Summary of changes
+
+| File | Change |
 |------|--------|
-| Migration SQL | Create tables, bucket, RLS policies |
-| `src/pages/Onboarding.tsx` | New page component |
-| `src/App.tsx` | Add route |
-| `src/components/AuthenticatedHeader.tsx` | Add nav link |
+| `src/lib/local-backup-ledger.ts` | Remove `data.length > 0` guard in `importReportBackup` — always write child arrays |
+| `src/pages/InspectionForm.tsx` | Import handler: unconditionally set child state + `childDataLoadedRef`; change `isSaving={autoSaving}` → `isSaving={saving}` |
+| `src/pages/TrainingForm.tsx` | Same two changes |
+| `src/pages/DailyAssessmentForm.tsx` | Same two changes |
+
+Gap 3 (photos) requires additional investigation into how photo components load their data before determining the exact refresh mechanism.
 
