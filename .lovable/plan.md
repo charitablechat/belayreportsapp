@@ -1,66 +1,60 @@
 
 
-## Onboarding Resource Center
+## Gap Analysis Results
 
-A dedicated `/onboarding` page where users can browse videos and PDFs you've uploaded, and mark items as completed.
+### 1. JSON Export Filenames — No gaps found
+All download paths (`downloadReportBackup`, cloud snapshot download, admin edit export) consistently use `sanitizeFilename()` with the same `backup_{type}{orgPart}_{idPrefix}` pattern. The `sanitizeFilename` function correctly caps length at 60 chars, strips special characters, and collapses whitespace. Verified across all three call sites in `DataRecoveryTool.tsx` and the one in `local-backup-ledger.ts`.
 
-### Database
+### 2. 'Completed' Button State — GAP FOUND
+**Severity: Medium — UX inconsistency, potential double-completion**
 
-**1. `onboarding_resources` table** — stores metadata for each uploaded file
+The memory states: *"the 'Complete' button remains visible but is updated to a disabled 'Completed' state with a CheckCircle icon."* However, the actual implementation does NOT do this.
 
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uuid | PK |
-| title | text | Display name |
-| description | text | Optional summary |
-| file_type | text | 'video' or 'pdf' |
-| file_url | text | Storage path |
-| display_order | integer | Sort order |
-| is_published | boolean | Only published items shown to users |
-| uploaded_by | uuid | References auth.users |
-| created_at | timestamptz | |
+Current behavior across all three forms:
+- The **Complete** button is gated by `{!effectiveReadOnly && (` — which is `false` only for non-owners/non-admins
+- When the owner views their own completed report, `effectiveReadOnly` is `false` (ownership grants edit rights regardless of status)
+- The Complete button **remains fully clickable** even after completion
+- There is no disabled "Completed" indicator anywhere
 
-RLS: Super admins can CRUD. Authenticated users can SELECT where `is_published = true`.
+**Fix:** In all three forms, conditionally render the Complete button based on `inspection?.status !== 'completed'`, and show a disabled "Completed" indicator when the status IS completed:
 
-**2. `onboarding_progress` table** — tracks per-user completion
+```tsx
+{!effectiveReadOnly && inspection?.status !== 'completed' && (
+  <Button onClick={() => setShowCompleteDialog(true)} ...>
+    <CheckCircle /> Complete
+  </Button>
+)}
+{inspection?.status === 'completed' && (
+  <Button disabled variant="outline" size="sm" className="opacity-70 cursor-default">
+    <CheckCircle className="w-4 h-4" />
+    <span>Completed</span>
+  </Button>
+)}
+```
 
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uuid | PK |
-| user_id | uuid | References auth.users |
-| resource_id | uuid | FK to onboarding_resources |
-| completed_at | timestamptz | When marked complete |
-| unique(user_id, resource_id) | | Prevents duplicates |
+Apply to: `InspectionForm.tsx`, `TrainingForm.tsx`, `DailyAssessmentForm.tsx`
 
-RLS: Users can manage their own rows only.
+### 3. Retro-compatibility / Import Inference — No gaps found
+The `inferReportType()` function uses field-presence heuristics that map cleanly to each schema:
+- **Inspection**: `inspection_date` OR (`location` AND `acct_number`) — unique combination
+- **Training**: `start_date` AND `end_date` AND `trainee_names` — all three required, no ambiguity
+- **Daily assessment**: `assessment_date` OR (`site` AND `environment_comments`)
 
-**3. `onboarding-files` storage bucket** — private bucket for the actual video/PDF files. Super admins can upload; authenticated users can read.
+The three-format normalizer (Format A/B/C) correctly handles: standard exports, cloud/admin exports with `snapshot_data`, and raw ReportSnapshot objects. Snake_case (`report_type`, `report_id`) is handled at line 418-419 via `??` fallback. No misclassification risk with correctly-formatted reports since Format A/B always carry explicit `reportType`.
 
-### Frontend
+### 4. Green Flash Highlight — No gaps found
+- CSS animation defined in `index.css` line 693-699, using `hsl(var(--success) / 0.25)` → `--success` is defined in both light (line 39) and dark (line 178) themes
+- `highlightedId` state set with `setTimeout(() => setHighlightedId(null), 8600)` — 100ms buffer over the 8500ms CSS animation duration prevents premature class removal
+- Applied to both mobile card view (line 305) and desktop table row (line 365) — consistent across viewports
+- No race condition: `setHighlightedId` is called synchronously after import success, and `refreshSnapshots()` is called before it so the new entry is in the list when the highlight is applied
+- No performance concern: single string comparison per row during render, cleared by timeout
 
-**`/onboarding` page** — accessible from the dashboard header navigation:
-- Lists all published resources grouped by type (Videos section, Documents section)
-- Each card shows: title, description, file type icon, and a checkbox to mark complete
-- Clicking a video opens an inline `<video>` player; clicking a PDF downloads it
-- A progress bar at the top shows "X of Y completed"
-- Matches existing app styling (cards, borders, monospace metadata)
+### Summary
 
-**Admin upload UI** — visible only to super admins on the same page:
-- "Add Resource" button opens a form: title, description, file type selector, file upload input, display order
-- Drag-to-reorder support using existing drag patterns
-- Toggle publish/unpublish per resource
-- Delete resource (removes from storage + DB)
-
-### Route Addition
-
-Add `/onboarding` to `App.tsx` router, import the new `Onboarding.tsx` page component. Add a navigation link in `AuthenticatedHeader.tsx`.
-
-### Files
-
-| File | Action |
-|------|--------|
-| Migration SQL | Create tables, bucket, RLS policies |
-| `src/pages/Onboarding.tsx` | New page component |
-| `src/App.tsx` | Add route |
-| `src/components/AuthenticatedHeader.tsx` | Add nav link |
+| Area | Status | Action |
+|------|--------|--------|
+| Filename standardization | Clean | None |
+| Completed button persistence | **Gap** | Add disabled "Completed" indicator in all 3 forms |
+| Import retro-compatibility | Clean | None |
+| Green flash highlight | Clean | None |
 
