@@ -1470,6 +1470,7 @@ export default function TrainingForm() {
                 <HardDrive className="w-4 h-4" />
               </Button>
               )}
+              {training?.status !== 'completed' && (
               <Button 
                 size={isMobile ? "default" : "sm"} 
                 onClick={() => setShowCompleteDialog(true)} 
@@ -1481,10 +1482,17 @@ export default function TrainingForm() {
                 ) : (
                   <>
                     <CheckCircle className={isMobile ? "w-5 h-5 mr-1.5" : "w-4 h-4 mr-2"} />
-                    <span>{isMobile ? "Complete" : "Complete"}</span>
+                    <span>Complete</span>
                   </>
                 )}
               </Button>
+              )}
+              {training?.status === 'completed' && (
+                <Button disabled variant="outline" size={isMobile ? "default" : "sm"} className="opacity-70 cursor-default">
+                  <CheckCircle className={isMobile ? "w-5 h-5 mr-1.5" : "w-4 h-4 mr-2"} />
+                  <span>Completed</span>
+                </Button>
+              )}
               </>
               )}
               {training?.status === 'completed' && (

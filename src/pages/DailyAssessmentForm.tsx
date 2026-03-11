@@ -1536,6 +1536,7 @@ export default function DailyAssessmentForm() {
                 <HardDrive className="w-4 h-4" />
               </Button>
               )}
+              {assessment?.status !== 'completed' && (
               <Button 
                 size={isMobileView ? "default" : "sm"} 
                 onClick={() => setShowSubmitDialog(true)} 
@@ -1551,6 +1552,13 @@ export default function DailyAssessmentForm() {
                   </>
                 )}
               </Button>
+              )}
+              {assessment?.status === 'completed' && (
+                <Button disabled variant="outline" size={isMobileView ? "default" : "sm"} className="opacity-70 cursor-default">
+                  <CheckCircle className={isMobileView ? "w-5 h-5 mr-1.5" : "w-4 h-4 mr-2"} />
+                  <span>Completed</span>
+                </Button>
+              )}
               </>
               )}
               {assessment?.status === 'completed' && (
