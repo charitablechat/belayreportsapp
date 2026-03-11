@@ -389,14 +389,14 @@ export default function DailyAssessmentForm() {
     }
   }, [beginningOfDay, endOfDay, operatingSystems, equipmentChecks, structureChecks, environmentChecks]);
 
-  // Backup auto-save interval (every 10 seconds)
+  // Backup auto-save interval (every 30 seconds — matches system standard)
   useEffect(() => {
     autoSaveIntervalRef.current = setInterval(() => {
       if (hasUnsavedChanges && !saving && !loading && isOwner) {
         if (import.meta.env.DEV) console.log('[DailyAssessment AutoSave] Interval save triggered');
         handleSaveProgress(true);
       }
-    }, 10000);
+    }, 30000);
 
     return () => {
       if (autoSaveIntervalRef.current) {
@@ -717,6 +717,19 @@ export default function DailyAssessmentForm() {
         guardedSave('equipment_checks', equipmentChecks);
         guardedSave('structure_checks', structureChecks);
         guardedSave('environment_checks', environmentChecks);
+
+        // Include parent assessment save in the same atomic batch
+        const updatedAssessment = { 
+          ...assessment, 
+          updated_at: new Date().toISOString(),
+          ...(currentUser?.id && currentUser.id !== assessment.inspector_id 
+            ? { last_modified_by: currentUser.id } 
+            : {}),
+        };
+        childOps.push(
+          withTimeout(saveDailyAssessmentOffline(updatedAssessment), 3000, 'Assessment offline save')
+        );
+
         // Layer 1: localStorage snapshot backup FIRST (before IndexedDB writes)
         try {
           saveReportSnapshot('daily_assessment', id!, assessment, {
@@ -760,22 +773,8 @@ export default function DailyAssessmentForm() {
           });
         }
 
-      // Save assessment without changing status
-      const updatedAssessment = { 
-        ...assessment, 
-        updated_at: new Date().toISOString(),
-        // DISABLED: active_duration_seconds: getElapsedSeconds(),
-        // Track who modified the report if current user is not the owner
-        ...(currentUser?.id && currentUser.id !== assessment.inspector_id 
-          ? { last_modified_by: currentUser.id } 
-          : {}),
-      };
-      
-      try {
-        await withTimeout(saveDailyAssessmentOffline(updatedAssessment), 3000, 'Assessment offline save');
-      } catch (e) {
-        console.warn('[Save] Assessment offline save timed out:', e);
-      }
+
+
 
       if (navigator.onLine && localSaveSucceeded) {
         // Pre-edit snapshot: capture server state before admin overwrites it
