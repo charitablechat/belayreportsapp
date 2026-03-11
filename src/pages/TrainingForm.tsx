@@ -340,7 +340,7 @@ export default function TrainingForm() {
   // Emergency save via useEmergencySave handles data preservation on navigation
 
   // Keyboard shortcut for save (Ctrl/Cmd+S)
-  useSaveShortcut(() => saveTraining(), hasUnsavedChanges && !isSaving);
+  useSaveShortcut(async () => { await saveTraining(); setLastManuallySaved(new Date()); }, hasUnsavedChanges && !isSaving);
 
   // Auto-populate person submitting (from report creator) and submission date
   useEffect(() => {
