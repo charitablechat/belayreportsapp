@@ -302,7 +302,7 @@ export function LocalSnapshotsPanel({ allowDelete = true }: SnapshotsPanelProps)
             {/* Mobile card layout */}
             <div className="md:hidden space-y-3">
               {snapshots.map((s) => (
-                <div key={s.key} className="rounded-lg border border-white/10 bg-white/5 dark:bg-white/[0.02] p-3 space-y-2.5 min-w-0 overflow-hidden font-mono">
+                <div key={s.key} className={`rounded-lg border border-white/10 bg-white/5 dark:bg-white/[0.02] p-3 space-y-2.5 min-w-0 overflow-hidden font-mono ${s.reportId === highlightedId ? 'import-flash' : ''}`}>
                   <div className="flex items-center justify-between gap-2 flex-wrap">
                     <Badge variant="outline" className="text-xs">{s.reportType.replace('_', ' ')}</Badge>
                     <Badge variant={s.synced ? "default" : "destructive"} className="text-xs">
