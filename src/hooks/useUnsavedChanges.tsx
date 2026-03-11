@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from "react";
+import { useEffect, useCallback, useRef } from "react";
 import { useNavigate, useBlocker } from "react-router-dom";
 
 interface UseUnsavedChangesOptions {
@@ -17,29 +17,45 @@ export function useUnsavedChanges({
 }: UseUnsavedChangesOptions) {
   const navigate = useNavigate();
 
-  // Block ALL SPA navigation — always if alwaysBlock, otherwise only when unsaved
-  const blocker = useBlocker(alwaysBlock || hasUnsavedChanges);
+  // Ref-based bypass: set to true right before calling blocker.proceed()
+  // This avoids the flushSync race — the ref is read synchronously by the
+  // blocker predicate and is never subject to React's batched state updates.
+  const bypassRef = useRef(false);
 
-  // Block hard page unload (refresh, tab close)
+  // Block ALL SPA navigation — always if alwaysBlock, otherwise only when unsaved.
+  // The bypassRef lets callers disable the guard synchronously before proceed().
+  const blocker = useBlocker(() => {
+    if (bypassRef.current) return false;
+    return alwaysBlock || hasUnsavedChanges;
+  });
+
+  // Block hard page unload (refresh, tab close).
+  // Respects alwaysBlock so the native prompt fires even after auto-save.
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (hasUnsavedChanges) {
+      if (alwaysBlock || hasUnsavedChanges) {
         e.preventDefault();
-        e.returnValue = message;
-        return message;
+        e.returnValue = "";
       }
     };
 
     window.addEventListener("beforeunload", handleBeforeUnload);
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
-  }, [hasUnsavedChanges, message]);
+  }, [alwaysBlock, hasUnsavedChanges]);
 
   // safeNavigate just calls navigate directly -- useBlocker intercepts if needed
   const safeNavigate = useCallback((to: string | number) => {
     navigate(to as any);
   }, [navigate]);
 
+  /** Bypass the blocker and proceed with navigation (no dialog). */
+  const bypassAndProceed = useCallback(() => {
+    bypassRef.current = true;
+    blocker.proceed?.();
+  }, [blocker]);
+
   const confirmNavigation = useCallback(() => {
+    bypassRef.current = true;
     blocker.proceed?.();
   }, [blocker]);
 
@@ -58,8 +74,16 @@ export function useUnsavedChanges({
         console.warn('[useUnsavedChanges] Save before leave failed or timed out:', e);
       }
     }
+    bypassRef.current = true;
     blocker.proceed?.();
   }, [blocker, onSaveAndLeave]);
+
+  // Reset bypass when blocker resets (user cancelled or new navigation)
+  useEffect(() => {
+    if (blocker.state !== "blocked") {
+      bypassRef.current = false;
+    }
+  }, [blocker.state]);
 
   return {
     isBlocked: blocker.state === "blocked",
@@ -67,6 +91,7 @@ export function useUnsavedChanges({
     cancelNavigation,
     saveAndLeave,
     safeNavigate,
+    bypassAndProceed,
     message,
   };
 }
