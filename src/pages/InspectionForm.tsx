@@ -2496,6 +2496,11 @@ export default function InspectionForm() {
                       size="icon"
                       className="h-8 w-8"
                       onClick={() => {
+                        if (inspection && id) {
+                          saveReportSnapshot('inspection', id, inspection, {
+                            systems, ziplines, equipment, standards, summary: [summary],
+                          }, !!inspection.synced_at);
+                        }
                         const ok = downloadReportBackup('inspection', id);
                         if (ok) {
                           toast.success('BACKUP SAVED', {
