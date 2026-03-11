@@ -371,7 +371,7 @@ export default function DailyAssessmentForm() {
         if (import.meta.env.DEV) {
           console.log('[DailyAssessment AutoSave] Debounced save triggered');
         }
-        handleSaveProgress();
+        handleSaveProgress(true);
       }
     }, 1500);
     
@@ -394,7 +394,7 @@ export default function DailyAssessmentForm() {
     autoSaveIntervalRef.current = setInterval(() => {
       if (hasUnsavedChanges && !saving && !loading && isOwner) {
         if (import.meta.env.DEV) console.log('[DailyAssessment AutoSave] Interval save triggered');
-        handleSaveProgress();
+        handleSaveProgress(true);
       }
     }, 10000);
 
@@ -680,7 +680,7 @@ export default function DailyAssessmentForm() {
   const saveInProgressRef = useRef(false);
 
   // Save progress without completing - keeps status as draft
-  const handleSaveProgress = async () => {
+  const handleSaveProgress = async (silent = false) => {
     // Block all writes in Lovable preview to protect production data
     if ((await import('@/lib/environment')).isLovablePreview()) return;
     // Prevent duplicate save calls
@@ -732,8 +732,8 @@ export default function DailyAssessmentForm() {
         Promise.all(childOps).then(() => {
           if (import.meta.env.DEV) console.log('[Save] Offline storage completed');
 
-          // Show hard-saved toast on successful local save
-          showHardSavedToast(lastVersionNumber ? lastVersionNumber + 1 : undefined, undefined);
+          // Show hard-saved toast only on manual saves to avoid toast flooding
+          if (!silent) showHardSavedToast(lastVersionNumber ? lastVersionNumber + 1 : undefined, undefined);
 
            // Layer 2: Append-only version history (metadata only)
            appendVersion('daily_assessment', id!, assessment, {
