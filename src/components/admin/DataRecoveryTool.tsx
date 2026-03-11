@@ -166,7 +166,7 @@ export function LocalSnapshotsPanel({ allowDelete = true }: SnapshotsPanelProps)
       const { reportType, reportId } = await importReportBackup(text);
       refreshSnapshots();
       setHighlightedId(reportId);
-      setTimeout(() => setHighlightedId(null), 600);
+      setTimeout(() => setHighlightedId(null), 8600);
       toast.success(`Imported ${reportType.replace('_', ' ')} backup`, {
         description: `Report ${reportId.substring(0, 8)}… restored to local + cloud storage.`,
       });

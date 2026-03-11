@@ -695,7 +695,7 @@ input[type="number"] {
   100% { background-color: transparent; }
 }
 .import-flash {
-  animation: import-flash 500ms ease-out forwards;
+  animation: import-flash 8500ms ease-out forwards;
 }
 
 /* Active Timer — terminal blink for cursor and REC dot */
