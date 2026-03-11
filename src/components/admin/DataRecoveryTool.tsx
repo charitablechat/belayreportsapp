@@ -362,7 +362,7 @@ export function LocalSnapshotsPanel({ allowDelete = true }: SnapshotsPanelProps)
                 </TableHeader>
                 <TableBody>
                   {snapshots.map((s) => (
-                    <TableRow key={s.key}>
+                    <TableRow key={s.key} className={s.reportId === highlightedId ? 'import-flash' : ''}>
                       <TableCell>
                         <Badge variant="outline">{s.reportType.replace('_', ' ')}</Badge>
                       </TableCell>
