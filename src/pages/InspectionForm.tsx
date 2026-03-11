@@ -1915,6 +1915,7 @@ export default function InspectionForm() {
       console.warn('[InspectionForm] Safety timeout reached, forcing save state reset');
       setSaving(false);
       saveInProgressRef.current = false;
+      anySaveInProgressRef.current = false;
     }, 8000);
 
     try {
