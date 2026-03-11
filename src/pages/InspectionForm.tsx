@@ -1412,7 +1412,7 @@ export default function InspectionForm() {
           console.warn('[InspectionForm Save] Skipping ziplines save — empty array not confirmed as loaded');
         }
         if (equipment.length > 0 || childDataLoadedRef.current.equipment) {
-          childSaveOps.push(saveRelatedDataOffline('equipment', id!, equipment));
+          childSaveOps.push(saveRelatedDataOffline('equipment', id!, equipment.map((e, i) => ({ ...e, display_order: i }))));
         } else {
           console.warn('[InspectionForm Save] Skipping equipment save — empty array not confirmed as loaded');
         }
