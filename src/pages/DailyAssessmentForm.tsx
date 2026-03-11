@@ -96,6 +96,7 @@ export default function DailyAssessmentForm() {
   const [completionLockOverridden, setCompletionLockOverridden] = useState(false);
   const [showCompletionLockDialog, setShowCompletionLockDialog] = useState(false);
   const [showLeaveDialog, setShowLeaveDialog] = useState(false);
+  const [isLeaving, setIsLeaving] = useState(false);
   const leavingRef = useRef(false);
   const [isSavingBeforeLeave, setIsSavingBeforeLeave] = useState(false);
   const [loading, setLoading] = useState(true);

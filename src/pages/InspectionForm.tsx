@@ -100,6 +100,7 @@ export default function InspectionForm() {
   const [showCompletionLockDialog, setShowCompletionLockDialog] = useState(false);
   const [showLeaveDialog, setShowLeaveDialog] = useState(false);
   const [showCompleteDialog, setShowCompleteDialog] = useState(false);
+  const [isLeaving, setIsLeaving] = useState(false);
   const leavingRef = useRef(false);
   const [isSavingBeforeLeave, setIsSavingBeforeLeave] = useState(false);
   // Enable keyboard avoidance for mobile
