@@ -1326,6 +1326,7 @@ export default function TrainingForm() {
         }}
         onLeave={() => {
           leavingRef.current = true;
+          setIsLeaving(true);
           flushSync(() => {
             setShowLeaveDialog(false);
             setHasUnsavedChanges(false);

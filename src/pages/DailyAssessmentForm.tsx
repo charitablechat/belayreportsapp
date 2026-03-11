@@ -1391,6 +1391,7 @@ export default function DailyAssessmentForm() {
         }}
         onLeave={() => {
           leavingRef.current = true;
+          setIsLeaving(true);
           flushSync(() => {
             setShowLeaveDialog(false);
             setHasUnsavedChanges(false);

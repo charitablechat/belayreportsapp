@@ -2384,6 +2384,7 @@ export default function InspectionForm() {
         }}
         onLeave={() => {
           leavingRef.current = true;
+          setIsLeaving(true);
           flushSync(() => {
             setShowLeaveDialog(false);
             setHasUnsavedChanges(false);
