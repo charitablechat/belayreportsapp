@@ -1,44 +1,66 @@
 
 
-## Snapshot Restoration: Merge Bug in Server-Side Restore Paths
+## Onboarding Resource Center
 
-### Problem Found
+A dedicated `/onboarding` page where users can browse videos and PDFs you've uploaded, and mark items as completed.
 
-**IndexedDB restore** (local): All save functions (`saveRelatedDataOffline`, `saveTrainingDataOffline`, `saveAssessmentDataOffline`) perform **delete-all-then-put** within a single transaction — this is a **full replacement**. Correct.
+### Database
 
-**Server-side restore** (2 functions): Both use `upsert()` only, which **updates existing rows and inserts new ones but never deletes rows that are absent from the snapshot**.
+**1. `onboarding_resources` table** — stores metadata for each uploaded file
 
-```text
-Example failure:
-  Current DB:    [System A, System B, System C, System D, System E]
-  Snapshot data: [System A, System B, System C]
-  After upsert:  [System A*, System B*, System C*, System D, System E]  ← D & E are orphans
-```
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | PK |
+| title | text | Display name |
+| description | text | Optional summary |
+| file_type | text | 'video' or 'pdf' |
+| file_url | text | Storage path |
+| display_order | integer | Sort order |
+| is_published | boolean | Only published items shown to users |
+| uploaded_by | uuid | References auth.users |
+| created_at | timestamptz | |
 
-### Affected Functions
+RLS: Super admins can CRUD. Authenticated users can SELECT where `is_published = true`.
 
-| Function | File | Issue |
-|----------|------|-------|
-| `restoreSnapshotToServer` | `src/lib/cloud-backup.ts` | Upserts children without deleting current rows first |
-| `restoreAdminEditSnapshot` | `src/lib/admin-edit-snapshot.ts` | Same — upserts children without deleting current rows first |
+**2. `onboarding_progress` table** — tracks per-user completion
 
-### Fix
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | PK |
+| user_id | uuid | References auth.users |
+| resource_id | uuid | FK to onboarding_resources |
+| completed_at | timestamptz | When marked complete |
+| unique(user_id, resource_id) | | Prevents duplicates |
 
-For both functions, before upserting children for each child table, **delete all existing child rows** for that report ID, then insert the snapshot rows. This converts the operation from merge to full replacement.
+RLS: Users can manage their own rows only.
 
-**`src/lib/cloud-backup.ts` — `restoreSnapshotToServer`:**
-- Determine the FK column name based on `reportType` (e.g., `inspection_id`, `training_id`, `assessment_id`)
-- Before the child upsert loop, for each child table: run `.delete().eq(fkColumn, reportId)` then `.insert(rows)`
+**3. `onboarding-files` storage bucket** — private bucket for the actual video/PDF files. Super admins can upload; authenticated users can read.
 
-**`src/lib/admin-edit-snapshot.ts` — `restoreAdminEditSnapshot`:**
-- Same pattern: delete existing children by FK before inserting snapshot children
-- Already has `PARENT_FK` and `CHILD_TABLES` maps that provide the FK column name
+### Frontend
 
-Both changes are ~5 lines each — add a delete call before the insert/upsert in the child loop.
+**`/onboarding` page** — accessible from the dashboard header navigation:
+- Lists all published resources grouped by type (Videos section, Documents section)
+- Each card shows: title, description, file type icon, and a checkbox to mark complete
+- Clicking a video opens an inline `<video>` player; clicking a PDF downloads it
+- A progress bar at the top shows "X of Y completed"
+- Matches existing app styling (cards, borders, monospace metadata)
 
-### What Stays Correct (No Changes Needed)
+**Admin upload UI** — visible only to super admins on the same page:
+- "Add Resource" button opens a form: title, description, file type selector, file upload input, display order
+- Drag-to-reorder support using existing drag patterns
+- Toggle publish/unpublish per resource
+- Delete resource (removes from storage + DB)
 
-- **IndexedDB paths** (import, version restore): Already do full replacement via delete-then-put
-- **`report-data-imported` event handler**: Reloads from IndexedDB which has the replaced data — correct
-- **Parent record upsert**: Single row by ID — upsert is equivalent to replace — correct
+### Route Addition
+
+Add `/onboarding` to `App.tsx` router, import the new `Onboarding.tsx` page component. Add a navigation link in `AuthenticatedHeader.tsx`.
+
+### Files
+
+| File | Action |
+|------|--------|
+| Migration SQL | Create tables, bucket, RLS policies |
+| `src/pages/Onboarding.tsx` | New page component |
+| `src/App.tsx` | Add route |
+| `src/components/AuthenticatedHeader.tsx` | Add nav link |
 

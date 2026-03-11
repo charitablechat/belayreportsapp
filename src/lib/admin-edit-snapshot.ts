@@ -195,13 +195,22 @@ export async function restoreAdminEditSnapshot(snapshotId: string): Promise<bool
       return false;
     }
 
-    // Upsert children
+    // Replace children — delete existing then insert snapshot rows
+    const fkColumn = PARENT_FK[reportType];
     for (const [table, rows] of Object.entries(children)) {
+      // Always delete existing children to ensure full replacement
+      const { error: delErr } = await (supabase.from(table as any) as any)
+        .delete()
+        .eq(fkColumn, snapshot.report_id);
+      if (delErr) {
+        console.warn(`[AdminEditSnapshot] Child delete ${table} failed:`, delErr.message);
+      }
+
       if (!Array.isArray(rows) || rows.length === 0) continue;
       const { error: childErr } = await (supabase.from(table as any) as any)
-        .upsert(rows, { onConflict: 'id' });
+        .insert(rows);
       if (childErr) {
-        console.warn(`[AdminEditSnapshot] Child restore ${table} failed:`, childErr.message);
+        console.warn(`[AdminEditSnapshot] Child insert ${table} failed:`, childErr.message);
       }
     }
 

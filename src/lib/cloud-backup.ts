@@ -225,12 +225,15 @@ export async function restoreSnapshotToServer(snapshotId: string): Promise<boole
   const reportType = full.report_type as ReportType;
 
   try {
-    // Map report type to parent table
+    // Map report type to parent table and FK column
     const parentTable = reportType === 'inspection' ? 'inspections'
       : reportType === 'training' ? 'trainings'
       : 'daily_assessments';
+    const fkColumn = reportType === 'inspection' ? 'inspection_id'
+      : reportType === 'training' ? 'training_id'
+      : 'assessment_id';
 
-    // Upsert parent record
+    // Upsert parent record (single row by ID — upsert is equivalent to replace)
     const { error: parentError } = await (supabase.from(parentTable as any) as any)
       .upsert(parent, { onConflict: 'id' });
 
@@ -239,14 +242,21 @@ export async function restoreSnapshotToServer(snapshotId: string): Promise<boole
       return false;
     }
 
-    // Upsert children — each key maps to a child table
+    // Replace children — delete existing then insert snapshot rows
     for (const [tableKey, rows] of Object.entries(children)) {
+      // Always delete existing children to ensure full replacement (even if snapshot has zero rows)
+      const { error: deleteError } = await (supabase.from(tableKey as any) as any)
+        .delete()
+        .eq(fkColumn, full.report_id);
+      if (deleteError) {
+        console.warn(`[Cloud Backup] Server restore delete ${tableKey} failed:`, deleteError.message);
+      }
+
       if (!Array.isArray(rows) || rows.length === 0) continue;
-      const { error: childError } = await (supabase.from(tableKey as any) as any)
-        .upsert(rows, { onConflict: 'id' });
-      if (childError) {
-        console.warn(`[Cloud Backup] Server restore child ${tableKey} failed:`, childError.message);
-        // Continue with other children — partial restore is better than none
+      const { error: insertError } = await (supabase.from(tableKey as any) as any)
+        .insert(rows);
+      if (insertError) {
+        console.warn(`[Cloud Backup] Server restore insert ${tableKey} failed:`, insertError.message);
       }
     }
 
