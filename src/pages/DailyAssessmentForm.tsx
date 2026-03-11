@@ -729,34 +729,36 @@ export default function DailyAssessmentForm() {
           }, false);
         } catch {}
 
-        Promise.all(childOps).then(() => {
+        let localSaveSucceeded = false;
+        try {
+          await Promise.all(childOps);
+          localSaveSucceeded = true;
           if (import.meta.env.DEV) console.log('[Save] Offline storage completed');
 
           // Show hard-saved toast only on manual saves to avoid toast flooding
           if (!silent) showHardSavedToast(lastVersionNumber ? lastVersionNumber + 1 : undefined, undefined);
 
-           // Layer 2: Append-only version history (metadata only)
-           appendVersion('daily_assessment', id!, assessment, {
-             beginning_of_day: beginningOfDay,
-             end_of_day: endOfDay,
-             operating_systems: operatingSystems,
-             equipment_checks: equipmentChecks,
-             structure_checks: structureChecks,
-             environment_checks: environmentChecks,
-           }, 'auto_save').then((v) => {
-             if (v) {
-               setLastVersionNumber(v.versionNumber);
-               setLastFieldCount(v.fieldCount);
-             }
-           }).catch(() => {});
-        }).catch((offlineError) => {
+          // Layer 2: Append-only version history (metadata only)
+          appendVersion('daily_assessment', id!, assessment, {
+            beginning_of_day: beginningOfDay,
+            end_of_day: endOfDay,
+            operating_systems: operatingSystems,
+            equipment_checks: equipmentChecks,
+            structure_checks: structureChecks,
+            environment_checks: environmentChecks,
+          }, silent ? 'auto_save' : 'manual_save').then((v) => {
+            if (v) {
+              setLastVersionNumber(v.versionNumber);
+              setLastFieldCount(v.fieldCount);
+            }
+          }).catch(() => {});
+        } catch (offlineError) {
           console.warn('[Save] Offline storage failed:', offlineError);
           toast.error("Save failed", {
             description: "Local storage is unavailable. Please try again.",
             duration: 5000,
           });
-        });
-      
+        }
 
       // Save assessment without changing status
       const updatedAssessment = { 
@@ -775,7 +777,7 @@ export default function DailyAssessmentForm() {
         console.warn('[Save] Assessment offline save timed out:', e);
       }
 
-      if (navigator.onLine) {
+      if (navigator.onLine && localSaveSucceeded) {
         // Pre-edit snapshot: capture server state before admin overwrites it
         if (currentUser?.id && assessment?.inspector_id && currentUser.id !== assessment.inspector_id) {
           const { capturePreEditSnapshot } = await import('@/lib/admin-edit-snapshot');
@@ -917,7 +919,6 @@ export default function DailyAssessmentForm() {
           }
           
            markSnapshotSynced('daily_assessment', id!);
-           toast.success("Progress saved");
         } catch (error) {
           console.error('[Save] Error syncing to database:', error);
           try {

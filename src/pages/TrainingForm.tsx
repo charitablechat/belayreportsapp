@@ -707,7 +707,10 @@ export default function TrainingForm() {
         }, false);
       } catch {}
 
-      Promise.all(childOps).then(() => {
+      let localSaveSucceeded = false;
+      try {
+        await Promise.all(childOps);
+        localSaveSucceeded = true;
         if (import.meta.env.DEV) console.log('[Training Save] Offline storage completed');
 
         // Show hard-saved toast only on manual saves to avoid toast flooding
@@ -721,22 +724,22 @@ export default function TrainingForm() {
           verifiable_items: verifiableItems,
           systems_in_place: systemsInPlace,
           summary: summary ? [summary] : [],
-        }, 'auto_save').then((v) => {
+        }, silent ? 'auto_save' : 'manual_save').then((v) => {
           if (v) {
             setLastVersionNumber(v.versionNumber);
             setLastFieldCount(v.fieldCount);
           }
         }).catch(() => {});
-      }).catch((offlineError) => {
+      } catch (offlineError) {
         console.warn('[Training Save] Offline storage failed:', offlineError);
         toast.error("Save failed", {
           description: "Local storage is unavailable. Please try again.",
           duration: 5000,
         });
-      });
+      }
 
-      // If online, try to sync to Supabase
-      if (isOnline) {
+      // If online AND local save succeeded, try to sync to Supabase
+      if (isOnline && localSaveSucceeded) {
         // Pre-edit snapshot: capture server state before admin overwrites it
         if (currentUser?.id && training?.inspector_id && currentUser.id !== training.inspector_id) {
           const { capturePreEditSnapshot } = await import('@/lib/admin-edit-snapshot');
