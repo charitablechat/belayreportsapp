@@ -1402,7 +1402,7 @@ export default function InspectionForm() {
           saveInspectionOffline(inspectionToSave),
         ];
         if (systems.length > 0 || childDataLoadedRef.current.systems) {
-          childSaveOps.push(saveRelatedDataOffline('systems', id!, systems));
+          childSaveOps.push(saveRelatedDataOffline('systems', id!, systems.map((s, i) => ({ ...s, display_order: i }))));
         } else {
           console.warn('[InspectionForm Save] Skipping systems save — empty array not confirmed as loaded');
         }
