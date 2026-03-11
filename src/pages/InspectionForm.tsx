@@ -1831,8 +1831,7 @@ export default function InspectionForm() {
     const safetyTimeout = setTimeout(() => {
       console.warn('[InspectionForm] triggerImmediateSave safety timeout reached, forcing state reset');
       setAutoSaving(false);
-      // NOTE: anySaveInProgressRef is NOT reset here -- the actual save
-      // still running will reset it in `finally`
+      anySaveInProgressRef.current = false;
     }, 8000);
     
     try {
