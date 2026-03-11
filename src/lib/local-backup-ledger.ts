@@ -475,21 +475,21 @@ export async function importReportBackup(jsonString: string): Promise<{
   if (reportType === 'inspection') {
     await saveInspectionOffline(snapshot.parent);
     for (const [key, data] of Object.entries(snapshot.children)) {
-      if (Array.isArray(data) && data.length > 0) {
+      if (Array.isArray(data)) {
         await saveRelatedDataOffline(key as any, reportId, data);
       }
     }
   } else if (reportType === 'training') {
     await saveTrainingOffline(snapshot.parent);
     for (const [key, data] of Object.entries(snapshot.children)) {
-      if (Array.isArray(data) && data.length > 0) {
+      if (Array.isArray(data)) {
         await saveTrainingDataOffline(key as any, reportId, data);
       }
     }
   } else if (reportType === 'daily_assessment') {
     await saveDailyAssessmentOffline(snapshot.parent);
     for (const [key, data] of Object.entries(snapshot.children)) {
-      if (Array.isArray(data) && data.length > 0) {
+      if (Array.isArray(data)) {
         await saveAssessmentDataOffline(key as any, reportId, data);
       }
     }

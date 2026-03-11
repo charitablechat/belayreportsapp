@@ -2506,7 +2506,7 @@ export default function InspectionForm() {
               )}
               <AutoSaveIndicator
                 lastSaved={lastManuallySaved}
-                isSaving={autoSaving}
+                isSaving={saving}
                 hasUnsavedChanges={hasUnsavedChanges}
                 error={saveError}
                 className="flex"

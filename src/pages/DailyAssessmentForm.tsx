@@ -656,12 +656,15 @@ export default function DailyAssessmentForm() {
           setAssessment(offlineData);
           setInspectorId(offlineData.inspector_id);
         }
-        if (bod.length > 0) { setBeginningOfDay(bod); childDataLoadedRef.current.beginning_of_day = true; }
-        if (eod.length > 0) { setEndOfDay(eod); childDataLoadedRef.current.end_of_day = true; }
-        if (os.length > 0) { setOperatingSystems(os); childDataLoadedRef.current.operating_systems = true; }
-        if (eq.length > 0) { setEquipmentChecks(eq); childDataLoadedRef.current.equipment_checks = true; }
-        if (st.length > 0) { setStructureChecks(st); childDataLoadedRef.current.structure_checks = true; }
-        if (env.length > 0) { setEnvironmentChecks(env); childDataLoadedRef.current.environment_checks = true; }
+        setBeginningOfDay(bod); childDataLoadedRef.current.beginning_of_day = true;
+        setEndOfDay(eod); childDataLoadedRef.current.end_of_day = true;
+        setOperatingSystems(os); childDataLoadedRef.current.operating_systems = true;
+        setEquipmentChecks(eq); childDataLoadedRef.current.equipment_checks = true;
+        setStructureChecks(st); childDataLoadedRef.current.structure_checks = true;
+        setEnvironmentChecks(env); childDataLoadedRef.current.environment_checks = true;
+
+        // Refresh photo galleries to pick up any imported photo metadata
+        setPhotoRefreshKey(prev => prev + 1);
 
         setHasUnsavedChanges(true);
         toast.success("Imported data loaded into form");
