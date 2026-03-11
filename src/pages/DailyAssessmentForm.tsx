@@ -1465,6 +1465,16 @@ export default function DailyAssessmentForm() {
                 className="h-8 w-8"
                 title="Force Local Backup"
                 onClick={() => {
+                  if (assessment && id) {
+                    saveReportSnapshot('daily_assessment', id, assessment, {
+                      beginning_of_day: beginningOfDay,
+                      end_of_day: endOfDay,
+                      operating_systems: operatingSystems,
+                      equipment_checks: equipmentChecks,
+                      structure_checks: structureChecks,
+                      environment_checks: environmentChecks,
+                    }, !!assessment.synced_at);
+                  }
                   const ok = downloadReportBackup('daily_assessment', id);
                   if (ok) {
                     toast.success('BACKUP SAVED', {

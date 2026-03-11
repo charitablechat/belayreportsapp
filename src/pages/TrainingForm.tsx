@@ -1398,6 +1398,16 @@ export default function TrainingForm() {
                 className="h-8 w-8"
                 title="Force Local Backup"
                 onClick={() => {
+                  if (training && id) {
+                    saveReportSnapshot('training', id, training, {
+                      delivery_approaches: deliveryApproaches,
+                      operating_systems: operatingSystems,
+                      immediate_attention: immediateAttention,
+                      verifiable_items: verifiableItems,
+                      systems_in_place: systemsInPlace,
+                      summary: summary ? [summary] : [],
+                    }, !!training.synced_at);
+                  }
                   const ok = downloadReportBackup('training', id);
                   if (ok) {
                     toast.success('BACKUP SAVED', {
