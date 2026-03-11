@@ -36,7 +36,8 @@ const EquipmentChecksSection = React.memo(function EquipmentChecksSection({ chec
       onUpdate([{ 
         id: crypto.randomUUID(),
         item_key: itemKey, 
-        is_checked: true 
+        is_checked: true,
+        created_at: new Date().toISOString()
       }, ...checks]);
     }
   };

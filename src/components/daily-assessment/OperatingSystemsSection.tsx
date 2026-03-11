@@ -51,7 +51,8 @@ const OperatingSystemsSection = React.memo(function OperatingSystemsSection({ sy
     onUpdate([{ 
       id: crypto.randomUUID(),
       system_name: 'Other', 
-      other_description: '' 
+      other_description: '',
+      created_at: new Date().toISOString()
     }, ...systems]);
   };
 
