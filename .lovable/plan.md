@@ -1,66 +1,59 @@
 
 
-## Onboarding Resource Center
+## Audit: JSON Import → Save Progress Data Loss
 
-A dedicated `/onboarding` page where users can browse videos and PDFs you've uploaded, and mark items as completed.
+### Root Cause
 
-### Database
+When a user imports a JSON backup file while the InspectionForm (or any form) is already open, the import writes data to IndexedDB and localStorage, but the **React state** in the form component is never refreshed. When the user then clicks "Save Progress", `performSave()` writes the stale React state back to IndexedDB and the server, **overwriting the imported data**.
 
-**1. `onboarding_resources` table** — stores metadata for each uploaded file
+```text
+Timeline:
+  1. Form loads → React state populated from IndexedDB/server
+  2. User opens Data Recovery sheet → imports JSON
+  3. importReportBackup() writes to IndexedDB + localStorage ✓
+  4. User closes sheet → React state still has OLD data
+  5. User clicks "Save Progress" → performSave() writes OLD React state
+     → IndexedDB overwritten with old data ✗
+     → Server synced with old data ✗
+     → Imported JSON data LOST ✗
+```
 
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uuid | PK |
-| title | text | Display name |
-| description | text | Optional summary |
-| file_type | text | 'video' or 'pdf' |
-| file_url | text | Storage path |
-| display_order | integer | Sort order |
-| is_published | boolean | Only published items shown to users |
-| uploaded_by | uuid | References auth.users |
-| created_at | timestamptz | |
+### Secondary Gap: Auto-save races
 
-RLS: Super admins can CRUD. Authenticated users can SELECT where `is_published = true`.
+Even without clicking "Save Progress", the auto-save (1.5s debounce or 10s interval) will fire and overwrite the imported data with stale React state. The emergency save on `visibilitychange` has the same issue.
 
-**2. `onboarding_progress` table** — tracks per-user completion
+### Fix
 
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uuid | PK |
-| user_id | uuid | References auth.users |
-| resource_id | uuid | FK to onboarding_resources |
-| completed_at | timestamptz | When marked complete |
-| unique(user_id, resource_id) | | Prevents duplicates |
+**`src/lib/local-backup-ledger.ts`** — Add a global event mechanism:
+- After `importReportBackup()` completes successfully, dispatch a custom DOM event `report-data-imported` with `{ reportType, reportId }` as detail.
 
-RLS: Users can manage their own rows only.
+**`src/pages/InspectionForm.tsx`** — Listen for the import event:
+- Add a `useEffect` that listens for the `report-data-imported` custom event.
+- When received, if the `reportId` matches the current form's `id`, reload data from IndexedDB into React state (reuse the existing offline-loading logic). This ensures the form picks up the imported data.
+- Set `childDataLoadedRef` flags to `true` for all child types.
+- Set `hasUnsavedChanges` to `false` (data is already persisted in IndexedDB).
 
-**3. `onboarding-files` storage bucket** — private bucket for the actual video/PDF files. Super admins can upload; authenticated users can read.
+**`src/pages/TrainingForm.tsx`** — Same pattern: listen for import event, reload from IndexedDB if matching.
 
-### Frontend
+**`src/pages/DailyAssessmentForm.tsx`** — Same pattern.
 
-**`/onboarding` page** — accessible from the dashboard header navigation:
-- Lists all published resources grouped by type (Videos section, Documents section)
-- Each card shows: title, description, file type icon, and a checkbox to mark complete
-- Clicking a video opens an inline `<video>` player; clicking a PDF downloads it
-- A progress bar at the top shows "X of Y completed"
-- Matches existing app styling (cards, borders, monospace metadata)
+### Changes Summary
 
-**Admin upload UI** — visible only to super admins on the same page:
-- "Add Resource" button opens a form: title, description, file type selector, file upload input, display order
-- Drag-to-reorder support using existing drag patterns
-- Toggle publish/unpublish per resource
-- Delete resource (removes from storage + DB)
+1. **`src/lib/local-backup-ledger.ts`** (~3 lines): At the end of `importReportBackup()`, after all writes complete, dispatch:
+   ```ts
+   window.dispatchEvent(new CustomEvent('report-data-imported', {
+     detail: { reportType, reportId }
+   }));
+   ```
 
-### Route Addition
+2. **`src/pages/InspectionForm.tsx`** (~40 lines): Add `useEffect` listening for the event. When the imported report matches the current form ID, re-read all child data from IndexedDB using the existing `getOfflineInspection`/`getRelatedDataOffline` calls and update React state (systems, ziplines, equipment, standards, summary). Mark all `childDataLoadedRef` flags as `true`.
 
-Add `/onboarding` to `App.tsx` router, import the new `Onboarding.tsx` page component. Add a navigation link in `AuthenticatedHeader.tsx`.
+3. **`src/pages/TrainingForm.tsx`** (~30 lines): Same pattern adapted for training data structures.
 
-### Files
+4. **`src/pages/DailyAssessmentForm.tsx`** (~30 lines): Same pattern adapted for assessment data structures.
 
-| File | Action |
-|------|--------|
-| Migration SQL | Create tables, bucket, RLS policies |
-| `src/pages/Onboarding.tsx` | New page component |
-| `src/App.tsx` | Add route |
-| `src/components/AuthenticatedHeader.tsx` | Add nav link |
+### What stays the same
+- Auto-save, emergency save, manual save logic unchanged
+- Import flow in DataRecoveryTool unchanged
+- No new dependencies
 
