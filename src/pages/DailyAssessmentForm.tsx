@@ -389,7 +389,7 @@ export default function DailyAssessmentForm() {
     }
   }, [beginningOfDay, endOfDay, operatingSystems, equipmentChecks, structureChecks, environmentChecks]);
 
-  // Backup auto-save interval (every 10 seconds)
+  // Backup auto-save interval (every 30 seconds — matches system standard)
   useEffect(() => {
     autoSaveIntervalRef.current = setInterval(() => {
       if (hasUnsavedChanges && !saving && !loading && isOwner) {
