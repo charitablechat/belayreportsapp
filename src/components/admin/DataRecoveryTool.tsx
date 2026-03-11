@@ -692,7 +692,9 @@ function AllUserSnapshotsPanel() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `backup_${reportType}_${reportId.substring(0, 8)}.json`;
+      const org = full?.snapshot_data?.parent?.organization;
+      const orgPart = org ? `_${sanitizeFilename(org)}` : '';
+      a.download = `backup_${reportType}${orgPart}_${reportId.substring(0, 8)}.json`;
       a.click();
       URL.revokeObjectURL(url);
       toast.success("Exported as JSON");
