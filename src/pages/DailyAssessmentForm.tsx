@@ -1,5 +1,4 @@
 import { useEffect, useState, useRef, useCallback } from "react";
-import { flushSync } from "react-dom";
 import { isLocalDataNewer } from "@/lib/local-data-guards";
 import { useParams, useNavigate } from "react-router-dom";
 import { goBack } from "@/lib/navigation";
@@ -96,8 +95,6 @@ export default function DailyAssessmentForm() {
   const [completionLockOverridden, setCompletionLockOverridden] = useState(false);
   const [showCompletionLockDialog, setShowCompletionLockDialog] = useState(false);
   const [showLeaveDialog, setShowLeaveDialog] = useState(false);
-  const [isLeaving, setIsLeaving] = useState(false);
-  const leavingRef = useRef(false);
   const [isSavingBeforeLeave, setIsSavingBeforeLeave] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -219,9 +216,9 @@ export default function DailyAssessmentForm() {
   saveBeforeLeaveRef.current = handleSaveAndLeave;
 
   // Unsaved changes protection
-  const { isBlocked, confirmNavigation, cancelNavigation, saveAndLeave } = useUnsavedChanges({
+  const { isBlocked, confirmNavigation, cancelNavigation, saveAndLeave, bypassAndProceed } = useUnsavedChanges({
     hasUnsavedChanges: hasUnsavedChanges && (assessment?.status !== 'completed' || completionLockOverridden),
-    alwaysBlock: !isLeaving,
+    alwaysBlock: true,
     message: "You have unsaved changes to this assessment. Are you sure you want to leave?",
     onSaveAndLeave: async () => { await saveBeforeLeaveRef.current?.(); },
   });
@@ -1364,8 +1361,6 @@ export default function DailyAssessmentForm() {
         onSave={async () => {
           if (isSavingBeforeLeave) return;
           setIsSavingBeforeLeave(true);
-          leavingRef.current = true;
-          setIsLeaving(true);
           try {
             await Promise.race([
               handleSaveAndLeave(),
@@ -1373,30 +1368,19 @@ export default function DailyAssessmentForm() {
             ]);
             emitSyncComplete();
             markPendingDashboardRefresh();
-            flushSync(() => {
-              setShowLeaveDialog(false);
-              setHasUnsavedChanges(false);
-            });
-            navigate('/dashboard');
           } catch (e) {
             console.warn('[DailyAssessmentForm] Save-before-leave error:', e);
-            flushSync(() => {
-              setShowLeaveDialog(false);
-              setHasUnsavedChanges(false);
-            });
-            navigate('/dashboard');
           } finally {
             setIsSavingBeforeLeave(false);
           }
+          setShowLeaveDialog(false);
+          bypassAndProceed();
+          navigate('/dashboard');
         }}
         onLeave={() => {
-          leavingRef.current = true;
-          setIsLeaving(true);
-          flushSync(() => {
-            setShowLeaveDialog(false);
-            setHasUnsavedChanges(false);
-          });
           markPendingDashboardRefresh();
+          setShowLeaveDialog(false);
+          bypassAndProceed();
           navigate('/dashboard');
         }}
         onCancel={() => setShowLeaveDialog(false)}

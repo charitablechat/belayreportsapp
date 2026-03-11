@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState, useRef, useCallback } from "react";
-import { flushSync } from "react-dom";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel,
   AlertDialogContent, AlertDialogDescription,
@@ -100,8 +99,6 @@ export default function InspectionForm() {
   const [showCompletionLockDialog, setShowCompletionLockDialog] = useState(false);
   const [showLeaveDialog, setShowLeaveDialog] = useState(false);
   const [showCompleteDialog, setShowCompleteDialog] = useState(false);
-  const [isLeaving, setIsLeaving] = useState(false);
-  const leavingRef = useRef(false);
   const [isSavingBeforeLeave, setIsSavingBeforeLeave] = useState(false);
   // Enable keyboard avoidance for mobile
   useKeyboardAvoidance();
@@ -256,9 +253,9 @@ export default function InspectionForm() {
   saveBeforeLeaveRef.current = handleSaveAndLeave;
 
   // Unsaved changes protection
-  const { isBlocked, confirmNavigation, cancelNavigation, saveAndLeave } = useUnsavedChanges({
+  const { isBlocked, confirmNavigation, cancelNavigation, saveAndLeave, bypassAndProceed } = useUnsavedChanges({
     hasUnsavedChanges: hasUnsavedChanges && (inspection?.status !== 'completed' || completionLockOverridden),
-    alwaysBlock: !isLeaving,
+    alwaysBlock: true,
     message: "You have unsaved changes to this inspection. Are you sure you want to leave?",
     onSaveAndLeave: async () => { await saveBeforeLeaveRef.current?.(); },
   });
@@ -2357,8 +2354,6 @@ export default function InspectionForm() {
         onSave={async () => {
           if (isSavingBeforeLeave) return;
           setIsSavingBeforeLeave(true);
-           leavingRef.current = true;
-           setIsLeaving(true);
           try {
             await Promise.race([
               handleSaveAndLeave(),
@@ -2366,30 +2361,19 @@ export default function InspectionForm() {
             ]);
             emitSyncComplete();
             markPendingDashboardRefresh();
-            flushSync(() => {
-              setShowLeaveDialog(false);
-              setHasUnsavedChanges(false);
-            });
-            navigate('/dashboard');
           } catch (e) {
             console.warn('[InspectionForm] Save-before-leave error:', e);
-            flushSync(() => {
-              setShowLeaveDialog(false);
-              setHasUnsavedChanges(false);
-            });
-            navigate('/dashboard');
           } finally {
             setIsSavingBeforeLeave(false);
           }
+          setShowLeaveDialog(false);
+          bypassAndProceed();
+          navigate('/dashboard');
         }}
         onLeave={() => {
-          leavingRef.current = true;
-          setIsLeaving(true);
-          flushSync(() => {
-            setShowLeaveDialog(false);
-            setHasUnsavedChanges(false);
-          });
           markPendingDashboardRefresh();
+          setShowLeaveDialog(false);
+          bypassAndProceed();
           navigate('/dashboard');
         }}
         onCancel={() => setShowLeaveDialog(false)}

@@ -1,5 +1,4 @@
 import { useEffect, useState, useCallback, useRef } from "react";
-import { flushSync } from "react-dom";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel,
   AlertDialogContent, AlertDialogDescription,
@@ -93,8 +92,6 @@ export default function TrainingForm() {
   const [showCompletionLockDialog, setShowCompletionLockDialog] = useState(false);
   const [showLeaveDialog, setShowLeaveDialog] = useState(false);
   const [showCompleteDialog, setShowCompleteDialog] = useState(false);
-  const [isLeaving, setIsLeaving] = useState(false);
-  const leavingRef = useRef(false);
   const [isSavingBeforeLeave, setIsSavingBeforeLeave] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -219,9 +216,9 @@ export default function TrainingForm() {
   saveBeforeLeaveRef.current = handleSaveAndLeave;
 
   // Unsaved changes protection
-  const { isBlocked, confirmNavigation, cancelNavigation, saveAndLeave } = useUnsavedChanges({
+  const { isBlocked, confirmNavigation, cancelNavigation, saveAndLeave, bypassAndProceed } = useUnsavedChanges({
     hasUnsavedChanges: hasUnsavedChanges && (training?.status !== 'completed' || completionLockOverridden),
-    alwaysBlock: !isLeaving,
+    alwaysBlock: true,
     message: "You have unsaved changes to this training report. Are you sure you want to leave?",
     onSaveAndLeave: async () => { await saveBeforeLeaveRef.current?.(); },
   });
@@ -1299,8 +1296,6 @@ export default function TrainingForm() {
         onSave={async () => {
           if (isSavingBeforeLeave) return;
           setIsSavingBeforeLeave(true);
-          leavingRef.current = true;
-          setIsLeaving(true);
           try {
             await Promise.race([
               handleSaveAndLeave(),
@@ -1308,30 +1303,19 @@ export default function TrainingForm() {
             ]);
             emitSyncComplete();
             markPendingDashboardRefresh();
-            flushSync(() => {
-              setShowLeaveDialog(false);
-              setHasUnsavedChanges(false);
-            });
-            navigate('/dashboard');
           } catch (e) {
             console.warn('[TrainingForm] Save-before-leave error:', e);
-            flushSync(() => {
-              setShowLeaveDialog(false);
-              setHasUnsavedChanges(false);
-            });
-            navigate('/dashboard');
           } finally {
             setIsSavingBeforeLeave(false);
           }
+          setShowLeaveDialog(false);
+          bypassAndProceed();
+          navigate('/dashboard');
         }}
         onLeave={() => {
-          leavingRef.current = true;
-          setIsLeaving(true);
-          flushSync(() => {
-            setShowLeaveDialog(false);
-            setHasUnsavedChanges(false);
-          });
           markPendingDashboardRefresh();
+          setShowLeaveDialog(false);
+          bypassAndProceed();
           navigate('/dashboard');
         }}
         onCancel={() => setShowLeaveDialog(false)}
