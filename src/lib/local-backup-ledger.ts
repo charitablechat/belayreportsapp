@@ -499,5 +499,11 @@ export async function importReportBackup(jsonString: string): Promise<{
   const { uploadSnapshotToCloud } = await import('@/lib/cloud-backup');
   uploadSnapshotToCloud(reportType, reportId, snapshot);
 
+  // 4. Notify any open form that data was imported so it can reload from IndexedDB
+  // This prevents stale React state from overwriting the imported data on next save
+  window.dispatchEvent(new CustomEvent('report-data-imported', {
+    detail: { reportType, reportId }
+  }));
+
   return { reportType, reportId };
 }
