@@ -394,7 +394,7 @@ export default function DailyAssessmentForm() {
     autoSaveIntervalRef.current = setInterval(() => {
       if (hasUnsavedChanges && !saving && !loading && isOwner) {
         if (import.meta.env.DEV) console.log('[DailyAssessment AutoSave] Interval save triggered');
-        handleSaveProgress();
+        handleSaveProgress(true);
       }
     }, 10000);
 

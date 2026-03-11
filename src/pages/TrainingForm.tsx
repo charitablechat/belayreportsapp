@@ -960,7 +960,7 @@ export default function TrainingForm() {
     autoSaveTimer.current = setInterval(() => {
       if (hasUnsavedChanges && !isSaving && !isLoading && training && isOwner) {
         if (import.meta.env.DEV) console.log('[Training AutoSave] Interval save triggered');
-        saveTraining();
+        saveTraining(true);
       }
     }, 30000);
 
