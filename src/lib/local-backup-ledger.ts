@@ -325,6 +325,18 @@ export function getBackupStorageInfo(): {
  * Download a single report's snapshot as a JSON file to the user's device.
  * Returns true on success, false if no snapshot exists.
  */
+/**
+ * Sanitize a string for use in a filename — replace non-alphanumeric chars with underscores.
+ */
+export function sanitizeFilename(name: string): string {
+  return name
+    .replace(/[^a-zA-Z0-9 _-]/g, '')
+    .trim()
+    .replace(/\s+/g, '_')
+    .replace(/_+/g, '_')
+    .substring(0, 60); // cap length
+}
+
 export function downloadReportBackup(
   reportType: ReportType,
   reportId: string
@@ -340,12 +352,15 @@ export function downloadReportBackup(
       snapshot,
     };
 
+    const org = snapshot.parent?.organization;
+    const orgPart = org ? `_${sanitizeFilename(org)}` : '';
+
     const json = JSON.stringify(payload, null, 2);
     const blob = new Blob([json], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `backup_${reportType}_${reportId.substring(0, 8)}_${Date.now()}.json`;
+    link.download = `backup_${reportType}${orgPart}_${reportId.substring(0, 8)}_${Date.now()}.json`;
     link.style.display = 'none';
     document.body.appendChild(link);
     link.click();

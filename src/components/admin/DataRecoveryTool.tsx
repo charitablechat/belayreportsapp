@@ -867,7 +867,9 @@ function AdminEditHistoryPanel() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `admin_edit_${reportType}_${snapshotId.substring(0, 8)}.json`;
+      const org = data.snapshot_data?.parent?.organization;
+      const orgPart = org ? `_${sanitizeFilename(org)}` : '';
+      a.download = `admin_edit_${reportType}${orgPart}_${snapshotId.substring(0, 8)}.json`;
       a.click();
       URL.revokeObjectURL(url);
       toast.success("Exported as JSON");
