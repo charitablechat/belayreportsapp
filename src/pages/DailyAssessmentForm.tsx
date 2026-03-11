@@ -1365,6 +1365,7 @@ export default function DailyAssessmentForm() {
           if (isSavingBeforeLeave) return;
           setIsSavingBeforeLeave(true);
           leavingRef.current = true;
+          setIsLeaving(true);
           try {
             await Promise.race([
               handleSaveAndLeave(),
