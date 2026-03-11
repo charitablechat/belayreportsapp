@@ -1129,7 +1129,7 @@ export default function DailyAssessmentForm() {
 
   // Set save ref for keyboard shortcut (save progress, not submit)
   useEffect(() => {
-    saveRef.current = handleSaveProgress;
+    saveRef.current = async () => { await handleSaveProgress(); setLastManuallySaved(new Date()); };
   });
 
   // Verify that database has the expected data
