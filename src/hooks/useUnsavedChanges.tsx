@@ -3,19 +3,22 @@ import { useNavigate, useBlocker } from "react-router-dom";
 
 interface UseUnsavedChangesOptions {
   hasUnsavedChanges: boolean;
+  /** Always block SPA navigation regardless of unsaved state (e.g., always show exit dialog) */
+  alwaysBlock?: boolean;
   message?: string;
   onSaveAndLeave?: () => Promise<void>;
 }
 
 export function useUnsavedChanges({
   hasUnsavedChanges,
+  alwaysBlock = false,
   message = "You have unsaved changes. Are you sure you want to leave?",
   onSaveAndLeave,
 }: UseUnsavedChangesOptions) {
   const navigate = useNavigate();
 
-  // Block ALL SPA navigation (browser back/forward, link clicks, programmatic navigate)
-  const blocker = useBlocker(hasUnsavedChanges);
+  // Block ALL SPA navigation — always if alwaysBlock, otherwise only when unsaved
+  const blocker = useBlocker(alwaysBlock || hasUnsavedChanges);
 
   // Block hard page unload (refresh, tab close)
   useEffect(() => {

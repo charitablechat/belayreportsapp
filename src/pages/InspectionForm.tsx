@@ -2342,6 +2342,7 @@ export default function InspectionForm() {
         onConfirm={confirmNavigation}
         onCancel={cancelNavigation}
         onSaveAndLeave={saveAndLeave}
+        hasUnsavedChanges={hasUnsavedChanges && (inspection?.status !== 'completed' || completionLockOverridden)}
         message="You have unsaved changes to this inspection. Are you sure you want to leave?"
       />
       <CompletionLockDialog

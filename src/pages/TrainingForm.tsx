@@ -1284,6 +1284,7 @@ export default function TrainingForm() {
         onConfirm={confirmNavigation}
         onCancel={cancelNavigation}
         onSaveAndLeave={saveAndLeave}
+        hasUnsavedChanges={hasUnsavedChanges && (training?.status !== 'completed' || completionLockOverridden)}
         message="You have unsaved changes to this training report. Are you sure you want to leave?"
       />
       <CompletionLockDialog

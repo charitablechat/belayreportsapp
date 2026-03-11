@@ -1332,6 +1332,7 @@ export default function DailyAssessmentForm() {
         onConfirm={confirmNavigation}
         onCancel={cancelNavigation}
         onSaveAndLeave={saveAndLeave}
+        hasUnsavedChanges={hasUnsavedChanges && (assessment?.status !== 'completed' || completionLockOverridden)}
         message="You have unsaved changes to this assessment. Are you sure you want to leave?"
       />
       
