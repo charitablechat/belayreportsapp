@@ -2566,7 +2566,7 @@ export default function InspectionForm() {
                 </Tooltip>
               </TooltipProvider>
               )}
-              {!effectiveReadOnly && (
+              {!effectiveReadOnly && inspection?.status !== 'completed' && (
                 <Button 
                   size={isMobileView ? "default" : "sm"} 
                   onClick={() => setShowCompleteDialog(true)} 
@@ -2576,6 +2576,12 @@ export default function InspectionForm() {
                 >
                   <CheckCircle className={isMobileView ? "w-5 h-5 mr-1.5" : "w-4 h-4"} />
                   <span className={isMobileView ? "inline" : "hidden md:inline md:ml-2"}>Complete</span>
+                </Button>
+              )}
+              {inspection?.status === 'completed' && !effectiveReadOnly && (
+                <Button disabled variant="outline" size={isMobileView ? "default" : "sm"} className="opacity-70 cursor-default">
+                  <CheckCircle className={isMobileView ? "w-5 h-5 mr-1.5" : "w-4 h-4"} />
+                  <span className={isMobileView ? "inline" : "hidden md:inline md:ml-2"}>Completed</span>
                 </Button>
               )}
               {inspection?.status === 'completed' && (
