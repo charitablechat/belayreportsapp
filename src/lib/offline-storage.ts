@@ -1473,7 +1473,10 @@ export async function getAssessmentDataOffline(
       const db = await getDB();
       const storeName = assessmentStoreNameMap[type];
       const index = db.transaction(storeName).store.index('by-assessment');
-      return await index.getAll(assessmentId);
+      const results = await index.getAll(assessmentId);
+      return results.sort((a: any, b: any) => 
+        new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime()
+      );
     },
     [],
     `getAssessmentDataOffline:${type}`
