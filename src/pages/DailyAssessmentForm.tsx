@@ -1453,7 +1453,7 @@ export default function DailyAssessmentForm() {
               <Button 
                 variant="outline"
                 size={isMobileView ? "default" : "sm"} 
-                onClick={handleSaveProgress} 
+                onClick={async () => { await handleSaveProgress(); setLastManuallySaved(new Date()); }} 
                 disabled={saving || submitting}
               >
                 <Save className={isMobileView ? "w-5 h-5 mr-1.5" : "w-4 h-4 mr-2"} />
