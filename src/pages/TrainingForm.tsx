@@ -933,7 +933,7 @@ export default function TrainingForm() {
         if (import.meta.env.DEV) {
           console.log('[Training AutoSave] Debounced save triggered');
         }
-        saveTraining();
+        saveTraining(true);
       }
     }, 1500);
     
