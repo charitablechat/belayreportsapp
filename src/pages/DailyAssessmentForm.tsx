@@ -717,6 +717,19 @@ export default function DailyAssessmentForm() {
         guardedSave('equipment_checks', equipmentChecks);
         guardedSave('structure_checks', structureChecks);
         guardedSave('environment_checks', environmentChecks);
+
+        // Include parent assessment save in the same atomic batch
+        const updatedAssessment = { 
+          ...assessment, 
+          updated_at: new Date().toISOString(),
+          ...(currentUser?.id && currentUser.id !== assessment.inspector_id 
+            ? { last_modified_by: currentUser.id } 
+            : {}),
+        };
+        childOps.push(
+          withTimeout(saveDailyAssessmentOffline(updatedAssessment), 3000, 'Assessment offline save')
+        );
+
         // Layer 1: localStorage snapshot backup FIRST (before IndexedDB writes)
         try {
           saveReportSnapshot('daily_assessment', id!, assessment, {
