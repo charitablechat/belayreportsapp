@@ -41,7 +41,23 @@ function OperatingSystemsTable({ systems, onUpdate, onImmediateSave }: Operating
         inspection_id: window.location.pathname.split('/').pop(),
         system_name: "", 
         result: "pass", 
-        comments: "" 
+        comments: "",
+        is_divider: false,
+      },
+      ...prev
+    ]);
+  }, [onUpdate]);
+
+  const addDivider = useCallback(() => {
+    onUpdate(prev => [
+      { 
+        id: `temp-${crypto.randomUUID()}`,
+        inspection_id: window.location.pathname.split('/').pop(),
+        system_name: null, 
+        result: null, 
+        comments: null,
+        is_divider: true,
+        divider_text: "",
       },
       ...prev
     ]);
