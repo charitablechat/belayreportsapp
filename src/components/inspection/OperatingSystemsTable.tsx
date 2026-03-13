@@ -82,10 +82,16 @@ function OperatingSystemsTable({ systems, onUpdate, onImmediateSave }: Operating
       <CardHeader className="px-4 md:px-6">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
           <CardTitle>Operating Systems</CardTitle>
-          <Button onClick={addSystem} size="sm" className="w-full md:w-auto shrink-0">
-            <Plus className="w-4 h-4 mr-2" />
-            Add System
-          </Button>
+          <div className="flex gap-2 w-full md:w-auto">
+            <Button onClick={addDivider} size="sm" variant="outline" className="flex-1 md:flex-none shrink-0">
+              <Minus className="w-4 h-4 mr-2" />
+              Divider
+            </Button>
+            <Button onClick={addSystem} size="sm" className="flex-1 md:flex-none shrink-0">
+              <Plus className="w-4 h-4 mr-2" />
+              Add System
+            </Button>
+          </div>
         </div>
       </CardHeader>
       <CardContent className="px-3 md:px-6">
