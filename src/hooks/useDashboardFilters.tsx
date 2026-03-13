@@ -85,7 +85,7 @@ export function useDashboardFilters(
     page: 1,
   });
 
-  const [completedCollapsed, setCompletedCollapsed] = useState(true);
+  const [completedCollapsed, setCompletedCollapsed] = useState(false);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
 
   const updateFilter = useCallback(<K extends keyof DashboardFilterState>(
