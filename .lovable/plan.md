@@ -1,39 +1,66 @@
 
 
-## Remove "Tightened bolts and connectors as needed" from Individual Report Rows
+## Onboarding Resource Center
 
-### What Changes
+A dedicated `/onboarding` page where users can browse videos and PDFs you've uploaded, and mark items as completed.
 
-**File:** `supabase/functions/generate-inspection-html/index.ts`
+### Database
 
-The `prependDefaultBolt()` helper currently injects "Tightened bolts and connectors as needed" into every individual Operating System and Zipline row comment. It needs to be removed from all 4 row-level call sites while keeping it in the summary section.
+**1. `onboarding_resources` table** — stores metadata for each uploaded file
 
-### Specific Edits
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | PK |
+| title | text | Display name |
+| description | text | Optional summary |
+| file_type | text | 'video' or 'pdf' |
+| file_url | text | Storage path |
+| display_order | integer | Sort order |
+| is_published | boolean | Only published items shown to users |
+| uploaded_by | uuid | References auth.users |
+| created_at | timestamptz | |
 
-**1. Remove `prependDefaultBolt` from all 4 row-level calls (lines 1901, 1954, 2025, 2105):**
+RLS: Super admins can CRUD. Authenticated users can SELECT where `is_published = true`.
 
-Change each from:
-```ts
-const formattedComments = formatCommentsAsBullets(prependDefaultBolt(sys.comments));
-```
-to:
-```ts
-const formattedComments = formatCommentsAsBullets(sys.comments);
-```
+**2. `onboarding_progress` table** — tracks per-user completion
 
-Same for zipline rows (`zip.comments`).
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | PK |
+| user_id | uuid | References auth.users |
+| resource_id | uuid | FK to onboarding_resources |
+| completed_at | timestamptz | When marked complete |
+| unique(user_id, resource_id) | | Prevents duplicates |
 
-**2. Keep `prependDefaultBolt` in the summary section (line 2459) — no change needed there.** This ensures the phrase appears exactly once in the Repairs/Alterations summary.
+RLS: Users can manage their own rows only.
 
-**3. Handle empty comments gracefully.** Currently, when a row has no user comments, `prependDefaultBolt` returns the bolt text so the cell shows something. After removal, `formatCommentsAsBullets` already handles null/empty by returning "—". Rows with no user comments will correctly show "—" instead.
+**3. `onboarding-files` storage bucket** — private bucket for the actual video/PDF files. Super admins can upload; authenticated users can read.
 
-### Retroactivity
+### Frontend
 
-This is automatically retroactive — reports are generated on-demand from database data. Re-generating any existing report will use the updated logic. No data migration needed.
+**`/onboarding` page** — accessible from the dashboard header navigation:
+- Lists all published resources grouped by type (Videos section, Documents section)
+- Each card shows: title, description, file type icon, and a checkbox to mark complete
+- Clicking a video opens an inline `<video>` player; clicking a PDF downloads it
+- A progress bar at the top shows "X of Y completed"
+- Matches existing app styling (cards, borders, monospace metadata)
 
-### Scope
+**Admin upload UI** — visible only to super admins on the same page:
+- "Add Resource" button opens a form: title, description, file type selector, file upload input, display order
+- Drag-to-reorder support using existing drag patterns
+- Toggle publish/unpublish per resource
+- Delete resource (removes from storage + DB)
 
-- Only `generate-inspection-html` is affected (the PDF generator doesn't use this pattern)
-- The summary section continues to guarantee the phrase appears once via `prependDefaultBolt`
-- No changes to `InspectionForm.tsx` or any client-side code
+### Route Addition
+
+Add `/onboarding` to `App.tsx` router, import the new `Onboarding.tsx` page component. Add a navigation link in `AuthenticatedHeader.tsx`.
+
+### Files
+
+| File | Action |
+|------|--------|
+| Migration SQL | Create tables, bucket, RLS policies |
+| `src/pages/Onboarding.tsx` | New page component |
+| `src/App.tsx` | Add route |
+| `src/components/AuthenticatedHeader.tsx` | Add nav link |
 

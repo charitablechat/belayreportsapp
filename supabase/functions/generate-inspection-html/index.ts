@@ -1898,7 +1898,7 @@ serve(async (req) => {
           ${systems
             .map((sys) => {
               const resultData = formatResultCheckbox(sys.result);
-              const formattedComments = formatCommentsAsBullets(prependDefaultBolt(sys.comments));
+              const formattedComments = formatCommentsAsBullets(sys.comments);
               return `
               <tr>
                 <td>${sys.name || "N/A"}</td>
@@ -1951,7 +1951,7 @@ serve(async (req) => {
                 const brakingResultData = formatResultCheckbox(zip.braking_result || "Pass");
                 const eadResultData = formatResultCheckbox(zip.ead_result || "Pass");
                 const overallResultData = formatResultCheckbox(zip.result || "Pass");
-                const formattedComments = formatCommentsAsBullets(prependDefaultBolt(zip.comments));
+                const formattedComments = formatCommentsAsBullets(zip.comments);
                 return `
                 <tr>
                   <td><strong>${zip.zipline_name}</strong></td>
@@ -2022,7 +2022,7 @@ serve(async (req) => {
           ${systems
             .map((sys) => {
               const resultData = formatResultCheckbox(sys.result);
-              const formattedComments = formatCommentsAsBullets(prependDefaultBolt(sys.comments));
+              const formattedComments = formatCommentsAsBullets(sys.comments);
               return `
               <tr>
                 <td>${sys.name || "N/A"}</td>
@@ -2102,7 +2102,7 @@ serve(async (req) => {
               const brakingResultData = formatResultCheckbox(zip.braking_result || "Pass");
               const eadResultData = formatResultCheckbox(zip.ead_result || "Pass");
               const overallResultData = formatResultCheckbox(zip.result || "Pass");
-              const formattedComments = formatCommentsAsBullets(prependDefaultBolt(zip.comments));
+              const formattedComments = formatCommentsAsBullets(zip.comments);
               return `
               <tr>
                 <td><strong>${zip.zipline_name}</strong></td>
