@@ -2192,7 +2192,7 @@ serve(async (req) => {
                 <tr>
                   <th>Type</th>
                   <th>Quantity</th>
-                  <th>Year</th>
+                  <th>Manufacture Year(s)</th>
                   <th>Result</th>
                   <th>Comments</th>
                 </tr>
