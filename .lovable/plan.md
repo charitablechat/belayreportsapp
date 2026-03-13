@@ -1,66 +1,31 @@
 
 
-## Onboarding Resource Center
+## Replace Dashboard Backgrounds
 
-A dedicated `/onboarding` page where users can browse videos and PDFs you've uploaded, and mark items as completed.
+### What Changes
 
-### Database
-
-**1. `onboarding_resources` table** — stores metadata for each uploaded file
-
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uuid | PK |
-| title | text | Display name |
-| description | text | Optional summary |
-| file_type | text | 'video' or 'pdf' |
-| file_url | text | Storage path |
-| display_order | integer | Sort order |
-| is_published | boolean | Only published items shown to users |
-| uploaded_by | uuid | References auth.users |
-| created_at | timestamptz | |
-
-RLS: Super admins can CRUD. Authenticated users can SELECT where `is_published = true`.
-
-**2. `onboarding_progress` table** — tracks per-user completion
-
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uuid | PK |
-| user_id | uuid | References auth.users |
-| resource_id | uuid | FK to onboarding_resources |
-| completed_at | timestamptz | When marked complete |
-| unique(user_id, resource_id) | | Prevents duplicates |
-
-RLS: Users can manage their own rows only.
-
-**3. `onboarding-files` storage bucket** — private bucket for the actual video/PDF files. Super admins can upload; authenticated users can read.
-
-### Frontend
-
-**`/onboarding` page** — accessible from the dashboard header navigation:
-- Lists all published resources grouped by type (Videos section, Documents section)
-- Each card shows: title, description, file type icon, and a checkbox to mark complete
-- Clicking a video opens an inline `<video>` player; clicking a PDF downloads it
-- A progress bar at the top shows "X of Y completed"
-- Matches existing app styling (cards, borders, monospace metadata)
-
-**Admin upload UI** — visible only to super admins on the same page:
-- "Add Resource" button opens a form: title, description, file type selector, file upload input, display order
-- Drag-to-reorder support using existing drag patterns
-- Toggle publish/unpublish per resource
-- Delete resource (removes from storage + DB)
-
-### Route Addition
-
-Add `/onboarding` to `App.tsx` router, import the new `Onboarding.tsx` page component. Add a navigation link in `AuthenticatedHeader.tsx`.
+Remove all 17 existing background images from `src/assets/backgrounds/` and replace with the 10 uploaded images. Update `src/lib/background-manager.ts` to import only the new set.
 
 ### Files
 
-| File | Action |
-|------|--------|
-| Migration SQL | Create tables, bucket, RLS policies |
-| `src/pages/Onboarding.tsx` | New page component |
-| `src/App.tsx` | Add route |
-| `src/components/AuthenticatedHeader.tsx` | Add nav link |
+**Copy 10 uploaded images** into `src/assets/backgrounds/`:
+1. `Pink_and_Beige_Marble_Textured_Background_Motivational_Desktop_Wallpaper_3-2.png` → `bg-01-marble-gold.png`
+2. `Pink_and_Beige_Marble_Textured_Background_Motivational_Desktop_Wallpaper_4-2.png` → `bg-02-wood-planks.png`
+3. `Pink_and_Beige_Marble_Textured_Background_Motivational_Desktop_Wallpaper_5-2.png` → `bg-03-wood-rings.png`
+4. `Pink_and_Beige_Marble_Textured_Background_Motivational_Desktop_Wallpaper_6-2.png` → `bg-04-wood-tiles.png`
+5. `Pink_and_Beige_Marble_Textured_Background_Motivational_Desktop_Wallpaper_9-2.png` → `bg-05-gold-water.png`
+6. `Pink_and_Beige_Marble_Textured_Background_Motivational_Desktop_Wallpaper_10-2.png` → `bg-06-sunset-wave.png`
+7. `Pink_and_Beige_Marble_Textured_Background_Motivational_Desktop_Wallpaper_11-2.png` → `bg-07-blue-silk.png`
+8. `Pink_and_Beige_Marble_Textured_Background_Motivational_Desktop_Wallpaper_12-2.png` → `bg-08-pool-tiles.png`
+9. `Pink_and_Beige_Marble_Textured_Background_Motivational_Desktop_Wallpaper_18.png` → `bg-09-topo-lines.png`
+10. `Pink_and_Beige_Marble_Textured_Background_Motivational_Desktop_Wallpaper-2.png` → `bg-10-marble-pink.png`
+
+**Delete** all old background files that aren't overwritten by the new names (bg-01 through bg-04/05/06 get overwritten; the rest like bg-07-bamboo, bg-08-pastel-paint, bg-09-gold-water, bg-10 through bg-17 get deleted).
+
+**Update `src/lib/background-manager.ts`:** Replace all imports to reference only the 10 new files, update the `backgrounds` array.
+
+### Technical Detail
+- Reusing some filenames (bg-01 through bg-05) means those old files get replaced in-place by the copy operation.
+- Old files with names not reused (bg-07-bamboo, bg-08-pastel-paint, bg-10-sunset-wave, bg-11 through bg-17) need explicit deletion.
+- The `getSessionBackground()` logic remains unchanged -- just the pool of images changes.
 
