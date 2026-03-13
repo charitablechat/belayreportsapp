@@ -181,11 +181,8 @@ function OperatingSystemsTable({ systems, onUpdate, onImmediateSave }: Operating
                       </Button>
                     </div>
                   </>
-                )}
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
               </DraggableTableRow>
+            ))}
             ))}
           </div>
         </div>
