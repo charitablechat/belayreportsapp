@@ -113,46 +113,75 @@ function OperatingSystemsTable({ systems, onUpdate, onImmediateSave }: Operating
                 key={system.id}
                 id={system.id}
                 className="hover:bg-muted/50"
-                gridCols={OS_GRID_COLS}
+                gridCols={system.is_divider ? undefined : OS_GRID_COLS}
                 {...getDragProps(system.id)}
               >
-                <div className="p-2 border-r border-border">
-                  <GlobalAutocomplete
-                    value={system.name || ""}
-                    onChange={(value) => updateSystem(system, "name", value)}
-                    onBlur={onImmediateSave}
-                    fieldType="operating_system_element"
-                    placeholder="Enter or select name"
-                    className="border-0 bg-transparent"
-                  />
-                </div>
-                <div className="p-2 border-r border-border">
-                  <SystemTypeSelect
-                    value={system.system_name}
-                    onChange={(value) => updateSystem(system, "system_name", value)}
-                  />
-                </div>
-                <div className="p-2 border-r border-border">
-                  <ResultSelect
-                    value={system.result}
-                    onChange={(value) => updateSystem(system, "result", value)}
-                  />
-                </div>
-                <div className="p-2 border-r border-border">
-                  <VoiceRichTextEditor
-                    content={system.comments || ""}
-                    onChange={(value) => updateSystem(system, "comments", value)}
-                    placeholder="Enter comments..."
-                    className="border-0 bg-transparent"
-                  />
-                </div>
-                <div className="p-2 text-center">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setItemToDelete({ id: system.id, name: system.name || system.system_name || "this system" })}
-                    className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
-                  >
+                {system.is_divider ? (
+                  <div className="col-span-full flex items-center bg-blue-100 dark:bg-blue-900/30">
+                    <div className="p-2 flex-1">
+                      <Input
+                        value={system.divider_text || ""}
+                        onChange={(e) => updateSystem(system, "divider_text", e.target.value)}
+                        onBlur={onImmediateSave}
+                        placeholder="Enter divider text..."
+                        className="border-0 bg-transparent text-center font-bold text-base"
+                      />
+                    </div>
+                    <div className="p-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setItemToDelete({ id: system.id, name: system.divider_text || "this divider" })}
+                        className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div className="p-2 border-r border-border">
+                      <GlobalAutocomplete
+                        value={system.name || ""}
+                        onChange={(value) => updateSystem(system, "name", value)}
+                        onBlur={onImmediateSave}
+                        fieldType="operating_system_element"
+                        placeholder="Enter or select name"
+                        className="border-0 bg-transparent"
+                      />
+                    </div>
+                    <div className="p-2 border-r border-border">
+                      <SystemTypeSelect
+                        value={system.system_name}
+                        onChange={(value) => updateSystem(system, "system_name", value)}
+                      />
+                    </div>
+                    <div className="p-2 border-r border-border">
+                      <ResultSelect
+                        value={system.result}
+                        onChange={(value) => updateSystem(system, "result", value)}
+                      />
+                    </div>
+                    <div className="p-2 border-r border-border">
+                      <VoiceRichTextEditor
+                        content={system.comments || ""}
+                        onChange={(value) => updateSystem(system, "comments", value)}
+                        placeholder="Enter comments..."
+                        className="border-0 bg-transparent"
+                      />
+                    </div>
+                    <div className="p-2 text-center">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setItemToDelete({ id: system.id, name: system.name || system.system_name || "this system" })}
+                        className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </>
+                )}
                     <Trash2 className="h-4 w-4" />
                   </Button>
                 </div>
