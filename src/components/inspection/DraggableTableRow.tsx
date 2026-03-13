@@ -5,7 +5,7 @@ interface DraggableTableRowProps {
   id: string;
   children: ReactNode;
   className?: string;
-  gridCols: string;
+  gridCols?: string;
   isDragging?: boolean;
   dropIndicator?: 'above' | 'below' | null;
   onRowDragStart: (e: React.DragEvent, id: string) => void;
