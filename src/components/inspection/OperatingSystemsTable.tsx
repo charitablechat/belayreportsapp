@@ -181,8 +181,8 @@ function OperatingSystemsTable({ systems, onUpdate, onImmediateSave }: Operating
                       </Button>
                     </div>
                   </>
+                )}
               </DraggableTableRow>
-            ))}
             ))}
           </div>
         </div>
