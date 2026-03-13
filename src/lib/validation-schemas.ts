@@ -34,9 +34,11 @@ export const systemSchema = z.object({
   id: flexibleUUID,
   inspection_id: flexibleUUID,
   system_name: z.string().optional().nullable(),
-  result: z.enum(['pass', 'pass w/provisions', 'fail', 'na']),
+  result: z.enum(['pass', 'pass w/provisions', 'fail', 'na']).optional().nullable(),
   comments: z.string().max(2000).optional().nullable(),
   created_at: z.string().optional().nullable(),
+  is_divider: z.boolean().optional().default(false),
+  divider_text: z.string().optional().nullable(),
 });
 
 // Zipline validation schema
