@@ -432,7 +432,7 @@ serve(async (req) => {
 
         doc.autoTable({
           startY: yPos,
-          head: [['Type', 'Qty', 'Year', 'Result', 'Comments']],
+          head: [['Type', 'Qty', 'Mfg Year(s)', 'Result', 'Comments']],
           body: items.map(eq => [
             stripHtml(eq.equipment_type) || 'N/A',
             eq.quantity?.toString() || 'N/A',

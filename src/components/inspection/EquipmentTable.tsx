@@ -323,7 +323,7 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
           <div className={`grid ${EQ_GRID_COLS} bg-blue-50 dark:bg-blue-950/20 border-b border-border`}>
             <div className="p-3 text-center font-semibold text-sm border-r border-border"></div>
             <div className="p-3 text-left font-semibold text-sm border-r border-border">Type</div>
-            <div className="p-3 text-left font-semibold text-sm border-r border-border">Production Year</div>
+            <div className="p-3 text-left font-semibold text-sm border-r border-border">Manufacture Year(s)</div>
             <div className="p-3 text-left font-semibold text-sm border-r border-border">Quantity</div>
             <div className="p-3 text-left font-semibold text-sm border-r border-border">Result</div>
             <div className="p-3 text-left font-semibold text-sm border-r border-border">Comments and/or Required Changes</div>
@@ -497,7 +497,7 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
                   
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <Label className="text-xs text-muted-foreground">Production Year</Label>
+                      <Label className="text-xs text-muted-foreground">Manufacture Year(s)</Label>
                       <div className="flex items-center gap-1">
                         {item.production_year === "0" ? (
                           <div className="flex items-center gap-1 px-2 py-1 bg-muted rounded text-sm flex-1 h-10">
