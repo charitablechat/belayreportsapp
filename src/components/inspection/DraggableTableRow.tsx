@@ -57,7 +57,7 @@ export function DraggableTableRow({
         userSelect: 'none',
         WebkitTouchCallout: 'none',
       } as React.CSSProperties}
-      className={`relative grid ${gridCols} border-b border-border bg-background ${className} ${isDragging ? 'border-dashed border-2 border-primary/30' : ''} ${dropIndicator === 'above' ? 'border-t-[3px] border-t-[#2563EB]' : ''} ${dropIndicator === 'below' ? 'border-b-[3px] border-b-[#2563EB]' : ''}`}
+      className={`relative ${gridCols ? `grid ${gridCols}` : ''} border-b border-border bg-background ${className} ${isDragging ? 'border-dashed border-2 border-primary/30' : ''} ${dropIndicator === 'above' ? 'border-t-[3px] border-t-[#2563EB]' : ''} ${dropIndicator === 'below' ? 'border-b-[3px] border-b-[#2563EB]' : ''}`}
     >
       <div className="p-2 flex items-center justify-center border-r border-border">
         <div
