@@ -497,7 +497,7 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
                   
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <Label className="text-xs text-muted-foreground">Production Year</Label>
+                      <Label className="text-xs text-muted-foreground">Manufacture Year(s)</Label>
                       <div className="flex items-center gap-1">
                         {item.production_year === "0" ? (
                           <div className="flex items-center gap-1 px-2 py-1 bg-muted rounded text-sm flex-1 h-10">
