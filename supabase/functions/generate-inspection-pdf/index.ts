@@ -314,11 +314,16 @@ serve(async (req) => {
       doc.autoTable({
         startY: yPos,
         head: [['System Name', 'Result', 'Comments']],
-        body: systems.map(sys => [
-          stripHtml(sys.system_name || sys.name) || 'N/A',
-          sys.result || 'N/A',
-          formatCommentsForPdf(sys.comments)
-        ]),
+        body: systems.map(sys => {
+          if (sys.is_divider) {
+            return [{ content: sys.divider_text || '', colSpan: 3, styles: { halign: 'center', fontStyle: 'bold', fillColor: [219, 234, 254] } }];
+          }
+          return [
+            stripHtml(sys.system_name || sys.name) || 'N/A',
+            sys.result || 'N/A',
+            formatCommentsForPdf(sys.comments)
+          ];
+        }),
         styles: { fontSize: 9, cellPadding: 3, textColor: [0, 0, 0] },
         headStyles: { fillColor: [30, 64, 175], textColor: [255, 255, 255], fontStyle: 'bold' },
         alternateRowStyles: { fillColor: [248, 250, 252] },

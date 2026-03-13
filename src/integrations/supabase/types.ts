@@ -929,31 +929,37 @@ export type Database = {
           comments: string | null
           created_at: string | null
           display_order: number
+          divider_text: string | null
           id: string
           inspection_id: string
+          is_divider: boolean
           name: string | null
-          result: string
-          system_name: string
+          result: string | null
+          system_name: string | null
         }
         Insert: {
           comments?: string | null
           created_at?: string | null
           display_order?: number
+          divider_text?: string | null
           id?: string
           inspection_id: string
+          is_divider?: boolean
           name?: string | null
-          result: string
-          system_name: string
+          result?: string | null
+          system_name?: string | null
         }
         Update: {
           comments?: string | null
           created_at?: string | null
           display_order?: number
+          divider_text?: string | null
           id?: string
           inspection_id?: string
+          is_divider?: boolean
           name?: string | null
-          result?: string
-          system_name?: string
+          result?: string | null
+          system_name?: string | null
         }
         Relationships: [
           {

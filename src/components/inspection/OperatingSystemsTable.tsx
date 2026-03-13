@@ -5,7 +5,8 @@ import { Label } from "@/components/ui/label";
 import ResultSelect from "@/components/ResultSelect";
 import SystemTypeSelect from "@/components/SystemTypeSelect";
 import { GlobalAutocomplete } from "@/components/GlobalAutocomplete";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2, Minus } from "lucide-react";
+import { Input } from "@/components/ui/input";
 import { useState, useCallback, memo } from "react";
 import {
   AlertDialog,
@@ -40,7 +41,23 @@ function OperatingSystemsTable({ systems, onUpdate, onImmediateSave }: Operating
         inspection_id: window.location.pathname.split('/').pop(),
         system_name: "", 
         result: "pass", 
-        comments: "" 
+        comments: "",
+        is_divider: false,
+      },
+      ...prev
+    ]);
+  }, [onUpdate]);
+
+  const addDivider = useCallback(() => {
+    onUpdate(prev => [
+      { 
+        id: `temp-${crypto.randomUUID()}`,
+        inspection_id: window.location.pathname.split('/').pop(),
+        system_name: null, 
+        result: null, 
+        comments: null,
+        is_divider: true,
+        divider_text: "",
       },
       ...prev
     ]);
@@ -65,10 +82,16 @@ function OperatingSystemsTable({ systems, onUpdate, onImmediateSave }: Operating
       <CardHeader className="px-4 md:px-6">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
           <CardTitle>Operating Systems</CardTitle>
-          <Button onClick={addSystem} size="sm" className="w-full md:w-auto shrink-0">
-            <Plus className="w-4 h-4 mr-2" />
-            Add System
-          </Button>
+          <div className="flex gap-2 w-full md:w-auto">
+            <Button onClick={addDivider} size="sm" variant="outline" className="flex-1 md:flex-none shrink-0">
+              <Minus className="w-4 h-4 mr-2" />
+              Divider
+            </Button>
+            <Button onClick={addSystem} size="sm" className="flex-1 md:flex-none shrink-0">
+              <Plus className="w-4 h-4 mr-2" />
+              Add System
+            </Button>
+          </div>
         </div>
       </CardHeader>
       <CardContent className="px-3 md:px-6">
@@ -90,49 +113,75 @@ function OperatingSystemsTable({ systems, onUpdate, onImmediateSave }: Operating
                 key={system.id}
                 id={system.id}
                 className="hover:bg-muted/50"
-                gridCols={OS_GRID_COLS}
+                gridCols={system.is_divider ? undefined : OS_GRID_COLS}
                 {...getDragProps(system.id)}
               >
-                <div className="p-2 border-r border-border">
-                  <GlobalAutocomplete
-                    value={system.name || ""}
-                    onChange={(value) => updateSystem(system, "name", value)}
-                    onBlur={onImmediateSave}
-                    fieldType="operating_system_element"
-                    placeholder="Enter or select name"
-                    className="border-0 bg-transparent"
-                  />
-                </div>
-                <div className="p-2 border-r border-border">
-                  <SystemTypeSelect
-                    value={system.system_name}
-                    onChange={(value) => updateSystem(system, "system_name", value)}
-                  />
-                </div>
-                <div className="p-2 border-r border-border">
-                  <ResultSelect
-                    value={system.result}
-                    onChange={(value) => updateSystem(system, "result", value)}
-                  />
-                </div>
-                <div className="p-2 border-r border-border">
-                  <VoiceRichTextEditor
-                    content={system.comments || ""}
-                    onChange={(value) => updateSystem(system, "comments", value)}
-                    placeholder="Enter comments..."
-                    className="border-0 bg-transparent"
-                  />
-                </div>
-                <div className="p-2 text-center">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setItemToDelete({ id: system.id, name: system.name || system.system_name || "this system" })}
-                    className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
+                {system.is_divider ? (
+                  <div className="col-span-full flex items-center bg-blue-100 dark:bg-blue-900/30">
+                    <div className="p-2 flex-1">
+                      <Input
+                        value={system.divider_text || ""}
+                        onChange={(e) => updateSystem(system, "divider_text", e.target.value)}
+                        onBlur={onImmediateSave}
+                        placeholder="Enter divider text..."
+                        className="border-0 bg-transparent text-center font-bold text-base"
+                      />
+                    </div>
+                    <div className="p-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setItemToDelete({ id: system.id, name: system.divider_text || "this divider" })}
+                        className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div className="p-2 border-r border-border">
+                      <GlobalAutocomplete
+                        value={system.name || ""}
+                        onChange={(value) => updateSystem(system, "name", value)}
+                        onBlur={onImmediateSave}
+                        fieldType="operating_system_element"
+                        placeholder="Enter or select name"
+                        className="border-0 bg-transparent"
+                      />
+                    </div>
+                    <div className="p-2 border-r border-border">
+                      <SystemTypeSelect
+                        value={system.system_name}
+                        onChange={(value) => updateSystem(system, "system_name", value)}
+                      />
+                    </div>
+                    <div className="p-2 border-r border-border">
+                      <ResultSelect
+                        value={system.result}
+                        onChange={(value) => updateSystem(system, "result", value)}
+                      />
+                    </div>
+                    <div className="p-2 border-r border-border">
+                      <VoiceRichTextEditor
+                        content={system.comments || ""}
+                        onChange={(value) => updateSystem(system, "comments", value)}
+                        placeholder="Enter comments..."
+                        className="border-0 bg-transparent"
+                      />
+                    </div>
+                    <div className="p-2 text-center">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setItemToDelete({ id: system.id, name: system.name || system.system_name || "this system" })}
+                        className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </>
+                )}
               </DraggableTableRow>
             ))}
           </div>
@@ -142,50 +191,70 @@ function OperatingSystemsTable({ systems, onUpdate, onImmediateSave }: Operating
         <div className="md:hidden space-y-3">
           {systems.map((system) => (
             <DraggableMobileCard key={system.id} id={system.id} {...getDragProps(system.id)}>
-              <div className="p-4 pl-12 relative border-l-4 border-l-primary/20 rounded-lg bg-muted/30 border border-border">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setItemToDelete({ id: system.id, name: system.name || system.system_name || "this system" })}
-                  className="absolute top-3 right-3 h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-                <div className="space-y-3 pr-10">
-                  <div>
-                    <Label className="text-xs text-muted-foreground">Element Name</Label>
-                    <GlobalAutocomplete
-                      value={system.name || ""}
-                      onChange={(value) => updateSystem(system, "name", value)}
-                      onBlur={onImmediateSave}
-                      fieldType="operating_system_element"
-                      placeholder="Enter or select name"
-                    />
-                  </div>
-                  <div>
-                    <Label className="text-xs text-muted-foreground">Operating System</Label>
-                    <SystemTypeSelect
-                      value={system.system_name}
-                      onChange={(value) => updateSystem(system, "system_name", value)}
-                    />
-                  </div>
-                  <div>
-                    <Label className="text-xs text-muted-foreground">Result</Label>
-                    <ResultSelect
-                      value={system.result}
-                      onChange={(value) => updateSystem(system, "result", value)}
-                    />
-                  </div>
-                  <div>
-                    <Label className="text-xs text-muted-foreground">Comments / Changes</Label>
-                    <VoiceRichTextEditor
-                      content={system.comments || ""}
-                      onChange={(value) => updateSystem(system, "comments", value)}
-                      placeholder="Enter comments..."
-                    />
+              {system.is_divider ? (
+                <div className="p-4 pl-12 relative rounded-lg bg-blue-100 dark:bg-blue-900/30 border border-border flex items-center">
+                  <Input
+                    value={system.divider_text || ""}
+                    onChange={(e) => updateSystem(system, "divider_text", e.target.value)}
+                    onBlur={onImmediateSave}
+                    placeholder="Enter divider text..."
+                    className="border-0 bg-transparent text-center font-bold text-base flex-1"
+                  />
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setItemToDelete({ id: system.id, name: system.divider_text || "this divider" })}
+                    className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10 ml-2"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              ) : (
+                <div className="p-4 pl-12 relative border-l-4 border-l-primary/20 rounded-lg bg-muted/30 border border-border">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setItemToDelete({ id: system.id, name: system.name || system.system_name || "this system" })}
+                    className="absolute top-3 right-3 h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                  <div className="space-y-3 pr-10">
+                    <div>
+                      <Label className="text-xs text-muted-foreground">Element Name</Label>
+                      <GlobalAutocomplete
+                        value={system.name || ""}
+                        onChange={(value) => updateSystem(system, "name", value)}
+                        onBlur={onImmediateSave}
+                        fieldType="operating_system_element"
+                        placeholder="Enter or select name"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs text-muted-foreground">Operating System</Label>
+                      <SystemTypeSelect
+                        value={system.system_name}
+                        onChange={(value) => updateSystem(system, "system_name", value)}
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs text-muted-foreground">Result</Label>
+                      <ResultSelect
+                        value={system.result}
+                        onChange={(value) => updateSystem(system, "result", value)}
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs text-muted-foreground">Comments / Changes</Label>
+                      <VoiceRichTextEditor
+                        content={system.comments || ""}
+                        onChange={(value) => updateSystem(system, "comments", value)}
+                        placeholder="Enter comments..."
+                      />
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
             </DraggableMobileCard>
           ))}
         </div>

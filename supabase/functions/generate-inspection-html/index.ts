@@ -1897,6 +1897,9 @@ serve(async (req) => {
           <tbody>
           ${systems
             .map((sys) => {
+              if (sys.is_divider) {
+                return `<tr><td colspan="4" style="text-align:center; font-weight:bold; padding:10px; background:#dbeafe; font-size:11pt;">${sys.divider_text || ''}</td></tr>`;
+              }
               const resultData = formatResultCheckbox(sys.result);
               const formattedComments = formatCommentsAsBullets(sys.comments);
               return `
