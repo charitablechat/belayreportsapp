@@ -1898,7 +1898,7 @@ serve(async (req) => {
           ${systems
             .map((sys) => {
               const resultData = formatResultCheckbox(sys.result);
-              const formattedComments = formatCommentsAsBullets(prependDefaultBolt(sys.comments));
+              const formattedComments = formatCommentsAsBullets(sys.comments);
               return `
               <tr>
                 <td>${sys.name || "N/A"}</td>
