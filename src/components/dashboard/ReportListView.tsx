@@ -48,7 +48,7 @@ export function ReportListView({ reports, type, onRowClick }: ReportListViewProp
           </TableRow>
         </TableHeader>
         <TableBody>
-          {reports.map((r) => {
+          {reports.map((r, index) => {
             const days = getDaysOpen(r);
             const daysColor = getDaysOpenColor(days, r.status);
             const dateStr = getReportDate(r, type);
