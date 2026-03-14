@@ -357,14 +357,28 @@ export default function Dashboard() {
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
+    // Re-fetch data when window regains focus (e.g., back-navigation within SPA)
+    const handleWindowFocus = async () => {
+      const user = await getUserWithCache();
+      const userId = user?.id || getOfflineUserId();
+      const superAdminStatus = user ? await getSuperAdminStatusWithCache() : false;
+      await Promise.all([
+        loadInspections(userId, superAdminStatus),
+        loadTrainingReports(userId, superAdminStatus),
+        loadDailyAssessments(userId, superAdminStatus),
+      ]);
+    };
+    window.addEventListener('focus', handleWindowFocus);
+
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('focus', handleWindowFocus);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       subscription.unsubscribe();
       unsubscribeSyncComplete();
     };
-  }, [location.key]);
+  }, [location.pathname]);
 
   // Helper function to add timeout to network queries
   const withNetworkTimeout = async <T,>(
