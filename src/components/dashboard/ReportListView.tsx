@@ -34,9 +34,9 @@ function getDaysOpenColor(days: number, status: string): string {
 
 export function ReportListView({ reports, type, onRowClick }: ReportListViewProps) {
   return (
-    <div className="border rounded-md overflow-hidden">
+    <div className="border rounded-md overflow-hidden bg-background/95 backdrop-blur-sm shadow-sm">
       <Table>
-        <TableHeader>
+        <TableHeader className="bg-muted/80">
           <TableRow>
             <TableHead className="min-w-[180px]">Title</TableHead>
             <TableHead className="hidden md:table-cell">Location</TableHead>
@@ -48,7 +48,7 @@ export function ReportListView({ reports, type, onRowClick }: ReportListViewProp
           </TableRow>
         </TableHeader>
         <TableBody>
-          {reports.map((r) => {
+          {reports.map((r, index) => {
             const days = getDaysOpen(r);
             const daysColor = getDaysOpenColor(days, r.status);
             const dateStr = getReportDate(r, type);
@@ -57,13 +57,13 @@ export function ReportListView({ reports, type, onRowClick }: ReportListViewProp
             return (
               <TableRow
                 key={r.id}
-                className="cursor-pointer hover:bg-muted/50"
+                className={cn("cursor-pointer hover:bg-muted/50", index % 2 === 0 && "bg-muted/20")}
                 onClick={() => {
                   triggerHaptic('light');
                   onRowClick(r);
                 }}
               >
-                <TableCell className="font-medium text-sm">{r.organization || 'Untitled'}</TableCell>
+                <TableCell className="font-semibold text-sm">{r.organization || 'Untitled'}</TableCell>
                 <TableCell className="hidden md:table-cell text-sm text-muted-foreground">{r.location || '—'}</TableCell>
                 <TableCell className="text-sm text-muted-foreground font-mono">
                   {parsed ? format(parsed, "MMM d, yyyy") : '—'}

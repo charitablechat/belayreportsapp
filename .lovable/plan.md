@@ -1,24 +1,66 @@
 
 
-## Improve Dashboard List View Readability
+## Onboarding Resource Center
 
-### Problem
-The list view table rows are hard to read because the background (wood planks) bleeds through — the table lacks an opaque background. The header row and data rows have insufficient contrast against the textured background.
+A dedicated `/onboarding` page where users can browse videos and PDFs you've uploaded, and mark items as completed.
 
-### Changes
+### Database
 
-**`src/components/dashboard/ReportListView.tsx`:**
-- Add a solid opaque background to the outer container: `bg-background` on the wrapper div
-- Add alternating row striping: even rows get `bg-muted/30` for visual separation
-- Add a stronger header background: `bg-muted/80 backdrop-blur-sm` on the `TableHeader`
-- Increase row padding slightly for breathing room
-- Make the "Days" column badge more prominent for draft rows
+**1. `onboarding_resources` table** — stores metadata for each uploaded file
 
-**Specific styling updates:**
-1. Wrapper div: `border rounded-md overflow-hidden` → `border rounded-md overflow-hidden bg-background/95 backdrop-blur-sm shadow-sm`
-2. TableHeader: add `className="bg-muted/80"`
-3. TableRow: add alternating stripe via index — even rows get `bg-muted/20`
-4. Increase font weight on Title column for better scanability
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | PK |
+| title | text | Display name |
+| description | text | Optional summary |
+| file_type | text | 'video' or 'pdf' |
+| file_url | text | Storage path |
+| display_order | integer | Sort order |
+| is_published | boolean | Only published items shown to users |
+| uploaded_by | uuid | References auth.users |
+| created_at | timestamptz | |
 
-These are CSS-only changes to the single `ReportListView.tsx` file. No logic or structural changes needed.
+RLS: Super admins can CRUD. Authenticated users can SELECT where `is_published = true`.
+
+**2. `onboarding_progress` table** — tracks per-user completion
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | PK |
+| user_id | uuid | References auth.users |
+| resource_id | uuid | FK to onboarding_resources |
+| completed_at | timestamptz | When marked complete |
+| unique(user_id, resource_id) | | Prevents duplicates |
+
+RLS: Users can manage their own rows only.
+
+**3. `onboarding-files` storage bucket** — private bucket for the actual video/PDF files. Super admins can upload; authenticated users can read.
+
+### Frontend
+
+**`/onboarding` page** — accessible from the dashboard header navigation:
+- Lists all published resources grouped by type (Videos section, Documents section)
+- Each card shows: title, description, file type icon, and a checkbox to mark complete
+- Clicking a video opens an inline `<video>` player; clicking a PDF downloads it
+- A progress bar at the top shows "X of Y completed"
+- Matches existing app styling (cards, borders, monospace metadata)
+
+**Admin upload UI** — visible only to super admins on the same page:
+- "Add Resource" button opens a form: title, description, file type selector, file upload input, display order
+- Drag-to-reorder support using existing drag patterns
+- Toggle publish/unpublish per resource
+- Delete resource (removes from storage + DB)
+
+### Route Addition
+
+Add `/onboarding` to `App.tsx` router, import the new `Onboarding.tsx` page component. Add a navigation link in `AuthenticatedHeader.tsx`.
+
+### Files
+
+| File | Action |
+|------|--------|
+| Migration SQL | Create tables, bucket, RLS policies |
+| `src/pages/Onboarding.tsx` | New page component |
+| `src/App.tsx` | Add route |
+| `src/components/AuthenticatedHeader.tsx` | Add nav link |
 
