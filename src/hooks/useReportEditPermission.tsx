@@ -98,7 +98,17 @@ export function useReportEditPermission({
     return () => subscription.unsubscribe();
   }, []);
 
-  const permission = useMemo<ReportEditPermission>(() => {
+    if (isLovablePreview()) {
+      return {
+        canEdit: false,
+        isReadOnly: true,
+        isOwner: false,
+        isSuperAdmin: false,
+        isLoading: false,
+        readOnlyReason: 'Preview mode — read-only'
+      };
+    }
+
     const isOwner = currentUserId === inspectorId;
     
     // Fast path: If we can determine ownership, enable editing immediately for owners
