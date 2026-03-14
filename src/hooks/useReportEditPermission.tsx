@@ -1,5 +1,6 @@
 import { useEffect, useState, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { isLovablePreview } from "@/lib/environment";
 import { getUserWithCache, getSuperAdminStatusWithCache, getOfflineUserId } from "@/lib/cached-auth";
 
 interface UseReportEditPermissionProps {
