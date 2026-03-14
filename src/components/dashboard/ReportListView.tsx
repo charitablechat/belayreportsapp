@@ -63,7 +63,7 @@ export function ReportListView({ reports, type, onRowClick }: ReportListViewProp
                   onRowClick(r);
                 }}
               >
-                <TableCell className="font-medium text-sm">{r.organization || 'Untitled'}</TableCell>
+                <TableCell className="font-semibold text-sm">{r.organization || 'Untitled'}</TableCell>
                 <TableCell className="hidden md:table-cell text-sm text-muted-foreground">{r.location || '—'}</TableCell>
                 <TableCell className="text-sm text-muted-foreground font-mono">
                   {parsed ? format(parsed, "MMM d, yyyy") : '—'}
