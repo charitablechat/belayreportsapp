@@ -98,6 +98,7 @@ export function useReportEditPermission({
     return () => subscription.unsubscribe();
   }, []);
 
+  const permission = useMemo<ReportEditPermission>(() => {
     if (isLovablePreview()) {
       return {
         canEdit: false,
