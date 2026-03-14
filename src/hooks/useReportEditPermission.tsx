@@ -1,5 +1,6 @@
 import { useEffect, useState, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { isLovablePreview } from "@/lib/environment";
 import { getUserWithCache, getSuperAdminStatusWithCache, getOfflineUserId } from "@/lib/cached-auth";
 
 interface UseReportEditPermissionProps {
@@ -98,6 +99,17 @@ export function useReportEditPermission({
   }, []);
 
   const permission = useMemo<ReportEditPermission>(() => {
+    if (isLovablePreview()) {
+      return {
+        canEdit: false,
+        isReadOnly: true,
+        isOwner: false,
+        isSuperAdmin: false,
+        isLoading: false,
+        readOnlyReason: 'Preview mode — read-only'
+      };
+    }
+
     const isOwner = currentUserId === inspectorId;
     
     // Fast path: If we can determine ownership, enable editing immediately for owners
