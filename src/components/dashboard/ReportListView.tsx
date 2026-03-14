@@ -34,9 +34,9 @@ function getDaysOpenColor(days: number, status: string): string {
 
 export function ReportListView({ reports, type, onRowClick }: ReportListViewProps) {
   return (
-    <div className="border rounded-md overflow-hidden">
+    <div className="border rounded-md overflow-hidden bg-background/95 backdrop-blur-sm shadow-sm">
       <Table>
-        <TableHeader>
+        <TableHeader className="bg-muted/80">
           <TableRow>
             <TableHead className="min-w-[180px]">Title</TableHead>
             <TableHead className="hidden md:table-cell">Location</TableHead>
