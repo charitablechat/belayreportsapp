@@ -1,32 +1,66 @@
 
 
-## Fix Divider Row Layout
+## Onboarding Resource Center
 
-The divider row currently passes `gridCols={undefined}`, which removes the grid layout and causes the grab handle to not align with other rows. The fix is to keep the grid layout for divider rows but have the divider content span the remaining columns.
+A dedicated `/onboarding` page where users can browse videos and PDFs you've uploaded, and mark items as completed.
 
-### Change in `src/components/inspection/OperatingSystemsTable.tsx`
+### Database
 
-**Desktop (line ~116):** Always pass `gridCols={OS_GRID_COLS}` for divider rows too, then make the divider content span from column 2 to the end using `col-span-5` (covering the 5 remaining columns after the grip column):
+**1. `onboarding_resources` table** — stores metadata for each uploaded file
 
-```tsx
-<DraggableTableRow
-  gridCols={OS_GRID_COLS}  // always use grid, not undefined
-  ...
->
-  {system.is_divider ? (
-    <div className="col-span-5 flex items-center bg-blue-100 dark:bg-blue-900/30">
-      <div className="p-2 flex-1">
-        <Input ... placeholder="Section divider text..." />
-      </div>
-      <div className="p-2">
-        <Button ... /> {/* delete */}
-      </div>
-    </div>
-  ) : ( ... )}
-```
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | PK |
+| title | text | Display name |
+| description | text | Optional summary |
+| file_type | text | 'video' or 'pdf' |
+| file_url | text | Storage path |
+| display_order | integer | Sort order |
+| is_published | boolean | Only published items shown to users |
+| uploaded_by | uuid | References auth.users |
+| created_at | timestamptz | |
 
-This keeps the grab handle rendered by `DraggableTableRow` in the first grid column (40px), with the divider spanning the rest -- matching the uploaded screenshot exactly.
+RLS: Super admins can CRUD. Authenticated users can SELECT where `is_published = true`.
 
-### Files changed
-- `src/components/inspection/OperatingSystemsTable.tsx` -- lines ~116-140 only
+**2. `onboarding_progress` table** — tracks per-user completion
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | PK |
+| user_id | uuid | References auth.users |
+| resource_id | uuid | FK to onboarding_resources |
+| completed_at | timestamptz | When marked complete |
+| unique(user_id, resource_id) | | Prevents duplicates |
+
+RLS: Users can manage their own rows only.
+
+**3. `onboarding-files` storage bucket** — private bucket for the actual video/PDF files. Super admins can upload; authenticated users can read.
+
+### Frontend
+
+**`/onboarding` page** — accessible from the dashboard header navigation:
+- Lists all published resources grouped by type (Videos section, Documents section)
+- Each card shows: title, description, file type icon, and a checkbox to mark complete
+- Clicking a video opens an inline `<video>` player; clicking a PDF downloads it
+- A progress bar at the top shows "X of Y completed"
+- Matches existing app styling (cards, borders, monospace metadata)
+
+**Admin upload UI** — visible only to super admins on the same page:
+- "Add Resource" button opens a form: title, description, file type selector, file upload input, display order
+- Drag-to-reorder support using existing drag patterns
+- Toggle publish/unpublish per resource
+- Delete resource (removes from storage + DB)
+
+### Route Addition
+
+Add `/onboarding` to `App.tsx` router, import the new `Onboarding.tsx` page component. Add a navigation link in `AuthenticatedHeader.tsx`.
+
+### Files
+
+| File | Action |
+|------|--------|
+| Migration SQL | Create tables, bucket, RLS policies |
+| `src/pages/Onboarding.tsx` | New page component |
+| `src/App.tsx` | Add route |
+| `src/components/AuthenticatedHeader.tsx` | Add nav link |
 

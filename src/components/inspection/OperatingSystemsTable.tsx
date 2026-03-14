@@ -113,7 +113,7 @@ function OperatingSystemsTable({ systems, onUpdate, onImmediateSave }: Operating
                 key={system.id}
                 id={system.id}
                 className="hover:bg-muted/50"
-                gridCols={system.is_divider ? undefined : OS_GRID_COLS}
+                gridCols={OS_GRID_COLS}
                 {...getDragProps(system.id)}
               >
                 {system.is_divider ? (
