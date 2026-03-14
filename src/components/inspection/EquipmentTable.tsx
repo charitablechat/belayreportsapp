@@ -378,9 +378,9 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
                   )}
                 </div>
                 <div className="p-2 border-r border-border">
-                  <div className="flex items-center gap-1">
+                  <div className="flex flex-col gap-1">
                     {item.production_year === "0" ? (
-                      <div className="flex items-center gap-1 px-2 py-1 bg-muted rounded text-sm flex-1">
+                      <div className="flex items-center gap-1 px-2 py-1 bg-muted rounded text-sm">
                         <span className="text-muted-foreground font-medium">N/A</span>
                         <Button variant="ghost" size="sm" className="h-5 w-5 p-0 ml-auto" onClick={() => { updateEquipment(item, "production_year", null); onImmediateSave?.(); }}>
                           <X className="h-3 w-3" />
@@ -403,10 +403,10 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
                             onImmediateSave?.();
                           }}
                           onKeyDown={(e) => e.key === 'Enter' && onImmediateSave?.()}
-                          placeholder="Year"
-                          className="border-0 bg-transparent flex-1"
+                          placeholder="e.g. 2018-2026"
+                          className="border-0 bg-transparent w-full"
                         />
-                        <Button variant="outline" size="sm" className="h-7 px-2 text-xs shrink-0" onClick={() => { updateEquipment(item, "production_year", "0"); onImmediateSave?.(); }}>N/A</Button>
+                        <Button variant="outline" size="sm" className="h-7 w-full text-xs" onClick={() => { updateEquipment(item, "production_year", "0"); onImmediateSave?.(); }}>N/A</Button>
                       </>
                     )}
                   </div>
