@@ -1,66 +1,29 @@
 
 
-## Onboarding Resource Center
+## Fix: Stale Dashboard Data After Navigation
 
-A dedicated `/onboarding` page where users can browse videos and PDFs you've uploaded, and mark items as completed.
+### Problem
+When navigating away from Dashboard (e.g., to an inspection form) and returning, report counts show "0" and data doesn't load. The main `useEffect` depends on `location.key`, which may not change on back-navigation, preventing data re-fetch.
 
-### Database
+### Root Cause
+The Dashboard manages all report data via manual `useState` + `useEffect` keyed on `location.key`. When React Router reuses the component or `location.key` doesn't change (back navigation), the effect doesn't re-run, leaving stale empty arrays.
 
-**1. `onboarding_resources` table** — stores metadata for each uploaded file
+### Solution
+Two complementary changes in `src/pages/Dashboard.tsx`:
 
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uuid | PK |
-| title | text | Display name |
-| description | text | Optional summary |
-| file_type | text | 'video' or 'pdf' |
-| file_url | text | Storage path |
-| display_order | integer | Sort order |
-| is_published | boolean | Only published items shown to users |
-| uploaded_by | uuid | References auth.users |
-| created_at | timestamptz | |
+1. **Change useEffect dependency** from `location.key` to `location.pathname` — this ensures the effect fires whenever the user lands on the dashboard route, regardless of navigation method.
 
-RLS: Super admins can CRUD. Authenticated users can SELECT where `is_published = true`.
+2. **Add a focused re-fetch on component mount** — a separate lightweight `useEffect` with no dependencies that always triggers data reload when Dashboard mounts (covers cases where pathname is identical but component remounted via Suspense).
 
-**2. `onboarding_progress` table** — tracks per-user completion
+3. **Add `visibilitychange` + `focus` dual listener** — the existing `visibilitychange` handler covers tab switches, but add a `window.focus` listener to catch in-app navigation returns that don't trigger visibility changes.
 
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uuid | PK |
-| user_id | uuid | References auth.users |
-| resource_id | uuid | FK to onboarding_resources |
-| completed_at | timestamptz | When marked complete |
-| unique(user_id, resource_id) | | Prevents duplicates |
+### Changes
 
-RLS: Users can manage their own rows only.
+**`src/pages/Dashboard.tsx`:**
+- Line 367: Change `[location.key]` → `[location.pathname]`
+- Add a new `useEffect` that calls `loadAllData` on mount with a short debounce to avoid double-fetching when `location.pathname` effect also fires
+- Wrap `loadInspections`, `loadTrainingReports`, `loadDailyAssessments` in `useCallback` so they're stable references (needed for the new effect)
 
-**3. `onboarding-files` storage bucket** — private bucket for the actual video/PDF files. Super admins can upload; authenticated users can read.
-
-### Frontend
-
-**`/onboarding` page** — accessible from the dashboard header navigation:
-- Lists all published resources grouped by type (Videos section, Documents section)
-- Each card shows: title, description, file type icon, and a checkbox to mark complete
-- Clicking a video opens an inline `<video>` player; clicking a PDF downloads it
-- A progress bar at the top shows "X of Y completed"
-- Matches existing app styling (cards, borders, monospace metadata)
-
-**Admin upload UI** — visible only to super admins on the same page:
-- "Add Resource" button opens a form: title, description, file type selector, file upload input, display order
-- Drag-to-reorder support using existing drag patterns
-- Toggle publish/unpublish per resource
-- Delete resource (removes from storage + DB)
-
-### Route Addition
-
-Add `/onboarding` to `App.tsx` router, import the new `Onboarding.tsx` page component. Add a navigation link in `AuthenticatedHeader.tsx`.
-
-### Files
-
-| File | Action |
-|------|--------|
-| Migration SQL | Create tables, bucket, RLS policies |
-| `src/pages/Onboarding.tsx` | New page component |
-| `src/App.tsx` | Add route |
-| `src/components/AuthenticatedHeader.tsx` | Add nav link |
+### Why not React Query for reports?
+The Dashboard uses a complex merge strategy (offline IndexedDB + Supabase + orphan cleanup). Migrating to React Query would be a large refactor. The targeted fix above solves the stale data issue without restructuring the data pipeline.
 
