@@ -117,7 +117,7 @@ function OperatingSystemsTable({ systems, onUpdate, onImmediateSave }: Operating
                 {...getDragProps(system.id)}
               >
                 {system.is_divider ? (
-                  <div className="col-span-full flex items-center bg-blue-100 dark:bg-blue-900/30">
+                  <div className="col-span-5 flex items-center bg-blue-100 dark:bg-blue-900/30">
                     <div className="p-2 flex-1">
                       <Input
                         value={system.divider_text || ""}
