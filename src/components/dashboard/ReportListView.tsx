@@ -57,7 +57,7 @@ export function ReportListView({ reports, type, onRowClick }: ReportListViewProp
             return (
               <TableRow
                 key={r.id}
-                className="cursor-pointer hover:bg-muted/50"
+                className={cn("cursor-pointer hover:bg-muted/50", index % 2 === 0 && "bg-muted/20")}
                 onClick={() => {
                   triggerHaptic('light');
                   onRowClick(r);
