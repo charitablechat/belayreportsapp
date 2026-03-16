@@ -68,6 +68,7 @@ export default function PhotoGallery({
   const { isOnline } = useNetworkStatus();
   const objectUrlsRef = useRef<string[]>([]);
   const [evictedCount, setEvictedCount] = useState(0);
+  const [failedCount, setFailedCount] = useState(0);
 
   // Desktop-first sensor configuration with mobile support
   const sensors = useSensors(
@@ -110,7 +111,7 @@ export default function PhotoGallery({
   const loadPhotos = async (silent = false) => {
     try {
       if (!silent) setLoading(true);
-      
+      let signedUrlFailures = 0;
       // Collect new object URLs separately — don't revoke old ones yet
       const newObjectUrls: string[] = [];
       
@@ -183,8 +184,9 @@ export default function PhotoGallery({
               .from(storageBucket)
               .createSignedUrl(photo.photo_url, 3600);
 
-            if (urlError) {
-              console.error('[PhotoGallery] Error creating signed URL:', urlError);
+            if (urlError || !signedUrlData?.signedUrl) {
+              console.error(`[PhotoGallery] Failed to create signed URL for photo ${photo.id} in bucket "${storageBucket}", path: "${photo.photo_url}":`, urlError);
+              signedUrlFailures++;
               return null;
             }
 
@@ -229,6 +231,7 @@ export default function PhotoGallery({
         const oldUrls = objectUrlsRef.current;
         objectUrlsRef.current = newObjectUrls;
         setPhotos(mergedPhotos);
+        setFailedCount(signedUrlFailures);
         // Deferred revocation: wait for React commit + browser paint
         requestAnimationFrame(() => {
           setTimeout(() => {
@@ -241,6 +244,7 @@ export default function PhotoGallery({
         const oldUrls = objectUrlsRef.current;
         objectUrlsRef.current = newObjectUrls;
         setPhotos(sortedOffline);
+        setFailedCount(0);
         // Deferred revocation: wait for React commit + browser paint
         requestAnimationFrame(() => {
           setTimeout(() => {
@@ -402,6 +406,16 @@ export default function PhotoGallery({
           <p className="text-sm text-destructive font-medium">
             {evictedCount} photo{evictedCount > 1 ? 's were' : ' was'} lost from local storage (browser storage pressure). 
             Please retake {evictedCount > 1 ? 'these photos' : 'this photo'}.
+          </p>
+        </div>
+      )}
+      {/* Warning banner for photos that failed to load from cloud */}
+      {failedCount > 0 && (
+        <div className="mb-4 p-3 border-2 border-orange-500 rounded-lg bg-orange-500/10 flex items-center gap-2">
+          <AlertTriangle className="w-5 h-5 text-orange-600 dark:text-orange-400 flex-shrink-0" />
+          <p className="text-sm text-orange-700 dark:text-orange-300 font-medium">
+            {failedCount} photo{failedCount > 1 ? 's' : ''} could not be loaded from the server. 
+            Try refreshing the page or check your connection.
           </p>
         </div>
       )}
