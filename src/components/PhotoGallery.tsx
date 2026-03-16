@@ -231,6 +231,7 @@ export default function PhotoGallery({
         const oldUrls = objectUrlsRef.current;
         objectUrlsRef.current = newObjectUrls;
         setPhotos(mergedPhotos);
+        setFailedCount(signedUrlFailures);
         // Deferred revocation: wait for React commit + browser paint
         requestAnimationFrame(() => {
           setTimeout(() => {
