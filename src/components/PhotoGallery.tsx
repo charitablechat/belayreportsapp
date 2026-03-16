@@ -111,7 +111,7 @@ export default function PhotoGallery({
   const loadPhotos = async (silent = false) => {
     try {
       if (!silent) setLoading(true);
-      
+      let signedUrlFailures = 0;
       // Collect new object URLs separately — don't revoke old ones yet
       const newObjectUrls: string[] = [];
       
