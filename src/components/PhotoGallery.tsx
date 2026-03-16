@@ -409,6 +409,16 @@ export default function PhotoGallery({
           </p>
         </div>
       )}
+      {/* Warning banner for photos that failed to load from cloud */}
+      {failedCount > 0 && (
+        <div className="mb-4 p-3 border-2 border-orange-500 rounded-lg bg-orange-500/10 flex items-center gap-2">
+          <AlertTriangle className="w-5 h-5 text-orange-600 dark:text-orange-400 flex-shrink-0" />
+          <p className="text-sm text-orange-700 dark:text-orange-300 font-medium">
+            {failedCount} photo{failedCount > 1 ? 's' : ''} could not be loaded from the server. 
+            Try refreshing the page or check your connection.
+          </p>
+        </div>
+      )}
     <DndContext
       sensors={sensors}
       collisionDetection={closestCenter}
