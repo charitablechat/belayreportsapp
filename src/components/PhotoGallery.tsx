@@ -184,8 +184,9 @@ export default function PhotoGallery({
               .from(storageBucket)
               .createSignedUrl(photo.photo_url, 3600);
 
-            if (urlError) {
-              console.error('[PhotoGallery] Error creating signed URL:', urlError);
+            if (urlError || !signedUrlData?.signedUrl) {
+              console.error(`[PhotoGallery] Failed to create signed URL for photo ${photo.id} in bucket "${storageBucket}", path: "${photo.photo_url}":`, urlError);
+              signedUrlFailures++;
               return null;
             }
 
