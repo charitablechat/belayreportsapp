@@ -68,6 +68,7 @@ export default function PhotoGallery({
   const { isOnline } = useNetworkStatus();
   const objectUrlsRef = useRef<string[]>([]);
   const [evictedCount, setEvictedCount] = useState(0);
+  const [failedCount, setFailedCount] = useState(0);
 
   // Desktop-first sensor configuration with mobile support
   const sensors = useSensors(
