@@ -244,6 +244,7 @@ export default function PhotoGallery({
         const oldUrls = objectUrlsRef.current;
         objectUrlsRef.current = newObjectUrls;
         setPhotos(sortedOffline);
+        setFailedCount(0);
         // Deferred revocation: wait for React commit + browser paint
         requestAnimationFrame(() => {
           setTimeout(() => {
