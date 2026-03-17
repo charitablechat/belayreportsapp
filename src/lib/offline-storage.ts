@@ -880,6 +880,9 @@ export async function savePhotoOffline(photo: {
   fileName: string;
   uploaded?: boolean;
   photoUrl?: string;
+  tableName?: string;
+  storageBucket?: string;
+  foreignKeyColumn?: string;
 }) {
   return withIndexedDBErrorBoundary(
     async () => {

@@ -73,21 +73,26 @@ export async function syncPhotos(): Promise<{ remaining: number }> {
         const user = await getUserWithCache();
         if (!user) throw new Error("Not authenticated");
 
+        // Use per-photo metadata with backward-compatible defaults
+        const bucket = photo.storageBucket || 'inspection-photos';
+        const table = photo.tableName || 'inspection_photos';
+        const fkColumn = photo.foreignKeyColumn || 'inspection_id';
+
         const fileExt = photo.fileName.split('.').pop();
         const fileName = `${user.id}/${photo.inspectionId}/${Date.now()}.${fileExt}`;
         
         // Upload to storage
         const { error: uploadError } = await supabase.storage
-          .from('inspection-photos')
+          .from(bucket)
           .upload(fileName, photo.blob);
 
         if (uploadError) throw uploadError;
 
         // Save to database with file path (signed URLs generated on read)
-        const { error: dbError } = await supabase
-          .from('inspection_photos')
+        const { error: dbError } = await (supabase
+          .from(table) as any)
           .insert({
-            inspection_id: photo.inspectionId,
+            [fkColumn]: photo.inspectionId,
             photo_url: fileName,
             photo_section: photo.section,
           });
