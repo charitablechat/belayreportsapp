@@ -522,6 +522,67 @@ serve(async (req) => {
       yPos = doc.lastAutoTable.finalY + 10;
     }
 
+    // Training Photos Section
+    if (trainingData.photos && trainingData.photos.length > 0) {
+      doc.addPage();
+      yPos = margin;
+      
+      doc.setFontSize(14);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(30, 64, 175);
+      doc.text('Training Photos', margin, yPos);
+      yPos += 8;
+      doc.setDrawColor(203, 213, 225);
+      doc.line(margin, yPos, pageWidth - margin, yPos);
+      yPos += 10;
+
+      for (const photo of trainingData.photos) {
+        try {
+          const { data: urlData } = await supabaseAdmin.storage
+            .from('training-photos')
+            .createSignedUrl(photo.photo_url, 60 * 60);
+          
+          if (urlData?.signedUrl) {
+            const imgResponse = await fetch(urlData.signedUrl);
+            if (imgResponse.ok) {
+              const imgBlob = await imgResponse.arrayBuffer();
+              const imgArray = new Uint8Array(imgBlob);
+              const binary = imgArray.reduce((acc: string, byte: number) => acc + String.fromCharCode(byte), '');
+              const imgBase64 = btoa(binary);
+              
+              const imgWidth = contentWidth * 0.6;
+              const imgHeight = imgWidth * 0.75;
+              
+              if (yPos + imgHeight + 20 > pageHeight - 30) {
+                doc.addPage();
+                yPos = margin;
+              }
+              
+              try {
+                doc.addImage(`data:image/jpeg;base64,${imgBase64}`, 'JPEG', margin, yPos, imgWidth, imgHeight);
+                yPos += imgHeight + 5;
+              } catch (imgErr) {
+                console.error('Failed to add photo to PDF:', imgErr);
+              }
+              
+              if (photo.caption) {
+                doc.setFontSize(9);
+                doc.setFont('helvetica', 'normal');
+                doc.setTextColor(100, 116, 139);
+                doc.text(photo.caption, margin, yPos);
+                yPos += 10;
+              } else {
+                yPos += 5;
+              }
+            }
+          }
+        } catch (e) {
+          console.error('Failed to fetch photo for PDF:', e);
+        }
+      }
+      doc.setTextColor(0, 0, 0);
+    }
+
     // Disclaimer Box
     if (yPos > pageHeight - 60) {
       doc.addPage();
@@ -581,7 +642,7 @@ serve(async (req) => {
         verifiable_items: content.verifiableItems.length,
         systems_in_place: content.systemsInPlace.length,
         has_summary: !!(content.summary.observations || content.summary.recommendations),
-        photo_count: 0
+        photo_count: trainingData.photos?.length || 0
       }
     };
 

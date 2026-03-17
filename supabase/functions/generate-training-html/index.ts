@@ -69,6 +69,23 @@ serve(async (req) => {
     const trainingData = await fetchTrainingData(trainingId, supabase);
     const content = formatTrainingContent(trainingData);
 
+    // Generate signed URLs for photos
+    const photoUrls: { url: string; caption: string }[] = [];
+    if (trainingData.photos && trainingData.photos.length > 0) {
+      for (const photo of trainingData.photos) {
+        try {
+          const { data: urlData } = await supabase.storage
+            .from('training-photos')
+            .createSignedUrl(photo.photo_url, 60 * 60 * 24);
+          if (urlData?.signedUrl) {
+            photoUrls.push({ url: urlData.signedUrl, caption: photo.caption || '' });
+          }
+        } catch (e) {
+          console.error('Failed to get signed URL for photo:', photo.photo_url, e);
+        }
+      }
+    }
+
     // Footer disclaimer text for training reports
     const footerDisclaimerText = `The information contained in this report has been documented by a Qualified Professional.<br>This report is effective for one year from the date of inspection. Issued by:<br>Rope Works Inc., PO Box 1074, Dripping Springs, TX 78620`;
 
@@ -781,7 +798,28 @@ serve(async (req) => {
     ${footer(5)}
   </div>
 
-  <!-- Page 6: Submission and Disclaimer -->
+  ${photoUrls.length > 0 ? `
+  <!-- Photo Pages -->
+  <div class="page">
+    ${header()}
+    <div class="page-content">
+      <div class="section">
+        <div class="section-title">Training Photos</div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 12px;">
+          ${photoUrls.map(photo => `
+            <div style="border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">
+              <img src="${photo.url}" style="width: 100%; height: 200px; object-fit: cover;" alt="${photo.caption || 'Training photo'}" />
+              ${photo.caption ? `<div style="padding: 8px 12px; font-size: 13px; color: #475569; background: #f8fafc;">${photo.caption}</div>` : ''}
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    </div>
+    ${footer(6)}
+  </div>
+  ` : ''}
+
+  <!-- Submission and Disclaimer -->
   <div class="page">
     ${header()}
     <div class="page-content">
@@ -817,7 +855,7 @@ serve(async (req) => {
         Generated on ${new Date().toLocaleString('en-US', { timeZone: 'America/Chicago', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
       </div>
     </div>
-    ${footer(6)}
+    ${footer(photoUrls.length > 0 ? 7 : 6)}
   </div>
 </body>
 </html>`;
