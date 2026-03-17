@@ -1956,6 +1956,9 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
         structure_checks.length > 0 ? saveAssessmentDataOffline('structure_checks', assessmentIdMapping.newId, structure_checks) : Promise.resolve(),
         environment_checks.length > 0 ? saveAssessmentDataOffline('environment_checks', assessmentIdMapping.newId, environment_checks) : Promise.resolve(),
       ]);
+      
+      // Relink photos from temp ID to new UUID so syncPhotos() can upload them
+      await relinkPhotosToNewInspectionId(assessmentIdMapping.oldId, assessmentIdMapping.newId);
     }
     
     if (import.meta.env.DEV) {

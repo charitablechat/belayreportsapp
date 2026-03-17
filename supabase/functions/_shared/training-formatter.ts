@@ -62,7 +62,8 @@ export async function fetchTrainingData(
     { data: verifiable },
     { data: systemsInPlace },
     { data: summary },
-    { data: profile }
+    { data: profile },
+    { data: photos }
   ] = await Promise.all([
     supabase.from('training_delivery_approaches').select('*').eq('training_id', trainingId).order('created_at'),
     supabase.from('training_operating_systems').select('*').eq('training_id', trainingId).order('created_at'),
@@ -70,7 +71,8 @@ export async function fetchTrainingData(
     supabase.from('training_verifiable_items').select('*').eq('training_id', trainingId).order('created_at'),
     supabase.from('training_systems_in_place').select('*').eq('training_id', trainingId).order('created_at'),
     supabase.from('training_summary').select('*').eq('training_id', trainingId).maybeSingle(),
-    supabase.from('profiles').select('first_name, last_name, acct_number').eq('id', training.inspector_id).maybeSingle()
+    supabase.from('profiles').select('first_name, last_name, acct_number').eq('id', training.inspector_id).maybeSingle(),
+    supabase.from('training_photos').select('*').eq('training_id', trainingId).is('deleted_at', null).order('display_order')
   ]);
 
   return {
@@ -81,7 +83,8 @@ export async function fetchTrainingData(
     verifiable: verifiable || [],
     systemsInPlace: systemsInPlace || [],
     summary: summary || null,
-    profile: profile || null
+    profile: profile || null,
+    photos: photos || []
   };
 }
 
