@@ -83,7 +83,7 @@ export async function syncPhotos(): Promise<{ remaining: number }> {
         
         // Upload to storage
         const { error: uploadError } = await supabase.storage
-          .from(bucket)
+          .from(bucket as any)
           .upload(fileName, photo.blob);
 
         if (uploadError) throw uploadError;
