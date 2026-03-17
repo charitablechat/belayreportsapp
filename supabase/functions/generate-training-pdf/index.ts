@@ -642,7 +642,7 @@ serve(async (req) => {
         verifiable_items: content.verifiableItems.length,
         systems_in_place: content.systemsInPlace.length,
         has_summary: !!(content.summary.observations || content.summary.recommendations),
-        photo_count: 0
+        photo_count: trainingData.photos?.length || 0
       }
     };
 
