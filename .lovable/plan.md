@@ -1,66 +1,42 @@
 
 
-## Onboarding Resource Center
+## Investigation Results: Taylor's Girl Scout Photos
 
-A dedicated `/onboarding` page where users can browse videos and PDFs you've uploaded, and mark items as completed.
+### What I Found
 
-### Database
+- Taylor's training report (Girl Scouts - Camp La Jita, ID: `35649e1b`) exists and is marked **completed**
+- There are **zero** photo records in the `training_photos` database table for this report
+- There are **zero** files in the `training-photos` storage bucket — not just for Taylor, but for **anyone**
+- The `inspection-photos` bucket has 2,296 files, confirming inspection photo uploads work fine
 
-**1. `onboarding_resources` table** — stores metadata for each uploaded file
+### Root Cause
 
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uuid | PK |
-| title | text | Display name |
-| description | text | Optional summary |
-| file_type | text | 'video' or 'pdf' |
-| file_url | text | Storage path |
-| display_order | integer | Sort order |
-| is_published | boolean | Only published items shown to users |
-| uploaded_by | uuid | References auth.users |
-| created_at | timestamptz | |
+The photo retry/sync system (`syncPhotos()` in `sync-manager.ts`) is **hardcoded to only sync to the inspection-photos bucket and inspection_photos table**. When a training or daily assessment photo's initial upload fails (common on mobile due to network conditions), it is never retried correctly because:
 
-RLS: Super admins can CRUD. Authenticated users can SELECT where `is_published = true`.
+1. The IndexedDB `photos` store schema does not store `tableName`, `storageBucket`, or `foreignKeyColumn` — only a generic `inspectionId` field
+2. `syncPhotos()` blindly uploads all pending photos to `inspection-photos` bucket and inserts into `inspection_photos` table
+3. This means training/daily assessment photos either get uploaded to the **wrong bucket/table** or fail silently
 
-**2. `onboarding_progress` table** — tracks per-user completion
+This explains why zero training photos exist anywhere in cloud storage.
 
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uuid | PK |
-| user_id | uuid | References auth.users |
-| resource_id | uuid | FK to onboarding_resources |
-| completed_at | timestamptz | When marked complete |
-| unique(user_id, resource_id) | | Prevents duplicates |
+### Plan
 
-RLS: Users can manage their own rows only.
+**1. Extend IndexedDB photo schema** (`src/lib/offline-storage.ts`)
+- Add `tableName`, `storageBucket`, and `foreignKeyColumn` fields to the `photos` store schema
+- These fields will be stored at capture time so the sync system knows where to upload each photo
 
-**3. `onboarding-files` storage bucket** — private bucket for the actual video/PDF files. Super admins can upload; authenticated users can read.
+**2. Update PhotoCapture to store metadata** (`src/components/PhotoCapture.tsx`)
+- Pass `tableName`, `storageBucket`, and `foreignKeyColumn` into `savePhotoOffline()` so each photo record knows its destination
 
-### Frontend
+**3. Fix syncPhotos to use per-photo metadata** (`src/lib/sync-manager.ts`)
+- Read `tableName`, `storageBucket`, `foreignKeyColumn` from each photo record
+- Default to `inspection_photos` / `inspection-photos` / `inspection_id` for backward compatibility with existing IndexedDB records
 
-**`/onboarding` page** — accessible from the dashboard header navigation:
-- Lists all published resources grouped by type (Videos section, Documents section)
-- Each card shows: title, description, file type icon, and a checkbox to mark complete
-- Clicking a video opens an inline `<video>` player; clicking a PDF downloads it
-- A progress bar at the top shows "X of Y completed"
-- Matches existing app styling (cards, borders, monospace metadata)
+**4. Update savePhotoOffline function** (`src/lib/offline-storage.ts`)
+- Accept and persist the new metadata fields alongside the existing photo data
 
-**Admin upload UI** — visible only to super admins on the same page:
-- "Add Resource" button opens a form: title, description, file type selector, file upload input, display order
-- Drag-to-reorder support using existing drag patterns
-- Toggle publish/unpublish per resource
-- Delete resource (removes from storage + DB)
-
-### Route Addition
-
-Add `/onboarding` to `App.tsx` router, import the new `Onboarding.tsx` page component. Add a navigation link in `AuthenticatedHeader.tsx`.
-
-### Files
-
-| File | Action |
-|------|--------|
-| Migration SQL | Create tables, bucket, RLS policies |
-| `src/pages/Onboarding.tsx` | New page component |
-| `src/App.tsx` | Add route |
-| `src/components/AuthenticatedHeader.tsx` | Add nav link |
+### Impact
+- Fixes training and daily assessment photo uploads for all users
+- Existing inspection photos continue working (backward-compatible defaults)
+- Taylor will need to re-upload photos for the Girl Scouts report since the originals may no longer be in her device's IndexedDB
 
