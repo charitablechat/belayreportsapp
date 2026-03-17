@@ -10,6 +10,7 @@ export interface TrainingData {
   systemsInPlace: any[];
   summary: any;
   profile: any;
+  photos: any[];
 }
 
 // Utility functions
