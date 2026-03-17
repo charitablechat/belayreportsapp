@@ -184,7 +184,7 @@ export interface AllUserCloudSnapshot extends CloudBackupEntry {
  */
 export async function fetchAllCloudSnapshots(): Promise<AllUserCloudSnapshot[]> {
   const { data, error } = await (supabase.from('report_cloud_backups') as any)
-    .select('id, report_type, report_id, device, synced, snapshot_ts, created_at, user_id')
+    .select('id, report_type, report_id, device, synced, snapshot_ts, created_at, user_id, facility')
     .order('snapshot_ts', { ascending: false })
     .limit(200);
 
@@ -213,6 +213,7 @@ export async function fetchAllCloudSnapshots(): Promise<AllUserCloudSnapshot[]> 
   return (data as any[]).map((row: any) => ({
     ...row,
     user_name: profileMap.get(row.user_id) || 'Unknown User',
+    facility: row.facility || 'N/A',
   })) as AllUserCloudSnapshot[];
 }
 
