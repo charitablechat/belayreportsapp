@@ -90,7 +90,7 @@ export async function syncPhotos(): Promise<{ remaining: number }> {
 
         // Save to database with file path (signed URLs generated on read)
         const { error: dbError } = await (supabase
-          .from(table) as any)
+          .from(table as any) as any)
           .insert({
             [fkColumn]: photo.inspectionId,
             photo_url: fileName,
