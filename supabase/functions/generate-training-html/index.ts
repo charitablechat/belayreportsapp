@@ -69,6 +69,23 @@ serve(async (req) => {
     const trainingData = await fetchTrainingData(trainingId, supabase);
     const content = formatTrainingContent(trainingData);
 
+    // Generate signed URLs for photos
+    const photoUrls: { url: string; caption: string }[] = [];
+    if (trainingData.photos && trainingData.photos.length > 0) {
+      for (const photo of trainingData.photos) {
+        try {
+          const { data: urlData } = await supabase.storage
+            .from('training-photos')
+            .createSignedUrl(photo.photo_url, 60 * 60 * 24);
+          if (urlData?.signedUrl) {
+            photoUrls.push({ url: urlData.signedUrl, caption: photo.caption || '' });
+          }
+        } catch (e) {
+          console.error('Failed to get signed URL for photo:', photo.photo_url, e);
+        }
+      }
+    }
+
     // Footer disclaimer text for training reports
     const footerDisclaimerText = `The information contained in this report has been documented by a Qualified Professional.<br>This report is effective for one year from the date of inspection. Issued by:<br>Rope Works Inc., PO Box 1074, Dripping Springs, TX 78620`;
 
