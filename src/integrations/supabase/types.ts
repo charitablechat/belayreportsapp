@@ -1473,6 +1473,7 @@ export type Database = {
         Row: {
           created_at: string
           device: string
+          facility: string | null
           id: string
           report_id: string
           report_type: string
@@ -1484,6 +1485,7 @@ export type Database = {
         Insert: {
           created_at?: string
           device?: string
+          facility?: string | null
           id?: string
           report_id: string
           report_type: string
@@ -1495,6 +1497,7 @@ export type Database = {
         Update: {
           created_at?: string
           device?: string
+          facility?: string | null
           id?: string
           report_id?: string
           report_type?: string
