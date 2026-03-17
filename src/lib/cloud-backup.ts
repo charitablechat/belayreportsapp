@@ -74,6 +74,8 @@ async function _doUpload(
   const user = await getUserWithCache();
   if (!user) return;
 
+  const facility = snapshot.parent?.organization || snapshot.parent?.site || '';
+
   const { error } = await (supabase.from('report_cloud_backups') as any).upsert(
     {
       user_id: user.id,
@@ -87,6 +89,7 @@ async function _doUpload(
         photoMetadata: snapshot.photoMetadata,
       },
       snapshot_ts: snapshot.ts,
+      facility,
     },
     { onConflict: 'user_id,report_type,report_id' }
   );
