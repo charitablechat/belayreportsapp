@@ -798,7 +798,28 @@ serve(async (req) => {
     ${footer(5)}
   </div>
 
-  <!-- Page 6: Submission and Disclaimer -->
+  ${photoUrls.length > 0 ? `
+  <!-- Photo Pages -->
+  <div class="page">
+    ${header()}
+    <div class="page-content">
+      <div class="section">
+        <div class="section-title">Training Photos</div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 12px;">
+          ${photoUrls.map(photo => `
+            <div style="border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">
+              <img src="${photo.url}" style="width: 100%; height: 200px; object-fit: cover;" alt="${photo.caption || 'Training photo'}" />
+              ${photo.caption ? `<div style="padding: 8px 12px; font-size: 13px; color: #475569; background: #f8fafc;">${photo.caption}</div>` : ''}
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    </div>
+    ${footer(6)}
+  </div>
+  ` : ''}
+
+  <!-- Submission and Disclaimer -->
   <div class="page">
     ${header()}
     <div class="page-content">
@@ -834,7 +855,7 @@ serve(async (req) => {
         Generated on ${new Date().toLocaleString('en-US', { timeZone: 'America/Chicago', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
       </div>
     </div>
-    ${footer(6)}
+    ${footer(photoUrls.length > 0 ? 7 : 6)}
   </div>
 </body>
 </html>`;
