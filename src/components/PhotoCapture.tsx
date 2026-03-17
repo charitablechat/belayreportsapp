@@ -162,6 +162,9 @@ export default function PhotoCapture({
       blob: processedFile,
       fileName: processedFile.name,
       uploaded: false,
+      tableName,
+      storageBucket,
+      foreignKeyColumn,
     });
     
     // Vector 5: Save lightweight receipt to localStorage (survives IndexedDB eviction)

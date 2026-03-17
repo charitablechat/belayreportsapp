@@ -48,6 +48,9 @@ interface InspectionDB extends DBSchema {
       cachedAt?: number; // Timestamp when photo was cached from remote
       lastValidated?: number; // Last time cache was validated
       display_order?: number; // Order for drag-and-drop reordering
+      tableName?: string; // DB table for sync (e.g. 'training_photos')
+      storageBucket?: string; // Storage bucket (e.g. 'training-photos')
+      foreignKeyColumn?: string; // FK column (e.g. 'training_id')
     };
     indexes: { 'by-inspection': string; 'by-uploaded': number };
   };
@@ -880,6 +883,9 @@ export async function savePhotoOffline(photo: {
   fileName: string;
   uploaded?: boolean;
   photoUrl?: string;
+  tableName?: string;
+  storageBucket?: string;
+  foreignKeyColumn?: string;
 }) {
   return withIndexedDBErrorBoundary(
     async () => {
