@@ -1314,6 +1314,9 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
         systems_in_place.length > 0 ? saveTrainingDataOffline('systems_in_place', trainingIdMapping.newId, systems_in_place) : Promise.resolve(),
         summary ? saveTrainingDataOffline('summary', trainingIdMapping.newId, [summary]) : Promise.resolve(),
       ]);
+      
+      // Relink photos from temp ID to new UUID so syncPhotos() can upload them
+      await relinkPhotosToNewInspectionId(trainingIdMapping.oldId, trainingIdMapping.newId);
     }
     
     if (import.meta.env.DEV) {
