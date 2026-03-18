@@ -5,7 +5,7 @@ import { getOfflinePhotos, updatePhotoDisplayOrder } from "@/lib/offline-storage
 import { cachePhotoFromRemote, batchValidateCachedPhotos } from "@/lib/photo-cache";
 import { getPhotoReceipts } from "@/lib/photo-receipts";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
-import { isHeicPath, convertHeicBlobToJpeg, batchConvertHeicBlobs } from "@/lib/heic-converter";
+import { isHeicPath, isHeicBlob, convertHeicBlobToJpeg, batchConvertHeicBlobs } from "@/lib/heic-converter";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
