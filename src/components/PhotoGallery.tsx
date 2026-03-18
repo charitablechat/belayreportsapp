@@ -107,6 +107,25 @@ export default function PhotoGallery({
     useSensor(KeyboardSensor)
   );
 
+  /**
+   * Fire-and-forget: re-upload a converted JPEG blob to storage,
+   * replacing the mislabeled .jpg that still contains HEIC bytes.
+   * This ensures the HTML report generator gets valid JPEG data.
+   */
+  const reuploadConvertedJpeg = (filePath: string, jpegBlob: Blob) => {
+    supabase.storage
+      .from(storageBucket)
+      .upload(filePath, jpegBlob, { contentType: 'image/jpeg', upsert: true })
+      .then(({ error }) => {
+        if (error) {
+          console.warn('[PhotoGallery] Re-upload converted JPEG failed:', filePath, error.message);
+        } else if (import.meta.env.DEV) {
+          console.log('[PhotoGallery] Re-uploaded converted JPEG:', filePath);
+        }
+      })
+      .catch(e => console.warn('[PhotoGallery] Re-upload error:', e));
+  };
+
   const initialLoadDone = useRef(false);
 
   // Initial load — shows spinner
