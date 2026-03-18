@@ -1,42 +1,66 @@
 
 
-## Fix: Black Photos — HEIC Files Not Browser-Renderable
+## Onboarding Resource Center
 
-### Root Cause
-All 136 Girl Scouts training photos are `.HEIC` files (Apple's native format). The compression pipeline explicitly **skips** HEIC files (`canProcessWithCanvas` returns false), uploading them raw to storage. Browsers cannot natively render HEIC — resulting in the black boxes you see.
+A dedicated `/onboarding` page where users can browse videos and PDFs you've uploaded, and mark items as completed.
 
-### Solution: Convert HEIC→JPEG Before Upload
+### Database
 
-**1. Add `heic2any` library** — a client-side HEIC-to-JPEG converter (~50KB).
+**1. `onboarding_resources` table** — stores metadata for each uploaded file
 
-**2. Modify `src/lib/image-compression.ts`**:
-- Instead of returning the original HEIC file unchanged, convert it to JPEG using `heic2any` before the canvas compression step
-- The converted JPEG then flows through the normal compression pipeline
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | PK |
+| title | text | Display name |
+| description | text | Optional summary |
+| file_type | text | 'video' or 'pdf' |
+| file_url | text | Storage path |
+| display_order | integer | Sort order |
+| is_published | boolean | Only published items shown to users |
+| uploaded_by | uuid | References auth.users |
+| created_at | timestamptz | |
 
-```text
-Current flow:  HEIC file → canProcessWithCanvas? NO → return raw HEIC → ❌ black box
-New flow:      HEIC file → heic2any → JPEG blob → canvas compress → ✅ visible image
-```
+RLS: Super admins can CRUD. Authenticated users can SELECT where `is_published = true`.
 
-**3. Modify `src/components/PhotoCapture.tsx`**:
-- Update the file name extension from `.HEIC` to `.jpg` after conversion so storage paths reflect the actual format
+**2. `onboarding_progress` table** — tracks per-user completion
 
-**4. Fix existing photos** — Create a backend function (`convert-heic-photos`) that:
-- Queries all `.HEIC` photo_url entries in `training_photos`
-- Downloads each from storage, converts server-side using sharp/ImageMagick, re-uploads as JPEG
-- Updates the `photo_url` column to point to the new `.jpg` path
-- This is a one-time migration for the 136 existing HEIC files
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | PK |
+| user_id | uuid | References auth.users |
+| resource_id | uuid | FK to onboarding_resources |
+| completed_at | timestamptz | When marked complete |
+| unique(user_id, resource_id) | | Prevents duplicates |
 
-### Files Changed
-| File | Change |
+RLS: Users can manage their own rows only.
+
+**3. `onboarding-files` storage bucket** — private bucket for the actual video/PDF files. Super admins can upload; authenticated users can read.
+
+### Frontend
+
+**`/onboarding` page** — accessible from the dashboard header navigation:
+- Lists all published resources grouped by type (Videos section, Documents section)
+- Each card shows: title, description, file type icon, and a checkbox to mark complete
+- Clicking a video opens an inline `<video>` player; clicking a PDF downloads it
+- A progress bar at the top shows "X of Y completed"
+- Matches existing app styling (cards, borders, monospace metadata)
+
+**Admin upload UI** — visible only to super admins on the same page:
+- "Add Resource" button opens a form: title, description, file type selector, file upload input, display order
+- Drag-to-reorder support using existing drag patterns
+- Toggle publish/unpublish per resource
+- Delete resource (removes from storage + DB)
+
+### Route Addition
+
+Add `/onboarding` to `App.tsx` router, import the new `Onboarding.tsx` page component. Add a navigation link in `AuthenticatedHeader.tsx`.
+
+### Files
+
+| File | Action |
 |------|--------|
-| `package.json` | Add `heic2any` dependency |
-| `src/lib/image-compression.ts` | Add HEIC→JPEG conversion before canvas step |
-| `src/components/PhotoCapture.tsx` | Rename output file extension after conversion |
-| `supabase/functions/convert-heic-photos/index.ts` | New edge function to convert existing HEIC files in storage |
-
-### Risk
-- `heic2any` conversion takes 2-5 seconds per photo on mobile — acceptable since it replaces a broken workflow
-- Existing 136 photos will remain black until the edge function migration runs
-- The edge function needs to handle HEIC→JPEG conversion server-side (Deno + fetch + re-upload)
+| Migration SQL | Create tables, bucket, RLS policies |
+| `src/pages/Onboarding.tsx` | New page component |
+| `src/App.tsx` | Add route |
+| `src/components/AuthenticatedHeader.tsx` | Add nav link |
 

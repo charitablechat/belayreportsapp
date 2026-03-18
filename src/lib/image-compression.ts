@@ -22,24 +22,42 @@ const COMPRESSION_TIMEOUT = 8000; // 8 seconds max for entire compression
 const IMAGE_LOAD_TIMEOUT = 4000; // 4 seconds max to load/decode image
 const BLOB_CREATION_TIMEOUT = 3000; // 3 seconds max for canvas.toBlob
 
-// Formats that cannot be reliably processed with canvas on mobile browsers
-const PROBLEMATIC_FORMATS = ['image/heic', 'image/heif'];
+// Formats that need conversion before canvas processing
+const HEIC_FORMATS = ['image/heic', 'image/heif'];
 
 /**
- * Check if file format can be processed by canvas
- * HEIC/HEIF files cause hangs on iOS and some Android browsers
+ * Check if file is HEIC/HEIF format (needs conversion)
  */
-function canProcessWithCanvas(file: File): boolean {
+function isHeicFormat(file: File): boolean {
   const fileType = file.type.toLowerCase();
-  if (PROBLEMATIC_FORMATS.includes(fileType)) {
-    return false;
+  if (HEIC_FORMATS.includes(fileType)) {
+    return true;
   }
-  // Also check file extension as fallback (type can be empty on some devices)
   const extension = file.name.toLowerCase().split('.').pop();
-  if (extension === 'heic' || extension === 'heif') {
-    return false;
-  }
-  return true;
+  return extension === 'heic' || extension === 'heif';
+}
+
+/**
+ * Convert HEIC/HEIF file to JPEG using heic2any
+ * Returns a JPEG File ready for canvas processing
+ */
+async function convertHeicToJpeg(file: File): Promise<File> {
+  const heic2any = (await import('heic2any')).default;
+  
+  const convertedBlob = await heic2any({
+    blob: file,
+    toType: 'image/jpeg',
+    quality: 0.85,
+  });
+  
+  // heic2any can return a single Blob or array of Blobs
+  const blob = Array.isArray(convertedBlob) ? convertedBlob[0] : convertedBlob;
+  
+  return new File(
+    [blob],
+    file.name.replace(/\.(heic|heif)$/i, '.jpg'),
+    { type: 'image/jpeg', lastModified: Date.now() }
+  );
 }
 
 /**
@@ -136,12 +154,19 @@ const compressImageInternal = async (
   options: CompressionOptions = {},
   attemptCount: number = 0
 ): Promise<File> => {
-  // Early exit: Skip compression for formats that cause hangs
-  if (!canProcessWithCanvas(file)) {
+  // Convert HEIC/HEIF to JPEG first, then proceed with normal compression
+  if (isHeicFormat(file)) {
     if (import.meta.env.DEV) {
-      console.warn('[Image Compression] Skipping compression for unsupported format:', file.type || file.name);
+      console.log('[Image Compression] Converting HEIC/HEIF to JPEG:', file.name);
     }
-    return file; // Return original - browser handles display conversion
+    try {
+      const jpegFile = await convertHeicToJpeg(file);
+      // Now compress the converted JPEG through the normal pipeline
+      return compressImageInternal(jpegFile, options, attemptCount);
+    } catch (heicError) {
+      console.warn('[Image Compression] HEIC conversion failed, returning original:', heicError);
+      return file;
+    }
   }
 
   const opts = { ...DEFAULT_OPTIONS, ...options };
