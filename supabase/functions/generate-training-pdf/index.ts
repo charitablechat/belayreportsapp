@@ -550,8 +550,22 @@ serve(async (req) => {
               const binary = imgArray.reduce((acc: string, byte: number) => acc + String.fromCharCode(byte), '');
               const imgBase64 = btoa(binary);
               
-              const imgWidth = contentWidth * 0.6;
-              const imgHeight = imgWidth * 0.75;
+              // Calculate actual aspect ratio to prevent cropping
+              const maxW = 80; // mm
+              const maxH = 60; // mm
+              let imgWidth = maxW;
+              let imgHeight = maxH;
+              try {
+                const imgDataUri = `data:image/jpeg;base64,${imgBase64}`;
+                const props = doc.getImageProperties(imgDataUri);
+                if (props.width > 0 && props.height > 0) {
+                  const ratio = Math.min(maxW / props.width, maxH / props.height);
+                  imgWidth = props.width * ratio;
+                  imgHeight = props.height * ratio;
+                }
+              } catch (propErr) {
+                console.warn('Could not read image properties, using defaults:', propErr);
+              }
               
               if (yPos + imgHeight + 20 > pageHeight - 30) {
                 doc.addPage();
