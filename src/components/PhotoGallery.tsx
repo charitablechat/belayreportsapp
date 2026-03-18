@@ -5,7 +5,7 @@ import { getOfflinePhotos, updatePhotoDisplayOrder } from "@/lib/offline-storage
 import { cachePhotoFromRemote, batchValidateCachedPhotos } from "@/lib/photo-cache";
 import { getPhotoReceipts } from "@/lib/photo-receipts";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
-import { isHeicPath, convertHeicBlobToJpeg, batchConvertHeicBlobs } from "@/lib/heic-converter";
+import { isHeicPath, isHeicBlob, convertHeicBlobToJpeg, batchConvertHeicBlobs } from "@/lib/heic-converter";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -107,6 +107,25 @@ export default function PhotoGallery({
     useSensor(KeyboardSensor)
   );
 
+  /**
+   * Fire-and-forget: re-upload a converted JPEG blob to storage,
+   * replacing the mislabeled .jpg that still contains HEIC bytes.
+   * This ensures the HTML report generator gets valid JPEG data.
+   */
+  const reuploadConvertedJpeg = (filePath: string, jpegBlob: Blob) => {
+    supabase.storage
+      .from(storageBucket)
+      .upload(filePath, jpegBlob, { contentType: 'image/jpeg', upsert: true })
+      .then(({ error }) => {
+        if (error) {
+          console.warn('[PhotoGallery] Re-upload converted JPEG failed:', filePath, error.message);
+        } else if (import.meta.env.DEV) {
+          console.log('[PhotoGallery] Re-uploaded converted JPEG:', filePath);
+        }
+      })
+      .catch(e => console.warn('[PhotoGallery] Re-upload error:', e));
+  };
+
   const initialLoadDone = useRef(false);
 
   // Initial load — shows spinner
@@ -199,7 +218,8 @@ export default function PhotoGallery({
           const existingOfflinePhoto = offlinePhotos.find(p => p.photoUrl === photo.photo_url);
 
           if (existingOfflinePhoto?.blob && validCacheIds.has(photo.id)) {
-            const needsConversion = isHeicPath(photo.photo_url);
+            // Check magic bytes — catches mislabeled .jpg files containing HEIC data
+            const needsConversion = isHeicPath(photo.photo_url) || await isHeicBlob(existingOfflinePhoto.blob);
             if (needsConversion) {
               // Queue for batch HEIC conversion, add placeholder
               const placeholderIdx = cachedPhotos.length;
@@ -242,10 +262,12 @@ export default function PhotoGallery({
               const objectUrl = URL.createObjectURL(jpegBlob);
               newObjectUrls.push(objectUrl);
               cachedPhotos[item.index].photoUrl = objectUrl;
-              // Re-cache the converted JPEG so next load is instant
               const photo = allPhotos[item.photoIdx];
+              // Re-cache the converted JPEG locally
               cachePhotoFromRemote(photo.id, jpegBlob, photo.photo_url, inspectionId, section)
                 .catch(e => console.warn('[PhotoGallery] Failed to re-cache converted JPEG:', e));
+              // Re-upload the converted JPEG to storage so reports render correctly
+              reuploadConvertedJpeg(photo.photo_url, jpegBlob);
             } else {
               // Conversion failed — fall back to original blob (may still show black)
               const objectUrl = URL.createObjectURL(item.blob);
@@ -281,7 +303,8 @@ export default function PhotoGallery({
                   uploaded: true,
                   caption: photo.caption,
                   display_order: photo.display_order ?? index,
-                  isHeic: /\.(heic|heif)$/i.test(photo.photo_url),
+                  // Mark for HEIC check — magic byte detection happens in the conversion step
+                  isHeic: true, // check all uncached photos by magic bytes
                 } as Photo;
               })
               .filter((p): p is Photo => p !== null);
@@ -296,10 +319,13 @@ export default function PhotoGallery({
                 fetch(urlData.signedUrl!)
                   .then(r => { if (r.ok) return r.blob(); throw new Error('fetch failed'); })
                   .then(async (blob) => {
-                    // Convert HEIC to JPEG before caching so future loads are instant
-                    if (isHeicPath(photo.photo_url)) {
+                    // Detect HEIC by magic bytes (catches mislabeled .jpg files too)
+                    const heicDetected = isHeicPath(photo.photo_url) || await isHeicBlob(blob);
+                    if (heicDetected) {
                       const jpegBlob = await convertHeicBlobToJpeg(blob, 0.85);
                       if (jpegBlob) {
+                        // Re-upload the real JPEG to storage so reports work
+                        reuploadConvertedJpeg(photo.photo_url, jpegBlob);
                         return cachePhotoFromRemote(photo.id, jpegBlob, photo.photo_url, inspectionId, section);
                       }
                     }
@@ -316,33 +342,39 @@ export default function PhotoGallery({
           }
         }
 
-        // Convert uncached HEIC photos for display (with concurrency limit)
+        // Convert uncached photos that contain HEIC bytes (3 at a time)
+        // We marked ALL uncached photos with isHeic=true for magic byte checking
         const heicUncached = batchPhotos
-          .map((p, idx) => ({ photo: p, idx }))
+          .map((p, idx) => ({ photo: p, idx, originalPath: uncachedPhotos[idx]?.photo?.photo_url }))
           .filter(item => item.photo.isHeic);
         
         if (heicUncached.length > 0) {
-          if (import.meta.env.DEV) {
-            console.log(`[PhotoGallery] Converting ${heicUncached.length} uncached HEIC photos`);
-          }
-          // Fetch all HEIC blobs first (3 at a time)
           for (let i = 0; i < heicUncached.length; i += 3) {
             const chunk = heicUncached.slice(i, i + 3);
             await Promise.allSettled(
-              chunk.map(async ({ photo }) => {
+              chunk.map(async ({ photo, originalPath }) => {
                 try {
                   const response = await fetch(photo.photoUrl);
                   if (!response.ok) return;
-                  const heicBlob = await response.blob();
-                  const jpegBlob = await convertHeicBlobToJpeg(heicBlob, 0.8);
-                  if (jpegBlob) {
-                    const objectUrl = URL.createObjectURL(jpegBlob);
-                    newObjectUrls.push(objectUrl);
-                    photo.photoUrl = objectUrl;
+                  const blob = await response.blob();
+                  // Check magic bytes — only convert if actually HEIC
+                  const actuallyHeic = await isHeicBlob(blob);
+                  if (actuallyHeic) {
+                    const jpegBlob = await convertHeicBlobToJpeg(blob, 0.8);
+                    if (jpegBlob) {
+                      const objectUrl = URL.createObjectURL(jpegBlob);
+                      newObjectUrls.push(objectUrl);
+                      photo.photoUrl = objectUrl;
+                      photo.isHeic = false;
+                      // Re-upload the real JPEG to storage so reports work
+                      if (originalPath) reuploadConvertedJpeg(originalPath, jpegBlob);
+                    }
+                  } else {
+                    // Not actually HEIC — mark as fine
                     photo.isHeic = false;
                   }
                 } catch (e) {
-                  console.warn(`[PhotoGallery] HEIC conversion failed for ${photo.id}:`, e);
+                  console.warn(`[PhotoGallery] HEIC check/conversion failed for ${photo.id}:`, e);
                 }
               })
             );

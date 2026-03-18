@@ -44,6 +44,20 @@ function deduplicateHtmlContent(html: string | null): string {
   return Array.from(uniqueLines.values()).join('\n');
 }
 
+/**
+ * Check if a blob contains HEIC/HEIF data by inspecting magic bytes.
+ * Returns true if bytes 4-7 are "ftyp" and bytes 8-11 are a known HEIC brand.
+ */
+function isHeicBytes(buffer: ArrayBuffer): boolean {
+  const bytes = new Uint8Array(buffer);
+  if (bytes.length < 12) return false;
+  const decoder = new TextDecoder('ascii');
+  const ftypTag = decoder.decode(bytes.slice(4, 8));
+  if (ftypTag !== 'ftyp') return false;
+  const brand = decoder.decode(bytes.slice(8, 12)).toLowerCase();
+  return brand === 'heic' || brand === 'heis' || brand === 'mif1';
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -69,11 +83,29 @@ serve(async (req) => {
     const trainingData = await fetchTrainingData(trainingId, supabase);
     const content = formatTrainingContent(trainingData);
 
-    // Generate signed URLs for photos
+    // Generate signed URLs for photos, skipping files that still contain HEIC bytes
     const photoUrls: { url: string; caption: string }[] = [];
     if (trainingData.photos && trainingData.photos.length > 0) {
       for (const photo of trainingData.photos) {
         try {
+          // Download the file to check if it's actually HEIC (mislabeled .jpg)
+          const { data: fileData, error: dlError } = await supabase.storage
+            .from('training-photos')
+            .download(photo.photo_url);
+
+          if (dlError || !fileData) {
+            console.error('Failed to download photo for HEIC check:', photo.photo_url, dlError);
+            continue;
+          }
+
+          const buffer = await fileData.arrayBuffer();
+          if (isHeicBytes(buffer)) {
+            // File still contains HEIC bytes — skip with warning
+            console.warn(`[generate-training-html] Skipping HEIC-disguised photo: ${photo.photo_url} (will be auto-fixed on next client gallery view)`);
+            continue;
+          }
+
+          // File is a real JPEG/PNG — generate signed URL
           const { data: urlData } = await supabase.storage
             .from('training-photos')
             .createSignedUrl(photo.photo_url, 60 * 60 * 24);
@@ -81,7 +113,7 @@ serve(async (req) => {
             photoUrls.push({ url: urlData.signedUrl, caption: photo.caption || '' });
           }
         } catch (e) {
-          console.error('Failed to get signed URL for photo:', photo.photo_url, e);
+          console.error('Failed to process photo:', photo.photo_url, e);
         }
       }
     }

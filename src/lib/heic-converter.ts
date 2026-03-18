@@ -6,9 +6,35 @@
 const HEIC_EXTENSIONS = /\.(heic|heif)$/i;
 const HEIC_TYPES = ['image/heic', 'image/heif'];
 
+/** HEIC/HEIF ftyp brand identifiers (bytes 4–12 of the file) */
+const HEIC_BRANDS = ['ftyp heic', 'ftypheic', 'ftyp heis', 'ftypheis', 'ftyp mif1', 'ftypmif1'];
+
 /** Check if a storage path or URL points to a HEIC file */
 export function isHeicPath(path: string): boolean {
   return HEIC_EXTENSIONS.test(path);
+}
+
+/**
+ * Detect HEIC/HEIF by inspecting the first 12 bytes (magic bytes).
+ * Works even when the file has a .jpg extension (mislabeled files).
+ */
+export async function isHeicBlob(blob: Blob): Promise<boolean> {
+  try {
+    const slice = blob.slice(0, 12);
+    const buffer = await slice.arrayBuffer();
+    const bytes = new Uint8Array(buffer);
+    if (bytes.length < 12) return false;
+
+    // ftyp box: bytes 4-7 should be "ftyp", bytes 8-11 the brand
+    const decoder = new TextDecoder('ascii');
+    const ftypTag = decoder.decode(bytes.slice(4, 8));
+    if (ftypTag !== 'ftyp') return false;
+
+    const brand = decoder.decode(bytes.slice(8, 12)).toLowerCase();
+    return brand === 'heic' || brand === 'heis' || brand === 'mif1';
+  } catch {
+    return false;
+  }
 }
 
 /** Check if a File/Blob is HEIC by type or name */
