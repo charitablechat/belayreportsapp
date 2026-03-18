@@ -118,6 +118,15 @@ serve(async (req) => {
     const margin = 20;
     const contentWidth = pageWidth - (2 * margin);
     let yPos = margin;
+    const footerZone = 30; // reserve 30mm at bottom for footer
+
+    // Helper: check if we need a new page before drawing content
+    const checkPageBreak = (neededHeight: number) => {
+      if (yPos + neededHeight > pageHeight - footerZone) {
+        doc.addPage();
+        yPos = margin;
+      }
+    };
 
     // Add footer to all pages
     const addFooter = () => {
@@ -212,14 +221,16 @@ serve(async (req) => {
 
     // Trainee Names
     if (content.facilityInfo.traineeNames !== 'N/A') {
+      const traineeLines = doc.splitTextToSize(content.facilityInfo.traineeNames, contentWidth);
+      checkPageBreak(6 + (traineeLines.length * 5) + 8);
       doc.setFontSize(10);
       doc.setFont('helvetica', 'bold');
       doc.text('Trainee Names:', margin, yPos);
       yPos += 6;
       
       doc.setFont('helvetica', 'normal');
-      const traineeLines = doc.splitTextToSize(content.facilityInfo.traineeNames, contentWidth);
       traineeLines.forEach((line: string) => {
+        checkPageBreak(5);
         doc.text(line, margin, yPos);
         yPos += 5;
       });
@@ -227,9 +238,10 @@ serve(async (req) => {
     }
 
     // Standards Box
-    doc.setFillColor(219, 234, 254);
     const standardsLines = doc.splitTextToSize(content.standardsText, contentWidth - 10);
     const boxHeight = (standardsLines.length * 4.5) + 10;
+    checkPageBreak(boxHeight + 5);
+    doc.setFillColor(219, 234, 254);
     
     doc.roundedRect(margin - 5, yPos - 5, contentWidth + 10, boxHeight, 3, 3, 'F');
     doc.setFontSize(9);
@@ -242,11 +254,8 @@ serve(async (req) => {
 
     // Delivery Approach Section
     if (content.deliveryApproaches.length > 0) {
+      checkPageBreak(25);
       doc.setFontSize(14);
-      doc.setFont('helvetica', 'bold');
-      doc.setTextColor(30, 64, 175);
-      doc.text('Delivery Approach', margin, yPos);
-      yPos += 8;
       doc.setDrawColor(203, 213, 225);
       doc.line(margin, yPos, pageWidth - margin, yPos);
       yPos += 5;
@@ -275,6 +284,7 @@ serve(async (req) => {
 
     // Operating Systems Section
     if (content.operatingSystems.length > 0) {
+      checkPageBreak(25);
       doc.setFontSize(14);
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(30, 64, 175);
@@ -314,6 +324,7 @@ serve(async (req) => {
 
     // Verifiable Items Section
     if (content.verifiableItems.length > 0) {
+      checkPageBreak(30);
       doc.setFontSize(14);
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(30, 64, 175);
@@ -353,6 +364,7 @@ serve(async (req) => {
 
     // Systems in Place Section
     if (content.systemsInPlace.length > 0) {
+      checkPageBreak(25);
       doc.setFontSize(14);
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(30, 64, 175);
@@ -386,6 +398,7 @@ serve(async (req) => {
 
     // Immediate Attention Section
     if (content.immediateAttention.length > 0) {
+      checkPageBreak(25);
       doc.setFontSize(14);
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(211, 47, 47);
@@ -420,6 +433,7 @@ serve(async (req) => {
 
     // Training Summary Section
     if (content.summary.observationsList.length > 0 || content.summary.recommendationsList.length > 0) {
+      checkPageBreak(25);
       doc.setFontSize(14);
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(30, 64, 175);
@@ -430,6 +444,7 @@ serve(async (req) => {
       yPos += 8;
 
       if (content.summary.observationsList.length > 0) {
+        checkPageBreak(15);
         doc.setFontSize(12);
         doc.setFont('helvetica', 'bold');
         doc.setTextColor(0, 0, 0);
@@ -457,6 +472,7 @@ serve(async (req) => {
       }
 
       if (content.summary.recommendationsList.length > 0) {
+        checkPageBreak(15);
         doc.setFontSize(12);
         doc.setFont('helvetica', 'bold');
         doc.setTextColor(0, 0, 0);
@@ -486,6 +502,7 @@ serve(async (req) => {
 
     // Report Verification Section
     if (content.summary.personSubmitting || content.summary.submissionDate) {
+      checkPageBreak(30);
       doc.setFontSize(14);
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(30, 64, 175);

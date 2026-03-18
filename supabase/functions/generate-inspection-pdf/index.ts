@@ -163,6 +163,14 @@ serve(async (req) => {
     const margin = 20;
     const contentWidth = pageWidth - (2 * margin);
     let yPos = margin;
+    const footerZone = 30;
+
+    const checkPageBreak = (neededHeight: number) => {
+      if (yPos + neededHeight > pageHeight - footerZone) {
+        doc.addPage();
+        yPos = margin;
+      }
+    };
 
     // Add footer to all pages
     const addFooter = () => {
@@ -281,10 +289,11 @@ serve(async (req) => {
     }
 
     // ACCT Standards Box
-    doc.setFillColor(219, 234, 254);
     const standardsText = 'This inspection was conducted in accordance with Association for Challenge Course Technology (ACCT) Standards (ANSI/ACCT 03-2016 and ANSI/ACCT 03-2019) and industry best practices.';
     const standardsLines = doc.splitTextToSize(standardsText, contentWidth - 10);
     const boxHeight = (standardsLines.length * 4.5) + 10;
+    checkPageBreak(boxHeight + 10);
+    doc.setFillColor(219, 234, 254);
     
     doc.roundedRect(margin - 5, yPos - 5, contentWidth + 10, boxHeight, 3, 3, 'F');
     doc.setFontSize(9);
