@@ -254,11 +254,8 @@ serve(async (req) => {
 
     // Delivery Approach Section
     if (content.deliveryApproaches.length > 0) {
+      checkPageBreak(25);
       doc.setFontSize(14);
-      doc.setFont('helvetica', 'bold');
-      doc.setTextColor(30, 64, 175);
-      doc.text('Delivery Approach', margin, yPos);
-      yPos += 8;
       doc.setDrawColor(203, 213, 225);
       doc.line(margin, yPos, pageWidth - margin, yPos);
       yPos += 5;
