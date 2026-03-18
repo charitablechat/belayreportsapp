@@ -466,7 +466,7 @@ serve(async (req) => {
       }
 
       if (content.summary.recommendationsList.length > 0) {
-        doc.setFontSize(12);
+        checkPageBreak(15);
         doc.setFont('helvetica', 'bold');
         doc.setTextColor(0, 0, 0);
         doc.text('Training Recommendations', margin, yPos);
