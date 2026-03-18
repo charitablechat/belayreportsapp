@@ -181,7 +181,7 @@ serve(async (req) => {
       for (const subscription of subscriptions) {
         try {
           // Import web-push dynamically
-          const webpush = (await import('https://esm.sh/web-push@3.6.6')).default;
+          const webpush = (await import('npm:web-push@3.6.6')).default;
           
           webpush.setVapidDetails(
             'mailto:noreply@ropeaccounting.com',

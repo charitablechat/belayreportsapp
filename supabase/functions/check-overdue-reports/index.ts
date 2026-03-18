@@ -215,7 +215,7 @@ serve(async (req) => {
       const vapidPrivateKey = Deno.env.get('VAPID_PRIVATE_KEY');
 
       if (vapidPublicKey && vapidPrivateKey && subscriptions && subscriptions.length > 0) {
-        const webpush = (await import('https://esm.sh/web-push@3.6.6')).default;
+        const webpush = (await import('npm:web-push@3.6.6')).default;
         webpush.setVapidDetails('mailto:noreply@ropeaccounting.com', vapidPublicKey, vapidPrivateKey);
 
         for (const sub of subscriptions) {
