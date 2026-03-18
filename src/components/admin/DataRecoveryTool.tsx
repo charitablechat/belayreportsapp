@@ -772,8 +772,15 @@ function AllUserSnapshotsPanel() {
     try { return format(new Date(ts), "MMM d, yyyy h:mm a"); } catch { return "N/A"; }
   };
 
-  // Group snapshots by user
-  const grouped = snapshots.reduce<Record<string, { name: string; items: any[] }>>((acc, s) => {
+  // Filter then group snapshots by user
+  const filteredSnapshots = snapshots.filter(s => {
+    if (!searchQuery) return true;
+    const q = searchQuery.toLowerCase();
+    return (s.facility || '').toLowerCase().includes(q)
+        || (s.user_name || '').toLowerCase().includes(q);
+  });
+
+  const grouped = filteredSnapshots.reduce<Record<string, { name: string; items: any[] }>>((acc, s) => {
     if (!acc[s.user_id]) acc[s.user_id] = { name: s.user_name, items: [] };
     acc[s.user_id].items.push(s);
     return acc;
