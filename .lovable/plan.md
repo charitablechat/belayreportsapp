@@ -1,66 +1,45 @@
 
 
-## Onboarding Resource Center
+## Fix Cropped Photos in Reports
 
-A dedicated `/onboarding` page where users can browse videos and PDFs you've uploaded, and mark items as completed.
+### Problem
+Two report generators crop photos:
 
-### Database
+1. **Training PDF** (`generate-training-pdf/index.ts` line 553-554): Forces all photos to a fixed 4:3 aspect ratio (`imgWidth * 0.75`), stretching/squashing images that don't match
+2. **Training HTML** (`generate-training-html/index.ts` line 843): Uses `object-fit: cover` which crops images to fill the container, cutting off edges
 
-**1. `onboarding_resources` table** — stores metadata for each uploaded file
+The inspection HTML report already uses `object-fit: contain` correctly.
 
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uuid | PK |
-| title | text | Display name |
-| description | text | Optional summary |
-| file_type | text | 'video' or 'pdf' |
-| file_url | text | Storage path |
-| display_order | integer | Sort order |
-| is_published | boolean | Only published items shown to users |
-| uploaded_by | uuid | References auth.users |
-| created_at | timestamptz | |
+### Changes
 
-RLS: Super admins can CRUD. Authenticated users can SELECT where `is_published = true`.
+| File | What | Why |
+|------|------|-----|
+| `supabase/functions/generate-training-pdf/index.ts` | Use `jsPDF`'s image properties to calculate actual aspect ratio from the image dimensions, cap at a small max size (e.g. 80mm wide, 60mm tall), and scale proportionally | Prevents distortion and cropping of non-4:3 photos |
+| `supabase/functions/generate-training-html/index.ts` | Change `object-fit: cover` → `object-fit: contain` and set `height: auto; max-height: 200px;` on photo `<img>` tags | Shows the full image without cropping |
 
-**2. `onboarding_progress` table** — tracks per-user completion
+### Technical Detail
 
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uuid | PK |
-| user_id | uuid | References auth.users |
-| resource_id | uuid | FK to onboarding_resources |
-| completed_at | timestamptz | When marked complete |
-| unique(user_id, resource_id) | | Prevents duplicates |
+**Training PDF fix** (line 553-554):
+```typescript
+// Before: fixed ratio, crops non-4:3
+const imgWidth = contentWidth * 0.6;
+const imgHeight = imgWidth * 0.75;
 
-RLS: Users can manage their own rows only.
+// After: read actual dimensions, scale to fit within bounds
+const maxW = 80; // mm
+const maxH = 60; // mm
+const props = doc.getImageProperties(`data:image/jpeg;base64,${imgBase64}`);
+const ratio = Math.min(maxW / props.width, maxH / props.height);
+const imgWidth = props.width * ratio;
+const imgHeight = props.height * ratio;
+```
 
-**3. `onboarding-files` storage bucket** — private bucket for the actual video/PDF files. Super admins can upload; authenticated users can read.
+**Training HTML fix** (line 843):
+```html
+<!-- Before: cover crops -->
+<img style="width: 100%; height: 200px; object-fit: cover;" />
 
-### Frontend
-
-**`/onboarding` page** — accessible from the dashboard header navigation:
-- Lists all published resources grouped by type (Videos section, Documents section)
-- Each card shows: title, description, file type icon, and a checkbox to mark complete
-- Clicking a video opens an inline `<video>` player; clicking a PDF downloads it
-- A progress bar at the top shows "X of Y completed"
-- Matches existing app styling (cards, borders, monospace metadata)
-
-**Admin upload UI** — visible only to super admins on the same page:
-- "Add Resource" button opens a form: title, description, file type selector, file upload input, display order
-- Drag-to-reorder support using existing drag patterns
-- Toggle publish/unpublish per resource
-- Delete resource (removes from storage + DB)
-
-### Route Addition
-
-Add `/onboarding` to `App.tsx` router, import the new `Onboarding.tsx` page component. Add a navigation link in `AuthenticatedHeader.tsx`.
-
-### Files
-
-| File | Action |
-|------|--------|
-| Migration SQL | Create tables, bucket, RLS policies |
-| `src/pages/Onboarding.tsx` | New page component |
-| `src/App.tsx` | Add route |
-| `src/components/AuthenticatedHeader.tsx` | Add nav link |
+<!-- After: contain preserves -->
+<img style="width: 100%; max-height: 200px; object-fit: contain; background: #f1f5f9;" />
+```
 
