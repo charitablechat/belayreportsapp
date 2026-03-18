@@ -16,8 +16,8 @@ interface MigrationTarget {
   defaultSection: string;
 }
 
-const TARGETS: MigrationTarget[] = [
-  {
+const ALL_TARGETS: Record<string, MigrationTarget> = {
+  "girlscouts": {
     reportId: "35649e1b-06d6-4402-b2ce-dc55d3e0a1d0",
     inspectorId: "101e5e1f-62fc-4e65-aecb-073d6e9feedb",
     reportType: "training",
@@ -26,7 +26,7 @@ const TARGETS: MigrationTarget[] = [
     foreignKeyColumn: "training_id",
     defaultSection: "training",
   },
-  {
+  "ymca": {
     reportId: "20659307-2e5e-48c5-8dce-1da8801e62af",
     inspectorId: "eefbad83-4601-4b15-9001-33a77b9302bf",
     reportType: "training",
@@ -35,7 +35,7 @@ const TARGETS: MigrationTarget[] = [
     foreignKeyColumn: "training_id",
     defaultSection: "training",
   },
-  {
+  "southwest": {
     reportId: "bfe092de-e2a7-41b2-b268-b7ffc10244f3",
     inspectorId: "759e973e-2484-4db3-862a-0cb2ec6d6ea3",
     reportType: "training",
@@ -44,7 +44,7 @@ const TARGETS: MigrationTarget[] = [
     foreignKeyColumn: "training_id",
     defaultSection: "training",
   },
-  {
+  "marblefalls": {
     reportId: "1a406b1f-bf71-4e78-b6cf-d0e037ed6645",
     inspectorId: "101e5e1f-62fc-4e65-aecb-073d6e9feedb",
     reportType: "daily_assessment",
@@ -53,7 +53,7 @@ const TARGETS: MigrationTarget[] = [
     foreignKeyColumn: "assessment_id",
     defaultSection: "assessment",
   },
-];
+};
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -65,106 +65,78 @@ Deno.serve(async (req) => {
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const adminClient = createClient(supabaseUrl, serviceRoleKey);
 
-    // Parse body for dry-run mode
+    let targetKey = "all";
     let dryRun = false;
     try {
       const body = await req.json();
       dryRun = body?.dryRun === true;
-    } catch {
-      // no body = not dry run
+      targetKey = body?.target || "all";
+    } catch { /* */ }
+
+    const targets = targetKey === "all"
+      ? Object.entries(ALL_TARGETS)
+      : [[targetKey, ALL_TARGETS[targetKey]]].filter(([, v]) => v);
+
+    if (targets.length === 0) {
+      return new Response(
+        JSON.stringify({ error: `Unknown target: ${targetKey}. Valid: ${Object.keys(ALL_TARGETS).join(", ")}` }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
     const results: Record<string, { found: number; migrated: number; skipped: number; errors: string[] }> = {};
 
-    for (const target of TARGETS) {
-      const key = `${target.reportType}:${target.reportId.substring(0, 8)}`;
-      results[key] = { found: 0, migrated: 0, skipped: 0, errors: [] };
+    for (const [name, target] of targets) {
+      const t = target as MigrationTarget;
+      results[name as string] = { found: 0, migrated: 0, skipped: 0, errors: [] };
+      const r = results[name as string];
 
-      // List files in inspection-photos under {inspectorId}/{reportId}/
-      const folderPath = `${target.inspectorId}/${target.reportId}`;
+      const folderPath = `${t.inspectorId}/${t.reportId}`;
       const { data: files, error: listError } = await adminClient
-        .storage
-        .from("inspection-photos")
-        .list(folderPath, { limit: 1000 });
+        .storage.from("inspection-photos").list(folderPath, { limit: 1000 });
 
-      if (listError) {
-        results[key].errors.push(`List error: ${listError.message}`);
-        continue;
-      }
-
-      if (!files || files.length === 0) {
-        results[key].errors.push(`No files found in ${folderPath}`);
+      if (listError || !files) {
+        r.errors.push(`List: ${listError?.message}`);
         continue;
       }
 
       const validFiles = files.filter((f) => f.name && !f.name.startsWith("."));
-      results[key].found = validFiles.length;
-
+      r.found = validFiles.length;
       if (dryRun) continue;
 
       for (let i = 0; i < validFiles.length; i++) {
         const file = validFiles[i];
         const sourcePath = `${folderPath}/${file.name}`;
-        const destPath = `${target.inspectorId}/${target.reportId}/${file.name}`;
+        const destPath = `${t.inspectorId}/${t.reportId}/${file.name}`;
 
         try {
-          // Check if DB record already exists
+          // Skip if DB record exists
           const { data: existing } = await adminClient
-            .from(target.targetTable)
-            .select("id")
-            .eq("photo_url", destPath)
-            .maybeSingle();
+            .from(t.targetTable).select("id").eq("photo_url", destPath).maybeSingle();
+          if (existing) { r.skipped++; continue; }
 
-          if (existing) {
-            results[key].skipped++;
-            continue;
-          }
-
-          // Download from inspection-photos
-          const { data: fileData, error: dlErr } = await adminClient
-            .storage
-            .from("inspection-photos")
-            .download(sourcePath);
-
-          if (dlErr || !fileData) {
-            results[key].errors.push(`DL ${file.name}: ${dlErr?.message}`);
-            continue;
-          }
+          // Download
+          const { data: blob, error: dlErr } = await adminClient
+            .storage.from("inspection-photos").download(sourcePath);
+          if (dlErr || !blob) { r.errors.push(`DL ${file.name}: ${dlErr?.message}`); continue; }
 
           // Upload to correct bucket
           const { error: upErr } = await adminClient
-            .storage
-            .from(target.targetBucket)
-            .upload(destPath, fileData, {
-              contentType: fileData.type || "image/jpeg",
-              upsert: true,
-            });
+            .storage.from(t.targetBucket).upload(destPath, blob, { contentType: blob.type || "image/jpeg", upsert: true });
+          if (upErr) { r.errors.push(`UP ${file.name}: ${upErr.message}`); continue; }
 
-          if (upErr) {
-            results[key].errors.push(`UP ${file.name}: ${upErr.message}`);
-            continue;
-          }
-
-          // Insert DB record
-          const insertData: Record<string, unknown> = {
-            [target.foreignKeyColumn]: target.reportId,
+          // Create DB record
+          const { error: dbErr } = await adminClient.from(t.targetTable).insert({
+            [t.foreignKeyColumn]: t.reportId,
             photo_url: destPath,
-            photo_section: target.defaultSection,
+            photo_section: t.defaultSection,
             display_order: i,
-          };
+          });
+          if (dbErr) { r.errors.push(`DB ${file.name}: ${dbErr.message}`); continue; }
 
-          const { error: dbErr } = await adminClient
-            .from(target.targetTable)
-            .insert(insertData);
-
-          if (dbErr) {
-            results[key].errors.push(`DB ${file.name}: ${dbErr.message}`);
-            continue;
-          }
-
-          results[key].migrated++;
+          r.migrated++;
         } catch (err) {
-          results[key].errors.push(`${file.name}: ${err.message}`);
+          r.errors.push(`${file.name}: ${err.message}`);
         }
       }
     }
@@ -174,12 +146,7 @@ Deno.serve(async (req) => {
     const totalSkipped = Object.values(results).reduce((s, r) => s + r.skipped, 0);
 
     return new Response(
-      JSON.stringify({
-        success: true,
-        dryRun,
-        summary: { totalFound, totalMigrated, totalSkipped },
-        details: results,
-      }),
+      JSON.stringify({ success: true, dryRun, summary: { totalFound, totalMigrated, totalSkipped }, details: results }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err) {
