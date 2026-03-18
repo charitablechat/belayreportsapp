@@ -703,6 +703,7 @@ function AllUserSnapshotsPanel() {
   const [loading, setLoading] = useState(true);
   const [restoring, setRestoring] = useState<string | null>(null);
   const [expandedUsers, setExpandedUsers] = useState<Set<string>>(new Set());
+  const [searchQuery, setSearchQuery] = useState('');
 
   const loadSnapshots = useCallback(async () => {
     setLoading(true);
