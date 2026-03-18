@@ -73,7 +73,7 @@ export default function ContactDeveloper() {
     setLoading(true);
 
     try {
-      let imageUrl: string | undefined;
+      let attachmentPath: string | undefined;
 
       // Upload image if selected
       if (imageFile) {
@@ -86,14 +86,7 @@ export default function ContactDeveloper() {
           });
 
         if (uploadError) throw uploadError;
-
-        // Get signed URL (expires in 7 days - enough time for support to review)
-        const { data: signedUrlData, error: signedUrlError } = await supabase.storage
-          .from("contact-attachments")
-          .createSignedUrl(uploadData.path, 60 * 60 * 24 * 7);
-
-        if (signedUrlError) throw signedUrlError;
-        imageUrl = signedUrlData.signedUrl;
+        attachmentPath = uploadData.path;
       }
 
       const { error } = await supabase.functions.invoke("send-contact-email", {
@@ -102,7 +95,7 @@ export default function ContactDeveloper() {
           email: "kale@myaisummit.dev",
           subject: form.subject,
           message: form.message,
-          attachmentUrl: imageUrl,
+          attachmentPath,
           attachmentName: imageFile?.name,
           attachmentType: imageFile?.type,
           website: form.website,

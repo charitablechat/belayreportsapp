@@ -1,48 +1,66 @@
 
 
-## Diagnosis: Contact Form Images Not Reaching Developer
+## Onboarding Resource Center
 
-### Root Cause
+A dedicated `/onboarding` page where users can browse videos and PDFs you've uploaded, and mark items as completed.
 
-The `contact-attachments` storage bucket is **private** with a SELECT policy that only allows **super admins** to read files:
+### Database
 
-```sql
--- Current SELECT policy
-bucket_id = 'contact-attachments' AND is_super_admin()
-```
+**1. `onboarding_resources` table** — stores metadata for each uploaded file
 
-The client-side code (in `ContactDeveloper.tsx`) uploads the file (INSERT policy allows any authenticated user), then calls `createSignedUrl()` — which requires SELECT permission on the object. **Non-super-admin users cannot generate signed URLs**, so `createSignedUrl` returns an error, the submission throws, and the image never reaches the Make.com webhook.
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | PK |
+| title | text | Display name |
+| description | text | Optional summary |
+| file_type | text | 'video' or 'pdf' |
+| file_url | text | Storage path |
+| display_order | integer | Sort order |
+| is_published | boolean | Only published items shown to users |
+| uploaded_by | uuid | References auth.users |
+| created_at | timestamptz | |
 
-Even if the user were a super admin, the architecture is fragile: the signed URL expires in 7 days, and the edge function must fetch the file within the same request. A better approach eliminates signed URLs entirely.
+RLS: Super admins can CRUD. Authenticated users can SELECT where `is_published = true`.
 
-### Solution
+**2. `onboarding_progress` table** — tracks per-user completion
 
-Change the flow so the client sends only the **storage file path** (not a signed URL), and the edge function uses the **service role key** to download the file directly from storage.
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | PK |
+| user_id | uuid | References auth.users |
+| resource_id | uuid | FK to onboarding_resources |
+| completed_at | timestamptz | When marked complete |
+| unique(user_id, resource_id) | | Prevents duplicates |
 
-```text
-Current (broken):
-  Client uploads → createSignedUrl (FAILS for non-admins) → send URL to edge fn
+RLS: Users can manage their own rows only.
 
-Fixed:
-  Client uploads → sends file path to edge fn → edge fn downloads via service role → base64 → Make.com
-```
+**3. `onboarding-files` storage bucket** — private bucket for the actual video/PDF files. Super admins can upload; authenticated users can read.
 
-### Changes
+### Frontend
 
-**1. `src/components/ContactDeveloper.tsx`**
-- After upload, send `uploadData.path` as `attachmentPath` instead of generating a signed URL
-- Remove the `createSignedUrl` call entirely
+**`/onboarding` page** — accessible from the dashboard header navigation:
+- Lists all published resources grouped by type (Videos section, Documents section)
+- Each card shows: title, description, file type icon, and a checkbox to mark complete
+- Clicking a video opens an inline `<video>` player; clicking a PDF downloads it
+- A progress bar at the top shows "X of Y completed"
+- Matches existing app styling (cards, borders, monospace metadata)
 
-**2. `supabase/functions/send-contact-email/index.ts`**
-- Accept `attachmentPath` instead of `attachmentUrl`
-- Use a Supabase admin client (service role key) to download the file from the `contact-attachments` bucket directly
-- Remove the URL-origin validation (no longer needed — we validate the path is within the expected bucket)
-- Keep the file-size validation
+**Admin upload UI** — visible only to super admins on the same page:
+- "Add Resource" button opens a form: title, description, file type selector, file upload input, display order
+- Drag-to-reorder support using existing drag patterns
+- Toggle publish/unpublish per resource
+- Delete resource (removes from storage + DB)
 
-### Files Changed
+### Route Addition
 
-| File | Change |
+Add `/onboarding` to `App.tsx` router, import the new `Onboarding.tsx` page component. Add a navigation link in `AuthenticatedHeader.tsx`.
+
+### Files
+
+| File | Action |
 |------|--------|
-| `src/components/ContactDeveloper.tsx` | Send file path instead of signed URL |
-| `supabase/functions/send-contact-email/index.ts` | Download file via service role instead of fetching signed URL |
+| Migration SQL | Create tables, bucket, RLS policies |
+| `src/pages/Onboarding.tsx` | New page component |
+| `src/App.tsx` | Add route |
+| `src/components/AuthenticatedHeader.tsx` | Add nav link |
 
