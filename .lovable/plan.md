@@ -1,66 +1,38 @@
 
 
-## Onboarding Resource Center
+## Add Batch Photo Deletion to PhotoGallery
 
-A dedicated `/onboarding` page where users can browse videos and PDFs you've uploaded, and mark items as completed.
+The `PhotoGallery` component already supports single photo deletion (soft-delete with 60-day retention). It's a shared component used by inspections, trainings, and daily assessments via the `tableName` prop. The changes below add batch selection and deletion to this shared component, benefiting all report types.
 
-### Database
+### Changes to `src/components/PhotoGallery.tsx`
 
-**1. `onboarding_resources` table** — stores metadata for each uploaded file
+**1. Add selection state and batch mode toggle**
+- New state: `selectedIds: Set<string>`, `batchMode: boolean`
+- A "Select" / "Cancel" toggle button above the photo grid (hidden when `readOnly`)
+- A "Select All" / "Deselect All" button when in batch mode
+- A floating "Delete (N)" button when photos are selected
 
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uuid | PK |
-| title | text | Display name |
-| description | text | Optional summary |
-| file_type | text | 'video' or 'pdf' |
-| file_url | text | Storage path |
-| display_order | integer | Sort order |
-| is_published | boolean | Only published items shown to users |
-| uploaded_by | uuid | References auth.users |
-| created_at | timestamptz | |
+**2. Add selection UI to each photo card**
+- When `batchMode` is true, show a `Checkbox` overlay (top-left, replacing the drag handle) on each photo card
+- Tapping a photo in batch mode toggles selection instead of dragging
+- Selected photos get a visible ring/border highlight (e.g., `ring-2 ring-destructive`)
 
-RLS: Super admins can CRUD. Authenticated users can SELECT where `is_published = true`.
+**3. Batch delete handler**
+- `handleBatchDelete` processes all selected photos using the same soft-delete logic as `handleDelete`
+- For uploaded+online photos: single batch update query (`supabase.from(tableName).update({deleted_at, retention_until}).in('id', ids)`) instead of N individual calls
+- For uploaded+offline photos: queue each as an offline operation
+- For local-only photos: delete each from IndexedDB
+- Refresh gallery after completion
 
-**2. `onboarding_progress` table** — tracks per-user completion
+**4. Confirmation dialog**
+- Use existing `AlertDialog` component before executing batch delete
+- Shows count of photos to be deleted: "Delete N photos? This action can be recovered within 60 days."
 
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uuid | PK |
-| user_id | uuid | References auth.users |
-| resource_id | uuid | FK to onboarding_resources |
-| completed_at | timestamptz | When marked complete |
-| unique(user_id, resource_id) | | Prevents duplicates |
+**5. Single delete confirmation**
+- Wrap existing single-photo delete in the same `AlertDialog` pattern for consistency
 
-RLS: Users can manage their own rows only.
-
-**3. `onboarding-files` storage bucket** — private bucket for the actual video/PDF files. Super admins can upload; authenticated users can read.
-
-### Frontend
-
-**`/onboarding` page** — accessible from the dashboard header navigation:
-- Lists all published resources grouped by type (Videos section, Documents section)
-- Each card shows: title, description, file type icon, and a checkbox to mark complete
-- Clicking a video opens an inline `<video>` player; clicking a PDF downloads it
-- A progress bar at the top shows "X of Y completed"
-- Matches existing app styling (cards, borders, monospace metadata)
-
-**Admin upload UI** — visible only to super admins on the same page:
-- "Add Resource" button opens a form: title, description, file type selector, file upload input, display order
-- Drag-to-reorder support using existing drag patterns
-- Toggle publish/unpublish per resource
-- Delete resource (removes from storage + DB)
-
-### Route Addition
-
-Add `/onboarding` to `App.tsx` router, import the new `Onboarding.tsx` page component. Add a navigation link in `AuthenticatedHeader.tsx`.
-
-### Files
-
-| File | Action |
-|------|--------|
-| Migration SQL | Create tables, bucket, RLS policies |
-| `src/pages/Onboarding.tsx` | New page component |
-| `src/App.tsx` | Add route |
-| `src/components/AuthenticatedHeader.tsx` | Add nav link |
+### Technical Notes
+- Batch mode disables drag-and-drop (pass `disabled={true}` to `DraggablePhotoItem` when `batchMode` is active)
+- The Lovable preview guard (`isLovablePreview()`) applies to batch delete as well
+- No database migrations needed; uses existing soft-delete columns (`deleted_at`, `retention_until`)
 
