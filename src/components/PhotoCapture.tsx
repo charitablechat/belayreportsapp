@@ -8,6 +8,7 @@ import { savePhotoReceipt } from "@/lib/photo-receipts";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { triggerHaptic } from "@/lib/haptics";
 import { compressImage } from "@/lib/image-compression";
+import { isHeicFile } from "@/lib/heic-converter";
 import { saveToDevice } from "@/lib/save-to-device";
 import { toast } from "sonner";
 
