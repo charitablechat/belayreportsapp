@@ -37,7 +37,8 @@ Deno.serve(async (req) => {
       .from(table)
       .select("id, photo_url")
       .or("photo_url.ilike.%.heic,photo_url.ilike.%.heif")
-      .is("deleted_at", null);
+      .is("deleted_at", null)
+      .range(offset, offset + limit - 1);
 
     if (queryError) throw queryError;
 
