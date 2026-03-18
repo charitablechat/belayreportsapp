@@ -592,9 +592,16 @@ export function CloudSnapshotsPanel({ allowDelete = true }: CloudSnapshotsPanelP
           </div>
         ) : (
           <>
+            <RecoverySearchBar value={searchQuery} onChange={setSearchQuery} placeholder="Search by facility or user..." />
+            {filteredSnapshots.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                No snapshots match &ldquo;{searchQuery}&rdquo;.
+              </div>
+            ) : (
+            <>
             {/* Mobile card layout */}
             <div className="md:hidden space-y-3">
-              {snapshots.map((s) => (
+              {filteredSnapshots.map((s) => (
                 <div key={s.id} className="rounded-lg border border-white/10 bg-white/5 dark:bg-white/[0.02] p-3 space-y-2.5 min-w-0 overflow-hidden font-mono">
                   <div className="flex items-center justify-between gap-2 flex-wrap">
                     <Badge variant="outline" className="text-xs">{(s.report_type || '').replace('_', ' ')}</Badge>
