@@ -526,6 +526,13 @@ export function CloudSnapshotsPanel({ allowDelete = true }: CloudSnapshotsPanelP
     try { return format(new Date(ts), "MMM d, yyyy h:mm a"); } catch { return "N/A"; }
   };
 
+  const filteredSnapshots = snapshots.filter(s => {
+    if (!searchQuery) return true;
+    const q = searchQuery.toLowerCase();
+    return (s.facility || '').toLowerCase().includes(q)
+        || (s.user_name || '').toLowerCase().includes(q);
+  });
+
   return (
     <Card className="backdrop-blur-md bg-white/5 dark:bg-white/[0.03] border border-white/10 rounded-xl shadow-lg shadow-black/5 overflow-hidden">
       <CardHeader className="px-3 md:px-6 py-4 md:p-6">
