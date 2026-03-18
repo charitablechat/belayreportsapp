@@ -399,6 +399,7 @@ serve(async (req) => {
     // Immediate Attention Section
     if (content.immediateAttention.length > 0) {
       checkPageBreak(25);
+      doc.setFontSize(14);
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(211, 47, 47);
       doc.text('⚠ Immediate Attention', margin, yPos);
