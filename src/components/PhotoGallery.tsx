@@ -63,6 +63,8 @@ interface Photo {
   staleUpload?: boolean;
   /** True if a receipt exists but the blob was evicted from IndexedDB */
   blobEvicted?: boolean;
+  /** True if the original file is HEIC/HEIF and needs client-side conversion for display */
+  isHeic?: boolean;
 }
 
 export default function PhotoGallery({ 
