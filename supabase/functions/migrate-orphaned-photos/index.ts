@@ -111,8 +111,8 @@ Deno.serve(async (req) => {
       // Apply offset and batch size
       const batch = validFiles.slice(offset, offset + batchSize);
 
-      for (let i = 0; i < validFiles.length; i++) {
-        const file = validFiles[i];
+      for (let i = 0; i < batch.length; i++) {
+        const file = batch[i];
         const sourcePath = `${folderPath}/${file.name}`;
         const destPath = `${t.inspectorId}/${t.reportId}/${file.name}`;
 
