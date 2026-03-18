@@ -445,6 +445,7 @@ serve(async (req) => {
 
       if (content.summary.observationsList.length > 0) {
         checkPageBreak(15);
+        doc.setFontSize(12);
         doc.setFont('helvetica', 'bold');
         doc.setTextColor(0, 0, 0);
         doc.text('Training Observations', margin, yPos);
