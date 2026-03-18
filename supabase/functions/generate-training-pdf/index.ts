@@ -434,6 +434,7 @@ serve(async (req) => {
     // Training Summary Section
     if (content.summary.observationsList.length > 0 || content.summary.recommendationsList.length > 0) {
       checkPageBreak(25);
+      doc.setFontSize(14);
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(30, 64, 175);
       doc.text('Training Summary', margin, yPos);
