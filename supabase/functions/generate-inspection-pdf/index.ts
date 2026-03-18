@@ -163,6 +163,14 @@ serve(async (req) => {
     const margin = 20;
     const contentWidth = pageWidth - (2 * margin);
     let yPos = margin;
+    const footerZone = 30;
+
+    const checkPageBreak = (neededHeight: number) => {
+      if (yPos + neededHeight > pageHeight - footerZone) {
+        doc.addPage();
+        yPos = margin;
+      }
+    };
 
     // Add footer to all pages
     const addFooter = () => {
