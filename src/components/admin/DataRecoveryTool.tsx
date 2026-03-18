@@ -818,7 +818,14 @@ function AllUserSnapshotsPanel() {
             No cloud backup snapshots found across any users.
           </div>
         ) : (
-          <div className="space-y-2">
+          <>
+            <RecoverySearchBar value={searchQuery} onChange={setSearchQuery} placeholder="Search by facility or user..." />
+            {userEntries.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                {snapshots.length > 0 ? `No snapshots match "${searchQuery}".` : 'No cloud backup snapshots found across any users.'}
+              </div>
+            ) : (
+            <div className="space-y-2">
             {userEntries.map(([userId, { name, items }]) => {
               const isExpanded = expandedUsers.has(userId);
               return (
