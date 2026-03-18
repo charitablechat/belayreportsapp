@@ -318,10 +318,13 @@ export default function PhotoGallery({
                 fetch(urlData.signedUrl!)
                   .then(r => { if (r.ok) return r.blob(); throw new Error('fetch failed'); })
                   .then(async (blob) => {
-                    // Convert HEIC to JPEG before caching so future loads are instant
-                    if (isHeicPath(photo.photo_url)) {
+                    // Detect HEIC by magic bytes (catches mislabeled .jpg files too)
+                    const heicDetected = isHeicPath(photo.photo_url) || await isHeicBlob(blob);
+                    if (heicDetected) {
                       const jpegBlob = await convertHeicBlobToJpeg(blob, 0.85);
                       if (jpegBlob) {
+                        // Re-upload the real JPEG to storage so reports work
+                        reuploadConvertedJpeg(photo.photo_url, jpegBlob);
                         return cachePhotoFromRemote(photo.id, jpegBlob, photo.photo_url, inspectionId, section);
                       }
                     }
