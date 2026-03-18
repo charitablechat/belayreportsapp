@@ -261,6 +261,40 @@ export default function PhotoGallery({
           }
         }
 
+        // Convert HEIC photos client-side for display
+        const heicPhotos = batchPhotos.filter(p => p.isHeic);
+        if (heicPhotos.length > 0) {
+          if (import.meta.env.DEV) {
+            console.log(`[PhotoGallery] Converting ${heicPhotos.length} HEIC photos for display`);
+          }
+          try {
+            const heic2any = (await import('heic2any')).default;
+            await Promise.all(
+              heicPhotos.map(async (photo) => {
+                try {
+                  const response = await fetch(photo.photoUrl);
+                  if (!response.ok) return;
+                  const heicBlob = await response.blob();
+                  const jpegBlob = await heic2any({
+                    blob: heicBlob,
+                    toType: 'image/jpeg',
+                    quality: 0.8,
+                  });
+                  const converted = Array.isArray(jpegBlob) ? jpegBlob[0] : jpegBlob;
+                  const objectUrl = URL.createObjectURL(converted);
+                  newObjectUrls.push(objectUrl);
+                  photo.photoUrl = objectUrl;
+                  photo.isHeic = false;
+                } catch (e) {
+                  console.warn(`[PhotoGallery] HEIC conversion failed for ${photo.id}:`, e);
+                }
+              })
+            );
+          } catch (e) {
+            console.warn('[PhotoGallery] Failed to load heic2any:', e);
+          }
+        }
+
         const supabasePhotos: Photo[] = [...cachedPhotos, ...batchPhotos];
 
         const pendingPhotos = offlinePhotosList.filter(p => !p.uploaded);
