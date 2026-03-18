@@ -846,6 +846,7 @@ function AllUserSnapshotsPanel() {
                         <div key={s.id} className="px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
                           <div className="flex items-center gap-2 flex-1 min-w-0">
                             <Badge variant="outline" className="text-xs shrink-0">{(s.report_type || '').replace('_', ' ')}</Badge>
+                            <span className="text-xs text-muted-foreground truncate" title={s.facility}>{s.facility || 'N/A'}</span>
                             <span className="text-xs text-muted-foreground truncate">{s.device}</span>
                             <Badge variant={s.synced ? "default" : "destructive"} className="text-xs shrink-0">
                               {s.synced ? "Synced" : "Unsynced"}
