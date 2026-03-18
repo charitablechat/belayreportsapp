@@ -191,22 +191,67 @@ export default function PhotoGallery({
         const cachedPhotos: Photo[] = [];
         const uncachedPhotos: { photo: any; index: number }[] = [];
 
+        // Track HEIC cached photos that need conversion
+        const heicCachedItems: { index: number; blob: Blob; photoIdx: number }[] = [];
+
         for (let i = 0; i < allPhotos.length; i++) {
           const photo = allPhotos[i];
           const existingOfflinePhoto = offlinePhotos.find(p => p.photoUrl === photo.photo_url);
 
           if (existingOfflinePhoto?.blob && validCacheIds.has(photo.id)) {
-            const objectUrl = URL.createObjectURL(existingOfflinePhoto.blob);
-            newObjectUrls.push(objectUrl);
-            cachedPhotos.push({
-              id: photo.id,
-              photoUrl: objectUrl,
-              uploaded: true,
-              caption: photo.caption,
-              display_order: photo.display_order ?? i,
-            });
+            const needsConversion = isHeicPath(photo.photo_url);
+            if (needsConversion) {
+              // Queue for batch HEIC conversion, add placeholder
+              const placeholderIdx = cachedPhotos.length;
+              cachedPhotos.push({
+                id: photo.id,
+                photoUrl: '', // will be filled after conversion
+                uploaded: true,
+                caption: photo.caption,
+                display_order: photo.display_order ?? i,
+              });
+              heicCachedItems.push({ index: placeholderIdx, blob: existingOfflinePhoto.blob, photoIdx: i });
+            } else {
+              const objectUrl = URL.createObjectURL(existingOfflinePhoto.blob);
+              newObjectUrls.push(objectUrl);
+              cachedPhotos.push({
+                id: photo.id,
+                photoUrl: objectUrl,
+                uploaded: true,
+                caption: photo.caption,
+                display_order: photo.display_order ?? i,
+              });
+            }
           } else {
             uncachedPhotos.push({ photo, index: i });
+          }
+        }
+
+        // Convert cached HEIC blobs to JPEG (3 at a time)
+        if (heicCachedItems.length > 0) {
+          if (import.meta.env.DEV) {
+            console.log(`[PhotoGallery] Converting ${heicCachedItems.length} cached HEIC photos`);
+          }
+          const converted = await batchConvertHeicBlobs(
+            heicCachedItems.map(item => ({ index: item.index, blob: item.blob })),
+            3
+          );
+          for (const item of heicCachedItems) {
+            const jpegBlob = converted.get(item.index);
+            if (jpegBlob) {
+              const objectUrl = URL.createObjectURL(jpegBlob);
+              newObjectUrls.push(objectUrl);
+              cachedPhotos[item.index].photoUrl = objectUrl;
+              // Re-cache the converted JPEG so next load is instant
+              const photo = allPhotos[item.photoIdx];
+              cachePhotoFromRemote(photo.id, jpegBlob, photo.photo_url, inspectionId, section)
+                .catch(e => console.warn('[PhotoGallery] Failed to re-cache converted JPEG:', e));
+            } else {
+              // Conversion failed — fall back to original blob (may still show black)
+              const objectUrl = URL.createObjectURL(item.blob);
+              newObjectUrls.push(objectUrl);
+              cachedPhotos[item.index].photoUrl = objectUrl;
+            }
           }
         }
 
