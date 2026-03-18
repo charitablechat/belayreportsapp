@@ -199,7 +199,8 @@ export default function PhotoGallery({
           const existingOfflinePhoto = offlinePhotos.find(p => p.photoUrl === photo.photo_url);
 
           if (existingOfflinePhoto?.blob && validCacheIds.has(photo.id)) {
-            const needsConversion = isHeicPath(photo.photo_url);
+            // Check magic bytes — catches mislabeled .jpg files containing HEIC data
+            const needsConversion = isHeicPath(photo.photo_url) || await isHeicBlob(existingOfflinePhoto.blob);
             if (needsConversion) {
               // Queue for batch HEIC conversion, add placeholder
               const placeholderIdx = cachedPhotos.length;
@@ -242,10 +243,12 @@ export default function PhotoGallery({
               const objectUrl = URL.createObjectURL(jpegBlob);
               newObjectUrls.push(objectUrl);
               cachedPhotos[item.index].photoUrl = objectUrl;
-              // Re-cache the converted JPEG so next load is instant
               const photo = allPhotos[item.photoIdx];
+              // Re-cache the converted JPEG locally
               cachePhotoFromRemote(photo.id, jpegBlob, photo.photo_url, inspectionId, section)
                 .catch(e => console.warn('[PhotoGallery] Failed to re-cache converted JPEG:', e));
+              // Re-upload the converted JPEG to storage so reports render correctly
+              reuploadConvertedJpeg(photo.photo_url, jpegBlob);
             } else {
               // Conversion failed — fall back to original blob (may still show black)
               const objectUrl = URL.createObjectURL(item.blob);
