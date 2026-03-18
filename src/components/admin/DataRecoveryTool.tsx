@@ -687,6 +687,8 @@ export function CloudSnapshotsPanel({ allowDelete = true }: CloudSnapshotsPanelP
                 </TableBody>
               </Table>
             </div>
+            </>
+            )}
           </>
         )}
       </CardContent>
