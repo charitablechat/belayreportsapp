@@ -157,6 +157,33 @@ export async function fetchCloudSnapshot(id: string): Promise<CloudBackupFull | 
 }
 
 /**
+ * Mark a cloud backup as synced. Fire-and-forget — failures are silent.
+ */
+export function markCloudBackupSynced(
+  reportType: string,
+  reportId: string
+): void {
+  _doMarkSynced(reportType, reportId).catch((err) => {
+    console.warn('[Cloud Backup] Failed to mark synced (non-blocking):', err);
+  });
+}
+
+async function _doMarkSynced(reportType: string, reportId: string): Promise<void> {
+  const user = await getUserWithCache();
+  if (!user) return;
+
+  const { error } = await (supabase.from('report_cloud_backups') as any)
+    .update({ synced: true })
+    .eq('user_id', user.id)
+    .eq('report_type', reportType)
+    .eq('report_id', reportId);
+
+  if (error) {
+    console.warn('[Cloud Backup] Mark synced failed:', error.message);
+  }
+}
+
+/**
  * Delete a cloud backup by id.
  */
 export async function deleteCloudSnapshot(id: string): Promise<boolean> {
