@@ -17,7 +17,7 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    const { table = "training_photos", bucket = "training-photos", dryRun = false } = await req.json().catch(() => ({}));
+    const { table = "training_photos", bucket = "training-photos", dryRun = false, limit = 20, offset = 0 } = await req.json().catch(() => ({}));
 
     const allowedTables: Record<string, string> = {
       training_photos: "training_id",
