@@ -1,66 +1,34 @@
 
+Why you still see black squares (confirmed):
+1) The Girl Scouts training (`35649e1b-06d6-4402-b2ce-dc55d3e0a1d0`) still has **128/128 photos stored as `.HEIC`** (`image/heic` in storage metadata).
+2) Browsers can’t reliably render HEIC in normal `<img>` tags, so the image component falls back to the dark placeholder.
+3) Current client conversion is incomplete:
+   - `PhotoGallery` only converts HEIC in the **uncached** path.
+   - Cached blobs are reused as-is, and background caching currently stores the original HEIC blob.
+4) Upload pipeline still lets HEIC through when conversion times out/fails (`compressImage` returns original file), so new HEIC files continue to be saved.
+5) The `convert-heic-photos` backend function is effectively a stub (and currently not deployed), so existing HEIC files were never repaired.
 
-## Onboarding Resource Center
+Implementation plan:
+1) Stop new HEIC from entering storage
+   - Make HEIC conversion “strict”: if conversion fails, do not upload original HEIC.
+   - In `PhotoCapture`, reject/notify per-file when result is still HEIC.
 
-A dedicated `/onboarding` page where users can browse videos and PDFs you've uploaded, and mark items as completed.
+2) Fix gallery rendering path (the screen in your screenshot)
+   - Convert HEIC for both cached and uncached photos.
+   - Cache the **converted JPEG blob** (not original HEIC) so reloads stay fixed.
+   - Add conversion concurrency limits to avoid device freezes/timeouts on large batches.
 
-### Database
+3) Repair existing Girl Scouts photos
+   - Implement a real one-time HEIC repair flow for existing rows (convert + re-upload JPEG + update `training_photos.photo_url`).
+   - Run it for the Girl Scouts training and verify HEIC count goes to zero.
 
-**1. `onboarding_resources` table** — stores metadata for each uploaded file
+4) Validate end-to-end
+   - Photos tab loads real images (no black placeholders) after refresh.
+   - Generated training HTML/PDF photo sections render correctly.
+   - Database check confirms no remaining `.heic/.heif` rows for that report.
 
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uuid | PK |
-| title | text | Display name |
-| description | text | Optional summary |
-| file_type | text | 'video' or 'pdf' |
-| file_url | text | Storage path |
-| display_order | integer | Sort order |
-| is_published | boolean | Only published items shown to users |
-| uploaded_by | uuid | References auth.users |
-| created_at | timestamptz | |
-
-RLS: Super admins can CRUD. Authenticated users can SELECT where `is_published = true`.
-
-**2. `onboarding_progress` table** — tracks per-user completion
-
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uuid | PK |
-| user_id | uuid | References auth.users |
-| resource_id | uuid | FK to onboarding_resources |
-| completed_at | timestamptz | When marked complete |
-| unique(user_id, resource_id) | | Prevents duplicates |
-
-RLS: Users can manage their own rows only.
-
-**3. `onboarding-files` storage bucket** — private bucket for the actual video/PDF files. Super admins can upload; authenticated users can read.
-
-### Frontend
-
-**`/onboarding` page** — accessible from the dashboard header navigation:
-- Lists all published resources grouped by type (Videos section, Documents section)
-- Each card shows: title, description, file type icon, and a checkbox to mark complete
-- Clicking a video opens an inline `<video>` player; clicking a PDF downloads it
-- A progress bar at the top shows "X of Y completed"
-- Matches existing app styling (cards, borders, monospace metadata)
-
-**Admin upload UI** — visible only to super admins on the same page:
-- "Add Resource" button opens a form: title, description, file type selector, file upload input, display order
-- Drag-to-reorder support using existing drag patterns
-- Toggle publish/unpublish per resource
-- Delete resource (removes from storage + DB)
-
-### Route Addition
-
-Add `/onboarding` to `App.tsx` router, import the new `Onboarding.tsx` page component. Add a navigation link in `AuthenticatedHeader.tsx`.
-
-### Files
-
-| File | Action |
-|------|--------|
-| Migration SQL | Create tables, bucket, RLS policies |
-| `src/pages/Onboarding.tsx` | New page component |
-| `src/App.tsx` | Add route |
-| `src/components/AuthenticatedHeader.tsx` | Add nav link |
-
+Technical details (code hotspots):
+- `src/components/PhotoGallery.tsx`: cached-vs-uncached split, HEIC conversion branch, background cache write path.
+- `src/lib/image-compression.ts`: HEIC fallback currently returns original file on failure/timeout.
+- `src/components/PhotoCapture.tsx`: upload uses returned filename/extension directly.
+- `supabase/functions/convert-heic-photos/index.ts`: currently reports but does not perform conversion.
