@@ -447,8 +447,8 @@ interface CloudSnapshotsPanelProps {
 export function CloudSnapshotsPanel({ allowDelete = true }: CloudSnapshotsPanelProps) {
   const [snapshots, setSnapshots] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const lastFetchedAt = useRef<number>(0);
-  const STALE_TIME = 30000; // 30 seconds
+  const STALE_TIME = 30000;
+  const [searchQuery, setSearchQuery] = useState('');
 
   const loadSnapshots = useCallback(async (force = false) => {
     // Skip if data is fresh (stale-while-revalidate)
