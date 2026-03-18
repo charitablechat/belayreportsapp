@@ -279,8 +279,14 @@ export function markSnapshotSynced(
     if (!raw) return;
     
     const snapshot: ReportSnapshot = JSON.parse(raw);
+    if (snapshot.synced) return; // Already marked — skip redundant write + cloud call
     snapshot.synced = true;
     localStorage.setItem(key, JSON.stringify(snapshot));
+
+    // Fire-and-forget: also update the cloud backup's synced flag
+    import('./cloud-backup').then(({ markCloudBackupSynced }) => {
+      markCloudBackupSynced(reportType, reportId);
+    }).catch(() => { /* swallow */ });
   } catch {
     // Fail silently
   }
