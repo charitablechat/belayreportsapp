@@ -495,7 +495,7 @@ serve(async (req) => {
 
     // Report Verification Section
     if (content.summary.personSubmitting || content.summary.submissionDate) {
-      doc.setFontSize(14);
+      checkPageBreak(30);
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(30, 64, 175);
       doc.text('Report Verification', margin, yPos);
