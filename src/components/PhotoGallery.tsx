@@ -210,70 +210,23 @@ export default function PhotoGallery({
         const cachedPhotos: Photo[] = [];
         const uncachedPhotos: { photo: any; index: number }[] = [];
 
-        // Track HEIC cached photos that need conversion
-        const heicCachedItems: { index: number; blob: Blob; photoIdx: number }[] = [];
-
         for (let i = 0; i < allPhotos.length; i++) {
           const photo = allPhotos[i];
           const existingOfflinePhoto = offlinePhotos.find(p => p.photoUrl === photo.photo_url);
 
           if (existingOfflinePhoto?.blob && validCacheIds.has(photo.id)) {
-            // Check magic bytes — catches mislabeled .jpg files containing HEIC data
-            const needsConversion = isHeicPath(photo.photo_url) || await isHeicBlob(existingOfflinePhoto.blob);
-            if (needsConversion) {
-              // Queue for batch HEIC conversion, add placeholder
-              const placeholderIdx = cachedPhotos.length;
-              cachedPhotos.push({
-                id: photo.id,
-                photoUrl: '', // will be filled after conversion
-                uploaded: true,
-                caption: photo.caption,
-                display_order: photo.display_order ?? i,
-              });
-              heicCachedItems.push({ index: placeholderIdx, blob: existingOfflinePhoto.blob, photoIdx: i });
-            } else {
-              const objectUrl = URL.createObjectURL(existingOfflinePhoto.blob);
-              newObjectUrls.push(objectUrl);
-              cachedPhotos.push({
-                id: photo.id,
-                photoUrl: objectUrl,
-                uploaded: true,
-                caption: photo.caption,
-                display_order: photo.display_order ?? i,
-              });
-            }
+            const objectUrl = URL.createObjectURL(existingOfflinePhoto.blob);
+            newObjectUrls.push(objectUrl);
+            cachedPhotos.push({
+              id: photo.id,
+              photoUrl: objectUrl,
+              blob: existingOfflinePhoto.blob,
+              uploaded: true,
+              caption: photo.caption,
+              display_order: photo.display_order ?? i,
+            });
           } else {
             uncachedPhotos.push({ photo, index: i });
-          }
-        }
-
-        // Convert cached HEIC blobs to JPEG (3 at a time)
-        if (heicCachedItems.length > 0) {
-          if (import.meta.env.DEV) {
-            console.log(`[PhotoGallery] Converting ${heicCachedItems.length} cached HEIC photos`);
-          }
-          const converted = await batchConvertHeicBlobs(
-            heicCachedItems.map(item => ({ index: item.index, blob: item.blob })),
-            3
-          );
-          for (const item of heicCachedItems) {
-            const jpegBlob = converted.get(item.index);
-            if (jpegBlob) {
-              const objectUrl = URL.createObjectURL(jpegBlob);
-              newObjectUrls.push(objectUrl);
-              cachedPhotos[item.index].photoUrl = objectUrl;
-              const photo = allPhotos[item.photoIdx];
-              // Re-cache the converted JPEG locally
-              cachePhotoFromRemote(photo.id, jpegBlob, photo.photo_url, inspectionId, section)
-                .catch(e => console.warn('[PhotoGallery] Failed to re-cache converted JPEG:', e));
-              // Re-upload the converted JPEG to storage so reports render correctly
-              reuploadConvertedJpeg(photo.photo_url, jpegBlob);
-            } else {
-              // Conversion failed — fall back to original blob (may still show black)
-              const objectUrl = URL.createObjectURL(item.blob);
-              newObjectUrls.push(objectUrl);
-              cachedPhotos[item.index].photoUrl = objectUrl;
-            }
           }
         }
 
