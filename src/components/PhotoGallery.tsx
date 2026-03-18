@@ -295,7 +295,16 @@ export default function PhotoGallery({
               for (const { urlData, photo } of cacheWork) {
                 fetch(urlData.signedUrl!)
                   .then(r => { if (r.ok) return r.blob(); throw new Error('fetch failed'); })
-                  .then(blob => cachePhotoFromRemote(photo.id, blob, photo.photo_url, inspectionId, section))
+                  .then(async (blob) => {
+                    // Convert HEIC to JPEG before caching so future loads are instant
+                    if (isHeicPath(photo.photo_url)) {
+                      const jpegBlob = await convertHeicBlobToJpeg(blob, 0.85);
+                      if (jpegBlob) {
+                        return cachePhotoFromRemote(photo.id, jpegBlob, photo.photo_url, inspectionId, section);
+                      }
+                    }
+                    return cachePhotoFromRemote(photo.id, blob, photo.photo_url, inspectionId, section);
+                  })
                   .catch(e => console.warn('[PhotoGallery] Background cache failed:', e));
               }
             };

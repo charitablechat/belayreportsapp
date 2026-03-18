@@ -133,7 +133,7 @@ const compressImageInternal = async (
   attemptCount: number = 0
 ): Promise<File> => {
   // Convert HEIC/HEIF to JPEG first, then proceed with normal compression
-  if (isHeicFormat(file)) {
+  if (isHeicFile(file)) {
     if (import.meta.env.DEV) {
       console.log('[Image Compression] Converting HEIC/HEIF to JPEG:', file.name);
     }

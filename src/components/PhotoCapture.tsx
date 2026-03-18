@@ -149,6 +149,15 @@ export default function PhotoCapture({
       // Continue with original file if compression fails
     }
 
+    // STRICT: Block HEIC files that survived the compression pipeline
+    if (isHeicFile(processedFile)) {
+      console.error(`[PhotoCapture] HEIC file was not converted: ${processedFile.name}`);
+      toast.error('Photo format not supported', {
+        description: 'HEIC conversion failed. Please convert to JPEG before uploading.',
+      });
+      return false;
+    }
+
     // Auto-save to device Downloads folder (fire-and-forget)
     const deviceFileName = `RopeWorks_${section}_${Date.now()}.jpg`;
     saveToDevice(processedFile, deviceFileName);
