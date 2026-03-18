@@ -221,14 +221,16 @@ serve(async (req) => {
 
     // Trainee Names
     if (content.facilityInfo.traineeNames !== 'N/A') {
+      const traineeLines = doc.splitTextToSize(content.facilityInfo.traineeNames, contentWidth);
+      checkPageBreak(6 + (traineeLines.length * 5) + 8);
       doc.setFontSize(10);
       doc.setFont('helvetica', 'bold');
       doc.text('Trainee Names:', margin, yPos);
       yPos += 6;
       
       doc.setFont('helvetica', 'normal');
-      const traineeLines = doc.splitTextToSize(content.facilityInfo.traineeNames, contentWidth);
       traineeLines.forEach((line: string) => {
+        checkPageBreak(5);
         doc.text(line, margin, yPos);
         yPos += 5;
       });
@@ -236,9 +238,10 @@ serve(async (req) => {
     }
 
     // Standards Box
-    doc.setFillColor(219, 234, 254);
     const standardsLines = doc.splitTextToSize(content.standardsText, contentWidth - 10);
     const boxHeight = (standardsLines.length * 4.5) + 10;
+    checkPageBreak(boxHeight + 5);
+    doc.setFillColor(219, 234, 254);
     
     doc.roundedRect(margin - 5, yPos - 5, contentWidth + 10, boxHeight, 3, 3, 'F');
     doc.setFontSize(9);
