@@ -285,6 +285,7 @@ serve(async (req) => {
     // Operating Systems Section
     if (content.operatingSystems.length > 0) {
       checkPageBreak(25);
+      doc.setFontSize(14);
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(30, 64, 175);
       doc.text('Operating Systems', margin, yPos);
