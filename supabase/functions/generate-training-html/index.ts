@@ -840,7 +840,7 @@ serve(async (req) => {
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 12px;">
           ${photoUrls.map(photo => `
             <div style="border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">
-              <img src="${photo.url}" style="width: 100%; height: 200px; object-fit: cover;" alt="${photo.caption || 'Training photo'}" />
+              <img src="${photo.url}" style="width: 100%; max-height: 200px; object-fit: contain; background: #f1f5f9;" alt="${photo.caption || 'Training photo'}" />
               ${photo.caption ? `<div style="padding: 8px 12px; font-size: 13px; color: #475569; background: #f8fafc;">${photo.caption}</div>` : ''}
             </div>
           `).join('')}
