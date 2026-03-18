@@ -67,10 +67,14 @@ Deno.serve(async (req) => {
 
     let targetKey = "all";
     let dryRun = false;
+    let batchSize = 10;
+    let offset = 0;
     try {
       const body = await req.json();
       dryRun = body?.dryRun === true;
       targetKey = body?.target || "all";
+      batchSize = body?.batchSize || 10;
+      offset = body?.offset || 0;
     } catch { /* */ }
 
     const targets = targetKey === "all"
