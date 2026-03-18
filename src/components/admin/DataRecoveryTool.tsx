@@ -183,13 +183,7 @@ interface SnapshotsPanelProps {
 export function LocalSnapshotsPanel({ allowDelete = true }: SnapshotsPanelProps) {
   const [snapshots, setSnapshots] = useState(() => listAllSnapshots());
   const [storageInfo, setStorageInfo] = useState(() => getBackupStorageInfo());
-  const [importing, setImporting] = useState(false);
-  const [highlightedId, setHighlightedId] = useState<string | null>(null);
-
-  const refreshSnapshots = useCallback(() => {
-    setSnapshots(listAllSnapshots());
-    setStorageInfo(getBackupStorageInfo());
-  }, []);
+  const [searchQuery, setSearchQuery] = useState('');
 
   const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
