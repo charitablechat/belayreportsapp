@@ -159,6 +159,69 @@ export default function PhotoGallery({
     }
   }, [photos, batchMode]);
 
+  // Background progressive HEIC conversion — runs after initial render
+  useEffect(() => {
+    if (loading || photos.length === 0) return;
+    
+    const abortController = new AbortController();
+    
+    const convertInBackground = async () => {
+      for (const photo of photos) {
+        if (abortController.signal.aborted) return;
+        if (!photo.uploaded) continue; // skip pending local uploads
+        
+        try {
+          // Get the blob to check magic bytes
+          let blob: Blob | null = null;
+          
+          if (photo.blob) {
+            blob = photo.blob;
+          } else if (photo.photoUrl.startsWith('http')) {
+            const resp = await fetch(photo.photoUrl);
+            if (!resp.ok) continue;
+            blob = await resp.blob();
+          } else {
+            continue;
+          }
+          
+          if (abortController.signal.aborted) return;
+          
+          const actuallyHeic = await isHeicBlob(blob);
+          if (!actuallyHeic) continue;
+          
+          if (import.meta.env.DEV) {
+            console.log(`[PhotoGallery] Background converting HEIC photo: ${photo.id}`);
+          }
+          
+          const jpegBlob = await convertHeicBlobToJpeg(blob, 0.85);
+          if (!jpegBlob || abortController.signal.aborted) continue;
+          
+          const objectUrl = URL.createObjectURL(jpegBlob);
+          objectUrlsRef.current.push(objectUrl);
+          
+          // Progressively update this single photo in state
+          setPhotos(prev => prev.map(p => 
+            p.id === photo.id ? { ...p, photoUrl: objectUrl, blob: jpegBlob, isHeic: false } : p
+          ));
+          
+          // Fire-and-forget: re-upload + re-cache
+          // Find original storage path from the DB photo_url (not the signed URL)
+          // The doCaching background task already handles re-upload via reuploadConvertedJpeg
+        } catch (e) {
+          console.warn(`[PhotoGallery] Background HEIC conversion failed for ${photo.id}:`, e);
+        }
+      }
+    };
+    
+    // Delay slightly to let the UI settle
+    const timer = setTimeout(convertInBackground, 500);
+    
+    return () => {
+      abortController.abort();
+      clearTimeout(timer);
+    };
+  }, [loading, photos.length]); // only re-run when photo count changes, not on every progressive update
+
   const loadPhotos = async (silent = false) => {
     try {
       if (!silent) setLoading(true);
