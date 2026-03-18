@@ -318,6 +318,21 @@ serve(async (req) => {
         if (fileData) {
           // Convert blob to base64
           const arrayBuffer = await fileData.arrayBuffer();
+          
+          // HEIC magic byte detection — skip mislabeled HEIC files that would render as black boxes
+          const bytes = new Uint8Array(arrayBuffer);
+          if (bytes.length >= 12) {
+            const decoder = new TextDecoder('ascii');
+            const ftypTag = decoder.decode(bytes.slice(4, 8));
+            if (ftypTag === 'ftyp') {
+              const brand = decoder.decode(bytes.slice(8, 12)).toLowerCase();
+              if (brand === 'heic' || brand === 'heis' || brand === 'mif1') {
+                console.warn(`[Inspection HTML] Skipping photo ${photo.id} — contains HEIC data despite .jpg extension. Client gallery will auto-repair.`);
+                continue;
+              }
+            }
+          }
+          
           const photoBase64 = arrayBufferToBase64(arrayBuffer);
           const photoMime = fileData.type || 'image/jpeg';
           
