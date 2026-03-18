@@ -323,7 +323,7 @@ serve(async (req) => {
 
     // Verifiable Items Section
     if (content.verifiableItems.length > 0) {
-      doc.setFontSize(14);
+      checkPageBreak(30);
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(30, 64, 175);
       doc.text('Verifiable Items During Training', margin, yPos);
