@@ -197,11 +197,16 @@ export default function Dashboard() {
     const loadAllData = async () => {
       setLoading(true);
       
-      // NON-BLOCKING: Start session refresh in background
-      // Data loading uses getUserWithCache() which reads from localStorage instantly
-      ensureValidSession().catch(e => {
-        console.warn('[Dashboard] Background session refresh failed:', e);
-      });
+      // BLOCKING: Ensure valid session before data fetch (with 3s timeout fallback)
+      // Prevents stale-token race condition that causes '0 reports' after navigation
+      try {
+        await Promise.race([
+          ensureValidSession(),
+          new Promise(resolve => setTimeout(resolve, 3000))
+        ]);
+      } catch (e) {
+        console.warn('[Dashboard] Session validation failed, falling back to cache:', e);
+      }
       
       // PERFORMANCE: Fetch user once, then pass to all loaders
       const user = await getUserWithCache();
@@ -378,7 +383,7 @@ export default function Dashboard() {
       subscription.unsubscribe();
       unsubscribeSyncComplete();
     };
-  }, [location.pathname]);
+  }, [location.key]);
 
   // Helper function to add timeout to network queries
   const withNetworkTimeout = async <T,>(
