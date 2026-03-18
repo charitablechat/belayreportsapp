@@ -439,7 +439,7 @@ serve(async (req) => {
       yPos += 8;
 
       if (content.summary.observationsList.length > 0) {
-        doc.setFontSize(12);
+        checkPageBreak(15);
         doc.setFont('helvetica', 'bold');
         doc.setTextColor(0, 0, 0);
         doc.text('Training Observations', margin, yPos);
