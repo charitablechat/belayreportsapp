@@ -383,7 +383,7 @@ export default function Dashboard() {
       subscription.unsubscribe();
       unsubscribeSyncComplete();
     };
-  }, [location.pathname]);
+  }, [location.key]);
 
   // Helper function to add timeout to network queries
   const withNetworkTimeout = async <T,>(
