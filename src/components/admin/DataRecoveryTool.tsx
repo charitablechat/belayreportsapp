@@ -656,7 +656,7 @@ export function CloudSnapshotsPanel({ allowDelete = true }: CloudSnapshotsPanelP
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {snapshots.map((s) => (
+                  {filteredSnapshots.map((s) => (
                     <TableRow key={s.id} className="border-white/5 hover:bg-white/[0.03]">
                       <TableCell className="py-2.5 px-3">
                         <Badge variant="outline" className="text-xs font-mono">{(s.report_type || '').replace('_', ' ')}</Badge>
