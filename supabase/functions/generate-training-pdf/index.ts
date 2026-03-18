@@ -572,16 +572,26 @@ serve(async (req) => {
               const maxH = 60; // mm
               let imgWidth = maxW;
               let imgHeight = maxH;
-              try {
-                const imgDataUri = `data:image/jpeg;base64,${imgBase64}`;
-                const props = doc.getImageProperties(imgDataUri);
-                if (props.width > 0 && props.height > 0) {
-                  const ratio = Math.min(maxW / props.width, maxH / props.height);
-                  imgWidth = props.width * ratio;
-                  imgHeight = props.height * ratio;
+
+              // Parse JPEG dimensions from SOF marker (works in Deno without DOM)
+              const imgBytes = new Uint8Array(imgBlob);
+              let jpegW = 0, jpegH = 0;
+              for (let i = 0; i < imgBytes.length - 9; i++) {
+                // Look for SOF0 (0xFFC0) or SOF2 (0xFFC2) markers
+                if (imgBytes[i] === 0xFF && (imgBytes[i + 1] === 0xC0 || imgBytes[i + 1] === 0xC2)) {
+                  jpegH = (imgBytes[i + 5] << 8) | imgBytes[i + 6];
+                  jpegW = (imgBytes[i + 7] << 8) | imgBytes[i + 8];
+                  break;
                 }
-              } catch (propErr) {
-                console.warn('Could not read image properties, using defaults:', propErr);
+              }
+
+              if (jpegW > 0 && jpegH > 0) {
+                const ratio = Math.min(maxW / jpegW, maxH / jpegH);
+                imgWidth = jpegW * ratio;
+                imgHeight = jpegH * ratio;
+                console.log(`Photo sized: ${jpegW}x${jpegH}px → ${imgWidth.toFixed(1)}x${imgHeight.toFixed(1)}mm`);
+              } else {
+                console.warn('Could not parse JPEG dimensions, using defaults');
               }
               
               if (yPos + imgHeight + 20 > pageHeight - 30) {
