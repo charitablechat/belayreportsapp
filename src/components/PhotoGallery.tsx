@@ -183,64 +183,82 @@ export default function PhotoGallery({
         const supabasePhotoIds = (data || []).map((p: any) => p.id);
         const validCacheIds = await batchValidateCachedPhotos(supabasePhotoIds);
 
-        const supabasePhotos: Photo[] = await Promise.all(
-          (data || []).map(async (photo: any, index: number) => {
-            const existingOfflinePhoto = offlinePhotos.find(
-              p => p.photoUrl === photo.photo_url
-            );
+        // Split photos into cached (instant) vs uncached (need signed URLs)
+        const allPhotos = (data || []) as any[];
+        const cachedPhotos: Photo[] = [];
+        const uncachedPhotos: { photo: any; index: number }[] = [];
 
-            if (existingOfflinePhoto?.blob && validCacheIds.has(photo.id)) {
-              const objectUrl = URL.createObjectURL(existingOfflinePhoto.blob);
-              newObjectUrls.push(objectUrl);
-              return {
-                id: photo.id,
-                photoUrl: objectUrl,
-                uploaded: true,
-                caption: photo.caption,
-                display_order: photo.display_order ?? index,
-              };
-            }
+        for (let i = 0; i < allPhotos.length; i++) {
+          const photo = allPhotos[i];
+          const existingOfflinePhoto = offlinePhotos.find(p => p.photoUrl === photo.photo_url);
 
-            const { data: signedUrlData, error: urlError } = await supabase.storage
-              .from(storageBucket)
-              .createSignedUrl(photo.photo_url, 3600);
-
-            if (urlError || !signedUrlData?.signedUrl) {
-              console.error(`[PhotoGallery] Failed to create signed URL for photo ${photo.id} in bucket "${storageBucket}", path: "${photo.photo_url}":`, urlError);
-              signedUrlFailures++;
-              return null;
-            }
-
-            const signedUrl = signedUrlData.signedUrl;
-            const photoId = photo.id;
-            const storagePath = photo.photo_url;
-            const inspId = inspectionId;
-            const sec = section;
-            if (typeof requestIdleCallback === 'function') {
-              requestIdleCallback(() => {
-                fetch(signedUrl)
-                  .then(r => { if (r.ok) return r.blob(); throw new Error('fetch failed'); })
-                  .then(blob => cachePhotoFromRemote(photoId, blob, storagePath, inspId, sec))
-                  .catch(e => console.warn('[PhotoGallery] Background cache failed:', e));
-              });
-            } else {
-              setTimeout(() => {
-                fetch(signedUrl)
-                  .then(r => { if (r.ok) return r.blob(); throw new Error('fetch failed'); })
-                  .then(blob => cachePhotoFromRemote(photoId, blob, storagePath, inspId, sec))
-                  .catch(e => console.warn('[PhotoGallery] Background cache failed:', e));
-              }, 100);
-            }
-
-            return {
+          if (existingOfflinePhoto?.blob && validCacheIds.has(photo.id)) {
+            const objectUrl = URL.createObjectURL(existingOfflinePhoto.blob);
+            newObjectUrls.push(objectUrl);
+            cachedPhotos.push({
               id: photo.id,
-              photoUrl: signedUrl,
+              photoUrl: objectUrl,
               uploaded: true,
               caption: photo.caption,
-              display_order: photo.display_order ?? index,
+              display_order: photo.display_order ?? i,
+            });
+          } else {
+            uncachedPhotos.push({ photo, index: i });
+          }
+        }
+
+        // Single batch call for all uncached photos
+        let batchPhotos: Photo[] = [];
+        if (uncachedPhotos.length > 0) {
+          const paths = uncachedPhotos.map(u => u.photo.photo_url);
+          const { data: signedUrlsData, error: batchError } = await supabase.storage
+            .from(storageBucket)
+            .createSignedUrls(paths, 3600);
+
+          if (batchError) {
+            console.error('[PhotoGallery] Batch signed URL generation failed:', batchError);
+            signedUrlFailures = uncachedPhotos.length;
+          } else {
+            batchPhotos = (signedUrlsData || [])
+              .map((urlData, idx) => {
+                const { photo, index } = uncachedPhotos[idx];
+                if (urlData.error || !urlData.signedUrl) {
+                  console.error(`[PhotoGallery] Failed signed URL for photo ${photo.id}:`, urlData.error);
+                  signedUrlFailures++;
+                  return null;
+                }
+                return {
+                  id: photo.id,
+                  photoUrl: urlData.signedUrl,
+                  uploaded: true,
+                  caption: photo.caption,
+                  display_order: photo.display_order ?? index,
+                } as Photo;
+              })
+              .filter((p): p is Photo => p !== null);
+
+            // Background-cache all fetched photos in one idle callback
+            const cacheWork = (signedUrlsData || [])
+              .map((urlData, idx) => ({ urlData, photo: uncachedPhotos[idx].photo }))
+              .filter(w => w.urlData.signedUrl && !w.urlData.error);
+
+            const doCaching = () => {
+              for (const { urlData, photo } of cacheWork) {
+                fetch(urlData.signedUrl!)
+                  .then(r => { if (r.ok) return r.blob(); throw new Error('fetch failed'); })
+                  .then(blob => cachePhotoFromRemote(photo.id, blob, photo.photo_url, inspectionId, section))
+                  .catch(e => console.warn('[PhotoGallery] Background cache failed:', e));
+              }
             };
-          })
-        ).then(photos => photos.filter(photo => photo !== null) as Photo[]);
+            if (typeof requestIdleCallback === 'function') {
+              requestIdleCallback(doCaching);
+            } else {
+              setTimeout(doCaching, 100);
+            }
+          }
+        }
+
+        const supabasePhotos: Photo[] = [...cachedPhotos, ...batchPhotos];
 
         const pendingPhotos = offlinePhotosList.filter(p => !p.uploaded);
         const mergedPhotos = [...pendingPhotos, ...supabasePhotos].sort(

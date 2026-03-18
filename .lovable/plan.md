@@ -1,41 +1,66 @@
 
 
-## Fix: Batch Signed URL Generation in PhotoGallery
+## Onboarding Resource Center
 
-### Root Cause
-`loadPhotos` in `PhotoGallery.tsx` calls `supabase.storage.createSignedUrl()` individually for **each** photo inside a `Promise.all` map (lines 204-206). For a report with 168 photos, this fires 168 sequential HTTP requests to generate signed URLs before any image renders. Each request has ~100-300ms latency, creating a 15-50 second waterfall.
+A dedicated `/onboarding` page where users can browse videos and PDFs you've uploaded, and mark items as completed.
 
-### Solution
-Replace individual `createSignedUrl` calls with the batch API `createSignedUrls` — a single HTTP request that returns all signed URLs at once.
+### Database
 
-### Changes to `src/components/PhotoGallery.tsx`
+**1. `onboarding_resources` table** — stores metadata for each uploaded file
 
-**Replace the photo mapping logic (lines 186-243) with:**
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | PK |
+| title | text | Display name |
+| description | text | Optional summary |
+| file_type | text | 'video' or 'pdf' |
+| file_url | text | Storage path |
+| display_order | integer | Sort order |
+| is_published | boolean | Only published items shown to users |
+| uploaded_by | uuid | References auth.users |
+| created_at | timestamptz | |
 
-1. Separate photos into two groups: those with valid cache (use local blob) and those needing signed URLs
-2. Call `supabase.storage.from(bucket).createSignedUrls(paths, 3600)` **once** for all uncached photos
-3. Map the batch response back to Photo objects
-4. Fire background caching in a single `requestIdleCallback` loop
+RLS: Super admins can CRUD. Authenticated users can SELECT where `is_published = true`.
 
-```text
-Before:  N photos → N createSignedUrl() calls → N round-trips
-After:   N photos → 1 createSignedUrls() call  → 1 round-trip
-```
+**2. `onboarding_progress` table** — tracks per-user completion
 
-**Pseudocode:**
-```
-// Split into cached vs uncached
-const uncachedPhotos = data.filter(p => !validCacheIds.has(p.id));
-const cachedPhotos = data.filter(p => validCacheIds.has(p.id));
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | PK |
+| user_id | uuid | References auth.users |
+| resource_id | uuid | FK to onboarding_resources |
+| completed_at | timestamptz | When marked complete |
+| unique(user_id, resource_id) | | Prevents duplicates |
 
-// One batch call for all uncached
-const paths = uncachedPhotos.map(p => p.photo_url);
-const { data: signedUrls } = await supabase.storage
-  .from(storageBucket)
-  .createSignedUrls(paths, 3600);
+RLS: Users can manage their own rows only.
 
-// Map results back, background-cache in idle callback
-```
+**3. `onboarding-files` storage bucket** — private bucket for the actual video/PDF files. Super admins can upload; authenticated users can read.
 
-This reduces ~168 network requests to exactly 1, cutting load time from 15-50s to under 2s.
+### Frontend
+
+**`/onboarding` page** — accessible from the dashboard header navigation:
+- Lists all published resources grouped by type (Videos section, Documents section)
+- Each card shows: title, description, file type icon, and a checkbox to mark complete
+- Clicking a video opens an inline `<video>` player; clicking a PDF downloads it
+- A progress bar at the top shows "X of Y completed"
+- Matches existing app styling (cards, borders, monospace metadata)
+
+**Admin upload UI** — visible only to super admins on the same page:
+- "Add Resource" button opens a form: title, description, file type selector, file upload input, display order
+- Drag-to-reorder support using existing drag patterns
+- Toggle publish/unpublish per resource
+- Delete resource (removes from storage + DB)
+
+### Route Addition
+
+Add `/onboarding` to `App.tsx` router, import the new `Onboarding.tsx` page component. Add a navigation link in `AuthenticatedHeader.tsx`.
+
+### Files
+
+| File | Action |
+|------|--------|
+| Migration SQL | Create tables, bucket, RLS policies |
+| `src/pages/Onboarding.tsx` | New page component |
+| `src/App.tsx` | Add route |
+| `src/components/AuthenticatedHeader.tsx` | Add nav link |
 
