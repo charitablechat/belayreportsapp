@@ -6,7 +6,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { RefreshCw, Upload, Trash2, AlertTriangle, Database, HardDrive, CheckCircle2, XCircle, Clock, Loader2, Download, RotateCcw, Shield, Cloud } from "lucide-react";
+import { RefreshCw, Upload, Trash2, AlertTriangle, Database, HardDrive, CheckCircle2, XCircle, Clock, Loader2, Download, RotateCcw, Shield, Cloud, Search, X } from "lucide-react";
+import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { format, formatDistanceToNow } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
@@ -70,6 +71,41 @@ export class RecoveryErrorBoundary extends Component<RecoveryErrorBoundaryProps,
     }
     return this.props.children;
   }
+}
+
+// ── Reusable search bar for recovery panels ─────────────────────
+function RecoverySearchBar({ value, onChange, placeholder = "Search by facility or user..." }: { value: string; onChange: (v: string) => void; placeholder?: string }) {
+  const [local, setLocal] = useState(value);
+
+  useEffect(() => {
+    const t = setTimeout(() => onChange(local), 300);
+    return () => clearTimeout(t);
+  }, [local, onChange]);
+
+  useEffect(() => {
+    if (value !== local) setLocal(value);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value]);
+
+  return (
+    <div className="relative mb-3">
+      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+      <Input
+        placeholder={placeholder}
+        value={local}
+        onChange={(e) => setLocal(e.target.value)}
+        className="pl-9 pr-9 h-9 text-sm bg-white/5 dark:bg-white/[0.03] border-white/10"
+      />
+      {local && (
+        <button
+          className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded hover:bg-white/10 text-muted-foreground"
+          onClick={() => { setLocal(''); onChange(''); }}
+        >
+          <X className="w-3.5 h-3.5" />
+        </button>
+      )}
+    </div>
+  );
 }
 
 interface LocalData {
@@ -149,6 +185,7 @@ export function LocalSnapshotsPanel({ allowDelete = true }: SnapshotsPanelProps)
   const [storageInfo, setStorageInfo] = useState(() => getBackupStorageInfo());
   const [importing, setImporting] = useState(false);
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
 
   const refreshSnapshots = useCallback(() => {
     setSnapshots(listAllSnapshots());
@@ -237,6 +274,12 @@ export function LocalSnapshotsPanel({ allowDelete = true }: SnapshotsPanelProps)
     try { return format(new Date(ts), "MMM d, yyyy h:mm a"); } catch { return "N/A"; }
   };
 
+  const filteredSnapshots = snapshots.filter(s => {
+    if (!searchQuery) return true;
+    const q = searchQuery.toLowerCase();
+    return (s.organization || '').toLowerCase().includes(q);
+  });
+
   return (
     <Card className="backdrop-blur-md bg-white/5 dark:bg-white/[0.03] border border-white/10 rounded-xl shadow-lg shadow-black/5 overflow-hidden">
       <CardHeader className="px-3 md:px-6 py-4 md:p-6">
@@ -252,30 +295,14 @@ export function LocalSnapshotsPanel({ allowDelete = true }: SnapshotsPanelProps)
             </CardDescription>
           </div>
           <div className="flex gap-2 shrink-0">
-            {/* Hidden file input for import */}
-            <input
-              type="file"
-              accept=".json"
-              className="hidden"
-              id="import-backup-file"
-              onChange={handleImportFile}
-            />
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={importing}
-              onClick={() => document.getElementById('import-backup-file')?.click()}
-              title="Import a previously exported backup JSON file"
-            >
+            <input type="file" accept=".json" className="hidden" id="import-backup-file" onChange={handleImportFile} />
+            <Button variant="outline" size="sm" disabled={importing} onClick={() => document.getElementById('import-backup-file')?.click()} title="Import a previously exported backup JSON file">
               {importing ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Upload className="h-4 w-4 mr-2" />}
               Import
             </Button>
             {snapshots.length > 0 && (
               <Button variant="outline" size="sm" onClick={() => {
-                const allData = snapshots.map(s => ({
-                  ...s,
-                  snapshotData: getReportSnapshot(s.reportType, s.reportId),
-                }));
+                const allData = snapshots.map(s => ({ ...s, snapshotData: getReportSnapshot(s.reportType, s.reportId) }));
                 const blob = new Blob([JSON.stringify(allData, null, 2)], { type: 'application/json' });
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
@@ -299,104 +326,113 @@ export function LocalSnapshotsPanel({ allowDelete = true }: SnapshotsPanelProps)
           </div>
         ) : (
           <>
-            {/* Mobile card layout */}
-            <div className="md:hidden space-y-3">
-              {snapshots.map((s) => (
-                <div key={s.key} className={`rounded-lg border border-white/10 bg-white/5 dark:bg-white/[0.02] p-3 space-y-2.5 min-w-0 overflow-hidden font-mono ${s.reportId === highlightedId ? 'import-flash' : ''}`}>
-                  <div className="flex items-center justify-between gap-2 flex-wrap">
-                    <Badge variant="outline" className="text-xs">{s.reportType.replace('_', ' ')}</Badge>
-                    <Badge variant={s.synced ? "default" : "destructive"} className="text-xs">
-                      {s.synced ? "Synced" : "Unsynced"}
-                    </Badge>
-                  </div>
-                  <div className="space-y-1.5 min-w-0">
-                    <div className="flex justify-between gap-2 text-xs">
-                      <span className="text-muted-foreground shrink-0">Org</span>
-                      <span className="font-medium text-right min-w-0 break-words" style={{ overflowWrap: 'anywhere' }}>{s.organization || "N/A"}</span>
-                    </div>
-                    <div className="flex justify-between gap-2 text-xs">
-                      <span className="text-muted-foreground shrink-0">Device</span>
-                      <span className="text-right min-w-0 break-words" style={{ overflowWrap: 'anywhere' }}>{s.device}</span>
-                    </div>
-                    <div className="flex justify-between gap-2 text-xs">
-                      <span className="text-muted-foreground shrink-0">Saved</span>
-                      <span className="text-right text-muted-foreground break-words" style={{ overflowWrap: 'anywhere' }}>{formatDate(s.timestamp)}</span>
-                    </div>
-                    <div className="flex justify-between gap-2 text-xs">
-                      <span className="text-muted-foreground shrink-0">Size</span>
-                      <span>{(s.sizeBytes / 1024).toFixed(1)} KB</span>
-                    </div>
-                  </div>
-                  <div className="flex gap-2 pt-1">
-                    <Button size="sm" variant="outline" className="flex-1 w-full" onClick={() => handleRestore(s.reportType, s.reportId)}>
-                      <RotateCcw className="h-4 w-4 mr-1.5" />
-                      Restore
-                    </Button>
-                    {allowDelete && (
-                      <>
-                        <Button size="sm" variant="outline" onClick={() => handleExport(s.reportType, s.reportId)} title="Export">
-                          <Download className="h-4 w-4" />
-                        </Button>
-                        <Button size="sm" variant="ghost" className="text-destructive" onClick={() => handleDelete(s.reportType, s.reportId)} title="Delete">
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-            {/* Desktop table layout */}
-            <div className="hidden md:block rounded-md border">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Type</TableHead>
-                    <TableHead>Organization</TableHead>
-                    <TableHead>Device</TableHead>
-                    <TableHead>Sync</TableHead>
-                    <TableHead>Last Saved</TableHead>
-                    <TableHead>Size</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {snapshots.map((s) => (
-                    <TableRow key={s.key} className={s.reportId === highlightedId ? 'import-flash' : ''}>
-                      <TableCell>
-                        <Badge variant="outline">{s.reportType.replace('_', ' ')}</Badge>
-                      </TableCell>
-                      <TableCell className="font-medium">{s.organization || "N/A"}</TableCell>
-                      <TableCell>{s.device}</TableCell>
-                      <TableCell>
-                        <Badge variant={s.synced ? "default" : "destructive"}>
+            <RecoverySearchBar value={searchQuery} onChange={setSearchQuery} placeholder="Search by organization..." />
+            {filteredSnapshots.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                No snapshots match &ldquo;{searchQuery}&rdquo;.
+              </div>
+            ) : (
+              <>
+                {/* Mobile card layout */}
+                <div className="md:hidden space-y-3">
+                  {filteredSnapshots.map((s) => (
+                    <div key={s.key} className={`rounded-lg border border-white/10 bg-white/5 dark:bg-white/[0.02] p-3 space-y-2.5 min-w-0 overflow-hidden font-mono ${s.reportId === highlightedId ? 'import-flash' : ''}`}>
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <Badge variant="outline" className="text-xs">{s.reportType.replace('_', ' ')}</Badge>
+                        <Badge variant={s.synced ? "default" : "destructive"} className="text-xs">
                           {s.synced ? "Synced" : "Unsynced"}
                         </Badge>
-                      </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">{formatDate(s.timestamp)}</TableCell>
-                      <TableCell className="text-sm">{(s.sizeBytes / 1024).toFixed(1)} KB</TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-1">
-                          <Button size="sm" variant="outline" onClick={() => handleRestore(s.reportType, s.reportId)} title="Restore to IndexedDB">
-                            <RotateCcw className="h-4 w-4" />
-                          </Button>
-                          {allowDelete && (
-                            <>
-                              <Button size="sm" variant="outline" onClick={() => handleExport(s.reportType, s.reportId)} title="Export as JSON">
-                                <Download className="h-4 w-4" />
-                              </Button>
-                              <Button size="sm" variant="ghost" className="text-destructive" onClick={() => handleDelete(s.reportType, s.reportId)} title="Delete snapshot">
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </>
-                          )}
+                      </div>
+                      <div className="space-y-1.5 min-w-0">
+                        <div className="flex justify-between gap-2 text-xs">
+                          <span className="text-muted-foreground shrink-0">Org</span>
+                          <span className="font-medium text-right min-w-0 break-words" style={{ overflowWrap: 'anywhere' }}>{s.organization || "N/A"}</span>
                         </div>
-                      </TableCell>
-                    </TableRow>
+                        <div className="flex justify-between gap-2 text-xs">
+                          <span className="text-muted-foreground shrink-0">Device</span>
+                          <span className="text-right min-w-0 break-words" style={{ overflowWrap: 'anywhere' }}>{s.device}</span>
+                        </div>
+                        <div className="flex justify-between gap-2 text-xs">
+                          <span className="text-muted-foreground shrink-0">Saved</span>
+                          <span className="text-right text-muted-foreground break-words" style={{ overflowWrap: 'anywhere' }}>{formatDate(s.timestamp)}</span>
+                        </div>
+                        <div className="flex justify-between gap-2 text-xs">
+                          <span className="text-muted-foreground shrink-0">Size</span>
+                          <span>{(s.sizeBytes / 1024).toFixed(1)} KB</span>
+                        </div>
+                      </div>
+                      <div className="flex gap-2 pt-1">
+                        <Button size="sm" variant="outline" className="flex-1 w-full" onClick={() => handleRestore(s.reportType, s.reportId)}>
+                          <RotateCcw className="h-4 w-4 mr-1.5" />
+                          Restore
+                        </Button>
+                        {allowDelete && (
+                          <>
+                            <Button size="sm" variant="outline" onClick={() => handleExport(s.reportType, s.reportId)} title="Export">
+                              <Download className="h-4 w-4" />
+                            </Button>
+                            <Button size="sm" variant="ghost" className="text-destructive" onClick={() => handleDelete(s.reportType, s.reportId)} title="Delete">
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </>
+                        )}
+                      </div>
+                    </div>
                   ))}
-                </TableBody>
-              </Table>
-            </div>
+                </div>
+                {/* Desktop table layout */}
+                <div className="hidden md:block rounded-md border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Type</TableHead>
+                        <TableHead>Organization</TableHead>
+                        <TableHead>Device</TableHead>
+                        <TableHead>Sync</TableHead>
+                        <TableHead>Last Saved</TableHead>
+                        <TableHead>Size</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredSnapshots.map((s) => (
+                        <TableRow key={s.key} className={s.reportId === highlightedId ? 'import-flash' : ''}>
+                          <TableCell>
+                            <Badge variant="outline">{s.reportType.replace('_', ' ')}</Badge>
+                          </TableCell>
+                          <TableCell className="font-medium">{s.organization || "N/A"}</TableCell>
+                          <TableCell>{s.device}</TableCell>
+                          <TableCell>
+                            <Badge variant={s.synced ? "default" : "destructive"}>
+                              {s.synced ? "Synced" : "Unsynced"}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground">{formatDate(s.timestamp)}</TableCell>
+                          <TableCell className="text-sm">{(s.sizeBytes / 1024).toFixed(1)} KB</TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex justify-end gap-1">
+                              <Button size="sm" variant="outline" onClick={() => handleRestore(s.reportType, s.reportId)} title="Restore to IndexedDB">
+                                <RotateCcw className="h-4 w-4" />
+                              </Button>
+                              {allowDelete && (
+                                <>
+                                  <Button size="sm" variant="outline" onClick={() => handleExport(s.reportType, s.reportId)} title="Export as JSON">
+                                    <Download className="h-4 w-4" />
+                                  </Button>
+                                  <Button size="sm" variant="ghost" className="text-destructive" onClick={() => handleDelete(s.reportType, s.reportId)} title="Delete snapshot">
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </>
+                              )}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </>
+            )}
           </>
         )}
       </CardContent>
@@ -412,7 +448,8 @@ export function CloudSnapshotsPanel({ allowDelete = true }: CloudSnapshotsPanelP
   const [snapshots, setSnapshots] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const lastFetchedAt = useRef<number>(0);
-  const STALE_TIME = 30000; // 30 seconds
+  const STALE_TIME = 30000;
+  const [searchQuery, setSearchQuery] = useState('');
 
   const loadSnapshots = useCallback(async (force = false) => {
     // Skip if data is fresh (stale-while-revalidate)
@@ -489,6 +526,13 @@ export function CloudSnapshotsPanel({ allowDelete = true }: CloudSnapshotsPanelP
     try { return format(new Date(ts), "MMM d, yyyy h:mm a"); } catch { return "N/A"; }
   };
 
+  const filteredSnapshots = snapshots.filter(s => {
+    if (!searchQuery) return true;
+    const q = searchQuery.toLowerCase();
+    return (s.facility || '').toLowerCase().includes(q)
+        || (s.user_name || '').toLowerCase().includes(q);
+  });
+
   return (
     <Card className="backdrop-blur-md bg-white/5 dark:bg-white/[0.03] border border-white/10 rounded-xl shadow-lg shadow-black/5 overflow-hidden">
       <CardHeader className="px-3 md:px-6 py-4 md:p-6">
@@ -548,9 +592,16 @@ export function CloudSnapshotsPanel({ allowDelete = true }: CloudSnapshotsPanelP
           </div>
         ) : (
           <>
+            <RecoverySearchBar value={searchQuery} onChange={setSearchQuery} placeholder="Search by facility or user..." />
+            {filteredSnapshots.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                No snapshots match &ldquo;{searchQuery}&rdquo;.
+              </div>
+            ) : (
+            <>
             {/* Mobile card layout */}
             <div className="md:hidden space-y-3">
-              {snapshots.map((s) => (
+              {filteredSnapshots.map((s) => (
                 <div key={s.id} className="rounded-lg border border-white/10 bg-white/5 dark:bg-white/[0.02] p-3 space-y-2.5 min-w-0 overflow-hidden font-mono">
                   <div className="flex items-center justify-between gap-2 flex-wrap">
                     <Badge variant="outline" className="text-xs">{(s.report_type || '').replace('_', ' ')}</Badge>
@@ -605,7 +656,7 @@ export function CloudSnapshotsPanel({ allowDelete = true }: CloudSnapshotsPanelP
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {snapshots.map((s) => (
+                  {filteredSnapshots.map((s) => (
                     <TableRow key={s.id} className="border-white/5 hover:bg-white/[0.03]">
                       <TableCell className="py-2.5 px-3">
                         <Badge variant="outline" className="text-xs font-mono">{(s.report_type || '').replace('_', ' ')}</Badge>
@@ -636,6 +687,8 @@ export function CloudSnapshotsPanel({ allowDelete = true }: CloudSnapshotsPanelP
                 </TableBody>
               </Table>
             </div>
+            </>
+            )}
           </>
         )}
       </CardContent>
@@ -650,6 +703,7 @@ function AllUserSnapshotsPanel() {
   const [loading, setLoading] = useState(true);
   const [restoring, setRestoring] = useState<string | null>(null);
   const [expandedUsers, setExpandedUsers] = useState<Set<string>>(new Set());
+  const [searchQuery, setSearchQuery] = useState('');
 
   const loadSnapshots = useCallback(async () => {
     setLoading(true);
@@ -718,8 +772,15 @@ function AllUserSnapshotsPanel() {
     try { return format(new Date(ts), "MMM d, yyyy h:mm a"); } catch { return "N/A"; }
   };
 
-  // Group snapshots by user
-  const grouped = snapshots.reduce<Record<string, { name: string; items: any[] }>>((acc, s) => {
+  // Filter then group snapshots by user
+  const filteredSnapshots = snapshots.filter(s => {
+    if (!searchQuery) return true;
+    const q = searchQuery.toLowerCase();
+    return (s.facility || '').toLowerCase().includes(q)
+        || (s.user_name || '').toLowerCase().includes(q);
+  });
+
+  const grouped = filteredSnapshots.reduce<Record<string, { name: string; items: any[] }>>((acc, s) => {
     if (!acc[s.user_id]) acc[s.user_id] = { name: s.user_name, items: [] };
     acc[s.user_id].items.push(s);
     return acc;
@@ -752,12 +813,19 @@ function AllUserSnapshotsPanel() {
             <Loader2 className="h-5 w-5 animate-spin" />
             Loading all user snapshots...
           </div>
-        ) : userEntries.length === 0 ? (
+        ) : snapshots.length === 0 ? (
           <div className="text-center py-8 text-muted-foreground">
             No cloud backup snapshots found across any users.
           </div>
         ) : (
-          <div className="space-y-2">
+          <>
+            <RecoverySearchBar value={searchQuery} onChange={setSearchQuery} placeholder="Search by facility or user..." />
+            {userEntries.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                {snapshots.length > 0 ? `No snapshots match "${searchQuery}".` : 'No cloud backup snapshots found across any users.'}
+              </div>
+            ) : (
+            <div className="space-y-2">
             {userEntries.map(([userId, { name, items }]) => {
               const isExpanded = expandedUsers.has(userId);
               return (
@@ -778,6 +846,7 @@ function AllUserSnapshotsPanel() {
                         <div key={s.id} className="px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
                           <div className="flex items-center gap-2 flex-1 min-w-0">
                             <Badge variant="outline" className="text-xs shrink-0">{(s.report_type || '').replace('_', ' ')}</Badge>
+                            <span className="text-xs text-muted-foreground truncate" title={s.facility}>{s.facility || 'N/A'}</span>
                             <span className="text-xs text-muted-foreground truncate">{s.device}</span>
                             <Badge variant={s.synced ? "default" : "destructive"} className="text-xs shrink-0">
                               {s.synced ? "Synced" : "Unsynced"}
@@ -811,6 +880,8 @@ function AllUserSnapshotsPanel() {
               );
             })}
           </div>
+            )}
+          </>
         )}
       </CardContent>
     </Card>

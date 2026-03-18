@@ -1,38 +1,66 @@
 
 
-## Add Search to Data Recovery Panels
+## Onboarding Resource Center
 
-### What Changes
+A dedicated `/onboarding` page where users can browse videos and PDFs you've uploaded, and mark items as completed.
 
-Add a search bar to the **Cloud**, **All Users**, and **Local** snapshot panels in `DataRecoveryTool.tsx` that filters by facility name and user name.
+### Database
 
-### Implementation
+**1. `onboarding_resources` table** — stores metadata for each uploaded file
 
-**1. Create a reusable `RecoverySearchBar` component** (inline in `DataRecoveryTool.tsx`)
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | PK |
+| title | text | Display name |
+| description | text | Optional summary |
+| file_type | text | 'video' or 'pdf' |
+| file_url | text | Storage path |
+| display_order | integer | Sort order |
+| is_published | boolean | Only published items shown to users |
+| uploaded_by | uuid | References auth.users |
+| created_at | timestamptz | |
 
-A simple debounced search input (reuse the pattern from `DashboardSearchBar`) with placeholder "Search by facility or user...". Uses local state with 300ms debounce.
+RLS: Super admins can CRUD. Authenticated users can SELECT where `is_published = true`.
 
-**2. Add search state + filtering to each panel:**
+**2. `onboarding_progress` table** — tracks per-user completion
 
-- **`CloudSnapshotsPanel`**: Add `searchQuery` state. Filter `snapshots` by matching `facility` or `user_name` against the query (case-insensitive). Render `RecoverySearchBar` between the header and content.
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | PK |
+| user_id | uuid | References auth.users |
+| resource_id | uuid | FK to onboarding_resources |
+| completed_at | timestamptz | When marked complete |
+| unique(user_id, resource_id) | | Prevents duplicates |
 
-- **`AllUserSnapshotsPanel`**: Same approach. Filter before grouping by user — both `user_name` and `facility` fields are available on each snapshot entry. The search filters the flat list before the `reduce` grouping step.
+RLS: Users can manage their own rows only.
 
-- **`LocalSnapshotsPanel`**: Add `searchQuery` state. Local snapshots have `organization` field (equivalent to facility) but no `user_name`. Filter by `organization` only. Search placeholder adjusted to "Search by organization...".
+**3. `onboarding-files` storage bucket** — private bucket for the actual video/PDF files. Super admins can upload; authenticated users can read.
 
-**3. Filter logic** (same for all panels):
+### Frontend
 
-```typescript
-const filtered = snapshots.filter(s => {
-  if (!query) return true;
-  const q = query.toLowerCase();
-  return (s.facility || s.organization || '').toLowerCase().includes(q)
-      || (s.user_name || '').toLowerCase().includes(q);
-});
-```
+**`/onboarding` page** — accessible from the dashboard header navigation:
+- Lists all published resources grouped by type (Videos section, Documents section)
+- Each card shows: title, description, file type icon, and a checkbox to mark complete
+- Clicking a video opens an inline `<video>` player; clicking a PDF downloads it
+- A progress bar at the top shows "X of Y completed"
+- Matches existing app styling (cards, borders, monospace metadata)
 
-Render `filtered` instead of `snapshots` in the list/table. Show "No results" message when filtered is empty but snapshots exist.
+**Admin upload UI** — visible only to super admins on the same page:
+- "Add Resource" button opens a form: title, description, file type selector, file upload input, display order
+- Drag-to-reorder support using existing drag patterns
+- Toggle publish/unpublish per resource
+- Delete resource (removes from storage + DB)
 
-### Files Modified
-- `src/components/admin/DataRecoveryTool.tsx` — add search input + filter logic to 3 panels
+### Route Addition
+
+Add `/onboarding` to `App.tsx` router, import the new `Onboarding.tsx` page component. Add a navigation link in `AuthenticatedHeader.tsx`.
+
+### Files
+
+| File | Action |
+|------|--------|
+| Migration SQL | Create tables, bucket, RLS policies |
+| `src/pages/Onboarding.tsx` | New page component |
+| `src/App.tsx` | Add route |
+| `src/components/AuthenticatedHeader.tsx` | Add nav link |
 
