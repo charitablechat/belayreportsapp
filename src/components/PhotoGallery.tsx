@@ -307,37 +307,36 @@ export default function PhotoGallery({
           }
         }
 
-        // Convert HEIC photos client-side for display
-        const heicPhotos = batchPhotos.filter(p => p.isHeic);
-        if (heicPhotos.length > 0) {
+        // Convert uncached HEIC photos for display (with concurrency limit)
+        const heicUncached = batchPhotos
+          .map((p, idx) => ({ photo: p, idx }))
+          .filter(item => item.photo.isHeic);
+        
+        if (heicUncached.length > 0) {
           if (import.meta.env.DEV) {
-            console.log(`[PhotoGallery] Converting ${heicPhotos.length} HEIC photos for display`);
+            console.log(`[PhotoGallery] Converting ${heicUncached.length} uncached HEIC photos`);
           }
-          try {
-            const heic2any = (await import('heic2any')).default;
-            await Promise.all(
-              heicPhotos.map(async (photo) => {
+          // Fetch all HEIC blobs first (3 at a time)
+          for (let i = 0; i < heicUncached.length; i += 3) {
+            const chunk = heicUncached.slice(i, i + 3);
+            await Promise.allSettled(
+              chunk.map(async ({ photo }) => {
                 try {
                   const response = await fetch(photo.photoUrl);
                   if (!response.ok) return;
                   const heicBlob = await response.blob();
-                  const jpegBlob = await heic2any({
-                    blob: heicBlob,
-                    toType: 'image/jpeg',
-                    quality: 0.8,
-                  });
-                  const converted = Array.isArray(jpegBlob) ? jpegBlob[0] : jpegBlob;
-                  const objectUrl = URL.createObjectURL(converted);
-                  newObjectUrls.push(objectUrl);
-                  photo.photoUrl = objectUrl;
-                  photo.isHeic = false;
+                  const jpegBlob = await convertHeicBlobToJpeg(heicBlob, 0.8);
+                  if (jpegBlob) {
+                    const objectUrl = URL.createObjectURL(jpegBlob);
+                    newObjectUrls.push(objectUrl);
+                    photo.photoUrl = objectUrl;
+                    photo.isHeic = false;
+                  }
                 } catch (e) {
                   console.warn(`[PhotoGallery] HEIC conversion failed for ${photo.id}:`, e);
                 }
               })
             );
-          } catch (e) {
-            console.warn('[PhotoGallery] Failed to load heic2any:', e);
           }
         }
 
