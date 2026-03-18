@@ -813,7 +813,7 @@ function AllUserSnapshotsPanel() {
             <Loader2 className="h-5 w-5 animate-spin" />
             Loading all user snapshots...
           </div>
-        ) : userEntries.length === 0 ? (
+        ) : snapshots.length === 0 ? (
           <div className="text-center py-8 text-muted-foreground">
             No cloud backup snapshots found across any users.
           </div>
