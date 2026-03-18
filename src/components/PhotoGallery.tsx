@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { OptimizedImage } from "@/components/ui/optimized-image";
 import { supabase } from "@/integrations/supabase/client";
 import { getOfflinePhotos, updatePhotoDisplayOrder } from "@/lib/offline-storage";
@@ -8,11 +8,22 @@ import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { X, Cloud, CloudOff, Loader2, AlertTriangle } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { X, Cloud, CloudOff, Loader2, AlertTriangle, CheckSquare, Trash2 } from "lucide-react";
 import { triggerHaptic } from "@/lib/haptics";
 import { toast } from "sonner";
 import PhotoCaptionInput from "./PhotoCaptionInput";
 import { DraggablePhotoItem } from "./DraggablePhotoItem";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   DndContext,
   closestCenter,
@@ -70,17 +81,24 @@ export default function PhotoGallery({
   const [evictedCount, setEvictedCount] = useState(0);
   const [failedCount, setFailedCount] = useState(0);
 
+  // Batch selection state
+  const [batchMode, setBatchMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  // Confirmation dialog state
+  const [deleteConfirm, setDeleteConfirm] = useState<{ type: 'single'; photo: Photo } | { type: 'batch' } | null>(null);
+
   // Desktop-first sensor configuration with mobile support
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
-        distance: 5,  // Reduced from 8 for more responsive desktop dragging
+        distance: 5,
       },
     }),
     useSensor(TouchSensor, {
       activationConstraint: {
-        delay: 150,   // Reduced from 200ms for quicker mobile activation
-        tolerance: 8, // Increased for better touch detection
+        delay: 150,
+        tolerance: 8,
       },
     }),
     useSensor(KeyboardSensor)
@@ -93,7 +111,6 @@ export default function PhotoGallery({
     initialLoadDone.current = false;
     loadPhotos();
     
-    // Cleanup: revoke all object URLs on unmount
     return () => {
       objectUrlsRef.current.forEach(url => {
         URL.revokeObjectURL(url);
@@ -108,16 +125,26 @@ export default function PhotoGallery({
     loadPhotos(true);
   }, [isOnline]);
 
+  // Exit batch mode when photos change and selection becomes stale
+  useEffect(() => {
+    if (batchMode) {
+      const photoIds = new Set(photos.map(p => p.id));
+      setSelectedIds(prev => {
+        const next = new Set<string>();
+        prev.forEach(id => { if (photoIds.has(id)) next.add(id); });
+        return next;
+      });
+    }
+  }, [photos, batchMode]);
+
   const loadPhotos = async (silent = false) => {
     try {
       if (!silent) setLoading(true);
       let signedUrlFailures = 0;
-      // Collect new object URLs separately — don't revoke old ones yet
       const newObjectUrls: string[] = [];
       
-      // Load from IndexedDB first (includes offline photos)
       const offlinePhotos = await getOfflinePhotos(inspectionId);
-      const STALE_THRESHOLD_MS = 10 * 60 * 1000; // 10 minutes
+      const STALE_THRESHOLD_MS = 10 * 60 * 1000;
       const now = Date.now();
       const offlinePhotosList: Photo[] = offlinePhotos
         .filter(p => p.section === section)
@@ -137,13 +164,11 @@ export default function PhotoGallery({
           };
         });
 
-      // Vector 5: Cross-reference photo receipts against IndexedDB to detect evicted blobs
       const receipts = getPhotoReceipts(inspectionId, section);
       const offlinePhotoIds = new Set(offlinePhotos.filter(p => p.section === section).map(p => p.id));
       const evictedPhotos = receipts.filter(r => !r.uploaded && !offlinePhotoIds.has(r.id));
       setEvictedCount(evictedPhotos.length);
 
-      // If online, also load from Supabase
       if (isOnline) {
       const { data, error } = await (supabase
           .from(tableName) as any)
@@ -155,19 +180,16 @@ export default function PhotoGallery({
 
         if (error) throw error;
 
-        // Build a set of valid cached photo IDs in one batch IndexedDB read
         const supabasePhotoIds = (data || []).map((p: any) => p.id);
         const validCacheIds = await batchValidateCachedPhotos(supabasePhotoIds);
 
         const supabasePhotos: Photo[] = await Promise.all(
           (data || []).map(async (photo: any, index: number) => {
-            // Check if we have a valid cached blob — use it instantly
             const existingOfflinePhoto = offlinePhotos.find(
               p => p.photoUrl === photo.photo_url
             );
 
             if (existingOfflinePhoto?.blob && validCacheIds.has(photo.id)) {
-              // INSTANT: Display from local IndexedDB blob — zero network latency
               const objectUrl = URL.createObjectURL(existingOfflinePhoto.blob);
               newObjectUrls.push(objectUrl);
               return {
@@ -179,7 +201,6 @@ export default function PhotoGallery({
               };
             }
 
-            // Not cached or expired — get signed URL for display
             const { data: signedUrlData, error: urlError } = await supabase.storage
               .from(storageBucket)
               .createSignedUrl(photo.photo_url, 3600);
@@ -190,7 +211,6 @@ export default function PhotoGallery({
               return null;
             }
 
-            // Queue background caching (non-blocking, fire-and-forget)
             const signedUrl = signedUrlData.signedUrl;
             const photoId = photo.id;
             const storagePath = photo.photo_url;
@@ -222,30 +242,25 @@ export default function PhotoGallery({
           })
         ).then(photos => photos.filter(photo => photo !== null) as Photo[]);
 
-        // Merge offline (pending upload) and online photos, sorted by display_order
         const pendingPhotos = offlinePhotosList.filter(p => !p.uploaded);
         const mergedPhotos = [...pendingPhotos, ...supabasePhotos].sort(
           (a, b) => a.display_order - b.display_order
         );
-        // Swap URLs atomically: set new state first, then revoke old URLs
         const oldUrls = objectUrlsRef.current;
         objectUrlsRef.current = newObjectUrls;
         setPhotos(mergedPhotos);
         setFailedCount(signedUrlFailures);
-        // Deferred revocation: wait for React commit + browser paint
         requestAnimationFrame(() => {
           setTimeout(() => {
             oldUrls.forEach(url => URL.revokeObjectURL(url));
           }, 0);
         });
       } else {
-        // Offline: show only cached photos sorted by display_order
         const sortedOffline = offlinePhotosList.sort((a, b) => a.display_order - b.display_order);
         const oldUrls = objectUrlsRef.current;
         objectUrlsRef.current = newObjectUrls;
         setPhotos(sortedOffline);
         setFailedCount(0);
-        // Deferred revocation: wait for React commit + browser paint
         requestAnimationFrame(() => {
           setTimeout(() => {
             oldUrls.forEach(url => URL.revokeObjectURL(url));
@@ -276,13 +291,11 @@ export default function PhotoGallery({
         const newIndex = items.findIndex((item) => item.id === over.id);
         const newOrder = arrayMove(items, oldIndex, newIndex);
         
-        // Update display_order for all items
         const updatedOrder = newOrder.map((photo, index) => ({
           ...photo,
           display_order: index,
         }));
         
-        // Persist to database and IndexedDB
         persistPhotoOrder(updatedOrder);
         
         return updatedOrder;
@@ -302,13 +315,11 @@ export default function PhotoGallery({
 
   const persistPhotoOrder = async (orderedPhotos: Photo[]) => {
     try {
-      // Save to IndexedDB for offline support (non-blocking)
       const photoIds = orderedPhotos.map(p => p.id);
       updatePhotoDisplayOrder(inspectionId, section, photoIds).catch(e =>
         console.warn('[PhotoGallery] Non-critical: failed to update IndexedDB order', e)
       );
       
-      // If online, sync to database with parallel updates (fire-and-forget for speed)
       if (isOnline) {
         const updates = orderedPhotos
           .filter(p => p.uploaded)
@@ -318,8 +329,6 @@ export default function PhotoGallery({
           }));
         
         if (updates.length > 0) {
-          // Execute all updates in parallel (not sequential) for max speed
-          // This is ~N times faster than sequential awaits
           Promise.all(
             updates.map(update =>
               (supabase
@@ -337,49 +346,114 @@ export default function PhotoGallery({
     }
   };
 
-  const handleDelete = async (photo: Photo) => {
-    // Block all writes in Lovable preview to protect production data
+  /** Core delete logic shared by single and batch operations */
+  const executeDelete = async (photosToDelete: Photo[]) => {
     if ((await import('@/lib/environment')).isLovablePreview()) {
       toast.info("Preview mode", { description: "Photo deletion is disabled in the Lovable preview." });
       return;
     }
     triggerHaptic('warning');
+
     try {
-      if (photo.uploaded && isOnline) {
-        // Soft-delete with 60-day retention (recoverable)
+      // Partition photos by type
+      const uploadedOnline = photosToDelete.filter(p => p.uploaded && isOnline);
+      const uploadedOffline = photosToDelete.filter(p => p.uploaded && !isOnline);
+      const localOnly = photosToDelete.filter(p => !p.uploaded);
+
+      const now = new Date();
+      const retentionDate = new Date(now.getTime() + 60 * 24 * 60 * 60 * 1000);
+      const deletedAt = now.toISOString();
+      const retentionUntil = retentionDate.toISOString();
+
+      // Batch soft-delete uploaded+online photos in one query
+      if (uploadedOnline.length > 0) {
+        const ids = uploadedOnline.map(p => p.id);
         const { error } = await (supabase
           .from(tableName) as any)
-          .update({ 
-            deleted_at: new Date().toISOString(),
-            retention_until: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString()
-          })
-          .eq('id', photo.id);
-
+          .update({ deleted_at: deletedAt, retention_until: retentionUntil })
+          .in('id', ids);
         if (error) throw error;
-      } else if (photo.uploaded && !isOnline) {
-        // Finding 3: Queue server soft-delete for replay when connectivity returns
-        const { queueOperation } = await import('@/lib/offline-storage');
-        await queueOperation('update', photo.id, {
-          id: photo.id,
-          deleted_at: new Date().toISOString(),
-          retention_until: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString(),
-        });
-      }
-      
-      // Finding 3: For local-only photos, delete from IndexedDB directly
-      if (!photo.uploaded) {
-        const { deleteOfflinePhoto } = await import('@/lib/offline-storage');
-        await deleteOfflinePhoto(photo.id);
       }
 
-      // Always refresh to show updated list
+      // Queue offline operations for uploaded+offline photos
+      if (uploadedOffline.length > 0) {
+        const { queueOperation } = await import('@/lib/offline-storage');
+        await Promise.all(uploadedOffline.map(p =>
+          queueOperation('update', p.id, {
+            id: p.id,
+            deleted_at: deletedAt,
+            retention_until: retentionUntil,
+          })
+        ));
+      }
+
+      // Delete local-only photos from IndexedDB
+      if (localOnly.length > 0) {
+        const { deleteOfflinePhoto } = await import('@/lib/offline-storage');
+        await Promise.all(localOnly.map(p => deleteOfflinePhoto(p.id)));
+      }
+
+      const count = photosToDelete.length;
+      toast.success(`${count} photo${count > 1 ? 's' : ''} deleted`, {
+        description: "Recoverable for 60 days.",
+      });
+
       await loadPhotos();
     } catch (error) {
-      console.error('[PhotoGallery] Failed to delete photo:', error);
+      console.error('[PhotoGallery] Failed to delete photos:', error);
+      toast.error("Failed to delete photos");
     }
   };
 
+  const handleDeleteClick = (photo: Photo) => {
+    setDeleteConfirm({ type: 'single', photo });
+  };
+
+  const handleBatchDeleteClick = () => {
+    if (selectedIds.size === 0) return;
+    setDeleteConfirm({ type: 'batch' });
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deleteConfirm) return;
+
+    if (deleteConfirm.type === 'single') {
+      await executeDelete([deleteConfirm.photo]);
+    } else {
+      const photosToDelete = photos.filter(p => selectedIds.has(p.id));
+      await executeDelete(photosToDelete);
+      setBatchMode(false);
+      setSelectedIds(new Set());
+    }
+    setDeleteConfirm(null);
+  };
+
+  const toggleSelection = useCallback((id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const selectAll = () => setSelectedIds(new Set(photos.map(p => p.id)));
+  const deselectAll = () => setSelectedIds(new Set());
+
+  const exitBatchMode = () => {
+    setBatchMode(false);
+    setSelectedIds(new Set());
+  };
+
   const activePhoto = activeId ? photos.find(p => p.id === activeId) : null;
+
+  // Confirmation dialog content
+  const confirmTitle = deleteConfirm?.type === 'batch'
+    ? `Delete ${selectedIds.size} photo${selectedIds.size > 1 ? 's' : ''}?`
+    : 'Delete photo?';
+  const confirmDesc = deleteConfirm?.type === 'batch'
+    ? `This will remove ${selectedIds.size} photo${selectedIds.size > 1 ? 's' : ''}. They can be recovered within 60 days.`
+    : 'This photo can be recovered within 60 days.';
 
   if (loading) {
     return (
@@ -399,6 +473,41 @@ export default function PhotoGallery({
 
   return (
     <>
+      {/* Batch mode controls */}
+      {!readOnly && photos.length > 0 && (
+        <div className="flex items-center gap-2 mb-3 flex-wrap">
+          {!batchMode ? (
+            <Button variant="outline" size="sm" onClick={() => setBatchMode(true)}>
+              <CheckSquare className="w-4 h-4 mr-1.5" />
+              Select
+            </Button>
+          ) : (
+            <>
+              <Button variant="outline" size="sm" onClick={exitBatchMode}>
+                Cancel
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={selectedIds.size === photos.length ? deselectAll : selectAll}
+              >
+                {selectedIds.size === photos.length ? 'Deselect All' : 'Select All'}
+              </Button>
+              {selectedIds.size > 0 && (
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={handleBatchDeleteClick}
+                >
+                  <Trash2 className="w-4 h-4 mr-1.5" />
+                  Delete ({selectedIds.size})
+                </Button>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
       {/* Vector 5: Warning banner for evicted photo blobs */}
       {evictedCount > 0 && (
         <div className="mb-4 p-3 border-2 border-destructive rounded-lg bg-destructive/10 flex items-center gap-2">
@@ -430,9 +539,27 @@ export default function PhotoGallery({
       <SortableContext items={photos.map(p => p.id)} strategy={rectSortingStrategy}>
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
           {photos.map((photo) => (
-            <DraggablePhotoItem key={photo.id} id={photo.id} disabled={readOnly}>
-              <Card className="relative group overflow-hidden flex flex-col border-2 border-black dark:border-white">
+            <DraggablePhotoItem key={photo.id} id={photo.id} disabled={readOnly || batchMode}>
+              <Card
+                className={`relative group overflow-hidden flex flex-col border-2 transition-all ${
+                  batchMode && selectedIds.has(photo.id)
+                    ? 'border-destructive ring-2 ring-destructive'
+                    : 'border-black dark:border-white'
+                } ${batchMode ? 'cursor-pointer' : ''}`}
+                onClick={batchMode ? () => toggleSelection(photo.id) : undefined}
+              >
                 <div className="relative">
+                  {/* Batch selection checkbox overlay */}
+                  {batchMode && (
+                    <div className="absolute top-2 left-2 z-10">
+                      <Checkbox
+                        checked={selectedIds.has(photo.id)}
+                        onCheckedChange={() => toggleSelection(photo.id)}
+                        className="h-5 w-5 bg-background/90 backdrop-blur-sm"
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                    </div>
+                  )}
                   <OptimizedImage
                     src={photo.photoUrl}
                     alt={photo.caption || "Inspection photo"}
@@ -459,12 +586,12 @@ export default function PhotoGallery({
                       </Badge>
                     )}
                   </div>
-                  {!readOnly && (
+                  {!readOnly && !batchMode && (
                     <Button
                       variant="destructive"
                       size="icon"
                       className="absolute bottom-2 right-2 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity"
-                      onClick={() => handleDelete(photo)}
+                      onClick={() => handleDeleteClick(photo)}
                     >
                       <X className="w-4 h-4" />
                     </Button>
@@ -509,6 +636,25 @@ export default function PhotoGallery({
         )}
       </DragOverlay>
     </DndContext>
+
+    {/* Delete confirmation dialog */}
+    <AlertDialog open={!!deleteConfirm} onOpenChange={(open) => { if (!open) setDeleteConfirm(null); }}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{confirmTitle}</AlertDialogTitle>
+          <AlertDialogDescription>{confirmDesc}</AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            onClick={handleConfirmDelete}
+            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+          >
+            Delete
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
     </>
   );
 }
