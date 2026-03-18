@@ -118,6 +118,15 @@ serve(async (req) => {
     const margin = 20;
     const contentWidth = pageWidth - (2 * margin);
     let yPos = margin;
+    const footerZone = 30; // reserve 30mm at bottom for footer
+
+    // Helper: check if we need a new page before drawing content
+    const checkPageBreak = (neededHeight: number) => {
+      if (yPos + neededHeight > pageHeight - footerZone) {
+        doc.addPage();
+        yPos = margin;
+      }
+    };
 
     // Add footer to all pages
     const addFooter = () => {
