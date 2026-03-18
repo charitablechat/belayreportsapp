@@ -274,6 +274,12 @@ export function LocalSnapshotsPanel({ allowDelete = true }: SnapshotsPanelProps)
     try { return format(new Date(ts), "MMM d, yyyy h:mm a"); } catch { return "N/A"; }
   };
 
+  const filteredSnapshots = snapshots.filter(s => {
+    if (!searchQuery) return true;
+    const q = searchQuery.toLowerCase();
+    return (s.organization || '').toLowerCase().includes(q);
+  });
+
   return (
     <Card className="backdrop-blur-md bg-white/5 dark:bg-white/[0.03] border border-white/10 rounded-xl shadow-lg shadow-black/5 overflow-hidden">
       <CardHeader className="px-3 md:px-6 py-4 md:p-6">
@@ -289,30 +295,14 @@ export function LocalSnapshotsPanel({ allowDelete = true }: SnapshotsPanelProps)
             </CardDescription>
           </div>
           <div className="flex gap-2 shrink-0">
-            {/* Hidden file input for import */}
-            <input
-              type="file"
-              accept=".json"
-              className="hidden"
-              id="import-backup-file"
-              onChange={handleImportFile}
-            />
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={importing}
-              onClick={() => document.getElementById('import-backup-file')?.click()}
-              title="Import a previously exported backup JSON file"
-            >
+            <input type="file" accept=".json" className="hidden" id="import-backup-file" onChange={handleImportFile} />
+            <Button variant="outline" size="sm" disabled={importing} onClick={() => document.getElementById('import-backup-file')?.click()} title="Import a previously exported backup JSON file">
               {importing ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Upload className="h-4 w-4 mr-2" />}
               Import
             </Button>
             {snapshots.length > 0 && (
               <Button variant="outline" size="sm" onClick={() => {
-                const allData = snapshots.map(s => ({
-                  ...s,
-                  snapshotData: getReportSnapshot(s.reportType, s.reportId),
-                }));
+                const allData = snapshots.map(s => ({ ...s, snapshotData: getReportSnapshot(s.reportType, s.reportId) }));
                 const blob = new Blob([JSON.stringify(allData, null, 2)], { type: 'application/json' });
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
@@ -334,119 +324,115 @@ export function LocalSnapshotsPanel({ allowDelete = true }: SnapshotsPanelProps)
           <div className="text-center py-8 text-muted-foreground">
             No local backup snapshots found. Snapshots are created automatically when you save reports.
           </div>
-        ) : (() => {
-          const filteredSnapshots = snapshots.filter(s => {
-            if (!searchQuery) return true;
-            const q = searchQuery.toLowerCase();
-            return (s.organization || '').toLowerCase().includes(q);
-          });
-          return (
+        ) : (
           <>
             <RecoverySearchBar value={searchQuery} onChange={setSearchQuery} placeholder="Search by organization..." />
             {filteredSnapshots.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
-                No snapshots match "{searchQuery}".
+                No snapshots match &ldquo;{searchQuery}&rdquo;.
               </div>
             ) : (
-          <>
-            {/* Mobile card layout */}
-            <div className="md:hidden space-y-3">
-              {snapshots.map((s) => (
-                <div key={s.key} className={`rounded-lg border border-white/10 bg-white/5 dark:bg-white/[0.02] p-3 space-y-2.5 min-w-0 overflow-hidden font-mono ${s.reportId === highlightedId ? 'import-flash' : ''}`}>
-                  <div className="flex items-center justify-between gap-2 flex-wrap">
-                    <Badge variant="outline" className="text-xs">{s.reportType.replace('_', ' ')}</Badge>
-                    <Badge variant={s.synced ? "default" : "destructive"} className="text-xs">
-                      {s.synced ? "Synced" : "Unsynced"}
-                    </Badge>
-                  </div>
-                  <div className="space-y-1.5 min-w-0">
-                    <div className="flex justify-between gap-2 text-xs">
-                      <span className="text-muted-foreground shrink-0">Org</span>
-                      <span className="font-medium text-right min-w-0 break-words" style={{ overflowWrap: 'anywhere' }}>{s.organization || "N/A"}</span>
-                    </div>
-                    <div className="flex justify-between gap-2 text-xs">
-                      <span className="text-muted-foreground shrink-0">Device</span>
-                      <span className="text-right min-w-0 break-words" style={{ overflowWrap: 'anywhere' }}>{s.device}</span>
-                    </div>
-                    <div className="flex justify-between gap-2 text-xs">
-                      <span className="text-muted-foreground shrink-0">Saved</span>
-                      <span className="text-right text-muted-foreground break-words" style={{ overflowWrap: 'anywhere' }}>{formatDate(s.timestamp)}</span>
-                    </div>
-                    <div className="flex justify-between gap-2 text-xs">
-                      <span className="text-muted-foreground shrink-0">Size</span>
-                      <span>{(s.sizeBytes / 1024).toFixed(1)} KB</span>
-                    </div>
-                  </div>
-                  <div className="flex gap-2 pt-1">
-                    <Button size="sm" variant="outline" className="flex-1 w-full" onClick={() => handleRestore(s.reportType, s.reportId)}>
-                      <RotateCcw className="h-4 w-4 mr-1.5" />
-                      Restore
-                    </Button>
-                    {allowDelete && (
-                      <>
-                        <Button size="sm" variant="outline" onClick={() => handleExport(s.reportType, s.reportId)} title="Export">
-                          <Download className="h-4 w-4" />
-                        </Button>
-                        <Button size="sm" variant="ghost" className="text-destructive" onClick={() => handleDelete(s.reportType, s.reportId)} title="Delete">
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-            {/* Desktop table layout */}
-            <div className="hidden md:block rounded-md border">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Type</TableHead>
-                    <TableHead>Organization</TableHead>
-                    <TableHead>Device</TableHead>
-                    <TableHead>Sync</TableHead>
-                    <TableHead>Last Saved</TableHead>
-                    <TableHead>Size</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {snapshots.map((s) => (
-                    <TableRow key={s.key} className={s.reportId === highlightedId ? 'import-flash' : ''}>
-                      <TableCell>
-                        <Badge variant="outline">{s.reportType.replace('_', ' ')}</Badge>
-                      </TableCell>
-                      <TableCell className="font-medium">{s.organization || "N/A"}</TableCell>
-                      <TableCell>{s.device}</TableCell>
-                      <TableCell>
-                        <Badge variant={s.synced ? "default" : "destructive"}>
+              <>
+                {/* Mobile card layout */}
+                <div className="md:hidden space-y-3">
+                  {filteredSnapshots.map((s) => (
+                    <div key={s.key} className={`rounded-lg border border-white/10 bg-white/5 dark:bg-white/[0.02] p-3 space-y-2.5 min-w-0 overflow-hidden font-mono ${s.reportId === highlightedId ? 'import-flash' : ''}`}>
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <Badge variant="outline" className="text-xs">{s.reportType.replace('_', ' ')}</Badge>
+                        <Badge variant={s.synced ? "default" : "destructive"} className="text-xs">
                           {s.synced ? "Synced" : "Unsynced"}
                         </Badge>
-                      </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">{formatDate(s.timestamp)}</TableCell>
-                      <TableCell className="text-sm">{(s.sizeBytes / 1024).toFixed(1)} KB</TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-1">
-                          <Button size="sm" variant="outline" onClick={() => handleRestore(s.reportType, s.reportId)} title="Restore to IndexedDB">
-                            <RotateCcw className="h-4 w-4" />
-                          </Button>
-                          {allowDelete && (
-                            <>
-                              <Button size="sm" variant="outline" onClick={() => handleExport(s.reportType, s.reportId)} title="Export as JSON">
-                                <Download className="h-4 w-4" />
-                              </Button>
-                              <Button size="sm" variant="ghost" className="text-destructive" onClick={() => handleDelete(s.reportType, s.reportId)} title="Delete snapshot">
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </>
-                          )}
+                      </div>
+                      <div className="space-y-1.5 min-w-0">
+                        <div className="flex justify-between gap-2 text-xs">
+                          <span className="text-muted-foreground shrink-0">Org</span>
+                          <span className="font-medium text-right min-w-0 break-words" style={{ overflowWrap: 'anywhere' }}>{s.organization || "N/A"}</span>
                         </div>
-                      </TableCell>
-                    </TableRow>
+                        <div className="flex justify-between gap-2 text-xs">
+                          <span className="text-muted-foreground shrink-0">Device</span>
+                          <span className="text-right min-w-0 break-words" style={{ overflowWrap: 'anywhere' }}>{s.device}</span>
+                        </div>
+                        <div className="flex justify-between gap-2 text-xs">
+                          <span className="text-muted-foreground shrink-0">Saved</span>
+                          <span className="text-right text-muted-foreground break-words" style={{ overflowWrap: 'anywhere' }}>{formatDate(s.timestamp)}</span>
+                        </div>
+                        <div className="flex justify-between gap-2 text-xs">
+                          <span className="text-muted-foreground shrink-0">Size</span>
+                          <span>{(s.sizeBytes / 1024).toFixed(1)} KB</span>
+                        </div>
+                      </div>
+                      <div className="flex gap-2 pt-1">
+                        <Button size="sm" variant="outline" className="flex-1 w-full" onClick={() => handleRestore(s.reportType, s.reportId)}>
+                          <RotateCcw className="h-4 w-4 mr-1.5" />
+                          Restore
+                        </Button>
+                        {allowDelete && (
+                          <>
+                            <Button size="sm" variant="outline" onClick={() => handleExport(s.reportType, s.reportId)} title="Export">
+                              <Download className="h-4 w-4" />
+                            </Button>
+                            <Button size="sm" variant="ghost" className="text-destructive" onClick={() => handleDelete(s.reportType, s.reportId)} title="Delete">
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </>
+                        )}
+                      </div>
+                    </div>
                   ))}
-                </TableBody>
-              </Table>
-            </div>
+                </div>
+                {/* Desktop table layout */}
+                <div className="hidden md:block rounded-md border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Type</TableHead>
+                        <TableHead>Organization</TableHead>
+                        <TableHead>Device</TableHead>
+                        <TableHead>Sync</TableHead>
+                        <TableHead>Last Saved</TableHead>
+                        <TableHead>Size</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredSnapshots.map((s) => (
+                        <TableRow key={s.key} className={s.reportId === highlightedId ? 'import-flash' : ''}>
+                          <TableCell>
+                            <Badge variant="outline">{s.reportType.replace('_', ' ')}</Badge>
+                          </TableCell>
+                          <TableCell className="font-medium">{s.organization || "N/A"}</TableCell>
+                          <TableCell>{s.device}</TableCell>
+                          <TableCell>
+                            <Badge variant={s.synced ? "default" : "destructive"}>
+                              {s.synced ? "Synced" : "Unsynced"}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground">{formatDate(s.timestamp)}</TableCell>
+                          <TableCell className="text-sm">{(s.sizeBytes / 1024).toFixed(1)} KB</TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex justify-end gap-1">
+                              <Button size="sm" variant="outline" onClick={() => handleRestore(s.reportType, s.reportId)} title="Restore to IndexedDB">
+                                <RotateCcw className="h-4 w-4" />
+                              </Button>
+                              {allowDelete && (
+                                <>
+                                  <Button size="sm" variant="outline" onClick={() => handleExport(s.reportType, s.reportId)} title="Export as JSON">
+                                    <Download className="h-4 w-4" />
+                                  </Button>
+                                  <Button size="sm" variant="ghost" className="text-destructive" onClick={() => handleDelete(s.reportType, s.reportId)} title="Delete snapshot">
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </>
+                              )}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </>
+            )}
           </>
         )}
       </CardContent>
