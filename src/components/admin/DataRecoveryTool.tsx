@@ -334,7 +334,20 @@ export function LocalSnapshotsPanel({ allowDelete = true }: SnapshotsPanelProps)
           <div className="text-center py-8 text-muted-foreground">
             No local backup snapshots found. Snapshots are created automatically when you save reports.
           </div>
-        ) : (
+        ) : (() => {
+          const filteredSnapshots = snapshots.filter(s => {
+            if (!searchQuery) return true;
+            const q = searchQuery.toLowerCase();
+            return (s.organization || '').toLowerCase().includes(q);
+          });
+          return (
+          <>
+            <RecoverySearchBar value={searchQuery} onChange={setSearchQuery} placeholder="Search by organization..." />
+            {filteredSnapshots.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                No snapshots match "{searchQuery}".
+              </div>
+            ) : (
           <>
             {/* Mobile card layout */}
             <div className="md:hidden space-y-3">
