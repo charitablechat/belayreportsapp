@@ -154,12 +154,19 @@ const compressImageInternal = async (
   options: CompressionOptions = {},
   attemptCount: number = 0
 ): Promise<File> => {
-  // Early exit: Skip compression for formats that cause hangs
-  if (!canProcessWithCanvas(file)) {
+  // Convert HEIC/HEIF to JPEG first, then proceed with normal compression
+  if (isHeicFormat(file)) {
     if (import.meta.env.DEV) {
-      console.warn('[Image Compression] Skipping compression for unsupported format:', file.type || file.name);
+      console.log('[Image Compression] Converting HEIC/HEIF to JPEG:', file.name);
     }
-    return file; // Return original - browser handles display conversion
+    try {
+      const jpegFile = await convertHeicToJpeg(file);
+      // Now compress the converted JPEG through the normal pipeline
+      return compressImageInternal(jpegFile, options, attemptCount);
+    } catch (heicError) {
+      console.warn('[Image Compression] HEIC conversion failed, returning original:', heicError);
+      return file;
+    }
   }
 
   const opts = { ...DEFAULT_OPTIONS, ...options };
