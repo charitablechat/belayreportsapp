@@ -108,6 +108,9 @@ Deno.serve(async (req) => {
       r.found = validFiles.length;
       if (dryRun) continue;
 
+      // Apply offset and batch size
+      const batch = validFiles.slice(offset, offset + batchSize);
+
       for (let i = 0; i < validFiles.length; i++) {
         const file = validFiles[i];
         const sourcePath = `${folderPath}/${file.name}`;
