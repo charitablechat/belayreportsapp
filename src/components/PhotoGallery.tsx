@@ -256,8 +256,6 @@ export default function PhotoGallery({
                   uploaded: true,
                   caption: photo.caption,
                   display_order: photo.display_order ?? index,
-                  // Mark for HEIC check — magic byte detection happens in the conversion step
-                  isHeic: true, // check all uncached photos by magic bytes
                 } as Photo;
               })
               .filter((p): p is Photo => p !== null);
