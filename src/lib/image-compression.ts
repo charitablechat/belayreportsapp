@@ -22,39 +22,17 @@ const COMPRESSION_TIMEOUT = 8000; // 8 seconds max for entire compression
 const IMAGE_LOAD_TIMEOUT = 4000; // 4 seconds max to load/decode image
 const BLOB_CREATION_TIMEOUT = 3000; // 3 seconds max for canvas.toBlob
 
-// Formats that need conversion before canvas processing
-const HEIC_FORMATS = ['image/heic', 'image/heif'];
+import { isHeicFile, convertHeicBlobToJpeg } from '@/lib/heic-converter';
 
 /**
- * Check if file is HEIC/HEIF format (needs conversion)
- */
-function isHeicFormat(file: File): boolean {
-  const fileType = file.type.toLowerCase();
-  if (HEIC_FORMATS.includes(fileType)) {
-    return true;
-  }
-  const extension = file.name.toLowerCase().split('.').pop();
-  return extension === 'heic' || extension === 'heif';
-}
-
-/**
- * Convert HEIC/HEIF file to JPEG using heic2any
- * Returns a JPEG File ready for canvas processing
+ * Convert HEIC/HEIF file to JPEG using shared converter
  */
 async function convertHeicToJpeg(file: File): Promise<File> {
-  const heic2any = (await import('heic2any')).default;
-  
-  const convertedBlob = await heic2any({
-    blob: file,
-    toType: 'image/jpeg',
-    quality: 0.85,
-  });
-  
-  // heic2any can return a single Blob or array of Blobs
-  const blob = Array.isArray(convertedBlob) ? convertedBlob[0] : convertedBlob;
+  const jpegBlob = await convertHeicBlobToJpeg(file, 0.85);
+  if (!jpegBlob) throw new Error('HEIC conversion returned null');
   
   return new File(
-    [blob],
+    [jpegBlob],
     file.name.replace(/\.(heic|heif)$/i, '.jpg'),
     { type: 'image/jpeg', lastModified: Date.now() }
   );
@@ -155,7 +133,7 @@ const compressImageInternal = async (
   attemptCount: number = 0
 ): Promise<File> => {
   // Convert HEIC/HEIF to JPEG first, then proceed with normal compression
-  if (isHeicFormat(file)) {
+  if (isHeicFile(file)) {
     if (import.meta.env.DEV) {
       console.log('[Image Compression] Converting HEIC/HEIF to JPEG:', file.name);
     }

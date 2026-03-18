@@ -8,6 +8,7 @@ import { savePhotoReceipt } from "@/lib/photo-receipts";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { triggerHaptic } from "@/lib/haptics";
 import { compressImage } from "@/lib/image-compression";
+import { isHeicFile } from "@/lib/heic-converter";
 import { saveToDevice } from "@/lib/save-to-device";
 import { toast } from "sonner";
 
@@ -146,6 +147,15 @@ export default function PhotoCapture({
       const errorMessage = compressionError instanceof Error ? compressionError.message : 'Unknown error';
       console.warn(`[PhotoCapture] Compression failed for ${file.name}:`, errorMessage);
       // Continue with original file if compression fails
+    }
+
+    // STRICT: Block HEIC files that survived the compression pipeline
+    if (isHeicFile(processedFile)) {
+      console.error(`[PhotoCapture] HEIC file was not converted: ${processedFile.name}`);
+      toast.error('Photo format not supported', {
+        description: 'HEIC conversion failed. Please convert to JPEG before uploading.',
+      });
+      return false;
     }
 
     // Auto-save to device Downloads folder (fire-and-forget)
