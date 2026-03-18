@@ -153,7 +153,7 @@ Deno.serve(async (req) => {
     const totalSkipped = Object.values(results).reduce((s, r) => s + r.skipped, 0);
 
     return new Response(
-      JSON.stringify({ success: true, dryRun, summary: { totalFound, totalMigrated, totalSkipped }, details: results }),
+      JSON.stringify({ success: true, dryRun, offset, batchSize, summary: { totalFound, totalMigrated, totalSkipped }, details: results }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err) {
