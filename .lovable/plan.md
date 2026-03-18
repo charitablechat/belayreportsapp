@@ -1,66 +1,42 @@
 
 
-## Onboarding Resource Center
+## Fix: Infinite Spinner on Training Photos Tab
 
-A dedicated `/onboarding` page where users can browse videos and PDFs you've uploaded, and mark items as completed.
+### Root Cause
 
-### Database
+The HEIC fix from the previous change made `loadPhotos()` synchronously await ALL HEIC conversions before calling `setLoading(false)`. With 108 photos:
 
-**1. `onboarding_resources` table** — stores metadata for each uploaded file
+1. **Line 222**: Sequential `await isHeicBlob()` on every cached photo — blocks the loop
+2. **Lines 251-278**: `await batchConvertHeicBlobs()` converts all detected HEIC photos 3 at a time — `heic2any` is CPU-heavy, ~2-5s per image = **~3 minutes total** before `setLoading(false)` is reached
+3. **Lines 351-381**: For uncached photos, fetches each via signed URL, then `await isHeicBlob()` + `await convertHeicBlobToJpeg()` in chunks of 3 — another potentially massive blocking operation
 
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uuid | PK |
-| title | text | Display name |
-| description | text | Optional summary |
-| file_type | text | 'video' or 'pdf' |
-| file_url | text | Storage path |
-| display_order | integer | Sort order |
-| is_published | boolean | Only published items shown to users |
-| uploaded_by | uuid | References auth.users |
-| created_at | timestamptz | |
+All of this happens **before** `setPhotos()` is called (line 392), so the spinner never clears.
 
-RLS: Super admins can CRUD. Authenticated users can SELECT where `is_published = true`.
+### Solution: Progressive Rendering
 
-**2. `onboarding_progress` table** — tracks per-user completion
+Decouple HEIC conversion from the initial load. Show photos immediately with their signed URLs (browsers that support HEIC will render them; others show broken images temporarily), then convert in the background and update the UI progressively.
 
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uuid | PK |
-| user_id | uuid | References auth.users |
-| resource_id | uuid | FK to onboarding_resources |
-| completed_at | timestamptz | When marked complete |
-| unique(user_id, resource_id) | | Prevents duplicates |
+**Changes to `src/components/PhotoGallery.tsx`:**
 
-RLS: Users can manage their own rows only.
+1. **Remove blocking HEIC conversion from `loadPhotos()`**: 
+   - Remove the `await isHeicBlob()` check inside the cached photo loop (line 222) — just display the cached blob as-is
+   - Remove the `await batchConvertHeicBlobs()` block (lines 251-278)
+   - Remove the uncached HEIC conversion loop (lines 345-382)
+   - Let `setPhotos()` and `setLoading(false)` execute immediately
 
-**3. `onboarding-files` storage bucket** — private bucket for the actual video/PDF files. Super admins can upload; authenticated users can read.
+2. **Add a post-render background conversion effect**:
+   - New `useEffect` that runs after photos are loaded and `loading` is false
+   - Iterates through displayed photos, fetches each blob, runs `isHeicBlob()` magic byte check
+   - Converts HEIC photos to JPEG via `convertHeicBlobToJpeg()` one at a time (or 2 concurrent)
+   - Updates individual photo URLs in state progressively via `setPhotos(prev => ...)` 
+   - Fires `reuploadConvertedJpeg()` for each converted photo (fire-and-forget)
+   - Uses an abort controller to cancel if the component unmounts
 
-### Frontend
+3. **Move the background caching `doCaching` logic** to also handle HEIC detection during caching (already partially does this) — but don't block on it
 
-**`/onboarding` page** — accessible from the dashboard header navigation:
-- Lists all published resources grouped by type (Videos section, Documents section)
-- Each card shows: title, description, file type icon, and a checkbox to mark complete
-- Clicking a video opens an inline `<video>` player; clicking a PDF downloads it
-- A progress bar at the top shows "X of Y completed"
-- Matches existing app styling (cards, borders, monospace metadata)
+### Files Changed
 
-**Admin upload UI** — visible only to super admins on the same page:
-- "Add Resource" button opens a form: title, description, file type selector, file upload input, display order
-- Drag-to-reorder support using existing drag patterns
-- Toggle publish/unpublish per resource
-- Delete resource (removes from storage + DB)
-
-### Route Addition
-
-Add `/onboarding` to `App.tsx` router, import the new `Onboarding.tsx` page component. Add a navigation link in `AuthenticatedHeader.tsx`.
-
-### Files
-
-| File | Action |
+| File | Change |
 |------|--------|
-| Migration SQL | Create tables, bucket, RLS policies |
-| `src/pages/Onboarding.tsx` | New page component |
-| `src/App.tsx` | Add route |
-| `src/components/AuthenticatedHeader.tsx` | Add nav link |
+| `src/components/PhotoGallery.tsx` | Remove blocking HEIC conversion from loadPhotos; add post-render progressive conversion effect |
 
