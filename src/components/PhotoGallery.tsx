@@ -342,33 +342,39 @@ export default function PhotoGallery({
           }
         }
 
-        // Convert uncached HEIC photos for display (with concurrency limit)
+        // Convert uncached photos that contain HEIC bytes (3 at a time)
+        // We marked ALL uncached photos with isHeic=true for magic byte checking
         const heicUncached = batchPhotos
-          .map((p, idx) => ({ photo: p, idx }))
+          .map((p, idx) => ({ photo: p, idx, originalPath: uncachedPhotos[idx]?.photo?.photo_url }))
           .filter(item => item.photo.isHeic);
         
         if (heicUncached.length > 0) {
-          if (import.meta.env.DEV) {
-            console.log(`[PhotoGallery] Converting ${heicUncached.length} uncached HEIC photos`);
-          }
-          // Fetch all HEIC blobs first (3 at a time)
           for (let i = 0; i < heicUncached.length; i += 3) {
             const chunk = heicUncached.slice(i, i + 3);
             await Promise.allSettled(
-              chunk.map(async ({ photo }) => {
+              chunk.map(async ({ photo, originalPath }) => {
                 try {
                   const response = await fetch(photo.photoUrl);
                   if (!response.ok) return;
-                  const heicBlob = await response.blob();
-                  const jpegBlob = await convertHeicBlobToJpeg(heicBlob, 0.8);
-                  if (jpegBlob) {
-                    const objectUrl = URL.createObjectURL(jpegBlob);
-                    newObjectUrls.push(objectUrl);
-                    photo.photoUrl = objectUrl;
+                  const blob = await response.blob();
+                  // Check magic bytes — only convert if actually HEIC
+                  const actuallyHeic = await isHeicBlob(blob);
+                  if (actuallyHeic) {
+                    const jpegBlob = await convertHeicBlobToJpeg(blob, 0.8);
+                    if (jpegBlob) {
+                      const objectUrl = URL.createObjectURL(jpegBlob);
+                      newObjectUrls.push(objectUrl);
+                      photo.photoUrl = objectUrl;
+                      photo.isHeic = false;
+                      // Re-upload the real JPEG to storage so reports work
+                      if (originalPath) reuploadConvertedJpeg(originalPath, jpegBlob);
+                    }
+                  } else {
+                    // Not actually HEIC — mark as fine
                     photo.isHeic = false;
                   }
                 } catch (e) {
-                  console.warn(`[PhotoGallery] HEIC conversion failed for ${photo.id}:`, e);
+                  console.warn(`[PhotoGallery] HEIC check/conversion failed for ${photo.id}:`, e);
                 }
               })
             );
