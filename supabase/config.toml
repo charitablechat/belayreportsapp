@@ -50,3 +50,6 @@ verify_jwt = false
 
 [functions.migrate-orphaned-photos]
 verify_jwt = false
+
+[functions.convert-heic-photos]
+verify_jwt = true
