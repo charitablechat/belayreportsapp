@@ -879,6 +879,8 @@ function AllUserSnapshotsPanel() {
               );
             })}
           </div>
+            )}
+          </>
         )}
       </CardContent>
     </Card>
