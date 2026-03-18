@@ -233,6 +233,7 @@ export default function PhotoGallery({
                   uploaded: true,
                   caption: photo.caption,
                   display_order: photo.display_order ?? index,
+                  isHeic: /\.(heic|heif)$/i.test(photo.photo_url),
                 } as Photo;
               })
               .filter((p): p is Photo => p !== null);
