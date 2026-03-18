@@ -73,6 +73,41 @@ export class RecoveryErrorBoundary extends Component<RecoveryErrorBoundaryProps,
   }
 }
 
+// ── Reusable search bar for recovery panels ─────────────────────
+function RecoverySearchBar({ value, onChange, placeholder = "Search by facility or user..." }: { value: string; onChange: (v: string) => void; placeholder?: string }) {
+  const [local, setLocal] = useState(value);
+
+  useEffect(() => {
+    const t = setTimeout(() => onChange(local), 300);
+    return () => clearTimeout(t);
+  }, [local, onChange]);
+
+  useEffect(() => {
+    if (value !== local) setLocal(value);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value]);
+
+  return (
+    <div className="relative mb-3">
+      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+      <Input
+        placeholder={placeholder}
+        value={local}
+        onChange={(e) => setLocal(e.target.value)}
+        className="pl-9 pr-9 h-9 text-sm bg-white/5 dark:bg-white/[0.03] border-white/10"
+      />
+      {local && (
+        <button
+          className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded hover:bg-white/10 text-muted-foreground"
+          onClick={() => { setLocal(''); onChange(''); }}
+        >
+          <X className="w-3.5 h-3.5" />
+        </button>
+      )}
+    </div>
+  );
+}
+
 interface LocalData {
   trainings: any[];
   dailyAssessments: any[];
