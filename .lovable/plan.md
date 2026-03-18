@@ -1,66 +1,52 @@
 
 
-## Onboarding Resource Center
+## Root Cause Analysis: Training & Daily Assessment Photos Misrouted
 
-A dedicated `/onboarding` page where users can browse videos and PDFs you've uploaded, and mark items as completed.
+### The Problem
 
-### Database
+Photos uploaded for training and daily assessment reports are **in cloud storage but invisible** to everyone because they were routed to the wrong bucket and table.
 
-**1. `onboarding_resources` table** — stores metadata for each uploaded file
+### Evidence Found
 
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uuid | PK |
-| title | text | Display name |
-| description | text | Optional summary |
-| file_type | text | 'video' or 'pdf' |
-| file_url | text | Storage path |
-| display_order | integer | Sort order |
-| is_published | boolean | Only published items shown to users |
-| uploaded_by | uuid | References auth.users |
-| created_at | timestamptz | |
+| Report | Organization | Misrouted Files |
+|--------|-------------|----------------|
+| Training `35649e1b` | Girl Scouts - Camp La Jita | **136 files** in wrong bucket |
+| Training `20659307` | YMCA Twin Lakes | **168 files** in wrong bucket |
+| Training `bfe092de` | Southwest Airlines | **2 files** in wrong bucket |
+| Daily Assessment `1a406b1f` | Marble Falls, TX | **41 files** in wrong bucket |
 
-RLS: Super admins can CRUD. Authenticated users can SELECT where `is_published = true`.
+**Total: 347 orphaned photo files**
 
-**2. `onboarding_progress` table** — tracks per-user completion
+### Root Cause Chain
 
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uuid | PK |
-| user_id | uuid | References auth.users |
-| resource_id | uuid | FK to onboarding_resources |
-| completed_at | timestamptz | When marked complete |
-| unique(user_id, resource_id) | | Prevents duplicates |
+1. The old `syncPhotos()` was hardcoded to upload ALL photos to the `inspection-photos` storage bucket and insert into the `inspection_photos` database table
+2. The files uploaded successfully to `inspection-photos` storage (no RLS issue)
+3. The database INSERT into `inspection_photos` **failed silently** because `inspection_photos.inspection_id` has a **foreign key constraint** to `inspections(id)` — a training UUID is not a valid inspection ID
+4. Result: files exist in storage but have **zero database records** pointing to them
+5. PhotoGallery queries the database for records, finds none, shows nothing
 
-RLS: Users can manage their own rows only.
+The code fix from the previous session (routing photos to the correct bucket/table) prevents this from happening for **future** uploads. But the 347 existing files remain orphaned.
 
-**3. `onboarding-files` storage bucket** — private bucket for the actual video/PDF files. Super admins can upload; authenticated users can read.
+### Plan
 
-### Frontend
+**1. Create an Edge Function to migrate orphaned photos** (`supabase/functions/migrate-orphaned-photos/index.ts`)
 
-**`/onboarding` page** — accessible from the dashboard header navigation:
-- Lists all published resources grouped by type (Videos section, Documents section)
-- Each card shows: title, description, file type icon, and a checkbox to mark complete
-- Clicking a video opens an inline `<video>` player; clicking a PDF downloads it
-- A progress bar at the top shows "X of Y completed"
-- Matches existing app styling (cards, borders, monospace metadata)
+This function will:
+- Query `storage.objects` for files in `inspection-photos` bucket where the path matches a training or daily assessment ID
+- For each file: copy it from `inspection-photos` to the correct bucket (`training-photos` or `daily-assessment-photos`)
+- Insert a corresponding database record in the correct table (`training_photos` or `daily_assessment_photos`)
+- Delete the orphaned copy from `inspection-photos`
+- Protected by super-admin auth check
 
-**Admin upload UI** — visible only to super admins on the same page:
-- "Add Resource" button opens a form: title, description, file type selector, file upload input, display order
-- Drag-to-reorder support using existing drag patterns
-- Toggle publish/unpublish per resource
-- Delete resource (removes from storage + DB)
+**2. Run the migration** via the edge function to recover all 347 photos
 
-### Route Addition
+### Technical Details
 
-Add `/onboarding` to `App.tsx` router, import the new `Onboarding.tsx` page component. Add a navigation link in `AuthenticatedHeader.tsx`.
+The migration needs to handle:
+- Copying binary data between storage buckets (download from source, upload to destination)
+- Determining the correct `photo_section` (default to "training" for trainings, "assessment" for daily assessments since the original section info was lost)
+- Avoiding duplicates if the function is run multiple times (check if destination record already exists)
+- The 3 affected training IDs and 1 affected daily assessment ID specifically
 
-### Files
-
-| File | Action |
-|------|--------|
-| Migration SQL | Create tables, bucket, RLS policies |
-| `src/pages/Onboarding.tsx` | New page component |
-| `src/App.tsx` | Add route |
-| `src/components/AuthenticatedHeader.tsx` | Add nav link |
+This is a one-time data recovery operation. The underlying code bug was already fixed in the previous session.
 
