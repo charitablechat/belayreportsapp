@@ -95,7 +95,7 @@ export default function ContactDeveloper() {
           email: "kale@myaisummit.dev",
           subject: form.subject,
           message: form.message,
-          attachmentUrl: imageUrl,
+          attachmentPath,
           attachmentName: imageFile?.name,
           attachmentType: imageFile?.type,
           website: form.website,

@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { checkRateLimit, getClientIP, createRateLimitResponse } from "../_shared/rate-limiter.ts";
 
 const corsHeaders = {
@@ -11,33 +12,23 @@ interface ContactEmailRequest {
   email: string;
   subject: string;
   message: string;
-  attachmentUrl?: string;
+  attachmentPath?: string;
   attachmentName?: string;
   attachmentType?: string;
-  website?: string; // Honeypot field - should always be empty
-}
-
-function escapeHtml(unsafe: string): string {
-  return unsafe
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
+  website?: string;
 }
 
 const handler = async (req: Request): Promise<Response> => {
-  // Handle CORS preflight requests
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    // Rate limiting: 3 contact form submissions per IP per hour
+    // Rate limiting
     const clientIP = getClientIP(req);
     const rateLimit = checkRateLimit(`contact:${clientIP}`, {
       maxRequests: 3,
-      windowMs: 60 * 60 * 1000 // 1 hour
+      windowMs: 60 * 60 * 1000,
     });
 
     if (!rateLimit.allowed) {
@@ -47,21 +38,60 @@ const handler = async (req: Request): Promise<Response> => {
 
     console.log(`[Rate Limit] IP ${clientIP} - ${rateLimit.remaining} requests remaining`);
 
-    const { name, email, subject, message, attachmentUrl, attachmentName, attachmentType, website }: ContactEmailRequest = await req.json();
+    const { name, email, subject, message, attachmentPath, attachmentName, attachmentType, website }: ContactEmailRequest = await req.json();
 
-    // Honeypot check - if the hidden field is filled, it's likely a bot
+    // Honeypot check
     if (website && website.trim() !== '') {
-      console.warn(`[Honeypot] Bot detected from IP ${clientIP} - honeypot field filled`);
-      // Return success to not tip off the bot, but don't send the email
+      console.warn(`[Honeypot] Bot detected from IP ${clientIP}`);
       return new Response(JSON.stringify({ success: true }), {
         status: 200,
         headers: { "Content-Type": "application/json", ...corsHeaders },
       });
     }
 
-    // Validate attachment if provided
-    if (attachmentUrl) {
-      // Stricter rate limit for attachments: 1 per hour
+    // Validate required fields
+    if (!name || !email || !subject || !message) {
+      return new Response(JSON.stringify({ error: "Missing required fields" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json", ...corsHeaders },
+      });
+    }
+
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return new Response(JSON.stringify({ error: "Invalid email format" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json", ...corsHeaders },
+      });
+    }
+
+    if (name.length > 100) {
+      return new Response(JSON.stringify({ error: "Name too long (max 100 characters)" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json", ...corsHeaders },
+      });
+    }
+
+    const allowedSubjects = ['bug', 'feature', 'question', 'other'];
+    if (!allowedSubjects.includes(subject)) {
+      return new Response(JSON.stringify({ error: "Invalid subject type" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json", ...corsHeaders },
+      });
+    }
+
+    if (message.length > 1000) {
+      return new Response(JSON.stringify({ error: "Message too long (max 1000 characters)" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json", ...corsHeaders },
+      });
+    }
+
+    // Download attachment via service role if path provided
+    let attachmentBase64: string | undefined;
+    if (attachmentPath) {
+      // Rate limit attachments
       const attachmentRateLimit = checkRateLimit(`contact-attachment:${clientIP}`, {
         maxRequests: 1,
         windowMs: 60 * 60 * 1000,
@@ -70,87 +100,47 @@ const handler = async (req: Request): Promise<Response> => {
         return createRateLimitResponse(attachmentRateLimit.resetAt, corsHeaders);
       }
 
-      // Verify attachment URL is from our storage bucket
-      const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
-      if (!attachmentUrl.startsWith(supabaseUrl) || !attachmentUrl.includes("/contact-attachments/")) {
-        return new Response(
-          JSON.stringify({ error: "Invalid attachment source" }),
-          { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
-        );
+      // Validate path doesn't contain traversal
+      if (attachmentPath.includes('..') || attachmentPath.startsWith('/')) {
+        return new Response(JSON.stringify({ error: "Invalid attachment path" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json", ...corsHeaders },
+        });
       }
 
-      // Validate file size via HEAD request (10MB limit)
       try {
-        const headResponse = await fetch(attachmentUrl, { method: "HEAD" });
-        if (headResponse.ok) {
-          const contentLength = parseInt(headResponse.headers.get("content-length") || "0");
-          if (contentLength > 10 * 1024 * 1024) {
-            return new Response(
-              JSON.stringify({ error: "Attachment too large (max 10MB)" }),
-              { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
-            );
+        const supabaseAdmin = createClient(
+          Deno.env.get("SUPABASE_URL") || "",
+          Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "",
+        );
+
+        const { data: fileData, error: downloadError } = await supabaseAdmin.storage
+          .from("contact-attachments")
+          .download(attachmentPath);
+
+        if (downloadError) {
+          console.warn("Failed to download attachment:", downloadError.message);
+        } else if (fileData) {
+          // Validate size (10MB)
+          if (fileData.size > 10 * 1024 * 1024) {
+            return new Response(JSON.stringify({ error: "Attachment too large (max 10MB)" }), {
+              status: 400,
+              headers: { "Content-Type": "application/json", ...corsHeaders },
+            });
           }
+
+          const arrayBuffer = await fileData.arrayBuffer();
+          const uint8Array = new Uint8Array(arrayBuffer);
+          let binary = "";
+          for (let i = 0; i < uint8Array.length; i++) {
+            binary += String.fromCharCode(uint8Array[i]);
+          }
+          attachmentBase64 = btoa(binary);
+          console.log(`Attachment downloaded and encoded: ${attachmentName} (${uint8Array.length} bytes)`);
         }
       } catch (e) {
-        console.warn("Could not verify attachment size:", e);
+        console.warn("Could not download attachment:", e);
       }
-    }
-
-    // Validate required fields
-    if (!name || !email || !subject || !message) {
-      return new Response(
-        JSON.stringify({ error: "Missing required fields" }),
-        {
-          status: 400,
-          headers: { "Content-Type": "application/json", ...corsHeaders },
-        }
-      );
-    }
-
-    // Validate email format
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      return new Response(
-        JSON.stringify({ error: "Invalid email format" }),
-        {
-          status: 400,
-          headers: { "Content-Type": "application/json", ...corsHeaders },
-        }
-      );
-    }
-
-    // Validate name length
-    if (name.length > 100) {
-      return new Response(
-        JSON.stringify({ error: "Name too long (max 100 characters)" }),
-        {
-          status: 400,
-          headers: { "Content-Type": "application/json", ...corsHeaders },
-        }
-      );
-    }
-
-    // Validate subject (must be one of allowed values)
-    const allowedSubjects = ['bug', 'feature', 'question', 'other'];
-    if (!allowedSubjects.includes(subject)) {
-      return new Response(
-        JSON.stringify({ error: "Invalid subject type" }),
-        {
-          status: 400,
-          headers: { "Content-Type": "application/json", ...corsHeaders },
-        }
-      );
-    }
-
-    // Validate message length
-    if (message.length > 1000) {
-      return new Response(
-        JSON.stringify({ error: "Message too long (max 1000 characters)" }),
-        {
-          status: 400,
-          headers: { "Content-Type": "application/json", ...corsHeaders },
-        }
-      );
     }
 
     const subjectMap: Record<string, string> = {
@@ -160,33 +150,7 @@ const handler = async (req: Request): Promise<Response> => {
       other: "Other",
     };
 
-    const subjectText = subjectMap[subject] || subject;
-
-    // If attachment exists, fetch and convert to base64
-    let attachmentBase64: string | undefined;
-    if (attachmentUrl) {
-      try {
-        const fileResponse = await fetch(attachmentUrl);
-        if (fileResponse.ok) {
-          const arrayBuffer = await fileResponse.arrayBuffer();
-          const uint8Array = new Uint8Array(arrayBuffer);
-          let binary = "";
-          for (let i = 0; i < uint8Array.length; i++) {
-            binary += String.fromCharCode(uint8Array[i]);
-          }
-          attachmentBase64 = btoa(binary);
-          console.log(`Attachment fetched and encoded: ${attachmentName} (${uint8Array.length} bytes)`);
-        } else {
-          console.warn(`Failed to fetch attachment: ${fileResponse.status}`);
-        }
-      } catch (e) {
-        console.warn("Could not fetch attachment for base64 encoding:", e);
-      }
-    }
-
-    // Send to Make.com webhook
     const makeWebhookUrl = Deno.env.get("MAKE_CONTACT_WEBHOOK_URL");
-    
     if (!makeWebhookUrl) {
       throw new Error("MAKE_CONTACT_WEBHOOK_URL not configured");
     }
@@ -194,7 +158,7 @@ const handler = async (req: Request): Promise<Response> => {
     const payload = {
       name,
       email,
-      subject: subjectText,
+      subject: subjectMap[subject] || subject,
       message,
       attachmentBase64,
       attachmentName,
@@ -220,20 +184,14 @@ const handler = async (req: Request): Promise<Response> => {
 
     return new Response(JSON.stringify({ success: true }), {
       status: 200,
-      headers: {
-        "Content-Type": "application/json",
-        ...corsHeaders,
-      },
+      headers: { "Content-Type": "application/json", ...corsHeaders },
     });
   } catch (error: any) {
     console.error("Error in send-contact-email function:", error);
-    return new Response(
-      JSON.stringify({ error: error.message }),
-      {
-        status: 500,
-        headers: { "Content-Type": "application/json", ...corsHeaders },
-      }
-    );
+    return new Response(JSON.stringify({ error: error.message }), {
+      status: 500,
+      headers: { "Content-Type": "application/json", ...corsHeaders },
+    });
   }
 };
 
