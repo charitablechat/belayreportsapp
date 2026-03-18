@@ -47,3 +47,6 @@ verify_jwt = false
 
 [functions.og-meta]
 verify_jwt = false
+
+[functions.migrate-orphaned-photos]
+verify_jwt = false
