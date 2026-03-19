@@ -1170,9 +1170,6 @@ export default function SuperAdminDashboard() {
           </Table>
         </TabsContent>
 
-        <TabsContent value="form-cms" className="space-y-4">
-          <FormCMSManager />
-        </TabsContent>
 
         <TabsContent value="notifications" className="space-y-4">
           <Table>
