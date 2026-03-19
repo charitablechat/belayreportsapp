@@ -1,25 +1,23 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { getUserWithCache } from "@/lib/cached-auth";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Progress } from "@/components/ui/progress";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
-import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   ArrowLeft, Plus, Video, FileText, Trash2, Eye, EyeOff,
-  CheckCircle2, Upload, GripVertical, Loader2, Download, X
+  CheckCircle2, Upload, Loader2
 } from "lucide-react";
-import { useRequireSuperAdmin } from "@/hooks/useRequireSuperAdmin";
+import { useRequireAdmin } from "@/hooks/useRequireAdmin";
 
 type OnboardingResource = {
   id: string;
@@ -36,8 +34,7 @@ type OnboardingResource = {
 export default function Onboarding() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+  const { isAdmin, isSuperAdmin, loading: authLoading } = useRequireAdmin();
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [videoPlayerUrl, setVideoPlayerUrl] = useState<string | null>(null);
   const [videoPlayerTitle, setVideoPlayerTitle] = useState("");
@@ -49,27 +46,7 @@ export default function Onboarding() {
   const [newFile, setNewFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
 
-  useEffect(() => {
-    const init = async () => {
-      const user = await getUserWithCache();
-      if (!user) {
-        navigate("/");
-        return;
-      }
-      setCurrentUserId(user.id);
-
-      // Check super admin
-      const { data: roles } = await supabase
-        .from("user_roles")
-        .select("role")
-        .eq("user_id", user.id)
-        .eq("role", "super_admin");
-      setIsSuperAdmin(!!(roles && roles.length > 0));
-    };
-    init();
-  }, [navigate]);
-
-  // Fetch resources
+  // Fetch resources (RLS enforces admin/super_admin access server-side)
   const { data: resources = [], isLoading: loadingResources } = useQuery({
     queryKey: ["onboarding-resources", isSuperAdmin],
     queryFn: async () => {
@@ -78,6 +55,7 @@ export default function Onboarding() {
         .select("*")
         .order("display_order", { ascending: true });
 
+      // Non-super-admin admins only see published resources
       if (!isSuperAdmin) {
         query = query.eq("is_published", true);
       }
@@ -86,21 +64,20 @@ export default function Onboarding() {
       if (error) throw error;
       return (data ?? []) as OnboardingResource[];
     },
-    enabled: !!currentUserId,
+    enabled: isAdmin === true,
   });
 
   // Fetch progress
   const { data: progress = [] } = useQuery({
-    queryKey: ["onboarding-progress", currentUserId],
+    queryKey: ["onboarding-progress"],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("onboarding_progress")
-        .select("resource_id")
-        .eq("user_id", currentUserId!);
+        .select("resource_id");
       if (error) throw error;
       return (data ?? []).map((p: any) => p.resource_id as string);
     },
-    enabled: !!currentUserId,
+    enabled: isAdmin === true,
   });
 
   const completedSet = new Set(progress);
@@ -113,15 +90,17 @@ export default function Onboarding() {
   const toggleComplete = useMutation({
     mutationFn: async ({ resourceId, completed }: { resourceId: string; completed: boolean }) => {
       if (completed) {
-        await supabase.from("onboarding_progress").delete().eq("user_id", currentUserId!).eq("resource_id", resourceId);
+        await supabase.from("onboarding_progress").delete().eq("resource_id", resourceId);
       } else {
-        await supabase.from("onboarding_progress").insert({ user_id: currentUserId!, resource_id: resourceId });
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) throw new Error("Not authenticated");
+        await supabase.from("onboarding_progress").insert({ user_id: user.id, resource_id: resourceId });
       }
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["onboarding-progress"] }),
   });
 
-  // Toggle publish
+  // Toggle publish (super admin only)
   const togglePublish = useMutation({
     mutationFn: async ({ id, published }: { id: string; published: boolean }) => {
       const { error } = await supabase.from("onboarding_resources").update({ is_published: !published }).eq("id", id);
@@ -133,10 +112,9 @@ export default function Onboarding() {
     },
   });
 
-  // Delete resource
+  // Delete resource (super admin only)
   const deleteResource = useMutation({
     mutationFn: async (resource: OnboardingResource) => {
-      // Delete from storage
       const path = resource.file_url.split("/onboarding-files/")[1];
       if (path) {
         await supabase.storage.from("onboarding-files").remove([path]);
@@ -150,12 +128,11 @@ export default function Onboarding() {
     },
   });
 
-  // Upload new resource
+  // Upload new resource (super admin only)
   const handleUpload = async () => {
-    if (!newTitle.trim() || !newFile || !currentUserId) return;
+    if (!newTitle.trim() || !newFile) return;
     setUploading(true);
     try {
-      const ext = newFile.name.split(".").pop();
       const filePath = `${Date.now()}-${newFile.name}`;
 
       const { error: uploadError } = await supabase.storage
@@ -163,11 +140,9 @@ export default function Onboarding() {
         .upload(filePath, newFile);
       if (uploadError) throw uploadError;
 
-      const { data: urlData } = supabase.storage
-        .from("onboarding-files")
-        .getPublicUrl(filePath);
-
       const maxOrder = resources.length > 0 ? Math.max(...resources.map((r) => r.display_order)) + 1 : 0;
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Not authenticated");
 
       const { error: insertError } = await supabase.from("onboarding_resources").insert({
         title: newTitle.trim(),
@@ -176,7 +151,7 @@ export default function Onboarding() {
         file_url: filePath,
         display_order: maxOrder,
         is_published: false,
-        uploaded_by: currentUserId,
+        uploaded_by: user.id,
       });
       if (insertError) throw insertError;
 
@@ -211,10 +186,31 @@ export default function Onboarding() {
       } else {
         window.open(url, "_blank");
       }
-    } catch (err: any) {
+    } catch {
       toast.error("Failed to load file");
     }
   };
+
+  // Show loading while auth check runs
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  // Access denied (redirect happens in hook, this is a fallback)
+  if (!isAdmin) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center space-y-2">
+          <p className="text-lg font-semibold text-foreground">403 — Forbidden</p>
+          <p className="text-sm text-muted-foreground">You don't have permission to access this page.</p>
+        </div>
+      </div>
+    );
+  }
 
   const videos = (isSuperAdmin ? resources : publishedResources).filter((r) => r.file_type === "video");
   const pdfs = (isSuperAdmin ? resources : publishedResources).filter((r) => r.file_type === "pdf");
@@ -409,10 +405,7 @@ function ResourceCard({
       <CardContent className="p-4 flex items-start gap-3">
         <Checkbox
           checked={completed}
-          onCheckedChange={(e) => {
-            e && typeof e === "object" && (e as any).stopPropagation?.();
-            onToggleComplete();
-          }}
+          onCheckedChange={() => onToggleComplete()}
           onClick={(e) => e.stopPropagation()}
           className="mt-1"
         />
