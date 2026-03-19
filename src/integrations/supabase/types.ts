@@ -394,7 +394,7 @@ export type Database = {
           deleted_by: string | null
           environment_comments: string | null
           id: string
-          inspector_id: string
+          inspector_id: string | null
           last_modified_by: string | null
           last_opened_at: string | null
           last_sync_source: string | null
@@ -422,7 +422,7 @@ export type Database = {
           deleted_by?: string | null
           environment_comments?: string | null
           id?: string
-          inspector_id: string
+          inspector_id?: string | null
           last_modified_by?: string | null
           last_opened_at?: string | null
           last_sync_source?: string | null
@@ -450,7 +450,7 @@ export type Database = {
           deleted_by?: string | null
           environment_comments?: string | null
           id?: string
-          inspector_id?: string
+          inspector_id?: string | null
           last_modified_by?: string | null
           last_opened_at?: string | null
           last_sync_source?: string | null
@@ -1046,7 +1046,7 @@ export type Database = {
           deleted_by: string | null
           id: string
           inspection_date: string
-          inspector_id: string
+          inspector_id: string | null
           last_modified_by: string | null
           last_opened_at: string | null
           last_sync_source: string | null
@@ -1076,7 +1076,7 @@ export type Database = {
           deleted_by?: string | null
           id?: string
           inspection_date?: string
-          inspector_id: string
+          inspector_id?: string | null
           last_modified_by?: string | null
           last_opened_at?: string | null
           last_sync_source?: string | null
@@ -1106,7 +1106,7 @@ export type Database = {
           deleted_by?: string | null
           id?: string
           inspection_date?: string
-          inspector_id?: string
+          inspector_id?: string | null
           last_modified_by?: string | null
           last_opened_at?: string | null
           last_sync_source?: string | null
@@ -1413,6 +1413,7 @@ export type Database = {
           created_at: string | null
           first_name: string | null
           id: string
+          is_active: boolean
           last_name: string | null
           updated_at: string | null
         }
@@ -1422,6 +1423,7 @@ export type Database = {
           created_at?: string | null
           first_name?: string | null
           id: string
+          is_active?: boolean
           last_name?: string | null
           updated_at?: string | null
         }
@@ -1431,6 +1433,7 @@ export type Database = {
           created_at?: string | null
           first_name?: string | null
           id?: string
+          is_active?: boolean
           last_name?: string | null
           updated_at?: string | null
         }
@@ -1864,7 +1867,7 @@ export type Database = {
           deleted_by: string | null
           end_date: string
           id: string
-          inspector_id: string
+          inspector_id: string | null
           last_modified_by: string | null
           last_opened_at: string | null
           last_sync_source: string | null
@@ -1891,7 +1894,7 @@ export type Database = {
           deleted_by?: string | null
           end_date?: string
           id?: string
-          inspector_id: string
+          inspector_id?: string | null
           last_modified_by?: string | null
           last_opened_at?: string | null
           last_sync_source?: string | null
@@ -1918,7 +1921,7 @@ export type Database = {
           deleted_by?: string | null
           end_date?: string
           id?: string
-          inspector_id?: string
+          inspector_id?: string | null
           last_modified_by?: string | null
           last_opened_at?: string | null
           last_sync_source?: string | null
