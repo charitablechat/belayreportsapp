@@ -1,30 +1,48 @@
 
-## Goal
-Start over: remove all prior Aminos chatbot installation logic and only include this script tag in the app’s HTML `<head>`:
-```html
-<script src="https://platform.aminos.ai/w/chat_plugin.js" data-bot-id="7179"></script>
+
+## Fix Double-Check Update Bug & Add "Update Now" to Profile Dropdown
+
+### Root Cause
+`ManualUpdateButton` has its **own** update-check logic (lines 62-88) with a fixed 2-second `setTimeout`. It never calls the improved `checkForUpdates` from `usePWAUpdate` that waits for the SW state transition. So the first press often misses the update, requiring a second click.
+
+### Plan
+
+**1. `src/components/pwa/ManualUpdateButton.tsx` — Use the hook's `checkForUpdates` instead of duplicated logic**
+
+Replace the manual `registration.update()` + 2s timeout with a call to `usePWA().checkForUpdates()`, which already has the proper SW state-transition listener. After it completes, read `needsUpdate` from the hook to show the correct toast. This eliminates the double-press problem.
+
+Key change in `handleCheckForUpdates`:
+```typescript
+const handleCheckForUpdates = async () => {
+  triggerHaptic('light');
+  if (needsUpdate) { /* apply update as before */ return; }
+  setChecking(true);
+  toast.loading('Checking for updates...', { id: 'update-check' });
+  await checkForUpdates();  // from usePWA — waits for SW installed state
+  setChecking(false);
+  // Toast feedback handled via useEffect watching needsUpdate
+};
 ```
 
-## What I found
-- The chatbot is currently injected via a `useEffect` in `src/pages/Dashboard.tsx`, using `platform.simplebotinstall.com` and cleanup logic. No other chatbot references exist elsewhere.
+Add a `useEffect` that watches `needsUpdate` transitions (false → true) to show the "Update found!" toast, since the state updates asynchronously.
 
-## Plan (code changes)
-1. **Remove all chatbot code from the Dashboard page**
-   - File: `src/pages/Dashboard.tsx`
-   - Delete the entire Aminos chatbot `useEffect` block (the section that:
-     - checks `script[data-bot-id="7179"]`
-     - appends a `<script>` to `document.body`
-     - removes the script / `[id*="aminos"], [class*="aminos"]` on cleanup)
-   - Leave everything else in `Dashboard.tsx` unchanged.
+**2. `src/components/UserProfileDropdown.tsx` — Add "Update Now" menu item**
 
-2. **Add the provided script tag to the global HTML header**
-   - File: `index.html`
-   - Insert inside `<head>`, near the end (right before `</head>` is fine):
-     ```html
-     <script src="https://platform.aminos.ai/w/chat_plugin.js" data-bot-id="7179"></script>
-     ```
-   - No other chatbot-related logic will remain in React components.
+When `needsUpdate` is true, add a prominent dropdown menu item with a pulsing indicator dot and amber styling that calls `updateAndReload()`. Place it right after the profile item, before other menu items, so it's immediately visible.
 
-## Expected result
-- The chatbot script loads for **all users** (and on **all routes**) because it’s in the global HTML `<head>`.
-- This is the cleanest “start over” baseline; if the bot still doesn’t appear after this, the next step will be to inspect runtime errors/network blocking (ad blockers/CSP) via console + network logs.
+```
+┌──────────────────────┐
+│ 👤 Profile           │
+│ 🟠 Update Now        │  ← new, only when needsUpdate === true
+│ 📖 Onboarding        │
+│ ...                  │
+└──────────────────────┘
+```
+
+### Files affected
+
+| File | Change |
+|------|--------|
+| `src/components/pwa/ManualUpdateButton.tsx` | Replace duplicated SW check with `checkForUpdates()` from hook; add `useEffect` for toast on needsUpdate change |
+| `src/components/UserProfileDropdown.tsx` | Add conditional "Update Now" menu item with pulse animation when `needsUpdate` is true |
+
