@@ -581,20 +581,32 @@ serve(async (req) => {
               const binary = imgArray.reduce((acc: string, byte: number) => acc + String.fromCharCode(byte), '');
               const imgBase64 = btoa(binary);
               
-              // Calculate actual aspect ratio to prevent cropping
+              // Detect image format from magic bytes
+              let imgFormat: 'JPEG' | 'PNG' = 'JPEG';
+              if (imgArray[0] === 0x89 && imgArray[1] === 0x50 &&
+                  imgArray[2] === 0x4E && imgArray[3] === 0x47) {
+                imgFormat = 'PNG';
+              }
+
               const maxW = 80; // mm
               const maxH = 60; // mm
               let imgWidth = maxW;
               let imgHeight = maxH;
 
-              // Parse JPEG dimensions from SOF marker (works in Deno without DOM)
               let jpegW = 0, jpegH = 0;
-              for (let i = 0; i < imgArray.length - 9; i++) {
-                // Look for SOF0 (0xFFC0) or SOF2 (0xFFC2) markers
-                if (imgArray[i] === 0xFF && (imgArray[i + 1] === 0xC0 || imgArray[i + 1] === 0xC2)) {
-                  jpegH = (imgArray[i + 5] << 8) | imgArray[i + 6];
-                  jpegW = (imgArray[i + 7] << 8) | imgArray[i + 8];
-                  break;
+
+              if (imgFormat === 'PNG' && imgArray.length > 24) {
+                // PNG IHDR: width at bytes 16-19, height at bytes 20-23 (big-endian)
+                jpegW = (imgArray[16] << 24) | (imgArray[17] << 16) | (imgArray[18] << 8) | imgArray[19];
+                jpegH = (imgArray[20] << 24) | (imgArray[21] << 16) | (imgArray[22] << 8) | imgArray[23];
+              } else {
+                // Parse JPEG dimensions from SOF marker (works in Deno without DOM)
+                for (let i = 0; i < imgArray.length - 9; i++) {
+                  if (imgArray[i] === 0xFF && (imgArray[i + 1] === 0xC0 || imgArray[i + 1] === 0xC2)) {
+                    jpegH = (imgArray[i + 5] << 8) | imgArray[i + 6];
+                    jpegW = (imgArray[i + 7] << 8) | imgArray[i + 8];
+                    break;
+                  }
                 }
               }
 
@@ -602,15 +614,16 @@ serve(async (req) => {
                 const ratio = Math.min(maxW / jpegW, maxH / jpegH);
                 imgWidth = jpegW * ratio;
                 imgHeight = jpegH * ratio;
-                console.log(`Photo sized: ${jpegW}x${jpegH}px → ${imgWidth.toFixed(1)}x${imgHeight.toFixed(1)}mm`);
+                console.log(`Photo sized (${imgFormat}): ${jpegW}x${jpegH}px → ${imgWidth.toFixed(1)}x${imgHeight.toFixed(1)}mm`);
               } else {
-                console.warn('Could not parse JPEG dimensions, using defaults');
+                console.warn(`Could not parse ${imgFormat} dimensions, using defaults`);
               }
               
               checkPageBreak(imgHeight + 20);
               
+              const mimeType = imgFormat === 'PNG' ? 'image/png' : 'image/jpeg';
               try {
-                doc.addImage(`data:image/jpeg;base64,${imgBase64}`, 'JPEG', margin, yPos, imgWidth, imgHeight);
+                doc.addImage(`data:${mimeType};base64,${imgBase64}`, imgFormat, margin, yPos, imgWidth, imgHeight);
                 yPos += imgHeight + 5;
               } catch (imgErr) {
                 console.error('Failed to add photo to PDF:', imgErr);
