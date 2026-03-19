@@ -24,6 +24,7 @@ interface UserManagementDialogProps {
     email: string;
     firstName: string;
     lastName: string;
+    currentRole?: string;
   };
   organizations: Array<{ id: string; name: string }>;
   onSubmit: (data: UserFormData) => Promise<void>;
@@ -56,7 +57,7 @@ export function UserManagementDialog({
           firstName: user.firstName,
           lastName: user.lastName,
           organizationId: '',
-          role: 'inspector',
+          role: (user.currentRole as 'admin' | 'inspector' | 'super_admin') || 'inspector',
         });
       } else if (mode === 'create') {
         setFormData({
@@ -154,24 +155,22 @@ export function UserManagementDialog({
               </div>
             </div>
 
-            {mode === 'create' && (
-              <div className="grid gap-2">
-                <Label htmlFor="role">Role</Label>
-                <Select
-                  value={formData.role}
-                  onValueChange={(value: 'inspector' | 'admin' | 'super_admin') => setFormData({ ...formData, role: value })}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="inspector">User</SelectItem>
-                    <SelectItem value="admin">Admin</SelectItem>
-                    <SelectItem value="super_admin">Super Admin</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
+            <div className="grid gap-2">
+              <Label htmlFor="role">Role</Label>
+              <Select
+                value={formData.role}
+                onValueChange={(value: 'inspector' | 'admin' | 'super_admin') => setFormData({ ...formData, role: value })}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="inspector">User</SelectItem>
+                  <SelectItem value="admin">Admin</SelectItem>
+                  <SelectItem value="super_admin">Super Admin</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
           <DialogFooter>

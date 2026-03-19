@@ -20,6 +20,7 @@ interface UpdateUserPayload {
   firstName?: string;
   lastName?: string;
   password?: string;
+  role?: 'admin' | 'inspector' | 'super_admin';
 }
 
 interface DeleteUserPayload {
@@ -134,7 +135,7 @@ Deno.serve(async (req) => {
       }
 
       case 'update': {
-        const { userId, email, firstName, lastName, password } = payload as UpdateUserPayload;
+        const { userId, email, firstName, lastName, password, role } = payload as UpdateUserPayload;
 
         const updateData: any = {};
         if (email) updateData.email = email;
@@ -171,6 +172,34 @@ Deno.serve(async (req) => {
           if (profileError) {
             console.error('Error updating profile:', profileError);
           }
+        }
+
+        // Update role if provided
+        if (role) {
+          // Remove all existing roles for this user
+          const { error: deleteRolesError } = await supabaseAdmin
+            .from('user_roles')
+            .delete()
+            .eq('user_id', userId);
+
+          if (deleteRolesError) {
+            console.error('Error removing old roles:', deleteRolesError);
+          }
+
+          // Insert new role
+          const { error: roleError } = await supabaseAdmin
+            .from('user_roles')
+            .insert({
+              user_id: userId,
+              role: role,
+              organization_id: null,
+            });
+
+          if (roleError) {
+            console.error('Error setting new role:', roleError);
+          }
+
+          console.log(`Role updated to ${role} for user: ${userId}`);
         }
 
         return new Response(
