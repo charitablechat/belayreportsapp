@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Building2, Users, FileText, Bell, UserPlus, Pencil, Trash2, ClipboardList, ArrowLeft, Merge, Clock, Calendar, Wrench, Loader2, Image, Shield, ShieldOff, GraduationCap, ClipboardCheck, Check, Settings, RotateCcw, UserCog, AlertTriangle } from "lucide-react";
+import { Building2, Users, FileText, Bell, UserPlus, Pencil, Trash2, ClipboardList, ArrowLeft, Merge, Clock, Calendar, Wrench, Loader2, Image, Shield, ShieldOff, GraduationCap, ClipboardCheck, Check, Settings, RotateCcw, UserCog, AlertTriangle, UserX, UserCheck } from "lucide-react";
 import { format } from "date-fns";
 import { useNavigate } from "react-router-dom";
 import { goBack } from "@/lib/navigation";
@@ -38,6 +38,8 @@ export default function SuperAdminDashboard() {
   const [superAdminDialogOpen, setSuperAdminDialogOpen] = useState(false);
   const [superAdminAction, setSuperAdminAction] = useState<'grant' | 'revoke'>('grant');
   const [superAdminTargetUser, setSuperAdminTargetUser] = useState<any>(null);
+  const [deactivateDialogOpen, setDeactivateDialogOpen] = useState(false);
+  const [userToDeactivate, setUserToDeactivate] = useState<any>(null);
   
   // Dialog states for stat cards
   const [isUsersListOpen, setIsUsersListOpen] = useState(false);
@@ -501,6 +503,37 @@ export default function SuperAdminDashboard() {
     }
   };
 
+  const handleDeactivateClick = (user: any) => {
+    setUserToDeactivate(user);
+    setDeactivateDialogOpen(true);
+  };
+
+  const handleConfirmDeactivateToggle = async () => {
+    if (!userToDeactivate) return;
+    const isCurrentlyActive = userToDeactivate.isActive !== false;
+
+    try {
+      const { data, error } = await supabase.functions.invoke('admin-manage-user', {
+        body: {
+          action: isCurrentlyActive ? 'deactivate' : 'reactivate',
+          userId: userToDeactivate.id,
+        }
+      });
+
+      if (error) throw error;
+      if (!data.success) throw new Error(data.error);
+
+      toast.success(isCurrentlyActive ? 'User deactivated' : 'User reactivated');
+      setDeactivateDialogOpen(false);
+      setUserToDeactivate(null);
+      refetchUsers();
+      queryClient.invalidateQueries({ queryKey: ["admin-users"] });
+    } catch (error: any) {
+      console.error('Error toggling user activation:', error);
+      toast.error(error?.message || 'Failed to update user status');
+    }
+  };
+
   // Reset avg completion time metric
   const handleResetCompletionTime = async () => {
     try {
@@ -910,18 +943,28 @@ export default function SuperAdminDashboard() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Email</TableHead>
-                <TableHead>Name</TableHead>
-                <TableHead>Roles</TableHead>
-                <TableHead>Last Sign In</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
+                 <TableHead>Email</TableHead>
+                 <TableHead>Name</TableHead>
+                 <TableHead>Status</TableHead>
+                 <TableHead>Roles</TableHead>
+                 <TableHead>Last Sign In</TableHead>
+                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {managedUsers?.map((user: any) => (
-                <TableRow key={user.id}>
+              {managedUsers?.map((user: any) => {
+                const isInactive = user.isActive === false;
+                return (
+                <TableRow key={user.id} className={isInactive ? 'opacity-50' : ''}>
                   <TableCell className="font-medium">{user.email}</TableCell>
                   <TableCell>{user.firstName} {user.lastName}</TableCell>
+                  <TableCell>
+                    {isInactive ? (
+                      <Badge variant="destructive" className="text-xs">Deactivated</Badge>
+                    ) : (
+                      <Badge variant="outline" className="text-xs bg-emerald-500/10 text-emerald-500 border-emerald-500/30">Active</Badge>
+                    )}
+                  </TableCell>
                   <TableCell>
                     {user.roles?.length > 0 ? (
                       <div className="flex flex-wrap gap-1">
@@ -940,6 +983,18 @@ export default function SuperAdminDashboard() {
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleDeactivateClick(user)}
+                        title={isInactive ? 'Reactivate User' : 'Deactivate User'}
+                      >
+                        {isInactive ? (
+                          <UserCheck className="h-4 w-4 text-emerald-500" />
+                        ) : (
+                          <UserX className="h-4 w-4 text-amber-500" />
+                        )}
+                      </Button>
                       <Button
                         variant="ghost"
                         size="sm"
@@ -969,7 +1024,8 @@ export default function SuperAdminDashboard() {
                     </div>
                   </TableCell>
                 </TableRow>
-              ))}
+                );
+              })}
             </TableBody>
           </Table>
         </TabsContent>
@@ -1401,16 +1457,70 @@ export default function SuperAdminDashboard() {
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will permanently delete the user account for <strong>{userToDelete?.email}</strong>.
-              This action cannot be undone.
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-destructive" />
+              Permanently Delete User?
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                <p>
+                  This will permanently delete the account for <strong>{userToDelete?.email}</strong>.
+                  This action cannot be undone.
+                </p>
+                <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-200">
+                  <p className="font-medium mb-1">⚠️ Reports will be preserved</p>
+                  <p>All inspections, trainings, and daily assessments created by this user will remain in the system, but the inspector name will be removed from those reports.</p>
+                </div>
+                <p className="text-sm font-medium">
+                  Consider <strong>deactivating</strong> the user instead — this prevents login while keeping full report attribution.
+                </p>
+              </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={handleDeleteUser} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-              Delete User
+              Delete Permanently
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Deactivate / Reactivate Confirmation Dialog */}
+      <AlertDialog open={deactivateDialogOpen} onOpenChange={setDeactivateDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {userToDeactivate?.isActive !== false ? 'Deactivate User' : 'Reactivate User'}
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2">
+                {userToDeactivate?.isActive !== false ? (
+                  <>
+                    <p>
+                      Deactivating <strong>{userToDeactivate?.email}</strong> will prevent them from logging in.
+                    </p>
+                    <p className="text-sm">
+                      Their profile and all reports will remain intact with full attribution. You can reactivate them at any time.
+                    </p>
+                  </>
+                ) : (
+                  <p>
+                    Reactivating <strong>{userToDeactivate?.email}</strong> will restore their ability to log in and use the system.
+                  </p>
+                )}
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmDeactivateToggle}
+              className={userToDeactivate?.isActive !== false
+                ? 'bg-amber-600 hover:bg-amber-700 text-white'
+                : 'bg-emerald-600 hover:bg-emerald-700 text-white'}
+            >
+              {userToDeactivate?.isActive !== false ? 'Deactivate' : 'Reactivate'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

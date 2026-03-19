@@ -231,6 +231,74 @@ Deno.serve(async (req) => {
         );
       }
 
+      case 'deactivate': {
+        const { userId } = payload as { userId: string };
+
+        if (userId === user.id) {
+          throw new Error('Cannot deactivate your own account');
+        }
+
+        // Ban the user in auth (effectively permanent)
+        const { error: banError } = await supabaseAdmin.auth.admin.updateUserById(userId, {
+          ban_duration: '876000h',
+        });
+
+        if (banError) {
+          console.error('Error banning user:', banError);
+          throw banError;
+        }
+
+        // Set is_active = false in profiles
+        const { error: profileError } = await supabaseAdmin
+          .from('profiles')
+          .update({ is_active: false })
+          .eq('id', userId);
+
+        if (profileError) {
+          console.error('Error deactivating profile:', profileError);
+          throw profileError;
+        }
+
+        console.log(`User deactivated: ${userId}`);
+
+        return new Response(
+          JSON.stringify({ success: true }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      case 'reactivate': {
+        const { userId } = payload as { userId: string };
+
+        // Unban the user
+        const { error: unbanError } = await supabaseAdmin.auth.admin.updateUserById(userId, {
+          ban_duration: 'none',
+        });
+
+        if (unbanError) {
+          console.error('Error unbanning user:', unbanError);
+          throw unbanError;
+        }
+
+        // Set is_active = true in profiles
+        const { error: profileError } = await supabaseAdmin
+          .from('profiles')
+          .update({ is_active: true })
+          .eq('id', userId);
+
+        if (profileError) {
+          console.error('Error reactivating profile:', profileError);
+          throw profileError;
+        }
+
+        console.log(`User reactivated: ${userId}`);
+
+        return new Response(
+          JSON.stringify({ success: true }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
       case 'list': {
         // Get all users from auth
         const { data: authUsers, error: listError } = await supabaseAdmin.auth.admin.listUsers();
@@ -243,7 +311,7 @@ Deno.serve(async (req) => {
         // Get profiles and roles
         const { data: profiles } = await supabaseAdmin
           .from('profiles')
-          .select('id, first_name, last_name');
+          .select('id, first_name, last_name, is_active');
 
         const { data: roles } = await supabaseAdmin
           .from('user_roles')
@@ -273,6 +341,7 @@ Deno.serve(async (req) => {
               name: (m.organizations as any)?.name || '',
             })),
             isSuperAdmin,
+            isActive: profile?.is_active ?? true,
           };
         });
 

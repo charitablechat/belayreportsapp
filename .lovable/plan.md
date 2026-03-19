@@ -1,46 +1,66 @@
 
 
-## User Deactivation and Safe Deletion
+## Onboarding Resource Center
 
-### Problem
-Currently, deleting a user via the Super Admin panel calls `auth.admin.deleteUser()`, which removes them from `auth.users`. This cascades to delete their `profiles` row, which can break foreign key references from `inspections`, `trainings`, and `daily_assessments` (all reference `profiles.id` via `inspector_id`). Reports must always be preserved regardless of what happens to the user account.
+A dedicated `/onboarding` page where users can browse videos and PDFs you've uploaded, and mark items as completed.
 
-### Changes
+### Database
 
-**1. Database: Add `is_active` column to `profiles`** (migration)
-- Add `is_active BOOLEAN NOT NULL DEFAULT true` to the `profiles` table
-- This enables deactivation without removing the user from the system
+**1. `onboarding_resources` table** — stores metadata for each uploaded file
 
-**2. Database: Change FK behavior on report tables** (migration)
-- Alter the `inspector_id` foreign keys on `inspections`, `trainings`, and `daily_assessments` to use `ON DELETE SET NULL` instead of the current behavior (which would fail or cascade)
-- Also alter `last_modified_by` FKs similarly
-- This ensures that even if a user is fully deleted, their reports survive with `inspector_id = NULL`
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | PK |
+| title | text | Display name |
+| description | text | Optional summary |
+| file_type | text | 'video' or 'pdf' |
+| file_url | text | Storage path |
+| display_order | integer | Sort order |
+| is_published | boolean | Only published items shown to users |
+| uploaded_by | uuid | References auth.users |
+| created_at | timestamptz | |
 
-**3. Edge function: Add `deactivate` and `reactivate` actions** (`admin-manage-user/index.ts`)
-- `deactivate`: Sets `profiles.is_active = false` and bans the user via `auth.admin.updateUserById(userId, { ban_duration: '876000h' })` (effectively permanent ban — prevents login)
-- `reactivate`: Sets `profiles.is_active = true` and unbans via `auth.admin.updateUserById(userId, { ban_duration: 'none' })`
-- Update `delete` action: before deleting, ensure FK constraints won't cascade-delete reports (the migration handles this)
-- Update `list` action: include `is_active` status in response
+RLS: Super admins can CRUD. Authenticated users can SELECT where `is_published = true`.
 
-**4. Frontend: Add deactivate/reactivate controls** (`SuperAdminDashboard.tsx`)
-- Add a deactivate/reactivate toggle button per user (e.g., `UserX` / `UserCheck` icons)
-- Show deactivated users with a visual indicator (dimmed row + "Deactivated" badge)
-- Add confirmation dialog for deactivation
-- Keep the delete button but add a stronger warning that deletion is permanent and reports will be orphaned
+**2. `onboarding_progress` table** — tracks per-user completion
 
-**5. Frontend: Update delete confirmation** (`SuperAdminDashboard.tsx`)
-- Enhance the delete dialog to warn that reports will be preserved but will no longer show the inspector's name
-- Suggest deactivation as the preferred alternative
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | PK |
+| user_id | uuid | References auth.users |
+| resource_id | uuid | FK to onboarding_resources |
+| completed_at | timestamptz | When marked complete |
+| unique(user_id, resource_id) | | Prevents duplicates |
 
-### Files Modified
-| File | Change |
+RLS: Users can manage their own rows only.
+
+**3. `onboarding-files` storage bucket** — private bucket for the actual video/PDF files. Super admins can upload; authenticated users can read.
+
+### Frontend
+
+**`/onboarding` page** — accessible from the dashboard header navigation:
+- Lists all published resources grouped by type (Videos section, Documents section)
+- Each card shows: title, description, file type icon, and a checkbox to mark complete
+- Clicking a video opens an inline `<video>` player; clicking a PDF downloads it
+- A progress bar at the top shows "X of Y completed"
+- Matches existing app styling (cards, borders, monospace metadata)
+
+**Admin upload UI** — visible only to super admins on the same page:
+- "Add Resource" button opens a form: title, description, file type selector, file upload input, display order
+- Drag-to-reorder support using existing drag patterns
+- Toggle publish/unpublish per resource
+- Delete resource (removes from storage + DB)
+
+### Route Addition
+
+Add `/onboarding` to `App.tsx` router, import the new `Onboarding.tsx` page component. Add a navigation link in `AuthenticatedHeader.tsx`.
+
+### Files
+
+| File | Action |
 |------|--------|
-| New migration SQL | Add `is_active` to profiles; alter FK constraints to `ON DELETE SET NULL` |
-| `supabase/functions/admin-manage-user/index.ts` | Add `deactivate`/`reactivate` actions; update `list` to include `is_active` |
-| `src/pages/SuperAdminDashboard.tsx` | Add deactivate/reactivate UI, update delete confirmation warning |
-
-### User Experience
-- **Deactivate**: User cannot log in, profile remains, all reports intact with full attribution
-- **Reactivate**: Reverses deactivation, user can log in again
-- **Delete**: Permanent removal — reports remain but `inspector_id` set to NULL (name lost unless stored as text on the report)
+| Migration SQL | Create tables, bucket, RLS policies |
+| `src/pages/Onboarding.tsx` | New page component |
+| `src/App.tsx` | Add route |
+| `src/components/AuthenticatedHeader.tsx` | Add nav link |
 
