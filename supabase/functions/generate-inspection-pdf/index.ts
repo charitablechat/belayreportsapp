@@ -514,6 +514,7 @@ serve(async (req) => {
       yPos += 8;
 
       if (summary.critical_actions) {
+        checkPageBreak(20);
         doc.setFontSize(12);
         doc.setFont('helvetica', 'bold');
         doc.setTextColor(211, 47, 47);
@@ -532,6 +533,7 @@ serve(async (req) => {
       }
 
       if (summary.repairs_performed) {
+        checkPageBreak(15);
         doc.setFontSize(10);
         doc.setFont('helvetica', 'normal');
         const repairLines = doc.splitTextToSize(stripHtml(summary.repairs_performed), contentWidth);
@@ -544,6 +546,7 @@ serve(async (req) => {
       }
 
       if (summary.future_considerations) {
+        checkPageBreak(20);
         doc.setFontSize(12);
         doc.setFont('helvetica', 'bold');
         doc.text('Future Considerations', margin, yPos);
@@ -560,6 +563,7 @@ serve(async (req) => {
       }
 
       if (summary.next_inspection_date) {
+        checkPageBreak(15);
         const nextInspectionData = [['Next Inspection Due', formatDate(summary.next_inspection_date)]];
         
         doc.autoTable({
@@ -585,7 +589,7 @@ serve(async (req) => {
     // Disclaimer Box
     const disclaimerText = 'This inspection report is based on visual observation and testing of the equipment and facilities at the time of inspection. The inspector makes no warranty, expressed or implied, that all defects have been discovered or that no defects exist other than those noted. This report does not constitute approval or acceptance of the facilities for any particular use.';
     const disclaimerLines = doc.splitTextToSize(disclaimerText, contentWidth - 10);
-    const disclaimerHeight = (disclaimerLines.length * 4) + 16;
+    const disclaimerHeight = (disclaimerLines.length * 4.5) + 16;
     checkPageBreak(disclaimerHeight + 10);
     
     doc.setFillColor(254, 243, 199);
@@ -598,7 +602,7 @@ serve(async (req) => {
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(0, 0, 0);
     disclaimerLines.forEach((line: string, index: number) => {
-      doc.text(line, margin, yPos + (index * 4));
+      doc.text(line, margin, yPos + (index * 4.5));
     });
 
     // Add footers to all pages

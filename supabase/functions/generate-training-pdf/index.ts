@@ -444,7 +444,7 @@ serve(async (req) => {
       yPos += 8;
 
       if (content.summary.observationsList.length > 0) {
-        checkPageBreak(15);
+        checkPageBreak(20);
         doc.setFontSize(12);
         doc.setFont('helvetica', 'bold');
         doc.setTextColor(0, 0, 0);
@@ -472,7 +472,7 @@ serve(async (req) => {
       }
 
       if (content.summary.recommendationsList.length > 0) {
-        checkPageBreak(15);
+        checkPageBreak(20);
         doc.setFontSize(12);
         doc.setFont('helvetica', 'bold');
         doc.setTextColor(0, 0, 0);
@@ -604,6 +604,7 @@ serve(async (req) => {
               }
               
               if (photo.caption) {
+                checkPageBreak(10);
                 doc.setFontSize(9);
                 doc.setFont('helvetica', 'normal');
                 doc.setTextColor(100, 116, 139);
@@ -623,7 +624,7 @@ serve(async (req) => {
 
     // Disclaimer Box
     const disclaimerLines = doc.splitTextToSize(content.disclaimer, contentWidth - 10);
-    const disclaimerHeight = (disclaimerLines.length * 4) + 16;
+    const disclaimerHeight = (disclaimerLines.length * 4.5) + 16;
     checkPageBreak(disclaimerHeight + 10);
     
     doc.setFillColor(254, 243, 199);
@@ -636,7 +637,7 @@ serve(async (req) => {
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(0, 0, 0);
     disclaimerLines.forEach((line: string, index: number) => {
-      doc.text(line, margin, yPos + (index * 4));
+      doc.text(line, margin, yPos + (index * 4.5));
     });
 
     // Add footers to all pages
