@@ -583,10 +583,10 @@ serve(async (req) => {
     }
 
     // Disclaimer Box
-    if (yPos > pageHeight - 60) {
-      doc.addPage();
-      yPos = margin;
-    }
+    const disclaimerText = 'This inspection report is based on visual observation and testing of the equipment and facilities at the time of inspection. The inspector makes no warranty, expressed or implied, that all defects have been discovered or that no defects exist other than those noted. This report does not constitute approval or acceptance of the facilities for any particular use.';
+    const disclaimerLines = doc.splitTextToSize(disclaimerText, contentWidth - 10);
+    const disclaimerHeight = (disclaimerLines.length * 4) + 16;
+    checkPageBreak(disclaimerHeight + 10);
     
     doc.setFillColor(254, 243, 199);
     const disclaimerText = 'This inspection report is based on visual observation and testing of the equipment and facilities at the time of inspection. The inspector makes no warranty, expressed or implied, that all defects have been discovered or that no defects exist other than those noted. This report does not constitute approval or acceptance of the facilities for any particular use.';
