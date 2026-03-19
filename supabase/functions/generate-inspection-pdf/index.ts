@@ -552,10 +552,7 @@ serve(async (req) => {
         doc.setFont('helvetica', 'normal');
         const futureLines = doc.splitTextToSize(stripHtml(summary.future_considerations), contentWidth);
         futureLines.forEach((line: string) => {
-          if (yPos > pageHeight - 40) {
-            doc.addPage();
-            yPos = margin;
-          }
+          checkPageBreak(5);
           doc.text(line, margin, yPos);
           yPos += 5;
         });
