@@ -38,6 +38,8 @@ export default function SuperAdminDashboard() {
   const [superAdminDialogOpen, setSuperAdminDialogOpen] = useState(false);
   const [superAdminAction, setSuperAdminAction] = useState<'grant' | 'revoke'>('grant');
   const [superAdminTargetUser, setSuperAdminTargetUser] = useState<any>(null);
+  const [deactivateDialogOpen, setDeactivateDialogOpen] = useState(false);
+  const [userToDeactivate, setUserToDeactivate] = useState<any>(null);
   
   // Dialog states for stat cards
   const [isUsersListOpen, setIsUsersListOpen] = useState(false);
