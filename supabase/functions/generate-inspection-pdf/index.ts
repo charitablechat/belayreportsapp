@@ -533,6 +533,7 @@ serve(async (req) => {
       }
 
       if (summary.repairs_performed) {
+        checkPageBreak(15);
         doc.setFontSize(10);
         doc.setFont('helvetica', 'normal');
         const repairLines = doc.splitTextToSize(stripHtml(summary.repairs_performed), contentWidth);
