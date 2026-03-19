@@ -21,6 +21,7 @@ import { DataRecoveryTool } from "@/components/admin/DataRecoveryTool";
 import { DeletedRecordsRecovery } from "@/components/admin/DeletedRecordsRecovery";
 import { ReportOwnershipTool } from "@/components/admin/ReportOwnershipTool";
 import { DatabaseBackupsPanel } from "@/components/admin/DatabaseBackupsPanel";
+import { OrganizationReportsPanel } from "@/components/admin/OrganizationReportsPanel";
 import { toast } from "sonner";
 import { parseLocalDate } from "@/lib/date-utils";
 import { getSessionBackground } from "@/lib/background-manager";
@@ -55,6 +56,7 @@ export default function SuperAdminDashboard() {
   const [selectedOrg, setSelectedOrg] = useState<any>(null);
   const [editingOrgName, setEditingOrgName] = useState("");
   const [orgToDelete, setOrgToDelete] = useState<any>(null);
+  const [selectedOrgForReports, setSelectedOrgForReports] = useState<{ id: string; name: string } | null>(null);
   
   // Pagination states for dialogs
   const [usersPage, setUsersPage] = useState(1);
@@ -875,7 +877,7 @@ export default function SuperAdminDashboard() {
                       : null;
 
                     return (
-                      <TableRow key={org.id}>
+                      <TableRow key={org.id} className="cursor-pointer hover:bg-muted/50" onClick={() => setSelectedOrgForReports({ id: org.id, name: org.name })}>
                         <TableCell className="font-medium">{org.name}</TableCell>
                         <TableCell className="text-center">
                           <Badge variant={inspectionCount > 0 ? "default" : "outline"}>
@@ -907,14 +909,14 @@ export default function SuperAdminDashboard() {
                             <Button
                               variant="ghost"
                               size="sm"
-                              onClick={() => handleEditOrg(org)}
+                              onClick={(e) => { e.stopPropagation(); handleEditOrg(org); }}
                             >
                               <Pencil className="h-4 w-4" />
                             </Button>
                             <Button
                               variant="ghost"
                               size="sm"
-                              onClick={() => handleDeleteOrgClick(org)}
+                              onClick={(e) => { e.stopPropagation(); handleDeleteOrgClick(org); }}
                             >
                               <Trash2 className="h-4 w-4 text-destructive" />
                             </Button>
@@ -927,6 +929,14 @@ export default function SuperAdminDashboard() {
               </TableBody>
             </Table>
           </div>
+
+          {selectedOrgForReports && (
+            <OrganizationReportsPanel
+              organizationId={selectedOrgForReports.id}
+              organizationName={selectedOrgForReports.name}
+              onBack={() => setSelectedOrgForReports(null)}
+            />
+          )}
         </TabsContent>
 
         <TabsContent value="user-management" className="space-y-4">
