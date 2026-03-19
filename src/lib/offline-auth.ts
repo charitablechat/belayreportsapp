@@ -308,6 +308,14 @@ async function migrateUserData(oldUserId: string, newUserId: string): Promise<vo
       { name: 'daily_assessments' as const, idField: 'inspector_id' },
     ];
     
+    // Also migrate photo stores - photos reference parent reports by foreign key,
+    // but we need to ensure they're accessible after userId migration
+    const photoStoresToMigrate = [
+      { name: 'inspection_photos' as const, ownerField: 'inspector_id' },
+      { name: 'training_photos' as const, ownerField: 'inspector_id' },
+      { name: 'daily_assessment_photos' as const, ownerField: 'inspector_id' },
+    ];
+    
     let totalMigrated = 0;
     
     for (const { name, idField } of storesToMigrate) {
