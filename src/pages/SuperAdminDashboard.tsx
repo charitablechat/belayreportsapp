@@ -877,7 +877,7 @@ export default function SuperAdminDashboard() {
                       : null;
 
                     return (
-                      <TableRow key={org.id}>
+                      <TableRow key={org.id} className="cursor-pointer hover:bg-muted/50" onClick={() => setSelectedOrgForReports({ id: org.id, name: org.name })}>
                         <TableCell className="font-medium">{org.name}</TableCell>
                         <TableCell className="text-center">
                           <Badge variant={inspectionCount > 0 ? "default" : "outline"}>
