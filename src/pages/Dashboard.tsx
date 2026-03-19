@@ -94,8 +94,12 @@ export default function Dashboard() {
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [userProfile, setUserProfile] = useState<any>(null);
   const [inspectorFilter, setInspectorFilter] = useState<string>("all");
-  // Aminos AI Chatbot - inject script on mount, clean up on unmount
+  // Aminos AI Chatbot - inject script once DOM is settled
   useEffect(() => {
+    // Prevent duplicate injection
+    const existingScript = document.querySelector('script[data-bot-id="7179"]');
+    if (existingScript) return;
+
     const script = document.createElement('script');
     script.src = 'https://platform.aminos.ai/w/chat_plugin.js';
     script.setAttribute('data-bot-id', '7179');
