@@ -1287,6 +1287,10 @@ export default function SuperAdminDashboard() {
         <TabsContent value="report-ownership" className="space-y-4">
           <ReportOwnershipTool />
         </TabsContent>
+
+        <TabsContent value="database-backups" className="space-y-4">
+          <DatabaseBackupsPanel />
+        </TabsContent>
       </Tabs>
 
       {/* Users List Dialog */}
