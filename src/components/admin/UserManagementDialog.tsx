@@ -57,7 +57,7 @@ export function UserManagementDialog({
           firstName: user.firstName,
           lastName: user.lastName,
           organizationId: '',
-          role: 'inspector',
+          role: (user.currentRole as 'admin' | 'inspector' | 'super_admin') || 'inspector',
         });
       } else if (mode === 'create') {
         setFormData({
