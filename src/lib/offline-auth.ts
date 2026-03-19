@@ -308,13 +308,8 @@ async function migrateUserData(oldUserId: string, newUserId: string): Promise<vo
       { name: 'daily_assessments' as const, idField: 'inspector_id' },
     ];
     
-    // Also migrate photo stores - photos reference parent reports by foreign key,
-    // but we need to ensure they're accessible after userId migration
-    const photoStoresToMigrate = [
-      { name: 'inspection_photos' as const, ownerField: 'inspector_id' },
-      { name: 'training_photos' as const, ownerField: 'inspector_id' },
-      { name: 'daily_assessment_photos' as const, ownerField: 'inspector_id' },
-    ];
+    // Also migrate the unified 'photos' store - photos use inspectionId 
+    // (which maps to the parent report) but the photo_url path contains the userId
     
     let totalMigrated = 0;
     
@@ -338,27 +333,32 @@ async function migrateUserData(oldUserId: string, newUserId: string): Promise<vo
       }
     }
     
-    // Migrate photo stores
-    for (const { name, ownerField } of photoStoresToMigrate) {
-      try {
-        const tx = db.transaction(name, 'readwrite');
-        const store = tx.objectStore(name);
-        const allRecords = await store.getAll();
+    // Migrate photos store - update photo_url paths containing the old userId
+    try {
+      const tx = db.transaction('photos', 'readwrite');
+      const store = tx.objectStore('photos');
+      const allPhotos = await store.getAll();
+      
+      for (const photo of allPhotos) {
+        let changed = false;
         
-        for (const record of allRecords) {
-          if (record[ownerField] === oldUserId) {
-            record[ownerField] = newUserId;
-            await store.put(record);
-            totalMigrated++;
-          }
+        // Update photo_url path if it contains the old userId
+        if (photo.photo_url && typeof photo.photo_url === 'string' && photo.photo_url.includes(oldUserId)) {
+          photo.photo_url = photo.photo_url.replace(oldUserId, newUserId);
+          changed = true;
         }
         
-        await tx.done;
-      } catch (storeError) {
-        // Photo stores may not exist in all IndexedDB versions - this is expected
-        console.warn(`[OfflineAuth] Failed to migrate photo store ${name}:`, storeError);
+        if (changed) {
+          await store.put(photo);
+          totalMigrated++;
+        }
       }
+      
+      await tx.done;
+    } catch (storeError) {
+      console.warn('[OfflineAuth] Failed to migrate photos store:', storeError);
     }
+    
     
     if (import.meta.env.DEV) {
       console.log(`[OfflineAuth] Migrated ${totalMigrated} records from ${oldUserId} to ${newUserId}`);
