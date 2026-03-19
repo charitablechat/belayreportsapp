@@ -503,6 +503,37 @@ export default function SuperAdminDashboard() {
     }
   };
 
+  const handleDeactivateClick = (user: any) => {
+    setUserToDeactivate(user);
+    setDeactivateDialogOpen(true);
+  };
+
+  const handleConfirmDeactivateToggle = async () => {
+    if (!userToDeactivate) return;
+    const isCurrentlyActive = userToDeactivate.isActive !== false;
+
+    try {
+      const { data, error } = await supabase.functions.invoke('admin-manage-user', {
+        body: {
+          action: isCurrentlyActive ? 'deactivate' : 'reactivate',
+          userId: userToDeactivate.id,
+        }
+      });
+
+      if (error) throw error;
+      if (!data.success) throw new Error(data.error);
+
+      toast.success(isCurrentlyActive ? 'User deactivated' : 'User reactivated');
+      setDeactivateDialogOpen(false);
+      setUserToDeactivate(null);
+      refetchUsers();
+      queryClient.invalidateQueries({ queryKey: ["admin-users"] });
+    } catch (error: any) {
+      console.error('Error toggling user activation:', error);
+      toast.error(error?.message || 'Failed to update user status');
+    }
+  };
+
   // Reset avg completion time metric
   const handleResetCompletionTime = async () => {
     try {
