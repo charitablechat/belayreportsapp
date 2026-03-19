@@ -1,66 +1,69 @@
 
 
-## Onboarding Resource Center
+## Fix Image Format Detection and PNG Support in PDF Generators
 
-A dedicated `/onboarding` page where users can browse videos and PDFs you've uploaded, and mark items as completed.
+### Problem
+Both PDF generators (`generate-inspection-pdf` and `generate-training-pdf`) have a critical gap: they **hardcode `'JPEG'` format** in every `doc.addImage()` call and only parse JPEG SOF markers for dimensions. If a user uploads a PNG photo, two things go wrong:
 
-### Database
+1. The JPEG SOF dimension parser finds nothing (returns 0x0), so the image defaults to 80x60mm — incorrect aspect ratio, potentially distorted
+2. `doc.addImage(..., 'JPEG', ...)` on PNG binary data can produce a black box or crash on some renderers (especially Safari/Apple PDF viewers)
 
-**1. `onboarding_resources` table** — stores metadata for each uploaded file
+The HEIC guard is already in place and working correctly. The missing piece is **PNG format support**.
 
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uuid | PK |
-| title | text | Display name |
-| description | text | Optional summary |
-| file_type | text | 'video' or 'pdf' |
-| file_url | text | Storage path |
-| display_order | integer | Sort order |
-| is_published | boolean | Only published items shown to users |
-| uploaded_by | uuid | References auth.users |
-| created_at | timestamptz | |
+### Root Cause
+The photo sections in both PDF generators assume all non-HEIC photos are JPEG. In reality, users can upload PNG files which have a completely different binary structure.
 
-RLS: Super admins can CRUD. Authenticated users can SELECT where `is_published = true`.
+### Changes
 
-**2. `onboarding_progress` table** — tracks per-user completion
+| File | What |
+|------|------|
+| `generate-inspection-pdf/index.ts` | Add PNG magic-byte detection, PNG IHDR dimension parsing, and dynamic format selection in `addImage` |
+| `generate-training-pdf/index.ts` | Same changes as above |
 
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uuid | PK |
-| user_id | uuid | References auth.users |
-| resource_id | uuid | FK to onboarding_resources |
-| completed_at | timestamptz | When marked complete |
-| unique(user_id, resource_id) | | Prevents duplicates |
+### Technical Detail
 
-RLS: Users can manage their own rows only.
+**1. Detect image format from magic bytes** (add before dimension parsing in both files):
 
-**3. `onboarding-files` storage bucket** — private bucket for the actual video/PDF files. Super admins can upload; authenticated users can read.
+```typescript
+// Detect format: PNG starts with 89 50 4E 47, JPEG starts with FF D8
+let imgFormat: 'JPEG' | 'PNG' = 'JPEG';
+if (imgArray[0] === 0x89 && imgArray[1] === 0x50 &&
+    imgArray[2] === 0x4E && imgArray[3] === 0x47) {
+  imgFormat = 'PNG';
+}
+```
 
-### Frontend
+**2. Add PNG IHDR dimension parsing** (alongside existing JPEG SOF parsing):
 
-**`/onboarding` page** — accessible from the dashboard header navigation:
-- Lists all published resources grouped by type (Videos section, Documents section)
-- Each card shows: title, description, file type icon, and a checkbox to mark complete
-- Clicking a video opens an inline `<video>` player; clicking a PDF downloads it
-- A progress bar at the top shows "X of Y completed"
-- Matches existing app styling (cards, borders, monospace metadata)
+PNG stores width and height as big-endian 32-bit integers at bytes 16-19 (width) and 20-23 (height) inside the IHDR chunk:
 
-**Admin upload UI** — visible only to super admins on the same page:
-- "Add Resource" button opens a form: title, description, file type selector, file upload input, display order
-- Drag-to-reorder support using existing drag patterns
-- Toggle publish/unpublish per resource
-- Delete resource (removes from storage + DB)
+```typescript
+if (imgFormat === 'PNG' && imgArray.length > 24) {
+  jpegW = (imgArray[16] << 24) | (imgArray[17] << 16) |
+          (imgArray[18] << 8)  | imgArray[19];
+  jpegH = (imgArray[20] << 24) | (imgArray[21] << 16) |
+          (imgArray[22] << 8)  | imgArray[23];
+} else {
+  // Existing JPEG SOF marker parsing...
+}
+```
 
-### Route Addition
+**3. Use detected format in `addImage`**:
 
-Add `/onboarding` to `App.tsx` router, import the new `Onboarding.tsx` page component. Add a navigation link in `AuthenticatedHeader.tsx`.
+```typescript
+// Before (hardcoded):
+doc.addImage(`data:image/jpeg;base64,...`, 'JPEG', ...);
 
-### Files
+// After (dynamic):
+const mimeType = imgFormat === 'PNG' ? 'image/png' : 'image/jpeg';
+doc.addImage(`data:${mimeType};base64,...`, imgFormat, ...);
+```
 
-| File | Action |
-|------|--------|
-| Migration SQL | Create tables, bucket, RLS policies |
-| `src/pages/Onboarding.tsx` | New page component |
-| `src/App.tsx` | Add route |
-| `src/components/AuthenticatedHeader.tsx` | Add nav link |
+**4. Deploy both edge functions**
+
+### What This Fixes
+- PNG photos will render correctly with proper aspect ratios instead of black boxes or distorted 80x60mm defaults
+- JPEG photos continue working as before
+- HEIC guard remains unchanged — mislabeled HEIC files are still skipped
+- Consistent behavior across Apple and non-Apple devices
 
