@@ -21,6 +21,7 @@ import { DataRecoveryTool } from "@/components/admin/DataRecoveryTool";
 import { DeletedRecordsRecovery } from "@/components/admin/DeletedRecordsRecovery";
 import { ReportOwnershipTool } from "@/components/admin/ReportOwnershipTool";
 import { DatabaseBackupsPanel } from "@/components/admin/DatabaseBackupsPanel";
+import { OrganizationReportsPanel } from "@/components/admin/OrganizationReportsPanel";
 import { toast } from "sonner";
 import { parseLocalDate } from "@/lib/date-utils";
 import { getSessionBackground } from "@/lib/background-manager";
