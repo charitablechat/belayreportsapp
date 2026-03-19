@@ -604,6 +604,7 @@ serve(async (req) => {
               }
               
               if (photo.caption) {
+                checkPageBreak(10);
                 doc.setFontSize(9);
                 doc.setFont('helvetica', 'normal');
                 doc.setTextColor(100, 116, 139);
