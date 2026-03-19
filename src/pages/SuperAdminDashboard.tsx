@@ -952,10 +952,19 @@ export default function SuperAdminDashboard() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {managedUsers?.map((user: any) => (
-                <TableRow key={user.id}>
+              {managedUsers?.map((user: any) => {
+                const isInactive = user.isActive === false;
+                return (
+                <TableRow key={user.id} className={isInactive ? 'opacity-50' : ''}>
                   <TableCell className="font-medium">{user.email}</TableCell>
                   <TableCell>{user.firstName} {user.lastName}</TableCell>
+                  <TableCell>
+                    {isInactive ? (
+                      <Badge variant="destructive" className="text-xs">Deactivated</Badge>
+                    ) : (
+                      <Badge variant="outline" className="text-xs bg-emerald-500/10 text-emerald-500 border-emerald-500/30">Active</Badge>
+                    )}
+                  </TableCell>
                   <TableCell>
                     {user.roles?.length > 0 ? (
                       <div className="flex flex-wrap gap-1">
@@ -974,6 +983,18 @@ export default function SuperAdminDashboard() {
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleDeactivateClick(user)}
+                        title={isInactive ? 'Reactivate User' : 'Deactivate User'}
+                      >
+                        {isInactive ? (
+                          <UserCheck className="h-4 w-4 text-emerald-500" />
+                        ) : (
+                          <UserX className="h-4 w-4 text-amber-500" />
+                        )}
+                      </Button>
                       <Button
                         variant="ghost"
                         size="sm"
@@ -1003,7 +1024,8 @@ export default function SuperAdminDashboard() {
                     </div>
                   </TableCell>
                 </TableRow>
-              ))}
+                );
+              })}
             </TableBody>
           </Table>
         </TabsContent>
