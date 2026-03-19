@@ -450,7 +450,15 @@ export default function SuperAdminDashboard() {
   };
 
   const handleEditClick = (user: any) => {
-    setSelectedUser(user);
+    // Determine the user's primary role
+    const primaryRole = user.isSuperAdmin 
+      ? 'super_admin' 
+      : user.roles?.find((r: any) => r.role === 'admin') 
+        ? 'admin' 
+        : user.roles?.find((r: any) => r.role === 'inspector')
+          ? 'inspector'
+          : 'inspector';
+    setSelectedUser({ ...user, currentRole: primaryRole });
     setDialogMode('edit');
     setDialogOpen(true);
   };
