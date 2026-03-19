@@ -624,7 +624,7 @@ serve(async (req) => {
 
     // Disclaimer Box
     const disclaimerLines = doc.splitTextToSize(content.disclaimer, contentWidth - 10);
-    const disclaimerHeight = (disclaimerLines.length * 4) + 16;
+    const disclaimerHeight = (disclaimerLines.length * 4.5) + 16;
     checkPageBreak(disclaimerHeight + 10);
     
     doc.setFillColor(254, 243, 199);
@@ -637,7 +637,7 @@ serve(async (req) => {
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(0, 0, 0);
     disclaimerLines.forEach((line: string, index: number) => {
-      doc.text(line, margin, yPos + (index * 4));
+      doc.text(line, margin, yPos + (index * 4.5));
     });
 
     // Add footers to all pages
