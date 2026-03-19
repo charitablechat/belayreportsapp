@@ -59,14 +59,16 @@ serve(async (req) => {
       { data: ziplines, error: ziplinesError },
       { data: equipment, error: equipmentError },
       { data: standards, error: standardsError },
-      { data: summary, error: summaryError }
+      { data: summary, error: summaryError },
+      { data: photos, error: photosError }
     ] = await Promise.all([
       supabase.from('inspections').select('*').eq('id', inspectionId).single(),
       supabase.from('inspection_systems').select('*').eq('inspection_id', inspectionId).order('display_order'),
       supabase.from('inspection_ziplines').select('*').eq('inspection_id', inspectionId).order('display_order'),
       supabase.from('inspection_equipment').select('*').eq('inspection_id', inspectionId).order('display_order'),
       supabase.from('inspection_standards').select('*').eq('inspection_id', inspectionId),
-      supabase.from('inspection_summary').select('*').eq('inspection_id', inspectionId).maybeSingle()
+      supabase.from('inspection_summary').select('*').eq('inspection_id', inspectionId).maybeSingle(),
+      supabase.from('inspection_photos').select('*').eq('inspection_id', inspectionId).is('deleted_at', null).order('display_order')
     ]);
 
     if (inspectionError) throw inspectionError;
@@ -584,6 +586,98 @@ serve(async (req) => {
 
         yPos = doc.lastAutoTable.finalY + 10;
       }
+    }
+
+    // Inspection Photos Section
+    if (photos && photos.length > 0) {
+      doc.addPage();
+      yPos = margin;
+
+      doc.setFontSize(14);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(30, 64, 175);
+      doc.text('Inspection Photos', margin, yPos);
+      yPos += 8;
+      doc.setDrawColor(203, 213, 225);
+      doc.line(margin, yPos, pageWidth - margin, yPos);
+      yPos += 10;
+
+      for (const photo of photos) {
+        try {
+          const { data: urlData } = await supabase.storage
+            .from('inspection-photos')
+            .createSignedUrl(photo.photo_url, 60 * 60);
+
+          if (urlData?.signedUrl) {
+            const imgResponse = await fetch(urlData.signedUrl);
+            if (imgResponse.ok) {
+              const imgBlob = await imgResponse.arrayBuffer();
+              const imgArray = new Uint8Array(imgBlob);
+
+              // HEIC magic-byte detection — skip mislabeled files
+              if (imgArray.length >= 12) {
+                const decoder = new TextDecoder('ascii');
+                const ftypTag = decoder.decode(imgArray.slice(4, 8));
+                if (ftypTag === 'ftyp') {
+                  const brand = decoder.decode(imgArray.slice(8, 12)).toLowerCase();
+                  if (brand === 'heic' || brand === 'heis' || brand === 'mif1') {
+                    console.warn(`[inspection-pdf] Skipping HEIC photo (mislabeled): ${photo.photo_url}`);
+                    continue;
+                  }
+                }
+              }
+
+              const binary = imgArray.reduce((acc: string, byte: number) => acc + String.fromCharCode(byte), '');
+              const imgBase64 = btoa(binary);
+
+              // Parse JPEG dimensions from SOF marker
+              const maxW = 80;
+              const maxH = 60;
+              let imgWidth = maxW;
+              let imgHeight = maxH;
+
+              let jpegW = 0, jpegH = 0;
+              for (let i = 0; i < imgArray.length - 9; i++) {
+                if (imgArray[i] === 0xFF && (imgArray[i + 1] === 0xC0 || imgArray[i + 1] === 0xC2)) {
+                  jpegH = (imgArray[i + 5] << 8) | imgArray[i + 6];
+                  jpegW = (imgArray[i + 7] << 8) | imgArray[i + 8];
+                  break;
+                }
+              }
+
+              if (jpegW > 0 && jpegH > 0) {
+                const ratio = Math.min(maxW / jpegW, maxH / jpegH);
+                imgWidth = jpegW * ratio;
+                imgHeight = jpegH * ratio;
+                console.log(`Photo sized: ${jpegW}x${jpegH}px → ${imgWidth.toFixed(1)}x${imgHeight.toFixed(1)}mm`);
+              }
+
+              checkPageBreak(imgHeight + 20);
+
+              try {
+                doc.addImage(`data:image/jpeg;base64,${imgBase64}`, 'JPEG', margin, yPos, imgWidth, imgHeight);
+                yPos += imgHeight + 5;
+              } catch (imgErr) {
+                console.error('Failed to add photo to PDF:', imgErr);
+              }
+
+              if (photo.caption) {
+                checkPageBreak(10);
+                doc.setFontSize(9);
+                doc.setFont('helvetica', 'normal');
+                doc.setTextColor(100, 116, 139);
+                doc.text(photo.caption, margin, yPos);
+                yPos += 10;
+              } else {
+                yPos += 5;
+              }
+            }
+          }
+        } catch (e) {
+          console.error('Failed to fetch inspection photo for PDF:', e);
+        }
+      }
+      doc.setTextColor(0, 0, 0);
     }
 
     // Disclaimer Box
