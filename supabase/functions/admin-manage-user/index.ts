@@ -311,7 +311,7 @@ Deno.serve(async (req) => {
         // Get profiles and roles
         const { data: profiles } = await supabaseAdmin
           .from('profiles')
-          .select('id, first_name, last_name');
+          .select('id, first_name, last_name, is_active');
 
         const { data: roles } = await supabaseAdmin
           .from('user_roles')
