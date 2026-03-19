@@ -594,10 +594,7 @@ serve(async (req) => {
                 console.warn('Could not parse JPEG dimensions, using defaults');
               }
               
-              if (yPos + imgHeight + 20 > pageHeight - 30) {
-                doc.addPage();
-                yPos = margin;
-              }
+              checkPageBreak(imgHeight + 20);
               
               try {
                 doc.addImage(`data:image/jpeg;base64,${imgBase64}`, 'JPEG', margin, yPos, imgWidth, imgHeight);
@@ -625,15 +622,11 @@ serve(async (req) => {
     }
 
     // Disclaimer Box
-    if (yPos > pageHeight - 60) {
-      doc.addPage();
-      yPos = margin;
-    }
-    
-    doc.setFillColor(254, 243, 199);
     const disclaimerLines = doc.splitTextToSize(content.disclaimer, contentWidth - 10);
     const disclaimerHeight = (disclaimerLines.length * 4) + 16;
+    checkPageBreak(disclaimerHeight + 10);
     
+    doc.setFillColor(254, 243, 199);
     doc.roundedRect(margin - 5, yPos - 5, contentWidth + 10, disclaimerHeight, 3, 3, 'F');
     doc.setFontSize(9);
     doc.setFont('helvetica', 'bold');

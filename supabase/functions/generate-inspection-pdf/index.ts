@@ -278,10 +278,7 @@ serve(async (req) => {
       doc.setFont('helvetica', 'normal');
       const historyLines = doc.splitTextToSize(stripHtml(inspection.course_history), contentWidth);
       historyLines.forEach((line: string) => {
-        if (yPos > pageHeight - 40) {
-          doc.addPage();
-          yPos = margin;
-        }
+        checkPageBreak(5);
         doc.text(line, margin, yPos);
         yPos += 5;
       });
@@ -306,10 +303,7 @@ serve(async (req) => {
 
     // Operating Systems Section
     if (systems && systems.length > 0) {
-      if (yPos > pageHeight - 80) {
-        doc.addPage();
-        yPos = margin;
-      }
+      checkPageBreak(30);
       
       doc.setFontSize(14);
       doc.setFont('helvetica', 'bold');
@@ -358,10 +352,7 @@ serve(async (req) => {
 
     // Ziplines Section
     if (ziplines && ziplines.length > 0) {
-      if (yPos > pageHeight - 80) {
-        doc.addPage();
-        yPos = margin;
-      }
+      checkPageBreak(30);
       
       doc.setFontSize(14);
       doc.setFont('helvetica', 'bold');
@@ -413,10 +404,7 @@ serve(async (req) => {
 
     // Equipment Section
     if (equipment && equipment.length > 0) {
-      if (yPos > pageHeight - 80) {
-        doc.addPage();
-        yPos = margin;
-      }
+      checkPageBreak(30);
       
       doc.setFontSize(14);
       doc.setFont('helvetica', 'bold');
@@ -433,10 +421,7 @@ serve(async (req) => {
         const items = equipment.filter(e => e.equipment_category === category);
         if (items.length === 0) continue;
 
-        if (yPos > pageHeight - 60) {
-          doc.addPage();
-          yPos = margin;
-        }
+        checkPageBreak(20);
         
         doc.setFontSize(12);
         doc.setTextColor(30, 64, 175);
@@ -482,10 +467,7 @@ serve(async (req) => {
 
     // Standards Section
     if (standards && standards.length > 0) {
-      if (yPos > pageHeight - 80) {
-        doc.addPage();
-        yPos = margin;
-      }
+      checkPageBreak(30);
       
       doc.setFontSize(14);
       doc.setFont('helvetica', 'bold');
@@ -520,10 +502,7 @@ serve(async (req) => {
 
     // Summary Section
     if (summary) {
-      if (yPos > pageHeight - 80) {
-        doc.addPage();
-        yPos = margin;
-      }
+      checkPageBreak(30);
       
       doc.setFontSize(14);
       doc.setFont('helvetica', 'bold');
@@ -545,10 +524,7 @@ serve(async (req) => {
         doc.setFont('helvetica', 'normal');
         const criticalLines = doc.splitTextToSize(stripHtml(summary.critical_actions), contentWidth);
         criticalLines.forEach((line: string) => {
-          if (yPos > pageHeight - 40) {
-            doc.addPage();
-            yPos = margin;
-          }
+          checkPageBreak(5);
           doc.text(line, margin, yPos);
           yPos += 5;
         });
@@ -560,10 +536,7 @@ serve(async (req) => {
         doc.setFont('helvetica', 'normal');
         const repairLines = doc.splitTextToSize(stripHtml(summary.repairs_performed), contentWidth);
         repairLines.forEach((line: string) => {
-          if (yPos > pageHeight - 40) {
-            doc.addPage();
-            yPos = margin;
-          }
+          checkPageBreak(5);
           doc.text(line, margin, yPos);
           yPos += 5;
         });
@@ -579,10 +552,7 @@ serve(async (req) => {
         doc.setFont('helvetica', 'normal');
         const futureLines = doc.splitTextToSize(stripHtml(summary.future_considerations), contentWidth);
         futureLines.forEach((line: string) => {
-          if (yPos > pageHeight - 40) {
-            doc.addPage();
-            yPos = margin;
-          }
+          checkPageBreak(5);
           doc.text(line, margin, yPos);
           yPos += 5;
         });
@@ -613,16 +583,12 @@ serve(async (req) => {
     }
 
     // Disclaimer Box
-    if (yPos > pageHeight - 60) {
-      doc.addPage();
-      yPos = margin;
-    }
-    
-    doc.setFillColor(254, 243, 199);
     const disclaimerText = 'This inspection report is based on visual observation and testing of the equipment and facilities at the time of inspection. The inspector makes no warranty, expressed or implied, that all defects have been discovered or that no defects exist other than those noted. This report does not constitute approval or acceptance of the facilities for any particular use.';
     const disclaimerLines = doc.splitTextToSize(disclaimerText, contentWidth - 10);
     const disclaimerHeight = (disclaimerLines.length * 4) + 16;
+    checkPageBreak(disclaimerHeight + 10);
     
+    doc.setFillColor(254, 243, 199);
     doc.roundedRect(margin - 5, yPos - 5, contentWidth + 10, disclaimerHeight, 3, 3, 'F');
     doc.setFontSize(9);
     doc.setFont('helvetica', 'bold');

@@ -1,66 +1,66 @@
 
 
-## Fix Incomplete PDF Generation on Apple Computers
+## Onboarding Resource Center
 
-### Problem
-The server-side PDF generators (jsPDF in edge functions) produce PDFs with missing/truncated pages for long reports like "Twin Lakes" and "Girl Scouts." The root cause is **inconsistent page-break logic** — some sections use the `checkPageBreak` helper while others use older ad-hoc checks with varying margin thresholds (40mm, 60mm, 80mm), causing content to overflow past page boundaries.
+A dedicated `/onboarding` page where users can browse videos and PDFs you've uploaded, and mark items as completed.
 
-### Root Cause Details
+### Database
 
-**Inspection PDF** has mixed patterns:
-- `checkPageBreak(neededHeight)` with `footerZone = 30` (correct)
-- `if (yPos > pageHeight - 80)` (old, inconsistent)
-- `if (yPos > pageHeight - 40)` inline in text loops (old, inconsistent)
-- `if (yPos > pageHeight - 60)` for disclaimer (old, inconsistent)
+**1. `onboarding_resources` table** — stores metadata for each uploaded file
 
-**Training PDF** has similar gaps:
-- Photo section uses `if (yPos + imgHeight + 20 > pageHeight - 30)` instead of `checkPageBreak`
-- Disclaimer uses `if (yPos > pageHeight - 60)` instead of `checkPageBreak`
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | PK |
+| title | text | Display name |
+| description | text | Optional summary |
+| file_type | text | 'video' or 'pdf' |
+| file_url | text | Storage path |
+| display_order | integer | Sort order |
+| is_published | boolean | Only published items shown to users |
+| uploaded_by | uuid | References auth.users |
+| created_at | timestamptz | |
 
-When `autoTable` internally spans pages, subsequent `yPos` tracking can desync, causing content to render off-page.
+RLS: Super admins can CRUD. Authenticated users can SELECT where `is_published = true`.
 
-### Changes
+**2. `onboarding_progress` table** — tracks per-user completion
 
-| File | What |
-|------|------|
-| `generate-inspection-pdf/index.ts` | Replace all old `if (yPos > pageHeight - N)` patterns with `checkPageBreak`; add `yPos` resync after every `autoTable` call |
-| `generate-training-pdf/index.ts` | Standardize photo section and disclaimer to use `checkPageBreak`; add `yPos` resync after `autoTable` |
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | PK |
+| user_id | uuid | References auth.users |
+| resource_id | uuid | FK to onboarding_resources |
+| completed_at | timestamptz | When marked complete |
+| unique(user_id, resource_id) | | Prevents duplicates |
 
-### Technical Detail
+RLS: Users can manage their own rows only.
 
-**1. Add autoTable yPos resync helper** (both files):
-```typescript
-// After every autoTable call, sync yPos to handle cross-page tables
-const syncYPos = () => {
-  const currentPage = doc.internal.getCurrentPageInfo().pageNumber;
-  yPos = doc.lastAutoTable.finalY + 10;
-};
-```
+**3. `onboarding-files` storage bucket** — private bucket for the actual video/PDF files. Super admins can upload; authenticated users can read.
 
-**2. Inspection PDF — standardize all page break checks**:
-Replace every instance of:
-```typescript
-if (yPos > pageHeight - 80) { doc.addPage(); yPos = margin; }
-if (yPos > pageHeight - 40) { doc.addPage(); yPos = margin; }
-if (yPos > pageHeight - 60) { doc.addPage(); yPos = margin; }
-```
-With:
-```typescript
-checkPageBreak(neededHeight);  // using footerZone = 30 consistently
-```
+### Frontend
 
-Specific locations:
-- Course history text loop (line ~281): `checkPageBreak(5)` before each line
-- Operating Systems section (line ~309): `checkPageBreak(30)` before header
-- Ziplines section (line ~360): `checkPageBreak(30)` before header
-- Equipment section (line ~415): `checkPageBreak(30)` before header
-- Equipment categories (line ~436): `checkPageBreak(20)` before each category
-- Summary critical/repairs/future text loops (lines ~547-589): `checkPageBreak(5)` before each line
-- Disclaimer (line ~616): `checkPageBreak(disclaimerHeight + 10)`
+**`/onboarding` page** — accessible from the dashboard header navigation:
+- Lists all published resources grouped by type (Videos section, Documents section)
+- Each card shows: title, description, file type icon, and a checkbox to mark complete
+- Clicking a video opens an inline `<video>` player; clicking a PDF downloads it
+- A progress bar at the top shows "X of Y completed"
+- Matches existing app styling (cards, borders, monospace metadata)
 
-**3. Training PDF — standardize remaining gaps**:
-- Photo section (line ~597): Replace inline check with `checkPageBreak(imgHeight + 20)`
-- Disclaimer (line ~628): Replace inline check with `checkPageBreak(disclaimerHeight + 10)`
+**Admin upload UI** — visible only to super admins on the same page:
+- "Add Resource" button opens a form: title, description, file type selector, file upload input, display order
+- Drag-to-reorder support using existing drag patterns
+- Toggle publish/unpublish per resource
+- Delete resource (removes from storage + DB)
 
-**4. Deploy both updated edge functions**
+### Route Addition
+
+Add `/onboarding` to `App.tsx` router, import the new `Onboarding.tsx` page component. Add a navigation link in `AuthenticatedHeader.tsx`.
+
+### Files
+
+| File | Action |
+|------|--------|
+| Migration SQL | Create tables, bucket, RLS policies |
+| `src/pages/Onboarding.tsx` | New page component |
+| `src/App.tsx` | Add route |
+| `src/components/AuthenticatedHeader.tsx` | Add nav link |
 
