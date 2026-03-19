@@ -588,6 +588,98 @@ serve(async (req) => {
       }
     }
 
+    // Inspection Photos Section
+    if (photos && photos.length > 0) {
+      doc.addPage();
+      yPos = margin;
+
+      doc.setFontSize(14);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(30, 64, 175);
+      doc.text('Inspection Photos', margin, yPos);
+      yPos += 8;
+      doc.setDrawColor(203, 213, 225);
+      doc.line(margin, yPos, pageWidth - margin, yPos);
+      yPos += 10;
+
+      for (const photo of photos) {
+        try {
+          const { data: urlData } = await supabase.storage
+            .from('inspection-photos')
+            .createSignedUrl(photo.photo_url, 60 * 60);
+
+          if (urlData?.signedUrl) {
+            const imgResponse = await fetch(urlData.signedUrl);
+            if (imgResponse.ok) {
+              const imgBlob = await imgResponse.arrayBuffer();
+              const imgArray = new Uint8Array(imgBlob);
+
+              // HEIC magic-byte detection — skip mislabeled files
+              if (imgArray.length >= 12) {
+                const decoder = new TextDecoder('ascii');
+                const ftypTag = decoder.decode(imgArray.slice(4, 8));
+                if (ftypTag === 'ftyp') {
+                  const brand = decoder.decode(imgArray.slice(8, 12)).toLowerCase();
+                  if (brand === 'heic' || brand === 'heis' || brand === 'mif1') {
+                    console.warn(`[inspection-pdf] Skipping HEIC photo (mislabeled): ${photo.photo_url}`);
+                    continue;
+                  }
+                }
+              }
+
+              const binary = imgArray.reduce((acc: string, byte: number) => acc + String.fromCharCode(byte), '');
+              const imgBase64 = btoa(binary);
+
+              // Parse JPEG dimensions from SOF marker
+              const maxW = 80;
+              const maxH = 60;
+              let imgWidth = maxW;
+              let imgHeight = maxH;
+
+              let jpegW = 0, jpegH = 0;
+              for (let i = 0; i < imgArray.length - 9; i++) {
+                if (imgArray[i] === 0xFF && (imgArray[i + 1] === 0xC0 || imgArray[i + 1] === 0xC2)) {
+                  jpegH = (imgArray[i + 5] << 8) | imgArray[i + 6];
+                  jpegW = (imgArray[i + 7] << 8) | imgArray[i + 8];
+                  break;
+                }
+              }
+
+              if (jpegW > 0 && jpegH > 0) {
+                const ratio = Math.min(maxW / jpegW, maxH / jpegH);
+                imgWidth = jpegW * ratio;
+                imgHeight = jpegH * ratio;
+                console.log(`Photo sized: ${jpegW}x${jpegH}px → ${imgWidth.toFixed(1)}x${imgHeight.toFixed(1)}mm`);
+              }
+
+              checkPageBreak(imgHeight + 20);
+
+              try {
+                doc.addImage(`data:image/jpeg;base64,${imgBase64}`, 'JPEG', margin, yPos, imgWidth, imgHeight);
+                yPos += imgHeight + 5;
+              } catch (imgErr) {
+                console.error('Failed to add photo to PDF:', imgErr);
+              }
+
+              if (photo.caption) {
+                checkPageBreak(10);
+                doc.setFontSize(9);
+                doc.setFont('helvetica', 'normal');
+                doc.setTextColor(100, 116, 139);
+                doc.text(photo.caption, margin, yPos);
+                yPos += 10;
+              } else {
+                yPos += 5;
+              }
+            }
+          }
+        } catch (e) {
+          console.error('Failed to fetch inspection photo for PDF:', e);
+        }
+      }
+      doc.setTextColor(0, 0, 0);
+    }
+
     // Disclaimer Box
     const disclaimerText = 'This inspection report is based on visual observation and testing of the equipment and facilities at the time of inspection. The inspector makes no warranty, expressed or implied, that all defects have been discovered or that no defects exist other than those noted. This report does not constitute approval or acceptance of the facilities for any particular use.';
     const disclaimerLines = doc.splitTextToSize(disclaimerText, contentWidth - 10);

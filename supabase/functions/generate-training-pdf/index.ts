@@ -564,6 +564,20 @@ serve(async (req) => {
             if (imgResponse.ok) {
               const imgBlob = await imgResponse.arrayBuffer();
               const imgArray = new Uint8Array(imgBlob);
+
+              // HEIC magic-byte detection — skip mislabeled files
+              if (imgArray.length >= 12) {
+                const decoder = new TextDecoder('ascii');
+                const ftypTag = decoder.decode(imgArray.slice(4, 8));
+                if (ftypTag === 'ftyp') {
+                  const brand = decoder.decode(imgArray.slice(8, 12)).toLowerCase();
+                  if (brand === 'heic' || brand === 'heis' || brand === 'mif1') {
+                    console.warn(`[training-pdf] Skipping HEIC photo (mislabeled): ${photo.photo_url}`);
+                    continue;
+                  }
+                }
+              }
+
               const binary = imgArray.reduce((acc: string, byte: number) => acc + String.fromCharCode(byte), '');
               const imgBase64 = btoa(binary);
               
@@ -574,13 +588,12 @@ serve(async (req) => {
               let imgHeight = maxH;
 
               // Parse JPEG dimensions from SOF marker (works in Deno without DOM)
-              const imgBytes = new Uint8Array(imgBlob);
               let jpegW = 0, jpegH = 0;
-              for (let i = 0; i < imgBytes.length - 9; i++) {
+              for (let i = 0; i < imgArray.length - 9; i++) {
                 // Look for SOF0 (0xFFC0) or SOF2 (0xFFC2) markers
-                if (imgBytes[i] === 0xFF && (imgBytes[i + 1] === 0xC0 || imgBytes[i + 1] === 0xC2)) {
-                  jpegH = (imgBytes[i + 5] << 8) | imgBytes[i + 6];
-                  jpegW = (imgBytes[i + 7] << 8) | imgBytes[i + 8];
+                if (imgArray[i] === 0xFF && (imgArray[i + 1] === 0xC0 || imgArray[i + 1] === 0xC2)) {
+                  jpegH = (imgArray[i + 5] << 8) | imgArray[i + 6];
+                  jpegW = (imgArray[i + 7] << 8) | imgArray[i + 8];
                   break;
                 }
               }
