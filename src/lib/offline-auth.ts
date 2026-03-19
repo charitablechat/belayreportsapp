@@ -342,9 +342,15 @@ async function migrateUserData(oldUserId: string, newUserId: string): Promise<vo
       for (const photo of allPhotos) {
         let changed = false;
         
-        // Update photo_url path if it contains the old userId
-        if (photo.photo_url && typeof photo.photo_url === 'string' && photo.photo_url.includes(oldUserId)) {
-          photo.photo_url = photo.photo_url.replace(oldUserId, newUserId);
+        // Update photoUrl path if it contains the old userId
+        if (photo.photoUrl && typeof photo.photoUrl === 'string' && photo.photoUrl.includes(oldUserId)) {
+          photo.photoUrl = photo.photoUrl.replace(oldUserId, newUserId);
+          changed = true;
+        }
+        
+        // Update fileName path if it contains the old userId
+        if (photo.fileName && typeof photo.fileName === 'string' && photo.fileName.includes(oldUserId)) {
+          photo.fileName = photo.fileName.replace(oldUserId, newUserId);
           changed = true;
         }
         
