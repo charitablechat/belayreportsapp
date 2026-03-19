@@ -181,7 +181,7 @@ export function OrganizationReportsPanel({ organizationId, organizationName, onB
                     >
                       <TableCell className="font-medium text-sm">{r.organization || "—"}</TableCell>
                       <TableCell className="hidden sm:table-cell text-sm text-muted-foreground">{r.location || "—"}</TableCell>
-                      <TableCell className="text-sm font-mono text-muted-foreground">{formatDate(r.training_date)}</TableCell>
+                      <TableCell className="text-sm font-mono text-muted-foreground">{formatDate(r.start_date)}</TableCell>
                       <TableCell className="hidden sm:table-cell text-sm text-muted-foreground">{getPersonName(r.trainer)}</TableCell>
                       <TableCell>
                         <Badge variant={r.status === "completed" ? "default" : "secondary"} className="text-xs">{r.status}</Badge>
