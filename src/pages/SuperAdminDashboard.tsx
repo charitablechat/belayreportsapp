@@ -56,6 +56,7 @@ export default function SuperAdminDashboard() {
   const [selectedOrg, setSelectedOrg] = useState<any>(null);
   const [editingOrgName, setEditingOrgName] = useState("");
   const [orgToDelete, setOrgToDelete] = useState<any>(null);
+  const [selectedOrgForReports, setSelectedOrgForReports] = useState<{ id: string; name: string } | null>(null);
   
   // Pagination states for dialogs
   const [usersPage, setUsersPage] = useState(1);
