@@ -63,6 +63,8 @@ export function ReportOwnershipTool() {
   const [isUpdating, setIsUpdating] = useState(false);
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
   const [showOnlyMismatches, setShowOnlyMismatches] = useState(true);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [filterByUserId, setFilterByUserId] = useState<string>("all");
 
   // Fetch all profiles
   const { data: profiles, isLoading: profilesLoading } = useQuery({
