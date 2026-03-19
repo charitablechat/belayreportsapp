@@ -41,7 +41,7 @@ import { VersionBadge } from "@/components/VersionBadge";
  }: UserProfileDropdownProps) {
    const navigate = useNavigate();
     const { isInstallable, isInstalled, promptInstall } = usePWAInstall();
-    const { unsyncedCount } = usePWA();
+    const { unsyncedCount, needsUpdate, updateAndReload } = usePWA();
     const { theme, setTheme } = useTheme();
   const [notificationsDialogOpen, setNotificationsDialogOpen] = useState(false);
   const [contactSheetOpen, setContactSheetOpen] = useState(false);
