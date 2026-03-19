@@ -352,10 +352,7 @@ serve(async (req) => {
 
     // Ziplines Section
     if (ziplines && ziplines.length > 0) {
-      if (yPos > pageHeight - 80) {
-        doc.addPage();
-        yPos = margin;
-      }
+      checkPageBreak(30);
       
       doc.setFontSize(14);
       doc.setFont('helvetica', 'bold');
