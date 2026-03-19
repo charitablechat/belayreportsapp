@@ -404,10 +404,7 @@ serve(async (req) => {
 
     // Equipment Section
     if (equipment && equipment.length > 0) {
-      if (yPos > pageHeight - 80) {
-        doc.addPage();
-        yPos = margin;
-      }
+      checkPageBreak(30);
       
       doc.setFontSize(14);
       doc.setFont('helvetica', 'bold');
