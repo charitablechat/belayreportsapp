@@ -20,6 +20,7 @@ interface UpdateUserPayload {
   firstName?: string;
   lastName?: string;
   password?: string;
+  role?: 'admin' | 'inspector' | 'super_admin';
 }
 
 interface DeleteUserPayload {
