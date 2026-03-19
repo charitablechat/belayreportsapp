@@ -190,24 +190,26 @@ export const UpdateControlPanel = ({ open, onOpenChange }: UpdateControlPanelPro
 
               {/* Actions */}
               <div className="space-y-3 pt-2">
-                <Button
-                  onClick={handleCheckNow}
-                  disabled={isCheckingForUpdate}
-                  variant="outline"
-                  className="w-full rounded-none border-white/20 bg-white/5 text-white/90 hover:bg-white/10 hover:text-white font-mono text-xs uppercase tracking-widest h-10"
-                >
-                  <RefreshCw className={`w-3.5 h-3.5 mr-2 ${isCheckingForUpdate ? 'animate-spin' : ''}`} />
-                  Check Now
-                </Button>
-
-                <Button
-                  onClick={handleApplyUpdate}
-                  disabled={!needsUpdate || applying}
-                  className="w-full rounded-none bg-amber-500/90 hover:bg-amber-500 text-black font-mono text-xs uppercase tracking-widest h-10 disabled:opacity-30"
-                >
-                  <Download className="w-3.5 h-3.5 mr-2" />
-                  {applying ? 'Applying...' : 'Apply Update'}
-                </Button>
+                {needsUpdate ? (
+                  <Button
+                    onClick={handleApplyUpdate}
+                    disabled={applying}
+                    className="w-full rounded-none bg-amber-500 hover:bg-amber-400 text-black font-mono text-xs uppercase tracking-widest h-11 animate-pulse disabled:opacity-60"
+                  >
+                    <Download className="w-3.5 h-3.5 mr-2" />
+                    {applying ? 'Applying...' : 'Update Now'}
+                  </Button>
+                ) : (
+                  <Button
+                    onClick={handleCheckNow}
+                    disabled={isCheckingForUpdate}
+                    variant="outline"
+                    className="w-full rounded-none border-white/20 bg-white/5 text-white/90 hover:bg-white/10 hover:text-white font-mono text-xs uppercase tracking-widest h-10"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 mr-2 ${isCheckingForUpdate ? 'animate-spin' : ''}`} />
+                    Check Now
+                  </Button>
+                )}
 
                 <Button
                   onClick={handleForceRefreshRequest}

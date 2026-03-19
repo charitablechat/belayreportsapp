@@ -106,9 +106,29 @@ export const usePWAUpdate = (): PWAUpdateStatus => {
           )
         ]) as ServiceWorkerRegistration;
         await reg.update();
-        await new Promise(resolve => setTimeout(resolve, 2000));
 
-        if (reg.waiting || reg.installing) {
+        // Wait for the new SW to reach 'installed' state instead of a fixed timeout
+        if (!reg.waiting) {
+          const installing = reg.installing;
+          if (installing) {
+            await new Promise<void>((resolve) => {
+              const onStateChange = () => {
+                if (installing.state === 'installed' || installing.state === 'activated') {
+                  installing.removeEventListener('statechange', onStateChange);
+                  resolve();
+                }
+              };
+              installing.addEventListener('statechange', onStateChange);
+              // Safety timeout — resolve after 10s regardless
+              setTimeout(() => {
+                installing.removeEventListener('statechange', onStateChange);
+                resolve();
+              }, 10000);
+            });
+          }
+        }
+
+        if (reg.waiting) {
           setNeedRefresh(true);
         }
       }
