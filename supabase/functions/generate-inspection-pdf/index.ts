@@ -563,6 +563,7 @@ serve(async (req) => {
       }
 
       if (summary.next_inspection_date) {
+        checkPageBreak(15);
         const nextInspectionData = [['Next Inspection Due', formatDate(summary.next_inspection_date)]];
         
         doc.autoTable({
