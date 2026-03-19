@@ -98,8 +98,8 @@ Deno.serve(async (req) => {
 
         console.log(`User created: ${newUser.user.id}`);
 
-        // If organization and role provided, add membership and role
-        if (organizationId && role) {
+        // If organization provided, add membership
+        if (organizationId) {
           const { error: memberError } = await supabaseAdmin
             .from('organization_members')
             .insert({
@@ -110,12 +110,15 @@ Deno.serve(async (req) => {
           if (memberError) {
             console.error('Error adding organization member:', memberError);
           }
+        }
 
+        // If role provided, add to user_roles
+        if (role) {
           const { error: roleError } = await supabaseAdmin
             .from('user_roles')
             .insert({
               user_id: newUser.user.id,
-              organization_id: organizationId,
+              organization_id: organizationId || null,
               role: role,
             });
 
