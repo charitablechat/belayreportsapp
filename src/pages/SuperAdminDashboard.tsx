@@ -254,7 +254,7 @@ export default function SuperAdminDashboard() {
         .select(`
           *,
           organizations(name),
-          inspector:profiles!daily_assessments_inspector_id_fkey(first_name, last_name)
+          inspector:profiles!daily_assessments_inspector_id_profiles_fkey(first_name, last_name)
         `)
         .order("created_at", { ascending: false })
         .limit(100);
