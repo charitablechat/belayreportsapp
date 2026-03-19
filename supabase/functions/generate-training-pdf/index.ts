@@ -594,10 +594,7 @@ serve(async (req) => {
                 console.warn('Could not parse JPEG dimensions, using defaults');
               }
               
-              if (yPos + imgHeight + 20 > pageHeight - 30) {
-                doc.addPage();
-                yPos = margin;
-              }
+              checkPageBreak(imgHeight + 20);
               
               try {
                 doc.addImage(`data:image/jpeg;base64,${imgBase64}`, 'JPEG', margin, yPos, imgWidth, imgHeight);
