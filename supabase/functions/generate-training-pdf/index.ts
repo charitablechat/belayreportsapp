@@ -622,10 +622,9 @@ serve(async (req) => {
     }
 
     // Disclaimer Box
-    if (yPos > pageHeight - 60) {
-      doc.addPage();
-      yPos = margin;
-    }
+    const disclaimerLines = doc.splitTextToSize(content.disclaimer, contentWidth - 10);
+    const disclaimerHeight = (disclaimerLines.length * 4) + 16;
+    checkPageBreak(disclaimerHeight + 10);
     
     doc.setFillColor(254, 243, 199);
     const disclaimerLines = doc.splitTextToSize(content.disclaimer, contentWidth - 10);

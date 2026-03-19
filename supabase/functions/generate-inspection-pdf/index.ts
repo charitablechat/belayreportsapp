@@ -589,10 +589,6 @@ serve(async (req) => {
     checkPageBreak(disclaimerHeight + 10);
     
     doc.setFillColor(254, 243, 199);
-    const disclaimerText = 'This inspection report is based on visual observation and testing of the equipment and facilities at the time of inspection. The inspector makes no warranty, expressed or implied, that all defects have been discovered or that no defects exist other than those noted. This report does not constitute approval or acceptance of the facilities for any particular use.';
-    const disclaimerLines = doc.splitTextToSize(disclaimerText, contentWidth - 10);
-    const disclaimerHeight = (disclaimerLines.length * 4) + 16;
-    
     doc.roundedRect(margin - 5, yPos - 5, contentWidth + 10, disclaimerHeight, 3, 3, 'F');
     doc.setFontSize(9);
     doc.setFont('helvetica', 'bold');
