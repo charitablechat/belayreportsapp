@@ -421,10 +421,7 @@ serve(async (req) => {
         const items = equipment.filter(e => e.equipment_category === category);
         if (items.length === 0) continue;
 
-        if (yPos > pageHeight - 60) {
-          doc.addPage();
-          yPos = margin;
-        }
+        checkPageBreak(20);
         
         doc.setFontSize(12);
         doc.setTextColor(30, 64, 175);
