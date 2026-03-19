@@ -1,66 +1,41 @@
 
 
-## Onboarding Resource Center
+## Ensure All Photos Render in PDF Reports (All Report Types)
 
-A dedicated `/onboarding` page where users can browse videos and PDFs you've uploaded, and mark items as completed.
+### Problem
+Two gaps exist in the PDF generators that cause missing or broken photos:
 
-### Database
+1. **Inspection PDF (`generate-inspection-pdf/index.ts`)**: Has zero photo handling. The HTML generator downloads and embeds inspection photos, but the PDF generator skips them entirely. Any inspection with photos will produce a PDF missing all images.
 
-**1. `onboarding_resources` table** — stores metadata for each uploaded file
+2. **Training PDF (`generate-training-pdf/index.ts`)**: Downloads and embeds photos, but lacks HEIC magic-byte detection. If a photo file has HEIC data disguised with a `.jpg` extension, `doc.addImage()` will either crash or render a black box. The HTML generators for both Inspection and Training already have this guard.
 
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uuid | PK |
-| title | text | Display name |
-| description | text | Optional summary |
-| file_type | text | 'video' or 'pdf' |
-| file_url | text | Storage path |
-| display_order | integer | Sort order |
-| is_published | boolean | Only published items shown to users |
-| uploaded_by | uuid | References auth.users |
-| created_at | timestamptz | |
+### Changes
 
-RLS: Super admins can CRUD. Authenticated users can SELECT where `is_published = true`.
+| File | What |
+|------|------|
+| `generate-inspection-pdf/index.ts` | Add full photo section: fetch `inspection_photos`, download from private `inspection-photos` bucket, detect/skip HEIC, parse JPEG dimensions, add images with `checkPageBreak`, render captions |
+| `generate-training-pdf/index.ts` | Add HEIC magic-byte detection before `addImage` — skip mislabeled files with a console warning, matching the pattern used in `generate-training-html` |
 
-**2. `onboarding_progress` table** — tracks per-user completion
+### Technical Detail
 
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uuid | PK |
-| user_id | uuid | References auth.users |
-| resource_id | uuid | FK to onboarding_resources |
-| completed_at | timestamptz | When marked complete |
-| unique(user_id, resource_id) | | Prevents duplicates |
+**1. Inspection PDF — Add photo section** (insert after Summary, before Disclaimer):
+- Fetch `inspection_photos` in the parallel data query at the top (add to `Promise.all`)
+- After the Summary section, if photos exist:
+  - `doc.addPage()`, render "Inspection Photos" header
+  - Loop through photos: download from `inspection-photos` bucket, check HEIC magic bytes (skip if detected), parse JPEG SOF markers for dimensions, scale proportionally within 80x60mm bounding box, `checkPageBreak(imgHeight + 20)`, `doc.addImage()`, render caption
+- This mirrors the existing training PDF photo logic plus the HEIC guard from the HTML generators
 
-RLS: Users can manage their own rows only.
+**2. Training PDF — Add HEIC guard**:
+- After downloading photo bytes and before the SOF dimension parsing, add the same magic-byte check used in `generate-training-html`:
+  ```
+  if bytes[4:8] == "ftyp" and bytes[8:12] in {heic, heis, mif1} → skip photo
+  ```
+- Log a warning and `continue` to the next photo
 
-**3. `onboarding-files` storage bucket** — private bucket for the actual video/PDF files. Super admins can upload; authenticated users can read.
+**3. Deploy both edge functions**
 
-### Frontend
-
-**`/onboarding` page** — accessible from the dashboard header navigation:
-- Lists all published resources grouped by type (Videos section, Documents section)
-- Each card shows: title, description, file type icon, and a checkbox to mark complete
-- Clicking a video opens an inline `<video>` player; clicking a PDF downloads it
-- A progress bar at the top shows "X of Y completed"
-- Matches existing app styling (cards, borders, monospace metadata)
-
-**Admin upload UI** — visible only to super admins on the same page:
-- "Add Resource" button opens a form: title, description, file type selector, file upload input, display order
-- Drag-to-reorder support using existing drag patterns
-- Toggle publish/unpublish per resource
-- Delete resource (removes from storage + DB)
-
-### Route Addition
-
-Add `/onboarding` to `App.tsx` router, import the new `Onboarding.tsx` page component. Add a navigation link in `AuthenticatedHeader.tsx`.
-
-### Files
-
-| File | Action |
-|------|--------|
-| Migration SQL | Create tables, bucket, RLS policies |
-| `src/pages/Onboarding.tsx` | New page component |
-| `src/App.tsx` | Add route |
-| `src/components/AuthenticatedHeader.tsx` | Add nav link |
+### What This Fixes
+- Inspection PDFs will now include all attached photos (currently zero are rendered)
+- Training PDFs will no longer crash or show black boxes for mislabeled HEIC files
+- Both generators will have consistent HEIC-safe photo handling matching the HTML generators
 
