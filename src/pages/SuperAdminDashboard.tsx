@@ -916,7 +916,7 @@ export default function SuperAdminDashboard() {
                             <Button
                               variant="ghost"
                               size="sm"
-                              onClick={() => handleDeleteOrgClick(org)}
+                              onClick={(e) => { e.stopPropagation(); handleDeleteOrgClick(org); }}
                             >
                               <Trash2 className="h-4 w-4 text-destructive" />
                             </Button>
