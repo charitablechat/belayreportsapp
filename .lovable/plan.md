@@ -1,66 +1,36 @@
 
 
-## Onboarding Resource Center
+## Organization Reports Drill-Down
 
-A dedicated `/onboarding` page where users can browse videos and PDFs you've uploaded, and mark items as completed.
+### What Changes
+When a user clicks an organization row in the Organizations tab, it expands to show all associated reports (inspections, trainings, daily assessments) inline, grouped by type with collapsible sections.
 
-### Database
+### Implementation
 
-**1. `onboarding_resources` table** — stores metadata for each uploaded file
+**1. New component: `src/components/admin/OrganizationReportsPanel.tsx`**
+- Accepts `organizationId` and `organizationName` props
+- Uses three `useQuery` hooks to fetch inspections, trainings, and daily assessments filtered by `organization_id`
+- Each query joins with `profiles` to get inspector/trainer name
+- Renders three collapsible sections (using existing Collapsible component), each with a table showing: report title/type, date, inspector name, status badge
+- Rows are clickable to navigate to the report (`/inspection/:id`, `/training/:id`, `/daily-assessment/:id`)
+- Shows loading skeletons while fetching, empty states when no reports exist
+- Includes a back/close button to deselect the organization
 
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uuid | PK |
-| title | text | Display name |
-| description | text | Optional summary |
-| file_type | text | 'video' or 'pdf' |
-| file_url | text | Storage path |
-| display_order | integer | Sort order |
-| is_published | boolean | Only published items shown to users |
-| uploaded_by | uuid | References auth.users |
-| created_at | timestamptz | |
+**2. Modify `src/pages/SuperAdminDashboard.tsx`**
+- Add `selectedOrgForReports` state (`null | { id, name }`)
+- Make organization rows clickable — clicking sets `selectedOrgForReports`
+- When an org is selected, render `OrganizationReportsPanel` below the organizations table (or replace the table with the panel + a back button)
+- Keep edit/delete buttons functional via `e.stopPropagation()` on those action buttons
 
-RLS: Super admins can CRUD. Authenticated users can SELECT where `is_published = true`.
+### UI Layout
+- Organization row click → table slides to show the panel below with the org name as header
+- Three collapsible sections: "Inspections (X)", "Training Reports (X)", "Daily Assessments (X)"
+- Each section contains a responsive table with columns: Name/Org, Date, Inspector, Status
+- Mobile: stack key details, hide secondary columns via `hidden sm:table-cell`
 
-**2. `onboarding_progress` table** — tracks per-user completion
-
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uuid | PK |
-| user_id | uuid | References auth.users |
-| resource_id | uuid | FK to onboarding_resources |
-| completed_at | timestamptz | When marked complete |
-| unique(user_id, resource_id) | | Prevents duplicates |
-
-RLS: Users can manage their own rows only.
-
-**3. `onboarding-files` storage bucket** — private bucket for the actual video/PDF files. Super admins can upload; authenticated users can read.
-
-### Frontend
-
-**`/onboarding` page** — accessible from the dashboard header navigation:
-- Lists all published resources grouped by type (Videos section, Documents section)
-- Each card shows: title, description, file type icon, and a checkbox to mark complete
-- Clicking a video opens an inline `<video>` player; clicking a PDF downloads it
-- A progress bar at the top shows "X of Y completed"
-- Matches existing app styling (cards, borders, monospace metadata)
-
-**Admin upload UI** — visible only to super admins on the same page:
-- "Add Resource" button opens a form: title, description, file type selector, file upload input, display order
-- Drag-to-reorder support using existing drag patterns
-- Toggle publish/unpublish per resource
-- Delete resource (removes from storage + DB)
-
-### Route Addition
-
-Add `/onboarding` to `App.tsx` router, import the new `Onboarding.tsx` page component. Add a navigation link in `AuthenticatedHeader.tsx`.
-
-### Files
-
-| File | Action |
+### Files Modified
+| File | Change |
 |------|--------|
-| Migration SQL | Create tables, bucket, RLS policies |
-| `src/pages/Onboarding.tsx` | New page component |
-| `src/App.tsx` | Add route |
-| `src/components/AuthenticatedHeader.tsx` | Add nav link |
+| `src/components/admin/OrganizationReportsPanel.tsx` | New — fetches and displays reports for a selected org |
+| `src/pages/SuperAdminDashboard.tsx` | Add state + click handler + render panel |
 
