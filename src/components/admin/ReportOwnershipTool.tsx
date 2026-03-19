@@ -428,23 +428,57 @@ export function ReportOwnershipTool() {
             </div>
           </div>
 
-          {/* Filter Toggle */}
-          <div className="flex items-center gap-2 mb-4">
-            <Button
-              variant={showOnlyMismatches ? "default" : "outline"}
-              size="sm"
-              onClick={() => setShowOnlyMismatches(true)}
-            >
-              <AlertTriangle className="h-4 w-4 mr-1" />
-              Show Mismatches Only
-            </Button>
-            <Button
-              variant={!showOnlyMismatches ? "default" : "outline"}
-              size="sm"
-              onClick={() => setShowOnlyMismatches(false)}
-            >
-              Show All Reports
-            </Button>
+          {/* Search & Filters */}
+          <div className="space-y-3 mb-4">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Input
+                placeholder="Search by organization, owner, or trainer of record..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9 pr-9"
+              />
+              {searchQuery && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7"
+                  onClick={() => setSearchQuery('')}
+                >
+                  <X className="w-3.5 h-3.5" />
+                </Button>
+              )}
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Select value={filterByUserId} onValueChange={setFilterByUserId}>
+                <SelectTrigger className="w-[220px]">
+                  <SelectValue placeholder="Filter by user..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Users</SelectItem>
+                  {profiles?.map((profile) => (
+                    <SelectItem key={profile.id} value={profile.id}>
+                      {`${profile.first_name || ''} ${profile.last_name || ''}`.trim() || profile.id}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                variant={showOnlyMismatches ? "default" : "outline"}
+                size="sm"
+                onClick={() => setShowOnlyMismatches(true)}
+              >
+                <AlertTriangle className="h-4 w-4 mr-1" />
+                Mismatches Only
+              </Button>
+              <Button
+                variant={!showOnlyMismatches ? "default" : "outline"}
+                size="sm"
+                onClick={() => setShowOnlyMismatches(false)}
+              >
+                Show All
+              </Button>
+            </div>
           </div>
 
           {/* Report Tabs */}
