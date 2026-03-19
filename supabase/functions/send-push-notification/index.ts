@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { checkRateLimit, getClientIP, createRateLimitResponse } from "../_shared/rate-limiter.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -71,6 +72,18 @@ serve(async (req) => {
     }
 
     console.log('Webhook secret validated - request from database trigger');
+
+    // Rate limiting - 20 push notifications per minute per IP
+    const clientIP = getClientIP(req);
+    const rateLimitResult = checkRateLimit(`push-notification:${clientIP}`, {
+      maxRequests: 20,
+      windowMs: 60 * 1000,
+    });
+    
+    if (!rateLimitResult.allowed) {
+      console.warn(`Rate limit exceeded for IP: ${clientIP}`);
+      return createRateLimitResponse(rateLimitResult.resetAt, corsHeaders);
+    }
     
     // Parse and validate payload
     const payload = await req.json();

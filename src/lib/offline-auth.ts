@@ -308,6 +308,9 @@ async function migrateUserData(oldUserId: string, newUserId: string): Promise<vo
       { name: 'daily_assessments' as const, idField: 'inspector_id' },
     ];
     
+    // Also migrate the unified 'photos' store - photos use inspectionId 
+    // (which maps to the parent report) but the photo_url path contains the userId
+    
     let totalMigrated = 0;
     
     for (const { name, idField } of storesToMigrate) {
@@ -329,6 +332,39 @@ async function migrateUserData(oldUserId: string, newUserId: string): Promise<vo
         console.warn(`[OfflineAuth] Failed to migrate store ${name}:`, storeError);
       }
     }
+    
+    // Migrate photos store - update photo_url paths containing the old userId
+    try {
+      const tx = db.transaction('photos', 'readwrite');
+      const store = tx.objectStore('photos');
+      const allPhotos = await store.getAll();
+      
+      for (const photo of allPhotos) {
+        let changed = false;
+        
+        // Update photoUrl path if it contains the old userId
+        if (photo.photoUrl && typeof photo.photoUrl === 'string' && photo.photoUrl.includes(oldUserId)) {
+          photo.photoUrl = photo.photoUrl.replace(oldUserId, newUserId);
+          changed = true;
+        }
+        
+        // Update fileName path if it contains the old userId
+        if (photo.fileName && typeof photo.fileName === 'string' && photo.fileName.includes(oldUserId)) {
+          photo.fileName = photo.fileName.replace(oldUserId, newUserId);
+          changed = true;
+        }
+        
+        if (changed) {
+          await store.put(photo);
+          totalMigrated++;
+        }
+      }
+      
+      await tx.done;
+    } catch (storeError) {
+      console.warn('[OfflineAuth] Failed to migrate photos store:', storeError);
+    }
+    
     
     if (import.meta.env.DEV) {
       console.log(`[OfflineAuth] Migrated ${totalMigrated} records from ${oldUserId} to ${newUserId}`);
