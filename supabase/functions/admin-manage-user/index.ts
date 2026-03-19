@@ -341,6 +341,7 @@ Deno.serve(async (req) => {
               name: (m.organizations as any)?.name || '',
             })),
             isSuperAdmin,
+            isActive: profile?.is_active ?? true,
           };
         });
 
