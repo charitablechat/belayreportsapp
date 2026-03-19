@@ -929,6 +929,14 @@ export default function SuperAdminDashboard() {
               </TableBody>
             </Table>
           </div>
+
+          {selectedOrgForReports && (
+            <OrganizationReportsPanel
+              organizationId={selectedOrgForReports.id}
+              organizationName={selectedOrgForReports.name}
+              onBack={() => setSelectedOrgForReports(null)}
+            />
+          )}
         </TabsContent>
 
         <TabsContent value="user-management" className="space-y-4">
