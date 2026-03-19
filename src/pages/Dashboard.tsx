@@ -94,22 +94,6 @@ export default function Dashboard() {
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [userProfile, setUserProfile] = useState<any>(null);
   const [inspectorFilter, setInspectorFilter] = useState<string>("all");
-  // Aminos AI Chatbot - inject script once DOM is settled
-  useEffect(() => {
-    const existingScript = document.querySelector('script[data-bot-id="7179"]');
-    if (existingScript) return;
-
-    const script = document.createElement('script');
-    script.src = 'https://platform.simplebotinstall.com/w/chat_plugin.js';
-    script.setAttribute('data-bot-id', '7179');
-    script.async = true;
-    document.body.appendChild(script);
-
-    return () => {
-      if (script.parentNode) script.parentNode.removeChild(script);
-      document.querySelectorAll('[id*="aminos"], [class*="aminos"]').forEach(el => el.remove());
-    };
-  }, []);
 
   
   // Build unique inspector list from report data
