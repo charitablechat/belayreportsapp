@@ -627,9 +627,6 @@ serve(async (req) => {
     checkPageBreak(disclaimerHeight + 10);
     
     doc.setFillColor(254, 243, 199);
-    const disclaimerLines = doc.splitTextToSize(content.disclaimer, contentWidth - 10);
-    const disclaimerHeight = (disclaimerLines.length * 4) + 16;
-    
     doc.roundedRect(margin - 5, yPos - 5, contentWidth + 10, disclaimerHeight, 3, 3, 'F');
     doc.setFontSize(9);
     doc.setFont('helvetica', 'bold');
