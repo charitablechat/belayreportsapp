@@ -15,7 +15,7 @@ import { goBack } from "@/lib/navigation";
 import { useState } from "react";
 import { AdminTabsSection } from "@/components/admin/AdminTabsSection";
 import { UserManagementDialog } from "@/components/admin/UserManagementDialog";
-import { FormCMSManager } from "@/components/admin/FormCMSManager";
+
 import { MergeOrganizationsDialog } from "@/components/admin/MergeOrganizationsDialog";
 import { DataRecoveryTool } from "@/components/admin/DataRecoveryTool";
 import { DeletedRecordsRecovery } from "@/components/admin/DeletedRecordsRecovery";
@@ -1170,9 +1170,6 @@ export default function SuperAdminDashboard() {
           </Table>
         </TabsContent>
 
-        <TabsContent value="form-cms" className="space-y-4">
-          <FormCMSManager />
-        </TabsContent>
 
         <TabsContent value="notifications" className="space-y-4">
           <Table>
