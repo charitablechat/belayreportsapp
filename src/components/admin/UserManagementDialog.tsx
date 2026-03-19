@@ -24,6 +24,7 @@ interface UserManagementDialogProps {
     email: string;
     firstName: string;
     lastName: string;
+    currentRole?: string;
   };
   organizations: Array<{ id: string; name: string }>;
   onSubmit: (data: UserFormData) => Promise<void>;
