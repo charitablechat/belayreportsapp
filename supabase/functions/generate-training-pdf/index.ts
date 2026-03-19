@@ -472,7 +472,7 @@ serve(async (req) => {
       }
 
       if (content.summary.recommendationsList.length > 0) {
-        checkPageBreak(15);
+        checkPageBreak(20);
         doc.setFontSize(12);
         doc.setFont('helvetica', 'bold');
         doc.setTextColor(0, 0, 0);
