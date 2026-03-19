@@ -546,6 +546,7 @@ serve(async (req) => {
       }
 
       if (summary.future_considerations) {
+        checkPageBreak(20);
         doc.setFontSize(12);
         doc.setFont('helvetica', 'bold');
         doc.text('Future Considerations', margin, yPos);
