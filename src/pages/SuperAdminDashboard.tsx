@@ -20,6 +20,7 @@ import { MergeOrganizationsDialog } from "@/components/admin/MergeOrganizationsD
 import { DataRecoveryTool } from "@/components/admin/DataRecoveryTool";
 import { DeletedRecordsRecovery } from "@/components/admin/DeletedRecordsRecovery";
 import { ReportOwnershipTool } from "@/components/admin/ReportOwnershipTool";
+import { DatabaseBackupsPanel } from "@/components/admin/DatabaseBackupsPanel";
 import { toast } from "sonner";
 import { parseLocalDate } from "@/lib/date-utils";
 import { getSessionBackground } from "@/lib/background-manager";
@@ -1286,6 +1287,10 @@ export default function SuperAdminDashboard() {
 
         <TabsContent value="report-ownership" className="space-y-4">
           <ReportOwnershipTool />
+        </TabsContent>
+
+        <TabsContent value="database-backups" className="space-y-4">
+          <DatabaseBackupsPanel />
         </TabsContent>
       </Tabs>
 

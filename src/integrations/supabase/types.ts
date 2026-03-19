@@ -134,6 +134,33 @@ export type Database = {
         }
         Relationships: []
       }
+      backup_history: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          file_path: string
+          file_size_bytes: number | null
+          id: string
+          table_counts: Json | null
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          file_path: string
+          file_size_bytes?: number | null
+          id?: string
+          table_counts?: Json | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          file_path?: string
+          file_size_bytes?: number | null
+          id?: string
+          table_counts?: Json | null
+        }
+        Relationships: []
+      }
       daily_assessment_beginning_of_day: {
         Row: {
           assessment_id: string

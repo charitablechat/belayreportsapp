@@ -53,3 +53,9 @@ verify_jwt = false
 
 [functions.convert-heic-photos]
 verify_jwt = true
+
+[functions.export-full-backup]
+verify_jwt = false
+
+[functions.restore-full-backup]
+verify_jwt = false
