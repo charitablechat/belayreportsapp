@@ -524,10 +524,7 @@ serve(async (req) => {
         doc.setFont('helvetica', 'normal');
         const criticalLines = doc.splitTextToSize(stripHtml(summary.critical_actions), contentWidth);
         criticalLines.forEach((line: string) => {
-          if (yPos > pageHeight - 40) {
-            doc.addPage();
-            yPos = margin;
-          }
+          checkPageBreak(5);
           doc.text(line, margin, yPos);
           yPos += 5;
         });
