@@ -278,10 +278,7 @@ serve(async (req) => {
       doc.setFont('helvetica', 'normal');
       const historyLines = doc.splitTextToSize(stripHtml(inspection.course_history), contentWidth);
       historyLines.forEach((line: string) => {
-        if (yPos > pageHeight - 40) {
-          doc.addPage();
-          yPos = margin;
-        }
+        checkPageBreak(5);
         doc.text(line, margin, yPos);
         yPos += 5;
       });
