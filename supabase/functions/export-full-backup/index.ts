@@ -177,7 +177,7 @@ Deno.serve(async (req) => {
         file_path: filePath,
         file_size_bytes: bytes.length,
         table_counts: tableCounts,
-        created_by: userId,
+        created_by: userId === "system-cron" ? null : userId,
       });
 
     if (historyError) {
