@@ -1,71 +1,30 @@
 
-
-## Fix Single-Press Update Detection & Add Pulsating "Update Now" Button
-
-### Root Cause
-In `usePWAUpdate.tsx`, `checkForUpdates` calls `reg.update()`, waits a fixed 2 seconds, then checks `reg.waiting || reg.installing`. If the new service worker is still downloading or hasn't transitioned to `installed` within that 2s window, `needsUpdate` stays false. The `updatefound` listener in the main `useEffect` eventually sets it — but only after the check has already completed and the UI shows "UP TO DATE."
-
-### Fix
-
-**1. `src/hooks/usePWAUpdate.tsx` — Wait for SW state transition instead of fixed timeout**
-
-Replace the fixed 2s wait in `checkForUpdates` with a promise that resolves when:
-- `reg.waiting` is already present (immediate), OR
-- The `installing` worker reaches `installed` state (via `statechange` listener), OR
-- A 10s safety timeout expires
-
-This ensures `needsUpdate` is set before `checkForUpdates` returns.
-
-```typescript
-const checkForUpdates = useCallback(async () => {
-  setIsChecking(true);
-  try {
-    const reg = await navigator.serviceWorker.ready;
-    await reg.update();
-
-    // Wait for the new SW to reach 'installed' (waiting) state
-    if (!reg.waiting) {
-      const installing = reg.installing;
-      if (installing) {
-        await new Promise<void>((resolve) => {
-          const onStateChange = () => {
-            if (installing.state === 'installed' || installing.state === 'activated') {
-              installing.removeEventListener('statechange', onStateChange);
-              resolve();
-            }
-          };
-          installing.addEventListener('statechange', onStateChange);
-          setTimeout(() => { installing.removeEventListener('statechange', onStateChange); resolve(); }, 10000);
-        });
-      }
-    }
-
-    if (reg.waiting) setNeedRefresh(true);
-  } catch { /* ... */ }
-  finally { setIsChecking(false); /* timestamp */ }
-}, []);
+## Goal
+Start over: remove all prior Aminos chatbot installation logic and only include this script tag in the app’s HTML `<head>`:
+```html
+<script src="https://platform.aminos.ai/w/chat_plugin.js" data-bot-id="7179"></script>
 ```
 
-**2. `src/components/pwa/UpdateControlPanel.tsx` — Transform "Check Now" into pulsating "Update Now"**
+## What I found
+- The chatbot is currently injected via a `useEffect` in `src/pages/Dashboard.tsx`, using `platform.simplebotinstall.com` and cleanup logic. No other chatbot references exist elsewhere.
 
-When `needsUpdate` is true, replace the "Check Now" button with a pulsating amber "Update Now" button that calls `handleApplyUpdate` directly. Remove the separate "Apply Update" button to simplify the flow.
+## Plan (code changes)
+1. **Remove all chatbot code from the Dashboard page**
+   - File: `src/pages/Dashboard.tsx`
+   - Delete the entire Aminos chatbot `useEffect` block (the section that:
+     - checks `script[data-bot-id="7179"]`
+     - appends a `<script>` to `document.body`
+     - removes the script / `[id*="aminos"], [class*="aminos"]` on cleanup)
+   - Leave everything else in `Dashboard.tsx` unchanged.
 
-```text
-┌─────────────────────────┐
-│  Before update found:   │
-│  [ CHECK NOW ]          │  ← normal outline button
-│  [ APPLY UPDATE ] dim   │
-│                         │
-│  After update found:    │
-│  [ ● UPDATE NOW ]       │  ← pulsating amber button, replaces both
-│                         │
-└─────────────────────────┘
-```
+2. **Add the provided script tag to the global HTML header**
+   - File: `index.html`
+   - Insert inside `<head>`, near the end (right before `</head>` is fine):
+     ```html
+     <script src="https://platform.aminos.ai/w/chat_plugin.js" data-bot-id="7179"></script>
+     ```
+   - No other chatbot-related logic will remain in React components.
 
-### Files affected
-
-| File | Change |
-|------|--------|
-| `src/hooks/usePWAUpdate.tsx` | Replace fixed 2s wait with SW state transition listener |
-| `src/components/pwa/UpdateControlPanel.tsx` | Merge Check/Apply into single context-aware button with pulse animation |
-
+## Expected result
+- The chatbot script loads for **all users** (and on **all routes**) because it’s in the global HTML `<head>`.
+- This is the cleanest “start over” baseline; if the bot still doesn’t appear after this, the next step will be to inspect runtime errors/network blocking (ad blockers/CSP) via console + network logs.
