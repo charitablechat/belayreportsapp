@@ -94,6 +94,20 @@ export default function Dashboard() {
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [userProfile, setUserProfile] = useState<any>(null);
   const [inspectorFilter, setInspectorFilter] = useState<string>("all");
+  // Aminos AI Chatbot - inject script on mount, clean up on unmount
+  useEffect(() => {
+    const script = document.createElement('script');
+    script.src = 'https://platform.aminos.ai/w/chat_plugin.js';
+    script.setAttribute('data-bot-id', '7179');
+    script.async = true;
+    document.body.appendChild(script);
+
+    return () => {
+      if (script.parentNode) script.parentNode.removeChild(script);
+      document.querySelectorAll('[id*="aminos"], [class*="aminos"]').forEach(el => el.remove());
+    };
+  }, []);
+
   
   // Build unique inspector list from report data
   const uniqueInspectors = useMemo(() => {
