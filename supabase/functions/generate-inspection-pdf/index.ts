@@ -536,10 +536,7 @@ serve(async (req) => {
         doc.setFont('helvetica', 'normal');
         const repairLines = doc.splitTextToSize(stripHtml(summary.repairs_performed), contentWidth);
         repairLines.forEach((line: string) => {
-          if (yPos > pageHeight - 40) {
-            doc.addPage();
-            yPos = margin;
-          }
+          checkPageBreak(5);
           doc.text(line, margin, yPos);
           yPos += 5;
         });
