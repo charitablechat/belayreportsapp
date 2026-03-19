@@ -10,7 +10,7 @@
    DropdownMenuSeparator,
    DropdownMenuTrigger,
  } from "@/components/ui/dropdown-menu";
-import { LogOut, User, Bell, Settings, FileText, Download, MessageCircle, Loader2, Shield, Monitor, MoreVertical, Database, Sun, Moon, BookOpen } from "lucide-react";
+import { LogOut, User, Bell, Settings, FileText, Download, MessageCircle, Loader2, Shield, Monitor, MoreVertical, Database, Sun, Moon, BookOpen, RefreshCw } from "lucide-react";
 import { useTheme } from "next-themes";
  import { UserAvatar } from "@/components/ui/user-avatar";
 import { usePWAInstall } from "@/hooks/usePWAInstall";
@@ -41,7 +41,7 @@ import { VersionBadge } from "@/components/VersionBadge";
  }: UserProfileDropdownProps) {
    const navigate = useNavigate();
     const { isInstallable, isInstalled, promptInstall } = usePWAInstall();
-    const { unsyncedCount } = usePWA();
+    const { unsyncedCount, needsUpdate, updateAndReload } = usePWA();
     const { theme, setTheme } = useTheme();
   const [notificationsDialogOpen, setNotificationsDialogOpen] = useState(false);
   const [contactSheetOpen, setContactSheetOpen] = useState(false);
@@ -113,12 +113,26 @@ import { VersionBadge } from "@/components/VersionBadge";
                <DropdownMenuSeparator />
              </>
            )}
-           
-             {/* Profile */}
-             <DropdownMenuItem onClick={() => navigate('/profile')}>
-               <User className="w-4 h-4 mr-2" />
-               Profile
-             </DropdownMenuItem>
+            
+              {/* Profile */}
+              <DropdownMenuItem onClick={() => navigate('/profile')}>
+                <User className="w-4 h-4 mr-2" />
+                Profile
+              </DropdownMenuItem>
+
+              {/* Update Now - only when update available */}
+              {needsUpdate && (
+                <DropdownMenuItem 
+                  onClick={() => updateAndReload()}
+                  className="text-amber-600 dark:text-amber-400 font-medium"
+                >
+                  <span className="relative mr-2">
+                    <RefreshCw className="w-4 h-4" />
+                    <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-amber-500 rounded-full animate-pulse" />
+                  </span>
+                  Update Now
+                </DropdownMenuItem>
+              )}
 
              {/* Onboarding */}
              <DropdownMenuItem onClick={() => navigate('/onboarding')}>

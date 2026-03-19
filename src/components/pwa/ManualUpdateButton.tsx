@@ -25,7 +25,7 @@ import { toast } from 'sonner';
 const UPDATE_FLAG_KEY = 'pwa-update-pending';
 
 export const ManualUpdateButton = () => {
-  const { needsUpdate, updateAndReload, unsyncedCount, forceSync, isSyncing } = usePWA();
+  const { needsUpdate, updateAndReload, unsyncedCount, forceSync, isSyncing, checkForUpdates } = usePWA();
   const [checking, setChecking] = useState(false);
   const [showForceRefreshDialog, setShowForceRefreshDialog] = useState(false);
   const [showUnsyncedWarning, setShowUnsyncedWarning] = useState(false);
@@ -44,6 +44,19 @@ export const ManualUpdateButton = () => {
     }
   }, []);
 
+  // Watch for needsUpdate transitions to show toast
+  useEffect(() => {
+    if (needsUpdate && !previousNeedsUpdate.current) {
+      toast.dismiss('update-check');
+      toast.success('Update found!', {
+        description: 'Click "Update App" to install the latest version',
+        duration: 5000
+      });
+      triggerHaptic('success');
+    }
+    previousNeedsUpdate.current = needsUpdate;
+  }, [needsUpdate]);
+
   const handleCheckForUpdates = async () => {
     triggerHaptic('light');
     
@@ -59,39 +72,15 @@ export const ManualUpdateButton = () => {
     toast.loading('Checking for updates...', { id: 'update-check' });
     
     try {
-      if ('serviceWorker' in navigator) {
-        const registration = await Promise.race([
-          navigator.serviceWorker.ready,
-          new Promise((_, reject) =>
-            setTimeout(() => reject(new Error('Service worker not available')), 5000)
-          )
-        ]) as ServiceWorkerRegistration;
-        await registration.update();
-        
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        
-        if (registration.waiting || registration.installing) {
-          toast.dismiss('update-check');
-          toast.success('Update found!', { 
-            description: 'Click "Update App" to install the latest version',
-            duration: 5000
-          });
-          triggerHaptic('success');
-        } else {
-          toast.dismiss('update-check');
-          toast.info('App is up to date', { 
-            description: 'You have the latest version',
-            duration: 3000
-          });
-        }
-        
-        setChecking(false);
-      } else {
+      await checkForUpdates();
+      // If no update was found (needsUpdate didn't change), show "up to date"
+      // The useEffect above handles the "update found" case
+      if (!needsUpdate) {
         toast.dismiss('update-check');
-        toast.info('Updates not supported', { 
-          description: 'Service workers are not available in this browser'
+        toast.info('App is up to date', { 
+          description: 'You have the latest version',
+          duration: 3000
         });
-        setChecking(false);
       }
     } catch (error) {
       console.error('[Manual Update] Error checking for updates:', error);
@@ -100,6 +89,7 @@ export const ManualUpdateButton = () => {
         description: 'Please try again later'
       });
       triggerHaptic('warning');
+    } finally {
       setChecking(false);
     }
   };
