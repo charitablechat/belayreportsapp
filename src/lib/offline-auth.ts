@@ -338,6 +338,28 @@ async function migrateUserData(oldUserId: string, newUserId: string): Promise<vo
       }
     }
     
+    // Migrate photo stores
+    for (const { name, ownerField } of photoStoresToMigrate) {
+      try {
+        const tx = db.transaction(name, 'readwrite');
+        const store = tx.objectStore(name);
+        const allRecords = await store.getAll();
+        
+        for (const record of allRecords) {
+          if (record[ownerField] === oldUserId) {
+            record[ownerField] = newUserId;
+            await store.put(record);
+            totalMigrated++;
+          }
+        }
+        
+        await tx.done;
+      } catch (storeError) {
+        // Photo stores may not exist in all IndexedDB versions - this is expected
+        console.warn(`[OfflineAuth] Failed to migrate photo store ${name}:`, storeError);
+      }
+    }
+    
     if (import.meta.env.DEV) {
       console.log(`[OfflineAuth] Migrated ${totalMigrated} records from ${oldUserId} to ${newUserId}`);
     }

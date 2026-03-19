@@ -72,6 +72,18 @@ serve(async (req) => {
     }
 
     console.log('Webhook secret validated - request from database trigger');
+
+    // Rate limiting - 20 push notifications per minute per IP
+    const clientIP = getClientIP(req);
+    const rateLimitResult = checkRateLimit(`push-notification:${clientIP}`, {
+      maxRequests: 20,
+      windowMs: 60 * 1000,
+    });
+    
+    if (!rateLimitResult.allowed) {
+      console.warn(`Rate limit exceeded for IP: ${clientIP}`);
+      return createRateLimitResponse(rateLimitResult.resetAt, corsHeaders);
+    }
     
     // Parse and validate payload
     const payload = await req.json();
