@@ -1457,16 +1457,70 @@ export default function SuperAdminDashboard() {
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will permanently delete the user account for <strong>{userToDelete?.email}</strong>.
-              This action cannot be undone.
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-destructive" />
+              Permanently Delete User?
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                <p>
+                  This will permanently delete the account for <strong>{userToDelete?.email}</strong>.
+                  This action cannot be undone.
+                </p>
+                <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-200">
+                  <p className="font-medium mb-1">⚠️ Reports will be preserved</p>
+                  <p>All inspections, trainings, and daily assessments created by this user will remain in the system, but the inspector name will be removed from those reports.</p>
+                </div>
+                <p className="text-sm font-medium">
+                  Consider <strong>deactivating</strong> the user instead — this prevents login while keeping full report attribution.
+                </p>
+              </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={handleDeleteUser} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-              Delete User
+              Delete Permanently
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Deactivate / Reactivate Confirmation Dialog */}
+      <AlertDialog open={deactivateDialogOpen} onOpenChange={setDeactivateDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {userToDeactivate?.isActive !== false ? 'Deactivate User' : 'Reactivate User'}
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2">
+                {userToDeactivate?.isActive !== false ? (
+                  <>
+                    <p>
+                      Deactivating <strong>{userToDeactivate?.email}</strong> will prevent them from logging in.
+                    </p>
+                    <p className="text-sm">
+                      Their profile and all reports will remain intact with full attribution. You can reactivate them at any time.
+                    </p>
+                  </>
+                ) : (
+                  <p>
+                    Reactivating <strong>{userToDeactivate?.email}</strong> will restore their ability to log in and use the system.
+                  </p>
+                )}
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmDeactivateToggle}
+              className={userToDeactivate?.isActive !== false
+                ? 'bg-amber-600 hover:bg-amber-700 text-white'
+                : 'bg-emerald-600 hover:bg-emerald-700 text-white'}
+            >
+              {userToDeactivate?.isActive !== false ? 'Deactivate' : 'Reactivate'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
