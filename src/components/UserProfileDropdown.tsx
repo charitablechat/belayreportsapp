@@ -10,7 +10,7 @@
    DropdownMenuSeparator,
    DropdownMenuTrigger,
  } from "@/components/ui/dropdown-menu";
-import { LogOut, User, Bell, Settings, FileText, Download, MessageCircle, Loader2, Shield, Monitor, MoreVertical, Database, Sun, Moon, BookOpen } from "lucide-react";
+import { LogOut, User, Bell, Settings, FileText, Download, MessageCircle, Loader2, Shield, Monitor, MoreVertical, Database, Sun, Moon, BookOpen, RefreshCw } from "lucide-react";
 import { useTheme } from "next-themes";
  import { UserAvatar } from "@/components/ui/user-avatar";
 import { usePWAInstall } from "@/hooks/usePWAInstall";
