@@ -909,7 +909,7 @@ export default function SuperAdminDashboard() {
                             <Button
                               variant="ghost"
                               size="sm"
-                              onClick={() => handleEditOrg(org)}
+                              onClick={(e) => { e.stopPropagation(); handleEditOrg(org); }}
                             >
                               <Pencil className="h-4 w-4" />
                             </Button>
