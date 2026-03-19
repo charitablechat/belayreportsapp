@@ -45,10 +45,10 @@ export function OrganizationReportsPanel({ organizationId, organizationName, onB
     queryFn: async () => {
       const { data, error } = await supabase
         .from("trainings")
-        .select("id, organization, location, training_date, status, trainer:profiles!trainings_inspector_id_profiles_fkey(first_name, last_name)")
+        .select("id, organization, location, start_date, status, trainer:profiles!trainings_inspector_id_profiles_fkey(first_name, last_name)")
         .eq("organization_id", organizationId)
         .is("deleted_at", null)
-        .order("training_date", { ascending: false });
+        .order("start_date", { ascending: false });
       if (error) throw error;
       return data;
     },
