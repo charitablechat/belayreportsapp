@@ -280,8 +280,23 @@ export function ReportOwnershipTool() {
 
   const isLoading = profilesLoading || trainingsLoading || inspectionsLoading || dailyLoading;
 
+  const applyFilters = (reports: ReportWithOwnership[]) => {
+    let filtered = reports;
+    if (showOnlyMismatches) filtered = filtered.filter(r => !r.isMatch);
+    if (filterByUserId && filterByUserId !== "all") filtered = filtered.filter(r => r.currentOwnerId === filterByUserId);
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim();
+      filtered = filtered.filter(r =>
+        r.organization.toLowerCase().includes(q) ||
+        r.currentOwner.toLowerCase().includes(q) ||
+        r.expectedOwner.toLowerCase().includes(q)
+      );
+    }
+    return filtered;
+  };
+
   const renderReportTable = (reports: ReportWithOwnership[], showExpected: boolean = true) => {
-    const filteredReports = showOnlyMismatches ? reports.filter(r => !r.isMatch) : reports;
+    const filteredReports = applyFilters(reports);
     
     return (
       <Table>
