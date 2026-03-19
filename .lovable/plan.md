@@ -1,32 +1,71 @@
 
 
-## Add Aminos AI Chatbot to Dashboard
+## Fix Single-Press Update Detection & Add Pulsating "Update Now" Button
 
-### Approach
-Inject the third-party chatbot script (`chat_plugin.js`) dynamically when the Dashboard mounts, and clean it up on unmount. This keeps the chatbot scoped to the dashboard only.
+### Root Cause
+In `usePWAUpdate.tsx`, `checkForUpdates` calls `reg.update()`, waits a fixed 2 seconds, then checks `reg.waiting || reg.installing`. If the new service worker is still downloading or hasn't transitioned to `installed` within that 2s window, `needsUpdate` stays false. The `updatefound` listener in the main `useEffect` eventually sets it — but only after the check has already completed and the UI shows "UP TO DATE."
 
-### Changes
+### Fix
 
-**`src/pages/Dashboard.tsx`** — Add a `useEffect` that:
-1. Creates a `<script>` element with `src="https://platform.aminos.ai/w/chat_plugin.js"` and `data-bot-id="7179"`
-2. Appends it to `document.body`
-3. Removes the script and any injected chatbot DOM elements on cleanup
+**1. `src/hooks/usePWAUpdate.tsx` — Wait for SW state transition instead of fixed timeout**
+
+Replace the fixed 2s wait in `checkForUpdates` with a promise that resolves when:
+- `reg.waiting` is already present (immediate), OR
+- The `installing` worker reaches `installed` state (via `statechange` listener), OR
+- A 10s safety timeout expires
+
+This ensures `needsUpdate` is set before `checkForUpdates` returns.
 
 ```typescript
-useEffect(() => {
-  const script = document.createElement('script');
-  script.src = 'https://platform.aminos.ai/w/chat_plugin.js';
-  script.setAttribute('data-bot-id', '7179');
-  script.async = true;
-  document.body.appendChild(script);
+const checkForUpdates = useCallback(async () => {
+  setIsChecking(true);
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    await reg.update();
 
-  return () => {
-    document.body.removeChild(script);
-    // Clean up any widget elements the script injected
-    document.querySelectorAll('[id*="aminos"], [class*="aminos"]').forEach(el => el.remove());
-  };
+    // Wait for the new SW to reach 'installed' (waiting) state
+    if (!reg.waiting) {
+      const installing = reg.installing;
+      if (installing) {
+        await new Promise<void>((resolve) => {
+          const onStateChange = () => {
+            if (installing.state === 'installed' || installing.state === 'activated') {
+              installing.removeEventListener('statechange', onStateChange);
+              resolve();
+            }
+          };
+          installing.addEventListener('statechange', onStateChange);
+          setTimeout(() => { installing.removeEventListener('statechange', onStateChange); resolve(); }, 10000);
+        });
+      }
+    }
+
+    if (reg.waiting) setNeedRefresh(true);
+  } catch { /* ... */ }
+  finally { setIsChecking(false); /* timestamp */ }
 }, []);
 ```
 
-No other files need changes. The chatbot widget will appear as a floating element on the dashboard page only.
+**2. `src/components/pwa/UpdateControlPanel.tsx` — Transform "Check Now" into pulsating "Update Now"**
+
+When `needsUpdate` is true, replace the "Check Now" button with a pulsating amber "Update Now" button that calls `handleApplyUpdate` directly. Remove the separate "Apply Update" button to simplify the flow.
+
+```text
+┌─────────────────────────┐
+│  Before update found:   │
+│  [ CHECK NOW ]          │  ← normal outline button
+│  [ APPLY UPDATE ] dim   │
+│                         │
+│  After update found:    │
+│  [ ● UPDATE NOW ]       │  ← pulsating amber button, replaces both
+│                         │
+└─────────────────────────┘
+```
+
+### Files affected
+
+| File | Change |
+|------|--------|
+| `src/hooks/usePWAUpdate.tsx` | Replace fixed 2s wait with SW state transition listener |
+| `src/components/pwa/UpdateControlPanel.tsx` | Merge Check/Apply into single context-aware button with pulse animation |
 
