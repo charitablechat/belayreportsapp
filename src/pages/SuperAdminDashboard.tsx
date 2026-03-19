@@ -943,11 +943,12 @@ export default function SuperAdminDashboard() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Email</TableHead>
-                <TableHead>Name</TableHead>
-                <TableHead>Roles</TableHead>
-                <TableHead>Last Sign In</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
+                 <TableHead>Email</TableHead>
+                 <TableHead>Name</TableHead>
+                 <TableHead>Status</TableHead>
+                 <TableHead>Roles</TableHead>
+                 <TableHead>Last Sign In</TableHead>
+                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
