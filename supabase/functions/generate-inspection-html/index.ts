@@ -936,14 +936,36 @@ serve(async (req) => {
     }
 
     /* Allow comments columns to wrap and expand */
-    .equipment-table td:nth-child(5),
-    .systems-table td:nth-child(4),
-    .ziplines-table td:nth-child(10),
+    .equipment-table td:nth-child(6),
+    .systems-table td:nth-child(5),
+    .ziplines-table td:nth-child(11),
     .standards-table td:nth-child(3),
     .standards-table td:nth-child(4) {
       white-space: normal;
       word-wrap: break-word;
       overflow-wrap: break-word;
+    }
+
+    /* Per-item photo thumbnails */
+    .item-thumbnail {
+      width: 60px;
+      height: 60px;
+      object-fit: contain;
+      border-radius: 4px;
+      border: 1px solid #e2e8f0;
+      display: block;
+      margin: 0 auto;
+    }
+
+    @media print {
+      .item-thumbnail {
+        display: block !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+        page-break-inside: avoid !important;
+      }
     }
 
     .key-section {
