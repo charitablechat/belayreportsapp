@@ -144,6 +144,15 @@ function OperatingSystemsTable({ systems, onUpdate, onImmediateSave, inspectionI
                   </div>
                 ) : (
                   <>
+                    <div className="p-2 border-r border-border flex items-center justify-center">
+                      <ItemPhotoUpload
+                        itemId={system.id}
+                        inspectionId={effectiveInspectionId}
+                        photoUrl={system.photo_url || null}
+                        onPhotoChange={(url) => updateSystem(system, "photo_url", url)}
+                        onImmediateSave={onImmediateSave}
+                      />
+                    </div>
                     <div className="p-2 border-r border-border">
                       <GlobalAutocomplete
                         value={system.name || ""}
