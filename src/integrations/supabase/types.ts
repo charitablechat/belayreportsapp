@@ -752,6 +752,7 @@ export type Database = {
           equipment_type: string
           id: string
           inspection_id: string
+          photo_url: string | null
           production_year: string | null
           quantity: string | null
           result: string
@@ -765,6 +766,7 @@ export type Database = {
           equipment_type: string
           id?: string
           inspection_id: string
+          photo_url?: string | null
           production_year?: string | null
           quantity?: string | null
           result: string
@@ -778,6 +780,7 @@ export type Database = {
           equipment_type?: string
           id?: string
           inspection_id?: string
+          photo_url?: string | null
           production_year?: string | null
           quantity?: string | null
           result?: string
@@ -961,6 +964,7 @@ export type Database = {
           inspection_id: string
           is_divider: boolean
           name: string | null
+          photo_url: string | null
           result: string | null
           system_name: string | null
         }
@@ -973,6 +977,7 @@ export type Database = {
           inspection_id: string
           is_divider?: boolean
           name?: string | null
+          photo_url?: string | null
           result?: string | null
           system_name?: string | null
         }
@@ -985,6 +990,7 @@ export type Database = {
           inspection_id?: string
           is_divider?: boolean
           name?: string | null
+          photo_url?: string | null
           result?: string | null
           system_name?: string | null
         }
@@ -1013,6 +1019,7 @@ export type Database = {
           id: string
           inspection_id: string
           load_tension: number | null
+          photo_url: string | null
           result: string
           unload_tension: number | null
           zipline_name: string
@@ -1031,6 +1038,7 @@ export type Database = {
           id?: string
           inspection_id: string
           load_tension?: number | null
+          photo_url?: string | null
           result: string
           unload_tension?: number | null
           zipline_name: string
@@ -1049,6 +1057,7 @@ export type Database = {
           id?: string
           inspection_id?: string
           load_tension?: number | null
+          photo_url?: string | null
           result?: string
           unload_tension?: number | null
           zipline_name?: string
