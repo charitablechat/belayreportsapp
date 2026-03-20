@@ -1,60 +1,63 @@
 
 
-## Fix "Failed to Upload Photo" Error
+## Fix: ItemPhotoUpload Spinner Stuck Indefinitely
 
 ### Root Cause
 
-The upload uses `upsert: true` which internally performs an **UPDATE** when the file already exists. However, there is **no UPDATE policy** on `storage.objects` for the `inspection-photos` bucket. Even on first upload, Supabase's upsert path may check UPDATE permissions, causing RLS violations.
+The `ItemPhotoUpload` component has **no timeout protection** around the Supabase storage upload call (line 77-79). If the network stalls or the upload hangs, the `uploading` state stays `true` forever, leaving the spinner spinning indefinitely.
 
-Additionally, there are **duplicate/redundant INSERT policies** (3 INSERT policies exist), which isn't harmful but adds confusion.
+By contrast, `PhotoCapture.tsx` already has proper timeout constants (`PROCESS_SAFETY_TIMEOUT = 12000`, `PER_FILE_TIMEOUT = 10000`) — but `ItemPhotoUpload` was written without these safeguards.
 
 ### Plan
 
-**1. Database Migration — Add missing UPDATE policy**
+**File: `src/components/inspection/ItemPhotoUpload.tsx`**
 
-Add an UPDATE policy for `inspection-photos` so `upsert: true` works:
+Wrap the entire `handleUpload` body in a `Promise.race` with a 12-second safety timeout, matching the pattern used in `PhotoCapture`:
 
-```sql
-CREATE POLICY "Users can update their own inspection photos"
-ON storage.objects FOR UPDATE
-TO authenticated
-USING (
-  bucket_id = 'inspection-photos'
-  AND auth.uid()::text = (storage.foldername(name))[1]
-)
-WITH CHECK (
-  bucket_id = 'inspection-photos'
-  AND auth.uid()::text = (storage.foldername(name))[1]
-);
+1. Add a `UPLOAD_TIMEOUT = 12000` constant (12 seconds total for compress + auth + upload + signed URL)
+2. Wrap the upload logic in `Promise.race` against a timeout that rejects after 12s
+3. On timeout, show a toast: "Upload timed out — photo saved locally, will retry automatically"
+4. Clear `localPreview` and set `uploading = false` on timeout (already handled by `finally`)
+5. Add an `AbortController` so the underlying fetch is cancelled on timeout (Supabase storage client supports this via `fetch` options — not natively, so we'll rely on the Promise.race pattern to at least unblock the UI)
+
+The key change is wrapping lines 57-93 in:
+
+```typescript
+const UPLOAD_TIMEOUT = 12000;
+
+const uploadWithTimeout = async () => {
+  // existing compress + auth + upload logic
+};
+
+await Promise.race([
+  uploadWithTimeout(),
+  new Promise((_, reject) =>
+    setTimeout(() => reject(new Error('Upload timed out')), UPLOAD_TIMEOUT)
+  ),
+]);
 ```
 
-Also clean up the duplicate INSERT policy "Authenticated users can upload inspection photos" (the one with no folder check), which is overly permissive:
-
-```sql
-DROP POLICY IF EXISTS "Authenticated users can upload inspection photos" ON storage.objects;
-```
-
-**2. Improve error logging in `ItemPhotoUpload.tsx`**
-
-Add more specific error details to the console log and toast so users/developers can identify the exact failure (auth vs RLS vs network):
+The `catch` block already handles errors and resets state. We just need to add a specific message for timeout errors:
 
 ```typescript
 } catch (err: any) {
-  console.error("[ItemPhotoUpload] Upload failed:", err);
-  const message = err?.message || err?.statusCode === '403' 
-    ? "Permission denied - please try logging out and back in"
-    : "Failed to upload photo";
+  const isTimeout = err?.message?.includes('timed out');
+  const statusCode = err?.statusCode || err?.status;
+  const message = isTimeout
+    ? "Upload timed out – please check your connection and try again"
+    : statusCode === 403 || statusCode === '403'
+      ? "Permission denied – please try logging out and back in"
+      : err?.message || "Failed to upload photo";
   toast.error(message);
+  setLocalPreview(null);
 }
 ```
 
-### Files affected
+### Files Changed
 
 | File | Change |
 |------|--------|
-| New migration SQL | Add UPDATE policy, remove overly permissive INSERT policy |
-| `src/components/inspection/ItemPhotoUpload.tsx` | Better error messaging |
+| `src/components/inspection/ItemPhotoUpload.tsx` | Add 12s timeout wrapper around upload logic |
 
-### Chatbot note
-The chatbot 403 error (`platform.aminos.ai` — "Referring domain not in whitelist") is completely unrelated to photo uploads. It's a third-party service domain whitelist issue, not a shared dependency or security context conflict.
+No database or backend changes needed.
 
