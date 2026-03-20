@@ -2117,6 +2117,7 @@ serve(async (req) => {
             <th>System Name</th>
             <th>Result</th>
             <th>Comments and/or Required Changes</th>
+            <th>Photo</th>
           </tr>
         </thead>
         <tbody>
@@ -2130,6 +2131,7 @@ serve(async (req) => {
                 <td><strong>${sys.system_name}</strong></td>
                 <td style="${resultData.cellStyle}">${resultData.html}</td>
                 <td style="font-size: 9pt;">${formattedComments}</td>
+                ${renderItemPhotoCell(sys.photo_url)}
               </tr>
             `;
             })
