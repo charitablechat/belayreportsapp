@@ -236,6 +236,8 @@ function ZiplinesTable({ ziplines, onUpdate, onImmediateSave, inspectionId }: Zi
                       fieldType="zipline_name"
                       placeholder="Enter or select name"
                     />
+                    </div>
+                  </div>
                   </div>
                   
                   <div className="grid grid-cols-2 gap-4">
