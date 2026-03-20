@@ -33,6 +33,7 @@ const ZIP_GRID_COLS = "grid-cols-[40px_60px_minmax(120px,1fr)_80px_80px_80px_80p
 
 function ZiplinesTable({ ziplines, onUpdate, onImmediateSave, inspectionId }: ZiplinesTableProps) {
   const [itemToDelete, setItemToDelete] = useState<{ id: string; name: string } | null>(null);
+  const effectiveInspectionId = inspectionId || window.location.pathname.split('/').pop() || '';
 
   const { getDragProps } = useNativeDrag(ziplines, (reordered) => onUpdate(reordered));
 
