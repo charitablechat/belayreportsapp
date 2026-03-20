@@ -219,9 +219,17 @@ function ZiplinesTable({ ziplines, onUpdate, onImmediateSave, inspectionId }: Zi
                   <Trash2 className="h-4 w-4" />
                 </Button>
                 <div className="space-y-3 pr-10">
-                  <div>
-                    <Label className="text-xs text-muted-foreground">Line Name</Label>
-                    <GlobalAutocomplete
+                  <div className="flex items-center gap-3">
+                    <ItemPhotoUpload
+                      itemId={zipline.id}
+                      inspectionId={effectiveInspectionId}
+                      photoUrl={zipline.photo_url || null}
+                      onPhotoChange={(url) => updateZipline(zipline, "photo_url", url)}
+                      onImmediateSave={onImmediateSave}
+                    />
+                    <div className="flex-1">
+                      <Label className="text-xs text-muted-foreground">Line Name</Label>
+                      <GlobalAutocomplete
                       value={zipline.zipline_name}
                       onChange={(value) => updateZipline(zipline, "zipline_name", value)}
                       onBlur={onImmediateSave}
