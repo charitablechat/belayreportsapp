@@ -2724,8 +2724,8 @@ export default function InspectionForm() {
 
           <div>
               <TabsContent value="details" className="space-y-6">
-                <OperatingSystemsTable systems={systems} onUpdate={setSystems} onImmediateSave={stableTriggerImmediateSave} />
-                <ZiplinesTable ziplines={ziplines} onUpdate={setZiplines} onImmediateSave={stableTriggerImmediateSave} />
+                <OperatingSystemsTable systems={systems} onUpdate={setSystems} onImmediateSave={stableTriggerImmediateSave} inspectionId={id} />
+                <ZiplinesTable ziplines={ziplines} onUpdate={setZiplines} onImmediateSave={stableTriggerImmediateSave} inspectionId={id} />
                 
                 <div className="mt-8 border-t pt-6">
                   <h3 className="text-lg font-semibold mb-4">Photos - Systems & Ziplines</h3>
