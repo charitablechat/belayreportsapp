@@ -97,6 +97,7 @@ function ZiplinesTable({ ziplines, onUpdate, onImmediateSave, inspectionId }: Zi
             {/* Header */}
             <div className={`grid ${ZIP_GRID_COLS} bg-blue-50 dark:bg-blue-950/20 border-b border-border text-xs`}>
               <div className="p-2 text-center font-semibold border-r border-border"></div>
+              <div className="p-2 text-center font-semibold border-r border-border text-xs">Photo</div>
               <div className="p-2 text-left font-semibold border-r border-border">Line Name</div>
               <div className="p-2 text-left font-semibold border-r border-border">Cable Type</div>
               <div className="p-2 text-left font-semibold border-r border-border">Length (ft)</div>
