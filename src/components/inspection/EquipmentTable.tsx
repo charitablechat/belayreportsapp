@@ -475,8 +475,16 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
                   <Trash2 className="h-4 w-4" />
                 </Button>
                 <div className="space-y-3 pr-10">
-                   <div>
-                    <Label className="text-xs text-muted-foreground">Type *</Label>
+                  <div className="flex items-center gap-3">
+                    <ItemPhotoUpload
+                      itemId={item.id}
+                      inspectionId={effectiveInspectionId}
+                      photoUrl={item.photo_url || null}
+                      onPhotoChange={(url) => updateEquipment(item, "photo_url", url)}
+                      onImmediateSave={onImmediateSave}
+                    />
+                    <div className="flex-1">
+                      <Label className="text-xs text-muted-foreground">Type *</Label>
                     {typeOptions ? (
                       (() => {
                         const currentVal = item.equipment_type || "";
