@@ -21,6 +21,8 @@ interface ItemPhotoUploadProps {
   disabled?: boolean;
 }
 
+const UPLOAD_TIMEOUT = 12000; // 12 seconds
+
 function ItemPhotoUpload({
   itemId,
   inspectionId,
@@ -55,48 +57,58 @@ function ItemPhotoUpload({
   const handleUpload = useCallback(async (file: File) => {
     setUploading(true);
     try {
-      const compressed = await compressImage(file, { maxWidth: 1200, maxHeight: 1200, quality: 0.8 });
-      const previewUrl = URL.createObjectURL(compressed);
-      setLocalPreview(previewUrl);
+      await Promise.race([
+        (async () => {
+          const compressed = await compressImage(file, { maxWidth: 1200, maxHeight: 1200, quality: 0.8 });
+          const previewUrl = URL.createObjectURL(compressed);
+          setLocalPreview(previewUrl);
 
-      let userId: string | undefined;
-      try {
-        const { data: userData } = await getUserWithCache();
-        userId = userData?.user?.id;
-      } catch {
-        // cache miss – fall back to live session
-      }
-      if (!userId) {
-        const { data: sessionData } = await supabase.auth.getSession();
-        userId = sessionData?.session?.user?.id;
-      }
-      if (!userId) throw new Error("Not authenticated");
+          let userId: string | undefined;
+          try {
+            const { data: userData } = await getUserWithCache();
+            userId = userData?.user?.id;
+          } catch {
+            // cache miss – fall back to live session
+          }
+          if (!userId) {
+            const { data: sessionData } = await supabase.auth.getSession();
+            userId = sessionData?.session?.user?.id;
+          }
+          if (!userId) throw new Error("Not authenticated");
 
-      const filePath = `${userId}/${inspectionId}/items/${itemId}.jpg`;
+          const filePath = `${userId}/${inspectionId}/items/${itemId}.jpg`;
 
-      const { error: uploadError } = await supabase.storage
-        .from("inspection-photos")
-        .upload(filePath, compressed, { contentType: "image/jpeg", upsert: true });
+          const { error: uploadError } = await supabase.storage
+            .from("inspection-photos")
+            .upload(filePath, compressed, { contentType: "image/jpeg", upsert: true });
 
-      if (uploadError) throw uploadError;
+          if (uploadError) throw uploadError;
 
-      onPhotoChange(filePath);
-      onImmediateSave?.();
+          onPhotoChange(filePath);
+          onImmediateSave?.();
 
-      const { data: signedData } = await supabase.storage
-        .from("inspection-photos")
-        .createSignedUrl(filePath, 3600);
-      if (signedData?.signedUrl) {
-        setSignedUrl(signedData.signedUrl);
-        URL.revokeObjectURL(previewUrl);
-        setLocalPreview(null);
-      }
+          const { data: signedData } = await supabase.storage
+            .from("inspection-photos")
+            .createSignedUrl(filePath, 3600);
+          if (signedData?.signedUrl) {
+            setSignedUrl(signedData.signedUrl);
+            URL.revokeObjectURL(previewUrl);
+            setLocalPreview(null);
+          }
+        })(),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error("Upload timed out")), UPLOAD_TIMEOUT)
+        ),
+      ]);
     } catch (err: any) {
       console.error("[ItemPhotoUpload] Upload failed:", err);
+      const isTimeout = err?.message?.includes("timed out");
       const statusCode = err?.statusCode || err?.status;
-      const message = statusCode === 403 || statusCode === '403'
-        ? "Permission denied – please try logging out and back in"
-        : err?.message || "Failed to upload photo";
+      const message = isTimeout
+        ? "Upload timed out – please check your connection and try again"
+        : statusCode === 403 || statusCode === '403'
+          ? "Permission denied – please try logging out and back in"
+          : err?.message || "Failed to upload photo";
       toast.error(message);
       setLocalPreview(null);
     } finally {
