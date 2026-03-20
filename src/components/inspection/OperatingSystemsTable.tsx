@@ -6,6 +6,7 @@ import ResultSelect from "@/components/ResultSelect";
 import SystemTypeSelect from "@/components/SystemTypeSelect";
 import { GlobalAutocomplete } from "@/components/GlobalAutocomplete";
 import { Plus, Trash2, Minus } from "lucide-react";
+import ItemPhotoUpload from "./ItemPhotoUpload";
 import { Input } from "@/components/ui/input";
 import { useState, useCallback, memo } from "react";
 import {
@@ -25,12 +26,14 @@ interface OperatingSystemsTableProps {
   systems: any[];
   onUpdate: (systemsOrUpdater: any[] | ((prev: any[]) => any[])) => void;
   onImmediateSave?: () => void;
+  inspectionId?: string;
 }
 
-const OS_GRID_COLS = "grid-cols-[40px_minmax(180px,1fr)_minmax(160px,1fr)_192px_1fr_64px]";
+const OS_GRID_COLS = "grid-cols-[40px_60px_minmax(180px,1fr)_minmax(160px,1fr)_192px_1fr_64px]";
 
-function OperatingSystemsTable({ systems, onUpdate, onImmediateSave }: OperatingSystemsTableProps) {
+function OperatingSystemsTable({ systems, onUpdate, onImmediateSave, inspectionId }: OperatingSystemsTableProps) {
   const [itemToDelete, setItemToDelete] = useState<{ id: string; name: string } | null>(null);
+  const effectiveInspectionId = inspectionId || window.location.pathname.split('/').pop() || '';
 
   const { getDragProps } = useNativeDrag(systems, (reordered) => onUpdate(reordered));
 
@@ -100,6 +103,7 @@ function OperatingSystemsTable({ systems, onUpdate, onImmediateSave }: Operating
           {/* Header */}
           <div className={`grid ${OS_GRID_COLS} bg-blue-50 dark:bg-blue-950/20 border-b border-border`}>
             <div className="p-3 text-center font-semibold text-sm border-r border-border"></div>
+            <div className="p-3 text-center font-semibold text-sm border-r border-border">Photo</div>
             <div className="p-3 text-left font-semibold text-sm border-r border-border">Element Name</div>
             <div className="p-3 text-left font-semibold text-sm border-r border-border">Operating System</div>
             <div className="p-3 text-left font-semibold text-sm border-r border-border">Result</div>
@@ -117,7 +121,7 @@ function OperatingSystemsTable({ systems, onUpdate, onImmediateSave }: Operating
                 {...getDragProps(system.id)}
               >
                 {system.is_divider ? (
-                  <div className="col-span-5 flex items-center bg-blue-100 dark:bg-blue-900/30">
+                  <div className="col-span-6 flex items-center bg-blue-100 dark:bg-blue-900/30">
                     <div className="p-2 flex-1">
                       <Input
                         value={system.divider_text || ""}
@@ -140,6 +144,15 @@ function OperatingSystemsTable({ systems, onUpdate, onImmediateSave }: Operating
                   </div>
                 ) : (
                   <>
+                    <div className="p-2 border-r border-border flex items-center justify-center">
+                      <ItemPhotoUpload
+                        itemId={system.id}
+                        inspectionId={effectiveInspectionId}
+                        photoUrl={system.photo_url || null}
+                        onPhotoChange={(url) => updateSystem(system, "photo_url", url)}
+                        onImmediateSave={onImmediateSave}
+                      />
+                    </div>
                     <div className="p-2 border-r border-border">
                       <GlobalAutocomplete
                         value={system.name || ""}
@@ -220,15 +233,24 @@ function OperatingSystemsTable({ systems, onUpdate, onImmediateSave }: Operating
                     <Trash2 className="h-4 w-4" />
                   </Button>
                   <div className="space-y-3 pr-10">
-                    <div>
-                      <Label className="text-xs text-muted-foreground">Element Name</Label>
-                      <GlobalAutocomplete
+                    <div className="flex items-center gap-3">
+                      <ItemPhotoUpload
+                        itemId={system.id}
+                        inspectionId={effectiveInspectionId}
+                        photoUrl={system.photo_url || null}
+                        onPhotoChange={(url) => updateSystem(system, "photo_url", url)}
+                        onImmediateSave={onImmediateSave}
+                      />
+                      <div className="flex-1">
+                        <Label className="text-xs text-muted-foreground">Element Name</Label>
+                        <GlobalAutocomplete
                         value={system.name || ""}
                         onChange={(value) => updateSystem(system, "name", value)}
                         onBlur={onImmediateSave}
                         fieldType="operating_system_element"
                         placeholder="Enter or select name"
-                      />
+                        />
+                      </div>
                     </div>
                     <div>
                       <Label className="text-xs text-muted-foreground">Operating System</Label>

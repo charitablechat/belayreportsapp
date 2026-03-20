@@ -7,6 +7,7 @@ import ResultSelect from "@/components/ResultSelect";
 import { GlobalAutocomplete } from "@/components/GlobalAutocomplete";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Plus, Trash2, X } from "lucide-react";
+import ItemPhotoUpload from "./ItemPhotoUpload";
 import { cn } from "@/lib/utils";
 import { useState, useMemo, useCallback, memo, useRef } from "react";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -29,12 +30,14 @@ interface EquipmentTableProps {
   onUpdate: (equipmentOrUpdater: any[] | ((prev: any[]) => any[])) => void;
   onImmediateSave?: () => void;
   typeOptions?: string[];
+  inspectionId?: string;
 }
 
-const EQ_GRID_COLS = "grid-cols-[40px_minmax(160px,1fr)_128px_96px_192px_1fr_64px]";
+const EQ_GRID_COLS = "grid-cols-[40px_60px_minmax(160px,1fr)_128px_96px_192px_1fr_64px]";
 
-function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediateSave, typeOptions }: EquipmentTableProps) {
+function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediateSave, typeOptions, inspectionId }: EquipmentTableProps) {
   const isMobile = useIsMobile();
+  const effectiveInspectionId = inspectionId || window.location.pathname.split('/').pop() || '';
   
   const categoryEquipment = useMemo(
     () => equipment.filter((item) => item.equipment_category === category),
@@ -322,6 +325,7 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
           {/* Header */}
           <div className={`grid ${EQ_GRID_COLS} bg-blue-50 dark:bg-blue-950/20 border-b border-border`}>
             <div className="p-3 text-center font-semibold text-sm border-r border-border"></div>
+            <div className="p-3 text-center font-semibold text-sm border-r border-border">Photo</div>
             <div className="p-3 text-left font-semibold text-sm border-r border-border">Type</div>
             <div className="p-3 text-left font-semibold text-sm border-r border-border">Manufacture Year(s)</div>
             <div className="p-3 text-left font-semibold text-sm border-r border-border">Quantity</div>
@@ -339,6 +343,15 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
                 gridCols={EQ_GRID_COLS}
                 {...getDragProps(item.id)}
               >
+                <div className="p-2 border-r border-border flex items-center justify-center">
+                  <ItemPhotoUpload
+                    itemId={item.id}
+                    inspectionId={effectiveInspectionId}
+                    photoUrl={item.photo_url || null}
+                    onPhotoChange={(url) => updateEquipment(item, "photo_url", url)}
+                    onImmediateSave={onImmediateSave}
+                  />
+                </div>
                 <div className="p-2 border-r border-border">
                   {typeOptions ? (
                     (() => {
@@ -462,8 +475,16 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
                   <Trash2 className="h-4 w-4" />
                 </Button>
                 <div className="space-y-3 pr-10">
-                   <div>
-                    <Label className="text-xs text-muted-foreground">Type *</Label>
+                  <div className="flex items-center gap-3">
+                    <ItemPhotoUpload
+                      itemId={item.id}
+                      inspectionId={effectiveInspectionId}
+                      photoUrl={item.photo_url || null}
+                      onPhotoChange={(url) => updateEquipment(item, "photo_url", url)}
+                      onImmediateSave={onImmediateSave}
+                    />
+                    <div className="flex-1">
+                      <Label className="text-xs text-muted-foreground">Type *</Label>
                     {typeOptions ? (
                       (() => {
                         const currentVal = item.equipment_type || "";
@@ -493,6 +514,7 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
                         className={cn(!item.equipment_type || item.equipment_type.trim() === "" ? "ring-2 ring-destructive" : "")}
                       />
                     )}
+                    </div>
                   </div>
                   
                   <div className="grid grid-cols-2 gap-4">

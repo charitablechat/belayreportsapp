@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import ResultSelect from "@/components/ResultSelect";
 import { GlobalAutocomplete } from "@/components/GlobalAutocomplete";
 import { Plus, Trash2 } from "lucide-react";
+import ItemPhotoUpload from "./ItemPhotoUpload";
 import { useState, useCallback, memo } from "react";
 import {
   AlertDialog,
@@ -25,12 +26,14 @@ interface ZiplinesTableProps {
   ziplines: any[];
   onUpdate: (ziplinesOrUpdater: any[] | ((prev: any[]) => any[])) => void;
   onImmediateSave?: () => void;
+  inspectionId?: string;
 }
 
-const ZIP_GRID_COLS = "grid-cols-[40px_minmax(120px,1fr)_80px_80px_80px_80px_100px_80px_100px_80px_100px_100px_minmax(120px,1fr)_48px]";
+const ZIP_GRID_COLS = "grid-cols-[40px_60px_minmax(120px,1fr)_80px_80px_80px_80px_100px_80px_100px_80px_100px_100px_minmax(120px,1fr)_48px]";
 
-function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: ZiplinesTableProps) {
+function ZiplinesTable({ ziplines, onUpdate, onImmediateSave, inspectionId }: ZiplinesTableProps) {
   const [itemToDelete, setItemToDelete] = useState<{ id: string; name: string } | null>(null);
+  const effectiveInspectionId = inspectionId || window.location.pathname.split('/').pop() || '';
 
   const { getDragProps } = useNativeDrag(ziplines, (reordered) => onUpdate(reordered));
 
@@ -94,6 +97,7 @@ function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: ZiplinesTablePro
             {/* Header */}
             <div className={`grid ${ZIP_GRID_COLS} bg-blue-50 dark:bg-blue-950/20 border-b border-border text-xs`}>
               <div className="p-2 text-center font-semibold border-r border-border"></div>
+              <div className="p-2 text-center font-semibold border-r border-border text-xs">Photo</div>
               <div className="p-2 text-left font-semibold border-r border-border">Line Name</div>
               <div className="p-2 text-left font-semibold border-r border-border">Cable Type</div>
               <div className="p-2 text-left font-semibold border-r border-border">Length (ft)</div>
@@ -118,6 +122,15 @@ function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: ZiplinesTablePro
                   gridCols={ZIP_GRID_COLS}
                   {...getDragProps(zipline.id)}
                 >
+                  <div className="p-1 border-r border-border flex items-center justify-center">
+                    <ItemPhotoUpload
+                      itemId={zipline.id}
+                      inspectionId={effectiveInspectionId}
+                      photoUrl={zipline.photo_url || null}
+                      onPhotoChange={(url) => updateZipline(zipline, "photo_url", url)}
+                      onImmediateSave={onImmediateSave}
+                    />
+                  </div>
                   <div className="p-1 border-r border-border">
                     <GlobalAutocomplete
                       value={zipline.zipline_name}
@@ -206,15 +219,24 @@ function ZiplinesTable({ ziplines, onUpdate, onImmediateSave }: ZiplinesTablePro
                   <Trash2 className="h-4 w-4" />
                 </Button>
                 <div className="space-y-3 pr-10">
-                  <div>
-                    <Label className="text-xs text-muted-foreground">Line Name</Label>
-                    <GlobalAutocomplete
+                  <div className="flex items-center gap-3">
+                    <ItemPhotoUpload
+                      itemId={zipline.id}
+                      inspectionId={effectiveInspectionId}
+                      photoUrl={zipline.photo_url || null}
+                      onPhotoChange={(url) => updateZipline(zipline, "photo_url", url)}
+                      onImmediateSave={onImmediateSave}
+                    />
+                    <div className="flex-1">
+                      <Label className="text-xs text-muted-foreground">Line Name</Label>
+                      <GlobalAutocomplete
                       value={zipline.zipline_name}
                       onChange={(value) => updateZipline(zipline, "zipline_name", value)}
                       onBlur={onImmediateSave}
                       fieldType="zipline_name"
                       placeholder="Enter or select name"
                     />
+                    </div>
                   </div>
                   
                   <div className="grid grid-cols-2 gap-4">
