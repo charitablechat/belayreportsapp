@@ -343,6 +343,15 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
                 gridCols={EQ_GRID_COLS}
                 {...getDragProps(item.id)}
               >
+                <div className="p-2 border-r border-border flex items-center justify-center">
+                  <ItemPhotoUpload
+                    itemId={item.id}
+                    inspectionId={effectiveInspectionId}
+                    photoUrl={item.photo_url || null}
+                    onPhotoChange={(url) => updateEquipment(item, "photo_url", url)}
+                    onImmediateSave={onImmediateSave}
+                  />
+                </div>
                 <div className="p-2 border-r border-border">
                   {typeOptions ? (
                     (() => {
