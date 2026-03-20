@@ -1400,7 +1400,13 @@ serve(async (req) => {
       /* Reduce table font sizes */
       table {
         font-size: 8pt;
-        min-width: 600px; /* Force scroll for complex tables */
+        table-layout: auto;
+        width: 100%;
+      }
+      
+      .item-thumbnail {
+        width: 40px;
+        height: 40px;
       }
       
       th, td {
