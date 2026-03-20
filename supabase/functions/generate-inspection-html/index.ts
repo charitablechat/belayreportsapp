@@ -349,6 +349,65 @@ serve(async (req) => {
       }
     }
 
+    // Build per-item photo map (systems, ziplines, equipment photo_url → base64)
+    const itemPhotoMap = new Map<string, string>();
+    const allItemPhotoPaths: string[] = [];
+    for (const sys of systems) {
+      if (sys.photo_url) allItemPhotoPaths.push(sys.photo_url);
+    }
+    for (const zip of ziplines) {
+      if (zip.photo_url) allItemPhotoPaths.push(zip.photo_url);
+    }
+    for (const eq of equipment) {
+      if (eq.photo_url) allItemPhotoPaths.push(eq.photo_url);
+    }
+
+    console.log(`[Inspection HTML] Found ${allItemPhotoPaths.length} per-item photos to download`);
+
+    for (const photoPath of allItemPhotoPaths) {
+      if (itemPhotoMap.has(photoPath)) continue;
+      try {
+        const { data: fileData, error: downloadError } = await supabase
+          .storage
+          .from('inspection-photos')
+          .download(photoPath);
+
+        if (downloadError || !fileData) {
+          console.warn(`[Inspection HTML] Failed to download item photo ${photoPath}:`, downloadError?.message);
+          continue;
+        }
+
+        const arrayBuffer = await fileData.arrayBuffer();
+        const bytes = new Uint8Array(arrayBuffer);
+
+        // HEIC magic byte detection — skip mislabeled HEIC files
+        if (bytes.length >= 12) {
+          const decoder = new TextDecoder('ascii');
+          const ftypTag = decoder.decode(bytes.slice(4, 8));
+          if (ftypTag === 'ftyp') {
+            const brand = decoder.decode(bytes.slice(8, 12)).toLowerCase();
+            if (brand === 'heic' || brand === 'heis' || brand === 'mif1') {
+              console.warn(`[Inspection HTML] Skipping item photo ${photoPath} — HEIC data`);
+              continue;
+            }
+          }
+        }
+
+        const photoBase64 = arrayBufferToBase64(arrayBuffer);
+        const photoMime = fileData.type || 'image/jpeg';
+        itemPhotoMap.set(photoPath, `data:${photoMime};base64,${photoBase64}`);
+        console.log(`[Inspection HTML] Item photo ${photoPath} converted (${Math.round(arrayBuffer.byteLength / 1024)}KB)`);
+      } catch (err) {
+        console.error(`[Inspection HTML] Error processing item photo ${photoPath}:`, err);
+      }
+    }
+
+    // Helper to render item thumbnail cell
+    const renderItemPhotoCell = (photoUrl: string | null): string => {
+      if (!photoUrl || !itemPhotoMap.has(photoUrl)) return '<td style="text-align:center;">—</td>';
+      return `<td style="text-align:center;"><img src="${itemPhotoMap.get(photoUrl)}" class="item-thumbnail" /></td>`;
+    };
+
     // Format dates in Central Time (CST/CDT)
     const formatDate = (dateStr: string | null) => {
       if (!dateStr) return "N/A";
@@ -800,17 +859,19 @@ serve(async (req) => {
       display: inline-block;
     }
 
-    /* Optimized column widths for Equipment table */
+    /* Optimized column widths for Equipment table (6 columns with Photo) */
     .equipment-table th:nth-child(1),
-    .equipment-table td:nth-child(1) { width: 30%; } /* Type */
+    .equipment-table td:nth-child(1) { width: 25%; } /* Type */
     .equipment-table th:nth-child(2),
-    .equipment-table td:nth-child(2) { width: 10%; } /* Quantity */
+    .equipment-table td:nth-child(2) { width: 8%; } /* Quantity */
     .equipment-table th:nth-child(3),
     .equipment-table td:nth-child(3) { width: 10%; } /* Year */
     .equipment-table th:nth-child(4),
-    .equipment-table td:nth-child(4) { width: 22%; } /* Result - wider for full words */
+    .equipment-table td:nth-child(4) { width: 20%; } /* Result */
     .equipment-table th:nth-child(5),
-    .equipment-table td:nth-child(5) { width: auto; min-width: 120px; } /* Comments - dynamic */
+    .equipment-table td:nth-child(5) { width: auto; min-width: 100px; } /* Comments */
+    .equipment-table th:nth-child(6),
+    .equipment-table td:nth-child(6) { width: 75px; } /* Photo */
 
     /* Optimized column widths for Standards table */
     .standards-table th:nth-child(1),
@@ -822,37 +883,41 @@ serve(async (req) => {
     .standards-table th:nth-child(4),
     .standards-table td:nth-child(4) { width: auto; min-width: 150px; } /* Comments - dynamic */
 
-    /* Optimized column widths for Ziplines table (10 columns) */
+    /* Optimized column widths for Ziplines table (11 columns with Photo) */
     .ziplines-table th:nth-child(1),
-    .ziplines-table td:nth-child(1) { width: 10%; } /* Name */
+    .ziplines-table td:nth-child(1) { width: 9%; } /* Name */
     .ziplines-table th:nth-child(2),
-    .ziplines-table td:nth-child(2) { width: 7%; } /* Cable Type */
+    .ziplines-table td:nth-child(2) { width: 6%; } /* Cable Type */
     .ziplines-table th:nth-child(3),
-    .ziplines-table td:nth-child(3) { width: 6%; } /* Length */
+    .ziplines-table td:nth-child(3) { width: 5%; } /* Length */
     .ziplines-table th:nth-child(4),
-    .ziplines-table td:nth-child(4) { width: 10%; } /* Cable Result */
+    .ziplines-table td:nth-child(4) { width: 9%; } /* Cable Result */
     .ziplines-table th:nth-child(5),
-    .ziplines-table td:nth-child(5) { width: 8%; } /* Braking System */
+    .ziplines-table td:nth-child(5) { width: 7%; } /* Braking System */
     .ziplines-table th:nth-child(6),
-    .ziplines-table td:nth-child(6) { width: 10%; } /* Braking Result */
+    .ziplines-table td:nth-child(6) { width: 9%; } /* Braking Result */
     .ziplines-table th:nth-child(7),
-    .ziplines-table td:nth-child(7) { width: 7%; } /* EAD System */
+    .ziplines-table td:nth-child(7) { width: 6%; } /* EAD System */
     .ziplines-table th:nth-child(8),
-    .ziplines-table td:nth-child(8) { width: 10%; } /* EAD Result */
+    .ziplines-table td:nth-child(8) { width: 9%; } /* EAD Result */
     .ziplines-table th:nth-child(9),
-    .ziplines-table td:nth-child(9) { width: 10%; } /* Overall Result */
+    .ziplines-table td:nth-child(9) { width: 9%; } /* Overall Result */
     .ziplines-table th:nth-child(10),
-    .ziplines-table td:nth-child(10) { width: auto; min-width: 160px; } /* Comments - dynamic */
+    .ziplines-table td:nth-child(10) { width: auto; min-width: 120px; } /* Comments */
+    .ziplines-table th:nth-child(11),
+    .ziplines-table td:nth-child(11) { width: 75px; } /* Photo */
 
-    /* Optimized column widths for Operating Systems table */
+    /* Optimized column widths for Operating Systems table (5 columns with Photo) */
     .systems-table th:nth-child(1),
-    .systems-table td:nth-child(1) { width: 18%; } /* Element Name */
+    .systems-table td:nth-child(1) { width: 16%; } /* Element Name */
     .systems-table th:nth-child(2),
-    .systems-table td:nth-child(2) { width: 18%; } /* System Type */
+    .systems-table td:nth-child(2) { width: 16%; } /* System Type */
     .systems-table th:nth-child(3),
-    .systems-table td:nth-child(3) { width: 16%; } /* Result - wider for full words */
+    .systems-table td:nth-child(3) { width: 14%; } /* Result */
     .systems-table th:nth-child(4),
-    .systems-table td:nth-child(4) { width: auto; min-width: 180px; } /* Comments - dynamic */
+    .systems-table td:nth-child(4) { width: auto; min-width: 150px; } /* Comments */
+    .systems-table th:nth-child(5),
+    .systems-table td:nth-child(5) { width: 75px; } /* Photo */
 
     /* Optimized column widths for Standards table */
     .standards-table th:nth-child(1),
@@ -885,6 +950,28 @@ serve(async (req) => {
       white-space: normal;
       word-wrap: break-word;
       overflow-wrap: break-word;
+    }
+
+    /* Per-item photo thumbnails */
+    .item-thumbnail {
+      width: 60px;
+      height: 60px;
+      object-fit: contain;
+      border-radius: 4px;
+      border: 1px solid #e2e8f0;
+      display: block;
+      margin: 0 auto;
+    }
+
+    @media print {
+      .item-thumbnail {
+        display: block !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+        page-break-inside: avoid !important;
+      }
     }
 
     .key-section {
@@ -1907,13 +1994,14 @@ serve(async (req) => {
               <th>System Name</th>
               <th>Result</th>
               <th>Comments and/or Required Changes</th>
+              <th>Photo</th>
             </tr>
           </thead>
           <tbody>
           ${systems
             .map((sys) => {
               if (sys.is_divider) {
-                return `<tr><td colspan="4" style="text-align:center; font-weight:bold; padding:10px; background:#dbeafe; font-size:11pt;">${sys.divider_text || ''}</td></tr>`;
+                return `<tr><td colspan="5" style="text-align:center; font-weight:bold; padding:10px; background:#dbeafe; font-size:11pt;">${sys.divider_text || ''}</td></tr>`;
               }
               const resultData = formatResultCheckbox(sys.result);
               const formattedComments = formatCommentsAsBullets(sys.comments);
@@ -1923,6 +2011,7 @@ serve(async (req) => {
                 <td><strong>${sys.system_name}</strong></td>
                 <td style="${resultData.cellStyle}">${resultData.html}</td>
                 <td style="font-size: 9pt;">${formattedComments}</td>
+                ${renderItemPhotoCell(sys.photo_url)}
               </tr>
             `;
             })
@@ -1960,6 +2049,7 @@ serve(async (req) => {
               <th>EAD Result</th>
               <th>Overall</th>
               <th>Comments and/or Required Changes</th>
+              <th>Photo</th>
             </tr>
           </thead>
           <tbody>
@@ -1982,6 +2072,7 @@ serve(async (req) => {
                   <td style="${eadResultData.cellStyle}">${eadResultData.html}</td>
                   <td style="${overallResultData.cellStyle}">${overallResultData.html}</td>
                   <td style="font-size: 9pt;">${formattedComments}</td>
+                  ${renderItemPhotoCell(zip.photo_url)}
                 </tr>
               `;
               })
@@ -2034,6 +2125,7 @@ serve(async (req) => {
             <th>System Name</th>
             <th>Result</th>
             <th>Comments and/or Required Changes</th>
+            <th>Photo</th>
           </tr>
         </thead>
         <tbody>
@@ -2047,6 +2139,7 @@ serve(async (req) => {
                 <td><strong>${sys.system_name}</strong></td>
                 <td style="${resultData.cellStyle}">${resultData.html}</td>
                 <td style="font-size: 9pt;">${formattedComments}</td>
+                ${renderItemPhotoCell(sys.photo_url)}
               </tr>
             `;
             })
@@ -2111,6 +2204,7 @@ serve(async (req) => {
             <th>EAD Result</th>
             <th>Overall</th>
             <th>Comments and/or Required Changes</th>
+            <th>Photo</th>
           </tr>
         </thead>
         <tbody>
@@ -2133,6 +2227,7 @@ serve(async (req) => {
                 <td style="${eadResultData.cellStyle}">${eadResultData.html}</td>
                 <td style="${overallResultData.cellStyle}">${overallResultData.html}</td>
                 <td style="font-size: 9pt;">${formattedComments}</td>
+                ${renderItemPhotoCell(zip.photo_url)}
               </tr>
             `;
             })
@@ -2213,6 +2308,7 @@ serve(async (req) => {
                   <th>Manufacture Year(s)</th>
                   <th>Result</th>
                   <th>Comments</th>
+                  <th>Photo</th>
                 </tr>
               </thead>
               <tbody>
@@ -2227,6 +2323,7 @@ serve(async (req) => {
                       <td style="text-align: center;">${eq.production_year === "0" ? "N/A" : eq.production_year || "N/A"}</td>
                       <td style="${resultData.cellStyle}">${resultData.html}</td>
                       <td style="font-size: 9pt;">${formattedComments}</td>
+                      ${renderItemPhotoCell(eq.photo_url)}
                     </tr>
                   `;
                   })
@@ -2343,6 +2440,7 @@ serve(async (req) => {
                 <th>Manufacture Year(s)</th>
                 <th>Result</th>
                 <th>Comments</th>
+                <th>Photo</th>
               </tr>
             </thead>
             <tbody>
@@ -2357,6 +2455,7 @@ serve(async (req) => {
                     <td style="text-align: center;">${eq.production_year === "0" ? "N/A" : eq.production_year || "N/A"}</td>
                     <td style="${resultData.cellStyle}">${resultData.html}</td>
                     <td style="font-size: 9pt;">${formattedComments}</td>
+                    ${renderItemPhotoCell(eq.photo_url)}
                   </tr>
                 `;
                 })
