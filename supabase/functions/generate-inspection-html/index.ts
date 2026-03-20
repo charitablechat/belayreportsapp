@@ -1530,8 +1530,9 @@ serve(async (req) => {
       /* Photo gallery: Single column */
       .photo-gallery {
         grid-template-columns: 1fr !important;
-        max-width: 95% !important;
-        gap: 20px !important;
+        max-width: 100% !important;
+        padding: 0 !important;
+        gap: 16px !important;
       }
       
       .inspection-photo {
