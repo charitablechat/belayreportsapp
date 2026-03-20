@@ -30,6 +30,7 @@ interface EquipmentTableProps {
   onUpdate: (equipmentOrUpdater: any[] | ((prev: any[]) => any[])) => void;
   onImmediateSave?: () => void;
   typeOptions?: string[];
+  inspectionId?: string;
 }
 
 const EQ_GRID_COLS = "grid-cols-[40px_minmax(160px,1fr)_128px_96px_192px_1fr_64px]";
