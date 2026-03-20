@@ -6,6 +6,7 @@ import ResultSelect from "@/components/ResultSelect";
 import SystemTypeSelect from "@/components/SystemTypeSelect";
 import { GlobalAutocomplete } from "@/components/GlobalAutocomplete";
 import { Plus, Trash2, Minus } from "lucide-react";
+import ItemPhotoUpload from "./ItemPhotoUpload";
 import { Input } from "@/components/ui/input";
 import { useState, useCallback, memo } from "react";
 import {
