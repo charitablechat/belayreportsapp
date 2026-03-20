@@ -1,63 +1,48 @@
 
 
-## Fix: ItemPhotoUpload Spinner Stuck Indefinitely
+## Add Per-Item Photo Thumbnails to HTML/PDF Reports
 
-### Root Cause
-
-The `ItemPhotoUpload` component has **no timeout protection** around the Supabase storage upload call (line 77-79). If the network stalls or the upload hangs, the `uploading` state stays `true` forever, leaving the spinner spinning indefinitely.
-
-By contrast, `PhotoCapture.tsx` already has proper timeout constants (`PROCESS_SAFETY_TIMEOUT = 12000`, `PER_FILE_TIMEOUT = 10000`) — but `ItemPhotoUpload` was written without these safeguards.
+### Problem
+The `inspection_systems`, `inspection_ziplines`, and `inspection_equipment` tables each have a `photo_url` column storing per-item photos in the `inspection-photos` bucket. These photos are uploaded via the form UI but are **completely ignored** by the HTML report generator (`generate-inspection-html`). Only gallery photos from `inspection_photos` are rendered.
 
 ### Plan
 
-**File: `src/components/inspection/ItemPhotoUpload.tsx`**
+**File: `supabase/functions/generate-inspection-html/index.ts`**
 
-Wrap the entire `handleUpload` body in a `Promise.race` with a 12-second safety timeout, matching the pattern used in `PhotoCapture`:
+1. **Download per-item photos to base64** — After the existing gallery photo processing loop (lines 300-350), add a second pass that collects all `photo_url` values from `systems`, `ziplines`, and `equipment` arrays. For each non-null `photo_url`, download from the `inspection-photos` bucket and convert to a base64 data URI, storing results in a `Map<string, string>` keyed by storage path. Apply the same HEIC magic-byte skip logic.
 
-1. Add a `UPLOAD_TIMEOUT = 12000` constant (12 seconds total for compress + auth + upload + signed URL)
-2. Wrap the upload logic in `Promise.race` against a timeout that rejects after 12s
-3. On timeout, show a toast: "Upload timed out — photo saved locally, will retry automatically"
-4. Clear `localPreview` and set `uploading = false` on timeout (already handled by `finally`)
-5. Add an `AbortController` so the underlying fetch is cancelled on timeout (Supabase storage client supports this via `fetch` options — not natively, so we'll rely on the Promise.race pattern to at least unblock the UI)
+2. **Add a "Photo" column to each table** — In all 6 table rendering locations (combined and non-combined paths for systems, ziplines, equipment):
+   - Add a `<th>Photo</th>` column header
+   - Add a `<td>` that renders either a 60×60px thumbnail (`<img>` with `object-fit: contain`) linked to the base64 data URI, or "—" if no photo exists
+   - Update divider row `colspan` values accordingly
 
-The key change is wrapping lines 57-93 in:
+3. **Add thumbnail CSS** — Add styles for `.item-thumbnail` class:
+   ```css
+   .item-thumbnail {
+     width: 60px;
+     height: 60px;
+     object-fit: contain;
+     border-radius: 4px;
+     border: 1px solid #e2e8f0;
+   }
+   ```
+   With print media overrides ensuring visibility.
 
-```typescript
-const UPLOAD_TIMEOUT = 12000;
+### Rendering locations to modify (6 total)
 
-const uploadWithTimeout = async () => {
-  // existing compress + auth + upload logic
-};
+| Section | Path | Lines (approx) |
+|---------|------|----------------|
+| Systems table | Combined | ~1904-1931 |
+| Systems table | Standalone | ~2030-2055 |
+| Ziplines table | Combined | ~1950-1991 |
+| Ziplines table | Standalone | ~2101-2142 |
+| Equipment table | Combined | ~2210-2235 |
+| Equipment table | Standalone | ~2340-2365 |
 
-await Promise.race([
-  uploadWithTimeout(),
-  new Promise((_, reject) =>
-    setTimeout(() => reject(new Error('Upload timed out')), UPLOAD_TIMEOUT)
-  ),
-]);
-```
+### Technical details
 
-The `catch` block already handles errors and resets state. We just need to add a specific message for timeout errors:
-
-```typescript
-} catch (err: any) {
-  const isTimeout = err?.message?.includes('timed out');
-  const statusCode = err?.statusCode || err?.status;
-  const message = isTimeout
-    ? "Upload timed out – please check your connection and try again"
-    : statusCode === 403 || statusCode === '403'
-      ? "Permission denied – please try logging out and back in"
-      : err?.message || "Failed to upload photo";
-  toast.error(message);
-  setLocalPreview(null);
-}
-```
-
-### Files Changed
-
-| File | Change |
-|------|--------|
-| `src/components/inspection/ItemPhotoUpload.tsx` | Add 12s timeout wrapper around upload logic |
-
-No database or backend changes needed.
+- Reuse the existing `arrayBufferToBase64` helper and HEIC detection logic
+- Build the photo map once upfront; look up by storage path when rendering each row
+- The thumbnail column will be narrow (60px) to avoid disrupting the existing table layout
+- For ziplines tables (already 10 columns), the photo column adds minimal width since the thumbnail is fixed-size
 
