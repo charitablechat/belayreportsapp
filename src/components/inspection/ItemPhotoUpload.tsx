@@ -82,9 +82,13 @@ function ItemPhotoUpload({
         URL.revokeObjectURL(previewUrl);
         setLocalPreview(null);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error("[ItemPhotoUpload] Upload failed:", err);
-      toast.error("Failed to upload photo");
+      const statusCode = err?.statusCode || err?.status;
+      const message = statusCode === 403 || statusCode === '403'
+        ? "Permission denied – please try logging out and back in"
+        : err?.message || "Failed to upload photo";
+      toast.error(message);
       setLocalPreview(null);
     } finally {
       setUploading(false);
