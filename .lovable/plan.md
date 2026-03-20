@@ -1,54 +1,70 @@
 
 
-## Fix: Report Generation Timeout
+## Fix Report Generation: Timeout Handling & Cross-Module Reliability
 
-### Root Cause
+### Problems Identified
 
-The `generate-inspection-html` edge function downloads photos **sequentially** in two loops:
-1. Gallery photos (lines 303-350) — one-by-one
-2. Per-item photos (lines 367-403) — one-by-one
+**1. Silent timeout failure (all 3 report types)**
+When the edge function times out, the `Promise.race` rejects with `"TIMEOUT: Report generation took too long"` at 58s. The `catch` block checks `!error.message?.includes('TIMEOUT')` and **skips showing a toast**. The safety timeout at 60s (which would show a toast) is then cleared by `finally`. Result: user sees nothing — the spinner stops but no feedback is given.
 
-Each download involves a network round-trip to Supabase Storage. With even a handful of photos, this easily exceeds the edge function's execution time limit, causing the client-side 58-second timeout to fire.
+**2. Inspection edge function may be too large/slow**
+The `generate-inspection-html` function is 2797 lines with embedded base64 logo fallbacks. No edge function logs are available, suggesting possible deploy issues. The function should use the shared `report-layout.ts` helper like the other two generators.
 
-### Solution
+**3. Training & Daily Assessment don't use signed URL pattern**
+The inspection generator uploads HTML to storage and returns a signed URL (avoiding response size limits), but training and daily assessment generators return raw HTML directly — which can fail for large reports.
 
-Two changes to `supabase/functions/generate-inspection-html/index.ts`:
+### Plan
 
-1. **Parallelize all photo downloads** — Replace both sequential `for` loops with `Promise.allSettled` batches. Download gallery photos and per-item photos concurrently (with a concurrency cap of 10 to avoid overwhelming the runtime).
+**File 1: `src/pages/InspectionForm.tsx`** — Fix timeout toast
+- In the `catch` block of `handleGenerateHTML`, **show a toast for TIMEOUT errors** instead of suppressing them
+- Change the condition so timeout errors get a specific, helpful message: "Report generation timed out — please check your connection and try again"
 
-2. **Add a total time budget for photo processing** — Set a 15-second wall-clock budget for all photo downloads combined. If any photo hasn't finished downloading within the budget, skip it gracefully and continue generating the report without those images.
+**File 2: `src/pages/TrainingForm.tsx`** — Same fix
+- Same catch block fix: show toast for TIMEOUT errors
+
+**File 3: `src/pages/DailyAssessmentForm.tsx`** — Same fix
+- Same catch block fix: show toast for TIMEOUT errors
+
+**File 4: `supabase/functions/generate-inspection-html/index.ts`** — Reliability improvements
+- Import and use `getLogoBase64` from `../_shared/report-layout.ts` instead of the inline logo fetching + massive embedded base64 fallback constants (reduces file size significantly)
+- Add a top-level try/catch log at function entry so errors are visible in logs
+- Reduce `PHOTO_BUDGET_MS` from 15000 to 10000ms to leave more room for HTML generation and storage upload within the edge function's execution limit
 
 ### Technical Details
 
-**File: `supabase/functions/generate-inspection-html/index.ts`**
-
-**Gallery photos (lines 300-350):** Replace the sequential `for` loop with a parallel batch:
+**Toast fix pattern (all 3 forms):**
 ```typescript
-const PHOTO_BUDGET_MS = 15000;
-const photoStart = Date.now();
+// BEFORE (broken):
+if (!error.message?.includes('TIMEOUT')) {
+  toast.error("Failed to generate report", { ... });
+}
 
-const galleryResults = await Promise.allSettled(
-  photos.map(photo => downloadAndConvertPhoto(supabase, photo, photoStart, PHOTO_BUDGET_MS))
-);
-// Filter fulfilled results into photoDataUris
+// AFTER (fixed):
+if (error.message?.includes('TIMEOUT')) {
+  toast.error("Report generation timed out", {
+    description: "Please check your connection and try again.",
+  });
+} else {
+  toast.error("Failed to generate report", {
+    description: error.message || "Please try again.",
+  });
+}
 ```
 
-**Per-item photos (lines 352-403):** Similarly parallelize:
+**Inspection edge function logo change:**
 ```typescript
-const uniquePaths = [...new Set(allItemPhotoPaths)];
-const itemResults = await Promise.allSettled(
-  uniquePaths.map(path => downloadItemPhoto(supabase, path, photoStart, PHOTO_BUDGET_MS))
-);
-// Build itemPhotoMap from fulfilled results
+// Replace inline logo constants + getLogoBase64 function with:
+import { getLogoBase64 } from "../_shared/report-layout.ts";
 ```
 
-Each helper function checks `Date.now() - photoStart > budgetMs` before starting the download and returns `null` if the budget is exceeded.
+This removes ~200 lines of embedded base64 data and the inline fetch function, using the shared helper already proven in training and daily assessment generators.
 
 ### Files Changed
 
 | File | Change |
 |------|--------|
-| `supabase/functions/generate-inspection-html/index.ts` | Parallelize photo downloads + add 15s time budget |
-
-No database or frontend changes needed — the client-side timeout and rendering logic remain the same.
+| `src/pages/InspectionForm.tsx` | Fix timeout toast suppression |
+| `src/pages/TrainingForm.tsx` | Fix timeout toast suppression |
+| `src/pages/DailyAssessmentForm.tsx` | Fix timeout toast suppression |
+| `supabase/functions/generate-inspection-html/index.ts` | Use shared logo helper, reduce photo budget |
 
