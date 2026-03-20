@@ -1389,6 +1389,59 @@ serve(async (req) => {
         grid-template-columns: 1fr;
         gap: 8px;
       }
+
+      /* Info cells: block display with wrapping */
+      .info-cell {
+        display: block !important;
+        margin-bottom: 12px !important;
+        border-bottom: 1px solid #c2c2c2 !important;
+        padding-bottom: 8px !important;
+      }
+
+      .info-label {
+        display: block !important;
+        white-space: normal !important;
+        margin-bottom: 4px !important;
+      }
+
+      .info-value {
+        display: block !important;
+        word-break: break-word !important;
+        overflow-wrap: anywhere !important;
+        border-bottom: none !important;
+      }
+
+      /* Header: Stack to prevent overlap */
+      .page-header {
+        flex-direction: column !important;
+        align-items: center !important;
+        gap: 8px !important;
+        padding-bottom: 10px !important;
+      }
+
+      .header-left, .header-right {
+        position: static !important;
+        text-align: center !important;
+        width: 100% !important;
+      }
+
+      /* Force text wrapping in all table cells */
+      th, td {
+        padding: 4px 6px;
+        white-space: normal !important;
+        word-break: break-word !important;
+        overflow-wrap: anywhere !important;
+      }
+
+      /* Neutralize desktop min-width constraints on mobile */
+      .equipment-table td:nth-child(5),
+      .standards-table td:nth-child(3),
+      .standards-table td:nth-child(4),
+      .ziplines-table td:nth-child(10),
+      .systems-table td:nth-child(4) {
+        min-width: 0 !important;
+        width: auto !important;
+      }
       
       /* Make tables responsive with horizontal scroll container */
       .table-wrapper {
@@ -1407,10 +1460,6 @@ serve(async (req) => {
       .item-thumbnail {
         width: 40px;
         height: 40px;
-      }
-      
-      th, td {
-        padding: 4px 6px;
       }
       
       /* Reformat result checkboxes to stack vertically */
@@ -1441,16 +1490,41 @@ serve(async (req) => {
         font-size: 9pt;
       }
       
-      /* Bullet lists */
+      /* Bullet lists - wrapping guards */
       .bullet-list {
         margin-left: 12px;
         font-size: 9pt;
       }
+
+      .comment-bullets, .summary-list {
+        word-break: break-word !important;
+        overflow-wrap: anywhere !important;
+      }
+
+      .comment-bullets li, .summary-list li {
+        word-break: break-word !important;
+        overflow-wrap: anywhere !important;
+      }
       
+      /* Photo gallery: Single column */
+      .photo-gallery {
+        grid-template-columns: 1fr !important;
+        max-width: 100% !important;
+        padding: 0 !important;
+        gap: 16px !important;
+      }
+
+      .inspection-photo {
+        max-height: 250px !important;
+        object-fit: contain !important;
+      }
+
       /* Disclaimer */
       .disclaimer {
         font-size: 7pt;
-        max-width: 100%;
+        max-width: 100% !important;
+        padding: 0 4px !important;
+        text-align: center !important;
       }
     }
 
