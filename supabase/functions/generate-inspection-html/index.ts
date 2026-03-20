@@ -2434,6 +2434,7 @@ serve(async (req) => {
                 <th>Manufacture Year(s)</th>
                 <th>Result</th>
                 <th>Comments</th>
+                <th>Photo</th>
               </tr>
             </thead>
             <tbody>
@@ -2448,6 +2449,7 @@ serve(async (req) => {
                     <td style="text-align: center;">${eq.production_year === "0" ? "N/A" : eq.production_year || "N/A"}</td>
                     <td style="${resultData.cellStyle}">${resultData.html}</td>
                     <td style="font-size: 9pt;">${formattedComments}</td>
+                    ${renderItemPhotoCell(eq.photo_url)}
                   </tr>
                 `;
                 })
