@@ -349,6 +349,65 @@ serve(async (req) => {
       }
     }
 
+    // Build per-item photo map (systems, ziplines, equipment photo_url → base64)
+    const itemPhotoMap = new Map<string, string>();
+    const allItemPhotoPaths: string[] = [];
+    for (const sys of systems) {
+      if (sys.photo_url) allItemPhotoPaths.push(sys.photo_url);
+    }
+    for (const zip of ziplines) {
+      if (zip.photo_url) allItemPhotoPaths.push(zip.photo_url);
+    }
+    for (const eq of equipment) {
+      if (eq.photo_url) allItemPhotoPaths.push(eq.photo_url);
+    }
+
+    console.log(`[Inspection HTML] Found ${allItemPhotoPaths.length} per-item photos to download`);
+
+    for (const photoPath of allItemPhotoPaths) {
+      if (itemPhotoMap.has(photoPath)) continue;
+      try {
+        const { data: fileData, error: downloadError } = await supabase
+          .storage
+          .from('inspection-photos')
+          .download(photoPath);
+
+        if (downloadError || !fileData) {
+          console.warn(`[Inspection HTML] Failed to download item photo ${photoPath}:`, downloadError?.message);
+          continue;
+        }
+
+        const arrayBuffer = await fileData.arrayBuffer();
+        const bytes = new Uint8Array(arrayBuffer);
+
+        // HEIC magic byte detection — skip mislabeled HEIC files
+        if (bytes.length >= 12) {
+          const decoder = new TextDecoder('ascii');
+          const ftypTag = decoder.decode(bytes.slice(4, 8));
+          if (ftypTag === 'ftyp') {
+            const brand = decoder.decode(bytes.slice(8, 12)).toLowerCase();
+            if (brand === 'heic' || brand === 'heis' || brand === 'mif1') {
+              console.warn(`[Inspection HTML] Skipping item photo ${photoPath} — HEIC data`);
+              continue;
+            }
+          }
+        }
+
+        const photoBase64 = arrayBufferToBase64(arrayBuffer);
+        const photoMime = fileData.type || 'image/jpeg';
+        itemPhotoMap.set(photoPath, `data:${photoMime};base64,${photoBase64}`);
+        console.log(`[Inspection HTML] Item photo ${photoPath} converted (${Math.round(arrayBuffer.byteLength / 1024)}KB)`);
+      } catch (err) {
+        console.error(`[Inspection HTML] Error processing item photo ${photoPath}:`, err);
+      }
+    }
+
+    // Helper to render item thumbnail cell
+    const renderItemPhotoCell = (photoUrl: string | null): string => {
+      if (!photoUrl || !itemPhotoMap.has(photoUrl)) return '<td style="text-align:center;">—</td>';
+      return `<td style="text-align:center;"><img src="${itemPhotoMap.get(photoUrl)}" class="item-thumbnail" /></td>`;
+    };
+
     // Format dates in Central Time (CST/CDT)
     const formatDate = (dateStr: string | null) => {
       if (!dateStr) return "N/A";
