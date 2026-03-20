@@ -586,6 +586,19 @@ serve(async (req) => {
         font-size: 11px;
       }
       
+      .info-item {
+        grid-column: span 1 !important;
+      }
+      
+      .text-content, .item-label, .notes-content {
+        word-break: break-word;
+        overflow-wrap: break-word;
+      }
+      
+      .photo-grid {
+        grid-template-columns: 1fr !important;
+      }
+      
       .page-footer .footer-text {
         font-size: 10px;
       }
