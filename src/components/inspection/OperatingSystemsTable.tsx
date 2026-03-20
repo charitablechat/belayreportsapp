@@ -29,7 +29,7 @@ interface OperatingSystemsTableProps {
   inspectionId?: string;
 }
 
-const OS_GRID_COLS = "grid-cols-[40px_60px_minmax(180px,1fr)_minmax(160px,1fr)_192px_1fr_64px]";
+const OS_GRID_COLS = "grid-cols-[40px_88px_minmax(180px,1fr)_minmax(160px,1fr)_192px_1fr_64px]";
 
 function OperatingSystemsTable({ systems, onUpdate, onImmediateSave, inspectionId }: OperatingSystemsTableProps) {
   const [itemToDelete, setItemToDelete] = useState<{ id: string; name: string } | null>(null);
