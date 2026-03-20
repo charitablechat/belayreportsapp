@@ -110,6 +110,27 @@ export function HtmlReportViewer({
           object-fit: contain !important;
           max-width: 100% !important;
         }
+        
+        /* Report-agnostic: collapse grids to single column */
+        .info-grid, .systems-grid {
+          grid-template-columns: 1fr !important;
+        }
+        
+        /* Prevent full-width span overflow on single-column grids */
+        .info-item {
+          grid-column: span 1 !important;
+        }
+        
+        /* Training photo grid: single column */
+        [style*="grid-template-columns: 1fr 1fr"] {
+          grid-template-columns: 1fr !important;
+        }
+        
+        /* Text wrapping safety */
+        .notes-content, .item-label {
+          word-break: break-word !important;
+          overflow-wrap: break-word !important;
+        }
       }
     </style>
   `;

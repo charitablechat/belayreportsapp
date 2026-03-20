@@ -620,6 +620,7 @@ serve(async (req) => {
         margin-bottom: 12px !important;
         border-bottom: 1px solid #c2c2c2 !important;
         padding-bottom: 8px !important;
+        grid-column: span 1 !important;
       }
       
       .info-label {
@@ -631,6 +632,11 @@ serve(async (req) => {
       .info-value {
         display: block !important;
         word-break: break-word !important;
+      }
+      
+      /* Photo grid: Single column on mobile */
+      [style*="grid-template-columns: 1fr 1fr"] {
+        grid-template-columns: 1fr !important;
       }
       
       /* Text containers: Prevent clipping */
