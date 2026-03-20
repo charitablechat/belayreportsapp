@@ -1988,13 +1988,14 @@ serve(async (req) => {
               <th>System Name</th>
               <th>Result</th>
               <th>Comments and/or Required Changes</th>
+              <th>Photo</th>
             </tr>
           </thead>
           <tbody>
           ${systems
             .map((sys) => {
               if (sys.is_divider) {
-                return `<tr><td colspan="4" style="text-align:center; font-weight:bold; padding:10px; background:#dbeafe; font-size:11pt;">${sys.divider_text || ''}</td></tr>`;
+                return `<tr><td colspan="5" style="text-align:center; font-weight:bold; padding:10px; background:#dbeafe; font-size:11pt;">${sys.divider_text || ''}</td></tr>`;
               }
               const resultData = formatResultCheckbox(sys.result);
               const formattedComments = formatCommentsAsBullets(sys.comments);
@@ -2004,6 +2005,7 @@ serve(async (req) => {
                 <td><strong>${sys.system_name}</strong></td>
                 <td style="${resultData.cellStyle}">${resultData.html}</td>
                 <td style="font-size: 9pt;">${formattedComments}</td>
+                ${renderItemPhotoCell(sys.photo_url)}
               </tr>
             `;
             })
