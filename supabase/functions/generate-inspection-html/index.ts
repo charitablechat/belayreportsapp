@@ -859,17 +859,19 @@ serve(async (req) => {
       display: inline-block;
     }
 
-    /* Optimized column widths for Equipment table */
+    /* Optimized column widths for Equipment table (6 columns with Photo) */
     .equipment-table th:nth-child(1),
-    .equipment-table td:nth-child(1) { width: 30%; } /* Type */
+    .equipment-table td:nth-child(1) { width: 25%; } /* Type */
     .equipment-table th:nth-child(2),
-    .equipment-table td:nth-child(2) { width: 10%; } /* Quantity */
+    .equipment-table td:nth-child(2) { width: 8%; } /* Quantity */
     .equipment-table th:nth-child(3),
     .equipment-table td:nth-child(3) { width: 10%; } /* Year */
     .equipment-table th:nth-child(4),
-    .equipment-table td:nth-child(4) { width: 22%; } /* Result - wider for full words */
+    .equipment-table td:nth-child(4) { width: 20%; } /* Result */
     .equipment-table th:nth-child(5),
-    .equipment-table td:nth-child(5) { width: auto; min-width: 120px; } /* Comments - dynamic */
+    .equipment-table td:nth-child(5) { width: auto; min-width: 100px; } /* Comments */
+    .equipment-table th:nth-child(6),
+    .equipment-table td:nth-child(6) { width: 75px; } /* Photo */
 
     /* Optimized column widths for Standards table */
     .standards-table th:nth-child(1),
@@ -881,37 +883,41 @@ serve(async (req) => {
     .standards-table th:nth-child(4),
     .standards-table td:nth-child(4) { width: auto; min-width: 150px; } /* Comments - dynamic */
 
-    /* Optimized column widths for Ziplines table (10 columns) */
+    /* Optimized column widths for Ziplines table (11 columns with Photo) */
     .ziplines-table th:nth-child(1),
-    .ziplines-table td:nth-child(1) { width: 10%; } /* Name */
+    .ziplines-table td:nth-child(1) { width: 9%; } /* Name */
     .ziplines-table th:nth-child(2),
-    .ziplines-table td:nth-child(2) { width: 7%; } /* Cable Type */
+    .ziplines-table td:nth-child(2) { width: 6%; } /* Cable Type */
     .ziplines-table th:nth-child(3),
-    .ziplines-table td:nth-child(3) { width: 6%; } /* Length */
+    .ziplines-table td:nth-child(3) { width: 5%; } /* Length */
     .ziplines-table th:nth-child(4),
-    .ziplines-table td:nth-child(4) { width: 10%; } /* Cable Result */
+    .ziplines-table td:nth-child(4) { width: 9%; } /* Cable Result */
     .ziplines-table th:nth-child(5),
-    .ziplines-table td:nth-child(5) { width: 8%; } /* Braking System */
+    .ziplines-table td:nth-child(5) { width: 7%; } /* Braking System */
     .ziplines-table th:nth-child(6),
-    .ziplines-table td:nth-child(6) { width: 10%; } /* Braking Result */
+    .ziplines-table td:nth-child(6) { width: 9%; } /* Braking Result */
     .ziplines-table th:nth-child(7),
-    .ziplines-table td:nth-child(7) { width: 7%; } /* EAD System */
+    .ziplines-table td:nth-child(7) { width: 6%; } /* EAD System */
     .ziplines-table th:nth-child(8),
-    .ziplines-table td:nth-child(8) { width: 10%; } /* EAD Result */
+    .ziplines-table td:nth-child(8) { width: 9%; } /* EAD Result */
     .ziplines-table th:nth-child(9),
-    .ziplines-table td:nth-child(9) { width: 10%; } /* Overall Result */
+    .ziplines-table td:nth-child(9) { width: 9%; } /* Overall Result */
     .ziplines-table th:nth-child(10),
-    .ziplines-table td:nth-child(10) { width: auto; min-width: 160px; } /* Comments - dynamic */
+    .ziplines-table td:nth-child(10) { width: auto; min-width: 120px; } /* Comments */
+    .ziplines-table th:nth-child(11),
+    .ziplines-table td:nth-child(11) { width: 75px; } /* Photo */
 
-    /* Optimized column widths for Operating Systems table */
+    /* Optimized column widths for Operating Systems table (5 columns with Photo) */
     .systems-table th:nth-child(1),
-    .systems-table td:nth-child(1) { width: 18%; } /* Element Name */
+    .systems-table td:nth-child(1) { width: 16%; } /* Element Name */
     .systems-table th:nth-child(2),
-    .systems-table td:nth-child(2) { width: 18%; } /* System Type */
+    .systems-table td:nth-child(2) { width: 16%; } /* System Type */
     .systems-table th:nth-child(3),
-    .systems-table td:nth-child(3) { width: 16%; } /* Result - wider for full words */
+    .systems-table td:nth-child(3) { width: 14%; } /* Result */
     .systems-table th:nth-child(4),
-    .systems-table td:nth-child(4) { width: auto; min-width: 180px; } /* Comments - dynamic */
+    .systems-table td:nth-child(4) { width: auto; min-width: 150px; } /* Comments */
+    .systems-table th:nth-child(5),
+    .systems-table td:nth-child(5) { width: 75px; } /* Photo */
 
     /* Optimized column widths for Standards table */
     .standards-table th:nth-child(1),
