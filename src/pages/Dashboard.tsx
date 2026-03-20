@@ -645,6 +645,7 @@ export default function Dashboard() {
         const networkData = await supabasePromise;
         if (networkData && networkData.length > 0) {
           setTrainings(networkData);
+          writeDashboardCache('dashboard-cache-trainings', networkData);
           
           const nowT = new Date().toISOString();
           Promise.all(networkData.map(async (training) => {
