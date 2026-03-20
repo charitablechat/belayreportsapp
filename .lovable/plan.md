@@ -1,42 +1,63 @@
 
-Audit complete. The remaining wrapping issue is in the Inspection HTML mobile CSS path (not the form UI or upload widgets).
 
-What I found
-- Photo-upload/display components are responsive and not the root cause (`ItemPhotoUpload`, inspection table mobile cards).
-- The Inspection HTML report still has a breakpoint gap:
-  - Critical wrapping fixes for `.info-cell`, `.info-value`, table cell wrapping, and gallery safety are mostly in `@media (max-width: 600px)`.
-  - At 601–768px, content falls back to less strict rules, so long strings and table content can still overflow.
-- Inspection table column sizing still carries desktop constraints (fixed widths + `min-width`) into mobile contexts, which hurts wrapping.
-- Viewer-injected CSS in `HtmlReportViewer.tsx` is capped at 600px and targets `.info-item` (training/daily), but Inspection uses `.info-cell`, so some fixes never apply there.
+## Fix: Stale "0" Report Counts After Navigation
 
-Implementation plan
-1) `supabase/functions/generate-inspection-html/index.ts` (primary fix)
-- Consolidate “must-wrap” mobile rules into the 768 breakpoint (not only 600):
-  - `.info-cell { display:block }`
-  - `.info-label/.info-value` explicit wrapping (`word-break`, `overflow-wrap`)
-  - `th, td` wrapping safeguards
-  - `.photo-gallery` full-width behavior and image containment
-- Add mobile overrides to neutralize desktop column constraints on small screens:
-  - Reset table cell `min-width`/width constraints for mobile with targeted selectors.
-  - Keep thumbnail scaling and readable font-size tiers (768 + 480).
-- Add wrapping guards for list content injected into cells:
-  - `.comment-bullets`, `.summary-list`, and their `li` children (`overflow-wrap:anywhere`, `word-break:break-word`).
+### Root Cause
 
-2) `src/components/HtmlReportViewer.tsx` (secondary safety net)
-- Expand injected media query from 600px to 768px so tablet/large-phone widths get the same fixes.
-- Add Inspection-specific selectors currently missing:
-  - `.info-cell`, `.info-value`, `.comment-bullets`, `.summary-list`
-- Keep report-agnostic grid collapse rules, but avoid conflicting overrides already handled by report CSS.
+When navigating away from Dashboard and back, the component remounts. State initializes to empty arrays (`useState<any[]>([])`), and `loading` is set to `true`. However:
 
-3) Cross-format guardrails
-- Keep all changes scoped to screen/mobile media queries only.
-- Do not alter print media blocks used for export behavior, so PDF output remains stable.
+1. **Tab counts always render the array length** (line 296: `Inspections ({totalInspections ?? inspections.length})`). While `loading=true` hides the stats bar, the **tab triggers still show "0"** because `totalInspections` comes from `inspections.length` which is `0` during the fetch.
 
-Validation checklist after implementation
-- Generate Inspection HTML with intentionally long unbroken text in:
-  - Facility fields, comments, and summary bullets.
-- Verify at 390px, 430px, 768px widths:
-  - No text clipping in header/info sections.
-  - Table text wraps inside cells (no truncated words).
-  - Photos remain contained and not distorted.
-- Verify “Save PDF” from viewer still renders correctly (no regression in print layout).
+2. **Race condition with session validation**: The `ensureValidSession()` call has a 3-second timeout. If the session refresh is slow, the data fetch may return empty results (RLS rejects stale tokens), and the safety timeout (8s) forces `loading=false` with empty data.
+
+3. **No data caching between mounts**: Each remount starts from scratch with `[]`. There's no stale-while-revalidate pattern.
+
+### Fix Plan
+
+**File 1: `src/pages/Dashboard.tsx`** — Cache data in sessionStorage for instant display on remount
+
+- On successful data load, persist the three arrays to `sessionStorage` (lightweight, tab-scoped).
+- On mount, initialize state from sessionStorage instead of `[]`, so returning to Dashboard immediately shows previous data while fresh data loads in the background.
+- Key: `dashboard-cache-inspections`, `dashboard-cache-trainings`, `dashboard-cache-daily`.
+- Add a small helper to read/write with a 5-minute TTL to avoid showing very stale data.
+
+**File 2: `src/components/dashboard/DashboardReportsSection.tsx`** — Show loading indicator in tab counts
+
+- When `loading` is true, show a spinner or "…" instead of the numeric count in tab triggers.
+- Change line 296 from `Inspections ({totalInspections ?? inspections.length})` to `Inspections ({loading ? '…' : (totalInspections ?? inspections.length)})`.
+- Same for Training and Daily tabs.
+
+### Technical Details
+
+The sessionStorage cache approach:
+```typescript
+// On successful load (after setInspections):
+try {
+  sessionStorage.setItem('dashboard-cache-inspections', JSON.stringify({
+    data: networkData,
+    ts: Date.now()
+  }));
+} catch {}
+
+// On mount (initializer):
+const [inspections, setInspections] = useState<any[]>(() => {
+  try {
+    const cached = sessionStorage.getItem('dashboard-cache-inspections');
+    if (cached) {
+      const { data, ts } = JSON.parse(cached);
+      if (Date.now() - ts < 5 * 60 * 1000) return data;
+    }
+  } catch {}
+  return [];
+});
+```
+
+This gives immediate display of previous data while the fresh fetch runs in the background — a stale-while-revalidate pattern without changing the existing manual state management architecture.
+
+### Files Changed
+
+| File | Change |
+|------|--------|
+| `src/pages/Dashboard.tsx` | Initialize state from sessionStorage cache; persist on successful load |
+| `src/components/dashboard/DashboardReportsSection.tsx` | Show "…" in tab counts while loading |
+
