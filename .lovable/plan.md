@@ -1,73 +1,42 @@
 
+Audit complete. The remaining wrapping issue is in the Inspection HTML mobile CSS path (not the form UI or upload widgets).
 
-## Layout & Rendering Audit: Findings and Fix Plan
+What I found
+- Photo-upload/display components are responsive and not the root cause (`ItemPhotoUpload`, inspection table mobile cards).
+- The Inspection HTML report still has a breakpoint gap:
+  - Critical wrapping fixes for `.info-cell`, `.info-value`, table cell wrapping, and gallery safety are mostly in `@media (max-width: 600px)`.
+  - At 601–768px, content falls back to less strict rules, so long strings and table content can still overflow.
+- Inspection table column sizing still carries desktop constraints (fixed widths + `min-width`) into mobile contexts, which hurts wrapping.
+- Viewer-injected CSS in `HtmlReportViewer.tsx` is capped at 600px and targets `.info-item` (training/daily), but Inspection uses `.info-cell`, so some fixes never apply there.
 
-### Audit Summary
+Implementation plan
+1) `supabase/functions/generate-inspection-html/index.ts` (primary fix)
+- Consolidate “must-wrap” mobile rules into the 768 breakpoint (not only 600):
+  - `.info-cell { display:block }`
+  - `.info-label/.info-value` explicit wrapping (`word-break`, `overflow-wrap`)
+  - `th, td` wrapping safeguards
+  - `.photo-gallery` full-width behavior and image containment
+- Add mobile overrides to neutralize desktop column constraints on small screens:
+  - Reset table cell `min-width`/width constraints for mobile with targeted selectors.
+  - Keep thumbnail scaling and readable font-size tiers (768 + 480).
+- Add wrapping guards for list content injected into cells:
+  - `.comment-bullets`, `.summary-list`, and their `li` children (`overflow-wrap:anywhere`, `word-break:break-word`).
 
-Reviewed all three HTML report edge functions, the HtmlReportViewer component, and all form input tables (Equipment, OperatingSystems, Ziplines, Standards). The app-level React components are well-structured with responsive breakpoints and mobile card views -- no issues there.
+2) `src/components/HtmlReportViewer.tsx` (secondary safety net)
+- Expand injected media query from 600px to 768px so tablet/large-phone widths get the same fixes.
+- Add Inspection-specific selectors currently missing:
+  - `.info-cell`, `.info-value`, `.comment-bullets`, `.summary-list`
+- Keep report-agnostic grid collapse rules, but avoid conflicting overrides already handled by report CSS.
 
-The remaining gaps are in the **generated HTML reports** served inside the iframe viewer.
+3) Cross-format guardrails
+- Keep all changes scoped to screen/mobile media queries only.
+- Do not alter print media blocks used for export behavior, so PDF output remains stable.
 
-### Issues Found
-
-**1. Daily Assessment report has ZERO mobile media queries**
-The `generate-daily-assessment-html` edge function contains no `@media (max-width: ...)` rules at all. On mobile:
-- `.info-grid` stays 2-column, cramping content
-- `.info-item.full-width` uses `grid-column: span 2` which overflows on narrow screens
-- `.systems-grid` stays 2-column with small, cramped system items
-- Header stays as a horizontal flex row, logos can overlap the title
-- No font-size reduction, no padding adjustments
-
-**2. Training report photo grid uses inline styles the viewer selector may miss**
-Line 846: `style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;"`. The viewer's attribute selector `[style*="grid-template-columns: 1fr 1fr"]` relies on exact whitespace matching. If the browser normalizes the inline style string differently, the selector fails silently. The training edge function's own `@media (max-width: 768px)` block does NOT override this inline grid.
-
-**3. Training report missing `info-item` span fix**
-The training `@media (max-width: 768px)` block collapses `.info-grid` to 1 column but doesn't add `.info-item { grid-column: span 1 }`. Any `info-item` with an explicit `span 2` would overflow. Currently training doesn't use `.full-width` but this is a latent bug if the template changes.
-
-### Plan
-
-**File 1: `supabase/functions/generate-daily-assessment-html/index.ts`**
-Add a mobile media query block after the existing styles (before the `</style>` closing tag or before `@media print`). Include:
-```css
-@media (max-width: 768px) {
-  html, body { max-width: 100vw; overflow-x: hidden; }
-  body { padding: 8px; }
-  .page { padding: 12px; }
-  .page-header { flex-direction: column; text-align: center; gap: 8px; }
-  .header-left, .header-right { text-align: center; }
-  .page-title { font-size: 20px; }
-  .info-grid { grid-template-columns: 1fr; gap: 8px; }
-  .info-item.full-width { grid-column: span 1; }
-  .systems-grid { grid-template-columns: 1fr; }
-  .section-title { font-size: 12px; padding: 8px 12px; }
-  .item-label, .item-comments, .notes-content {
-    word-break: break-word;
-    overflow-wrap: break-word;
-  }
-  .disclaimer { font-size: 11px; padding: 10px; }
-}
-
-@media (max-width: 480px) {
-  body { padding: 4px; }
-  .page { padding: 8px; }
-  .page-title { font-size: 18px; }
-}
-```
-
-**File 2: `supabase/functions/generate-training-html/index.ts`**
-In the existing `@media (max-width: 768px)` block (line 537), add:
-- `.info-item { grid-column: span 1 !important; }` to prevent future span overflow
-- Add a class to the photo grid container instead of relying on inline styles. Change the inline `grid-template-columns: 1fr 1fr` div to include `class="photo-grid"` and add `.photo-grid { grid-template-columns: 1fr !important; }` in the 768px media query.
-
-Also add `.text-content, .item-label { word-break: break-word; overflow-wrap: break-word; }` in the mobile block for long text safety.
-
-**File 3: `src/components/HtmlReportViewer.tsx`**
-No changes needed. The viewer already has comprehensive report-agnostic overrides that cover `.info-grid`, `.systems-grid`, `.info-item`, and text wrapping. Once the edge functions have their own mobile CSS, the viewer serves as a safety net.
-
-### Files Changed
-
-| File | Change |
-|------|--------|
-| `supabase/functions/generate-daily-assessment-html/index.ts` | Add mobile media queries (768px + 480px) |
-| `supabase/functions/generate-training-html/index.ts` | Add photo-grid class + mobile override, info-item span fix, text wrapping |
-
+Validation checklist after implementation
+- Generate Inspection HTML with intentionally long unbroken text in:
+  - Facility fields, comments, and summary bullets.
+- Verify at 390px, 430px, 768px widths:
+  - No text clipping in header/info sections.
+  - Table text wraps inside cells (no truncated words).
+  - Photos remain contained and not distorted.
+- Verify “Save PDF” from viewer still renders correctly (no regression in print layout).
