@@ -191,7 +191,7 @@ serve(async (req) => {
     console.log(`Generating HTML for inspection: ${inspectionId}`);
 
     // Fetch logos from storage
-    const logos = await getLogoBase64(supabaseUrl);
+    const logos = await getLogoBase64();
     const ropeWorksLogo = logos.ropeWorks;
     const acctLogo = logos.acct;
 
