@@ -1,38 +1,60 @@
 
 
-## Fix: Allow Both Camera Capture and File Upload
+## Fix "Failed to Upload Photo" Error
 
-### Problem
-The current `<input>` has `capture="environment"`, which on mobile devices forces the camera to open directly — users cannot browse their photo library or local files. On desktop, this attribute is ignored but there's still only one input path.
+### Root Cause
 
-### Solution
-Replace the single camera button with two options:
-1. **Camera button** — uses `capture="environment"` for taking a photo (mobile)
-2. **Upload button** — no `capture` attribute, opens the standard file picker (both desktop and mobile)
+The upload uses `upsert: true` which internally performs an **UPDATE** when the file already exists. However, there is **no UPDATE policy** on `storage.objects` for the `inspection-photos` bucket. Even on first upload, Supabase's upsert path may check UPDATE permissions, causing RLS violations.
 
-### Changes
+Additionally, there are **duplicate/redundant INSERT policies** (3 INSERT policies exist), which isn't harmful but adds confusion.
 
-**File: `src/components/inspection/ItemPhotoUpload.tsx`**
+### Plan
 
-- Add a second hidden `<input type="file" accept="image/*">` without the `capture` attribute
-- Add a second ref (`fileUploadRef`) for the browse input
-- When no photo exists: show two small buttons side-by-side (Camera icon + Upload/Image icon) instead of one large button
-- When replacing from the lightbox: show "Take Photo" and "Upload File" as two separate buttons instead of one "Replace"
-- Both inputs share the same `handleFileChange` handler
-- Import `ImagePlus` (or `Upload`) icon from lucide-react for the upload button
+**1. Database Migration — Add missing UPDATE policy**
 
-**Visual layout (no photo state):**
-```text
-┌────┐ ┌────┐
-│ 📷 │ │ 📁 │   Two 10x10 (or 12x12) buttons side by side
-└────┘ └────┘
+Add an UPDATE policy for `inspection-photos` so `upsert: true` works:
+
+```sql
+CREATE POLICY "Users can update their own inspection photos"
+ON storage.objects FOR UPDATE
+TO authenticated
+USING (
+  bucket_id = 'inspection-photos'
+  AND auth.uid()::text = (storage.foldername(name))[1]
+)
+WITH CHECK (
+  bucket_id = 'inspection-photos'
+  AND auth.uid()::text = (storage.foldername(name))[1]
+);
 ```
 
-**Lightbox replacement buttons:**
-```text
-[ 📷 Take Photo ] [ 📁 Upload ] [ ✕ Remove ]
+Also clean up the duplicate INSERT policy "Authenticated users can upload inspection photos" (the one with no folder check), which is overly permissive:
+
+```sql
+DROP POLICY IF EXISTS "Authenticated users can upload inspection photos" ON storage.objects;
 ```
 
-### No other files changed
-No database, storage, or other component changes needed.
+**2. Improve error logging in `ItemPhotoUpload.tsx`**
+
+Add more specific error details to the console log and toast so users/developers can identify the exact failure (auth vs RLS vs network):
+
+```typescript
+} catch (err: any) {
+  console.error("[ItemPhotoUpload] Upload failed:", err);
+  const message = err?.message || err?.statusCode === '403' 
+    ? "Permission denied - please try logging out and back in"
+    : "Failed to upload photo";
+  toast.error(message);
+}
+```
+
+### Files affected
+
+| File | Change |
+|------|--------|
+| New migration SQL | Add UPDATE policy, remove overly permissive INSERT policy |
+| `src/components/inspection/ItemPhotoUpload.tsx` | Better error messaging |
+
+### Chatbot note
+The chatbot 403 error (`platform.aminos.ai` — "Referring domain not in whitelist") is completely unrelated to photo uploads. It's a third-party service domain whitelist issue, not a shared dependency or security context conflict.
 
