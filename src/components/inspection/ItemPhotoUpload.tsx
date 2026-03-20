@@ -59,8 +59,17 @@ function ItemPhotoUpload({
       const previewUrl = URL.createObjectURL(compressed);
       setLocalPreview(previewUrl);
 
-      const { data: userData } = await getUserWithCache();
-      const userId = userData?.user?.id;
+      let userId: string | undefined;
+      try {
+        const { data: userData } = await getUserWithCache();
+        userId = userData?.user?.id;
+      } catch {
+        // cache miss – fall back to live session
+      }
+      if (!userId) {
+        const { data: sessionData } = await supabase.auth.getSession();
+        userId = sessionData?.session?.user?.id;
+      }
       if (!userId) throw new Error("Not authenticated");
 
       const filePath = `${userId}/${inspectionId}/items/${itemId}.jpg`;
