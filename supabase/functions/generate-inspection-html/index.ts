@@ -1400,7 +1400,13 @@ serve(async (req) => {
       /* Reduce table font sizes */
       table {
         font-size: 8pt;
-        min-width: 600px; /* Force scroll for complex tables */
+        table-layout: auto;
+        width: 100%;
+      }
+      
+      .item-thumbnail {
+        width: 40px;
+        height: 40px;
       }
       
       th, td {
@@ -1454,7 +1460,13 @@ serve(async (req) => {
       
       table { 
         font-size: 7pt;
-        min-width: 500px;
+        table-layout: auto;
+        width: 100%;
+      }
+      
+      .item-thumbnail {
+        width: 30px;
+        height: 30px;
       }
       
       .result-checkbox {
@@ -1518,8 +1530,9 @@ serve(async (req) => {
       /* Photo gallery: Single column */
       .photo-gallery {
         grid-template-columns: 1fr !important;
-        max-width: 95% !important;
-        gap: 20px !important;
+        max-width: 100% !important;
+        padding: 0 !important;
+        gap: 16px !important;
       }
       
       .inspection-photo {
