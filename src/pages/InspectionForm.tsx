@@ -2757,6 +2757,7 @@ export default function InspectionForm() {
                       equipment={equipment}
                       onUpdate={setEquipment}
                       onImmediateSave={stableTriggerImmediateSave}
+                      inspectionId={id}
                     />
                     <EquipmentTable
                       category="helmets"
@@ -2764,6 +2765,7 @@ export default function InspectionForm() {
                       equipment={equipment}
                       onUpdate={setEquipment}
                       onImmediateSave={stableTriggerImmediateSave}
+                      inspectionId={id}
                     />
                     <EquipmentTable
                       category="lanyards"
@@ -2771,6 +2773,7 @@ export default function InspectionForm() {
                       equipment={equipment}
                       onUpdate={setEquipment}
                       onImmediateSave={stableTriggerImmediateSave}
+                      inspectionId={id}
                     />
                     <EquipmentTable
                       category="connectors"
@@ -2778,6 +2781,7 @@ export default function InspectionForm() {
                       equipment={equipment}
                       onUpdate={setEquipment}
                       onImmediateSave={stableTriggerImmediateSave}
+                      inspectionId={id}
                     />
                     <EquipmentTable
                       category="rope"
@@ -2786,6 +2790,7 @@ export default function InspectionForm() {
                       equipment={equipment}
                       onUpdate={setEquipment}
                       onImmediateSave={stableTriggerImmediateSave}
+                      inspectionId={id}
                     />
                     <EquipmentTable
                       category="belay"
@@ -2793,6 +2798,7 @@ export default function InspectionForm() {
                       equipment={equipment}
                       onUpdate={setEquipment}
                       onImmediateSave={stableTriggerImmediateSave}
+                      inspectionId={id}
                     />
                     <EquipmentTable
                       category="trolleys"
@@ -2800,6 +2806,7 @@ export default function InspectionForm() {
                       equipment={equipment}
                       onUpdate={setEquipment}
                       onImmediateSave={stableTriggerImmediateSave}
+                      inspectionId={id}
                     />
                     <EquipmentTable
                       category="other"
@@ -2807,6 +2814,7 @@ export default function InspectionForm() {
                       equipment={equipment}
                       onUpdate={setEquipment}
                       onImmediateSave={stableTriggerImmediateSave}
+                      inspectionId={id}
                     />
                     
                     <div className="mt-8 border-t pt-6">
