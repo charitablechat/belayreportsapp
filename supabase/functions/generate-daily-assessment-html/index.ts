@@ -743,6 +743,11 @@ serve(async (req) => {
         font-size: 12px;
       }
       
+      .item-label, .item-comments, .notes-content {
+        word-break: break-word;
+        overflow-wrap: break-word;
+      }
+      
       .disclaimer {
         padding: 10px;
       }
