@@ -249,7 +249,8 @@ function OperatingSystemsTable({ systems, onUpdate, onImmediateSave, inspectionI
                         onBlur={onImmediateSave}
                         fieldType="operating_system_element"
                         placeholder="Enter or select name"
-                      />
+                        />
+                      </div>
                     </div>
                     <div>
                       <Label className="text-xs text-muted-foreground">Operating System</Label>
