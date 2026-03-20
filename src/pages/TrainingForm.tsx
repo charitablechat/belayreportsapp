@@ -1112,8 +1112,11 @@ export default function TrainingForm() {
     } catch (error: any) {
       console.error('[HTML Generation] Error:', error.message || error);
       
-      // Only show error toast if not already shown by safety timeout
-      if (!error.message?.includes('TIMEOUT')) {
+      if (error.message?.includes('TIMEOUT')) {
+        toast.error("Report generation timed out", {
+          description: "Please check your connection and try again.",
+        });
+      } else {
         toast.error("Failed to generate report", {
           description: error.message || "Please try again.",
         });

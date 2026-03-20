@@ -1305,9 +1305,14 @@ export default function DailyAssessmentForm() {
     } catch (error: any) {
       console.error('[Report Generation] Error:', error.message || error);
       
-      // Only show error toast if not already shown by safety timeout
-      if (!error.message?.includes('TIMEOUT')) {
-        toast.error("Failed to generate report: " + (error.message || "Please try again."));
+      if (error.message?.includes('TIMEOUT')) {
+        toast.error("Report generation timed out", {
+          description: "Please check your connection and try again.",
+        });
+      } else {
+        toast.error("Failed to generate report", {
+          description: error.message || "Please try again.",
+        });
       }
     } finally {
       clearTimeout(safetyTimeoutHandle);
