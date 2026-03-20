@@ -78,12 +78,30 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
+// Stale-while-revalidate: read cached dashboard data with 5-min TTL
+const DASHBOARD_CACHE_TTL = 5 * 60 * 1000;
+function readDashboardCache(key: string): any[] {
+  try {
+    const raw = sessionStorage.getItem(key);
+    if (raw) {
+      const { data, ts } = JSON.parse(raw);
+      if (Date.now() - ts < DASHBOARD_CACHE_TTL) return data;
+    }
+  } catch {}
+  return [];
+}
+function writeDashboardCache(key: string, data: any[]) {
+  try {
+    sessionStorage.setItem(key, JSON.stringify({ data, ts: Date.now() }));
+  } catch {}
+}
+
 export default function Dashboard() {
   const navigate = useNavigate();
   const location = useLocation();
-  const [inspections, setInspections] = useState<any[]>([]);
-  const [trainings, setTrainings] = useState<any[]>([]);
-  const [dailyAssessments, setDailyAssessments] = useState<any[]>([]);
+  const [inspections, setInspections] = useState<any[]>(() => readDashboardCache('dashboard-cache-inspections'));
+  const [trainings, setTrainings] = useState<any[]>(() => readDashboardCache('dashboard-cache-trainings'));
+  const [dailyAssessments, setDailyAssessments] = useState<any[]>(() => readDashboardCache('dashboard-cache-daily'));
   const [loading, setLoading] = useState(true);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [inspectionToDelete, setInspectionToDelete] = useState<any>(null);
@@ -464,6 +482,7 @@ export default function Dashboard() {
         const networkData = await supabasePromise;
         if (networkData && networkData.length > 0) {
           setInspections(networkData);
+          writeDashboardCache('dashboard-cache-inspections', networkData);
           
           // Background save to offline storage (fire-and-forget)
           // Stamp synced_at so localIsNewer guard knows this is server-sourced data
@@ -626,6 +645,7 @@ export default function Dashboard() {
         const networkData = await supabasePromise;
         if (networkData && networkData.length > 0) {
           setTrainings(networkData);
+          writeDashboardCache('dashboard-cache-trainings', networkData);
           
           const nowT = new Date().toISOString();
           Promise.all(networkData.map(async (training) => {
@@ -776,6 +796,7 @@ export default function Dashboard() {
         const networkData = await supabasePromise;
         if (networkData && networkData.length > 0) {
           setDailyAssessments(networkData);
+          writeDashboardCache('dashboard-cache-daily', networkData);
           
           const nowA = new Date().toISOString();
           Promise.all(networkData.map(async (assessment) => {
