@@ -325,6 +325,7 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
           {/* Header */}
           <div className={`grid ${EQ_GRID_COLS} bg-blue-50 dark:bg-blue-950/20 border-b border-border`}>
             <div className="p-3 text-center font-semibold text-sm border-r border-border"></div>
+            <div className="p-3 text-center font-semibold text-sm border-r border-border">Photo</div>
             <div className="p-3 text-left font-semibold text-sm border-r border-border">Type</div>
             <div className="p-3 text-left font-semibold text-sm border-r border-border">Manufacture Year(s)</div>
             <div className="p-3 text-left font-semibold text-sm border-r border-border">Quantity</div>
