@@ -2198,6 +2198,7 @@ serve(async (req) => {
             <th>EAD Result</th>
             <th>Overall</th>
             <th>Comments and/or Required Changes</th>
+            <th>Photo</th>
           </tr>
         </thead>
         <tbody>
@@ -2220,6 +2221,7 @@ serve(async (req) => {
                 <td style="${eadResultData.cellStyle}">${eadResultData.html}</td>
                 <td style="${overallResultData.cellStyle}">${overallResultData.html}</td>
                 <td style="font-size: 9pt;">${formattedComments}</td>
+                ${renderItemPhotoCell(zip.photo_url)}
               </tr>
             `;
             })
