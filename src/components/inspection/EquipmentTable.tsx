@@ -514,6 +514,7 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
                         className={cn(!item.equipment_type || item.equipment_type.trim() === "" ? "ring-2 ring-destructive" : "")}
                       />
                     )}
+                    </div>
                   </div>
                   
                   <div className="grid grid-cols-2 gap-4">
