@@ -29,10 +29,11 @@ interface OperatingSystemsTableProps {
   inspectionId?: string;
 }
 
-const OS_GRID_COLS = "grid-cols-[40px_minmax(180px,1fr)_minmax(160px,1fr)_192px_1fr_64px]";
+const OS_GRID_COLS = "grid-cols-[40px_60px_minmax(180px,1fr)_minmax(160px,1fr)_192px_1fr_64px]";
 
-function OperatingSystemsTable({ systems, onUpdate, onImmediateSave }: OperatingSystemsTableProps) {
+function OperatingSystemsTable({ systems, onUpdate, onImmediateSave, inspectionId }: OperatingSystemsTableProps) {
   const [itemToDelete, setItemToDelete] = useState<{ id: string; name: string } | null>(null);
+  const effectiveInspectionId = inspectionId || window.location.pathname.split('/').pop() || '';
 
   const { getDragProps } = useNativeDrag(systems, (reordered) => onUpdate(reordered));
 
