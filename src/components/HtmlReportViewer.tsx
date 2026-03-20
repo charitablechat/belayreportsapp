@@ -86,7 +86,7 @@ export function HtmlReportViewer({
         box-sizing: border-box !important;
       }
       
-      @media screen and (max-width: 600px) {
+      @media screen and (max-width: 768px) {
         /* Viewport overflow prevention */
         html, body, .page, .page-content {
           max-width: 100vw !important;
@@ -103,6 +103,7 @@ export function HtmlReportViewer({
         .photo-gallery {
           max-width: 100% !important;
           padding: 0 !important;
+          grid-template-columns: 1fr !important;
         }
         
         .inspection-photo {
@@ -117,19 +118,41 @@ export function HtmlReportViewer({
         }
         
         /* Prevent full-width span overflow on single-column grids */
-        .info-item {
+        .info-item, .info-cell {
           grid-column: span 1 !important;
+        }
+
+        /* Inspection info-cell block display */
+        .info-cell {
+          display: block !important;
+        }
+
+        .info-value {
+          display: block !important;
+          word-break: break-word !important;
+          overflow-wrap: anywhere !important;
         }
         
         /* Training photo grid: single column */
-        [style*="grid-template-columns: 1fr 1fr"] {
+        [style*="grid-template-columns: 1fr 1fr"],
+        .photo-grid {
           grid-template-columns: 1fr !important;
+        }
+
+        /* Force table cell wrapping */
+        th, td {
+          white-space: normal !important;
+          word-break: break-word !important;
+          overflow-wrap: anywhere !important;
         }
         
         /* Text wrapping safety */
-        .notes-content, .item-label {
+        .notes-content, .item-label, .info-label,
+        .comment-bullets, .comment-bullets li,
+        .summary-list, .summary-list li,
+        .text-content {
           word-break: break-word !important;
-          overflow-wrap: break-word !important;
+          overflow-wrap: anywhere !important;
         }
       }
     </style>

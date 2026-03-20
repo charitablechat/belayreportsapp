@@ -1551,68 +1551,10 @@ serve(async (req) => {
       h2 { font-size: 11pt; }
     }
 
-    /* Enhanced mobile viewport (< 600px) - Prevent overlap/clipping */
+    /* Extra small: tighter spacing */
     @media screen and (max-width: 600px) {
-      /* Header: Stack to prevent overlap */
-      .page-header {
-        flex-direction: column !important;
-        align-items: center !important;
-        gap: 8px !important;
-        padding-bottom: 10px !important;
-      }
-      
-      .header-left, .header-right {
-        position: static !important;
-        text-align: center !important;
-        width: 100% !important;
-      }
-      
-      /* Info grid: Single column, clear separation */
-      .info-cell {
-        display: block !important;
-        margin-bottom: 12px !important;
-        border-bottom: 1px solid #c2c2c2 !important;
-        padding-bottom: 8px !important;
-      }
-      
-      .info-label {
-        display: block !important;
-        white-space: normal !important;
-        margin-bottom: 4px !important;
-      }
-      
-      .info-value {
-        display: block !important;
-        word-break: break-word !important;
-        border-bottom: none !important;
-      }
-      
-      /* Tables: Force text wrapping */
-      th, td {
-        white-space: normal !important;
-        word-break: break-word !important;
-        overflow-wrap: break-word !important;
-      }
-      
-      /* Footer: Full width */
-      .disclaimer {
-        max-width: 100% !important;
-        padding: 0 4px !important;
-        text-align: center !important;
-      }
-      
-      /* Photo gallery: Single column */
-      .photo-gallery {
-        grid-template-columns: 1fr !important;
-        max-width: 100% !important;
-        padding: 0 !important;
-        gap: 16px !important;
-      }
-      
-      .inspection-photo {
-        max-height: 250px !important;
-        object-fit: contain !important;
-      }
+      body { padding: 4px; }
+      .page { padding: 8px; }
     }
 
     /* Photo Gallery Styles - Professional centered layout */
