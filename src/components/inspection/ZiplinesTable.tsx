@@ -29,7 +29,7 @@ interface ZiplinesTableProps {
   inspectionId?: string;
 }
 
-const ZIP_GRID_COLS = "grid-cols-[40px_60px_minmax(120px,1fr)_80px_80px_80px_80px_100px_80px_100px_80px_100px_100px_minmax(120px,1fr)_48px]";
+const ZIP_GRID_COLS = "grid-cols-[40px_88px_minmax(120px,1fr)_80px_80px_80px_80px_100px_80px_100px_80px_100px_100px_minmax(120px,1fr)_48px]";
 
 function ZiplinesTable({ ziplines, onUpdate, onImmediateSave, inspectionId }: ZiplinesTableProps) {
   const [itemToDelete, setItemToDelete] = useState<{ id: string; name: string } | null>(null);
