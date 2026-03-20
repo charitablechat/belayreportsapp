@@ -103,6 +103,7 @@ function OperatingSystemsTable({ systems, onUpdate, onImmediateSave, inspectionI
           {/* Header */}
           <div className={`grid ${OS_GRID_COLS} bg-blue-50 dark:bg-blue-950/20 border-b border-border`}>
             <div className="p-3 text-center font-semibold text-sm border-r border-border"></div>
+            <div className="p-3 text-center font-semibold text-sm border-r border-border">Photo</div>
             <div className="p-3 text-left font-semibold text-sm border-r border-border">Element Name</div>
             <div className="p-3 text-left font-semibold text-sm border-r border-border">Operating System</div>
             <div className="p-3 text-left font-semibold text-sm border-r border-border">Result</div>
