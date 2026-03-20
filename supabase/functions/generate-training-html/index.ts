@@ -586,6 +586,19 @@ serve(async (req) => {
         font-size: 11px;
       }
       
+      .info-item {
+        grid-column: span 1 !important;
+      }
+      
+      .text-content, .item-label, .notes-content {
+        word-break: break-word;
+        overflow-wrap: break-word;
+      }
+      
+      .photo-grid {
+        grid-template-columns: 1fr !important;
+      }
+      
       .page-footer .footer-text {
         font-size: 10px;
       }
@@ -843,7 +856,7 @@ serve(async (req) => {
     <div class="page-content">
       <div class="section">
         <div class="section-title">Training Photos</div>
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 12px;">
+        <div class="photo-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 12px;">
           ${photoUrls.map(photo => `
             <div style="border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">
               <img src="${photo.url}" style="width: 100%; max-height: 200px; object-fit: contain; background: #f1f5f9;" alt="${photo.caption || 'Training photo'}" />
