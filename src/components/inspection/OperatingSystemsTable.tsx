@@ -26,6 +26,7 @@ interface OperatingSystemsTableProps {
   systems: any[];
   onUpdate: (systemsOrUpdater: any[] | ((prev: any[]) => any[])) => void;
   onImmediateSave?: () => void;
+  inspectionId?: string;
 }
 
 const OS_GRID_COLS = "grid-cols-[40px_minmax(180px,1fr)_minmax(160px,1fr)_192px_1fr_64px]";
