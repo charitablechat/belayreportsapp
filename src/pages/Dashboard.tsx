@@ -482,6 +482,7 @@ export default function Dashboard() {
         const networkData = await supabasePromise;
         if (networkData && networkData.length > 0) {
           setInspections(networkData);
+          writeDashboardCache('dashboard-cache-inspections', networkData);
           
           // Background save to offline storage (fire-and-forget)
           // Stamp synced_at so localIsNewer guard knows this is server-sourced data
