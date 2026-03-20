@@ -122,6 +122,15 @@ function ZiplinesTable({ ziplines, onUpdate, onImmediateSave, inspectionId }: Zi
                   gridCols={ZIP_GRID_COLS}
                   {...getDragProps(zipline.id)}
                 >
+                  <div className="p-1 border-r border-border flex items-center justify-center">
+                    <ItemPhotoUpload
+                      itemId={zipline.id}
+                      inspectionId={effectiveInspectionId}
+                      photoUrl={zipline.photo_url || null}
+                      onPhotoChange={(url) => updateZipline(zipline, "photo_url", url)}
+                      onImmediateSave={onImmediateSave}
+                    />
+                  </div>
                   <div className="p-1 border-r border-border">
                     <GlobalAutocomplete
                       value={zipline.zipline_name}
