@@ -51,7 +51,7 @@ function ItemPhotoUpload({
   }, [photoUrl]);
 
   // Load signed URL on mount/change
-  useState(() => { loadSignedUrl(); });
+  useEffect(() => { loadSignedUrl(); }, [loadSignedUrl]);
 
   const handleUpload = useCallback(async (file: File) => {
     setUploading(true);
