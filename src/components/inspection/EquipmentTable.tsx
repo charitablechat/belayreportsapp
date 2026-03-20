@@ -7,6 +7,7 @@ import ResultSelect from "@/components/ResultSelect";
 import { GlobalAutocomplete } from "@/components/GlobalAutocomplete";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Plus, Trash2, X } from "lucide-react";
+import ItemPhotoUpload from "./ItemPhotoUpload";
 import { cn } from "@/lib/utils";
 import { useState, useMemo, useCallback, memo, useRef } from "react";
 import { useIsMobile } from "@/hooks/use-mobile";
