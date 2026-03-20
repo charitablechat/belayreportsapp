@@ -796,6 +796,7 @@ export default function Dashboard() {
         const networkData = await supabasePromise;
         if (networkData && networkData.length > 0) {
           setDailyAssessments(networkData);
+          writeDashboardCache('dashboard-cache-daily', networkData);
           
           const nowA = new Date().toISOString();
           Promise.all(networkData.map(async (assessment) => {
