@@ -1,79 +1,38 @@
 
 
-## Equipment Inventory Image Upload Feature
+## Fix: Allow Both Camera Capture and File Upload
 
-### Overview
-Add per-item photo upload capability to Operating Systems, Ziplines, and Equipment rows in the Inspection form. Each item gets a small thumbnail showing its uploaded photo, with a lightbox modal for full-size viewing.
+### Problem
+The current `<input>` has `capture="environment"`, which on mobile devices forces the camera to open directly — users cannot browse their photo library or local files. On desktop, this attribute is ignored but there's still only one input path.
 
-### Database Changes
-Add a `photo_url` column to three tables via migration:
+### Solution
+Replace the single camera button with two options:
+1. **Camera button** — uses `capture="environment"` for taking a photo (mobile)
+2. **Upload button** — no `capture` attribute, opens the standard file picker (both desktop and mobile)
 
-```sql
-ALTER TABLE inspection_systems ADD COLUMN photo_url text;
-ALTER TABLE inspection_equipment ADD COLUMN photo_url text;
-ALTER TABLE inspection_ziplines ADD COLUMN photo_url text;
-```
+### Changes
 
-No new tables needed — the photo URL points to a file in the existing `inspection-photos` storage bucket. RLS policies already cover these tables for owners and super admins.
+**File: `src/components/inspection/ItemPhotoUpload.tsx`**
 
-### New Component: `ItemPhotoUpload`
-A reusable component (`src/components/inspection/ItemPhotoUpload.tsx`) that handles:
+- Add a second hidden `<input type="file" accept="image/*">` without the `capture` attribute
+- Add a second ref (`fileUploadRef`) for the browse input
+- When no photo exists: show two small buttons side-by-side (Camera icon + Upload/Image icon) instead of one large button
+- When replacing from the lightbox: show "Take Photo" and "Upload File" as two separate buttons instead of one "Replace"
+- Both inputs share the same `handleFileChange` handler
+- Import `ImagePlus` (or `Upload`) icon from lucide-react for the upload button
 
-- **Upload button**: Small camera icon button; opens file picker for image capture/selection
-- **Processing**: Compresses image via existing `compressImage`, uploads to `inspection-photos` bucket under `{userId}/{inspectionId}/items/{itemId}.jpg`
-- **Thumbnail display**: Shows a 48x48px thumbnail of the uploaded photo using `OptimizedImage`
-- **Lightbox**: Clicking the thumbnail opens a modal (`Dialog`) showing the full-resolution image with a close button and option to delete/replace
-- **Offline support**: Stores photo blob in memory/state for immediate preview; actual upload happens when online (fire-and-forget pattern matching `PhotoCapture`)
-
-### Changes to Existing Components
-
-**1. `OperatingSystemsTable.tsx`**
-- Add `ItemPhotoUpload` to each non-divider row (both desktop grid and mobile card)
-- Desktop: Add a new narrow column after "Element Name" for the thumbnail
-- Mobile: Add thumbnail below the element name field
-- Pass `inspectionId` prop (extract from item or add as component prop)
-
-**2. `ZiplinesTable.tsx`**
-- Add `ItemPhotoUpload` to each row
-- Desktop: Add column after "Line Name" for thumbnail
-- Mobile: Add thumbnail below line name field
-- Pass `inspectionId` prop
-
-**3. `EquipmentTable.tsx`**
-- Add `ItemPhotoUpload` to each row
-- Desktop: Add column after "Type" for thumbnail
-- Mobile: Add thumbnail below type field
-- Pass `inspectionId` prop
-
-**4. `InspectionForm.tsx`**
-- Pass `inspectionId={id}` to the table components (already available)
-- Ensure `photo_url` field is included in save/load data flows (it will be automatically since the tables use `select('*')`)
-
-### Lightbox Component
-Built into `ItemPhotoUpload` using the existing `Dialog` component:
-- Full-screen overlay with the image displayed at native aspect ratio
-- Close button (X) in corner
-- "Replace" button to upload a new photo
-- "Remove" button to clear the photo_url
-
-### Data Flow
+**Visual layout (no photo state):**
 ```text
-User taps camera icon → File picker → compressImage() → 
-Upload to inspection-photos bucket → Update item.photo_url → 
-Trigger onImmediateSave → Thumbnail appears in row
+┌────┐ ┌────┐
+│ 📷 │ │ 📁 │   Two 10x10 (or 12x12) buttons side by side
+└────┘ └────┘
 ```
 
-### Files to Create
-| File | Purpose |
-|------|---------|
-| `src/components/inspection/ItemPhotoUpload.tsx` | Reusable per-item photo upload + thumbnail + lightbox |
+**Lightbox replacement buttons:**
+```text
+[ 📷 Take Photo ] [ 📁 Upload ] [ ✕ Remove ]
+```
 
-### Files to Modify
-| File | Change |
-|------|--------|
-| `src/components/inspection/OperatingSystemsTable.tsx` | Add photo column + `ItemPhotoUpload` per row |
-| `src/components/inspection/ZiplinesTable.tsx` | Add photo column + `ItemPhotoUpload` per row |
-| `src/components/inspection/EquipmentTable.tsx` | Add photo column + `ItemPhotoUpload` per row |
-| `src/pages/InspectionForm.tsx` | Pass `inspectionId` to table components if not already available |
-| Database migration | Add `photo_url text` column to 3 tables |
+### No other files changed
+No database, storage, or other component changes needed.
 
