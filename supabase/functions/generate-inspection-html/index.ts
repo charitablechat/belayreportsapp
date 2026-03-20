@@ -1460,7 +1460,13 @@ serve(async (req) => {
       
       table { 
         font-size: 7pt;
-        min-width: 500px;
+        table-layout: auto;
+        width: 100%;
+      }
+      
+      .item-thumbnail {
+        width: 30px;
+        height: 30px;
       }
       
       .result-checkbox {
