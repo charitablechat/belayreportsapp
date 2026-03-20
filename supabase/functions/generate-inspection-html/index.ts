@@ -942,9 +942,9 @@ serve(async (req) => {
     }
 
     /* Allow comments columns to wrap and expand */
-    .equipment-table td:nth-child(6),
-    .systems-table td:nth-child(5),
-    .ziplines-table td:nth-child(11),
+    .equipment-table td:nth-child(5),
+    .systems-table td:nth-child(4),
+    .ziplines-table td:nth-child(10),
     .standards-table td:nth-child(3),
     .standards-table td:nth-child(4) {
       white-space: normal;
