@@ -298,109 +298,94 @@ serve(async (req) => {
     console.log(`[Inspection HTML] Found ${photos.length} photos for inspection ${inspectionId}`);
 
     // Convert photos to base64 data URIs for reliable PDF rendering
-    // Use supabase.storage.download() for private bucket access
-    const photoDataUris: { id: string; dataUri: string; caption: string; section: string }[] = [];
-    for (const photo of photos) {
-      try {
-        console.log(`[Inspection HTML] Downloading photo from private bucket: ${photo.photo_url}`);
-        
-        // Use Supabase storage download (works with private buckets via service role key)
-        const { data: fileData, error: downloadError } = await supabase
-          .storage
-          .from('inspection-photos')
-          .download(photo.photo_url);
-        
-        if (downloadError) {
-          console.warn(`[Inspection HTML] Failed to download photo ${photo.id}:`, downloadError.message);
-          continue;
+    // Parallelize all downloads with a shared 15-second time budget
+    const PHOTO_BUDGET_MS = 15000;
+    const photoStart = Date.now();
+
+    const isHeic = (arrayBuffer: ArrayBuffer): boolean => {
+      const bytes = new Uint8Array(arrayBuffer);
+      if (bytes.length >= 12) {
+        const decoder = new TextDecoder('ascii');
+        const ftypTag = decoder.decode(bytes.slice(4, 8));
+        if (ftypTag === 'ftyp') {
+          const brand = decoder.decode(bytes.slice(8, 12)).toLowerCase();
+          if (brand === 'heic' || brand === 'heis' || brand === 'mif1') return true;
         }
-        
-        if (fileData) {
-          // Convert blob to base64
-          const arrayBuffer = await fileData.arrayBuffer();
-          
-          // HEIC magic byte detection — skip mislabeled HEIC files that would render as black boxes
-          const bytes = new Uint8Array(arrayBuffer);
-          if (bytes.length >= 12) {
-            const decoder = new TextDecoder('ascii');
-            const ftypTag = decoder.decode(bytes.slice(4, 8));
-            if (ftypTag === 'ftyp') {
-              const brand = decoder.decode(bytes.slice(8, 12)).toLowerCase();
-              if (brand === 'heic' || brand === 'heis' || brand === 'mif1') {
-                console.warn(`[Inspection HTML] Skipping photo ${photo.id} — contains HEIC data despite .jpg extension. Client gallery will auto-repair.`);
-                continue;
-              }
-            }
-          }
-          
-          const photoBase64 = arrayBufferToBase64(arrayBuffer);
-          const photoMime = fileData.type || 'image/jpeg';
-          
-          photoDataUris.push({
-            id: photo.id,
-            dataUri: `data:${photoMime};base64,${photoBase64}`,
-            caption: photo.caption || '',
-            section: photo.photo_section || 'general',
-          });
-          console.log(`[Inspection HTML] Successfully converted photo ${photo.id} to base64 (${Math.round(arrayBuffer.byteLength / 1024)}KB)`);
-        }
-      } catch (photoError) {
-        console.error(`[Inspection HTML] Error processing photo ${photo.id}:`, photoError);
       }
-    }
+      return false;
+    };
 
-    // Build per-item photo map (systems, ziplines, equipment photo_url → base64)
-    const itemPhotoMap = new Map<string, string>();
-    const allItemPhotoPaths: string[] = [];
-    for (const sys of systems) {
-      if (sys.photo_url) allItemPhotoPaths.push(sys.photo_url);
-    }
-    for (const zip of ziplines) {
-      if (zip.photo_url) allItemPhotoPaths.push(zip.photo_url);
-    }
-    for (const eq of equipment) {
-      if (eq.photo_url) allItemPhotoPaths.push(eq.photo_url);
-    }
-
-    console.log(`[Inspection HTML] Found ${allItemPhotoPaths.length} per-item photos to download`);
-
-    for (const photoPath of allItemPhotoPaths) {
-      if (itemPhotoMap.has(photoPath)) continue;
+    const downloadGalleryPhoto = async (photo: any): Promise<{ id: string; dataUri: string; caption: string; section: string } | null> => {
+      if (Date.now() - photoStart > PHOTO_BUDGET_MS) {
+        console.warn(`[Inspection HTML] Photo budget exceeded, skipping gallery photo ${photo.id}`);
+        return null;
+      }
       try {
         const { data: fileData, error: downloadError } = await supabase
-          .storage
-          .from('inspection-photos')
-          .download(photoPath);
-
-        if (downloadError || !fileData) {
-          console.warn(`[Inspection HTML] Failed to download item photo ${photoPath}:`, downloadError?.message);
-          continue;
-        }
-
+          .storage.from('inspection-photos').download(photo.photo_url);
+        if (downloadError || !fileData) return null;
         const arrayBuffer = await fileData.arrayBuffer();
-        const bytes = new Uint8Array(arrayBuffer);
-
-        // HEIC magic byte detection — skip mislabeled HEIC files
-        if (bytes.length >= 12) {
-          const decoder = new TextDecoder('ascii');
-          const ftypTag = decoder.decode(bytes.slice(4, 8));
-          if (ftypTag === 'ftyp') {
-            const brand = decoder.decode(bytes.slice(8, 12)).toLowerCase();
-            if (brand === 'heic' || brand === 'heis' || brand === 'mif1') {
-              console.warn(`[Inspection HTML] Skipping item photo ${photoPath} — HEIC data`);
-              continue;
-            }
-          }
+        if (isHeic(arrayBuffer)) {
+          console.warn(`[Inspection HTML] Skipping gallery photo ${photo.id} — HEIC data`);
+          return null;
         }
-
         const photoBase64 = arrayBufferToBase64(arrayBuffer);
         const photoMime = fileData.type || 'image/jpeg';
-        itemPhotoMap.set(photoPath, `data:${photoMime};base64,${photoBase64}`);
-        console.log(`[Inspection HTML] Item photo ${photoPath} converted (${Math.round(arrayBuffer.byteLength / 1024)}KB)`);
-      } catch (err) {
-        console.error(`[Inspection HTML] Error processing item photo ${photoPath}:`, err);
+        console.log(`[Inspection HTML] Gallery photo ${photo.id} converted (${Math.round(arrayBuffer.byteLength / 1024)}KB)`);
+        return { id: photo.id, dataUri: `data:${photoMime};base64,${photoBase64}`, caption: photo.caption || '', section: photo.photo_section || 'general' };
+      } catch (e) {
+        console.error(`[Inspection HTML] Error processing gallery photo ${photo.id}:`, e);
+        return null;
       }
+    };
+
+    const downloadItemPhotoPath = async (photoPath: string): Promise<[string, string] | null> => {
+      if (Date.now() - photoStart > PHOTO_BUDGET_MS) {
+        console.warn(`[Inspection HTML] Photo budget exceeded, skipping item photo ${photoPath}`);
+        return null;
+      }
+      try {
+        const { data: fileData, error: downloadError } = await supabase
+          .storage.from('inspection-photos').download(photoPath);
+        if (downloadError || !fileData) return null;
+        const arrayBuffer = await fileData.arrayBuffer();
+        if (isHeic(arrayBuffer)) return null;
+        const photoBase64 = arrayBufferToBase64(arrayBuffer);
+        const photoMime = fileData.type || 'image/jpeg';
+        console.log(`[Inspection HTML] Item photo ${photoPath} converted (${Math.round(arrayBuffer.byteLength / 1024)}KB)`);
+        return [photoPath, `data:${photoMime};base64,${photoBase64}`];
+      } catch (e) {
+        console.error(`[Inspection HTML] Error processing item photo ${photoPath}:`, e);
+        return null;
+      }
+    };
+
+    // Collect all unique per-item photo paths
+    const allItemPhotoPaths: string[] = [];
+    for (const sys of systems) { if (sys.photo_url) allItemPhotoPaths.push(sys.photo_url); }
+    for (const zip of ziplines) { if (zip.photo_url) allItemPhotoPaths.push(zip.photo_url); }
+    for (const eq of equipment) { if (eq.photo_url) allItemPhotoPaths.push(eq.photo_url); }
+    const uniqueItemPaths = [...new Set(allItemPhotoPaths)];
+
+    console.log(`[Inspection HTML] Downloading ${photos.length} gallery + ${uniqueItemPaths.length} item photos in parallel (budget: ${PHOTO_BUDGET_MS}ms)`);
+
+    // Download ALL photos in parallel
+    const [galleryResults, itemResults] = await Promise.all([
+      Promise.allSettled(photos.map(p => downloadGalleryPhoto(p))),
+      Promise.allSettled(uniqueItemPaths.map(p => downloadItemPhotoPath(p))),
+    ]);
+
+    const photoDataUris: { id: string; dataUri: string; caption: string; section: string }[] = [];
+    for (const r of galleryResults) {
+      if (r.status === 'fulfilled' && r.value) photoDataUris.push(r.value);
     }
+
+    const itemPhotoMap = new Map<string, string>();
+    for (const r of itemResults) {
+      if (r.status === 'fulfilled' && r.value) itemPhotoMap.set(r.value[0], r.value[1]);
+    }
+
+    console.log(`[Inspection HTML] Photo processing complete in ${Date.now() - photoStart}ms: ${photoDataUris.length} gallery, ${itemPhotoMap.size} item photos`);
 
     // Helper to render item thumbnail cell
     const renderItemPhotoCell = (photoUrl: string | null): string => {
