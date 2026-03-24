@@ -128,6 +128,17 @@ Deno.serve(async (req) => {
           }
         }
 
+        // Send password reset email so the new user can set their own password
+        try {
+          const siteUrl = Deno.env.get('SUPABASE_URL') ?? '';
+          const redirectTo = siteUrl.replace('.supabase.co', '.lovable.app');
+          await supabaseAdmin.auth.resetPasswordForEmail(email, { redirectTo });
+          console.log(`Password reset email sent to: ${email}`);
+        } catch (emailError) {
+          console.error('Failed to send password reset email:', emailError);
+          // Don't fail the user creation if email fails
+        }
+
         return new Response(
           JSON.stringify({ success: true, user: newUser.user }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
