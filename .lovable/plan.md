@@ -1,48 +1,58 @@
 
 
-## Fix: Text Not Wrapping in Inspection Table Comments on Mobile/Tablet
+## Fix: Place Cursor at End of Text on Focus (Not Select All)
 
 ### Problem
-On iPad and other tablet/mobile devices, text in the "Comments" column of inspection tables (Ziplines, Equipment, Operating Systems) overflows its cell instead of wrapping. This is caused by two issues:
-
-1. The TipTap rich text editor's `.prose` class doesn't enforce word-breaking, so long text or continuous words can overflow the grid cell.
-2. The grid column definitions use fixed or `1fr` widths without `overflow: hidden` or `min-width: 0` on the cells, allowing content to push beyond boundaries.
+When an autocomplete input in the inspection tables receives focus (either by clicking or via auto-focus on new row), the browser selects all text. This makes it easy to accidentally overwrite existing content.
 
 ### Changes
 
-**1. `src/components/ui/rich-text-editor.tsx` (line 69)**
-Add word-breaking and overflow-wrap to the editor's prose container:
+**1. `src/components/GlobalAutocomplete.tsx` — `handleTriggerFocus` (~line 292)**
+After setting `inputValue`, use `requestAnimationFrame` + `setSelectionRange` to move the cursor to the end of the text:
+
+```typescript
+const handleTriggerFocus = () => {
+  setIsEditing(true);
+  setInputValue(value);
+  // Place cursor at end of text, not select-all
+  requestAnimationFrame(() => {
+    const input = triggerInputRef.current;
+    if (input) {
+      const len = input.value.length;
+      input.setSelectionRange(len, len);
+    }
+  });
+  if (!open) setOpen(true);
+  if (!hasFetchedFromDb.current) fetchGlobalHistory();
+};
 ```
-// Before:
-class: 'prose prose-sm max-w-none focus:outline-none min-h-[80px] px-3 py-2',
 
-// After:
-class: 'prose prose-sm max-w-none focus:outline-none min-h-[80px] px-3 py-2 break-words overflow-wrap-anywhere',
+**2. `src/components/OrganizationAutocomplete.tsx` — `handleTriggerFocus` (~line 207)**
+Same pattern — after setting `search` to `value`, move cursor to end:
+
+```typescript
+const handleTriggerFocus = () => {
+  setIsEditing(true);
+  setSearch(value);
+  requestAnimationFrame(() => {
+    const input = triggerInputRef.current;
+    if (input) {
+      const len = input.value.length;
+      input.setSelectionRange(len, len);
+    }
+  });
+  if (!open) setOpen(true);
+};
 ```
 
-**2. `src/index.css`**
-Add a global CSS rule targeting TipTap's `.ProseMirror` content to ensure text wraps on all devices:
-```css
-.ProseMirror {
-  word-break: break-word;
-  overflow-wrap: anywhere;
-}
-```
+**3. Auto-focus in table `useEffect` (all 3 tables)**
+Remove the `input?.click()` call (line 51 in each table). The `.focus()` is sufficient to activate the field; `.click()` triggers select-all behavior and is unnecessary now.
 
-**3. Grid cell overflow fix in all 3 table components**
-Add `min-w-0 overflow-hidden` to the comments column `<div>` wrapper in:
-- `ZiplinesTable.tsx` (desktop comments cell, ~line 189)
-- `EquipmentTable.tsx` (desktop comments cell)
-- `OperatingSystemsTable.tsx` (desktop comments cell)
-
-This ensures the grid child respects its track size and doesn't overflow.
-
-### Files
 | File | Change |
 |------|--------|
-| `src/components/ui/rich-text-editor.tsx` | Add `break-words overflow-wrap-anywhere` to editor attributes |
-| `src/index.css` | Add `.ProseMirror { word-break: break-word; overflow-wrap: anywhere; }` |
-| `src/components/inspection/ZiplinesTable.tsx` | Add `min-w-0 overflow-hidden` to comments cell div |
-| `src/components/inspection/EquipmentTable.tsx` | Same |
-| `src/components/inspection/OperatingSystemsTable.tsx` | Same |
+| `src/components/GlobalAutocomplete.tsx` | Add `setSelectionRange` in `handleTriggerFocus` |
+| `src/components/OrganizationAutocomplete.tsx` | Same |
+| `src/components/inspection/ZiplinesTable.tsx` | Remove `input?.click()` on line 51 |
+| `src/components/inspection/EquipmentTable.tsx` | Remove `input?.click()` on line 60 |
+| `src/components/inspection/OperatingSystemsTable.tsx` | Remove `input?.click()` on line 51 |
 
