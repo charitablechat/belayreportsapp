@@ -1556,16 +1556,35 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
     
     // Detect and replace temp assessment IDs with real UUIDs before validation
     if (assessment.id.startsWith('temp-')) {
-      const newId = crypto.randomUUID();
-      assessmentIdMapping = { oldId: assessment.id, newId };
-      
-      console.log('[Atomic Sync] Replacing temp assessment ID with real UUID:', {
-        oldId: assessment.id,
-        newId,
-      });
-      
-      assessment.id = newId;
-      assessmentId = newId;
+      // DEDUP GUARD: Check if an identical record already exists on the server
+      const { data: existingDup } = await supabase
+        .from('daily_assessments')
+        .select('id')
+        .eq('inspector_id', assessment.inspector_id)
+        .eq('organization', assessment.organization)
+        .eq('created_at', assessment.created_at)
+        .maybeSingle();
+
+      if (existingDup) {
+        console.log('[Atomic Sync] Found existing server record for temp assessment - adopting ID:', {
+          tempId: assessment.id,
+          serverId: existingDup.id,
+        });
+        assessmentIdMapping = { oldId: assessment.id, newId: existingDup.id };
+        assessment.id = existingDup.id;
+        assessmentId = existingDup.id;
+      } else {
+        const newId = crypto.randomUUID();
+        assessmentIdMapping = { oldId: assessment.id, newId };
+        
+        console.log('[Atomic Sync] Replacing temp assessment ID with real UUID:', {
+          oldId: assessment.id,
+          newId,
+        });
+        
+        assessment.id = newId;
+        assessmentId = newId;
+      }
     }
     
     // Use pre-validated user from batch caller, or validate session if called individually
