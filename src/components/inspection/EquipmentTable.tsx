@@ -54,7 +54,7 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
       const row = document.querySelector(`[data-row-id="${newItemId}"]`);
       if (row) {
         const input = row.querySelector<HTMLElement>(
-          'input:not([disabled]), [contenteditable="true"], [tabindex="0"]'
+          'input:not([disabled]):not([type="file"]), [contenteditable="true"], [tabindex="0"]'
         );
         input?.focus();
         input?.click();
