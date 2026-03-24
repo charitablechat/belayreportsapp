@@ -1,37 +1,60 @@
 
+## Fix Plan: Reliable Auto-Refresh for Reports (Desktop, Mobile, iPad)
 
-## Native Camera Capture for ItemPhotoUpload
+### What I found
+- The dashboard reports are loaded by `src/pages/Dashboard.tsx` via `loadInspections`, `loadTrainingReports`, and `loadDailyAssessments`.
+- Console logs from your failing session show all three network fetches timing out at 15s.
+- Current logic only shows offline IndexedDB data when `navigator.onLine === false`, so in “online but slow/stalled” cases the UI can stay empty and show `0`.
+- There is retry logic, but `dataLoadedRef` is never updated, so success/failure tracking is effectively broken.
+- iPad/Safari restore flows are not fully covered (focus/visibility alone can miss bfcache restore cases).
 
-### Problem
-The camera button currently uses `<input type="file" capture="environment">`, which on some devices still opens a file picker or gives an ambiguous choice. The user wants clicking the camera icon to directly open a live camera viewfinder using the browser's native MediaDevices API (`getUserMedia`), bypassing the file system entirely.
+### Implementation scope
+- Apply to **all report categories** in dashboard reports: Inspections, Training, Daily.
+- Ensure both **Recent Reports** and **All Reports** get fresh data from the same refreshed source arrays.
 
-### Solution
+### Changes to implement
 
-Create a reusable `CameraCapture` dialog component that opens a live camera stream via `navigator.mediaDevices.getUserMedia()`, lets the user take a photo by tapping a shutter button, and returns the captured image as a `File` object. Integrate it into `ItemPhotoUpload` to replace the `<input type="file" capture>` approach for the camera button.
+1. **Harden loader behavior for each report type (`Dashboard.tsx`)**
+   - Update all 3 loaders to return a structured result (e.g. `source: "network" | "offline" | "empty" | "timeout" | "error"` and count).
+   - Use offline data as immediate fallback even when online (stale-while-revalidate behavior), instead of requiring offline mode.
+   - Only set array to `[]` when server explicitly returns confirmed empty data.
+   - On timeout/error, do not wipe existing in-memory data.
 
-### Files Changed
+2. **Centralize refresh into one guarded function**
+   - Create a single `refreshReports` callback that:
+     - validates session first,
+     - runs the 3 loaders in parallel,
+     - records per-category outcomes,
+     - deduplicates concurrent refreshes (in-flight guard),
+     - throttles rapid re-triggers to avoid request storms.
+   - Replace scattered repeated `Promise.all([...loadX])` blocks with this one function.
 
-| File | Change |
-|------|--------|
-| `src/components/ui/camera-capture-dialog.tsx` | **New file.** Reusable dialog with live `<video>` viewfinder, shutter button, preview/retake flow. Uses `getUserMedia({ video: { facingMode: 'environment' } })` for rear camera. Captures frame to `<canvas>`, converts to JPEG blob, returns as `File`. Handles permissions, errors, and cleanup. |
-| `src/components/inspection/ItemPhotoUpload.tsx` | Replace `cameraInputRef` click with opening the new `CameraCapture` dialog. Keep the `<input type="file">` for the "Upload from device" (ImagePlus) button unchanged. Pass captured `File` to existing `handleUpload`. |
+3. **Fix refresh triggers for navigation/resume scenarios**
+   - Trigger `refreshReports` on:
+     - dashboard mount / route re-entry,
+     - window focus,
+     - document visible,
+     - network reconnect,
+     - sync-complete event,
+     - pending dashboard refresh flag.
+   - Add `pageshow` handling for iPad/Safari bfcache restores.
 
-### Technical Detail
+4. **Fix loading/placeholder behavior to prevent false “0”**
+   - Keep report tab counters in validating state (`…`) until first meaningful resolution (network success, confirmed empty, or offline fallback).
+   - Do not flip to a hard `0` while all loaders are unresolved/timeing out.
+   - Replace current `dataLoadedRef` pattern with real loader-result state.
 
-**camera-capture-dialog.tsx** — Core flow:
-1. On open: request `getUserMedia({ video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } } })`
-2. Stream feeds a `<video autoPlay playsInline>` element (full-dialog viewfinder)
-3. Shutter button captures current frame to an offscreen `<canvas>`, calls `canvas.toBlob('image/jpeg', 0.9)`
-4. Shows preview with Retake / Use Photo buttons
-5. On "Use Photo": converts blob to `File`, calls `onCapture(file)`, stops stream, closes dialog
-6. On close/unmount: always stops all media tracks to release camera
+5. **Preserve performance and stability**
+   - Keep existing 15s timeout, but add bounded retry/backoff only when all categories timeout/error.
+   - Ensure event listeners are cleaned up correctly on unmount.
+   - Avoid adding extra polling loops.
 
-**ItemPhotoUpload.tsx** changes:
-- Add `const [cameraOpen, setCameraOpen] = useState(false)`
-- Camera button onClick becomes `setCameraOpen(true)` instead of `cameraInputRef.current?.click()`
-- Remove the `<input capture="environment">` element entirely
-- Render `<CameraCaptureDialog open={cameraOpen} onOpenChange={setCameraOpen} onCapture={(file) => handleUpload(file)} />`
-- Same pattern in the lightbox "Take Photo" button
+### Files to update
+- `src/pages/Dashboard.tsx` (primary and likely only required file)
 
-This approach works across all report types since `ItemPhotoUpload` is the shared component used in Operating Systems, Ziplines, and Equipment tables. The `CameraCaptureDialog` is generic and reusable for any future camera needs.
-
+### Validation checklist
+1. Desktop: open dashboard → navigate to a report → return to dashboard; counts and cards rehydrate automatically (no manual refresh).
+2. Mobile/iPad: background app/tab and return; verify refresh triggers and no persistent `0`.
+3. Slow network simulation: confirm offline/cache fallback appears, then live network data replaces it.
+4. Confirm all three categories refresh consistently (Inspections, Training, Daily) in both Recent and All tabs.
+5. Confirm no excessive repeated requests after focus/visibility churn.
