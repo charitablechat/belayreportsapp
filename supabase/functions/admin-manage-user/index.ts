@@ -11,7 +11,7 @@ interface CreateUserPayload {
   firstName?: string;
   lastName?: string;
   organizationId?: string;
-  role?: 'admin' | 'inspector' | 'super_admin';
+  role?: 'admin' | 'inspector' | 'trainer' | 'super_admin';
 }
 
 interface UpdateUserPayload {
