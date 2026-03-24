@@ -1257,9 +1257,9 @@ export default function Dashboard() {
                   inspections={baseInspections}
                   trainings={baseTrainings}
                   dailyAssessments={baseDailyAssessments}
-                  totalInspections={inspections.length}
-                  totalTrainings={trainings.length}
-                  totalDailyAssessments={dailyAssessments.length}
+                   totalInspections={dataValidated ? inspections.length : undefined}
+                   totalTrainings={dataValidated ? trainings.length : undefined}
+                   totalDailyAssessments={dataValidated ? dailyAssessments.length : undefined}
                   activeReportTab={activeReportTab}
                   setActiveReportTab={setActiveReportTab}
                   loading={loading}
