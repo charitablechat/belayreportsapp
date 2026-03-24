@@ -7,6 +7,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { CameraCaptureDialog } from "@/components/ui/camera-capture-dialog";
 import { supabase } from "@/integrations/supabase/client";
 import { compressImage } from "@/lib/image-compression";
 import { toast } from "@/components/ui/sonner";
@@ -40,9 +41,9 @@ function ItemPhotoUpload({
 }: ItemPhotoUploadProps) {
   const [uploading, setUploading] = useState(false);
   const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [cameraOpen, setCameraOpen] = useState(false);
   const [localPreview, setLocalPreview] = useState<string | null>(null);
   const [signedUrl, setSignedUrl] = useState<string | null>(null);
-  const cameraInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const displayUrl = localPreview || signedUrl;
@@ -194,16 +195,6 @@ function ItemPhotoUpload({
 
   return (
     <>
-      {/* Camera capture input */}
-      <input
-        ref={cameraInputRef}
-        type="file"
-        accept="image/*"
-        capture="environment"
-        className="hidden"
-        onChange={handleFileChange}
-        disabled={disabled}
-      />
       {/* File browse input (no capture) */}
       <input
         ref={fileInputRef}
@@ -212,6 +203,13 @@ function ItemPhotoUpload({
         className="hidden"
         onChange={handleFileChange}
         disabled={disabled}
+      />
+
+      {/* Native camera capture dialog */}
+      <CameraCaptureDialog
+        open={cameraOpen}
+        onOpenChange={setCameraOpen}
+        onCapture={(file) => handleUpload(file)}
       />
 
       {hasPhoto && displayUrl ? (
@@ -234,7 +232,7 @@ function ItemPhotoUpload({
             type="button"
             variant="outline"
             size="sm"
-            onClick={() => cameraInputRef.current?.click()}
+            onClick={() => setCameraOpen(true)}
             disabled={disabled || uploading}
             className="w-10 h-10 p-0"
             title="Take photo"
@@ -265,7 +263,7 @@ function ItemPhotoUpload({
               <img src={displayUrl} alt="Item photo full size" className="max-w-full max-h-[60vh] object-contain rounded-lg" />
             )}
             <div className="flex gap-2">
-              <Button variant="outline" size="sm" onClick={() => cameraInputRef.current?.click()} disabled={disabled || uploading}>
+              <Button variant="outline" size="sm" onClick={() => { setLightboxOpen(false); setCameraOpen(true); }} disabled={disabled || uploading}>
                 <Camera className="w-4 h-4 mr-2" />
                 Take Photo
               </Button>
