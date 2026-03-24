@@ -108,6 +108,9 @@ function ItemPhotoUpload({
           onPhotoChange(filePath);
           onImmediateSave?.();
 
+          // Cache the compressed blob locally for offline access
+          await cachePhotoFromRemote(filePath, compressed, filePath, inspectionId, 'item-photo');
+
           const { data: signedData } = await supabase.storage
             .from("inspection-photos")
             .createSignedUrl(filePath, 3600);
