@@ -578,10 +578,10 @@ export default function Dashboard() {
       ]);
       
       const offlineData = await offlineWithTimeout;
-      if (offlineData.length > 0 && !navigator.onLine) {
-        setTrainings(offlineData);
+      if (offlineData.length > 0) {
+        setTrainings(prev => prev.length === 0 ? offlineData : prev);
         if (import.meta.env.DEV) {
-          console.log('[Dashboard] Offline - loaded trainings from cache:', offlineData.length);
+          console.log('[Dashboard] Stale-while-revalidate trainings from cache:', offlineData.length);
         }
       }
 
