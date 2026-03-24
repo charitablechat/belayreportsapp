@@ -43,6 +43,7 @@ export function DraggableTableRow({
     <div
       ref={rowRef}
       data-drag-id={id}
+      data-row-id={id}
       draggable={!isTouchDragging}
       onDragStart={(e) => onRowDragStart(e, id)}
       onDragOver={(e) => onRowDragOver(e, id)}
@@ -114,6 +115,7 @@ export function DraggableMobileCard({
     <div
       ref={cardRef}
       data-drag-id={id}
+      data-row-id={id}
       draggable={false}
       onDragStart={(e) => onRowDragStart(e, id)}
       onDragOver={(e) => onRowDragOver(e, id)}

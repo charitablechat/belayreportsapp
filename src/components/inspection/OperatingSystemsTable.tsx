@@ -8,7 +8,7 @@ import { GlobalAutocomplete } from "@/components/GlobalAutocomplete";
 import { Plus, Trash2, Minus } from "lucide-react";
 import ItemPhotoUpload from "./ItemPhotoUpload";
 import { Input } from "@/components/ui/input";
-import { useState, useCallback, memo } from "react";
+import { useState, useCallback, useEffect, memo } from "react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -34,14 +34,32 @@ const OS_GRID_COLS = "grid-cols-[40px_88px_minmax(180px,1fr)_minmax(160px,1fr)_1
 
 function OperatingSystemsTable({ systems, onUpdate, onImmediateSave, inspectionId, onGalleryRefresh }: OperatingSystemsTableProps) {
   const [itemToDelete, setItemToDelete] = useState<{ id: string; name: string } | null>(null);
+  const [newItemId, setNewItemId] = useState<string | null>(null);
   const effectiveInspectionId = inspectionId || window.location.pathname.split('/').pop() || '';
 
   const { getDragProps } = useNativeDrag(systems, (reordered) => onUpdate(reordered));
 
+  useEffect(() => {
+    if (!newItemId) return;
+    requestAnimationFrame(() => {
+      const row = document.querySelector(`[data-row-id="${newItemId}"]`);
+      if (row) {
+        const input = row.querySelector<HTMLElement>(
+          'input:not([disabled]), [contenteditable="true"], [tabindex="0"]'
+        );
+        input?.focus();
+        input?.click();
+      }
+      setNewItemId(null);
+    });
+  }, [newItemId]);
+
   const addSystem = useCallback(() => {
+    const id = `temp-${crypto.randomUUID()}`;
+    setNewItemId(id);
     onUpdate(prev => [
       { 
-        id: `temp-${crypto.randomUUID()}`,
+        id,
         inspection_id: window.location.pathname.split('/').pop(),
         system_name: "", 
         result: "pass", 

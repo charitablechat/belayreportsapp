@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Plus, Trash2, X } from "lucide-react";
 import ItemPhotoUpload from "./ItemPhotoUpload";
 import { cn } from "@/lib/utils";
-import { useState, useMemo, useCallback, memo, useRef } from "react";
+import { useState, useMemo, useCallback, useEffect, memo, useRef } from "react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import {
   AlertDialog,
@@ -46,6 +46,22 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
   );
 
   const [itemToDelete, setItemToDelete] = useState<{ item: any; name: string } | null>(null);
+  const [newItemId, setNewItemId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!newItemId) return;
+    requestAnimationFrame(() => {
+      const row = document.querySelector(`[data-row-id="${newItemId}"]`);
+      if (row) {
+        const input = row.querySelector<HTMLElement>(
+          'input:not([disabled]), [contenteditable="true"], [tabindex="0"]'
+        );
+        input?.focus();
+        input?.click();
+      }
+      setNewItemId(null);
+    });
+  }, [newItemId]);
 
   // Native drag state
   const draggedIdRef = useRef<string | null>(null);
@@ -277,9 +293,11 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
   }), [draggingId, dragOverId, dropPosition, isTouchMode, handleDragStart, handleDragOver, handleDragLeave, handleDrop, handleDragEnd, handleTouchStart, handleTouchMove, handleTouchEnd, handleTouchCancel]);
 
   const addEquipment = useCallback(() => {
+    const id = `temp-${crypto.randomUUID()}`;
+    setNewItemId(id);
     onUpdate(prev => [
       {
-        id: `temp-${crypto.randomUUID()}`,
+        id,
         inspection_id: window.location.pathname.split('/').pop(),
         equipment_category: category,
         equipment_type: "",
