@@ -729,10 +729,10 @@ export default function Dashboard() {
       ]);
       
       const offlineData = await offlineWithTimeout;
-      if (offlineData.length > 0 && !navigator.onLine) {
-        setDailyAssessments(offlineData);
+      if (offlineData.length > 0) {
+        setDailyAssessments(prev => prev.length === 0 ? offlineData : prev);
         if (import.meta.env.DEV) {
-          console.log('[Dashboard] Loaded daily assessments from offline storage:', offlineData.length);
+          console.log('[Dashboard] Stale-while-revalidate assessments from cache:', offlineData.length);
         }
       }
 
