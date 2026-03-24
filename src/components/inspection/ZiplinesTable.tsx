@@ -27,6 +27,7 @@ interface ZiplinesTableProps {
   onUpdate: (ziplinesOrUpdater: any[] | ((prev: any[]) => any[])) => void;
   onImmediateSave?: () => void;
   inspectionId?: string;
+  onGalleryRefresh?: () => void;
 }
 
 const ZIP_GRID_COLS = "grid-cols-[40px_88px_minmax(120px,1fr)_80px_80px_80px_80px_100px_80px_100px_80px_100px_100px_minmax(120px,1fr)_48px]";
