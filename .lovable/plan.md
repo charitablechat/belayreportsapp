@@ -1,80 +1,63 @@
 
 
-## Offline Image Caching for Systems & Equipment Photos
+## Auto-Populate Item Photos to Photo Gallery Sections
 
-### Problem
-`ItemPhotoUpload` fetches a signed URL from the server on every mount. If the device is offline or the request times out, the thumbnail shows nothing. The `photo-cache.ts` utility already exists with IndexedDB-based caching but is never used by this component.
+### What Changes
 
-### Solution
-Integrate the existing `photo-cache.ts` into `ItemPhotoUpload` with a cache-first strategy:
+When a user adds a photo to a specific system, zipline, or equipment item, that photo will automatically also appear in the corresponding photo gallery section at the bottom of the tab — labeled with the item name.
 
-1. **On mount** (when `photoUrl` exists): Check IndexedDB for a cached blob before hitting the network.
-2. **Cache hit**: Create an object URL from the cached blob and display immediately — skip network call.
-3. **Cache miss / stale**: Fetch the signed URL from the server, download the blob, cache it to IndexedDB via `cachePhotoFromRemote`, then display.
-4. **Offline + no cache**: Show a placeholder icon instead of a broken image.
+### How It Works
 
-### Files Changed
+1. **Add new props to `ItemPhotoUpload`**: `itemName` (string) and `photoSection` (string, e.g. "systems" or "equipment") so the component knows what label and section to use.
+
+2. **On successful upload in `ItemPhotoUpload`**: After uploading the photo to storage, also insert a row into the `inspection_photos` table with:
+   - `inspection_id`: the current inspection
+   - `photo_url`: the same storage path
+   - `photo_section`: mapped section ("systems" for operating systems and ziplines, "equipment" for equipment items)
+   - `caption`: the item name (e.g. "Harness - Item #3" or the actual element name)
+
+3. **On photo removal in `ItemPhotoUpload`**: Also delete the corresponding `inspection_photos` row (matched by `photo_url`).
+
+4. **Update callers** to pass the new props:
+   - `OperatingSystemsTable`: pass `itemName={system.name || system.system_name}` and `photoSection="systems"`
+   - `ZiplinesTable`: pass `itemName={zipline.zipline_name}` and `photoSection="systems"`
+   - `EquipmentTable`: pass `itemName={item.name || item.equipment_type}` and `photoSection="equipment"`
+
+5. **Refresh the photo gallery** after item photo changes by triggering the existing `photoRefreshKey` mechanism. Add an `onGalleryRefresh` callback prop to `ItemPhotoUpload`, threaded down from `InspectionForm`.
+
+### Files Modified
 
 | File | Change |
 |------|--------|
-| `src/components/inspection/ItemPhotoUpload.tsx` | Rewrite `loadSignedUrl` to check IndexedDB cache first; on remote success, fetch blob and call `cachePhotoFromRemote`; on upload, also cache the compressed blob locally |
-| `src/lib/photo-cache.ts` | Add `getCachedPhotoBlob(photoId)` helper that returns the blob directly from IndexedDB (avoids callers needing to import `getDB`) |
+| `src/components/inspection/ItemPhotoUpload.tsx` | Add `itemName`, `photoSection`, `onGalleryRefresh` props; insert/delete `inspection_photos` row on upload/remove |
+| `src/components/inspection/OperatingSystemsTable.tsx` | Pass new props + thread `onGalleryRefresh` |
+| `src/components/inspection/ZiplinesTable.tsx` | Pass new props + thread `onGalleryRefresh` |
+| `src/components/inspection/EquipmentTable.tsx` | Pass new props + thread `onGalleryRefresh` |
+| `src/pages/InspectionForm.tsx` | Pass `onGalleryRefresh` callback to the three table components |
 
 ### Technical Detail
 
-**ItemPhotoUpload.tsx — `loadSignedUrl` rewrite:**
+**ItemPhotoUpload — after successful upload:**
 ```typescript
-const loadSignedUrl = useCallback(async () => {
-  if (!photoUrl) { setSignedUrl(null); return; }
-  
-  const cacheKey = photoUrl; // storage path is unique per photo
-  
-  // 1. Try IndexedDB cache first
-  const cachedBlob = await getCachedPhotoBlob(cacheKey);
-  if (cachedBlob) {
-    setSignedUrl(URL.createObjectURL(cachedBlob));
-    return; // instant display, no network needed
-  }
-  
-  // 2. Fetch from server
-  if (!navigator.onLine) return; // offline + no cache — leave blank
-  try {
-    const { data } = await supabase.storage
-      .from("inspection-photos")
-      .createSignedUrl(photoUrl, 3600);
-    if (!data?.signedUrl) return;
-    setSignedUrl(data.signedUrl);
-    
-    // 3. Download blob and cache for offline use
-    try {
-      const resp = await fetch(data.signedUrl);
-      if (resp.ok) {
-        const blob = await resp.blob();
-        await cachePhotoFromRemote(cacheKey, blob, photoUrl, inspectionId, 'item-photo');
-      }
-    } catch { /* non-critical — display still works via signed URL */ }
-  } catch { /* silent fail */ }
-}, [photoUrl, inspectionId]);
+// Insert into inspection_photos for gallery display
+await supabase.from('inspection_photos').insert({
+  inspection_id: inspectionId,
+  photo_url: filePath,
+  photo_section: photoSection,
+  caption: itemName || 'Item photo',
+});
+onGalleryRefresh?.();
 ```
 
-**photo-cache.ts — new helper:**
+**ItemPhotoUpload — on remove:**
 ```typescript
-export async function getCachedPhotoBlob(photoId: string): Promise<Blob | null> {
-  try {
-    const db = await getDB();
-    const photo = await db.get('photos', photoId);
-    if (!photo?.blob || !photo.cachedAt) return null;
-    if (Date.now() - photo.cachedAt > CACHE_DURATION) return null;
-    return photo.blob;
-  } catch { return null; }
-}
+// Also remove from gallery
+await supabase.from('inspection_photos')
+  .delete()
+  .eq('photo_url', photoUrl)
+  .eq('inspection_id', inspectionId);
+onGalleryRefresh?.();
 ```
 
-**On upload success** (inside `handleUpload`): Also cache the compressed blob to IndexedDB so it's available offline immediately without a second download.
-
-### Cache Lifecycle
-- **Storage**: IndexedDB `photos` store (already exists, shared with the photo sync system)
-- **TTL**: 24 hours (existing `CACHE_DURATION` constant)
-- **Invalidation**: When device comes back online and TTL expires, next mount fetches fresh signed URL and re-caches
-- **Cleanup**: Existing `cleanupStaleCachedPhotos()` already handles eviction of expired entries
+The photo gallery already displays captions, so item photos will automatically show with their label.
 
