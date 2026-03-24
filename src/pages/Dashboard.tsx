@@ -103,6 +103,8 @@ export default function Dashboard() {
   const [trainings, setTrainings] = useState<any[]>(() => readDashboardCache('dashboard-cache-trainings'));
   const [dailyAssessments, setDailyAssessments] = useState<any[]>(() => readDashboardCache('dashboard-cache-daily'));
   const [loading, setLoading] = useState(true);
+  // Track whether we've received at least one definitive result per category
+  const [dataValidated, setDataValidated] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [inspectionToDelete, setInspectionToDelete] = useState<any>(null);
   const [reportToDelete, setReportToDelete] = useState<any>(null);
@@ -112,6 +114,11 @@ export default function Dashboard() {
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [userProfile, setUserProfile] = useState<any>(null);
   const [inspectorFilter, setInspectorFilter] = useState<string>("all");
+
+  // Deduplication & throttle refs for refreshReports
+  const refreshInFlightRef = React.useRef(false);
+  const lastRefreshTsRef = React.useRef(0);
+  const REFRESH_THROTTLE_MS = 3000;
 
   
   // Build unique inspector list from report data
