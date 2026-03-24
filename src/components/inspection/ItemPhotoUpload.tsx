@@ -157,7 +157,7 @@ function ItemPhotoUpload({
     } finally {
       setUploading(false);
     }
-  }, [itemId, inspectionId, onPhotoChange, onImmediateSave]);
+  }, [itemId, inspectionId, onPhotoChange, onImmediateSave, photoSection, itemName, onGalleryRefresh]);
 
   const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
