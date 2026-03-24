@@ -2727,8 +2727,8 @@ export default function InspectionForm() {
 
           <div>
               <TabsContent value="details" className="space-y-6">
-                <OperatingSystemsTable systems={systems} onUpdate={setSystems} onImmediateSave={stableTriggerImmediateSave} inspectionId={id} />
-                <ZiplinesTable ziplines={ziplines} onUpdate={setZiplines} onImmediateSave={stableTriggerImmediateSave} inspectionId={id} />
+                <OperatingSystemsTable systems={systems} onUpdate={setSystems} onImmediateSave={stableTriggerImmediateSave} inspectionId={id} onGalleryRefresh={() => setPhotoRefreshKey(prev => prev + 1)} />
+                <ZiplinesTable ziplines={ziplines} onUpdate={setZiplines} onImmediateSave={stableTriggerImmediateSave} inspectionId={id} onGalleryRefresh={() => setPhotoRefreshKey(prev => prev + 1)} />
                 
                 <div className="mt-8 border-t pt-6">
                   <h3 className="text-lg font-semibold mb-4">Photos - Systems & Ziplines</h3>
@@ -2761,6 +2761,7 @@ export default function InspectionForm() {
                       onUpdate={setEquipment}
                       onImmediateSave={stableTriggerImmediateSave}
                       inspectionId={id}
+                      onGalleryRefresh={() => setPhotoRefreshKey(prev => prev + 1)}
                     />
                     <EquipmentTable
                       category="helmets"
@@ -2769,6 +2770,7 @@ export default function InspectionForm() {
                       onUpdate={setEquipment}
                       onImmediateSave={stableTriggerImmediateSave}
                       inspectionId={id}
+                      onGalleryRefresh={() => setPhotoRefreshKey(prev => prev + 1)}
                     />
                     <EquipmentTable
                       category="lanyards"
@@ -2777,6 +2779,7 @@ export default function InspectionForm() {
                       onUpdate={setEquipment}
                       onImmediateSave={stableTriggerImmediateSave}
                       inspectionId={id}
+                      onGalleryRefresh={() => setPhotoRefreshKey(prev => prev + 1)}
                     />
                     <EquipmentTable
                       category="connectors"
@@ -2785,6 +2788,7 @@ export default function InspectionForm() {
                       onUpdate={setEquipment}
                       onImmediateSave={stableTriggerImmediateSave}
                       inspectionId={id}
+                      onGalleryRefresh={() => setPhotoRefreshKey(prev => prev + 1)}
                     />
                     <EquipmentTable
                       category="rope"
@@ -2794,6 +2798,7 @@ export default function InspectionForm() {
                       onUpdate={setEquipment}
                       onImmediateSave={stableTriggerImmediateSave}
                       inspectionId={id}
+                      onGalleryRefresh={() => setPhotoRefreshKey(prev => prev + 1)}
                     />
                     <EquipmentTable
                       category="belay"
@@ -2802,6 +2807,7 @@ export default function InspectionForm() {
                       onUpdate={setEquipment}
                       onImmediateSave={stableTriggerImmediateSave}
                       inspectionId={id}
+                      onGalleryRefresh={() => setPhotoRefreshKey(prev => prev + 1)}
                     />
                     <EquipmentTable
                       category="trolleys"
@@ -2810,6 +2816,7 @@ export default function InspectionForm() {
                       onUpdate={setEquipment}
                       onImmediateSave={stableTriggerImmediateSave}
                       inspectionId={id}
+                      onGalleryRefresh={() => setPhotoRefreshKey(prev => prev + 1)}
                     />
                     <EquipmentTable
                       category="other"
@@ -2818,6 +2825,7 @@ export default function InspectionForm() {
                       onUpdate={setEquipment}
                       onImmediateSave={stableTriggerImmediateSave}
                       inspectionId={id}
+                      onGalleryRefresh={() => setPhotoRefreshKey(prev => prev + 1)}
                     />
                     
                     <div className="mt-8 border-t pt-6">

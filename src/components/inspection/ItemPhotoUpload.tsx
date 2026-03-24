@@ -20,6 +20,9 @@ interface ItemPhotoUploadProps {
   onPhotoChange: (url: string | null) => void;
   onImmediateSave?: () => void;
   disabled?: boolean;
+  itemName?: string;
+  photoSection?: string;
+  onGalleryRefresh?: () => void;
 }
 
 const UPLOAD_TIMEOUT = 12000; // 12 seconds
@@ -31,6 +34,9 @@ function ItemPhotoUpload({
   onPhotoChange,
   onImmediateSave,
   disabled = false,
+  itemName,
+  photoSection,
+  onGalleryRefresh,
 }: ItemPhotoUploadProps) {
   const [uploading, setUploading] = useState(false);
   const [lightboxOpen, setLightboxOpen] = useState(false);
@@ -108,6 +114,19 @@ function ItemPhotoUpload({
           onPhotoChange(filePath);
           onImmediateSave?.();
 
+          // Also insert into inspection_photos gallery
+          if (photoSection) {
+            try {
+              await supabase.from('inspection_photos').insert({
+                inspection_id: inspectionId,
+                photo_url: filePath,
+                photo_section: photoSection,
+                caption: itemName || 'Item photo',
+              });
+              onGalleryRefresh?.();
+            } catch { /* non-critical */ }
+          }
+
           // Cache the compressed blob locally for offline access
           await cachePhotoFromRemote(filePath, compressed, filePath, inspectionId, 'item-photo');
 
@@ -138,7 +157,7 @@ function ItemPhotoUpload({
     } finally {
       setUploading(false);
     }
-  }, [itemId, inspectionId, onPhotoChange, onImmediateSave]);
+  }, [itemId, inspectionId, onPhotoChange, onImmediateSave, photoSection, itemName, onGalleryRefresh]);
 
   const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -153,13 +172,23 @@ function ItemPhotoUpload({
       } catch {
         // silent
       }
+      // Also remove from gallery
+      if (photoSection && inspectionId) {
+        try {
+          await supabase.from('inspection_photos')
+            .delete()
+            .eq('photo_url', photoUrl)
+            .eq('inspection_id', inspectionId);
+          onGalleryRefresh?.();
+        } catch { /* non-critical */ }
+      }
     }
     setLocalPreview(null);
     setSignedUrl(null);
     onPhotoChange(null);
     onImmediateSave?.();
     setLightboxOpen(false);
-  }, [photoUrl, onPhotoChange, onImmediateSave]);
+  }, [photoUrl, onPhotoChange, onImmediateSave, photoSection, inspectionId, onGalleryRefresh]);
 
   const hasPhoto = !!(photoUrl || localPreview);
 

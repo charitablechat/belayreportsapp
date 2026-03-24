@@ -27,11 +27,12 @@ interface ZiplinesTableProps {
   onUpdate: (ziplinesOrUpdater: any[] | ((prev: any[]) => any[])) => void;
   onImmediateSave?: () => void;
   inspectionId?: string;
+  onGalleryRefresh?: () => void;
 }
 
 const ZIP_GRID_COLS = "grid-cols-[40px_88px_minmax(120px,1fr)_80px_80px_80px_80px_100px_80px_100px_80px_100px_100px_minmax(120px,1fr)_48px]";
 
-function ZiplinesTable({ ziplines, onUpdate, onImmediateSave, inspectionId }: ZiplinesTableProps) {
+function ZiplinesTable({ ziplines, onUpdate, onImmediateSave, inspectionId, onGalleryRefresh }: ZiplinesTableProps) {
   const [itemToDelete, setItemToDelete] = useState<{ id: string; name: string } | null>(null);
   const effectiveInspectionId = inspectionId || window.location.pathname.split('/').pop() || '';
 
@@ -129,6 +130,9 @@ function ZiplinesTable({ ziplines, onUpdate, onImmediateSave, inspectionId }: Zi
                       photoUrl={zipline.photo_url || null}
                       onPhotoChange={(url) => updateZipline(zipline, "photo_url", url)}
                       onImmediateSave={onImmediateSave}
+                      itemName={zipline.zipline_name || 'Zipline'}
+                      photoSection="systems"
+                      onGalleryRefresh={onGalleryRefresh}
                     />
                   </div>
                   <div className="p-1 border-r border-border">
@@ -226,6 +230,9 @@ function ZiplinesTable({ ziplines, onUpdate, onImmediateSave, inspectionId }: Zi
                       photoUrl={zipline.photo_url || null}
                       onPhotoChange={(url) => updateZipline(zipline, "photo_url", url)}
                       onImmediateSave={onImmediateSave}
+                      itemName={zipline.zipline_name || 'Zipline'}
+                      photoSection="systems"
+                      onGalleryRefresh={onGalleryRefresh}
                     />
                     <div className="flex-1">
                       <Label className="text-xs text-muted-foreground">Line Name</Label>

@@ -31,11 +31,12 @@ interface EquipmentTableProps {
   onImmediateSave?: () => void;
   typeOptions?: string[];
   inspectionId?: string;
+  onGalleryRefresh?: () => void;
 }
 
 const EQ_GRID_COLS = "grid-cols-[40px_88px_minmax(160px,1fr)_128px_96px_192px_1fr_64px]";
 
-function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediateSave, typeOptions, inspectionId }: EquipmentTableProps) {
+function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediateSave, typeOptions, inspectionId, onGalleryRefresh }: EquipmentTableProps) {
   const isMobile = useIsMobile();
   const effectiveInspectionId = inspectionId || window.location.pathname.split('/').pop() || '';
   
@@ -350,6 +351,9 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
                     photoUrl={item.photo_url || null}
                     onPhotoChange={(url) => updateEquipment(item, "photo_url", url)}
                     onImmediateSave={onImmediateSave}
+                    itemName={item.equipment_type || displayName}
+                    photoSection="equipment"
+                    onGalleryRefresh={onGalleryRefresh}
                   />
                 </div>
                 <div className="p-2 border-r border-border">
@@ -482,6 +486,9 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
                       photoUrl={item.photo_url || null}
                       onPhotoChange={(url) => updateEquipment(item, "photo_url", url)}
                       onImmediateSave={onImmediateSave}
+                      itemName={item.equipment_type || displayName}
+                      photoSection="equipment"
+                      onGalleryRefresh={onGalleryRefresh}
                     />
                     <div className="flex-1">
                       <Label className="text-xs text-muted-foreground">Type *</Label>

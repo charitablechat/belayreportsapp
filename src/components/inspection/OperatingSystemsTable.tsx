@@ -27,11 +27,12 @@ interface OperatingSystemsTableProps {
   onUpdate: (systemsOrUpdater: any[] | ((prev: any[]) => any[])) => void;
   onImmediateSave?: () => void;
   inspectionId?: string;
+  onGalleryRefresh?: () => void;
 }
 
 const OS_GRID_COLS = "grid-cols-[40px_88px_minmax(180px,1fr)_minmax(160px,1fr)_192px_1fr_64px]";
 
-function OperatingSystemsTable({ systems, onUpdate, onImmediateSave, inspectionId }: OperatingSystemsTableProps) {
+function OperatingSystemsTable({ systems, onUpdate, onImmediateSave, inspectionId, onGalleryRefresh }: OperatingSystemsTableProps) {
   const [itemToDelete, setItemToDelete] = useState<{ id: string; name: string } | null>(null);
   const effectiveInspectionId = inspectionId || window.location.pathname.split('/').pop() || '';
 
@@ -151,6 +152,9 @@ function OperatingSystemsTable({ systems, onUpdate, onImmediateSave, inspectionI
                         photoUrl={system.photo_url || null}
                         onPhotoChange={(url) => updateSystem(system, "photo_url", url)}
                         onImmediateSave={onImmediateSave}
+                        itemName={system.name || system.system_name || 'Operating System'}
+                        photoSection="systems"
+                        onGalleryRefresh={onGalleryRefresh}
                       />
                     </div>
                     <div className="p-2 border-r border-border">
@@ -240,6 +244,9 @@ function OperatingSystemsTable({ systems, onUpdate, onImmediateSave, inspectionI
                         photoUrl={system.photo_url || null}
                         onPhotoChange={(url) => updateSystem(system, "photo_url", url)}
                         onImmediateSave={onImmediateSave}
+                        itemName={system.name || system.system_name || 'Operating System'}
+                        photoSection="systems"
+                        onGalleryRefresh={onGalleryRefresh}
                       />
                       <div className="flex-1">
                         <Label className="text-xs text-muted-foreground">Element Name</Label>
