@@ -171,6 +171,7 @@ export default function NewInspection() {
         id: tempId,
         inspector_id: user.id,
         status: "draft",
+        acct_number: formData.acct_number || null,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
         inspection_date: new Date().toISOString().split('T')[0],
