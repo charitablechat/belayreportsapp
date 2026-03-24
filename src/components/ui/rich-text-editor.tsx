@@ -31,6 +31,30 @@ export const RichTextEditor = ({
         horizontalRule: false,
         blockquote: false,
       }),
+      Extension.create({
+        name: 'tabNavigation',
+        addKeyboardShortcuts() {
+          const moveFocus = (direction: 1 | -1) => {
+            const el = this.editor.view.dom;
+            const focusables = Array.from(
+              document.querySelectorAll<HTMLElement>(
+                'input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"]):not([role="menuitem"]), button:not([disabled]), [contenteditable="true"]'
+              )
+            ).filter(e => e.offsetParent !== null);
+            const idx = focusables.indexOf(el);
+            const next = focusables[idx + direction];
+            if (next) {
+              el.blur();
+              next.focus();
+            }
+            return true;
+          };
+          return {
+            Tab: () => moveFocus(1),
+            'Shift-Tab': () => moveFocus(-1),
+          };
+        },
+      }),
     ],
     content,
     autofocus: autoFocus ?? false,

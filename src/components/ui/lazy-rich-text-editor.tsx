@@ -55,6 +55,8 @@ export function LazyRichTextEditor({
     
     return (
       <div
+        tabIndex={0}
+        onFocus={() => setIsFocused(true)}
         onClick={() => setIsFocused(true)}
         className={cn(
           "min-h-[80px] cursor-text rounded-md border bg-background px-3 py-2 text-sm",
