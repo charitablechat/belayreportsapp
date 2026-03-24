@@ -152,6 +152,9 @@ function OperatingSystemsTable({ systems, onUpdate, onImmediateSave, inspectionI
                         photoUrl={system.photo_url || null}
                         onPhotoChange={(url) => updateSystem(system, "photo_url", url)}
                         onImmediateSave={onImmediateSave}
+                        itemName={system.name || system.system_name || 'Operating System'}
+                        photoSection="systems"
+                        onGalleryRefresh={onGalleryRefresh}
                       />
                     </div>
                     <div className="p-2 border-r border-border">
