@@ -413,12 +413,12 @@ export default function Dashboard() {
         new Promise<any[]>((resolve) => setTimeout(() => resolve([]), 2000))
       ]);
       
-      // Show offline data immediately if available
+      // Show offline/cached data immediately (stale-while-revalidate)
       const offlineData = await offlineWithTimeout;
-      if (offlineData.length > 0 && !navigator.onLine) {
-        setInspections(offlineData);
+      if (offlineData.length > 0) {
+        setInspections(prev => prev.length === 0 ? offlineData : prev);
         if (import.meta.env.DEV) {
-          console.log('[Dashboard] Offline - loaded from cache:', offlineData.length);
+          console.log('[Dashboard] Stale-while-revalidate inspections from cache:', offlineData.length);
         }
       }
 
