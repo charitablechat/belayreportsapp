@@ -185,6 +185,7 @@ export default function NewInspection() {
           previous_inspector: formData.previous_inspector || null,
           previous_inspection_date: formData.previous_inspection_date || null,
           course_history: formData.course_history || null,
+          acct_number: formData.acct_number || null,
           latitude: formData.latitude,
           longitude: formData.longitude,
         };
