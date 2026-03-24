@@ -1,22 +1,48 @@
 
 
-## Fix: "Add System/Zipline/Equipment" Button Opens Photo Picker
+## Fix: Text Not Wrapping in Inspection Table Comments on Mobile/Tablet
 
-### Root Cause
-The auto-focus `useEffect` that runs when a new row is added uses this selector:
+### Problem
+On iPad and other tablet/mobile devices, text in the "Comments" column of inspection tables (Ziplines, Equipment, Operating Systems) overflows its cell instead of wrapping. This is caused by two issues:
+
+1. The TipTap rich text editor's `.prose` class doesn't enforce word-breaking, so long text or continuous words can overflow the grid cell.
+2. The grid column definitions use fixed or `1fr` widths without `overflow: hidden` or `min-width: 0` on the cells, allowing content to push beyond boundaries.
+
+### Changes
+
+**1. `src/components/ui/rich-text-editor.tsx` (line 69)**
+Add word-breaking and overflow-wrap to the editor's prose container:
 ```
-input:not([disabled]), [contenteditable="true"], [tabindex="0"]
+// Before:
+class: 'prose prose-sm max-w-none focus:outline-none min-h-[80px] px-3 py-2',
+
+// After:
+class: 'prose prose-sm max-w-none focus:outline-none min-h-[80px] px-3 py-2 break-words overflow-wrap-anywhere',
 ```
-The `<input type="file">` inside `ItemPhotoUpload` is the **first** `input` in each row's DOM (photo column comes before name column). The `.focus()` + `.click()` on line 50-51 triggers the file picker instead of focusing the name field.
 
-### Fix
-Add `:not([type="file"])` to the selector in all 3 files so file inputs are skipped:
+**2. `src/index.css`**
+Add a global CSS rule targeting TipTap's `.ProseMirror` content to ensure text wraps on all devices:
+```css
+.ProseMirror {
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+```
 
-| File | Line | Change |
-|------|------|--------|
-| `OperatingSystemsTable.tsx` | 48 | `'input:not([disabled]):not([type="file"]), ...'` |
-| `ZiplinesTable.tsx` | 48 | Same |
-| `EquipmentTable.tsx` | 57 | Same |
+**3. Grid cell overflow fix in all 3 table components**
+Add `min-w-0 overflow-hidden` to the comments column `<div>` wrapper in:
+- `ZiplinesTable.tsx` (desktop comments cell, ~line 189)
+- `EquipmentTable.tsx` (desktop comments cell)
+- `OperatingSystemsTable.tsx` (desktop comments cell)
 
-One-word addition per file. The "Add System" button will correctly create a new row and focus the name input field.
+This ensures the grid child respects its track size and doesn't overflow.
+
+### Files
+| File | Change |
+|------|--------|
+| `src/components/ui/rich-text-editor.tsx` | Add `break-words overflow-wrap-anywhere` to editor attributes |
+| `src/index.css` | Add `.ProseMirror { word-break: break-word; overflow-wrap: anywhere; }` |
+| `src/components/inspection/ZiplinesTable.tsx` | Add `min-w-0 overflow-hidden` to comments cell div |
+| `src/components/inspection/EquipmentTable.tsx` | Same |
+| `src/components/inspection/OperatingSystemsTable.tsx` | Same |
 
