@@ -883,16 +883,35 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
     
     // Detect and replace temp training IDs with real UUIDs before validation
     if (training.id.startsWith('temp-')) {
-      const newId = crypto.randomUUID();
-      trainingIdMapping = { oldId: training.id, newId };
-      
-      console.log('[Atomic Sync] Replacing temp training ID with real UUID:', {
-        oldId: training.id,
-        newId,
-      });
-      
-      training.id = newId;
-      trainingId = newId;
+      // DEDUP GUARD: Check if an identical record already exists on the server
+      const { data: existingDup } = await supabase
+        .from('trainings')
+        .select('id')
+        .eq('inspector_id', training.inspector_id)
+        .eq('organization', training.organization)
+        .eq('created_at', training.created_at)
+        .maybeSingle();
+
+      if (existingDup) {
+        console.log('[Atomic Sync] Found existing server record for temp training - adopting ID:', {
+          tempId: training.id,
+          serverId: existingDup.id,
+        });
+        trainingIdMapping = { oldId: training.id, newId: existingDup.id };
+        training.id = existingDup.id;
+        trainingId = existingDup.id;
+      } else {
+        const newId = crypto.randomUUID();
+        trainingIdMapping = { oldId: training.id, newId };
+        
+        console.log('[Atomic Sync] Replacing temp training ID with real UUID:', {
+          oldId: training.id,
+          newId,
+        });
+        
+        training.id = newId;
+        trainingId = newId;
+      }
     }
     
     // Use pre-validated user from batch caller, or validate session if called individually
