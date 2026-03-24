@@ -230,6 +230,9 @@ function ZiplinesTable({ ziplines, onUpdate, onImmediateSave, inspectionId, onGa
                       photoUrl={zipline.photo_url || null}
                       onPhotoChange={(url) => updateZipline(zipline, "photo_url", url)}
                       onImmediateSave={onImmediateSave}
+                      itemName={zipline.zipline_name || 'Zipline'}
+                      photoSection="systems"
+                      onGalleryRefresh={onGalleryRefresh}
                     />
                     <div className="flex-1">
                       <Label className="text-xs text-muted-foreground">Line Name</Label>

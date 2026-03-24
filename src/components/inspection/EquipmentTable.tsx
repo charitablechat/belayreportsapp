@@ -486,6 +486,9 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
                       photoUrl={item.photo_url || null}
                       onPhotoChange={(url) => updateEquipment(item, "photo_url", url)}
                       onImmediateSave={onImmediateSave}
+                      itemName={item.equipment_type || displayName}
+                      photoSection="equipment"
+                      onGalleryRefresh={onGalleryRefresh}
                     />
                     <div className="flex-1">
                       <Label className="text-xs text-muted-foreground">Type *</Label>

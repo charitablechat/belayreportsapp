@@ -172,13 +172,23 @@ function ItemPhotoUpload({
       } catch {
         // silent
       }
+      // Also remove from gallery
+      if (photoSection && inspectionId) {
+        try {
+          await supabase.from('inspection_photos')
+            .delete()
+            .eq('photo_url', photoUrl)
+            .eq('inspection_id', inspectionId);
+          onGalleryRefresh?.();
+        } catch { /* non-critical */ }
+      }
     }
     setLocalPreview(null);
     setSignedUrl(null);
     onPhotoChange(null);
     onImmediateSave?.();
     setLightboxOpen(false);
-  }, [photoUrl, onPhotoChange, onImmediateSave]);
+  }, [photoUrl, onPhotoChange, onImmediateSave, photoSection, inspectionId, onGalleryRefresh]);
 
   const hasPhoto = !!(photoUrl || localPreview);
 

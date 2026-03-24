@@ -2825,6 +2825,7 @@ export default function InspectionForm() {
                       onUpdate={setEquipment}
                       onImmediateSave={stableTriggerImmediateSave}
                       inspectionId={id}
+                      onGalleryRefresh={() => setPhotoRefreshKey(prev => prev + 1)}
                     />
                     
                     <div className="mt-8 border-t pt-6">

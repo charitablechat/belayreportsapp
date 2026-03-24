@@ -244,6 +244,9 @@ function OperatingSystemsTable({ systems, onUpdate, onImmediateSave, inspectionI
                         photoUrl={system.photo_url || null}
                         onPhotoChange={(url) => updateSystem(system, "photo_url", url)}
                         onImmediateSave={onImmediateSave}
+                        itemName={system.name || system.system_name || 'Operating System'}
+                        photoSection="systems"
+                        onGalleryRefresh={onGalleryRefresh}
                       />
                       <div className="flex-1">
                         <Label className="text-xs text-muted-foreground">Element Name</Label>
