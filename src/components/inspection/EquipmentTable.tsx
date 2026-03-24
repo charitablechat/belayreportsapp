@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Plus, Trash2, X } from "lucide-react";
 import ItemPhotoUpload from "./ItemPhotoUpload";
 import { cn } from "@/lib/utils";
-import { useState, useMemo, useCallback, memo, useRef } from "react";
+import { useState, useMemo, useCallback, useEffect, memo, useRef } from "react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import {
   AlertDialog,
