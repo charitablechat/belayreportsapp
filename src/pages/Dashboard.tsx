@@ -219,192 +219,130 @@ export default function Dashboard() {
     },
   });
 
+  // Centralized, deduplicated, throttled refresh
+  const refreshReports = React.useCallback(async (force = false) => {
+    if (refreshInFlightRef.current) return;
+    if (!force && Date.now() - lastRefreshTsRef.current < REFRESH_THROTTLE_MS) return;
+    refreshInFlightRef.current = true;
+    lastRefreshTsRef.current = Date.now();
+
+    try {
+      await Promise.race([
+        ensureValidSession(),
+        new Promise(resolve => setTimeout(resolve, 3000))
+      ]);
+    } catch (e) {
+      console.warn('[Dashboard] Session validation failed:', e);
+    }
+
+    const user = await getUserWithCache();
+    const userId = user?.id || getOfflineUserId();
+    const superAdminStatus = user ? await getSuperAdminStatusWithCache() : false;
+
+    try {
+      await Promise.all([
+        loadInspections(userId, superAdminStatus),
+        loadTrainingReports(userId, superAdminStatus),
+        loadDailyAssessments(userId, superAdminStatus),
+      ]);
+    } finally {
+      setDataValidated(true);
+      refreshInFlightRef.current = false;
+    }
+  }, []);
+
   useEffect(() => {
-    const loadAllData = async () => {
-      setLoading(true);
-      
-      // BLOCKING: Ensure valid session before data fetch (with 3s timeout fallback)
-      // Prevents stale-token race condition that causes '0 reports' after navigation
-      try {
-        await Promise.race([
-          ensureValidSession(),
-          new Promise(resolve => setTimeout(resolve, 3000))
-        ]);
-      } catch (e) {
-        console.warn('[Dashboard] Session validation failed, falling back to cache:', e);
-      }
-      
-      // PERFORMANCE: Fetch user once, then pass to all loaders
-      const user = await getUserWithCache();
-      // Fallback: if getUserWithCache returns null (e.g. stale cache), extract userId from localStorage
-      const userId = user?.id || getOfflineUserId();
-      
-      // Get super admin status once using cached function (for offline storage bypass)
-      // This uses single-flight pattern to dedupe concurrent requests
-      let superAdminStatus = false;
-      if (user) {
-        superAdminStatus = await getSuperAdminStatusWithCache();
-      }
-      
-      // Safety timeout to prevent skeleton loading state from getting stuck
-      // If data loads from offline storage, we want to show it immediately
-      const LOAD_TIMEOUT = 8000;
-      let loadCompleted = false;
-      
-      const safetyTimeout = setTimeout(() => {
-        if (!loadCompleted) {
-          console.warn('[Dashboard] Loading safety timeout - forcing loading state to false');
-          setLoading(false);
-        }
-      }, LOAD_TIMEOUT);
-      
-      try {
-        // Batch all data loading operations with shared userId and superAdminStatus
-        // Each function sets state independently, so data appears as it loads
-        await Promise.all([
-          loadInspections(userId, superAdminStatus),
-          loadTrainingReports(userId, superAdminStatus),
-          loadDailyAssessments(userId, superAdminStatus)
-        ]);
-      } finally {
-        loadCompleted = true;
-        clearTimeout(safetyTimeout);
+    setLoading(true);
+    setDataValidated(false);
+
+    const LOAD_TIMEOUT = 8000;
+    let loadCompleted = false;
+    const safetyTimeout = setTimeout(() => {
+      if (!loadCompleted) {
+        console.warn('[Dashboard] Loading safety timeout');
         setLoading(false);
+        setDataValidated(true);
       }
-    };
-    
-    // Consume the flag synchronously before any async work
-    const hasPendingRefresh = consumePendingDashboardRefresh();
+    }, LOAD_TIMEOUT);
 
-    // Track whether data was loaded (refs avoid stale closure issues)
-    const dataLoadedRef = { inspections: false, trainings: false, assessments: false };
-
-    loadAllData().then(() => {
-      // Check current state via DOM-independent tracking
-      // Schedule retry if initial load came back empty while online
-      // (session may have been stale; ensureValidSession runs in background)
-      if (hasPendingRefresh || (navigator.onLine && !dataLoadedRef.inspections && !dataLoadedRef.trainings && !dataLoadedRef.assessments)) {
-        setTimeout(async () => {
-          const user = await getUserWithCache();
-          const userId = user?.id || getOfflineUserId();
-          const superAdminStatus = user ? await getSuperAdminStatusWithCache() : false;
-          await Promise.all([
-            loadInspections(userId, superAdminStatus),
-            loadTrainingReports(userId, superAdminStatus),
-            loadDailyAssessments(userId, superAdminStatus),
-          ]);
-        }, hasPendingRefresh ? 300 : 1500);
-      }
+    refreshReports(true).then(() => {
+      loadCompleted = true;
+      clearTimeout(safetyTimeout);
+      setLoading(false);
     });
-    
-    // Fetch current user - works offline with cache!
+
+    // Fetch current user
     const fetchUser = async () => {
       const user = await getUserWithCache();
       setCurrentUser(user);
-      
-      // Fetch user profile if online
       if (user && navigator.onLine) {
         const { data: profile } = await (supabase as any)
           .from("profiles")
           .select("*")
           .eq("id", user.id)
           .maybeSingle();
-        
         setUserProfile(profile);
       }
     };
-    
     fetchUser();
-    
-    // Listen for auth state changes
+
+    // Auth state listener
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
-        // Only update currentUser from real auth events, not synthetic session failures
-        if (session?.user) {
-          setCurrentUser(session.user);
-        }
-        
-        // Only redirect on explicit sign-out while online
-        // Offline synthetic sessions may trigger false SIGNED_OUT events
-        if (event === 'SIGNED_OUT' && navigator.onLine) {
-          navigate("/", { replace: true });
-        }
+        if (session?.user) setCurrentUser(session.user);
+        if (event === 'SIGNED_OUT' && navigator.onLine) navigate("/", { replace: true });
       }
     );
 
-    // Listen for online/offline events
-    const handleOnline = async () => {
+    // Online/offline
+    const handleOnline = () => {
       setIsOnline(true);
-      // Invalidate super admin status to refresh from server
       invalidateSuperAdminCache();
       queryClient.invalidateQueries({ queryKey: ["is-super-admin"] });
-      // Pre-fetch auth once, then pass to all loaders in parallel
-      const user = await getUserWithCache();
-      const userId = user?.id;
-      const superAdminStatus = await getSuperAdminStatusWithCache();
-      await Promise.all([
-        loadInspections(userId, superAdminStatus),
-        loadTrainingReports(userId, superAdminStatus),
-        loadDailyAssessments(userId, superAdminStatus),
-      ]);
+      refreshReports(true);
     };
     const handleOffline = () => setIsOnline(false);
 
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-
-    // Subscribe to sync completion events from useAutoSync
-    // This ensures Dashboard refreshes when background sync completes
-    const unsubscribeSyncComplete = onSyncComplete(async () => {
-      if (import.meta.env.DEV) {
-        console.log('[Dashboard] Sync complete event received - reloading data');
-      }
-      // Invalidate super admin status on sync (in case user roles were updated)
+    // Sync completion
+    const unsubscribeSyncComplete = onSyncComplete(() => {
+      if (import.meta.env.DEV) console.log('[Dashboard] Sync complete - refreshing');
       invalidateSuperAdminCache();
       queryClient.invalidateQueries({ queryKey: ["is-super-admin"] });
-      // Pre-fetch auth once, then pass to all loaders in parallel
-      const user = await getUserWithCache();
-      const userId = user?.id;
-      const superAdminStatus = await getSuperAdminStatusWithCache();
-      await Promise.all([
-        loadInspections(userId, superAdminStatus),
-        loadTrainingReports(userId, superAdminStatus),
-        loadDailyAssessments(userId, superAdminStatus),
-      ]);
+      refreshReports(true);
     });
 
-    // Reload data when tab regains focus (e.g., after switching apps on mobile)
-    const handleVisibilityChange = async () => {
-      if (document.visibilityState === 'visible' && navigator.onLine) {
-        const user = await getUserWithCache();
-        const userId = user?.id || getOfflineUserId();
-        const superAdminStatus = user ? await getSuperAdminStatusWithCache() : false;
-        await Promise.all([
-          loadInspections(userId, superAdminStatus),
-          loadTrainingReports(userId, superAdminStatus),
-          loadDailyAssessments(userId, superAdminStatus),
-        ]);
+    // Visibility change (tab switch, app resume)
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') refreshReports();
+    };
+
+    // Window focus (SPA back-navigation)
+    const handleWindowFocus = () => refreshReports();
+
+    // iPad/Safari bfcache restore
+    const handlePageShow = (e: PageTransitionEvent) => {
+      if (e.persisted) {
+        if (import.meta.env.DEV) console.log('[Dashboard] bfcache restore - refreshing');
+        refreshReports(true);
       }
     };
-    document.addEventListener('visibilitychange', handleVisibilityChange);
 
-    // Re-fetch data when window regains focus (e.g., back-navigation within SPA)
-    const handleWindowFocus = async () => {
-      const user = await getUserWithCache();
-      const userId = user?.id || getOfflineUserId();
-      const superAdminStatus = user ? await getSuperAdminStatusWithCache() : false;
-      await Promise.all([
-        loadInspections(userId, superAdminStatus),
-        loadTrainingReports(userId, superAdminStatus),
-        loadDailyAssessments(userId, superAdminStatus),
-      ]);
-    };
+    // Pending dashboard refresh flag
+    if (consumePendingDashboardRefresh()) {
+      setTimeout(() => refreshReports(true), 300);
+    }
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
     window.addEventListener('focus', handleWindowFocus);
+    window.addEventListener('pageshow', handlePageShow);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
       window.removeEventListener('focus', handleWindowFocus);
+      window.removeEventListener('pageshow', handlePageShow);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       subscription.unsubscribe();
       unsubscribeSyncComplete();
