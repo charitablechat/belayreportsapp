@@ -48,7 +48,6 @@ function ZiplinesTable({ ziplines, onUpdate, onImmediateSave, inspectionId, onGa
           'input:not([disabled]):not([type="file"]), [contenteditable="true"], [tabindex="0"]'
         );
         input?.focus();
-        input?.click();
       }
       setNewItemId(null);
     });
