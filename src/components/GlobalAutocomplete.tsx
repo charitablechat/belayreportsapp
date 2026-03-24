@@ -292,6 +292,14 @@ export function GlobalAutocomplete({
   const handleTriggerFocus = () => {
     setIsEditing(true);
     setInputValue(value);
+    // Place cursor at end of text, not select-all
+    requestAnimationFrame(() => {
+      const input = triggerInputRef.current;
+      if (input) {
+        const len = input.value.length;
+        input.setSelectionRange(len, len);
+      }
+    });
     if (!open) {
       setOpen(true);
     }

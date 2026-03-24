@@ -57,7 +57,6 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
           'input:not([disabled]):not([type="file"]), [contenteditable="true"], [tabindex="0"]'
         );
         input?.focus();
-        input?.click();
       }
       setNewItemId(null);
     });

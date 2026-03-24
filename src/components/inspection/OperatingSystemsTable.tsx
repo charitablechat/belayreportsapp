@@ -48,7 +48,6 @@ function OperatingSystemsTable({ systems, onUpdate, onImmediateSave, inspectionI
           'input:not([disabled]):not([type="file"]), [contenteditable="true"], [tabindex="0"]'
         );
         input?.focus();
-        input?.click();
       }
       setNewItemId(null);
     });
