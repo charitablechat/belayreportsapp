@@ -34,14 +34,32 @@ const ZIP_GRID_COLS = "grid-cols-[40px_88px_minmax(120px,1fr)_80px_80px_80px_80p
 
 function ZiplinesTable({ ziplines, onUpdate, onImmediateSave, inspectionId, onGalleryRefresh }: ZiplinesTableProps) {
   const [itemToDelete, setItemToDelete] = useState<{ id: string; name: string } | null>(null);
+  const [newItemId, setNewItemId] = useState<string | null>(null);
   const effectiveInspectionId = inspectionId || window.location.pathname.split('/').pop() || '';
 
   const { getDragProps } = useNativeDrag(ziplines, (reordered) => onUpdate(reordered));
 
+  useEffect(() => {
+    if (!newItemId) return;
+    requestAnimationFrame(() => {
+      const row = document.querySelector(`[data-row-id="${newItemId}"]`);
+      if (row) {
+        const input = row.querySelector<HTMLElement>(
+          'input:not([disabled]), [contenteditable="true"], [tabindex="0"]'
+        );
+        input?.focus();
+        input?.click();
+      }
+      setNewItemId(null);
+    });
+  }, [newItemId]);
+
   const addZipline = useCallback(() => {
+    const id = `temp-${crypto.randomUUID()}`;
+    setNewItemId(id);
     onUpdate(prev => [
       {
-        id: `temp-${crypto.randomUUID()}`,
+        id,
         inspection_id: window.location.pathname.split('/').pop(),
         zipline_name: "",
         cable_type: "",

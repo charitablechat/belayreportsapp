@@ -293,9 +293,11 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
   }), [draggingId, dragOverId, dropPosition, isTouchMode, handleDragStart, handleDragOver, handleDragLeave, handleDrop, handleDragEnd, handleTouchStart, handleTouchMove, handleTouchEnd, handleTouchCancel]);
 
   const addEquipment = useCallback(() => {
+    const id = `temp-${crypto.randomUUID()}`;
+    setNewItemId(id);
     onUpdate(prev => [
       {
-        id: `temp-${crypto.randomUUID()}`,
+        id,
         inspection_id: window.location.pathname.split('/').pop(),
         equipment_category: category,
         equipment_type: "",
