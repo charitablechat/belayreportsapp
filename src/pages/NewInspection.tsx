@@ -35,6 +35,7 @@ export default function NewInspection() {
     previous_inspector: "",
     previous_inspection_date: "",
     course_history: "",
+    acct_number: "",
     latitude: null as number | null,
     longitude: null as number | null,
   });
@@ -47,7 +48,7 @@ export default function NewInspection() {
         if (user) {
           const { data: profile } = await supabase
             .from('profiles')
-            .select('first_name, last_name')
+            .select('first_name, last_name, acct_number')
             .eq('id', user.id)
             .single();
           
@@ -57,7 +58,8 @@ export default function NewInspection() {
             if (fullName) {
               setFormData(prev => ({
                 ...prev,
-                previous_inspector: prev.previous_inspector || fullName
+                previous_inspector: prev.previous_inspector || fullName,
+                acct_number: prev.acct_number || profile.acct_number || "",
               }));
             }
           }
@@ -169,6 +171,7 @@ export default function NewInspection() {
         id: tempId,
         inspector_id: user.id,
         status: "draft",
+        acct_number: formData.acct_number || null,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
         inspection_date: new Date().toISOString().split('T')[0],
@@ -182,6 +185,7 @@ export default function NewInspection() {
           previous_inspector: formData.previous_inspector || null,
           previous_inspection_date: formData.previous_inspection_date || null,
           course_history: formData.course_history || null,
+          acct_number: formData.acct_number || null,
           latitude: formData.latitude,
           longitude: formData.longitude,
         };
