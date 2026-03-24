@@ -165,7 +165,8 @@ export function UserManagementDialog({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="inspector">User</SelectItem>
+                  <SelectItem value="inspector">Inspector</SelectItem>
+                  <SelectItem value="trainer">Trainer</SelectItem>
                   <SelectItem value="admin">Admin</SelectItem>
                   <SelectItem value="super_admin">Super Admin</SelectItem>
                 </SelectContent>
