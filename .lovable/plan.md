@@ -1,51 +1,26 @@
 
 
-## Auto-Focus New Row's First Input on Add
+## Complete Universal Prompt — All March 23-24 Edits
 
-### Summary
+I'll compile a comprehensive prompt covering every change made across both days. Here's what I've identified from the conversation and codebase:
 
-When "Add System", "Add Zipline", or "Add Equipment" is clicked, automatically focus the first input field in the newly created row so the user can start typing immediately.
+### All Features to Include
 
-### Approach
+1. **Add "Trainer" Role** — New role enum value, UI dropdown update, backfill existing users to `inspector`
+2. **Password Reset Email on Admin User Creation** — `resetPasswordForEmail` after creating a user
+3. **ACCT# Field on Profile Page** — New field in profile for certification number
+4. **ACCT# Auto-Population** — New inspections auto-fill ACCT# from the inspector's profile
+5. **Tab Key Navigation in Rich Text Editors** — TipTap extension intercepting Tab/Shift-Tab to move between fields
+6. **LazyRichTextEditor Tab Order** — `tabIndex={0}` and `onFocus` on placeholder divs
+7. **Auto-Focus First Input on New Row** — `newItemId` state + `useEffect` + `requestAnimationFrame` pattern
+8. **`data-row-id` on DraggableTableRow/MobileCard** — DOM attribute for row targeting
+9. **Mobile Text Wrapping on Report Headers** — Responsive font sizes and padding (`text-xl md:text-2xl`, `px-2 md:px-0`)
 
-Use a `useEffect` + ref pattern: each table tracks a `newItemId` state. When an item is added, store its ID. After React re-renders with the new row, find the row by `data-row-id` attribute and focus its first focusable input.
+### Output
 
-### Files Changed
+A single copy-paste-ready prompt block covering all 9 features, written generically enough to apply to other projects with similar form/table/editor structures.
 
-| File | Change |
-|------|--------|
-| `src/components/inspection/OperatingSystemsTable.tsx` | Track `newItemId` state; set it in `addSystem`; add `useEffect` to focus first input in the new row via `[data-row-id="${newItemId}"]`; add `data-row-id` to each row |
-| `src/components/inspection/ZiplinesTable.tsx` | Same pattern for `addZipline` |
-| `src/components/inspection/EquipmentTable.tsx` | Same pattern for `addEquipment` |
+### What I'll Produce
 
-### Technical Detail
-
-Each table gets:
-
-```typescript
-const [newItemId, setNewItemId] = useState<string | null>(null);
-
-// In addSystem/addZipline/addEquipment:
-const id = `temp-${crypto.randomUUID()}`;
-setNewItemId(id);
-onUpdate(prev => [{ id, ...fields }, ...prev]);
-
-// After render, focus the first input in that row:
-useEffect(() => {
-  if (!newItemId) return;
-  requestAnimationFrame(() => {
-    const row = document.querySelector(`[data-row-id="${newItemId}"]`);
-    if (row) {
-      const input = row.querySelector<HTMLElement>(
-        'input:not([disabled]), [contenteditable="true"], [tabindex="0"]'
-      );
-      input?.focus();
-      input?.click(); // activates LazyRichTextEditor placeholders
-    }
-    setNewItemId(null);
-  });
-}, [newItemId]);
-```
-
-Each `DraggableTableRow` / `DraggableMobileCard` already receives the item `id` — we just need to add `data-row-id={id}` to the rendered wrapper so we can query it.
+No code changes — just a refined, comprehensive text block in the plan markdown or as a response the user can copy.
 
