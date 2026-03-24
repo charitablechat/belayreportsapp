@@ -32,7 +32,7 @@ interface OperatingSystemsTableProps {
 
 const OS_GRID_COLS = "grid-cols-[40px_88px_minmax(180px,1fr)_minmax(160px,1fr)_192px_1fr_64px]";
 
-function OperatingSystemsTable({ systems, onUpdate, onImmediateSave, inspectionId }: OperatingSystemsTableProps) {
+function OperatingSystemsTable({ systems, onUpdate, onImmediateSave, inspectionId, onGalleryRefresh }: OperatingSystemsTableProps) {
   const [itemToDelete, setItemToDelete] = useState<{ id: string; name: string } | null>(null);
   const effectiveInspectionId = inspectionId || window.location.pathname.split('/').pop() || '';
 
