@@ -11,6 +11,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { compressImage } from "@/lib/image-compression";
 import { toast } from "@/components/ui/sonner";
 import { getUserWithCache } from "@/lib/cached-auth";
+import { getCachedPhotoBlob, cachePhotoFromRemote } from "@/lib/photo-cache";
 
 interface ItemPhotoUploadProps {
   itemId: string;
@@ -42,15 +43,35 @@ function ItemPhotoUpload({
 
   const loadSignedUrl = useCallback(async () => {
     if (!photoUrl) { setSignedUrl(null); return; }
+
+    // 1. Cache-first: check IndexedDB
+    const cachedBlob = await getCachedPhotoBlob(photoUrl);
+    if (cachedBlob) {
+      setSignedUrl(URL.createObjectURL(cachedBlob));
+      return;
+    }
+
+    // 2. Offline with no cache — nothing to show
+    if (!navigator.onLine) return;
+
+    // 3. Fetch signed URL from server
     try {
       const { data } = await supabase.storage
         .from("inspection-photos")
         .createSignedUrl(photoUrl, 3600);
-      if (data?.signedUrl) setSignedUrl(data.signedUrl);
-    } catch {
-      // silent fail
-    }
-  }, [photoUrl]);
+      if (!data?.signedUrl) return;
+      setSignedUrl(data.signedUrl);
+
+      // 4. Download blob and cache for offline use
+      try {
+        const resp = await fetch(data.signedUrl);
+        if (resp.ok) {
+          const blob = await resp.blob();
+          await cachePhotoFromRemote(photoUrl, blob, photoUrl, inspectionId, 'item-photo');
+        }
+      } catch { /* non-critical */ }
+    } catch { /* silent fail */ }
+  }, [photoUrl, inspectionId]);
 
   useEffect(() => { loadSignedUrl(); }, [loadSignedUrl]);
 
@@ -86,6 +107,9 @@ function ItemPhotoUpload({
 
           onPhotoChange(filePath);
           onImmediateSave?.();
+
+          // Cache the compressed blob locally for offline access
+          await cachePhotoFromRemote(filePath, compressed, filePath, inspectionId, 'item-photo');
 
           const { data: signedData } = await supabase.storage
             .from("inspection-photos")
