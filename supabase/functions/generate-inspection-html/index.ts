@@ -1425,6 +1425,13 @@ serve(async (req) => {
         width: 100% !important;
       }
 
+      /* CRITICAL: Reset absolute positioning on header center for mobile */
+      .header-center {
+        position: static !important;
+        transform: none !important;
+        width: 100% !important;
+      }
+
       /* Force text wrapping in all table cells */
       th, td {
         padding: 4px 6px;
@@ -1433,12 +1440,15 @@ serve(async (req) => {
         overflow-wrap: anywhere !important;
       }
 
-      /* Neutralize desktop min-width constraints on mobile */
-      .equipment-table td:nth-child(5),
-      .standards-table td:nth-child(3),
-      .standards-table td:nth-child(4),
-      .ziplines-table td:nth-child(10),
-      .systems-table td:nth-child(4) {
+      /* Neutralize ALL desktop min-width constraints on mobile */
+      .equipment-table td,
+      .equipment-table th,
+      .standards-table td,
+      .standards-table th,
+      .ziplines-table td,
+      .ziplines-table th,
+      .systems-table td,
+      .systems-table th {
         min-width: 0 !important;
         width: auto !important;
       }
@@ -1455,6 +1465,7 @@ serve(async (req) => {
         font-size: 8pt;
         table-layout: auto;
         width: 100%;
+        max-width: 100%;
       }
       
       .item-thumbnail {
@@ -1488,6 +1499,8 @@ serve(async (req) => {
       .text-block {
         padding: 8px;
         font-size: 9pt;
+        word-break: break-word;
+        overflow-wrap: anywhere;
       }
       
       /* Bullet lists - wrapping guards */
@@ -1506,16 +1519,22 @@ serve(async (req) => {
         overflow-wrap: anywhere !important;
       }
       
-      /* Photo gallery: Single column */
+      /* Photo gallery: Single column, full width */
       .photo-gallery {
         grid-template-columns: 1fr !important;
         max-width: 100% !important;
         padding: 0 !important;
         gap: 16px !important;
+        margin: 16px 0 !important;
+      }
+
+      .photo-item {
+        padding: 8px !important;
       }
 
       .inspection-photo {
         max-height: 250px !important;
+        max-width: 100% !important;
         object-fit: contain !important;
       }
 
@@ -1531,6 +1550,7 @@ serve(async (req) => {
     /* Extra small screens */
     @media screen and (max-width: 480px) {
       .page { padding: 8px; }
+      body { padding: 4px; }
       
       table { 
         font-size: 7pt;
@@ -1549,12 +1569,10 @@ serve(async (req) => {
       
       h1 { font-size: 14pt; }
       h2 { font-size: 11pt; }
-    }
 
-    /* Extra small: tighter spacing */
-    @media screen and (max-width: 600px) {
-      body { padding: 4px; }
-      .page { padding: 8px; }
+      .photo-gallery {
+        gap: 12px !important;
+      }
     }
 
     /* Photo Gallery Styles - Professional centered layout */
