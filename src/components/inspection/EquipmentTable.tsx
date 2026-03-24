@@ -31,6 +31,7 @@ interface EquipmentTableProps {
   onImmediateSave?: () => void;
   typeOptions?: string[];
   inspectionId?: string;
+  onGalleryRefresh?: () => void;
 }
 
 const EQ_GRID_COLS = "grid-cols-[40px_88px_minmax(160px,1fr)_128px_96px_192px_1fr_64px]";
