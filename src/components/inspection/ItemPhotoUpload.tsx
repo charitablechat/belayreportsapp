@@ -20,6 +20,9 @@ interface ItemPhotoUploadProps {
   onPhotoChange: (url: string | null) => void;
   onImmediateSave?: () => void;
   disabled?: boolean;
+  itemName?: string;
+  photoSection?: string;
+  onGalleryRefresh?: () => void;
 }
 
 const UPLOAD_TIMEOUT = 12000; // 12 seconds
