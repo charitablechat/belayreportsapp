@@ -1,26 +1,37 @@
 
 
-## Complete Universal Prompt — All March 23-24 Edits
+## Native Camera Capture for ItemPhotoUpload
 
-I'll compile a comprehensive prompt covering every change made across both days. Here's what I've identified from the conversation and codebase:
+### Problem
+The camera button currently uses `<input type="file" capture="environment">`, which on some devices still opens a file picker or gives an ambiguous choice. The user wants clicking the camera icon to directly open a live camera viewfinder using the browser's native MediaDevices API (`getUserMedia`), bypassing the file system entirely.
 
-### All Features to Include
+### Solution
 
-1. **Add "Trainer" Role** — New role enum value, UI dropdown update, backfill existing users to `inspector`
-2. **Password Reset Email on Admin User Creation** — `resetPasswordForEmail` after creating a user
-3. **ACCT# Field on Profile Page** — New field in profile for certification number
-4. **ACCT# Auto-Population** — New inspections auto-fill ACCT# from the inspector's profile
-5. **Tab Key Navigation in Rich Text Editors** — TipTap extension intercepting Tab/Shift-Tab to move between fields
-6. **LazyRichTextEditor Tab Order** — `tabIndex={0}` and `onFocus` on placeholder divs
-7. **Auto-Focus First Input on New Row** — `newItemId` state + `useEffect` + `requestAnimationFrame` pattern
-8. **`data-row-id` on DraggableTableRow/MobileCard** — DOM attribute for row targeting
-9. **Mobile Text Wrapping on Report Headers** — Responsive font sizes and padding (`text-xl md:text-2xl`, `px-2 md:px-0`)
+Create a reusable `CameraCapture` dialog component that opens a live camera stream via `navigator.mediaDevices.getUserMedia()`, lets the user take a photo by tapping a shutter button, and returns the captured image as a `File` object. Integrate it into `ItemPhotoUpload` to replace the `<input type="file" capture>` approach for the camera button.
 
-### Output
+### Files Changed
 
-A single copy-paste-ready prompt block covering all 9 features, written generically enough to apply to other projects with similar form/table/editor structures.
+| File | Change |
+|------|--------|
+| `src/components/ui/camera-capture-dialog.tsx` | **New file.** Reusable dialog with live `<video>` viewfinder, shutter button, preview/retake flow. Uses `getUserMedia({ video: { facingMode: 'environment' } })` for rear camera. Captures frame to `<canvas>`, converts to JPEG blob, returns as `File`. Handles permissions, errors, and cleanup. |
+| `src/components/inspection/ItemPhotoUpload.tsx` | Replace `cameraInputRef` click with opening the new `CameraCapture` dialog. Keep the `<input type="file">` for the "Upload from device" (ImagePlus) button unchanged. Pass captured `File` to existing `handleUpload`. |
 
-### What I'll Produce
+### Technical Detail
 
-No code changes — just a refined, comprehensive text block in the plan markdown or as a response the user can copy.
+**camera-capture-dialog.tsx** — Core flow:
+1. On open: request `getUserMedia({ video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } } })`
+2. Stream feeds a `<video autoPlay playsInline>` element (full-dialog viewfinder)
+3. Shutter button captures current frame to an offscreen `<canvas>`, calls `canvas.toBlob('image/jpeg', 0.9)`
+4. Shows preview with Retake / Use Photo buttons
+5. On "Use Photo": converts blob to `File`, calls `onCapture(file)`, stops stream, closes dialog
+6. On close/unmount: always stops all media tracks to release camera
+
+**ItemPhotoUpload.tsx** changes:
+- Add `const [cameraOpen, setCameraOpen] = useState(false)`
+- Camera button onClick becomes `setCameraOpen(true)` instead of `cameraInputRef.current?.click()`
+- Remove the `<input capture="environment">` element entirely
+- Render `<CameraCaptureDialog open={cameraOpen} onOpenChange={setCameraOpen} onCapture={(file) => handleUpload(file)} />`
+- Same pattern in the lightbox "Take Photo" button
+
+This approach works across all report types since `ItemPhotoUpload` is the shared component used in Operating Systems, Ziplines, and Equipment tables. The `CameraCaptureDialog` is generic and reusable for any future camera needs.
 
