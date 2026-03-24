@@ -36,7 +36,7 @@ interface EquipmentTableProps {
 
 const EQ_GRID_COLS = "grid-cols-[40px_88px_minmax(160px,1fr)_128px_96px_192px_1fr_64px]";
 
-function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediateSave, typeOptions, inspectionId }: EquipmentTableProps) {
+function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediateSave, typeOptions, inspectionId, onGalleryRefresh }: EquipmentTableProps) {
   const isMobile = useIsMobile();
   const effectiveInspectionId = inspectionId || window.location.pathname.split('/').pop() || '';
   
