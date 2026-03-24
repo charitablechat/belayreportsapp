@@ -252,13 +252,12 @@ export default function Dashboard() {
     setLoading(true);
     setDataValidated(false);
 
-    const LOAD_TIMEOUT = 8000;
+    const LOAD_TIMEOUT = 20000;
     let loadCompleted = false;
     const safetyTimeout = setTimeout(() => {
       if (!loadCompleted) {
         console.warn('[Dashboard] Loading safety timeout');
         setLoading(false);
-        setDataValidated(true);
       }
     }, LOAD_TIMEOUT);
 

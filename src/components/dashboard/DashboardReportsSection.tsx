@@ -293,15 +293,15 @@ export function DashboardReportsSection({
         <TabsList className="w-full sm:w-auto mb-4">
           <TabsTrigger value="inspections" className="flex items-center gap-2">
             <FileText className="w-4 h-4" />
-            Inspections ({loading ? '…' : (totalInspections ?? inspections.length)})
+            Inspections ({loading || (!totalInspections && inspections.length === 0) ? '…' : (totalInspections ?? inspections.length)})
           </TabsTrigger>
           <TabsTrigger value="training" className="flex items-center gap-2">
             <GraduationCap className="w-4 h-4" />
-            Training ({loading ? '…' : (totalTrainings ?? trainings.length)})
+            Training ({loading || (!totalTrainings && trainings.length === 0) ? '…' : (totalTrainings ?? trainings.length)})
           </TabsTrigger>
           <TabsTrigger value="daily" className="flex items-center gap-2">
             <FileText className="w-4 h-4" />
-            Daily ({loading ? '…' : (totalDailyAssessments ?? dailyAssessments.length)})
+            Daily ({loading || (!totalDailyAssessments && dailyAssessments.length === 0) ? '…' : (totalDailyAssessments ?? dailyAssessments.length)})
           </TabsTrigger>
         </TabsList>
 
