@@ -213,7 +213,7 @@ function ZiplinesTable({ ziplines, onUpdate, onImmediateSave, inspectionId, onGa
                   <div className="p-1 border-r border-border">
                     <ResultSelect value={zipline.result} onChange={(value) => updateZipline(zipline, "result", value)} />
                   </div>
-                  <div className="p-1 border-r border-border">
+                  <div className="p-1 border-r border-border min-w-0 overflow-hidden">
                     <VoiceRichTextEditor content={zipline.comments || ""} onChange={(value) => updateZipline(zipline, "comments", value)} placeholder="Comments..." className="border-0 bg-transparent" />
                   </div>
                   <div className="p-1 text-center">

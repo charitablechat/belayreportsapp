@@ -109,6 +109,8 @@ All colors MUST be HSL.
   /* Rich Text Editor Styles */
   .ProseMirror {
     outline: none;
+    word-break: break-word;
+    overflow-wrap: anywhere;
   }
 
   .ProseMirror p {
