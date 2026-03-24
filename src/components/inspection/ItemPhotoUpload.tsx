@@ -34,6 +34,9 @@ function ItemPhotoUpload({
   onPhotoChange,
   onImmediateSave,
   disabled = false,
+  itemName,
+  photoSection,
+  onGalleryRefresh,
 }: ItemPhotoUploadProps) {
   const [uploading, setUploading] = useState(false);
   const [lightboxOpen, setLightboxOpen] = useState(false);
