@@ -130,6 +130,9 @@ function ZiplinesTable({ ziplines, onUpdate, onImmediateSave, inspectionId, onGa
                       photoUrl={zipline.photo_url || null}
                       onPhotoChange={(url) => updateZipline(zipline, "photo_url", url)}
                       onImmediateSave={onImmediateSave}
+                      itemName={zipline.zipline_name || 'Zipline'}
+                      photoSection="systems"
+                      onGalleryRefresh={onGalleryRefresh}
                     />
                   </div>
                   <div className="p-1 border-r border-border">
