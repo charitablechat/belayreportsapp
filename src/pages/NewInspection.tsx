@@ -48,7 +48,7 @@ export default function NewInspection() {
         if (user) {
           const { data: profile } = await supabase
             .from('profiles')
-            .select('first_name, last_name')
+            .select('first_name, last_name, acct_number')
             .eq('id', user.id)
             .single();
           
