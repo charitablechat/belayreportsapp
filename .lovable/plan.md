@@ -1,72 +1,51 @@
 
 
-## Tab Navigation Across Report Form Fields
+## Auto-Focus New Row's First Input on Add
 
-### Problem
-When pressing Tab in report forms, focus doesn't move to the next column as expected because:
-1. **TipTap rich text editors** capture Tab for indentation instead of letting it move focus to the next field
-2. **LazyRichTextEditor placeholder divs** lack `tabIndex`, so Tab skips over them entirely
+### Summary
 
-### Solution
+When "Add System", "Add Zipline", or "Add Equipment" is clicked, automatically focus the first input field in the newly created row so the user can start typing immediately.
 
-Make Tab move focus to the next field (right/next column) across all report forms by:
+### Approach
 
-1. **RichTextEditor**: Add a TipTap keyboard shortcut that intercepts Tab and moves focus to the next focusable element in the DOM instead of indenting
-2. **LazyRichTextEditor**: Add `tabIndex={0}` to the placeholder div so it participates in tab order, and add a `onKeyDown` handler to activate it on Tab (focus in, then let Tab continue naturally)
+Use a `useEffect` + ref pattern: each table tracks a `newItemId` state. When an item is added, store its ID. After React re-renders with the new row, find the row by `data-row-id` attribute and focus its first focusable input.
 
 ### Files Changed
 
 | File | Change |
 |------|--------|
-| `src/components/ui/rich-text-editor.tsx` | Add `addKeyboardShortcuts` to TipTap config that intercepts `Tab` and `Shift-Tab`, blurs the editor, and programmatically moves focus to the next/previous focusable element |
-| `src/components/ui/lazy-rich-text-editor.tsx` | Add `tabIndex={0}` and `onFocus` handler to placeholder div so Tab can land on it; on focus, activate the editor |
+| `src/components/inspection/OperatingSystemsTable.tsx` | Track `newItemId` state; set it in `addSystem`; add `useEffect` to focus first input in the new row via `[data-row-id="${newItemId}"]`; add `data-row-id` to each row |
+| `src/components/inspection/ZiplinesTable.tsx` | Same pattern for `addZipline` |
+| `src/components/inspection/EquipmentTable.tsx` | Same pattern for `addEquipment` |
 
 ### Technical Detail
 
-**rich-text-editor.tsx — Tab handling in TipTap:**
+Each table gets:
+
 ```typescript
-StarterKit.configure({
-  // ...existing config
-}),
-// Add extension to handle Tab
-Extension.create({
-  name: 'tabHandler',
-  addKeyboardShortcuts() {
-    return {
-      Tab: () => {
-        // Move focus to next focusable element
-        const el = this.editor.view.dom;
-        el.blur();
-        // Find next focusable and focus it
-        const focusables = Array.from(
-          document.querySelectorAll<HTMLElement>(
-            'input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"]), button:not([disabled]), [contenteditable="true"]'
-          )
-        ).filter(e => e.offsetParent !== null);
-        const idx = focusables.indexOf(el);
-        if (idx >= 0 && idx < focusables.length - 1) {
-          focusables[idx + 1].focus();
-        }
-        return true; // prevent default Tab behavior
-      },
-      'Shift-Tab': () => {
-        // Similar but move to previous element
-        return true;
-      },
-    };
-  },
-}),
+const [newItemId, setNewItemId] = useState<string | null>(null);
+
+// In addSystem/addZipline/addEquipment:
+const id = `temp-${crypto.randomUUID()}`;
+setNewItemId(id);
+onUpdate(prev => [{ id, ...fields }, ...prev]);
+
+// After render, focus the first input in that row:
+useEffect(() => {
+  if (!newItemId) return;
+  requestAnimationFrame(() => {
+    const row = document.querySelector(`[data-row-id="${newItemId}"]`);
+    if (row) {
+      const input = row.querySelector<HTMLElement>(
+        'input:not([disabled]), [contenteditable="true"], [tabindex="0"]'
+      );
+      input?.focus();
+      input?.click(); // activates LazyRichTextEditor placeholders
+    }
+    setNewItemId(null);
+  });
+}, [newItemId]);
 ```
 
-**lazy-rich-text-editor.tsx — make placeholder focusable:**
-```tsx
-<div
-  tabIndex={0}
-  onFocus={() => setIsFocused(true)}
-  onClick={() => setIsFocused(true)}
-  // ...rest unchanged
->
-```
-
-This ensures Tab moves right across columns in all tables (Operating Systems, Ziplines, Equipment) and header fields across all three report types.
+Each `DraggableTableRow` / `DraggableMobileCard` already receives the item `id` — we just need to add `data-row-id={id}` to the rendered wrapper so we can query it.
 
