@@ -2761,6 +2761,7 @@ export default function InspectionForm() {
                       onUpdate={setEquipment}
                       onImmediateSave={stableTriggerImmediateSave}
                       inspectionId={id}
+                      onGalleryRefresh={() => setPhotoRefreshKey(prev => prev + 1)}
                     />
                     <EquipmentTable
                       category="helmets"
