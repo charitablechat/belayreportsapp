@@ -94,6 +94,19 @@ export async function batchValidateCachedPhotos(photoIds: string[]): Promise<Set
 }
 
 /**
+ * Get a cached photo blob by ID (cache-first helper for components)
+ */
+export async function getCachedPhotoBlob(photoId: string): Promise<Blob | null> {
+  try {
+    const db = await getDB();
+    const photo = await db.get('photos', photoId);
+    if (!photo?.blob || !photo.cachedAt) return null;
+    if (Date.now() - photo.cachedAt > CACHE_DURATION) return null;
+    return photo.blob;
+  } catch { return null; }
+}
+
+/**
  * Clean up stale cached photos
  */
 export async function cleanupStaleCachedPhotos(): Promise<number> {
