@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
+import { Extension } from '@tiptap/react';
 import { Bold, Italic, List } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -29,6 +30,30 @@ export const RichTextEditor = ({
         codeBlock: false,
         horizontalRule: false,
         blockquote: false,
+      }),
+      Extension.create({
+        name: 'tabNavigation',
+        addKeyboardShortcuts() {
+          const moveFocus = (direction: 1 | -1) => {
+            const el = this.editor.view.dom;
+            const focusables = Array.from(
+              document.querySelectorAll<HTMLElement>(
+                'input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"]):not([role="menuitem"]), button:not([disabled]), [contenteditable="true"]'
+              )
+            ).filter(e => e.offsetParent !== null);
+            const idx = focusables.indexOf(el);
+            const next = focusables[idx + direction];
+            if (next) {
+              el.blur();
+              next.focus();
+            }
+            return true;
+          };
+          return {
+            Tab: () => moveFocus(1),
+            'Shift-Tab': () => moveFocus(-1),
+          };
+        },
       }),
     ],
     content,
