@@ -58,7 +58,8 @@ export default function NewInspection() {
             if (fullName) {
               setFormData(prev => ({
                 ...prev,
-                previous_inspector: prev.previous_inspector || fullName
+                previous_inspector: prev.previous_inspector || fullName,
+                acct_number: prev.acct_number || profile.acct_number || "",
               }));
             }
           }
