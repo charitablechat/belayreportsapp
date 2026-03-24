@@ -32,7 +32,7 @@ interface ZiplinesTableProps {
 
 const ZIP_GRID_COLS = "grid-cols-[40px_88px_minmax(120px,1fr)_80px_80px_80px_80px_100px_80px_100px_80px_100px_100px_minmax(120px,1fr)_48px]";
 
-function ZiplinesTable({ ziplines, onUpdate, onImmediateSave, inspectionId }: ZiplinesTableProps) {
+function ZiplinesTable({ ziplines, onUpdate, onImmediateSave, inspectionId, onGalleryRefresh }: ZiplinesTableProps) {
   const [itemToDelete, setItemToDelete] = useState<{ id: string; name: string } | null>(null);
   const effectiveInspectionId = inspectionId || window.location.pathname.split('/').pop() || '';
 
