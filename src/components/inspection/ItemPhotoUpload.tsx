@@ -11,6 +11,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { compressImage } from "@/lib/image-compression";
 import { toast } from "@/components/ui/sonner";
 import { getUserWithCache } from "@/lib/cached-auth";
+import { getCachedPhotoBlob, cachePhotoFromRemote } from "@/lib/photo-cache";
 
 interface ItemPhotoUploadProps {
   itemId: string;
