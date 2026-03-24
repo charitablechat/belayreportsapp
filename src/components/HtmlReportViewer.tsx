@@ -104,12 +104,17 @@ export function HtmlReportViewer({
           max-width: 100% !important;
           padding: 0 !important;
           grid-template-columns: 1fr !important;
+          margin: 16px 0 !important;
         }
         
         .inspection-photo {
           max-height: 220px !important;
           object-fit: contain !important;
           max-width: 100% !important;
+        }
+
+        .photo-item {
+          padding: 8px !important;
         }
         
         /* Report-agnostic: collapse grids to single column */
@@ -132,11 +137,27 @@ export function HtmlReportViewer({
           word-break: break-word !important;
           overflow-wrap: anywhere !important;
         }
+
+        /* Header center: reset absolute positioning */
+        .header-center {
+          position: static !important;
+          transform: none !important;
+          width: 100% !important;
+        }
         
         /* Training photo grid: single column */
         [style*="grid-template-columns: 1fr 1fr"],
         .photo-grid {
           grid-template-columns: 1fr !important;
+        }
+
+        /* CRITICAL: Neutralize ALL table min-width constraints on mobile */
+        .equipment-table td, .equipment-table th,
+        .standards-table td, .standards-table th,
+        .ziplines-table td, .ziplines-table th,
+        .systems-table td, .systems-table th {
+          min-width: 0 !important;
+          width: auto !important;
         }
 
         /* Force table cell wrapping */
@@ -145,14 +166,31 @@ export function HtmlReportViewer({
           word-break: break-word !important;
           overflow-wrap: anywhere !important;
         }
+
+        /* Table scroll container */
+        .table-wrapper {
+          overflow-x: auto !important;
+          -webkit-overflow-scrolling: touch !important;
+          max-width: 100% !important;
+        }
         
         /* Text wrapping safety */
         .notes-content, .item-label, .info-label,
         .comment-bullets, .comment-bullets li,
         .summary-list, .summary-list li,
-        .text-content {
+        .text-content, .text-block {
           word-break: break-word !important;
           overflow-wrap: anywhere !important;
+        }
+      }
+
+      @media screen and (max-width: 480px) {
+        .item-thumbnail {
+          width: 30px !important;
+          height: 30px !important;
+        }
+        table {
+          font-size: 7pt !important;
         }
       }
     </style>
