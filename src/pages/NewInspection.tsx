@@ -35,6 +35,7 @@ export default function NewInspection() {
     previous_inspector: "",
     previous_inspection_date: "",
     course_history: "",
+    acct_number: "",
     latitude: null as number | null,
     longitude: null as number | null,
   });
