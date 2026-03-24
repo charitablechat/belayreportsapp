@@ -155,11 +155,8 @@ export default function Dashboard() {
   // Pull to refresh for mobile - only reloads data, sync is automatic
   const { isPulling, pullDistance, shouldTriggerRefresh, isActive } = usePullToRefresh({
     onRefresh: async () => {
-      triggerHaptic('medium'); // Haptic feedback when refresh triggers
-      // Only reload data - sync happens automatically in background
-      await loadInspections();
-      await loadTrainingReports();
-      await loadDailyAssessments();
+      triggerHaptic('medium');
+      await refreshReports(true);
     },
     isRefreshing: isSyncing,
   });
