@@ -118,16 +118,36 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
     
     // Detect and replace temp inspection IDs with real UUIDs before validation
     if (inspection.id.startsWith('temp-')) {
-      const newId = crypto.randomUUID();
-      inspectionIdMapping = { oldId: inspection.id, newId };
-      
-      console.log('[Atomic Sync] Replacing temp inspection ID with real UUID:', {
-        oldId: inspection.id,
-        newId,
-      });
-      
-      inspection.id = newId;
-      inspectionId = newId;
+      // DEDUP GUARD: Check if an identical record already exists on the server
+      // This prevents duplicate creation when both main thread and service worker sync simultaneously
+      const { data: existingDup } = await supabase
+        .from('inspections')
+        .select('id')
+        .eq('inspector_id', inspection.inspector_id)
+        .eq('organization', inspection.organization)
+        .eq('created_at', inspection.created_at)
+        .maybeSingle();
+
+      if (existingDup) {
+        console.log('[Atomic Sync] Found existing server record for temp inspection - adopting ID:', {
+          tempId: inspection.id,
+          serverId: existingDup.id,
+        });
+        inspectionIdMapping = { oldId: inspection.id, newId: existingDup.id };
+        inspection.id = existingDup.id;
+        inspectionId = existingDup.id;
+      } else {
+        const newId = crypto.randomUUID();
+        inspectionIdMapping = { oldId: inspection.id, newId };
+        
+        console.log('[Atomic Sync] Replacing temp inspection ID with real UUID:', {
+          oldId: inspection.id,
+          newId,
+        });
+        
+        inspection.id = newId;
+        inspectionId = newId;
+      }
     }
     
     // Use pre-validated user from batch caller, or validate session if called individually
