@@ -465,7 +465,7 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
                 <div className="p-2 border-r border-border">
                   <ResultSelect value={item.result} onChange={(value) => updateEquipment(item, "result", value)} />
                 </div>
-                <div className="p-2 border-r border-border">
+                <div className="p-2 border-r border-border min-w-0 overflow-hidden">
                   <LazyRichTextEditor
                     content={item.comments || ""}
                     onChange={(value) => updateEquipment(item, "comments", value)}

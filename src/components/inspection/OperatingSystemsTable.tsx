@@ -197,7 +197,7 @@ function OperatingSystemsTable({ systems, onUpdate, onImmediateSave, inspectionI
                         onChange={(value) => updateSystem(system, "result", value)}
                       />
                     </div>
-                    <div className="p-2 border-r border-border">
+                    <div className="p-2 border-r border-border min-w-0 overflow-hidden">
                       <VoiceRichTextEditor
                         content={system.comments || ""}
                         onChange={(value) => updateSystem(system, "comments", value)}
