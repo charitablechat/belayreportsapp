@@ -28,6 +28,28 @@ interface InspectionHeaderProps {
 }
 
 export default function InspectionHeader({ inspection, userProfile, modifiedByProfile, onUpdate, onImmediateSave, isReadOnly = false }: InspectionHeaderProps) {
+  const [locationLoading, setLocationLoading] = useState(false);
+
+  const handleLocationCapture = async () => {
+    setLocationLoading(true);
+    try {
+      triggerHaptic('light');
+      const position = await getCurrentLocationWithAddress();
+      onUpdate("location", position.address);
+      onImmediateSave?.();
+      toast.success("Location updated");
+      triggerHaptic('success');
+    } catch (error: any) {
+      const message = error?.code !== undefined
+        ? getGeolocationErrorMessage(error as GeolocationPositionError)
+        : error?.message || "Failed to get location";
+      toast.error(message);
+      triggerHaptic('error');
+    } finally {
+      setLocationLoading(false);
+    }
+  };
+
   const inspectorName = [userProfile?.first_name, userProfile?.last_name]
     .filter(Boolean)
     .join(' ')
