@@ -557,9 +557,10 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
                           </div>
                         ) : (
                           <>
-                            <Input
+                            <DebouncedInput
                               type="text" inputMode="text" value={item.production_year || ""}
-                              onChange={(e) => { const raw = e.target.value; if (raw === "") { updateEquipment(item, "production_year", null); return; } if (/^\d{0,4}(-\d{0,4})?$/.test(raw)) { updateEquipment(item, "production_year", raw); } }}
+                              validate={(raw) => { if (raw === "") return ""; if (/^\d{0,4}(-\d{0,4})?$/.test(raw)) return raw; return null; }}
+                              onChange={(value) => updateEquipment(item, "production_year", value === "" ? null : value)}
                               onBlur={() => { const val = item.production_year; if (val && !/^(0|\d{4}(-\d{4})?)$/.test(val)) { updateEquipment(item, "production_year", null); } onImmediateSave?.(); }}
                               onKeyDown={(e) => e.key === 'Enter' && onImmediateSave?.()}
                               placeholder="e.g. 2018-2026" className="w-full"
