@@ -341,7 +341,7 @@ export default function NewInspection() {
         has_documentation: s.has_documentation ?? null,
         comments: s.comments || null,
       }));
-      promises.push(supabase.from("inspection_standards").insert(rows));
+      promises.push(supabase.from("inspection_standards").insert(rows).then());
     }
 
     if (childData.summary) {
