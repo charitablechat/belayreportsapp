@@ -1,58 +1,47 @@
 
 
-## Fix: Place Cursor at End of Text on Focus (Not Select All)
+## Fix: Responsive Text Wrapping for Inspection Report Headers
 
 ### Problem
-When an autocomplete input in the inspection tables receives focus (either by clicking or via auto-focus on new row), the browser selects all text. This makes it easy to accidentally overwrite existing content.
+From the screenshots, header text like "Comments and/or Required Changes" overflows/clips on tablet devices. The table header cells and the main report title need proper word-wrapping on all screen sizes.
 
 ### Changes
 
-**1. `src/components/GlobalAutocomplete.tsx` — `handleTriggerFocus` (~line 292)**
-After setting `inputValue`, use `requestAnimationFrame` + `setSelectionRange` to move the cursor to the end of the text:
-
-```typescript
-const handleTriggerFocus = () => {
-  setIsEditing(true);
-  setInputValue(value);
-  // Place cursor at end of text, not select-all
-  requestAnimationFrame(() => {
-    const input = triggerInputRef.current;
-    if (input) {
-      const len = input.value.length;
-      input.setSelectionRange(len, len);
-    }
-  });
-  if (!open) setOpen(true);
-  if (!hasFetchedFromDb.current) fetchGlobalHistory();
-};
+**1. `src/components/inspection/InspectionHeader.tsx` (line 71-72)**
+Add overflow and word-break guards to the title:
+```html
+<div className="text-center overflow-hidden">
+  <h1 className="text-xl md:text-2xl font-bold mb-2 px-2 md:px-0 break-words [overflow-wrap:anywhere]">
 ```
 
-**2. `src/components/OrganizationAutocomplete.tsx` — `handleTriggerFocus` (~line 207)**
-Same pattern — after setting `search` to `value`, move cursor to end:
+**2. `src/components/inspection/EquipmentTable.tsx` (line 351)**
+Add `break-words` to the "Comments and/or Required Changes" header cell:
+```html
+<div className="p-3 text-left font-semibold text-sm border-r border-border break-words">Comments and/or Required Changes</div>
+```
+Also add `break-words` to "Manufacture Year(s)" header (line 348).
 
-```typescript
-const handleTriggerFocus = () => {
-  setIsEditing(true);
-  setSearch(value);
-  requestAnimationFrame(() => {
-    const input = triggerInputRef.current;
-    if (input) {
-      const len = input.value.length;
-      input.setSelectionRange(len, len);
-    }
-  });
-  if (!open) setOpen(true);
-};
+**3. `src/components/inspection/OperatingSystemsTable.tsx` (line 128)**
+Same — add `break-words` to the Comments header cell.
+
+**4. `src/components/inspection/ZiplinesTable.tsx` (line 130)**
+Add `break-words` to the Comments header cell.
+
+**5. Global safety net in `src/index.css`**
+Add a rule ensuring all grid/table header text wraps:
+```css
+.grid > [class*="font-semibold"] {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
 ```
 
-**3. Auto-focus in table `useEffect` (all 3 tables)**
-Remove the `input?.click()` call (line 51 in each table). The `.focus()` is sufficient to activate the field; `.click()` triggers select-all behavior and is unnecessary now.
-
+### Files
 | File | Change |
 |------|--------|
-| `src/components/GlobalAutocomplete.tsx` | Add `setSelectionRange` in `handleTriggerFocus` |
-| `src/components/OrganizationAutocomplete.tsx` | Same |
-| `src/components/inspection/ZiplinesTable.tsx` | Remove `input?.click()` on line 51 |
-| `src/components/inspection/EquipmentTable.tsx` | Remove `input?.click()` on line 60 |
-| `src/components/inspection/OperatingSystemsTable.tsx` | Remove `input?.click()` on line 51 |
+| `InspectionHeader.tsx` | `break-words [overflow-wrap:anywhere]` on title, `overflow-hidden` on wrapper |
+| `EquipmentTable.tsx` | `break-words` on long header cells |
+| `OperatingSystemsTable.tsx` | `break-words` on Comments header |
+| `ZiplinesTable.tsx` | `break-words` on Comments header |
+| `src/index.css` | Global grid header word-break rule |
 
