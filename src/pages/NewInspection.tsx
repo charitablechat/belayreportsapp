@@ -352,7 +352,7 @@ export default function NewInspection() {
           critical_actions: childData.summary.critical_actions || null,
           future_considerations: childData.summary.future_considerations || null,
           next_inspection_date: childData.summary.next_inspection_date || null,
-        })
+        }).then()
       );
     }
 
