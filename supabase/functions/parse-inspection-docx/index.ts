@@ -375,7 +375,7 @@ CRITICAL RULES:
                         equipment_category: { type: "string" },
                         result: { type: "string" },
                         comments: { type: "string" },
-                        quantity: { type: "string" },
+                        
                         production_year: { type: "string" },
                         rope_type: { type: "string" },
                       },
