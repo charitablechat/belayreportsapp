@@ -94,6 +94,7 @@ export default function TrainingForm() {
   const [showCompleteDialog, setShowCompleteDialog] = useState(false);
   const [isSavingBeforeLeave, setIsSavingBeforeLeave] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
