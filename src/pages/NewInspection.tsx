@@ -250,6 +250,13 @@ export default function NewInspection() {
           ? `Found ${counts.join(", ")}`
           : "Form fields populated from document",
       });
+
+      if (truncated) {
+        toast.warning("Document was too large to process completely", {
+          description: "Some elements at the end may be missing. Please verify all items were imported.",
+          duration: 8000,
+        });
+      }
     } catch (error: any) {
       console.error("[NewInspection] Import error:", error);
       triggerHaptic('error');

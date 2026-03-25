@@ -466,7 +466,7 @@ CRITICAL RULES:
       `[parse-inspection-docx] Extracted: ${extracted.systems?.length || 0} systems, ${extracted.equipment?.length || 0} equipment, ${extracted.ziplines?.length || 0} ziplines, ${extracted.standards?.length || 0} standards`
     );
 
-    return new Response(JSON.stringify({ success: true, data: extracted }), {
+    return new Response(JSON.stringify({ success: true, data: extracted, truncated: wasTruncated }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (error) {
