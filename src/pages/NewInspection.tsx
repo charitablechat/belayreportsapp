@@ -227,7 +227,7 @@ export default function NewInspection() {
         throw new Error(errBody.error || `Server returned ${res.status}`);
       }
 
-      const { data, truncated } = await res.json();
+      const { data, truncated, partial } = await res.json();
 
       // Populate form fields
       setFormData(prev => ({
@@ -265,7 +265,12 @@ export default function NewInspection() {
           : "Form fields populated from document",
       });
 
-      if (truncated) {
+      if (partial) {
+        toast.warning("Import may be incomplete", {
+          description: "Some items were truncated due to document size. Please verify all items were imported.",
+          duration: 8000,
+        });
+      } else if (truncated) {
         toast.warning("Document was too large to process completely", {
           description: "Some elements at the end may be missing. Please verify all items were imported.",
           duration: 8000,
