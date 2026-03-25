@@ -51,6 +51,7 @@ interface InspectionDB extends DBSchema {
       tableName?: string; // DB table for sync (e.g. 'training_photos')
       storageBucket?: string; // Storage bucket (e.g. 'training-photos')
       foreignKeyColumn?: string; // FK column (e.g. 'training_id')
+      caption?: string; // Photo caption for gallery labeling
     };
     indexes: { 'by-inspection': string; 'by-uploaded': number };
   };
