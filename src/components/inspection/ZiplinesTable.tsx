@@ -1,5 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DebouncedInput } from "./DebouncedInput";
 import { VoiceRichTextEditor } from "@/components/ui/voice-rich-text-editor";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
