@@ -48,6 +48,8 @@ export default function SuperAdminDashboard() {
   const [isUsersListOpen, setIsUsersListOpen] = useState(false);
   const [isOrgsListOpen, setIsOrgsListOpen] = useState(false);
   const [isInspectionsListOpen, setIsInspectionsListOpen] = useState(false);
+  const [isTrainingsListOpen, setIsTrainingsListOpen] = useState(false);
+  const [isDailyListOpen, setIsDailyListOpen] = useState(false);
   const [isCleaningUp, setIsCleaningUp] = useState(false);
   const [resetMetricDialogOpen, setResetMetricDialogOpen] = useState(false);
   
@@ -63,6 +65,8 @@ export default function SuperAdminDashboard() {
   const [usersPage, setUsersPage] = useState(1);
   const [orgsPage, setOrgsPage] = useState(1);
   const [inspectionsPage, setInspectionsPage] = useState(1);
+  const [trainingsPage, setTrainingsPage] = useState(1);
+  const [dailyPage, setDailyPage] = useState(1);
   const ITEMS_PER_PAGE = 10;
 
   // Managed users query
@@ -732,6 +736,7 @@ export default function SuperAdminDashboard() {
           value={stats?.trainings || 0}
           icon={GraduationCap}
           description={`${stats?.trainingStatusCounts?.completed || 0} completed, ${stats?.trainingStatusCounts?.draft || 0} draft`}
+          onClick={() => setIsTrainingsListOpen(true)}
           hoverContent={{
             title: "Training Sessions",
             description: "Documented training sessions and audit reports.",
@@ -740,7 +745,7 @@ export default function SuperAdminDashboard() {
               { label: "Draft", value: stats?.trainingStatusCounts?.draft || 0 },
               { label: "In progress", value: stats?.trainingStatusCounts?.in_progress || 0 },
             ],
-            tip: "View Training Reports tab for full list"
+            tip: "Click to view all training reports"
           }}
         />
         <StatCard
@@ -748,6 +753,7 @@ export default function SuperAdminDashboard() {
           value={stats?.dailyAssessments || 0}
           icon={ClipboardCheck}
           description={`${stats?.dailyStatusCounts?.completed || 0} completed, ${stats?.dailyStatusCounts?.draft || 0} draft`}
+          onClick={() => setIsDailyListOpen(true)}
           hoverContent={{
             title: "Daily Facility Checks",
             description: "Daily assessment reports for facility operations.",
@@ -755,7 +761,7 @@ export default function SuperAdminDashboard() {
               { label: "Completed", value: stats?.dailyStatusCounts?.completed || 0 },
               { label: "Draft", value: stats?.dailyStatusCounts?.draft || 0 },
             ],
-            tip: "Regular assessments ensure safety compliance"
+            tip: "Click to view all daily assessments"
           }}
         />
         <StatCard
@@ -1432,7 +1438,7 @@ export default function SuperAdminDashboard() {
             </TableHeader>
             <TableBody>
               {allInspections?.slice((inspectionsPage - 1) * ITEMS_PER_PAGE, inspectionsPage * ITEMS_PER_PAGE).map((inspection) => (
-                <TableRow key={inspection.id}>
+                <TableRow key={inspection.id} className="cursor-pointer hover:bg-muted/50" onClick={() => { setIsInspectionsListOpen(false); navigate(`/inspection/${inspection.id}`); }}>
                   <TableCell className="font-medium">{inspection.organization}</TableCell>
                   <TableCell>{inspection.location}</TableCell>
                   <TableCell>
@@ -1455,6 +1461,106 @@ export default function SuperAdminDashboard() {
                   Previous
                 </Button>
                 <Button variant="outline" size="sm" onClick={() => setInspectionsPage(p => p + 1)} disabled={inspectionsPage * ITEMS_PER_PAGE >= allInspections.length}>
+                  Next
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Trainings List Dialog */}
+      <Dialog open={isTrainingsListOpen} onOpenChange={(open) => { setIsTrainingsListOpen(open); if (!open) setTrainingsPage(1); }}>
+        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>All Training Reports ({allTrainings?.length || 0})</DialogTitle>
+          </DialogHeader>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Organization</TableHead>
+                <TableHead>Trainer</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Start Date</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {allTrainings?.slice((trainingsPage - 1) * ITEMS_PER_PAGE, trainingsPage * ITEMS_PER_PAGE).map((training) => (
+                <TableRow key={training.id} className="cursor-pointer hover:bg-muted/50" onClick={() => { setIsTrainingsListOpen(false); navigate(`/training/${training.id}`); }}>
+                  <TableCell className="font-medium">{training.organizations?.name || training.organization}</TableCell>
+                  <TableCell>
+                    {(training as any).trainer?.first_name && (training as any).trainer?.last_name
+                      ? `${(training as any).trainer.first_name} ${(training as any).trainer.last_name}`
+                      : training.trainer_of_record || 'Unknown'}
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant={training.status === 'completed' ? 'default' : 'secondary'}>
+                      {training.status}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>{parseLocalDate(training.start_date) ? format(parseLocalDate(training.start_date)!, "PP") : '-'}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+          {allTrainings && allTrainings.length > ITEMS_PER_PAGE && (
+            <div className="flex items-center justify-between pt-4 border-t">
+              <span className="text-sm text-muted-foreground">
+                Showing {((trainingsPage - 1) * ITEMS_PER_PAGE) + 1}-{Math.min(trainingsPage * ITEMS_PER_PAGE, allTrainings.length)} of {allTrainings.length}
+              </span>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" onClick={() => setTrainingsPage(p => Math.max(1, p - 1))} disabled={trainingsPage === 1}>
+                  Previous
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => setTrainingsPage(p => p + 1)} disabled={trainingsPage * ITEMS_PER_PAGE >= allTrainings.length}>
+                  Next
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Daily Assessments List Dialog */}
+      <Dialog open={isDailyListOpen} onOpenChange={(open) => { setIsDailyListOpen(open); if (!open) setDailyPage(1); }}>
+        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>All Daily Assessments ({allDailyAssessments?.length || 0})</DialogTitle>
+          </DialogHeader>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Organization</TableHead>
+                <TableHead>Site</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Assessment Date</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {allDailyAssessments?.slice((dailyPage - 1) * ITEMS_PER_PAGE, dailyPage * ITEMS_PER_PAGE).map((assessment) => (
+                <TableRow key={assessment.id} className="cursor-pointer hover:bg-muted/50" onClick={() => { setIsDailyListOpen(false); navigate(`/daily-assessment/${assessment.id}`); }}>
+                  <TableCell className="font-medium">{assessment.organizations?.name || assessment.organization}</TableCell>
+                  <TableCell>{assessment.site || '-'}</TableCell>
+                  <TableCell>
+                    <Badge variant={assessment.status === 'completed' ? 'default' : 'secondary'}>
+                      {assessment.status}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>{parseLocalDate(assessment.assessment_date) ? format(parseLocalDate(assessment.assessment_date)!, "PP") : '-'}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+          {allDailyAssessments && allDailyAssessments.length > ITEMS_PER_PAGE && (
+            <div className="flex items-center justify-between pt-4 border-t">
+              <span className="text-sm text-muted-foreground">
+                Showing {((dailyPage - 1) * ITEMS_PER_PAGE) + 1}-{Math.min(dailyPage * ITEMS_PER_PAGE, allDailyAssessments.length)} of {allDailyAssessments.length}
+              </span>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" onClick={() => setDailyPage(p => Math.max(1, p - 1))} disabled={dailyPage === 1}>
+                  Previous
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => setDailyPage(p => p + 1)} disabled={dailyPage * ITEMS_PER_PAGE >= allDailyAssessments.length}>
                   Next
                 </Button>
               </div>
