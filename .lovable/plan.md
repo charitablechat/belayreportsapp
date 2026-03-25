@@ -1,29 +1,41 @@
 
 
-## Add Refresh Button to Dashboard
+## Investigation Results: Equipment Import is Working Correctly
 
-### What's Missing
+### Finding
 
-The dashboard has a Force Sync button (syncs offline data to server) but no button to simply **refresh/reload the report list** from the server. Users need a way to manually pull the latest data without relying on pull-to-refresh (mobile-only) or tab-switching.
+After thorough investigation, the equipment import is **not broken** — it is functioning correctly. The database confirms:
 
-### Change
+- The 3 most recent imports ("Northern Navajo Medical Center") all have **18 equipment items** successfully inserted
+- Equipment data includes correct `equipment_type`, `equipment_category`, `result` values, and comments
+- The edge function logs confirm extraction of "18 equipment (64 comment chars)" 
+- The `insertChildData` function properly inserts equipment with error handling
 
-**File: `src/pages/Dashboard.tsx`**
-
-Add a Refresh button next to the existing Force Sync button in the dashboard header (line ~1074). It will call the existing `refreshReports(true)` function with a spinning icon during loading.
+### Evidence
 
 ```text
-Header bar (line 1059-1082):
-  [SyncPulse] [pending badge] [NetworkQuality] [ForceSyncButton] [RefreshButton] [SuperAdmin badge]
-                                                                   ^^ NEW
+Recent imports in database:
+  5ccb9064 → 18 equipment, 20 systems ✓ (08:12 today)
+  9340cc29 → 18 equipment, 20 systems ✓ (08:05 today)
+  92fde1b6 → 18 equipment, 20 systems ✓ (08:01 today)
+
+Sample equipment row:
+  type: "AL Auto lock", category: "Hardware", result: "Pass"
 ```
 
-- Use `RefreshCw` icon (already imported) with `variant="icon"` styling matching `ForceSyncButton`
-- Spin icon while `refreshInFlightRef` is true (track via a `isRefreshing` state)
-- Tooltip: "Refresh reports"
-- Disable during active refresh to prevent spam
+### Reports with 0 Equipment
 
-| File | Change |
-|------|--------|
-| `src/pages/Dashboard.tsx` | Add a Refresh icon button next to ForceSyncButton that calls `refreshReports(true)` |
+Reports like "Steve And Kates Camp" (0 equipment, 6 systems) and "Gorham Scout Ranch" (0 equipment, 26 systems) were either:
+1. Created **before** the recent error-handling fix was deployed
+2. Imported from documents that genuinely contained no equipment section
+3. Created manually without import
+
+### Recommendation
+
+No code changes are needed. If you're seeing missing equipment on a specific report:
+1. **Check which report** — it may be one created before the fix
+2. **Re-import the file** into a new inspection to get the corrected behavior
+3. If you can share which specific report is missing equipment, I can verify whether its source document contained equipment data
+
+If you want, I can add **additional diagnostic logging** on the client side to show exactly how many equipment items were received from the AI and how many were successfully inserted, making future debugging easier.
 
