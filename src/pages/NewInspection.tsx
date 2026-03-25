@@ -610,7 +610,7 @@ export default function NewInspection() {
                       </>
                     ) : formData.latitude && formData.longitude ? (
                       <>
-                        <MapPin className="w-4 h-4 text-green-600 mr-2" />
+                        <MapPin className="w-4 h-4 text-primary mr-2" />
                         <span className="text-sm">Update</span>
                       </>
                     ) : (
