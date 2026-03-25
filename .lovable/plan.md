@@ -4,53 +4,51 @@
 
 ### Problem
 
-The AI extraction is likely hitting output token limits during tool-call responses, causing the model to silently truncate its output — dropping equipment items, comments, and summary data. The current code does not:
-1. Set `max_tokens` on the AI request (defaults to a potentially low limit)
-2. Check the `finish_reason` for `MAX_TOKENS` / `length` truncation
-3. Handle the case where one call cannot fit all data
+The AI extraction (Gemini 2.5 Flash) is not reliably capturing all elements, equipment, comments, and summary data from uploaded reports. Flash trades accuracy for speed — now that timeout safeguards (90s backend, 120s client) are in place, we can use a stronger model without risk of hanging.
+
+### Root Causes
+
+1. **Model accuracy**: `gemini-2.5-flash` is weaker at exhaustive structured extraction from long documents compared to `gemini-2.5-pro`. It skips items, abbreviates comments, and sometimes drops entire sections.
+2. **No extraction verification**: The system has no way to detect when the AI silently drops items (as opposed to hitting token limits, which is already handled).
+3. **Summary merge logic is too conservative**: The second-pass merge only replaces summary if the first pass had *both* `repairs_performed` AND `critical_actions` empty — if either has a value, the partial summary is kept.
 
 ### Changes
 
 **File: `supabase/functions/parse-inspection-docx/index.ts`**
 
-1. **Add `max_tokens: 16384`** to the AI request body — gives the model ample room to output all items with comments verbatim
+1. **Upgrade model** from `google/gemini-2.5-flash` to `google/gemini-2.5-pro` — the timeout safeguards already protect against hanging, and Pro produces significantly more complete and accurate extractions
 
-2. **Check `finish_reason`** on the AI response — if it's `"length"` or `"MAX_TOKENS"`, log a warning and set a `partial` flag in the response so the client can alert the user
+2. **Improve summary merge logic** in the second-pass retry — replace summary from second pass if it has more content (compare field lengths), not just if first pass fields are empty
 
-3. **Strengthen the user prompt** to be more directive: explicitly list each section the AI must extract and emphasize "do NOT skip any items, include every comment verbatim, do NOT include equipment quantity"
+3. **Add systems/ziplines/standards to second-pass retry** — currently only retries equipment and summary; large reports can also truncate systems and ziplines
 
-4. **Add a second-pass retry** — if `finish_reason` indicates truncation, make a focused follow-up call asking the AI to extract only the sections that appear incomplete (equipment and summary are most commonly dropped), then merge the results
-
-5. **Log the full `finish_reason` and usage stats** (prompt tokens, completion tokens) for debugging
+4. **Log the extracted text length per section** for debugging — after extraction, log how many chars of comments were captured across all items
 
 **File: `src/pages/NewInspection.tsx`**
 
-6. **Handle the new `partial` flag** — show a warning toast if the extraction was partially truncated, telling the user some items may be missing
+5. **No changes needed** — the client-side mapping and insertion logic is correct. All fields (comments, production_year, rope_type, summary sections) are already properly mapped. Equipment quantity is already excluded.
 
 ### Technical Detail
 
 ```text
-AI request changes:
-  + max_tokens: 16384
-  + Check: aiData.choices[0].finish_reason
-  + If finish_reason === "length":
-      → Second call with: "Extract ONLY equipment and summary from this report"
-      → Merge into first result
+Model change:
+  model: "google/gemini-2.5-flash"  →  model: "google/gemini-2.5-pro"
 
-User prompt change:
-  "Extract ALL structured data... You MUST include:
-   - Every operating system/element with its comments
-   - Every piece of equipment (type, category, result, comments, production_year, rope_type — NO quantity)
-   - Every zipline with all measurements and comments
-   - Every standard with documentation status and comments  
-   - The complete summary section (repairs, critical actions, future considerations, next inspection date)
-   Do not skip ANY item. Do not summarize comments."
+Second-pass merge improvement:
+  Before: Only merges summary if BOTH repairs_performed AND critical_actions are empty
+  After:  Merges summary if second pass has more total content (sum of field lengths)
+
+  Before: Second pass only retries equipment + summary
+  After:  Second pass retries ALL sections, merges any that have more items than first pass
+
+Second-pass prompt update:
+  "Extract ALL sections: systems, equipment (NO quantity), ziplines, standards, and summary.
+   Include every item with full verbatim comments."
 ```
 
 ### Files
 
 | File | Change |
 |------|--------|
-| `supabase/functions/parse-inspection-docx/index.ts` | Add max_tokens, check finish_reason, retry on truncation, improve user prompt |
-| `src/pages/NewInspection.tsx` | Handle `partial` flag with warning toast |
+| `supabase/functions/parse-inspection-docx/index.ts` | Upgrade to gemini-2.5-pro, improve second-pass retry to cover all sections with better merge logic |
 
