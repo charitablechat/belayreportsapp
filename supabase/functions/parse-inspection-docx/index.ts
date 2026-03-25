@@ -210,11 +210,15 @@ serve(async (req) => {
 
     if (ext === "docx") {
       extractedText = await extractTextFromDocx(fileBuffer);
+  } else if (ext === "doc") {
+      extractedText = extractTextFromDoc(fileBuffer);
     } else if (ext === "pdf") {
       extractedText = extractTextFromPdf(fileBuffer);
+    } else if (ext === "md" || ext === "markdown") {
+      extractedText = extractTextFromMarkdown(fileBuffer);
     } else {
       return new Response(
-        JSON.stringify({ error: "Unsupported file type. Please upload a .docx or .pdf file." }),
+        JSON.stringify({ error: "Unsupported file type. Please upload a .docx, .doc, .pdf, or .md file." }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
