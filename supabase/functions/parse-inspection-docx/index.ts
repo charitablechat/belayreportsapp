@@ -521,7 +521,7 @@ ${truncatedText}`;
       `[parse-inspection-docx] Extracted: ${extracted.systems?.length || 0} systems, ${extracted.equipment?.length || 0} equipment, ${extracted.ziplines?.length || 0} ziplines, ${extracted.standards?.length || 0} standards (partial: ${partial})`
     );
 
-    return new Response(JSON.stringify({ success: true, data: extracted, truncated: wasTruncated }), {
+    return new Response(JSON.stringify({ success: true, data: extracted, truncated: wasTruncated, partial }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (error) {
