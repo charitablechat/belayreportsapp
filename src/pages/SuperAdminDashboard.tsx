@@ -736,6 +736,7 @@ export default function SuperAdminDashboard() {
           value={stats?.trainings || 0}
           icon={GraduationCap}
           description={`${stats?.trainingStatusCounts?.completed || 0} completed, ${stats?.trainingStatusCounts?.draft || 0} draft`}
+          onClick={() => setIsTrainingsListOpen(true)}
           hoverContent={{
             title: "Training Sessions",
             description: "Documented training sessions and audit reports.",
@@ -744,7 +745,7 @@ export default function SuperAdminDashboard() {
               { label: "Draft", value: stats?.trainingStatusCounts?.draft || 0 },
               { label: "In progress", value: stats?.trainingStatusCounts?.in_progress || 0 },
             ],
-            tip: "View Training Reports tab for full list"
+            tip: "Click to view all training reports"
           }}
         />
         <StatCard
@@ -752,6 +753,7 @@ export default function SuperAdminDashboard() {
           value={stats?.dailyAssessments || 0}
           icon={ClipboardCheck}
           description={`${stats?.dailyStatusCounts?.completed || 0} completed, ${stats?.dailyStatusCounts?.draft || 0} draft`}
+          onClick={() => setIsDailyListOpen(true)}
           hoverContent={{
             title: "Daily Facility Checks",
             description: "Daily assessment reports for facility operations.",
@@ -759,7 +761,7 @@ export default function SuperAdminDashboard() {
               { label: "Completed", value: stats?.dailyStatusCounts?.completed || 0 },
               { label: "Draft", value: stats?.dailyStatusCounts?.draft || 0 },
             ],
-            tip: "Regular assessments ensure safety compliance"
+            tip: "Click to view all daily assessments"
           }}
         />
         <StatCard
@@ -1436,7 +1438,7 @@ export default function SuperAdminDashboard() {
             </TableHeader>
             <TableBody>
               {allInspections?.slice((inspectionsPage - 1) * ITEMS_PER_PAGE, inspectionsPage * ITEMS_PER_PAGE).map((inspection) => (
-                <TableRow key={inspection.id}>
+                <TableRow key={inspection.id} className="cursor-pointer hover:bg-muted/50" onClick={() => { setIsInspectionsListOpen(false); navigate(`/inspection/${inspection.id}`); }}>
                   <TableCell className="font-medium">{inspection.organization}</TableCell>
                   <TableCell>{inspection.location}</TableCell>
                   <TableCell>
