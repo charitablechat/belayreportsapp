@@ -701,7 +701,9 @@ input[type="number"] {
 }
 
 /* Grid header text wrapping safety net */
-.grid > [class*="font-semibold"] {
+.grid > [class*="font-semibold"],
+.grid > [class*="font-medium"] {
+  min-width: 0;
   overflow-wrap: anywhere;
   word-break: break-word;
 }
