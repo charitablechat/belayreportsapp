@@ -520,7 +520,7 @@ export default function NewInspection() {
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".docx,.pdf"
+                accept=".docx,.doc,.pdf,.md"
                 className="hidden"
                 onChange={(e) => {
                   const file = e.target.files?.[0];
