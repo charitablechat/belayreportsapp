@@ -107,6 +107,7 @@ export default function InspectionForm() {
   const isMobileDevice = isMobile();
   useScrollBoundaryDetection(isMobileDevice);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [autoSaving, setAutoSaving] = useState(false);
   const [generatingPdf, setGeneratingPdf] = useState(false);
