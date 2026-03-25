@@ -1459,6 +1459,28 @@ export default function TrainingForm() {
                 <HardDrive className="w-4 h-4" />
               </Button>
               )}
+              {id && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                title="Refresh Report Data"
+                disabled={refreshing || isSaving}
+                onClick={async () => {
+                  setRefreshing(true);
+                  try {
+                    await loadTraining();
+                    toast.success("Report refreshed", { description: "Latest data loaded successfully." });
+                  } catch {
+                    toast.error("Refresh failed");
+                  } finally {
+                    setRefreshing(false);
+                  }
+                }}
+              >
+                <RefreshCw className={cn("w-4 h-4", refreshing && "animate-spin")} />
+              </Button>
+              )}
               {training?.status !== 'completed' && (
               <Button 
                 size={isMobile ? "default" : "sm"} 

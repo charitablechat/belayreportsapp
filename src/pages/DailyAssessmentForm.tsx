@@ -1538,6 +1538,28 @@ export default function DailyAssessmentForm() {
                 <HardDrive className="w-4 h-4" />
               </Button>
               )}
+              {id && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                title="Refresh Report Data"
+                disabled={refreshing || saving || submitting}
+                onClick={async () => {
+                  setRefreshing(true);
+                  try {
+                    await loadAssessment();
+                    toast.success("Report refreshed", { description: "Latest data loaded successfully." });
+                  } catch {
+                    toast.error("Refresh failed");
+                  } finally {
+                    setRefreshing(false);
+                  }
+                }}
+              >
+                <RefreshCw className={cn("w-4 h-4", refreshing && "animate-spin")} />
+              </Button>
+              )}
               {assessment?.status !== 'completed' && (
               <Button 
                 size={isMobileView ? "default" : "sm"} 
