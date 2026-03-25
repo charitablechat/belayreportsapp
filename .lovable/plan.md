@@ -1,46 +1,65 @@
 
 
-## Fix: Vertical Text Rendering in Table Headers on iPad
+## Fix: Color Split in Comments Column Rich Text Editor
 
 ### Root Cause
 
-The "Comments and/or Required Changes" column in OperatingSystemsTable and EquipmentTable uses a bare `1fr` grid track with no minimum width:
-
-```text
-OS:  grid-cols-[40px_88px_minmax(180px,1fr)_minmax(160px,1fr)_192px_1fr_64px]
-                                                                    ^^^
-EQ:  grid-cols-[40px_88px_minmax(160px,1fr)_128px_96px_192px_1fr_64px]
-                                                             ^^^
+The `RichTextEditor` component (line 86-87 of `rich-text-editor.tsx`) has:
+```tsx
+<div className={cn('border rounded-md bg-background', className)}>
+  <div className="flex items-center gap-1 p-2 border-b bg-muted/50">
 ```
 
-On iPad (~1024px CSS width), the other `minmax(..., 1fr)` columns expand greedily, leaving the Comments `1fr` column with near-zero width. The text wraps per-character, producing the vertical rendering seen in the screenshot.
+When used inside table cells with `className="border-0 bg-transparent"`:
+- The outer div becomes `border-0 bg-transparent` (tailwind-merge works correctly)
+- But the **toolbar div** keeps its hardcoded `border-b bg-muted/50`
+- The semi-transparent `bg-muted/50` composites differently over the transparent outer div vs the row's `bg-background`
+- The `border-b` adds a visible horizontal line
+- The `rounded-md` on the outer container creates subtle curved edges visible against the cell background
 
-ZiplinesTable already uses `minmax(120px, 1fr)` for its Comments column — it does not have this bug.
+This combination produces the visible color discontinuity on iPad displays.
 
 ### Fix
 
-**1. `src/components/inspection/OperatingSystemsTable.tsx` — line 33**
-Change the Comments column from bare `1fr` to `minmax(150px, 1fr)`:
-```
-grid-cols-[40px_88px_minmax(180px,1fr)_minmax(160px,1fr)_192px_minmax(150px,1fr)_64px]
+**1. `src/components/ui/rich-text-editor.tsx` — Make toolbar respect transparent context**
+
+When `className` contains `bg-transparent`, the toolbar should also be transparent-friendly. Simplest approach: change the toolbar to use `bg-muted/30` (lighter) and remove `border-b` when in transparent mode.
+
+Better approach: accept a `variant` or detect `bg-transparent` in className and conditionally strip the toolbar styling:
+
+```typescript
+const isInline = className?.includes('bg-transparent');
+
+// Outer div — existing cn() logic, already works
+<div className={cn('border rounded-md bg-background', className)}>
+  // Toolbar — strip border-b and bg when inline
+  <div className={cn(
+    "flex items-center gap-1 p-2",
+    !isInline && "border-b bg-muted/50"
+  )}>
 ```
 
-**2. `src/components/inspection/EquipmentTable.tsx` — line 37**
-Same fix:
-```
-grid-cols-[40px_88px_minmax(160px,1fr)_128px_96px_192px_minmax(150px,1fr)_64px]
-```
+This removes the toolbar's background and bottom border when the editor is embedded inline in a table cell, eliminating the color split.
 
-**3. Both files — Comments header cells and data cells**
-Add `min-w-0` class alongside existing `break-words` to allow CSS Grid children to shrink below intrinsic content width. Add `[overflow-wrap:anywhere]` for aggressive wrapping at any character boundary when space is tight.
+**2. `src/components/ui/rich-text-editor.tsx` — Remove `rounded-md` in inline mode**
 
-**4. `src/index.css` — Global safety net**
-Add a rule targeting all grid children with font-semibold (header cells) to enforce `min-width: 0` and `overflow-wrap: anywhere`, preventing any future grid column from exhibiting this behavior.
+The `rounded-md` on the outer div creates visible curved corners inside a rectangular grid cell. Strip it in inline mode:
+
+```typescript
+<div className={cn(
+  'border bg-background',
+  !isInline && 'rounded-md',
+  className
+)}>
+```
 
 ### Files
 | File | Change |
 |------|--------|
-| `OperatingSystemsTable.tsx` | `1fr` → `minmax(150px, 1fr)` for Comments column; add `min-w-0 [overflow-wrap:anywhere]` to header/cells |
-| `EquipmentTable.tsx` | Same grid fix; same class additions |
-| `src/index.css` | Global `min-w-0` + `overflow-wrap` safety net for grid header cells |
+| `src/components/ui/rich-text-editor.tsx` | Detect inline/transparent usage; conditionally strip toolbar `border-b`, `bg-muted/50`, and outer `rounded-md` |
+
+### Impact
+- Only affects editors rendered with `bg-transparent` class (table cells)
+- Standalone editors (e.g., summary sections) keep their current bordered appearance
+- No changes to text wrapping logic
 
