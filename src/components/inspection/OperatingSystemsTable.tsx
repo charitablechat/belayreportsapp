@@ -8,6 +8,7 @@ import { GlobalAutocomplete } from "@/components/GlobalAutocomplete";
 import { Plus, Trash2, Minus } from "lucide-react";
 import ItemPhotoUpload from "./ItemPhotoUpload";
 import { Input } from "@/components/ui/input";
+import { DebouncedInput } from "./DebouncedInput";
 import { useState, useCallback, useEffect, memo } from "react";
 import {
   AlertDialog,
@@ -141,9 +142,9 @@ function OperatingSystemsTable({ systems, onUpdate, onImmediateSave, inspectionI
                 {system.is_divider ? (
                   <div className="col-span-6 flex items-center bg-blue-100 dark:bg-blue-900/30">
                     <div className="p-2 flex-1">
-                      <Input
+                      <DebouncedInput
                         value={system.divider_text || ""}
-                        onChange={(e) => updateSystem(system, "divider_text", e.target.value)}
+                        onChange={(value) => updateSystem(system, "divider_text", value)}
                         onBlur={onImmediateSave}
                         placeholder="Enter divider text..."
                         className="border-0 bg-transparent text-center font-bold text-base"
@@ -227,13 +228,13 @@ function OperatingSystemsTable({ systems, onUpdate, onImmediateSave, inspectionI
             <DraggableMobileCard key={system.id} id={system.id} {...getDragProps(system.id)}>
               {system.is_divider ? (
                 <div className="p-4 pl-12 relative rounded-lg bg-blue-100 dark:bg-blue-900/30 border border-border flex items-center">
-                  <Input
-                    value={system.divider_text || ""}
-                    onChange={(e) => updateSystem(system, "divider_text", e.target.value)}
-                    onBlur={onImmediateSave}
-                    placeholder="Enter divider text..."
-                    className="border-0 bg-transparent text-center font-bold text-base flex-1"
-                  />
+                   <DebouncedInput
+                     value={system.divider_text || ""}
+                     onChange={(value) => updateSystem(system, "divider_text", value)}
+                     onBlur={onImmediateSave}
+                     placeholder="Enter divider text..."
+                     className="border-0 bg-transparent text-center font-bold text-base flex-1"
+                   />
                   <Button
                     variant="ghost"
                     size="sm"

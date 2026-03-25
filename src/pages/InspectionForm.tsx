@@ -551,9 +551,14 @@ export default function InspectionForm() {
   }, [inspectorProfile, inspection?.id]);
 
   // Track changes to inspection data and trigger debounced auto-save
+  // Use ref to avoid extra re-render from setHasUnsavedChanges on every keystroke
+  const hasUnsavedRef = useRef(false);
   useEffect(() => {
     if (!loading && !isInternalUpdateRef.current && isOwner) {
-      setHasUnsavedChanges(true);
+      if (!hasUnsavedRef.current) {
+        hasUnsavedRef.current = true;
+        setHasUnsavedChanges(true);
+      }
       
       // Clear existing debounce timer using ref
       if (saveDebounceTimerRef.current) {
@@ -563,6 +568,7 @@ export default function InspectionForm() {
       // Set new debounce timer for 1.5 seconds (optimized for near-instant feel)
       saveDebounceTimerRef.current = setTimeout(() => {
         autoSaveProgress();
+        hasUnsavedRef.current = false;
       }, 1500);
     }
   }, [systems, ziplines, equipment, standards, summary, isOwner]);
