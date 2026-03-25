@@ -533,6 +533,18 @@ ${truncatedText}`;
       });
     }
     const message = error instanceof Error ? error.message : "Unknown error";
+    if (message === "__RATE_LIMIT__") {
+      return new Response(JSON.stringify({ error: "AI rate limit exceeded. Please try again in a moment." }), {
+        status: 429,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    if (message === "__CREDITS__") {
+      return new Response(JSON.stringify({ error: "AI credits exhausted. Please add funds." }), {
+        status: 402,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
     return new Response(JSON.stringify({ error: message }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
