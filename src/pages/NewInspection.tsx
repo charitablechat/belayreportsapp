@@ -509,7 +509,7 @@ export default function NewInspection() {
                 dragActive
                   ? "border-primary bg-primary/5"
                   : importedFileName
-                  ? "border-green-500/50 bg-green-500/5"
+                  ? "border-accent bg-accent/5"
                   : "border-muted-foreground/25 hover:border-primary/50 hover:bg-muted/30"
               }`}
               onDrop={onDrop}
