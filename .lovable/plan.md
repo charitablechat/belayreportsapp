@@ -1,37 +1,58 @@
 
 
-## Add Geolocation Button to Active Inspection Reports
+## Fix: Typing Lag in Report Forms
 
-### Problem
-The Location field in `InspectionHeader.tsx` (used in active/ongoing reports) is a plain text input with no geo button. Users can only get geolocation when creating a new report via `NewInspection.tsx`.
+### Root Cause
 
-### Solution
-Add the same geo button pattern from `NewInspection` into `InspectionHeader`, next to the Location field.
+Every keystroke in any table cell triggers this cascade:
 
-### Changes
+1. `updateEquipment(item, field, value)` calls `onUpdate(prev => prev.map(...))` → creates a **new array** → `setEquipment(newArray)`
+2. A `useEffect` watches `[systems, ziplines, equipment, standards, summary]` (line 554) — fires on **every keystroke**
+3. That effect calls `setHasUnsavedChanges(true)` (another state update → another render)
+4. The entire `InspectionForm` (2957 lines) re-renders, which re-renders **all** child table components
+5. Each table filters and maps its items again, re-rendering every row
 
-**`src/components/inspection/InspectionHeader.tsx`**
+With 25+ equipment items across multiple tables, this means hundreds of component re-renders per keystroke.
 
-1. Import `getCurrentLocationWithAddress`, `getGeolocationErrorMessage` from `@/lib/geolocation`, `triggerHaptic` from `@/lib/haptics`, `MapPin`, `Loader2`, `X` from `lucide-react`, `toast` from `sonner`, and add `useState` import.
+### Solution: Debounce State Propagation + Memoize Child Components
 
-2. Replace the plain Location `renderField` call (line 113-115) with a custom layout matching NewInspection:
-   - Location text input (VoiceInput, keeping voice support)
-   - "Get Location" / "Update" button with MapPin icon
-   - Clear (X) button when coordinates exist
-   - Loading spinner state while fetching GPS
+**1. `src/components/inspection/EquipmentTable.tsx` — Use local state for active input fields**
 
-3. Add local state: `locationLoading` boolean.
+Add a local input buffer pattern: when a user is typing in an `Input` or `LazyRichTextEditor`, store the value locally and only propagate to parent (`onUpdate`) on blur or after a 300ms debounce. This prevents the parent from re-rendering on every keystroke.
 
-4. Add `handleLocationCapture` function that:
-   - Calls `getCurrentLocationWithAddress()`
-   - Calls `onUpdate("location", position.address)` to set the address
-   - Calls `onImmediateSave?.()` to persist
-   - Shows success/error toasts
+Create a small `DebouncedInput` wrapper component used inside the table rows:
+```typescript
+const DebouncedInput = memo(({ value, onChange, onBlur, ...props }) => {
+  const [local, setLocal] = useState(value);
+  const timeoutRef = useRef<NodeJS.Timeout>();
+  
+  useEffect(() => { setLocal(value); }, [value]);
+  
+  const handleChange = (e) => {
+    setLocal(e.target.value);
+    clearTimeout(timeoutRef.current);
+    timeoutRef.current = setTimeout(() => onChange(e.target.value), 300);
+  };
+  
+  return <Input value={local} onChange={handleChange} onBlur={() => onChange(local)} {...props} />;
+});
+```
 
-5. The button is disabled when `isReadOnly` is true.
+Replace all `<Input value={item.field} onChange={e => updateEquipment(item, 'field', e.target.value)} />` calls with `<DebouncedInput>`.
+
+**2. Apply same pattern to `OperatingSystemsTable.tsx` and `ZiplinesTable.tsx`**
+
+All three table components have the same issue. Apply the `DebouncedInput` pattern to each.
+
+**3. `src/pages/InspectionForm.tsx` — Remove `hasUnsavedChanges` state churn from the useEffect**
+
+The watcher on line 554 calls `setHasUnsavedChanges(true)` on every data change, which triggers an extra re-render. Change it to use a ref instead of state for tracking unsaved status during auto-save debounce, and only set the state once (not on every keystroke).
 
 ### Files
 | File | Change |
 |------|--------|
-| `src/components/inspection/InspectionHeader.tsx` | Add geo button with loading state next to Location field, matching NewInspection UX |
+| `src/components/inspection/EquipmentTable.tsx` | Add `DebouncedInput` component; use it for all text inputs in rows |
+| `src/components/inspection/OperatingSystemsTable.tsx` | Same `DebouncedInput` pattern |
+| `src/components/inspection/ZiplinesTable.tsx` | Same `DebouncedInput` pattern |
+| `src/pages/InspectionForm.tsx` | Use ref for `hasUnsavedChanges` tracking in auto-save watcher to avoid extra re-renders |
 
