@@ -1073,6 +1073,26 @@ export default function Dashboard() {
               {/* Visible Force Sync button for quick access */}
               <ForceSyncButton variant="icon" className="h-8 w-8" />
               
+              {/* Refresh reports button */}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    disabled={refreshInFlightRef.current}
+                    onClick={() => {
+                      refreshReports(true);
+                      toast.info("Refreshing reports...");
+                    }}
+                    aria-label="Refresh reports"
+                  >
+                    <RefreshCw className={cn("h-4 w-4", refreshInFlightRef.current && "animate-spin")} />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Refresh reports</TooltipContent>
+              </Tooltip>
+              
               {isSuperAdmin && (
                 <Badge variant="default" className="bg-warning/90 text-warning-foreground border border-warning/50 backdrop-blur-[12px] shadow-lg shadow-warning/20 animate-pulse hidden sm:flex items-center gap-1">
                   <Shield className="w-3 h-3" />
