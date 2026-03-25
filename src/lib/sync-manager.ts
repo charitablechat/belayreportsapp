@@ -95,6 +95,7 @@ export async function syncPhotos(): Promise<{ remaining: number }> {
             [fkColumn]: photo.inspectionId,
             photo_url: fileName,
             photo_section: photo.section,
+            caption: photo.caption || photo.section,
           });
 
         if (dbError) throw dbError;
