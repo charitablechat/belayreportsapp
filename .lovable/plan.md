@@ -1,54 +1,55 @@
 
 
-## Fix Incomplete Report Import Extraction
+## Fix Report Import: Replace Broken Text Extraction
 
 ### Problem
 
-The AI extraction (Gemini 2.5 Flash) is not reliably capturing all elements, equipment, comments, and summary data from uploaded reports. Flash trades accuracy for speed — now that timeout safeguards (90s backend, 120s client) are in place, we can use a stronger model without risk of hanging.
+The edge function logs reveal the actual root cause is **not** the AI model — it's the text extraction:
 
-### Root Causes
+- `.doc` files: The custom UTF-16LE scanner extracted only **585 chars** from a real report, resulting in 0 systems and 0 equipment
+- `.pdf` files: The naive BT/ET text operator parser produces garbled output for compressed PDFs (which is most PDFs)
+- `.docx` files: The custom ZIP parser works but misses some XML entries when the ZIP uses data descriptors
 
-1. **Model accuracy**: `gemini-2.5-flash` is weaker at exhaustive structured extraction from long documents compared to `gemini-2.5-pro`. It skips items, abbreviates comments, and sometimes drops entire sections.
-2. **No extraction verification**: The system has no way to detect when the AI silently drops items (as opposed to hitting token limits, which is already handled).
-3. **Summary merge logic is too conservative**: The second-pass merge only replaces summary if the first pass had *both* `repairs_performed` AND `critical_actions` empty — if either has a value, the partial summary is kept.
+The AI itself works correctly when given proper text — the same report as PDF (with 10K chars extracted) returned 6 systems, 9 equipment, 2 ziplines.
+
+### Solution: Use `pdf-parse` and `mammoth` Libraries
+
+Replace all three custom text extractors with battle-tested npm libraries available in Deno edge functions:
 
 ### Changes
 
 **File: `supabase/functions/parse-inspection-docx/index.ts`**
 
-1. **Upgrade model** from `google/gemini-2.5-flash` to `google/gemini-2.5-pro` — the timeout safeguards already protect against hanging, and Pro produces significantly more complete and accurate extractions
-
-2. **Improve summary merge logic** in the second-pass retry — replace summary from second pass if it has more content (compare field lengths), not just if first pass fields are empty
-
-3. **Add systems/ziplines/standards to second-pass retry** — currently only retries equipment and summary; large reports can also truncate systems and ziplines
-
-4. **Log the extracted text length per section** for debugging — after extraction, log how many chars of comments were captured across all items
+1. **Replace `.docx` extraction** — use `npm:mammoth@1.8.0` which properly handles all OOXML edge cases (merged cells, nested tables, styles) and returns clean text
+2. **Replace `.pdf` extraction** — use `npm:pdf-parse@1.1.1` which handles FlateDecode, CIDFont, and all standard PDF encodings
+3. **Replace `.doc` extraction** — use `npm:word-extractor@1.0.4` which properly reads OLE2 compound binary format instead of scanning for UTF-16LE byte sequences
+4. **Remove all custom parsers** — delete `extractTextFromDocx`, `parseZipEntries`, `extractTextFromXml`, `extractTextFromDoc`, `extractTextFromPdf` (approximately 230 lines of fragile custom code)
+5. **Preserve original result values** — change `result: "Not Inspected"` default to use the AI-extracted result value when available, falling back to "Not Inspected" only when null
 
 **File: `src/pages/NewInspection.tsx`**
 
-5. **No changes needed** — the client-side mapping and insertion logic is correct. All fields (comments, production_year, rope_type, summary sections) are already properly mapped. Equipment quantity is already excluded.
+6. **Preserve original results from import** — update the `insertChildData` function to use the AI-extracted `result` values instead of always overriding with "Not Inspected"
 
 ### Technical Detail
 
 ```text
-Model change:
-  model: "google/gemini-2.5-flash"  →  model: "google/gemini-2.5-pro"
+Text extraction replacement:
+  .docx: custom ZIP parser (broken on data descriptors)
+      → mammoth.extractRawText(buffer)
+  .pdf:  custom BT/ET regex (fails on compressed streams)  
+      → pdfParse(buffer).then(d => d.text)
+  .doc:  custom UTF-16LE scan (captures ~5% of content)
+      → WordExtractor().extract(buffer).then(d => d.getBody())
 
-Second-pass merge improvement:
-  Before: Only merges summary if BOTH repairs_performed AND critical_actions are empty
-  After:  Merges summary if second pass has more total content (sum of field lengths)
-
-  Before: Second pass only retries equipment + summary
-  After:  Second pass retries ALL sections, merges any that have more items than first pass
-
-Second-pass prompt update:
-  "Extract ALL sections: systems, equipment (NO quantity), ziplines, standards, and summary.
-   Include every item with full verbatim comments."
+Result preservation:
+  Before: result: "Not Inspected"  (always)
+  After:  result: extractedResult || "Not Inspected"
 ```
 
 ### Files
 
 | File | Change |
 |------|--------|
-| `supabase/functions/parse-inspection-docx/index.ts` | Upgrade to gemini-2.5-pro, improve second-pass retry to cover all sections with better merge logic |
+| `supabase/functions/parse-inspection-docx/index.ts` | Replace 3 custom text extractors with npm libraries, remove ~230 lines of broken code |
+| `src/pages/NewInspection.tsx` | Use extracted result values instead of always "Not Inspected" |
 
