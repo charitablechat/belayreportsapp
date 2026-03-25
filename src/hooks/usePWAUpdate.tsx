@@ -95,66 +95,97 @@ export const usePWAUpdate = (): PWAUpdateStatus => {
     };
   }, []);
 
+  // Re-check for waiting SW on BFCache restore or tab switch (iPad/Safari fix)
+  useEffect(() => {
+    const recheckWaiting = () => {
+      if (registration?.waiting) setNeedRefresh(true);
+    };
+    const onPageShow = (e: PageTransitionEvent) => {
+      if (e.persisted) recheckWaiting();
+    };
+    const onVisChange = () => {
+      if (document.visibilityState === 'visible') recheckWaiting();
+    };
+    window.addEventListener('pageshow', onPageShow);
+    document.addEventListener('visibilitychange', onVisChange);
+    return () => {
+      window.removeEventListener('pageshow', onPageShow);
+      document.removeEventListener('visibilitychange', onVisChange);
+    };
+  }, [registration]);
+
   const checkForUpdates = useCallback(async () => {
+    if (!('serviceWorker' in navigator)) return;
     setIsChecking(true);
     try {
-      if ('serviceWorker' in navigator) {
-        const reg = await Promise.race([
-          navigator.serviceWorker.ready,
-          new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error('SW not available')), 5000)
-          )
-        ]) as ServiceWorkerRegistration;
-        await reg.update();
+      const reg = registration || await navigator.serviceWorker.ready;
 
-        // Wait for the new SW to reach 'installed' state instead of a fixed timeout
-        if (!reg.waiting) {
-          const installing = reg.installing;
-          if (installing) {
-            await new Promise<void>((resolve) => {
-              const onStateChange = () => {
-                if (installing.state === 'installed' || installing.state === 'activated') {
-                  installing.removeEventListener('statechange', onStateChange);
-                  resolve();
-                }
-              };
-              installing.addEventListener('statechange', onStateChange);
-              // Safety timeout — resolve after 10s regardless
-              setTimeout(() => {
-                installing.removeEventListener('statechange', onStateChange);
-                resolve();
-              }, 10000);
-            });
+      // Already waiting? Done.
+      if (reg.waiting) {
+        setNeedRefresh(true);
+        return;
+      }
+
+      // Listen for updatefound BEFORE calling update()
+      const updatePromise = new Promise<boolean>((resolve) => {
+        const onUpdateFound = () => {
+          reg.removeEventListener('updatefound', onUpdateFound);
+          const sw = reg.installing;
+          if (!sw) { resolve(false); return; }
+
+          const onStateChange = () => {
+            if (sw.state === 'installed' || sw.state === 'activated') {
+              sw.removeEventListener('statechange', onStateChange);
+              resolve(true);
+            }
+          };
+          sw.addEventListener('statechange', onStateChange);
+          if (sw.state === 'installed' || sw.state === 'activated') {
+            sw.removeEventListener('statechange', onStateChange);
+            resolve(true);
           }
-        }
+        };
+        reg.addEventListener('updatefound', onUpdateFound);
 
-        if (reg.waiting) {
-          setNeedRefresh(true);
-        }
+        // Safety: resolve false after 8s if no update found
+        setTimeout(() => {
+          reg.removeEventListener('updatefound', onUpdateFound);
+          resolve(false);
+        }, 8000);
+      });
+
+      await reg.update();
+
+      // Check immediately after update() in case waiting was set synchronously
+      if (reg.waiting) {
+        setNeedRefresh(true);
+        return;
+      }
+
+      const found = await updatePromise;
+      if (found || reg.waiting) {
+        setNeedRefresh(true);
       }
     } catch (error) {
-      console.error('[PWA Update] Manual check failed:', error);
+      console.error('[PWA Update] Check failed:', error);
     } finally {
       const now = new Date();
       setLastChecked(now);
       localStorage.setItem('pwa-last-update-check', now.toISOString());
       setIsChecking(false);
     }
-  }, []);
+  }, [registration]);
 
   const updateServiceWorker = useCallback(async (reloadPage = true) => {
     if (registration?.waiting) {
       console.log('[PWA Update] Activating waiting service worker');
 
-      // Mark that we're applying an update so post-reload doesn't re-show the banner
       if (reloadPage) {
         localStorage.setItem(UPDATE_APPLIED_KEY, 'true');
       }
 
-      // Clear banner immediately
       setNeedRefresh(false);
 
-      // Listen for the new SW to take control, then reload
       if (reloadPage) {
         const reloadOnce = () => {
           navigator.serviceWorker.removeEventListener('controllerchange', reloadOnce);
@@ -162,18 +193,15 @@ export const usePWAUpdate = (): PWAUpdateStatus => {
         };
         navigator.serviceWorker.addEventListener('controllerchange', reloadOnce);
 
-        // Safety timeout — reload anyway after 3s if controllerchange doesn't fire
         setTimeout(() => {
           navigator.serviceWorker.removeEventListener('controllerchange', reloadOnce);
           window.location.reload();
         }, 3000);
       }
 
-      // Tell the waiting SW to activate
       registration.waiting.postMessage({ type: 'SKIP_WAITING' });
     } else {
       console.log('[PWA Update] No waiting service worker found');
-      // If needRefresh was set by controllerchange (SW already active), just reload
       if (needRefresh && reloadPage) {
         localStorage.setItem(UPDATE_APPLIED_KEY, 'true');
         setNeedRefresh(false);
