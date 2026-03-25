@@ -472,6 +472,12 @@ CRITICAL RULES:
     });
   } catch (error) {
     console.error("[parse-inspection-docx] Error:", error);
+    if (error instanceof DOMException && error.name === "TimeoutError") {
+      return new Response(JSON.stringify({ error: "AI extraction timed out. Please try a smaller file or different format." }), {
+        status: 504,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
     const message = error instanceof Error ? error.message : "Unknown error";
     return new Response(JSON.stringify({ error: message }), {
       status: 500,
