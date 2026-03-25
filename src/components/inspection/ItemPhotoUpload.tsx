@@ -106,6 +106,12 @@ function ItemPhotoUpload({
     filePath: string,
   ) => {
     try {
+      // DB rows for item photos require a real UUID inspection_id.
+      // If this report is still temp/local, keep the photo queued for sync.
+      if (photoSection && inspectionId.startsWith('temp-')) {
+        throw new Error('Inspection still has a temporary ID; deferring item photo sync');
+      }
+
       const { error: uploadError } = await supabase.storage
         .from("inspection-photos")
         .upload(filePath, compressed, { contentType: "image/jpeg", upsert: true });
@@ -114,15 +120,15 @@ function ItemPhotoUpload({
 
       // Insert into gallery if applicable
       if (photoSection) {
-        try {
-          await supabase.from('inspection_photos').insert({
-            inspection_id: inspectionId,
-            photo_url: filePath,
-            photo_section: photoSection,
-            caption: itemName || 'Item photo',
-          });
-          onGalleryRefresh?.();
-        } catch { /* non-critical */ }
+        const { error: galleryError } = await supabase.from('inspection_photos').insert({
+          inspection_id: inspectionId,
+          photo_url: filePath,
+          photo_section: photoSection,
+          caption: itemName || 'Item photo',
+        });
+
+        if (galleryError) throw galleryError;
+        onGalleryRefresh?.();
       }
 
       // Mark as uploaded in IndexedDB

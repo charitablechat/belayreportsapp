@@ -70,6 +70,13 @@ export async function syncPhotos(): Promise<{ remaining: number }> {
 
     for (const photo of batch) {
       try {
+        if (photo.inspectionId?.startsWith('temp-')) {
+          if (import.meta.env.DEV) {
+            console.warn('[Sync Manager] Skipping photo with temporary inspection ID:', photo.id);
+          }
+          continue;
+        }
+
         const user = await getUserWithCache();
         if (!user) throw new Error("Not authenticated");
 
@@ -79,12 +86,16 @@ export async function syncPhotos(): Promise<{ remaining: number }> {
         const fkColumn = photo.foreignKeyColumn || 'inspection_id';
 
         const fileExt = photo.fileName.split('.').pop();
-        const fileName = `${user.id}/${photo.inspectionId}/${Date.now()}.${fileExt}`;
+        const fallbackFileName = `${user.id}/${photo.inspectionId}/${Date.now()}.${fileExt}`;
+        const fileName = photo.photoUrl || fallbackFileName;
         
         // Upload to storage
         const { error: uploadError } = await supabase.storage
           .from(bucket as any)
-          .upload(fileName, photo.blob);
+          .upload(fileName, photo.blob, {
+            contentType: photo.blob.type || 'image/jpeg',
+            upsert: true,
+          });
 
         if (uploadError) throw uploadError;
 
