@@ -1,58 +1,31 @@
 
 
-## Fix: Typing Lag in Report Forms
+## Add Caption to Offline Photo Sync Pipeline
 
-### Root Cause
+### Problem
+When a photo is uploaded to a specific item (equipment, zipline, or operating system), the online upload path correctly inserts it into the photo gallery with a caption (the item name). However:
 
-Every keystroke in any table cell triggers this cascade:
+1. If the background upload fails and the photo is later synced by `syncPhotos()`, **no caption is saved** because the offline storage schema doesn't include a `caption` field.
+2. The `syncPhotos` function inserts gallery records without a caption (line 92-98 of `sync-manager.ts`).
 
-1. `updateEquipment(item, field, value)` calls `onUpdate(prev => prev.map(...))` → creates a **new array** → `setEquipment(newArray)`
-2. A `useEffect` watches `[systems, ziplines, equipment, standards, summary]` (line 554) — fires on **every keystroke**
-3. That effect calls `setHasUnsavedChanges(true)` (another state update → another render)
-4. The entire `InspectionForm` (2957 lines) re-renders, which re-renders **all** child table components
-5. Each table filters and maps its items again, re-rendering every row
+### Solution
+Thread the `caption` through the entire offline photo pipeline so that both online and offline uploads produce correctly labeled gallery entries.
 
-With 25+ equipment items across multiple tables, this means hundreds of component re-renders per keystroke.
+### Changes
 
-### Solution: Debounce State Propagation + Memoize Child Components
+**1. `src/lib/offline-storage.ts` — Add `caption` to `savePhotoOffline` interface**
+Add an optional `caption?: string` field to the photo parameter. Store it in IndexedDB alongside other metadata.
 
-**1. `src/components/inspection/EquipmentTable.tsx` — Use local state for active input fields**
+**2. `src/components/inspection/ItemPhotoUpload.tsx` — Pass `caption` when saving offline**
+Add `caption: itemName || 'Item photo'` to the `savePhotoOffline()` call (around line 170).
 
-Add a local input buffer pattern: when a user is typing in an `Input` or `LazyRichTextEditor`, store the value locally and only propagate to parent (`onUpdate`) on blur or after a 300ms debounce. This prevents the parent from re-rendering on every keystroke.
-
-Create a small `DebouncedInput` wrapper component used inside the table rows:
-```typescript
-const DebouncedInput = memo(({ value, onChange, onBlur, ...props }) => {
-  const [local, setLocal] = useState(value);
-  const timeoutRef = useRef<NodeJS.Timeout>();
-  
-  useEffect(() => { setLocal(value); }, [value]);
-  
-  const handleChange = (e) => {
-    setLocal(e.target.value);
-    clearTimeout(timeoutRef.current);
-    timeoutRef.current = setTimeout(() => onChange(e.target.value), 300);
-  };
-  
-  return <Input value={local} onChange={handleChange} onBlur={() => onChange(local)} {...props} />;
-});
-```
-
-Replace all `<Input value={item.field} onChange={e => updateEquipment(item, 'field', e.target.value)} />` calls with `<DebouncedInput>`.
-
-**2. Apply same pattern to `OperatingSystemsTable.tsx` and `ZiplinesTable.tsx`**
-
-All three table components have the same issue. Apply the `DebouncedInput` pattern to each.
-
-**3. `src/pages/InspectionForm.tsx` — Remove `hasUnsavedChanges` state churn from the useEffect**
-
-The watcher on line 554 calls `setHasUnsavedChanges(true)` on every data change, which triggers an extra re-render. Change it to use a ref instead of state for tracking unsaved status during auto-save debounce, and only set the state once (not on every keystroke).
+**3. `src/lib/sync-manager.ts` — Use stored caption during gallery insert**
+In `syncPhotos()`, include `caption: photo.caption || photo.section` in the database insert (line 94-98).
 
 ### Files
 | File | Change |
 |------|--------|
-| `src/components/inspection/EquipmentTable.tsx` | Add `DebouncedInput` component; use it for all text inputs in rows |
-| `src/components/inspection/OperatingSystemsTable.tsx` | Same `DebouncedInput` pattern |
-| `src/components/inspection/ZiplinesTable.tsx` | Same `DebouncedInput` pattern |
-| `src/pages/InspectionForm.tsx` | Use ref for `hasUnsavedChanges` tracking in auto-save watcher to avoid extra re-renders |
+| `src/lib/offline-storage.ts` | Add `caption` to `savePhotoOffline` parameter type |
+| `src/components/inspection/ItemPhotoUpload.tsx` | Pass `caption` in `savePhotoOffline` call |
+| `src/lib/sync-manager.ts` | Include `caption` in gallery insert during offline sync |
 
