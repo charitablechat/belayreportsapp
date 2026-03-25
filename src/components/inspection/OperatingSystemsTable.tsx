@@ -8,6 +8,7 @@ import { GlobalAutocomplete } from "@/components/GlobalAutocomplete";
 import { Plus, Trash2, Minus } from "lucide-react";
 import ItemPhotoUpload from "./ItemPhotoUpload";
 import { Input } from "@/components/ui/input";
+import { DebouncedInput } from "./DebouncedInput";
 import { useState, useCallback, useEffect, memo } from "react";
 import {
   AlertDialog,
