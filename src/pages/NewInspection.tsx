@@ -312,6 +312,7 @@ export default function NewInspection() {
   };
 
   /** Bulk-insert child rows after inspection is created */
+  /** Bulk-insert child rows after inspection is created */
   const insertChildData = async (inspectionId: string) => {
     const promises: PromiseLike<any>[] = [];
 
@@ -325,28 +326,35 @@ export default function NewInspection() {
         display_order: i,
         is_divider: false,
       }));
-      promises.push(supabase.from("inspection_systems").insert(rows).then());
+      console.log(`[NewInspection] Inserting ${rows.length} systems`);
+      promises.push(
+        supabase.from("inspection_systems").insert(rows)
+          .then(({ error }) => { if (error) throw error; })
+      );
     }
 
     if (childData.equipment.length > 0) {
       const rows = childData.equipment.map((e, i) => ({
         inspection_id: inspectionId,
-        equipment_type: e.equipment_type,
-        equipment_category: e.equipment_category,
+        equipment_type: e.equipment_type || "Unknown",
+        equipment_category: e.equipment_category || "General",
         result: e.result || "Not Inspected",
         comments: e.comments || null,
-        
         production_year: e.production_year || null,
         rope_type: e.rope_type || null,
         display_order: i,
       }));
-      promises.push(supabase.from("inspection_equipment").insert(rows).then());
+      console.log(`[NewInspection] Inserting ${rows.length} equipment`);
+      promises.push(
+        supabase.from("inspection_equipment").insert(rows)
+          .then(({ error }) => { if (error) throw error; })
+      );
     }
 
     if (childData.ziplines.length > 0) {
       const rows = childData.ziplines.map((z, i) => ({
         inspection_id: inspectionId,
-        zipline_name: z.zipline_name,
+        zipline_name: z.zipline_name || "Unknown",
         cable_type: z.cable_type || null,
         cable_length: z.cable_length || null,
         braking_system: z.braking_system || null,
@@ -357,20 +365,29 @@ export default function NewInspection() {
         comments: z.comments || null,
         display_order: i,
       }));
-      promises.push(supabase.from("inspection_ziplines").insert(rows).then());
+      console.log(`[NewInspection] Inserting ${rows.length} ziplines`);
+      promises.push(
+        supabase.from("inspection_ziplines").insert(rows)
+          .then(({ error }) => { if (error) throw error; })
+      );
     }
 
     if (childData.standards.length > 0) {
       const rows = childData.standards.map((s) => ({
         inspection_id: inspectionId,
-        standard_name: s.standard_name,
+        standard_name: s.standard_name || "Unknown",
         has_documentation: s.has_documentation ?? null,
         comments: s.comments || null,
       }));
-      promises.push(supabase.from("inspection_standards").insert(rows).then());
+      console.log(`[NewInspection] Inserting ${rows.length} standards`);
+      promises.push(
+        supabase.from("inspection_standards").insert(rows)
+          .then(({ error }) => { if (error) throw error; })
+      );
     }
 
     if (childData.summary) {
+      console.log(`[NewInspection] Inserting summary`);
       promises.push(
         supabase.from("inspection_summary").insert({
           inspection_id: inspectionId,
@@ -378,14 +395,16 @@ export default function NewInspection() {
           critical_actions: childData.summary.critical_actions || null,
           future_considerations: childData.summary.future_considerations || null,
           next_inspection_date: childData.summary.next_inspection_date || null,
-        }).then()
+        }).then(({ error }) => { if (error) throw error; })
       );
     }
 
     const results = await Promise.allSettled(promises);
     const failures = results.filter((r) => r.status === "rejected");
     if (failures.length > 0) {
-      console.warn("[NewInspection] Some child inserts failed:", failures);
+      console.error("[NewInspection] Child insert failures:", failures.map((f: any) => f.reason?.message || f.reason));
+    } else {
+      console.log("[NewInspection] All child inserts succeeded");
     }
   };
 
