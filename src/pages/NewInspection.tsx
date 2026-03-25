@@ -176,8 +176,8 @@ export default function NewInspection() {
   // --- Import from previous report ---
   const handleFileImport = useCallback(async (file: File) => {
     const ext = file.name.toLowerCase().split(".").pop();
-    if (ext !== "docx" && ext !== "pdf") {
-      toast.error("Unsupported file", { description: "Please upload a .docx or .pdf file." });
+    if (ext !== "docx" && ext !== "doc" && ext !== "pdf" && ext !== "md" && ext !== "markdown") {
+      toast.error("Unsupported file", { description: "Please upload a .docx, .doc, .pdf, or .md file." });
       return;
     }
 
@@ -520,7 +520,7 @@ export default function NewInspection() {
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".docx,.pdf"
+                accept=".docx,.doc,.pdf,.md"
                 className="hidden"
                 onChange={(e) => {
                   const file = e.target.files?.[0];
@@ -556,7 +556,7 @@ export default function NewInspection() {
                     Import from Previous Report
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    Drop a .docx or .pdf file here, or click to browse
+                    Drop a .docx, .doc, .pdf, or .md file here (Google Docs: export as .docx)
                   </p>
                 </div>
               )}

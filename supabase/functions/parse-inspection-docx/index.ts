@@ -137,6 +137,73 @@ function extractTextFromXml(xml: string): string {
   return text.trim();
 }
 
+/** Extract text from legacy .doc (OLE2 binary) — scans for readable text sequences */
+function extractTextFromDoc(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  const textParts: string[] = [];
+
+  // Try UTF-16LE extraction (common in .doc files)
+  let i = 0;
+  let currentRun = "";
+  while (i < bytes.length - 1) {
+    const lo = bytes[i];
+    const hi = bytes[i + 1];
+    // Printable ASCII as UTF-16LE (hi byte = 0, lo byte is printable)
+    if (hi === 0 && lo >= 0x20 && lo <= 0x7E) {
+      currentRun += String.fromCharCode(lo);
+    } else if (hi === 0 && (lo === 0x0D || lo === 0x0A || lo === 0x09)) {
+      currentRun += lo === 0x09 ? "\t" : "\n";
+    } else {
+      if (currentRun.length >= 8) {
+        textParts.push(currentRun.trim());
+      }
+      currentRun = "";
+    }
+    i += 2;
+  }
+  if (currentRun.length >= 8) {
+    textParts.push(currentRun.trim());
+  }
+
+  if (textParts.length > 0) {
+    return textParts.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+  }
+
+  // Fallback: grab printable ASCII sequences
+  const raw = new TextDecoder("latin1").decode(bytes);
+  const printable = raw.replace(/[^\x20-\x7E\n\r\t]/g, " ").replace(/\s{3,}/g, "\n");
+  return printable.slice(0, 15000).trim();
+}
+
+/** Strip Markdown syntax and return clean text */
+function extractTextFromMarkdown(buffer: ArrayBuffer): string {
+  let text = new TextDecoder().decode(buffer);
+  // Remove images
+  text = text.replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1");
+  // Convert links to just text
+  text = text.replace(/\[([^\]]*)\]\([^)]*\)/g, "$1");
+  // Remove headers markup
+  text = text.replace(/^#{1,6}\s+/gm, "");
+  // Remove bold/italic
+  text = text.replace(/\*{1,3}([^*]+)\*{1,3}/g, "$1");
+  text = text.replace(/_{1,3}([^_]+)_{1,3}/g, "$1");
+  // Remove strikethrough
+  text = text.replace(/~~([^~]+)~~/g, "$1");
+  // Remove inline code
+  text = text.replace(/`([^`]+)`/g, "$1");
+  // Remove code blocks
+  text = text.replace(/```[\s\S]*?```/g, "");
+  // Remove blockquotes
+  text = text.replace(/^>\s*/gm, "");
+  // Remove horizontal rules
+  text = text.replace(/^[-*_]{3,}\s*$/gm, "");
+  // Remove HTML tags
+  text = text.replace(/<[^>]+>/g, "");
+  // Collapse whitespace
+  text = text.replace(/\n{3,}/g, "\n\n");
+  return text.trim();
+}
+
 /** Simple text extraction from PDF — grabs text between stream markers */
 function extractTextFromPdf(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer);
@@ -210,11 +277,15 @@ serve(async (req) => {
 
     if (ext === "docx") {
       extractedText = await extractTextFromDocx(fileBuffer);
+  } else if (ext === "doc") {
+      extractedText = extractTextFromDoc(fileBuffer);
     } else if (ext === "pdf") {
       extractedText = extractTextFromPdf(fileBuffer);
+    } else if (ext === "md" || ext === "markdown") {
+      extractedText = extractTextFromMarkdown(fileBuffer);
     } else {
       return new Response(
-        JSON.stringify({ error: "Unsupported file type. Please upload a .docx or .pdf file." }),
+        JSON.stringify({ error: "Unsupported file type. Please upload a .docx, .doc, .pdf, or .md file." }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
