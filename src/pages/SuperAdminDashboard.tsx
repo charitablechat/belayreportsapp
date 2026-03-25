@@ -1567,6 +1567,7 @@ export default function SuperAdminDashboard() {
             </div>
           )}
         </DialogContent>
+      </Dialog>
 
       {/* User Management Dialog */}
       <UserManagementDialog
