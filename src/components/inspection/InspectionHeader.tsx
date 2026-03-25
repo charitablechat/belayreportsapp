@@ -68,8 +68,8 @@ export default function InspectionHeader({ inspection, userProfile, modifiedByPr
 
   return (
     <div className="space-y-6">
-      <div className="text-center">
-      <h1 className="text-xl md:text-2xl font-bold mb-2 px-2 md:px-0">
+      <div className="text-center overflow-hidden">
+      <h1 className="text-xl md:text-2xl font-bold mb-2 px-2 md:px-0 break-words [overflow-wrap:anywhere]">
         Inspection Report for Challenge Course, Adventure Park or Canopy/Zip Line Tour
       </h1>
       </div>

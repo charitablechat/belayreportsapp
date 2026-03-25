@@ -348,7 +348,7 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
             <div className="p-3 text-left font-semibold text-sm border-r border-border break-words">Manufacture Year(s)</div>
             <div className="p-3 text-left font-semibold text-sm border-r border-border">Quantity</div>
             <div className="p-3 text-left font-semibold text-sm border-r border-border">Result</div>
-            <div className="p-3 text-left font-semibold text-sm border-r border-border">Comments and/or Required Changes</div>
+            <div className="p-3 text-left font-semibold text-sm border-r border-border break-words">Comments and/or Required Changes</div>
             <div className="p-3 text-center font-semibold text-sm"></div>
           </div>
           {/* Rows */}
