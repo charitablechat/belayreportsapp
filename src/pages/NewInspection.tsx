@@ -33,7 +33,7 @@ interface ExtractedEquipment {
   equipment_category: string;
   result?: string;
   comments?: string;
-  quantity?: string;
+  
   production_year?: string;
   rope_type?: string;
 }
