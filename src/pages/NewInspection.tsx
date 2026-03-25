@@ -331,7 +331,7 @@ export default function NewInspection() {
         comments: z.comments || null,
         display_order: i,
       }));
-      promises.push(supabase.from("inspection_ziplines").insert(rows));
+      promises.push(supabase.from("inspection_ziplines").insert(rows).then());
     }
 
     if (childData.standards.length > 0) {
