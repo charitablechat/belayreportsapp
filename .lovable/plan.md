@@ -1,31 +1,30 @@
 
 
-## Add Caption to Offline Photo Sync Pipeline
+## Organization Reports Modal
 
-### Problem
-When a photo is uploaded to a specific item (equipment, zipline, or operating system), the online upload path correctly inserts it into the photo gallery with a caption (the item name). However:
+### Current State
+The feature partially exists: clicking an organization row opens `OrganizationReportsPanel` **inline below the table**. This can be easy to miss and pushes content down. The user wants a proper modal/dedicated view.
 
-1. If the background upload fails and the photo is later synced by `syncPhotos()`, **no caption is saved** because the offline storage schema doesn't include a `caption` field.
-2. The `syncPhotos` function inserts gallery records without a caption (line 92-98 of `sync-manager.ts`).
+### Plan
 
-### Solution
-Thread the `caption` through the entire offline photo pipeline so that both online and offline uploads produce correctly labeled gallery entries.
+**1. Convert inline panel to a Sheet (slide-over dialog)**
 
-### Changes
+File: `src/pages/SuperAdminDashboard.tsx`
+- Replace the inline `{selectedOrgForReports && <OrganizationReportsPanel ... />}` block with a `<Sheet>` component
+- The Sheet opens from the right, overlaying the organization table without displacing it
+- Sheet header shows organization name; close button dismisses it
 
-**1. `src/lib/offline-storage.ts` — Add `caption` to `savePhotoOffline` interface**
-Add an optional `caption?: string` field to the photo parameter. Store it in IndexedDB alongside other metadata.
+**2. Enhance `OrganizationReportsPanel` for modal context**
 
-**2. `src/components/inspection/ItemPhotoUpload.tsx` — Pass `caption` when saving offline**
-Add `caption: itemName || 'Item photo'` to the `savePhotoOffline()` call (around line 170).
-
-**3. `src/lib/sync-manager.ts` — Use stored caption during gallery insert**
-In `syncPhotos()`, include `caption: photo.caption || photo.section` in the database insert (line 94-98).
+File: `src/components/admin/OrganizationReportsPanel.tsx`
+- Remove the back button (Sheet handles dismissal)
+- Add a search/filter input at the top to filter reports by name, date, or status across all three sections
+- Add sort toggle (newest/oldest) for each collapsible section
+- Keep the existing collapsible sections (Inspections, Trainings, Daily Assessments) with their tables
 
 ### Files
 | File | Change |
 |------|--------|
-| `src/lib/offline-storage.ts` | Add `caption` to `savePhotoOffline` parameter type |
-| `src/components/inspection/ItemPhotoUpload.tsx` | Pass `caption` in `savePhotoOffline` call |
-| `src/lib/sync-manager.ts` | Include `caption` in gallery insert during offline sync |
+| `src/pages/SuperAdminDashboard.tsx` | Wrap `OrganizationReportsPanel` in a `Sheet` component instead of rendering inline |
+| `src/components/admin/OrganizationReportsPanel.tsx` | Remove back button, add search filter input and sort controls |
 
