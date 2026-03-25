@@ -196,17 +196,31 @@ export default function NewInspection() {
       const { data: sessionData } = await supabase.auth.getSession();
       const token = sessionData?.session?.access_token;
 
-      const res = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/parse-inspection-docx`,
-        {
-          method: "POST",
-          headers: {
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-            apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
-          },
-          body: formPayload,
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 120_000);
+
+      let res: Response;
+      try {
+        res = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/parse-inspection-docx`,
+          {
+            method: "POST",
+            signal: controller.signal,
+            headers: {
+              ...(token ? { Authorization: `Bearer ${token}` } : {}),
+              apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+            },
+            body: formPayload,
+          }
+        );
+      } catch (fetchErr: any) {
+        clearTimeout(timeoutId);
+        if (fetchErr.name === "AbortError") {
+          throw new Error("Import took too long — try a smaller file or different format.");
         }
-      );
+        throw fetchErr;
+      }
+      clearTimeout(timeoutId);
 
       if (!res.ok) {
         const errBody = await res.json().catch(() => ({ error: "Unknown error" }));

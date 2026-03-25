@@ -312,12 +312,13 @@ serve(async (req) => {
     // Call AI to extract structured data
     const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
+      signal: AbortSignal.timeout(90_000),
       headers: {
         Authorization: `Bearer ${LOVABLE_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-pro",
+        model: "google/gemini-2.5-flash",
         messages: [
           {
             role: "system",
@@ -471,6 +472,12 @@ CRITICAL RULES:
     });
   } catch (error) {
     console.error("[parse-inspection-docx] Error:", error);
+    if (error instanceof DOMException && error.name === "TimeoutError") {
+      return new Response(JSON.stringify({ error: "AI extraction timed out. Please try a smaller file or different format." }), {
+        status: 504,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
     const message = error instanceof Error ? error.message : "Unknown error";
     return new Response(JSON.stringify({ error: message }), {
       status: 500,
