@@ -82,9 +82,11 @@ export const RichTextEditor = ({
     return null;
   }
 
+  const isInline = className?.includes('bg-transparent');
+
   return (
-    <div className={cn('border rounded-md bg-background', className)}>
-      <div className="flex items-center gap-1 p-2 border-b bg-muted/50">
+    <div className={cn('border bg-background', !isInline && 'rounded-md', className)}>
+      <div className={cn("flex items-center gap-1 p-2", !isInline && "border-b bg-muted/50")}>
         <button
           type="button"
           onClick={() => editor.chain().focus().toggleBold().run()}
