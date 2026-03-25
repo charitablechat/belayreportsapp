@@ -22,6 +22,7 @@ import { DeletedRecordsRecovery } from "@/components/admin/DeletedRecordsRecover
 import { ReportOwnershipTool } from "@/components/admin/ReportOwnershipTool";
 import { DatabaseBackupsPanel } from "@/components/admin/DatabaseBackupsPanel";
 import { OrganizationReportsPanel } from "@/components/admin/OrganizationReportsPanel";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { toast } from "sonner";
 import { parseLocalDate } from "@/lib/date-utils";
 import { getSessionBackground } from "@/lib/background-manager";
