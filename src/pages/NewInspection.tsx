@@ -287,7 +287,7 @@ export default function NewInspection() {
 
   /** Bulk-insert child rows after inspection is created */
   const insertChildData = async (inspectionId: string) => {
-    const promises: Promise<any>[] = [];
+    const promises: PromiseLike<any>[] = [];
 
     if (childData.systems.length > 0) {
       const rows = childData.systems.map((s, i) => ({
