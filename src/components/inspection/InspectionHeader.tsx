@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -9,10 +10,13 @@ import { PreviousInspectionDatePicker } from "@/components/PreviousInspectionDat
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
-import { CalendarIcon } from "lucide-react";
+import { CalendarIcon, MapPin, Loader2, X } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { parseLocalDate } from "@/lib/date-utils";
+import { getCurrentLocationWithAddress, getGeolocationErrorMessage } from "@/lib/geolocation";
+import { triggerHaptic } from "@/lib/haptics";
+import { toast } from "@/components/ui/sonner";
 
 interface InspectionHeaderProps {
   inspection: any;
