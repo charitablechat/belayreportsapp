@@ -255,6 +255,13 @@ export function DatabaseAutocomplete({
   const handleTriggerFocus = () => {
     setIsEditing(true);
     setSearchValue(value);
+    requestAnimationFrame(() => {
+      const input = triggerInputRef.current;
+      if (input) {
+        const len = input.value.length;
+        input.setSelectionRange(len, len);
+      }
+    });
     if (!open) setOpen(true);
   };
 
