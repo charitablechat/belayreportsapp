@@ -135,7 +135,7 @@ serve(async (req) => {
                 type: "object",
                 properties: {
                   equipment_type: { type: "string" },
-                  equipment_category: { type: "string" },
+                  equipment_category: { type: "string", description: "Category slug: harnesses, helmets, lanyards, connectors, rope, belay, trolleys, or other" },
                   result: { type: "string" },
                   comments: { type: "string" },
                   production_year: { type: "string" },
