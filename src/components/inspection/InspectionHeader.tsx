@@ -137,7 +137,51 @@ export default function InspectionHeader({ inspection, userProfile, modifiedByPr
                 />
               </div>
               <div className="space-y-1.5 p-3 rounded-lg bg-muted/30 border border-border/50">
-                {renderField("Location", "location", inspection?.location)}
+                <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1 block">Location</Label>
+                <div className="flex gap-2">
+                  <div className="flex-1">
+                    <VoiceInput
+                      value={inspection?.location || ""}
+                      onChange={(e) => onUpdate("location", e.target.value)}
+                      onBlur={onImmediateSave}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') onImmediateSave?.();
+                      }}
+                      placeholder="Enter location..."
+                      disabled={isReadOnly}
+                    />
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    onClick={handleLocationCapture}
+                    disabled={isReadOnly || locationLoading}
+                    title="Get current location"
+                    className="shrink-0"
+                  >
+                    {locationLoading ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <MapPin className="h-4 w-4" />
+                    )}
+                  </Button>
+                  {inspection?.location && !isReadOnly && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => {
+                        onUpdate("location", "");
+                        onImmediateSave?.();
+                      }}
+                      title="Clear location"
+                      className="shrink-0"
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
               </div>
               <div className="space-y-1.5 p-3 rounded-lg bg-muted/30 border border-border/50">
                 <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1 block">Previous Inspector</Label>
