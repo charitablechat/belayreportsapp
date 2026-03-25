@@ -1,41 +1,28 @@
 
 
-## Investigation Results: Equipment Import is Working Correctly
+## Add Letters Inside Refresh & Sync Icons
 
-### Finding
+### Changes
 
-After thorough investigation, the equipment import is **not broken** — it is functioning correctly. The database confirms:
-
-- The 3 most recent imports ("Northern Navajo Medical Center") all have **18 equipment items** successfully inserted
-- Equipment data includes correct `equipment_type`, `equipment_category`, `result` values, and comments
-- The edge function logs confirm extraction of "18 equipment (64 comment chars)" 
-- The `insertChildData` function properly inserts equipment with error handling
-
-### Evidence
-
-```text
-Recent imports in database:
-  5ccb9064 → 18 equipment, 20 systems ✓ (08:12 today)
-  9340cc29 → 18 equipment, 20 systems ✓ (08:05 today)
-  92fde1b6 → 18 equipment, 20 systems ✓ (08:01 today)
-
-Sample equipment row:
-  type: "AL Auto lock", category: "Hardware", result: "Pass"
+**File: `src/pages/Dashboard.tsx` (~line 1090)**
+Replace the plain `RefreshCw` icon in the Refresh button with a `relative` wrapper containing the icon and an absolutely-positioned "R" letter centered inside:
+```tsx
+<span className="relative inline-flex items-center justify-center">
+  <RefreshCw className={cn("h-4 w-4", refreshInFlightRef.current && "animate-spin")} />
+  <span className="absolute text-[7px] font-bold leading-none">R</span>
+</span>
 ```
 
-### Reports with 0 Equipment
+**File: `src/components/pwa/ForceSyncButton.tsx`**
+Apply the same pattern to all three variants (icon, menu-item, default), placing an "S" centered inside each `RefreshCw` icon:
+- **Icon variant** (~line 91): Wrap in relative span, add "S" at `text-[8px]` (slightly larger since icon is `h-5 w-5`)
+- **Menu-item variant** (~line 115): Same pattern with `text-[7px]`
+- **Default variant** (~line 139): Same pattern with `text-[7px]`
 
-Reports like "Steve And Kates Camp" (0 equipment, 6 systems) and "Gorham Scout Ranch" (0 equipment, 26 systems) were either:
-1. Created **before** the recent error-handling fix was deployed
-2. Imported from documents that genuinely contained no equipment section
-3. Created manually without import
+### Files
 
-### Recommendation
-
-No code changes are needed. If you're seeing missing equipment on a specific report:
-1. **Check which report** — it may be one created before the fix
-2. **Re-import the file** into a new inspection to get the corrected behavior
-3. If you can share which specific report is missing equipment, I can verify whether its source document contained equipment data
-
-If you want, I can add **additional diagnostic logging** on the client side to show exactly how many equipment items were received from the AI and how many were successfully inserted, making future debugging easier.
+| File | Change |
+|------|--------|
+| `src/pages/Dashboard.tsx` | Wrap Refresh icon with centered "R" letter |
+| `src/components/pwa/ForceSyncButton.tsx` | Wrap all 3 Sync icons with centered "S" letter |
 
