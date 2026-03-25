@@ -321,7 +321,16 @@ serve(async (req) => {
         messages: [
           {
             role: "system",
-            content: `You are an expert at parsing adventure park / ropes course inspection reports. Extract structured data from the report text provided. Be thorough — capture every system, piece of equipment, zipline, and standard mentioned. For results, use the original values from the report (e.g. "Pass", "Fail", "Acceptable", "Needs Repair", etc.). If a field is not found, use null.`,
+            content: `You are an expert at parsing adventure park / ropes course inspection reports. Extract structured data from the report text provided.
+
+CRITICAL RULES:
+1. Extract ONLY items that are EXPLICITLY listed in the document text. Do NOT invent, infer, or fabricate any items that are not present in the source.
+2. Preserve all comments, notes, and descriptions EXACTLY as written in the source document — do not paraphrase, summarize, or reword them.
+3. Each element's name, type, and category must match the source document VERBATIM. Do not rename or normalize them.
+4. If a section (systems, equipment, ziplines, standards) has no items in the document, return an empty array for that section.
+5. For results, use the EXACT original values from the report (e.g. "Pass", "Fail", "Acceptable", "Needs Repair", "N/A", etc.). Do not standardize or change result values.
+6. If a field value is not found in the document, use null — do not guess or fill in default values.
+7. Include ALL items from every section — do not skip any element that appears in the document.`,
           },
           {
             role: "user",
