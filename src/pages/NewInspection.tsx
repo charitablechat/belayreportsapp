@@ -299,7 +299,7 @@ export default function NewInspection() {
         display_order: i,
         is_divider: false,
       }));
-      promises.push(supabase.from("inspection_systems").insert(rows));
+      promises.push(supabase.from("inspection_systems").insert(rows).then());
     }
 
     if (childData.equipment.length > 0) {
