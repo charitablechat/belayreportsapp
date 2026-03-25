@@ -320,7 +320,7 @@ export default function NewInspection() {
         inspection_id: inspectionId,
         name: s.name || null,
         system_name: s.system_name || null,
-        result: "Not Inspected",
+        result: s.result || "Not Inspected",
         comments: s.comments || null,
         display_order: i,
         is_divider: false,
@@ -333,7 +333,7 @@ export default function NewInspection() {
         inspection_id: inspectionId,
         equipment_type: e.equipment_type,
         equipment_category: e.equipment_category,
-        result: "Not Inspected",
+        result: e.result || "Not Inspected",
         comments: e.comments || null,
         
         production_year: e.production_year || null,
@@ -353,7 +353,7 @@ export default function NewInspection() {
         ead_system: z.ead_system || null,
         load_tension: z.load_tension || null,
         unload_tension: z.unload_tension || null,
-        result: "Not Inspected",
+        result: z.result || "Not Inspected",
         comments: z.comments || null,
         display_order: i,
       }));
@@ -720,7 +720,7 @@ export default function NewInspection() {
                     ]
                       .filter(Boolean)
                       .join(", ")}
-                    . All results will default to "Not Inspected".
+                    . Original results will be preserved where available.
                   </AlertDescription>
                 </Alert>
               )}

@@ -1,4 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import mammoth from "npm:mammoth@1.8.0";
+import WordExtractor from "npm:word-extractor@1.0.4";
+import pdfParse from "npm:pdf-parse@1.1.1";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -6,237 +9,22 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-/** Rough text extraction from a .docx (ZIP of XML). */
-async function extractTextFromDocx(buffer: ArrayBuffer): Promise<string> {
-  // docx is a ZIP; we look for word/document.xml
-  const uint8 = new Uint8Array(buffer);
-
-  // Find PK signature pairs for local file headers
-  const files: { name: string; data: Uint8Array }[] = [];
-
-  // Minimal ZIP parsing — find central directory entries
-  // We'll use a simpler approach: search for "word/document.xml" inside the zip
-  // and extract the XML content between the file data markers.
-
-  // Use DecompressionStream if available (Deno supports it)
-  const zipEntries = await parseZipEntries(uint8);
-
-  let fullText = "";
-
-  // Process main document and any headers/footers
-  const xmlFiles = ["word/document.xml", "word/header1.xml", "word/header2.xml", "word/footer1.xml", "word/footer2.xml"];
-
-  for (const xmlFile of xmlFiles) {
-    const entry = zipEntries.find((e) => e.name === xmlFile);
-    if (entry) {
-      const xml = new TextDecoder().decode(entry.data);
-      // Extract text from XML by removing tags and keeping text content
-      const text = extractTextFromXml(xml);
-      if (text.trim()) {
-        fullText += text + "\n\n";
-      }
-    }
-  }
-
-  return fullText.trim();
-}
-
-/** Minimal ZIP parser for deflate-compressed entries */
-async function parseZipEntries(data: Uint8Array): Promise<{ name: string; data: Uint8Array }[]> {
-  const entries: { name: string; data: Uint8Array }[] = [];
-  let offset = 0;
-
-  while (offset < data.length - 4) {
-    const sig =
-      data[offset] | (data[offset + 1] << 8) | (data[offset + 2] << 16) | (data[offset + 3] << 24);
-
-    if (sig !== 0x04034b50) break; // Not a local file header
-
-    const compressionMethod = data[offset + 8] | (data[offset + 9] << 8);
-    const compressedSize =
-      data[offset + 18] |
-      (data[offset + 19] << 8) |
-      (data[offset + 20] << 16) |
-      (data[offset + 21] << 24);
-    const uncompressedSize =
-      data[offset + 22] |
-      (data[offset + 23] << 8) |
-      (data[offset + 24] << 16) |
-      (data[offset + 25] << 24);
-    const nameLen = data[offset + 26] | (data[offset + 27] << 8);
-    const extraLen = data[offset + 28] | (data[offset + 29] << 8);
-
-    const name = new TextDecoder().decode(data.slice(offset + 30, offset + 30 + nameLen));
-    const dataStart = offset + 30 + nameLen + extraLen;
-
-    const rawData = data.slice(dataStart, dataStart + compressedSize);
-
-    if (name.endsWith(".xml") || name.endsWith(".rels")) {
-      try {
-        let decompressed: Uint8Array;
-        if (compressionMethod === 8) {
-          // Deflate
-          const ds = new DecompressionStream("deflate-raw");
-          const writer = ds.writable.getWriter();
-          const reader = ds.readable.getReader();
-
-          writer.write(rawData);
-          writer.close();
-
-          const chunks: Uint8Array[] = [];
-          let totalLen = 0;
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            chunks.push(value);
-            totalLen += value.length;
-          }
-          decompressed = new Uint8Array(totalLen);
-          let pos = 0;
-          for (const chunk of chunks) {
-            decompressed.set(chunk, pos);
-            pos += chunk.length;
-          }
-        } else {
-          // Stored (no compression)
-          decompressed = rawData;
-        }
-        entries.push({ name, data: decompressed });
-      } catch {
-        // Skip entries that fail to decompress
-      }
-    }
-
-    offset = dataStart + compressedSize;
-  }
-
-  return entries;
-}
-
-/** Extract readable text from OOXML content */
-function extractTextFromXml(xml: string): string {
-  // Replace paragraph breaks with newlines
-  let text = xml.replace(/<\/w:p[^>]*>/gi, "\n");
-  // Replace table cell/row boundaries
-  text = text.replace(/<\/w:tc>/gi, "\t");
-  text = text.replace(/<\/w:tr>/gi, "\n");
-  // Remove all remaining XML tags
-  text = text.replace(/<[^>]+>/g, "");
-  // Decode common XML entities
-  text = text
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'")
-    .replace(/&#x2019;/g, "'")
-    .replace(/&#x201C;/g, '"')
-    .replace(/&#x201D;/g, '"');
-  // Collapse multiple blank lines
-  text = text.replace(/\n{3,}/g, "\n\n");
-  return text.trim();
-}
-
-/** Extract text from legacy .doc (OLE2 binary) — scans for readable text sequences */
-function extractTextFromDoc(buffer: ArrayBuffer): string {
-  const bytes = new Uint8Array(buffer);
-  const textParts: string[] = [];
-
-  // Try UTF-16LE extraction (common in .doc files)
-  let i = 0;
-  let currentRun = "";
-  while (i < bytes.length - 1) {
-    const lo = bytes[i];
-    const hi = bytes[i + 1];
-    // Printable ASCII as UTF-16LE (hi byte = 0, lo byte is printable)
-    if (hi === 0 && lo >= 0x20 && lo <= 0x7E) {
-      currentRun += String.fromCharCode(lo);
-    } else if (hi === 0 && (lo === 0x0D || lo === 0x0A || lo === 0x09)) {
-      currentRun += lo === 0x09 ? "\t" : "\n";
-    } else {
-      if (currentRun.length >= 8) {
-        textParts.push(currentRun.trim());
-      }
-      currentRun = "";
-    }
-    i += 2;
-  }
-  if (currentRun.length >= 8) {
-    textParts.push(currentRun.trim());
-  }
-
-  if (textParts.length > 0) {
-    return textParts.join("\n").replace(/\n{3,}/g, "\n\n").trim();
-  }
-
-  // Fallback: grab printable ASCII sequences
-  const raw = new TextDecoder("latin1").decode(bytes);
-  const printable = raw.replace(/[^\x20-\x7E\n\r\t]/g, " ").replace(/\s{3,}/g, "\n");
-  return printable.slice(0, 15000).trim();
-}
-
 /** Strip Markdown syntax and return clean text */
 function extractTextFromMarkdown(buffer: ArrayBuffer): string {
   let text = new TextDecoder().decode(buffer);
-  // Remove images
   text = text.replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1");
-  // Convert links to just text
   text = text.replace(/\[([^\]]*)\]\([^)]*\)/g, "$1");
-  // Remove headers markup
   text = text.replace(/^#{1,6}\s+/gm, "");
-  // Remove bold/italic
   text = text.replace(/\*{1,3}([^*]+)\*{1,3}/g, "$1");
   text = text.replace(/_{1,3}([^_]+)_{1,3}/g, "$1");
-  // Remove strikethrough
   text = text.replace(/~~([^~]+)~~/g, "$1");
-  // Remove inline code
   text = text.replace(/`([^`]+)`/g, "$1");
-  // Remove code blocks
   text = text.replace(/```[\s\S]*?```/g, "");
-  // Remove blockquotes
   text = text.replace(/^>\s*/gm, "");
-  // Remove horizontal rules
   text = text.replace(/^[-*_]{3,}\s*$/gm, "");
-  // Remove HTML tags
   text = text.replace(/<[^>]+>/g, "");
-  // Collapse whitespace
   text = text.replace(/\n{3,}/g, "\n\n");
   return text.trim();
-}
-
-/** Simple text extraction from PDF — grabs text between stream markers */
-function extractTextFromPdf(buffer: ArrayBuffer): string {
-  const bytes = new Uint8Array(buffer);
-  const raw = new TextDecoder("latin1").decode(bytes);
-
-  // Try to extract text objects: BT ... ET blocks with Tj/TJ operators
-  const textParts: string[] = [];
-  const btBlocks = raw.matchAll(/BT\s([\s\S]*?)ET/g);
-  for (const match of btBlocks) {
-    const block = match[1];
-    // Extract parenthesized strings from Tj operators
-    const tjMatches = block.matchAll(/\(([^)]*)\)\s*Tj/g);
-    for (const tj of tjMatches) {
-      textParts.push(tj[1]);
-    }
-    // Extract from TJ arrays
-    const tjArrayMatches = block.matchAll(/\[(.*?)\]\s*TJ/g);
-    for (const tja of tjArrayMatches) {
-      const innerMatches = tja[1].matchAll(/\(([^)]*)\)/g);
-      for (const inner of innerMatches) {
-        textParts.push(inner[1]);
-      }
-    }
-  }
-
-  if (textParts.length > 0) {
-    return textParts.join(" ").replace(/\s+/g, " ").trim();
-  }
-
-  // Fallback: just grab printable ASCII sequences (lossy but better than nothing)
-  const printable = raw.replace(/[^\x20-\x7E\n\r\t]/g, " ").replace(/\s{3,}/g, "\n");
-  // Take first ~10000 chars
-  return printable.slice(0, 10000).trim();
 }
 
 serve(async (req) => {
@@ -266,21 +54,23 @@ serve(async (req) => {
       fileName = file.name;
       fileBuffer = await file.arrayBuffer();
     } else {
-      // Accept raw binary with filename in header
       fileName = req.headers.get("x-file-name") || "document";
       fileBuffer = await req.arrayBuffer();
     }
 
-    // Determine file type
     const ext = fileName.toLowerCase().split(".").pop();
     let extractedText = "";
 
     if (ext === "docx") {
-      extractedText = await extractTextFromDocx(fileBuffer);
-  } else if (ext === "doc") {
-      extractedText = extractTextFromDoc(fileBuffer);
+      const result = await mammoth.extractRawText({ buffer: Buffer.from(fileBuffer) });
+      extractedText = result.value;
+    } else if (ext === "doc") {
+      const extractor = new WordExtractor();
+      const doc = await extractor.extract(Buffer.from(fileBuffer));
+      extractedText = doc.getBody();
     } else if (ext === "pdf") {
-      extractedText = extractTextFromPdf(fileBuffer);
+      const data = await pdfParse(Buffer.from(fileBuffer));
+      extractedText = data.text;
     } else if (ext === "md" || ext === "markdown") {
       extractedText = extractTextFromMarkdown(fileBuffer);
     } else {
