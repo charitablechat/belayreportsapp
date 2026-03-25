@@ -127,7 +127,7 @@ function ZiplinesTable({ ziplines, onUpdate, onImmediateSave, inspectionId, onGa
               <div className="p-2 text-left font-semibold border-r border-border">EAD Sys</div>
               <div className="p-2 text-left font-semibold border-r border-border">EAD Result</div>
               <div className="p-2 text-left font-semibold border-r border-border">Overall</div>
-              <div className="p-2 text-left font-semibold border-r border-border">Comments</div>
+              <div className="p-2 text-left font-semibold border-r border-border break-words">Comments</div>
               <div className="p-2 text-center font-semibold"></div>
             </div>
             {/* Rows */}

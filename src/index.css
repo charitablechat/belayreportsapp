@@ -700,6 +700,12 @@ input[type="number"] {
   animation: import-flash 8500ms ease-out forwards;
 }
 
+/* Grid header text wrapping safety net */
+.grid > [class*="font-semibold"] {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 /* Active Timer — terminal blink for cursor and REC dot */
 @keyframes terminal-blink {
   0%, 50% { opacity: 1; }
