@@ -33,7 +33,7 @@ interface ExtractedEquipment {
   equipment_category: string;
   result?: string;
   comments?: string;
-  quantity?: string;
+  
   production_year?: string;
   rope_type?: string;
 }
@@ -316,7 +316,7 @@ export default function NewInspection() {
         equipment_category: e.equipment_category,
         result: "Not Inspected",
         comments: e.comments || null,
-        quantity: e.quantity || null,
+        
         production_year: e.production_year || null,
         rope_type: e.rope_type || null,
         display_order: i,
