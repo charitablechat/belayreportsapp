@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -9,10 +10,13 @@ import { PreviousInspectionDatePicker } from "@/components/PreviousInspectionDat
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
-import { CalendarIcon } from "lucide-react";
+import { CalendarIcon, MapPin, Loader2, X } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { parseLocalDate } from "@/lib/date-utils";
+import { getCurrentLocationWithAddress, getGeolocationErrorMessage } from "@/lib/geolocation";
+import { triggerHaptic } from "@/lib/haptics";
+import { toast } from "@/components/ui/sonner";
 
 interface InspectionHeaderProps {
   inspection: any;
@@ -24,6 +28,28 @@ interface InspectionHeaderProps {
 }
 
 export default function InspectionHeader({ inspection, userProfile, modifiedByProfile, onUpdate, onImmediateSave, isReadOnly = false }: InspectionHeaderProps) {
+  const [locationLoading, setLocationLoading] = useState(false);
+
+  const handleLocationCapture = async () => {
+    setLocationLoading(true);
+    try {
+      triggerHaptic('light');
+      const position = await getCurrentLocationWithAddress();
+      onUpdate("location", position.address);
+      onImmediateSave?.();
+      toast.success("Location updated");
+      triggerHaptic('success');
+    } catch (error: any) {
+      const message = error?.code !== undefined
+        ? getGeolocationErrorMessage(error as GeolocationPositionError)
+        : error?.message || "Failed to get location";
+      toast.error(message);
+      triggerHaptic('error');
+    } finally {
+      setLocationLoading(false);
+    }
+  };
+
   const inspectorName = [userProfile?.first_name, userProfile?.last_name]
     .filter(Boolean)
     .join(' ')
@@ -111,7 +137,51 @@ export default function InspectionHeader({ inspection, userProfile, modifiedByPr
                 />
               </div>
               <div className="space-y-1.5 p-3 rounded-lg bg-muted/30 border border-border/50">
-                {renderField("Location", "location", inspection?.location)}
+                <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1 block">Location</Label>
+                <div className="flex gap-2">
+                  <div className="flex-1">
+                    <VoiceInput
+                      value={inspection?.location || ""}
+                      onChange={(e) => onUpdate("location", e.target.value)}
+                      onBlur={onImmediateSave}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') onImmediateSave?.();
+                      }}
+                      placeholder="Enter location..."
+                      disabled={isReadOnly}
+                    />
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    onClick={handleLocationCapture}
+                    disabled={isReadOnly || locationLoading}
+                    title="Get current location"
+                    className="shrink-0"
+                  >
+                    {locationLoading ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <MapPin className="h-4 w-4" />
+                    )}
+                  </Button>
+                  {inspection?.location && !isReadOnly && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => {
+                        onUpdate("location", "");
+                        onImmediateSave?.();
+                      }}
+                      title="Clear location"
+                      className="shrink-0"
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
               </div>
               <div className="space-y-1.5 p-3 rounded-lg bg-muted/30 border border-border/50">
                 <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1 block">Previous Inspector</Label>
