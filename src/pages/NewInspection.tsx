@@ -176,8 +176,8 @@ export default function NewInspection() {
   // --- Import from previous report ---
   const handleFileImport = useCallback(async (file: File) => {
     const ext = file.name.toLowerCase().split(".").pop();
-    if (ext !== "docx" && ext !== "pdf") {
-      toast.error("Unsupported file", { description: "Please upload a .docx or .pdf file." });
+    if (ext !== "docx" && ext !== "doc" && ext !== "pdf" && ext !== "md" && ext !== "markdown") {
+      toast.error("Unsupported file", { description: "Please upload a .docx, .doc, .pdf, or .md file." });
       return;
     }
 
