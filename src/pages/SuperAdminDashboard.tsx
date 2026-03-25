@@ -48,6 +48,8 @@ export default function SuperAdminDashboard() {
   const [isUsersListOpen, setIsUsersListOpen] = useState(false);
   const [isOrgsListOpen, setIsOrgsListOpen] = useState(false);
   const [isInspectionsListOpen, setIsInspectionsListOpen] = useState(false);
+  const [isTrainingsListOpen, setIsTrainingsListOpen] = useState(false);
+  const [isDailyListOpen, setIsDailyListOpen] = useState(false);
   const [isCleaningUp, setIsCleaningUp] = useState(false);
   const [resetMetricDialogOpen, setResetMetricDialogOpen] = useState(false);
   
@@ -63,6 +65,8 @@ export default function SuperAdminDashboard() {
   const [usersPage, setUsersPage] = useState(1);
   const [orgsPage, setOrgsPage] = useState(1);
   const [inspectionsPage, setInspectionsPage] = useState(1);
+  const [trainingsPage, setTrainingsPage] = useState(1);
+  const [dailyPage, setDailyPage] = useState(1);
   const ITEMS_PER_PAGE = 10;
 
   // Managed users query
