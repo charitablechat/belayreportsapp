@@ -1,0 +1,398 @@
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
+};
+
+/** Rough text extraction from a .docx (ZIP of XML). */
+async function extractTextFromDocx(buffer: ArrayBuffer): Promise<string> {
+  // docx is a ZIP; we look for word/document.xml
+  const uint8 = new Uint8Array(buffer);
+
+  // Find PK signature pairs for local file headers
+  const files: { name: string; data: Uint8Array }[] = [];
+
+  // Minimal ZIP parsing — find central directory entries
+  // We'll use a simpler approach: search for "word/document.xml" inside the zip
+  // and extract the XML content between the file data markers.
+
+  // Use DecompressionStream if available (Deno supports it)
+  const zipEntries = await parseZipEntries(uint8);
+
+  let fullText = "";
+
+  // Process main document and any headers/footers
+  const xmlFiles = ["word/document.xml", "word/header1.xml", "word/header2.xml", "word/footer1.xml", "word/footer2.xml"];
+
+  for (const xmlFile of xmlFiles) {
+    const entry = zipEntries.find((e) => e.name === xmlFile);
+    if (entry) {
+      const xml = new TextDecoder().decode(entry.data);
+      // Extract text from XML by removing tags and keeping text content
+      const text = extractTextFromXml(xml);
+      if (text.trim()) {
+        fullText += text + "\n\n";
+      }
+    }
+  }
+
+  return fullText.trim();
+}
+
+/** Minimal ZIP parser for deflate-compressed entries */
+async function parseZipEntries(data: Uint8Array): Promise<{ name: string; data: Uint8Array }[]> {
+  const entries: { name: string; data: Uint8Array }[] = [];
+  let offset = 0;
+
+  while (offset < data.length - 4) {
+    const sig =
+      data[offset] | (data[offset + 1] << 8) | (data[offset + 2] << 16) | (data[offset + 3] << 24);
+
+    if (sig !== 0x04034b50) break; // Not a local file header
+
+    const compressionMethod = data[offset + 8] | (data[offset + 9] << 8);
+    const compressedSize =
+      data[offset + 18] |
+      (data[offset + 19] << 8) |
+      (data[offset + 20] << 16) |
+      (data[offset + 21] << 24);
+    const uncompressedSize =
+      data[offset + 22] |
+      (data[offset + 23] << 8) |
+      (data[offset + 24] << 16) |
+      (data[offset + 25] << 24);
+    const nameLen = data[offset + 26] | (data[offset + 27] << 8);
+    const extraLen = data[offset + 28] | (data[offset + 29] << 8);
+
+    const name = new TextDecoder().decode(data.slice(offset + 30, offset + 30 + nameLen));
+    const dataStart = offset + 30 + nameLen + extraLen;
+
+    const rawData = data.slice(dataStart, dataStart + compressedSize);
+
+    if (name.endsWith(".xml") || name.endsWith(".rels")) {
+      try {
+        let decompressed: Uint8Array;
+        if (compressionMethod === 8) {
+          // Deflate
+          const ds = new DecompressionStream("deflate-raw");
+          const writer = ds.writable.getWriter();
+          const reader = ds.readable.getReader();
+
+          writer.write(rawData);
+          writer.close();
+
+          const chunks: Uint8Array[] = [];
+          let totalLen = 0;
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            chunks.push(value);
+            totalLen += value.length;
+          }
+          decompressed = new Uint8Array(totalLen);
+          let pos = 0;
+          for (const chunk of chunks) {
+            decompressed.set(chunk, pos);
+            pos += chunk.length;
+          }
+        } else {
+          // Stored (no compression)
+          decompressed = rawData;
+        }
+        entries.push({ name, data: decompressed });
+      } catch {
+        // Skip entries that fail to decompress
+      }
+    }
+
+    offset = dataStart + compressedSize;
+  }
+
+  return entries;
+}
+
+/** Extract readable text from OOXML content */
+function extractTextFromXml(xml: string): string {
+  // Replace paragraph breaks with newlines
+  let text = xml.replace(/<\/w:p[^>]*>/gi, "\n");
+  // Replace table cell/row boundaries
+  text = text.replace(/<\/w:tc>/gi, "\t");
+  text = text.replace(/<\/w:tr>/gi, "\n");
+  // Remove all remaining XML tags
+  text = text.replace(/<[^>]+>/g, "");
+  // Decode common XML entities
+  text = text
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&#x2019;/g, "'")
+    .replace(/&#x201C;/g, '"')
+    .replace(/&#x201D;/g, '"');
+  // Collapse multiple blank lines
+  text = text.replace(/\n{3,}/g, "\n\n");
+  return text.trim();
+}
+
+/** Simple text extraction from PDF — grabs text between stream markers */
+function extractTextFromPdf(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  const raw = new TextDecoder("latin1").decode(bytes);
+
+  // Try to extract text objects: BT ... ET blocks with Tj/TJ operators
+  const textParts: string[] = [];
+  const btBlocks = raw.matchAll(/BT\s([\s\S]*?)ET/g);
+  for (const match of btBlocks) {
+    const block = match[1];
+    // Extract parenthesized strings from Tj operators
+    const tjMatches = block.matchAll(/\(([^)]*)\)\s*Tj/g);
+    for (const tj of tjMatches) {
+      textParts.push(tj[1]);
+    }
+    // Extract from TJ arrays
+    const tjArrayMatches = block.matchAll(/\[(.*?)\]\s*TJ/g);
+    for (const tja of tjArrayMatches) {
+      const innerMatches = tja[1].matchAll(/\(([^)]*)\)/g);
+      for (const inner of innerMatches) {
+        textParts.push(inner[1]);
+      }
+    }
+  }
+
+  if (textParts.length > 0) {
+    return textParts.join(" ").replace(/\s+/g, " ").trim();
+  }
+
+  // Fallback: just grab printable ASCII sequences (lossy but better than nothing)
+  const printable = raw.replace(/[^\x20-\x7E\n\r\t]/g, " ").replace(/\s{3,}/g, "\n");
+  // Take first ~10000 chars
+  return printable.slice(0, 10000).trim();
+}
+
+serve(async (req) => {
+  if (req.method === "OPTIONS") {
+    return new Response(null, { headers: corsHeaders });
+  }
+
+  try {
+    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    if (!LOVABLE_API_KEY) {
+      throw new Error("LOVABLE_API_KEY is not configured");
+    }
+
+    const contentType = req.headers.get("content-type") || "";
+    let fileBuffer: ArrayBuffer;
+    let fileName = "document";
+
+    if (contentType.includes("multipart/form-data")) {
+      const formData = await req.formData();
+      const file = formData.get("file") as File | null;
+      if (!file) {
+        return new Response(JSON.stringify({ error: "No file provided" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      fileName = file.name;
+      fileBuffer = await file.arrayBuffer();
+    } else {
+      // Accept raw binary with filename in header
+      fileName = req.headers.get("x-file-name") || "document";
+      fileBuffer = await req.arrayBuffer();
+    }
+
+    // Determine file type
+    const ext = fileName.toLowerCase().split(".").pop();
+    let extractedText = "";
+
+    if (ext === "docx") {
+      extractedText = await extractTextFromDocx(fileBuffer);
+    } else if (ext === "pdf") {
+      extractedText = extractTextFromPdf(fileBuffer);
+    } else {
+      return new Response(
+        JSON.stringify({ error: "Unsupported file type. Please upload a .docx or .pdf file." }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (!extractedText || extractedText.length < 50) {
+      return new Response(
+        JSON.stringify({
+          error: "Could not extract enough text from the document. The file may be image-based or corrupted.",
+        }),
+        { status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Truncate to avoid exceeding token limits
+    const maxChars = 30000;
+    const truncatedText = extractedText.length > maxChars
+      ? extractedText.slice(0, maxChars) + "\n\n[...truncated...]"
+      : extractedText;
+
+    console.log(`[parse-inspection-docx] Extracted ${extractedText.length} chars from ${fileName}`);
+
+    // Call AI to extract structured data
+    const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-3-flash-preview",
+        messages: [
+          {
+            role: "system",
+            content: `You are an expert at parsing adventure park / ropes course inspection reports. Extract structured data from the report text provided. Be thorough — capture every system, piece of equipment, zipline, and standard mentioned. For results, use the original values from the report (e.g. "Pass", "Fail", "Acceptable", "Needs Repair", etc.). If a field is not found, use null.`,
+          },
+          {
+            role: "user",
+            content: `Extract all structured data from this inspection report:\n\n${truncatedText}`,
+          },
+        ],
+        tools: [
+          {
+            type: "function",
+            function: {
+              name: "extract_inspection_data",
+              description: "Extract structured inspection report data",
+              parameters: {
+                type: "object",
+                properties: {
+                  organization: { type: "string", description: "Organization/facility name" },
+                  location: { type: "string", description: "Location/address" },
+                  onsite_contact: { type: "string", description: "Onsite contact person" },
+                  previous_inspector: { type: "string", description: "Inspector who performed the inspection" },
+                  previous_inspection_date: { type: "string", description: "Date of inspection in YYYY-MM-DD format" },
+                  course_history: { type: "string", description: "Known course history or notes" },
+                  systems: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: {
+                        name: { type: "string" },
+                        system_name: { type: "string", description: "Category or type of system" },
+                        result: { type: "string" },
+                        comments: { type: "string" },
+                      },
+                      required: ["name"],
+                    },
+                    description: "Operating systems / elements inspected",
+                  },
+                  equipment: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: {
+                        equipment_type: { type: "string" },
+                        equipment_category: { type: "string" },
+                        result: { type: "string" },
+                        comments: { type: "string" },
+                        quantity: { type: "string" },
+                        production_year: { type: "string" },
+                        rope_type: { type: "string" },
+                      },
+                      required: ["equipment_type", "equipment_category"],
+                    },
+                    description: "Equipment items (PPE, hardware, ropes, etc.)",
+                  },
+                  ziplines: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: {
+                        zipline_name: { type: "string" },
+                        cable_type: { type: "string" },
+                        cable_length: { type: "number" },
+                        braking_system: { type: "string" },
+                        ead_system: { type: "string" },
+                        load_tension: { type: "number" },
+                        unload_tension: { type: "number" },
+                        result: { type: "string" },
+                        comments: { type: "string" },
+                      },
+                      required: ["zipline_name"],
+                    },
+                    description: "Zipline elements",
+                  },
+                  standards: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: {
+                        standard_name: { type: "string" },
+                        has_documentation: { type: "boolean" },
+                        comments: { type: "string" },
+                      },
+                      required: ["standard_name"],
+                    },
+                    description: "Standards / compliance items",
+                  },
+                  summary: {
+                    type: "object",
+                    properties: {
+                      repairs_performed: { type: "string" },
+                      critical_actions: { type: "string" },
+                      future_considerations: { type: "string" },
+                      next_inspection_date: { type: "string" },
+                    },
+                    description: "Inspection summary section",
+                  },
+                },
+                required: ["organization"],
+              },
+            },
+          },
+        ],
+        tool_choice: { type: "function", function: { name: "extract_inspection_data" } },
+      }),
+    });
+
+    if (!aiResponse.ok) {
+      if (aiResponse.status === 429) {
+        return new Response(JSON.stringify({ error: "AI rate limit exceeded. Please try again in a moment." }), {
+          status: 429,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      if (aiResponse.status === 402) {
+        return new Response(JSON.stringify({ error: "AI credits exhausted. Please add funds." }), {
+          status: 402,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const errText = await aiResponse.text();
+      console.error("[parse-inspection-docx] AI error:", aiResponse.status, errText);
+      throw new Error("AI extraction failed");
+    }
+
+    const aiData = await aiResponse.json();
+    const toolCall = aiData.choices?.[0]?.message?.tool_calls?.[0];
+
+    if (!toolCall?.function?.arguments) {
+      throw new Error("AI did not return structured data");
+    }
+
+    const extracted = JSON.parse(toolCall.function.arguments);
+
+    console.log(
+      `[parse-inspection-docx] Extracted: ${extracted.systems?.length || 0} systems, ${extracted.equipment?.length || 0} equipment, ${extracted.ziplines?.length || 0} ziplines, ${extracted.standards?.length || 0} standards`
+    );
+
+    return new Response(JSON.stringify({ success: true, data: extracted }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  } catch (error) {
+    console.error("[parse-inspection-docx] Error:", error);
+    const message = error instanceof Error ? error.message : "Unknown error";
+    return new Response(JSON.stringify({ error: message }), {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+});
