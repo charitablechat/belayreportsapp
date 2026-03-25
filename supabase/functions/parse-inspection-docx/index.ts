@@ -310,19 +310,99 @@ serve(async (req) => {
     console.log(`[parse-inspection-docx] First 500 chars:\n${extractedText.slice(0, 500)}`);
 
     // Call AI to extract structured data
-    const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      signal: AbortSignal.timeout(90_000),
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
+    const toolSchema = {
+      type: "function" as const,
+      function: {
+        name: "extract_inspection_data",
+        description: "Extract structured inspection report data",
+        parameters: {
+          type: "object",
+          properties: {
+            organization: { type: "string", description: "Organization/facility name" },
+            location: { type: "string", description: "Location/address" },
+            onsite_contact: { type: "string", description: "Onsite contact person" },
+            previous_inspector: { type: "string", description: "Inspector who performed the inspection" },
+            previous_inspection_date: { type: "string", description: "Date of inspection in YYYY-MM-DD format" },
+            course_history: { type: "string", description: "Known course history or notes" },
+            systems: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  name: { type: "string" },
+                  system_name: { type: "string", description: "Category or type of system" },
+                  result: { type: "string" },
+                  comments: { type: "string" },
+                },
+                required: ["name"],
+              },
+              description: "Operating systems / elements inspected",
+            },
+            equipment: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  equipment_type: { type: "string" },
+                  equipment_category: { type: "string" },
+                  result: { type: "string" },
+                  comments: { type: "string" },
+                  production_year: { type: "string" },
+                  rope_type: { type: "string" },
+                },
+                required: ["equipment_type", "equipment_category"],
+              },
+              description: "Equipment items (PPE, hardware, ropes, etc.) — do NOT include quantity",
+            },
+            ziplines: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  zipline_name: { type: "string" },
+                  cable_type: { type: "string" },
+                  cable_length: { type: "number" },
+                  braking_system: { type: "string" },
+                  ead_system: { type: "string" },
+                  load_tension: { type: "number" },
+                  unload_tension: { type: "number" },
+                  result: { type: "string" },
+                  comments: { type: "string" },
+                },
+                required: ["zipline_name"],
+              },
+              description: "Zipline elements",
+            },
+            standards: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  standard_name: { type: "string" },
+                  has_documentation: { type: "boolean" },
+                  comments: { type: "string" },
+                },
+                required: ["standard_name"],
+              },
+              description: "Standards / compliance items",
+            },
+            summary: {
+              type: "object",
+              properties: {
+                repairs_performed: { type: "string" },
+                critical_actions: { type: "string" },
+                future_considerations: { type: "string" },
+                next_inspection_date: { type: "string" },
+              },
+              description: "Inspection summary section",
+            },
+          },
+          required: ["organization"],
+        },
       },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [
-          {
-            role: "system",
-            content: `You are an expert at parsing adventure park / ropes course inspection reports. Extract structured data from the report text provided.
+    };
+
+    const systemPrompt = `You are an expert at parsing adventure park / ropes course inspection reports. Extract structured data from the report text provided.
 
 CRITICAL RULES:
 1. Extract ONLY items that are EXPLICITLY listed in the document text. Do NOT invent, infer, or fabricate any items that are not present in the source.
@@ -331,140 +411,114 @@ CRITICAL RULES:
 4. If a section (systems, equipment, ziplines, standards) has no items in the document, return an empty array for that section.
 5. For results, use the EXACT original values from the report (e.g. "Pass", "Fail", "Acceptable", "Needs Repair", "N/A", etc.). Do not standardize or change result values.
 6. If a field value is not found in the document, use null — do not guess or fill in default values.
-7. Include ALL items from every section — do not skip any element that appears in the document.`,
-          },
-          {
-            role: "user",
-            content: `Extract all structured data from this inspection report:\n\n${truncatedText}`,
-          },
-        ],
-        tools: [
-          {
-            type: "function",
-            function: {
-              name: "extract_inspection_data",
-              description: "Extract structured inspection report data",
-              parameters: {
-                type: "object",
-                properties: {
-                  organization: { type: "string", description: "Organization/facility name" },
-                  location: { type: "string", description: "Location/address" },
-                  onsite_contact: { type: "string", description: "Onsite contact person" },
-                  previous_inspector: { type: "string", description: "Inspector who performed the inspection" },
-                  previous_inspection_date: { type: "string", description: "Date of inspection in YYYY-MM-DD format" },
-                  course_history: { type: "string", description: "Known course history or notes" },
-                  systems: {
-                    type: "array",
-                    items: {
-                      type: "object",
-                      properties: {
-                        name: { type: "string" },
-                        system_name: { type: "string", description: "Category or type of system" },
-                        result: { type: "string" },
-                        comments: { type: "string" },
-                      },
-                      required: ["name"],
-                    },
-                    description: "Operating systems / elements inspected",
-                  },
-                  equipment: {
-                    type: "array",
-                    items: {
-                      type: "object",
-                      properties: {
-                        equipment_type: { type: "string" },
-                        equipment_category: { type: "string" },
-                        result: { type: "string" },
-                        comments: { type: "string" },
-                        
-                        production_year: { type: "string" },
-                        rope_type: { type: "string" },
-                      },
-                      required: ["equipment_type", "equipment_category"],
-                    },
-                    description: "Equipment items (PPE, hardware, ropes, etc.)",
-                  },
-                  ziplines: {
-                    type: "array",
-                    items: {
-                      type: "object",
-                      properties: {
-                        zipline_name: { type: "string" },
-                        cable_type: { type: "string" },
-                        cable_length: { type: "number" },
-                        braking_system: { type: "string" },
-                        ead_system: { type: "string" },
-                        load_tension: { type: "number" },
-                        unload_tension: { type: "number" },
-                        result: { type: "string" },
-                        comments: { type: "string" },
-                      },
-                      required: ["zipline_name"],
-                    },
-                    description: "Zipline elements",
-                  },
-                  standards: {
-                    type: "array",
-                    items: {
-                      type: "object",
-                      properties: {
-                        standard_name: { type: "string" },
-                        has_documentation: { type: "boolean" },
-                        comments: { type: "string" },
-                      },
-                      required: ["standard_name"],
-                    },
-                    description: "Standards / compliance items",
-                  },
-                  summary: {
-                    type: "object",
-                    properties: {
-                      repairs_performed: { type: "string" },
-                      critical_actions: { type: "string" },
-                      future_considerations: { type: "string" },
-                      next_inspection_date: { type: "string" },
-                    },
-                    description: "Inspection summary section",
-                  },
-                },
-                required: ["organization"],
-              },
-            },
-          },
-        ],
-        tool_choice: { type: "function", function: { name: "extract_inspection_data" } },
-      }),
-    });
+7. Include ALL items from every section — do not skip any element that appears in the document.
+8. Do NOT include equipment quantity — omit it entirely.
+9. Include the COMPLETE summary section with repairs performed, critical actions, future considerations, and next inspection date — copy all text verbatim.`;
 
-    if (!aiResponse.ok) {
-      if (aiResponse.status === 429) {
-        return new Response(JSON.stringify({ error: "AI rate limit exceeded. Please try again in a moment." }), {
-          status: 429,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+    const userPrompt = `Extract ALL structured data from this inspection report. You MUST include:
+- Every operating system/element with its name, system_name, result, and full comments (verbatim)
+- Every piece of equipment with type, category, result, full comments, production_year, rope_type — do NOT include quantity
+- Every zipline with all measurements (cable_type, cable_length, braking_system, ead_system, load_tension, unload_tension) and full comments
+- Every standard with documentation status and full comments
+- The complete summary section: repairs_performed, critical_actions, future_considerations, next_inspection_date — copy ALL text verbatim, do not summarize
+
+Do not skip ANY item. Do not abbreviate or summarize comments. Include every single row from every table in the document.
+
+Report text:
+
+${truncatedText}`;
+
+    const makeAiCall = async (userMsg: string) => {
+      const resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        signal: AbortSignal.timeout(90_000),
+        headers: {
+          Authorization: `Bearer ${LOVABLE_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "google/gemini-2.5-flash",
+          max_tokens: 16384,
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userMsg },
+          ],
+          tools: [toolSchema],
+          tool_choice: { type: "function", function: { name: "extract_inspection_data" } },
+        }),
+      });
+
+      if (!resp.ok) {
+        if (resp.status === 429) throw new Error("__RATE_LIMIT__");
+        if (resp.status === 402) throw new Error("__CREDITS__");
+        const errText = await resp.text();
+        console.error("[parse-inspection-docx] AI error:", resp.status, errText);
+        throw new Error("AI extraction failed");
       }
-      if (aiResponse.status === 402) {
-        return new Response(JSON.stringify({ error: "AI credits exhausted. Please add funds." }), {
-          status: 402,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      const errText = await aiResponse.text();
-      console.error("[parse-inspection-docx] AI error:", aiResponse.status, errText);
-      throw new Error("AI extraction failed");
-    }
 
-    const aiData = await aiResponse.json();
-    const toolCall = aiData.choices?.[0]?.message?.tool_calls?.[0];
+      return resp.json();
+    };
 
+    // First pass
+    const aiData = await makeAiCall(userPrompt);
+    const choice = aiData.choices?.[0];
+    const finishReason = choice?.finish_reason;
+    const usage = aiData.usage;
+
+    console.log(`[parse-inspection-docx] finish_reason: ${finishReason}, usage: prompt=${usage?.prompt_tokens}, completion=${usage?.completion_tokens}`);
+
+    const toolCall = choice?.message?.tool_calls?.[0];
     if (!toolCall?.function?.arguments) {
       throw new Error("AI did not return structured data");
     }
 
-    const extracted = JSON.parse(toolCall.function.arguments);
+    let extracted = JSON.parse(toolCall.function.arguments);
+    let partial = false;
+
+    // If truncated, do a second pass for commonly dropped sections
+    if (finishReason === "length" || finishReason === "MAX_TOKENS") {
+      console.warn("[parse-inspection-docx] Output was truncated — running second pass for equipment & summary");
+      partial = true;
+
+      try {
+        const secondPrompt = `The previous extraction was truncated. Extract ONLY the following sections from this report — include every item with full verbatim comments:
+1. ALL equipment items (type, category, result, comments, production_year, rope_type — NO quantity)
+2. The complete summary section (repairs_performed, critical_actions, future_considerations, next_inspection_date)
+
+Report text:
+
+${truncatedText}`;
+
+        const secondData = await makeAiCall(secondPrompt);
+        const secondCall = secondData.choices?.[0]?.message?.tool_calls?.[0];
+
+        if (secondCall?.function?.arguments) {
+          const secondExtracted = JSON.parse(secondCall.function.arguments);
+
+          // Merge: use second pass data if first pass had fewer or empty results
+          if (secondExtracted.equipment?.length > (extracted.equipment?.length || 0)) {
+            console.log(`[parse-inspection-docx] Second pass found ${secondExtracted.equipment.length} equipment (vs ${extracted.equipment?.length || 0})`);
+            extracted.equipment = secondExtracted.equipment;
+          }
+          if (secondExtracted.summary && !extracted.summary?.repairs_performed && !extracted.summary?.critical_actions) {
+            console.log("[parse-inspection-docx] Using summary from second pass");
+            extracted.summary = secondExtracted.summary;
+          }
+
+          // Check if second pass completed fully
+          const secondFinish = secondData.choices?.[0]?.finish_reason;
+          if (secondFinish !== "length" && secondFinish !== "MAX_TOKENS") {
+            partial = false; // second pass got everything
+          }
+        }
+      } catch (retryErr) {
+        console.error("[parse-inspection-docx] Second pass failed:", retryErr);
+        // Keep partial = true so client shows warning
+      }
+    }
 
     console.log(
-      `[parse-inspection-docx] Extracted: ${extracted.systems?.length || 0} systems, ${extracted.equipment?.length || 0} equipment, ${extracted.ziplines?.length || 0} ziplines, ${extracted.standards?.length || 0} standards`
+      `[parse-inspection-docx] Extracted: ${extracted.systems?.length || 0} systems, ${extracted.equipment?.length || 0} equipment, ${extracted.ziplines?.length || 0} ziplines, ${extracted.standards?.length || 0} standards (partial: ${partial})`
     );
 
     return new Response(JSON.stringify({ success: true, data: extracted, truncated: wasTruncated }), {
