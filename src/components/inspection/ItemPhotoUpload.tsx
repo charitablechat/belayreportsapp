@@ -191,6 +191,7 @@ function ItemPhotoUpload({
         tableName: 'inspection_photos',
         storageBucket: 'inspection-photos',
         foreignKeyColumn: 'inspection_id',
+        caption: itemName || 'Item photo',
       });
 
       // 5. Save lightweight receipt to localStorage
