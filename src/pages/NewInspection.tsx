@@ -556,7 +556,7 @@ export default function NewInspection() {
                     Import from Previous Report
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    Drop a .docx or .pdf file here, or click to browse
+                    Drop a .docx, .doc, .pdf, or .md file here (Google Docs: export as .docx)
                   </p>
                 </div>
               )}
