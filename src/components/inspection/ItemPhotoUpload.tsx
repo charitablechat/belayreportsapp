@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect, memo } from "react";
-import { Camera, X, ImagePlus, Loader2 } from "lucide-react";
+import { Camera, X, ImagePlus, Loader2, CloudOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -13,6 +13,9 @@ import { compressImage } from "@/lib/image-compression";
 import { toast } from "@/components/ui/sonner";
 import { getUserWithCache } from "@/lib/cached-auth";
 import { getCachedPhotoBlob, cachePhotoFromRemote } from "@/lib/photo-cache";
+import { savePhotoOffline, markPhotoAsUploaded } from "@/lib/offline-storage";
+import { savePhotoReceipt } from "@/lib/photo-receipts";
+import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 
 interface ItemPhotoUploadProps {
   itemId: string;
@@ -25,8 +28,6 @@ interface ItemPhotoUploadProps {
   photoSection?: string;
   onGalleryRefresh?: () => void;
 }
-
-const UPLOAD_TIMEOUT = 12000; // 12 seconds
 
 function ItemPhotoUpload({
   itemId,
@@ -44,12 +45,14 @@ function ItemPhotoUpload({
   const [cameraOpen, setCameraOpen] = useState(false);
   const [localPreview, setLocalPreview] = useState<string | null>(null);
   const [signedUrl, setSignedUrl] = useState<string | null>(null);
+  const [isOfflinePhoto, setIsOfflinePhoto] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { isOnline } = useNetworkStatus();
 
   const displayUrl = localPreview || signedUrl;
 
   const loadSignedUrl = useCallback(async () => {
-    if (!photoUrl) { setSignedUrl(null); return; }
+    if (!photoUrl) { setSignedUrl(null); setIsOfflinePhoto(false); return; }
 
     // 1. Cache-first: check IndexedDB
     const cachedBlob = await getCachedPhotoBlob(photoUrl);
@@ -58,8 +61,11 @@ function ItemPhotoUpload({
       return;
     }
 
-    // 2. Offline with no cache — nothing to show
-    if (!navigator.onLine) return;
+    // 2. Offline with no cache — mark as offline photo
+    if (!navigator.onLine) {
+      setIsOfflinePhoto(true);
+      return;
+    }
 
     // 3. Fetch signed URL from server
     try {
@@ -68,6 +74,7 @@ function ItemPhotoUpload({
         .createSignedUrl(photoUrl, 3600);
       if (!data?.signedUrl) return;
       setSignedUrl(data.signedUrl);
+      setIsOfflinePhoto(false);
 
       // 4. Download blob and cache for offline use
       try {
@@ -82,83 +89,140 @@ function ItemPhotoUpload({
 
   useEffect(() => { loadSignedUrl(); }, [loadSignedUrl]);
 
+  // Retry loading when coming back online
+  useEffect(() => {
+    if (isOnline && isOfflinePhoto && photoUrl) {
+      loadSignedUrl();
+    }
+  }, [isOnline, isOfflinePhoto, photoUrl, loadSignedUrl]);
+
+  /**
+   * Fire-and-forget background upload — does NOT block UI
+   */
+  const uploadInBackground = useCallback(async (
+    photoId: string,
+    compressed: File,
+    userId: string,
+    filePath: string,
+  ) => {
+    try {
+      const { error: uploadError } = await supabase.storage
+        .from("inspection-photos")
+        .upload(filePath, compressed, { contentType: "image/jpeg", upsert: true });
+
+      if (uploadError) throw uploadError;
+
+      // Insert into gallery if applicable
+      if (photoSection) {
+        try {
+          await supabase.from('inspection_photos').insert({
+            inspection_id: inspectionId,
+            photo_url: filePath,
+            photo_section: photoSection,
+            caption: itemName || 'Item photo',
+          });
+          onGalleryRefresh?.();
+        } catch { /* non-critical */ }
+      }
+
+      // Mark as uploaded in IndexedDB
+      await markPhotoAsUploaded(photoId, filePath);
+
+      // Update signed URL for display
+      const { data: signedData } = await supabase.storage
+        .from("inspection-photos")
+        .createSignedUrl(filePath, 3600);
+      if (signedData?.signedUrl) {
+        setSignedUrl(signedData.signedUrl);
+        setLocalPreview(prev => {
+          if (prev) URL.revokeObjectURL(prev);
+          return null;
+        });
+      }
+
+      if (import.meta.env.DEV) {
+        console.log('[ItemPhotoUpload] Background upload completed:', photoId);
+      }
+    } catch (error) {
+      // Photo remains in IndexedDB with uploaded=false — useAutoSync will retry
+      console.warn('[ItemPhotoUpload] Background upload failed, queued for later:', error);
+    }
+  }, [inspectionId, photoSection, itemName, onGalleryRefresh]);
+
   const handleUpload = useCallback(async (file: File) => {
     setUploading(true);
     try {
-      await Promise.race([
-        (async () => {
-          const compressed = await compressImage(file, { maxWidth: 1200, maxHeight: 1200, quality: 0.8 });
-          const previewUrl = URL.createObjectURL(compressed);
-          setLocalPreview(previewUrl);
+      // 1. Compress image
+      const compressed = await compressImage(file, { maxWidth: 1200, maxHeight: 1200, quality: 0.8 });
 
-          let userId: string | undefined;
-          try {
-            const { data: userData } = await getUserWithCache();
-            userId = userData?.user?.id;
-          } catch {
-            // cache miss – fall back to live session
-          }
-          if (!userId) {
-            const { data: sessionData } = await supabase.auth.getSession();
-            userId = sessionData?.session?.user?.id;
-          }
-          if (!userId) throw new Error("Not authenticated");
+      // 2. Instant local preview
+      const previewUrl = URL.createObjectURL(compressed);
+      setLocalPreview(previewUrl);
 
-          const filePath = `${userId}/${inspectionId}/items/${itemId}.jpg`;
+      // 3. Get user ID (with timeout protection)
+      let userId: string | undefined;
+      try {
+        const result = await Promise.race([
+          getUserWithCache(),
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000)),
+        ]);
+        userId = result?.data?.user?.id;
+      } catch { /* fall through */ }
+      if (!userId) {
+        try {
+          const { data: sessionData } = await supabase.auth.getSession();
+          userId = sessionData?.session?.user?.id;
+        } catch { /* fall through */ }
+      }
+      if (!userId) throw new Error("Not authenticated");
 
-          const { error: uploadError } = await supabase.storage
-            .from("inspection-photos")
-            .upload(filePath, compressed, { contentType: "image/jpeg", upsert: true });
+      const filePath = `${userId}/${inspectionId}/items/${itemId}.jpg`;
+      const photoId = `item-${itemId}-${Date.now()}`;
 
-          if (uploadError) throw uploadError;
+      // 4. Save to IndexedDB FIRST (local-first)
+      await savePhotoOffline({
+        id: photoId,
+        inspectionId,
+        section: photoSection || 'item-photo',
+        blob: compressed,
+        fileName: `${itemId}.jpg`,
+        uploaded: false,
+        photoUrl: filePath,
+        tableName: 'inspection_photos',
+        storageBucket: 'inspection-photos',
+        foreignKeyColumn: 'inspection_id',
+      });
 
-          onPhotoChange(filePath);
-          onImmediateSave?.();
+      // 5. Save lightweight receipt to localStorage
+      savePhotoReceipt({
+        id: photoId,
+        inspectionId,
+        section: photoSection || 'item-photo',
+        timestamp: Date.now(),
+        uploaded: false,
+      });
 
-          // Also insert into inspection_photos gallery
-          if (photoSection) {
-            try {
-              await supabase.from('inspection_photos').insert({
-                inspection_id: inspectionId,
-                photo_url: filePath,
-                photo_section: photoSection,
-                caption: itemName || 'Item photo',
-              });
-              onGalleryRefresh?.();
-            } catch { /* non-critical */ }
-          }
+      // 6. Update form state immediately
+      onPhotoChange(filePath);
+      onImmediateSave?.();
 
-          // Cache the compressed blob locally for offline access
-          await cachePhotoFromRemote(filePath, compressed, filePath, inspectionId, 'item-photo');
-
-          const { data: signedData } = await supabase.storage
-            .from("inspection-photos")
-            .createSignedUrl(filePath, 3600);
-          if (signedData?.signedUrl) {
-            setSignedUrl(signedData.signedUrl);
-            URL.revokeObjectURL(previewUrl);
-            setLocalPreview(null);
-          }
-        })(),
-        new Promise((_, reject) =>
-          setTimeout(() => reject(new Error("Upload timed out")), UPLOAD_TIMEOUT)
-        ),
-      ]);
+      // 7. Background upload if online (fire-and-forget)
+      if (isOnline) {
+        toast.info("Syncing photo...");
+        uploadInBackground(photoId, compressed, userId, filePath).catch(() => {});
+      } else {
+        toast.success("Photo saved locally", {
+          description: "Will sync when back online",
+        });
+      }
     } catch (err: any) {
-      console.error("[ItemPhotoUpload] Upload failed:", err);
-      const isTimeout = err?.message?.includes("timed out");
-      const statusCode = err?.statusCode || err?.status;
-      const message = isTimeout
-        ? "Upload timed out – please check your connection and try again"
-        : statusCode === 403 || statusCode === '403'
-          ? "Permission denied – please try logging out and back in"
-          : err?.message || "Failed to upload photo";
-      toast.error(message);
+      console.error("[ItemPhotoUpload] Save failed:", err);
+      toast.error(err?.message || "Failed to save photo");
       setLocalPreview(null);
     } finally {
       setUploading(false);
     }
-  }, [itemId, inspectionId, onPhotoChange, onImmediateSave, photoSection, itemName, onGalleryRefresh]);
+  }, [itemId, inspectionId, onPhotoChange, onImmediateSave, photoSection, isOnline, uploadInBackground]);
 
   const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -186,6 +250,7 @@ function ItemPhotoUpload({
     }
     setLocalPreview(null);
     setSignedUrl(null);
+    setIsOfflinePhoto(false);
     onPhotoChange(null);
     onImmediateSave?.();
     setLightboxOpen(false);
@@ -225,6 +290,20 @@ function ItemPhotoUpload({
               <Loader2 className="w-4 h-4 animate-spin text-primary" />
             </div>
           )}
+          {!isOnline && (
+            <div className="absolute top-0 right-0 p-0.5 bg-background/80 rounded-bl">
+              <CloudOff className="w-3 h-3 text-muted-foreground" />
+            </div>
+          )}
+        </button>
+      ) : hasPhoto && isOfflinePhoto ? (
+        <button
+          type="button"
+          onClick={() => setLightboxOpen(true)}
+          className="relative w-12 h-12 rounded-md overflow-hidden border border-border bg-muted flex items-center justify-center"
+          disabled={disabled}
+        >
+          <CloudOff className="w-5 h-5 text-muted-foreground" />
         </button>
       ) : (
         <div className="flex gap-1">
@@ -259,9 +338,14 @@ function ItemPhotoUpload({
             <DialogTitle>Item Photo</DialogTitle>
           </DialogHeader>
           <div className="flex flex-col items-center gap-4">
-            {displayUrl && (
+            {displayUrl ? (
               <img src={displayUrl} alt="Item photo full size" className="max-w-full max-h-[60vh] object-contain rounded-lg" />
-            )}
+            ) : isOfflinePhoto ? (
+              <div className="flex flex-col items-center gap-2 py-8 text-muted-foreground">
+                <CloudOff className="w-8 h-8" />
+                <p className="text-sm">Photo will load when back online</p>
+              </div>
+            ) : null}
             <div className="flex gap-2">
               <Button variant="outline" size="sm" onClick={() => { setLightboxOpen(false); setCameraOpen(true); }} disabled={disabled || uploading}>
                 <Camera className="w-4 h-4 mr-2" />
