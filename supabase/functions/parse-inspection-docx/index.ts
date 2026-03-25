@@ -300,12 +300,14 @@ serve(async (req) => {
     }
 
     // Truncate to avoid exceeding token limits
-    const maxChars = 30000;
-    const truncatedText = extractedText.length > maxChars
+    const maxChars = 60000;
+    const wasTruncated = extractedText.length > maxChars;
+    const truncatedText = wasTruncated
       ? extractedText.slice(0, maxChars) + "\n\n[...truncated...]"
       : extractedText;
 
-    console.log(`[parse-inspection-docx] Extracted ${extractedText.length} chars from ${fileName}`);
+    console.log(`[parse-inspection-docx] Extracted ${extractedText.length} chars from ${fileName} (truncated: ${wasTruncated})`);
+    console.log(`[parse-inspection-docx] First 500 chars:\n${extractedText.slice(0, 500)}`);
 
     // Call AI to extract structured data
     const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -315,11 +317,20 @@ serve(async (req) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
+        model: "google/gemini-2.5-pro",
         messages: [
           {
             role: "system",
-            content: `You are an expert at parsing adventure park / ropes course inspection reports. Extract structured data from the report text provided. Be thorough — capture every system, piece of equipment, zipline, and standard mentioned. For results, use the original values from the report (e.g. "Pass", "Fail", "Acceptable", "Needs Repair", etc.). If a field is not found, use null.`,
+            content: `You are an expert at parsing adventure park / ropes course inspection reports. Extract structured data from the report text provided.
+
+CRITICAL RULES:
+1. Extract ONLY items that are EXPLICITLY listed in the document text. Do NOT invent, infer, or fabricate any items that are not present in the source.
+2. Preserve all comments, notes, and descriptions EXACTLY as written in the source document — do not paraphrase, summarize, or reword them.
+3. Each element's name, type, and category must match the source document VERBATIM. Do not rename or normalize them.
+4. If a section (systems, equipment, ziplines, standards) has no items in the document, return an empty array for that section.
+5. For results, use the EXACT original values from the report (e.g. "Pass", "Fail", "Acceptable", "Needs Repair", "N/A", etc.). Do not standardize or change result values.
+6. If a field value is not found in the document, use null — do not guess or fill in default values.
+7. Include ALL items from every section — do not skip any element that appears in the document.`,
           },
           {
             role: "user",
@@ -364,7 +375,7 @@ serve(async (req) => {
                         equipment_category: { type: "string" },
                         result: { type: "string" },
                         comments: { type: "string" },
-                        quantity: { type: "string" },
+                        
                         production_year: { type: "string" },
                         rope_type: { type: "string" },
                       },
@@ -455,7 +466,7 @@ serve(async (req) => {
       `[parse-inspection-docx] Extracted: ${extracted.systems?.length || 0} systems, ${extracted.equipment?.length || 0} equipment, ${extracted.ziplines?.length || 0} ziplines, ${extracted.standards?.length || 0} standards`
     );
 
-    return new Response(JSON.stringify({ success: true, data: extracted }), {
+    return new Response(JSON.stringify({ success: true, data: extracted, truncated: wasTruncated }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (error) {
