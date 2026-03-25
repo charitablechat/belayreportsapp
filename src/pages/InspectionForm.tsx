@@ -2593,6 +2593,34 @@ export default function InspectionForm() {
                 </Tooltip>
               </TooltipProvider>
               )}
+              {id && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      disabled={refreshing || saving || autoSaving}
+                      onClick={async () => {
+                        setRefreshing(true);
+                        try {
+                          await loadInspection();
+                          toast.success("Report refreshed", { description: "Latest data loaded successfully." });
+                        } catch {
+                          toast.error("Refresh failed");
+                        } finally {
+                          setRefreshing(false);
+                        }
+                      }}
+                    >
+                      <RefreshCw className={cn("w-4 h-4", refreshing && "animate-spin")} />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Refresh Report Data</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+              )}
               {!effectiveReadOnly && inspection?.status !== 'completed' && (
                 <Button 
                   size={isMobileView ? "default" : "sm"} 
