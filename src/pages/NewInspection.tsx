@@ -213,7 +213,7 @@ export default function NewInspection() {
         throw new Error(errBody.error || `Server returned ${res.status}`);
       }
 
-      const { data } = await res.json();
+      const { data, truncated } = await res.json();
 
       // Populate form fields
       setFormData(prev => ({
