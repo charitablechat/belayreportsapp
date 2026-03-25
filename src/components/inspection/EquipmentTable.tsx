@@ -572,9 +572,10 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
                     </div>
                     <div>
                       <Label className="text-xs text-muted-foreground">Quantity</Label>
-                      <Input
+                      <DebouncedInput
                         type="text" inputMode="numeric" value={item.quantity || ""}
-                        onChange={(e) => { const raw = e.target.value; if (raw === "") { updateEquipment(item, "quantity", null); return; } if (/^\d+\+?$/.test(raw)) { updateEquipment(item, "quantity", raw); } }}
+                        validate={(raw) => { if (raw === "") return ""; if (/^\d+\+?$/.test(raw)) return raw; return null; }}
+                        onChange={(value) => updateEquipment(item, "quantity", value === "" ? null : value)}
                         onBlur={onImmediateSave} onKeyDown={(e) => e.key === 'Enter' && onImmediateSave?.()} placeholder="Qty"
                       />
                     </div>

@@ -277,18 +277,18 @@ function ZiplinesTable({ ziplines, onUpdate, onImmediateSave, inspectionId, onGa
                     </div>
                     <div className="min-w-0">
                       <Label className="text-xs text-muted-foreground">Length (ft)</Label>
-                      <Input type="number" value={zipline.cable_length || ""} onChange={(e) => updateZipline(zipline, "cable_length", parseFloat(e.target.value) || null)} onBlur={onImmediateSave} onKeyDown={(e) => e.key === 'Enter' && onImmediateSave?.()} placeholder="Length" />
+                      <DebouncedInput type="number" value={String(zipline.cable_length || "")} onChange={(value) => updateZipline(zipline, "cable_length", parseFloat(value) || null)} onBlur={onImmediateSave} onKeyDown={(e) => e.key === 'Enter' && onImmediateSave?.()} placeholder="Length" />
                     </div>
                   </div>
                   
                   <div className="grid grid-cols-2 gap-4">
                     <div className="min-w-0">
                       <Label className="text-xs text-muted-foreground">Unload</Label>
-                      <Input type="number" value={zipline.unload_tension || ""} onChange={(e) => updateZipline(zipline, "unload_tension", parseFloat(e.target.value) || null)} onBlur={onImmediateSave} onKeyDown={(e) => e.key === 'Enter' && onImmediateSave?.()} placeholder="Unload" />
+                      <DebouncedInput type="number" value={String(zipline.unload_tension || "")} onChange={(value) => updateZipline(zipline, "unload_tension", parseFloat(value) || null)} onBlur={onImmediateSave} onKeyDown={(e) => e.key === 'Enter' && onImmediateSave?.()} placeholder="Unload" />
                     </div>
                     <div className="min-w-0">
                       <Label className="text-xs text-muted-foreground">Load</Label>
-                      <Input type="number" value={zipline.load_tension || ""} onChange={(e) => updateZipline(zipline, "load_tension", parseFloat(e.target.value) || null)} onBlur={onImmediateSave} onKeyDown={(e) => e.key === 'Enter' && onImmediateSave?.()} placeholder="Load" />
+                      <DebouncedInput type="number" value={String(zipline.load_tension || "")} onChange={(value) => updateZipline(zipline, "load_tension", parseFloat(value) || null)} onBlur={onImmediateSave} onKeyDown={(e) => e.key === 'Enter' && onImmediateSave?.()} placeholder="Load" />
                     </div>
                   </div>
                   
