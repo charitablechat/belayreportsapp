@@ -533,8 +533,12 @@ ${truncatedText}`;
       }
     }
 
+    // Log extraction stats with comment char counts for debugging
+    const commentChars = (arr: { comments?: string }[] | undefined) =>
+      (arr || []).reduce((acc, item) => acc + (item.comments?.length || 0), 0);
+    const sumChars = Object.values(extracted.summary || {}).reduce((acc: number, v) => acc + (typeof v === "string" ? v.length : 0), 0);
     console.log(
-      `[parse-inspection-docx] Extracted: ${extracted.systems?.length || 0} systems, ${extracted.equipment?.length || 0} equipment, ${extracted.ziplines?.length || 0} ziplines, ${extracted.standards?.length || 0} standards (partial: ${partial})`
+      `[parse-inspection-docx] Extracted: ${extracted.systems?.length || 0} systems (${commentChars(extracted.systems)} comment chars), ${extracted.equipment?.length || 0} equipment (${commentChars(extracted.equipment)} comment chars), ${extracted.ziplines?.length || 0} ziplines, ${extracted.standards?.length || 0} standards, summary: ${sumChars} chars (partial: ${partial})`
     );
 
     return new Response(JSON.stringify({ success: true, data: extracted, truncated: wasTruncated, partial }), {
