@@ -1,28 +1,42 @@
 
 
-## Add Letters Inside Refresh & Sync Icons
+## Fix: Imported Equipment Not Showing in Form
 
-### Changes
+### Root Cause
 
-**File: `src/pages/Dashboard.tsx` (~line 1090)**
-Replace the plain `RefreshCw` icon in the Refresh button with a `relative` wrapper containing the icon and an absolutely-positioned "R" letter centered inside:
-```tsx
-<span className="relative inline-flex items-center justify-center">
-  <RefreshCw className={cn("h-4 w-4", refreshInFlightRef.current && "animate-spin")} />
-  <span className="absolute text-[7px] font-bold leading-none">R</span>
-</span>
+The AI extraction returns free-text equipment categories like `"Hardware"`, `"PPE"`, `"General"`, while the EquipmentTable component filters by hardcoded category slugs: `harnesses`, `helmets`, `lanyards`, `connectors`, `rope`, `belay`, `trolleys`, `other`.
+
+The 18 equipment items ARE in the database and loaded into React state, but every EquipmentTable instance filters them out because `item.equipment_category === "harnesses"` never matches `"Hardware"`.
+
+### Fix
+
+**File: `src/pages/NewInspection.tsx`** — Add a category normalization function in `insertChildData` that maps AI-returned categories to the app's expected slug values before inserting.
+
+```text
+Mapping logic:
+  - Contains "harness" → "harnesses"
+  - Contains "helmet" or "head" → "helmets"
+  - Contains "lanyard" or "sling" → "lanyards"
+  - Contains "carabiner" or "connector" or "quicklink" or "hardware" → "connectors"
+  - Contains "rope" → "rope"
+  - Contains "belay" or "descent" → "belay"
+  - Contains "trolley" or "pulley" → "trolleys"
+  - Everything else → "other"
 ```
 
-**File: `src/components/pwa/ForceSyncButton.tsx`**
-Apply the same pattern to all three variants (icon, menu-item, default), placing an "S" centered inside each `RefreshCw` icon:
-- **Icon variant** (~line 91): Wrap in relative span, add "S" at `text-[8px]` (slightly larger since icon is `h-5 w-5`)
-- **Menu-item variant** (~line 115): Same pattern with `text-[7px]`
-- **Default variant** (~line 139): Same pattern with `text-[7px]`
+Also update the AI tool schema in **`supabase/functions/parse-inspection-docx/index.ts`** to hint the expected categories in the `equipment_category` description, so the AI returns closer matches:
+
+```
+equipment_category: {
+  type: "string",
+  description: "Category slug: harnesses, helmets, lanyards, connectors, rope, belay, trolleys, or other"
+}
+```
 
 ### Files
 
 | File | Change |
 |------|--------|
-| `src/pages/Dashboard.tsx` | Wrap Refresh icon with centered "R" letter |
-| `src/components/pwa/ForceSyncButton.tsx` | Wrap all 3 Sync icons with centered "S" letter |
+| `src/pages/NewInspection.tsx` | Add `normalizeEquipmentCategory()` function; apply it in `insertChildData` when mapping equipment rows |
+| `supabase/functions/parse-inspection-docx/index.ts` | Update `equipment_category` description in tool schema to list valid slugs |
 
