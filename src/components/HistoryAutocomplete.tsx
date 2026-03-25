@@ -268,9 +268,14 @@ export default function HistoryAutocomplete({
   const handleTriggerFocus = () => {
     setIsEditing(true);
     setInputValue(value);
-    if (!open) {
-      setOpen(true);
-    }
+    requestAnimationFrame(() => {
+      const input = triggerInputRef.current;
+      if (input) {
+        const len = input.value.length;
+        input.setSelectionRange(len, len);
+      }
+    });
+    if (!open) setOpen(true);
   };
 
   const handleTriggerBlur = () => {
