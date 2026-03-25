@@ -88,12 +88,15 @@ export const ForceSyncButton = ({ variant = 'default', className, unsyncedCount 
         className={cn("relative", className)}
         aria-label="Force sync"
       >
-        <RefreshCw 
-          className={cn(
-            "h-5 w-5",
-            isSyncing && "animate-spin"
-          )} 
-        />
+        <span className="relative inline-flex items-center justify-center">
+          <RefreshCw 
+            className={cn(
+              "h-5 w-5",
+              isSyncing && "animate-spin"
+            )} 
+          />
+          <span className="absolute text-[8px] font-bold leading-none">S</span>
+        </span>
       </Button>
     );
   }
@@ -112,12 +115,15 @@ export const ForceSyncButton = ({ variant = 'default', className, unsyncedCount 
           className
         )}
       >
-        <RefreshCw 
-          className={cn(
-            "h-4 w-4",
-            isSyncing && "animate-spin"
-          )} 
-        />
+        <span className="relative inline-flex items-center justify-center">
+          <RefreshCw 
+            className={cn(
+              "h-4 w-4",
+              isSyncing && "animate-spin"
+            )} 
+          />
+          <span className="absolute text-[7px] font-bold leading-none">S</span>
+        </span>
         {isSyncing ? "Syncing..." : "Force Sync Now"}
         {!isSyncing && unsyncedCount > 0 && (
           <span className="ml-auto inline-flex items-center justify-center rounded-full bg-destructive text-destructive-foreground text-xs font-bold min-w-[20px] h-5 px-1.5">
@@ -136,12 +142,15 @@ export const ForceSyncButton = ({ variant = 'default', className, unsyncedCount 
       disabled={!isOnline || isSyncing}
       className={cn("gap-2", className)}
     >
-      <RefreshCw 
-        className={cn(
-          "h-4 w-4",
-          isSyncing && "animate-spin"
-        )} 
-      />
+      <span className="relative inline-flex items-center justify-center">
+        <RefreshCw 
+          className={cn(
+            "h-4 w-4",
+            isSyncing && "animate-spin"
+          )} 
+        />
+        <span className="absolute text-[7px] font-bold leading-none">S</span>
+      </span>
       {isSyncing ? "Syncing..." : "Force Sync Now"}
     </Button>
   );

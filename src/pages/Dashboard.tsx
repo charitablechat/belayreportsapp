@@ -1087,7 +1087,10 @@ export default function Dashboard() {
                     }}
                     aria-label="Refresh reports"
                   >
-                    <RefreshCw className={cn("h-4 w-4", refreshInFlightRef.current && "animate-spin")} />
+                    <span className="relative inline-flex items-center justify-center">
+                      <RefreshCw className={cn("h-4 w-4", refreshInFlightRef.current && "animate-spin")} />
+                      <span className="absolute text-[7px] font-bold leading-none">R</span>
+                    </span>
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>Refresh reports</TooltipContent>
