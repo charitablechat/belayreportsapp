@@ -22,6 +22,7 @@ import { DeletedRecordsRecovery } from "@/components/admin/DeletedRecordsRecover
 import { ReportOwnershipTool } from "@/components/admin/ReportOwnershipTool";
 import { DatabaseBackupsPanel } from "@/components/admin/DatabaseBackupsPanel";
 import { OrganizationReportsPanel } from "@/components/admin/OrganizationReportsPanel";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { toast } from "sonner";
 import { parseLocalDate } from "@/lib/date-utils";
 import { getSessionBackground } from "@/lib/background-manager";
@@ -930,13 +931,20 @@ export default function SuperAdminDashboard() {
             </Table>
           </div>
 
-          {selectedOrgForReports && (
-            <OrganizationReportsPanel
-              organizationId={selectedOrgForReports.id}
-              organizationName={selectedOrgForReports.name}
-              onBack={() => setSelectedOrgForReports(null)}
-            />
-          )}
+          <Sheet open={!!selectedOrgForReports} onOpenChange={(open) => { if (!open) setSelectedOrgForReports(null); }}>
+            <SheetContent side="right" className="w-full sm:max-w-2xl overflow-y-auto">
+              <SheetHeader>
+                <SheetTitle>{selectedOrgForReports?.name} — Reports</SheetTitle>
+                <SheetDescription>All reports associated with this organization</SheetDescription>
+              </SheetHeader>
+              {selectedOrgForReports && (
+                <OrganizationReportsPanel
+                  organizationId={selectedOrgForReports.id}
+                  organizationName={selectedOrgForReports.name}
+                />
+              )}
+            </SheetContent>
+          </Sheet>
         </TabsContent>
 
         <TabsContent value="user-management" className="space-y-4">

@@ -1,25 +1,31 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { ArrowLeft, ChevronDown, FileText, GraduationCap, ClipboardCheck } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { ChevronDown, FileText, GraduationCap, ClipboardCheck, Search, ArrowUpDown } from "lucide-react";
 import { format } from "date-fns";
 import { parseLocalDate } from "@/lib/date-utils";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { cn } from "@/lib/utils";
 
 interface OrganizationReportsPanelProps {
   organizationId: string;
   organizationName: string;
-  onBack: () => void;
 }
 
-export function OrganizationReportsPanel({ organizationId, organizationName, onBack }: OrganizationReportsPanelProps) {
+export function OrganizationReportsPanel({ organizationId, organizationName }: OrganizationReportsPanelProps) {
   const navigate = useNavigate();
+  const [searchQuery, setSearchQuery] = useState("");
+  const [sortOrder, setSortOrder] = useState<Record<string, "asc" | "desc">>({
+    inspections: "desc",
+    trainings: "desc",
+    dailyAssessments: "desc",
+  });
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
     inspections: true,
     trainings: true,
@@ -72,6 +78,10 @@ export function OrganizationReportsPanel({ organizationId, organizationName, onB
     setOpenSections(prev => ({ ...prev, [key]: !prev[key] }));
   };
 
+  const toggleSort = (key: string) => {
+    setSortOrder(prev => ({ ...prev, [key]: prev[key] === "desc" ? "asc" : "desc" }));
+  };
+
   const getPersonName = (person: any) => {
     if (!person) return "—";
     return `${person.first_name || ""} ${person.last_name || ""}`.trim() || "—";
@@ -87,6 +97,44 @@ export function OrganizationReportsPanel({ organizationId, organizationName, onB
     }
   };
 
+  const matchesSearch = (row: any, dateField: string) => {
+    if (!searchQuery) return true;
+    const q = searchQuery.toLowerCase();
+    return (
+      (row.organization || "").toLowerCase().includes(q) ||
+      (row.location || row.site || "").toLowerCase().includes(q) ||
+      (row.status || "").toLowerCase().includes(q) ||
+      getPersonName(row.inspector || row.trainer).toLowerCase().includes(q) ||
+      formatDate(row[dateField]).toLowerCase().includes(q)
+    );
+  };
+
+  const sortByDate = <T extends Record<string, any>>(items: T[], dateField: string, order: "asc" | "desc"): T[] => {
+    return [...items].sort((a, b) => {
+      const da = a[dateField] || "";
+      const db = b[dateField] || "";
+      return order === "asc" ? da.localeCompare(db) : db.localeCompare(da);
+    });
+  };
+
+  const filteredInspections = useMemo(() => {
+    if (!inspections) return [];
+    const filtered = inspections.filter(r => matchesSearch(r, "inspection_date"));
+    return sortByDate(filtered, "inspection_date", sortOrder.inspections);
+  }, [inspections, searchQuery, sortOrder.inspections]);
+
+  const filteredTrainings = useMemo(() => {
+    if (!trainings) return [];
+    const filtered = trainings.filter(r => matchesSearch(r, "start_date"));
+    return sortByDate(filtered, "start_date", sortOrder.trainings);
+  }, [trainings, searchQuery, sortOrder.trainings]);
+
+  const filteredDaily = useMemo(() => {
+    if (!dailyAssessments) return [];
+    const filtered = dailyAssessments.filter(r => matchesSearch(r, "assessment_date"));
+    return sortByDate(filtered, "assessment_date", sortOrder.dailyAssessments);
+  }, [dailyAssessments, searchQuery, sortOrder.dailyAssessments]);
+
   const renderLoadingSkeleton = () => (
     <div className="space-y-2 p-4">
       {[1, 2, 3].map(i => <Skeleton key={i} className="h-10 w-full" />)}
@@ -95,29 +143,44 @@ export function OrganizationReportsPanel({ organizationId, organizationName, onB
 
   const renderEmptyState = (label: string) => (
     <div className="py-8 text-center text-sm text-muted-foreground">
-      No {label} found for this organization
+      No {label} found{searchQuery ? " matching your search" : " for this organization"}
     </div>
   );
 
+  const SortButton = ({ sectionKey }: { sectionKey: string }) => (
+    <Button
+      variant="ghost"
+      size="sm"
+      className="h-6 px-2 text-xs"
+      onClick={(e) => { e.stopPropagation(); toggleSort(sectionKey); }}
+    >
+      <ArrowUpDown className="h-3 w-3 mr-1" />
+      {sortOrder[sectionKey] === "desc" ? "Newest" : "Oldest"}
+    </Button>
+  );
+
   return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-3">
-        <Button variant="ghost" size="sm" onClick={onBack}>
-          <ArrowLeft className="h-4 w-4 mr-1" />
-          Back
-        </Button>
-        <h3 className="text-lg font-semibold">{organizationName} — Reports</h3>
+    <div className="space-y-4 pt-4">
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <Input
+          placeholder="Search reports by name, location, status…"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="pl-9"
+        />
       </div>
 
       {/* Inspections */}
       <Collapsible open={openSections.inspections} onOpenChange={() => toggleSection("inspections")}>
         <CollapsibleTrigger className="flex items-center gap-2 w-full rounded-md border bg-muted/40 px-4 py-3 text-sm font-medium hover:bg-muted/60 transition-colors">
           <FileText className="h-4 w-4 text-primary" />
-          <span>Inspections ({loadingInspections ? "…" : inspections?.length ?? 0})</span>
+          <span>Inspections ({loadingInspections ? "…" : filteredInspections.length})</span>
+          <SortButton sectionKey="inspections" />
           <ChevronDown className={cn("h-4 w-4 ml-auto transition-transform", openSections.inspections && "rotate-180")} />
         </CollapsibleTrigger>
         <CollapsibleContent>
-          {loadingInspections ? renderLoadingSkeleton() : !inspections?.length ? renderEmptyState("inspections") : (
+          {loadingInspections ? renderLoadingSkeleton() : !filteredInspections.length ? renderEmptyState("inspections") : (
             <div className="rounded-md border mt-2 overflow-hidden">
               <Table>
                 <TableHeader>
@@ -130,12 +193,8 @@ export function OrganizationReportsPanel({ organizationId, organizationName, onB
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {inspections.map(r => (
-                    <TableRow
-                      key={r.id}
-                      className="cursor-pointer hover:bg-muted/50"
-                      onClick={() => navigate(`/inspection/${r.id}`)}
-                    >
+                  {filteredInspections.map(r => (
+                    <TableRow key={r.id} className="cursor-pointer hover:bg-muted/50" onClick={() => navigate(`/inspection/${r.id}`)}>
                       <TableCell className="font-medium text-sm">{r.organization || "—"}</TableCell>
                       <TableCell className="hidden sm:table-cell text-sm text-muted-foreground">{r.location || "—"}</TableCell>
                       <TableCell className="text-sm font-mono text-muted-foreground">{formatDate(r.inspection_date)}</TableCell>
@@ -156,11 +215,12 @@ export function OrganizationReportsPanel({ organizationId, organizationName, onB
       <Collapsible open={openSections.trainings} onOpenChange={() => toggleSection("trainings")}>
         <CollapsibleTrigger className="flex items-center gap-2 w-full rounded-md border bg-muted/40 px-4 py-3 text-sm font-medium hover:bg-muted/60 transition-colors">
           <GraduationCap className="h-4 w-4 text-primary" />
-          <span>Training Reports ({loadingTrainings ? "…" : trainings?.length ?? 0})</span>
+          <span>Training Reports ({loadingTrainings ? "…" : filteredTrainings.length})</span>
+          <SortButton sectionKey="trainings" />
           <ChevronDown className={cn("h-4 w-4 ml-auto transition-transform", openSections.trainings && "rotate-180")} />
         </CollapsibleTrigger>
         <CollapsibleContent>
-          {loadingTrainings ? renderLoadingSkeleton() : !trainings?.length ? renderEmptyState("training reports") : (
+          {loadingTrainings ? renderLoadingSkeleton() : !filteredTrainings.length ? renderEmptyState("training reports") : (
             <div className="rounded-md border mt-2 overflow-hidden">
               <Table>
                 <TableHeader>
@@ -173,12 +233,8 @@ export function OrganizationReportsPanel({ organizationId, organizationName, onB
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {trainings.map(r => (
-                    <TableRow
-                      key={r.id}
-                      className="cursor-pointer hover:bg-muted/50"
-                      onClick={() => navigate(`/training/${r.id}`)}
-                    >
+                  {filteredTrainings.map(r => (
+                    <TableRow key={r.id} className="cursor-pointer hover:bg-muted/50" onClick={() => navigate(`/training/${r.id}`)}>
                       <TableCell className="font-medium text-sm">{r.organization || "—"}</TableCell>
                       <TableCell className="hidden sm:table-cell text-sm text-muted-foreground">{r.location || "—"}</TableCell>
                       <TableCell className="text-sm font-mono text-muted-foreground">{formatDate(r.start_date)}</TableCell>
@@ -199,11 +255,12 @@ export function OrganizationReportsPanel({ organizationId, organizationName, onB
       <Collapsible open={openSections.dailyAssessments} onOpenChange={() => toggleSection("dailyAssessments")}>
         <CollapsibleTrigger className="flex items-center gap-2 w-full rounded-md border bg-muted/40 px-4 py-3 text-sm font-medium hover:bg-muted/60 transition-colors">
           <ClipboardCheck className="h-4 w-4 text-primary" />
-          <span>Daily Assessments ({loadingDaily ? "…" : dailyAssessments?.length ?? 0})</span>
+          <span>Daily Assessments ({loadingDaily ? "…" : filteredDaily.length})</span>
+          <SortButton sectionKey="dailyAssessments" />
           <ChevronDown className={cn("h-4 w-4 ml-auto transition-transform", openSections.dailyAssessments && "rotate-180")} />
         </CollapsibleTrigger>
         <CollapsibleContent>
-          {loadingDaily ? renderLoadingSkeleton() : !dailyAssessments?.length ? renderEmptyState("daily assessments") : (
+          {loadingDaily ? renderLoadingSkeleton() : !filteredDaily.length ? renderEmptyState("daily assessments") : (
             <div className="rounded-md border mt-2 overflow-hidden">
               <Table>
                 <TableHeader>
@@ -216,12 +273,8 @@ export function OrganizationReportsPanel({ organizationId, organizationName, onB
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {dailyAssessments.map(r => (
-                    <TableRow
-                      key={r.id}
-                      className="cursor-pointer hover:bg-muted/50"
-                      onClick={() => navigate(`/daily-assessment/${r.id}`)}
-                    >
+                  {filteredDaily.map(r => (
+                    <TableRow key={r.id} className="cursor-pointer hover:bg-muted/50" onClick={() => navigate(`/daily-assessment/${r.id}`)}>
                       <TableCell className="font-medium text-sm">{r.organization || "—"}</TableCell>
                       <TableCell className="hidden sm:table-cell text-sm text-muted-foreground">{r.site || "—"}</TableCell>
                       <TableCell className="text-sm font-mono text-muted-foreground">{formatDate(r.assessment_date)}</TableCell>
