@@ -154,6 +154,24 @@ export default function InspectionForm() {
   const summaryRef = useRef(summary);
   useEffect(() => { summaryRef.current = summary; }, [summary]);
 
+  // Auto-populate next_inspection_date to one year after the inspection date
+  useEffect(() => {
+    if (!inspection?.inspection_date) return;
+    if (summary.next_inspection_date) return;
+    if (!summary.inspection_id && !summary.id) return;
+    
+    // Parse date components to avoid timezone shifts (YYYY-MM-DD)
+    const parts = inspection.inspection_date.split('-');
+    if (parts.length !== 3) return;
+    const year = parseInt(parts[0], 10);
+    const month = parseInt(parts[1], 10) - 1;
+    const day = parseInt(parts[2], 10);
+    const nextDate = new Date(year + 1, month, day);
+    const nextDateStr = `${nextDate.getFullYear()}-${String(nextDate.getMonth() + 1).padStart(2, '0')}-${String(nextDate.getDate()).padStart(2, '0')}`;
+    
+    setSummary(prev => ({ ...prev, next_inspection_date: nextDateStr }));
+  }, [inspection?.inspection_date, summary.next_inspection_date, summary.inspection_id, summary.id]);
+
   // Completion lock derived values (after report state is declared)
   const isCompletionLocked = inspection?.status === 'completed' && !completionLockOverridden;
   // Active-usage timer: only tracks time when user is actively editing
