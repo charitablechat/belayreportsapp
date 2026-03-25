@@ -221,7 +221,7 @@ serve(async (req) => {
       supabase.from("inspection_systems").select("*").eq("inspection_id", inspectionId).order("display_order"),
       supabase.from("inspection_ziplines").select("*").eq("inspection_id", inspectionId).order("display_order"),
       supabase.from("inspection_summary").select("*").eq("inspection_id", inspectionId).single(),
-      supabase.from("inspection_photos").select("*").eq("inspection_id", inspectionId),
+      supabase.from("inspection_photos").select("*").eq("inspection_id", inspectionId).is("deleted_at", null).order("display_order"),
     ]);
 
     const equipment = equipmentRes.data || [];
