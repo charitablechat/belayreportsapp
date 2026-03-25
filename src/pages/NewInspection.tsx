@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { goBack } from "@/lib/navigation";
 import { DiscardDraftDialog } from "@/components/DiscardDraftDialog";
@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { ArrowLeft, MapPin, CloudOff, Info, X, Loader2 } from "lucide-react";
+import { ArrowLeft, MapPin, CloudOff, Info, X, Loader2, Upload, FileText, CheckCircle2 } from "lucide-react";
 import { PreviousInspectionDatePicker } from "@/components/PreviousInspectionDatePicker";
 import ropeWorksLogo from "@/assets/rope-works-logo.png";
 import { saveInspectionOffline, queueOperation } from "@/lib/offline-storage";
@@ -21,13 +21,72 @@ import { triggerHaptic } from "@/lib/haptics";
 import { getCachedProfile } from "@/lib/profile-cache";
 import { toast } from "sonner";
 
+// Types for extracted child data
+interface ExtractedSystem {
+  name?: string;
+  system_name?: string;
+  result?: string;
+  comments?: string;
+}
+interface ExtractedEquipment {
+  equipment_type: string;
+  equipment_category: string;
+  result?: string;
+  comments?: string;
+  quantity?: string;
+  production_year?: string;
+  rope_type?: string;
+}
+interface ExtractedZipline {
+  zipline_name: string;
+  cable_type?: string;
+  cable_length?: number;
+  braking_system?: string;
+  ead_system?: string;
+  load_tension?: number;
+  unload_tension?: number;
+  result?: string;
+  comments?: string;
+}
+interface ExtractedStandard {
+  standard_name: string;
+  has_documentation?: boolean;
+  comments?: string;
+}
+interface ExtractedSummary {
+  repairs_performed?: string;
+  critical_actions?: string;
+  future_considerations?: string;
+  next_inspection_date?: string;
+}
+interface ExtractedChildData {
+  systems: ExtractedSystem[];
+  equipment: ExtractedEquipment[];
+  ziplines: ExtractedZipline[];
+  standards: ExtractedStandard[];
+  summary: ExtractedSummary | null;
+}
+
 export default function NewInspection() {
   const navigate = useNavigate();
   const { isOnline } = useNetworkStatus();
   const [loading, setLoading] = useState(false);
   const [locationLoading, setLocationLoading] = useState(false);
   const [showDiscardDialog, setShowDiscardDialog] = useState(false);
+  const [importLoading, setImportLoading] = useState(false);
+  const [importedFileName, setImportedFileName] = useState<string | null>(null);
+  const [dragActive, setDragActive] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const isSubmitting = useRef(false);
+
+  const [childData, setChildData] = useState<ExtractedChildData>({
+    systems: [],
+    equipment: [],
+    ziplines: [],
+    standards: [],
+    summary: null,
+  });
+
   const [formData, setFormData] = useState({
     organization: "",
     location: "",
@@ -54,7 +113,6 @@ export default function NewInspection() {
           
           if (profile) {
             const fullName = [profile.first_name, profile.last_name].filter(Boolean).join(' ').trim();
-            // Pre-populate previous_inspector with user's name
             if (fullName) {
               setFormData(prev => ({
                 ...prev,
@@ -115,6 +173,108 @@ export default function NewInspection() {
     }));
   };
 
+  // --- Import from previous report ---
+  const handleFileImport = useCallback(async (file: File) => {
+    const ext = file.name.toLowerCase().split(".").pop();
+    if (ext !== "docx" && ext !== "pdf") {
+      toast.error("Unsupported file", { description: "Please upload a .docx or .pdf file." });
+      return;
+    }
+
+    if (file.size > 20 * 1024 * 1024) {
+      toast.error("File too large", { description: "Maximum file size is 20 MB." });
+      return;
+    }
+
+    setImportLoading(true);
+    triggerHaptic('medium');
+
+    try {
+      const formPayload = new FormData();
+      formPayload.append("file", file);
+
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData?.session?.access_token;
+
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/parse-inspection-docx`,
+        {
+          method: "POST",
+          headers: {
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+          },
+          body: formPayload,
+        }
+      );
+
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({ error: "Unknown error" }));
+        throw new Error(errBody.error || `Server returned ${res.status}`);
+      }
+
+      const { data } = await res.json();
+
+      // Populate form fields
+      setFormData(prev => ({
+        ...prev,
+        organization: data.organization || prev.organization,
+        location: data.location || prev.location,
+        onsite_contact: data.onsite_contact || prev.onsite_contact,
+        previous_inspector: data.previous_inspector || prev.previous_inspector,
+        previous_inspection_date: data.previous_inspection_date || prev.previous_inspection_date,
+        course_history: data.course_history || prev.course_history,
+      }));
+
+      // Store child data
+      setChildData({
+        systems: data.systems || [],
+        equipment: data.equipment || [],
+        ziplines: data.ziplines || [],
+        standards: data.standards || [],
+        summary: data.summary || null,
+      });
+
+      setImportedFileName(file.name);
+      triggerHaptic('success');
+
+      const counts = [
+        data.systems?.length && `${data.systems.length} systems`,
+        data.equipment?.length && `${data.equipment.length} equipment`,
+        data.ziplines?.length && `${data.ziplines.length} ziplines`,
+        data.standards?.length && `${data.standards.length} standards`,
+      ].filter(Boolean);
+
+      toast.success("Report imported successfully", {
+        description: counts.length > 0
+          ? `Found ${counts.join(", ")}`
+          : "Form fields populated from document",
+      });
+    } catch (error: any) {
+      console.error("[NewInspection] Import error:", error);
+      triggerHaptic('error');
+      toast.error("Import failed", { description: error.message || "Could not parse the document." });
+    } finally {
+      setImportLoading(false);
+    }
+  }, []);
+
+  const onDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setDragActive(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) handleFileImport(file);
+  }, [handleFileImport]);
+
+  const onDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setDragActive(true);
+  }, []);
+
+  const onDragLeave = useCallback(() => setDragActive(false), []);
+
+  // --- end import ---
+
   const hasChanges =
     formData.organization.trim() !== "" ||
     formData.location.trim() !== "" ||
@@ -123,6 +283,84 @@ export default function NewInspection() {
   const handleBack = () => {
     if (hasChanges) setShowDiscardDialog(true);
     else goBack(navigate);
+  };
+
+  /** Bulk-insert child rows after inspection is created */
+  const insertChildData = async (inspectionId: string) => {
+    const promises: PromiseLike<any>[] = [];
+
+    if (childData.systems.length > 0) {
+      const rows = childData.systems.map((s, i) => ({
+        inspection_id: inspectionId,
+        name: s.name || null,
+        system_name: s.system_name || null,
+        result: "Not Inspected",
+        comments: s.comments || null,
+        display_order: i,
+        is_divider: false,
+      }));
+      promises.push(supabase.from("inspection_systems").insert(rows).then());
+    }
+
+    if (childData.equipment.length > 0) {
+      const rows = childData.equipment.map((e, i) => ({
+        inspection_id: inspectionId,
+        equipment_type: e.equipment_type,
+        equipment_category: e.equipment_category,
+        result: "Not Inspected",
+        comments: e.comments || null,
+        quantity: e.quantity || null,
+        production_year: e.production_year || null,
+        rope_type: e.rope_type || null,
+        display_order: i,
+      }));
+      promises.push(supabase.from("inspection_equipment").insert(rows).then());
+    }
+
+    if (childData.ziplines.length > 0) {
+      const rows = childData.ziplines.map((z, i) => ({
+        inspection_id: inspectionId,
+        zipline_name: z.zipline_name,
+        cable_type: z.cable_type || null,
+        cable_length: z.cable_length || null,
+        braking_system: z.braking_system || null,
+        ead_system: z.ead_system || null,
+        load_tension: z.load_tension || null,
+        unload_tension: z.unload_tension || null,
+        result: "Not Inspected",
+        comments: z.comments || null,
+        display_order: i,
+      }));
+      promises.push(supabase.from("inspection_ziplines").insert(rows).then());
+    }
+
+    if (childData.standards.length > 0) {
+      const rows = childData.standards.map((s) => ({
+        inspection_id: inspectionId,
+        standard_name: s.standard_name,
+        has_documentation: s.has_documentation ?? null,
+        comments: s.comments || null,
+      }));
+      promises.push(supabase.from("inspection_standards").insert(rows).then());
+    }
+
+    if (childData.summary) {
+      promises.push(
+        supabase.from("inspection_summary").insert({
+          inspection_id: inspectionId,
+          repairs_performed: childData.summary.repairs_performed || null,
+          critical_actions: childData.summary.critical_actions || null,
+          future_considerations: childData.summary.future_considerations || null,
+          next_inspection_date: childData.summary.next_inspection_date || null,
+        }).then()
+      );
+    }
+
+    const results = await Promise.allSettled(promises);
+    const failures = results.filter((r) => r.status === "rejected");
+    if (failures.length > 0) {
+      console.warn("[NewInspection] Some child inserts failed:", failures);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -151,7 +389,6 @@ export default function NewInspection() {
     setLoading(true);
 
     try {
-      // Get user from cache or online - works offline!
       const user = await getUserWithCache();
       if (!user) {
         if (!navigator.onLine) {
@@ -163,7 +400,6 @@ export default function NewInspection() {
         throw new Error("Not authenticated");
       }
 
-      // Generate temporary ID for offline mode
       const tempId = `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
       
       const newInspection = {
@@ -177,29 +413,19 @@ export default function NewInspection() {
         inspection_date: new Date().toISOString().split('T')[0],
       };
 
-        // Clean up empty strings to null for database
-        const cleanedFormData = {
-          organization: formData.organization || '',
-          location: formData.location || '',
-          onsite_contact: formData.onsite_contact || null,
-          previous_inspector: formData.previous_inspector || null,
-          previous_inspection_date: formData.previous_inspection_date || null,
-          course_history: formData.course_history || null,
-          acct_number: formData.acct_number || null,
-          latitude: formData.latitude,
-          longitude: formData.longitude,
-        };
+      const cleanedFormData = {
+        organization: formData.organization || '',
+        location: formData.location || '',
+        onsite_contact: formData.onsite_contact || null,
+        previous_inspector: formData.previous_inspector || null,
+        previous_inspection_date: formData.previous_inspection_date || null,
+        course_history: formData.course_history || null,
+        acct_number: formData.acct_number || null,
+        latitude: formData.latitude,
+        longitude: formData.longitude,
+      };
 
-        if (isOnline) {
-        // Create in Supabase
-        if (import.meta.env.DEV) {
-          console.log('[NewInspection] Submitting to Supabase:', {
-            ...cleanedFormData,
-            inspector_id: user.id,
-            status: "draft",
-          });
-        }
-        
+      if (isOnline) {
         const syncTimestamp = new Date().toISOString();
         const { data, error } = await supabase
           .from("inspections")
@@ -214,10 +440,19 @@ export default function NewInspection() {
 
         if (error) throw error;
 
-        // Get cached inspector profile to attach to offline data
-        const profile = await getCachedProfile(user.id);
+        // Insert child data from import (if any)
+        const hasChildData =
+          childData.systems.length > 0 ||
+          childData.equipment.length > 0 ||
+          childData.ziplines.length > 0 ||
+          childData.standards.length > 0 ||
+          childData.summary;
 
-        // Cache offline with inspector profile data
+        if (hasChildData) {
+          await insertChildData(data.id);
+        }
+
+        const profile = await getCachedProfile(user.id);
         await saveInspectionOffline({
           ...data,
           synced_at: new Date().toISOString(),
@@ -225,36 +460,30 @@ export default function NewInspection() {
         });
 
         navigate(`/inspection/${data.id}`);
-        
-        if (import.meta.env.DEV) {
-          console.log('[NewInspection] Created and synced to Supabase');
-        }
       } else {
-        // Create offline only
         await saveInspectionOffline(newInspection);
         await queueOperation('create', tempId, newInspection);
-
         navigate(`/inspection/${tempId}`);
-        
-        if (import.meta.env.DEV) {
-          console.log('[NewInspection] Created offline with temp ID:', tempId);
-        }
       }
       
       triggerHaptic('success');
     } catch (error: any) {
       console.error("Error creating inspection:", error);
       triggerHaptic('error');
-       
-       // Show error toast to user
-       toast.error("Failed to create inspection", {
-         description: error.message || "Please try again"
-       });
+      toast.error("Failed to create inspection", {
+        description: error.message || "Please try again"
+      });
     } finally {
       setLoading(false);
-       isSubmitting.current = false;
+      isSubmitting.current = false;
     }
   };
+
+  const totalImportedItems =
+    childData.systems.length +
+    childData.equipment.length +
+    childData.ziplines.length +
+    childData.standards.length;
 
   return (
     <div className="min-h-screen bg-background">
@@ -274,10 +503,69 @@ export default function NewInspection() {
             <CardTitle className="text-2xl">New Inspection Report</CardTitle>
           </CardHeader>
           <CardContent>
+            {/* Import from previous report */}
+            <div
+              className={`mb-6 border-2 border-dashed rounded-lg p-6 text-center transition-colors cursor-pointer ${
+                dragActive
+                  ? "border-primary bg-primary/5"
+                  : importedFileName
+                  ? "border-accent bg-accent/5"
+                  : "border-muted-foreground/25 hover:border-primary/50 hover:bg-muted/30"
+              }`}
+              onDrop={onDrop}
+              onDragOver={onDragOver}
+              onDragLeave={onDragLeave}
+              onClick={() => !importLoading && fileInputRef.current?.click()}
+            >
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".docx,.pdf"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) handleFileImport(file);
+                  e.target.value = "";
+                }}
+              />
+              {importLoading ? (
+                <div className="flex flex-col items-center gap-2">
+                  <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                  <p className="text-sm font-medium text-primary">Analyzing report...</p>
+                  <p className="text-xs text-muted-foreground">This may take a moment</p>
+                </div>
+              ) : importedFileName ? (
+                <div className="flex flex-col items-center gap-2">
+                  <CheckCircle2 className="w-8 h-8 text-accent-foreground" />
+                  <p className="text-sm font-medium text-foreground">
+                    Imported from <span className="text-primary">{importedFileName}</span>
+                  </p>
+                  {totalImportedItems > 0 && (
+                    <p className="text-xs text-muted-foreground">
+                      {totalImportedItems} items will be pre-filled • Click to re-import
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <div className="flex flex-col items-center gap-2">
+                  <div className="flex items-center gap-2">
+                    <Upload className="w-5 h-5 text-muted-foreground" />
+                    <FileText className="w-5 h-5 text-muted-foreground" />
+                  </div>
+                  <p className="text-sm font-medium text-foreground">
+                    Import from Previous Report
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Drop a .docx or .pdf file here, or click to browse
+                  </p>
+                </div>
+              )}
+            </div>
+
             {!isOnline && (
               <Alert className="mb-6 border-warning bg-warning/10">
                 <CloudOff className="h-4 w-4 text-warning" />
-                <AlertDescription className="text-gray-900 dark:text-gray-100">
+                <AlertDescription className="text-foreground">
                   📴 Working offline - inspection will sync when online
                   {getCachedUser()?.email && (
                     <div className="text-xs mt-1 opacity-80">
@@ -322,7 +610,7 @@ export default function NewInspection() {
                       </>
                     ) : formData.latitude && formData.longitude ? (
                       <>
-                        <MapPin className="w-4 h-4 text-green-600 mr-2" />
+                        <MapPin className="w-4 h-4 text-primary mr-2" />
                         <span className="text-sm">Update</span>
                       </>
                     ) : (
@@ -391,6 +679,25 @@ export default function NewInspection() {
                   placeholder="Enter any known history about this course..."
                 />
               </div>
+
+              {/* Show import summary if child data present */}
+              {totalImportedItems > 0 && (
+                <Alert className="border-primary/30 bg-primary/5">
+                  <FileText className="h-4 w-4 text-primary" />
+                  <AlertDescription className="text-sm">
+                    <strong>Pre-filled from import:</strong>{" "}
+                    {[
+                      childData.systems.length > 0 && `${childData.systems.length} systems`,
+                      childData.equipment.length > 0 && `${childData.equipment.length} equipment`,
+                      childData.ziplines.length > 0 && `${childData.ziplines.length} ziplines`,
+                      childData.standards.length > 0 && `${childData.standards.length} standards`,
+                    ]
+                      .filter(Boolean)
+                      .join(", ")}
+                    . All results will default to "Not Inspected".
+                  </AlertDescription>
+                </Alert>
+              )}
 
               {!isOnline && (
                 <Alert className="border-muted bg-muted/50">
