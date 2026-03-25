@@ -1,44 +1,29 @@
 
 
-## Fix: Equipment Not Showing After Import
+## Add Refresh Button to Dashboard
 
-### Root Cause
+### What's Missing
 
-Two issues are causing equipment to silently fail insertion:
+The dashboard has a Force Sync button (syncs offline data to server) but no button to simply **refresh/reload the report list** from the server. Users need a way to manually pull the latest data without relying on pull-to-refresh (mobile-only) or tab-switching.
 
-1. **Silent error swallowing**: Every child insert uses `.then()` which converts the Supabase response (including errors) into `undefined`. `Promise.allSettled` then sees all promises as "fulfilled" — even when the DB returns an error. No errors are ever logged.
+### Change
 
-2. **Required columns with null values**: The `inspection_equipment` table requires `equipment_type` and `equipment_category` to be non-null strings. The AI sometimes returns `null` or `undefined` for these fields. Unlike `inspection_systems` (where `name` and `system_name` are nullable), this causes the entire batch insert to fail.
+**File: `src/pages/Dashboard.tsx`**
 
-### Changes
+Add a Refresh button next to the existing Force Sync button in the dashboard header (line ~1074). It will call the existing `refreshReports(true)` function with a spinning icon during loading.
 
-**File: `src/pages/NewInspection.tsx`**
+```text
+Header bar (line 1059-1082):
+  [SyncPulse] [pending badge] [NetworkQuality] [ForceSyncButton] [RefreshButton] [SuperAdmin badge]
+                                                                   ^^ NEW
+```
 
-1. **Fix error handling for all child inserts** — replace `.then()` with a proper error-checking pattern that throws on Supabase errors so `Promise.allSettled` can catch them:
-   ```typescript
-   // Before (swallows errors):
-   promises.push(supabase.from("inspection_equipment").insert(rows).then());
-   
-   // After (surfaces errors):
-   promises.push(
-     supabase.from("inspection_equipment").insert(rows)
-       .then(({ error }) => { if (error) throw error; })
-   );
-   ```
-
-2. **Default required equipment fields** — ensure `equipment_type` and `equipment_category` always have a non-empty string value:
-   ```typescript
-   equipment_type: e.equipment_type || "Unknown",
-   equipment_category: e.equipment_category || "General",
-   ```
-
-3. **Log successful insert counts** — add a console log showing how many rows were inserted per section for debugging.
-
-Apply the same `.then()` fix to all five insert calls (systems, equipment, ziplines, standards, summary).
-
-### Files
+- Use `RefreshCw` icon (already imported) with `variant="icon"` styling matching `ForceSyncButton`
+- Spin icon while `refreshInFlightRef` is true (track via a `isRefreshing` state)
+- Tooltip: "Refresh reports"
+- Disable during active refresh to prevent spam
 
 | File | Change |
 |------|--------|
-| `src/pages/NewInspection.tsx` | Fix error handling on all 5 insert calls; default required equipment fields to non-empty strings |
+| `src/pages/Dashboard.tsx` | Add a Refresh icon button next to ForceSyncButton that calls `refreshReports(true)` |
 
