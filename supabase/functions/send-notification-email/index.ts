@@ -93,32 +93,32 @@ serve(async (req) => {
 
     console.log(`Processing email notification for org ${organizationId}, type: ${notificationType}`);
 
-    // Get all super admins
-    const { data: superAdminRoles, error: rolesError } = await supabaseAdmin
+    // Get all admins
+    const { data: adminRoles, error: rolesError } = await supabaseAdmin
       .from('user_roles')
       .select('user_id')
       .eq('role', 'super_admin');
 
     if (rolesError) {
-      console.error('Error fetching super admin roles:', rolesError);
+      console.error('Error fetching admin roles:', rolesError);
       throw rolesError;
     }
 
-    if (!superAdminRoles || superAdminRoles.length === 0) {
-      console.log('No super admins found');
+    if (!adminRoles || adminRoles.length === 0) {
+      console.log('No admins found');
       return new Response(
-        JSON.stringify({ success: true, message: "No super admins to notify" }),
+        JSON.stringify({ success: true, message: "No admins to notify" }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    const superAdminIds = superAdminRoles.map(r => r.user_id);
+    const adminIds = adminRoles.map(r => r.user_id);
 
-    // Get notification preferences for super admins who have email notifications enabled
+    // Get notification preferences for admins who have email notifications enabled
     const { data: preferences, error: prefsError } = await supabaseAdmin
       .from('notification_preferences')
       .select('user_id, email_notifications_enabled, email_inspection_completed, email_training_completed, email_sync_conflicts')
-      .in('user_id', superAdminIds)
+      .in('user_id', adminIds)
       .eq('email_notifications_enabled', true);
 
     if (prefsError) {

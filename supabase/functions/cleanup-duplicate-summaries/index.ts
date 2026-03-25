@@ -83,7 +83,7 @@ Deno.serve(async (req) => {
       throw new Error('Unauthorized');
     }
 
-    // Check if user is super admin
+    // Check if user is admin
     const { data: roles, error: rolesError } = await supabaseClient
       .from('user_roles')
       .select('role')
@@ -92,7 +92,7 @@ Deno.serve(async (req) => {
       .maybeSingle();
 
     if (rolesError || !roles) {
-      throw new Error('Super admin access required');
+      throw new Error('Admin access required');
     }
 
     console.log(`Starting cleanup - User: ${user.id}`);

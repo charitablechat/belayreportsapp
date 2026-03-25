@@ -495,15 +495,15 @@ export default function SuperAdminDashboard() {
       if (!data.success) throw new Error(data.error);
 
       toast.success(superAdminAction === 'grant' 
-        ? 'Super admin privileges granted' 
-        : 'Super admin privileges revoked');
+        ? 'Admin privileges granted' 
+        : 'Admin privileges revoked');
       setSuperAdminDialogOpen(false);
       setSuperAdminTargetUser(null);
       refetchUsers();
       queryClient.invalidateQueries({ queryKey: ["admin-users"] });
     } catch (error: any) {
-      console.error('Error toggling super admin:', error);
-      toast.error(error?.message || 'Failed to update super admin status');
+      console.error('Error toggling admin:', error);
+      toast.error(error?.message || 'Failed to update admin status');
     }
   };
 
@@ -658,7 +658,7 @@ export default function SuperAdminDashboard() {
           <ArrowLeft className="h-5 w-5" />
         </Button>
         <div className="flex-1">
-          <h1 className="text-4xl md:text-5xl font-black tracking-tight mb-2">Super Admin Dashboard</h1>
+          <h1 className="text-4xl md:text-5xl font-black tracking-tight mb-2">Admin Dashboard</h1>
           <p className="text-muted-foreground/70 text-sm tracking-wide">Manage all organizations, users, and inspections</p>
         </div>
       </div>
@@ -700,7 +700,7 @@ export default function SuperAdminDashboard() {
             title: "System Users",
             description: "All registered users including inspectors and admins.",
             details: [
-              { label: "Super admins", value: managedUsers?.filter((u: any) => u.isSuperAdmin).length || 0 },
+              { label: "Admins", value: managedUsers?.filter((u: any) => u.isSuperAdmin).length || 0 },
               { label: "Regular users", value: managedUsers?.filter((u: any) => !u.isSuperAdmin).length || 0 },
             ],
             tip: "Click to manage user accounts"
@@ -1018,7 +1018,7 @@ export default function SuperAdminDashboard() {
                         variant="ghost"
                         size="sm"
                         onClick={() => handleSuperAdminToggle(user)}
-                        title={user.isSuperAdmin ? 'Remove Super Admin' : 'Make Super Admin'}
+                        title={user.isSuperAdmin ? 'Remove Admin' : 'Make Admin'}
                       >
                         {user.isSuperAdmin ? (
                           <ShieldOff className="h-4 w-4 text-orange-500" />
@@ -1552,25 +1552,25 @@ export default function SuperAdminDashboard() {
         onOpenChange={setIsMergeDialogOpen}
       />
 
-      {/* Super Admin Toggle Confirmation Dialog */}
+      {/* Admin Toggle Confirmation Dialog */}
       <AlertDialog open={superAdminDialogOpen} onOpenChange={setSuperAdminDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {superAdminAction === 'grant' ? 'Grant Super Admin Access' : 'Revoke Super Admin Access'}
+              {superAdminAction === 'grant' ? 'Grant Admin Access' : 'Revoke Admin Access'}
             </AlertDialogTitle>
             <AlertDialogDescription>
               {superAdminAction === 'grant' ? (
                 <>
-                  Are you sure you want to grant super admin privileges to{' '}
+                  Are you sure you want to grant admin privileges to{' '}
                   <strong>{superAdminTargetUser?.email}</strong>?
                   They will have full access to manage all organizations, users, and system settings.
                 </>
               ) : (
                 <>
-                  Are you sure you want to revoke super admin privileges from{' '}
+                  Are you sure you want to revoke admin privileges from{' '}
                   <strong>{superAdminTargetUser?.email}</strong>?
-                  They will lose access to the super admin dashboard and system-wide management capabilities.
+                  They will lose access to the admin dashboard and system-wide management capabilities.
                 </>
               )}
             </AlertDialogDescription>
