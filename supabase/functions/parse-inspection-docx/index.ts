@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { Buffer } from "node:buffer";
 import mammoth from "npm:mammoth@1.8.0";
 import WordExtractor from "npm:word-extractor@1.0.4";
 import pdfParse from "npm:pdf-parse@1.1.1";
