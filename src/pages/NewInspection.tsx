@@ -314,7 +314,7 @@ export default function NewInspection() {
         rope_type: e.rope_type || null,
         display_order: i,
       }));
-      promises.push(supabase.from("inspection_equipment").insert(rows));
+      promises.push(supabase.from("inspection_equipment").insert(rows).then());
     }
 
     if (childData.ziplines.length > 0) {
