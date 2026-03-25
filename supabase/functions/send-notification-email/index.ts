@@ -127,9 +127,9 @@ serve(async (req) => {
     }
 
     if (!preferences || preferences.length === 0) {
-      console.log('No super admins with email notifications enabled');
+      console.log('No admins with email notifications enabled');
       return new Response(
-        JSON.stringify({ success: true, message: "No super admins with email notifications enabled" }),
+        JSON.stringify({ success: true, message: "No admins with email notifications enabled" }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -139,9 +139,9 @@ serve(async (req) => {
     const eligiblePrefs = preferences.filter(p => p[prefKey] === true);
 
     if (eligiblePrefs.length === 0) {
-      console.log(`No super admins with ${notificationType} email notifications enabled`);
+      console.log(`No admins with ${notificationType} email notifications enabled`);
       return new Response(
-        JSON.stringify({ success: true, message: "No super admins with this notification type enabled" }),
+        JSON.stringify({ success: true, message: "No admins with this notification type enabled" }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
