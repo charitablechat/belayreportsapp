@@ -142,9 +142,9 @@ function OperatingSystemsTable({ systems, onUpdate, onImmediateSave, inspectionI
                 {system.is_divider ? (
                   <div className="col-span-6 flex items-center bg-blue-100 dark:bg-blue-900/30">
                     <div className="p-2 flex-1">
-                      <Input
+                      <DebouncedInput
                         value={system.divider_text || ""}
-                        onChange={(e) => updateSystem(system, "divider_text", e.target.value)}
+                        onChange={(value) => updateSystem(system, "divider_text", value)}
                         onBlur={onImmediateSave}
                         placeholder="Enter divider text..."
                         className="border-0 bg-transparent text-center font-bold text-base"
