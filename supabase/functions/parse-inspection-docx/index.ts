@@ -300,12 +300,14 @@ serve(async (req) => {
     }
 
     // Truncate to avoid exceeding token limits
-    const maxChars = 30000;
-    const truncatedText = extractedText.length > maxChars
+    const maxChars = 60000;
+    const wasTruncated = extractedText.length > maxChars;
+    const truncatedText = wasTruncated
       ? extractedText.slice(0, maxChars) + "\n\n[...truncated...]"
       : extractedText;
 
-    console.log(`[parse-inspection-docx] Extracted ${extractedText.length} chars from ${fileName}`);
+    console.log(`[parse-inspection-docx] Extracted ${extractedText.length} chars from ${fileName} (truncated: ${wasTruncated})`);
+    console.log(`[parse-inspection-docx] First 500 chars:\n${extractedText.slice(0, 500)}`);
 
     // Call AI to extract structured data
     const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
