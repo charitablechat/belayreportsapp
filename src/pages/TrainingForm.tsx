@@ -94,6 +94,7 @@ export default function TrainingForm() {
   const [showCompleteDialog, setShowCompleteDialog] = useState(false);
   const [isSavingBeforeLeave, setIsSavingBeforeLeave] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
@@ -368,9 +369,7 @@ export default function TrainingForm() {
     summaryAutoPopulatedRef.current = true;
   }, [summary?.id, isLoading, inspectorProfile]);
 
-  // Load training data
-  useEffect(() => {
-    const loadTraining = async () => {
+  const loadTraining = useCallback(async () => {
       if (!id) return;
 
       try {
@@ -396,7 +395,6 @@ export default function TrainingForm() {
           isInternalUpdateRef.current = true;
           setTraining(offlineTraining);
           setInspectorId(offlineTraining.inspector_id);
-          // Track successful loads — arrays with data came from real IndexedDB reads
           if (delivery_approaches && delivery_approaches.length > 0) childDataLoadedRef.current.delivery_approaches = true;
           if (operating_systems && operating_systems.length > 0) childDataLoadedRef.current.operating_systems = true;
           if (immediate_attention && immediate_attention.length > 0) childDataLoadedRef.current.immediate_attention = true;
@@ -408,13 +406,11 @@ export default function TrainingForm() {
           setImmediateAttention(immediate_attention || []);
           setVerifiableItems(verifiable_items || []);
           setSystemsInPlace(systems_in_place || []);
-          // Initialize summary with a proper UUID if not exists
           setSummary(summaryData || { 
             id: crypto.randomUUID(),
             training_id: id 
           });
         } else if (!id.startsWith('temp-')) {
-          // Finding 6: Auto-restore from localStorage backup if IndexedDB was evicted
           const backup = getReportSnapshot('training', id);
           if (backup) {
             console.log('[TrainingForm] IndexedDB empty but localStorage backup found — auto-restoring');
@@ -448,7 +444,6 @@ export default function TrainingForm() {
           }
         }
 
-        // If online and not a temp-ID, fetch from Supabase and update offline storage
         if (isOnline && !id.startsWith('temp-')) {
           const { data: trainingData, error: trainingError } = await supabase
             .from('trainings')
@@ -456,7 +451,6 @@ export default function TrainingForm() {
             .eq('id', id)
             .maybeSingle();
 
-          // Handle training not found - redirect to dashboard
           if (!trainingData && !offlineTraining) {
             console.warn('[TrainingForm] Training not found:', id);
             toast.error("Training not found", {
@@ -468,12 +462,9 @@ export default function TrainingForm() {
 
           if (trainingError) throw trainingError;
           
-          // Determine if local data should take priority
           const localIsNewer = isLocalDataNewer(offlineTraining, trainingData);
 
           if (localIsNewer) {
-            // Local data is newer - preserve local state, only accept server metadata
-            // Skip ALL server child data fetches to prevent overwriting local edits
             if (import.meta.env.DEV) console.log('[TrainingForm] Local data is newer -- preserving local state (parent + child)');
             if (trainingData) {
               setTraining(prev => ({ ...prev, status: trainingData.status }));
@@ -482,12 +473,10 @@ export default function TrainingForm() {
           } else if (trainingData) {
             setTraining(trainingData);
             setInspectorId(trainingData.inspector_id);
-            // Non-blocking cache update - don't await to prevent loading freeze
             saveTrainingOffline({ ...trainingData, synced_at: trainingData.synced_at || new Date().toISOString() }).catch(e =>
               console.warn('[TrainingForm] Non-critical: failed to cache training', e)
             );
 
-            // Load all related data
             const [
               { data: approachData },
               { data: systemData },
@@ -504,9 +493,7 @@ export default function TrainingForm() {
               supabase.from('training_summary').select('*').eq('training_id', id).maybeSingle()
             ]);
 
-            // Vector 2: Non-regression guard — don't overwrite local data with empty server arrays
             isInternalUpdateRef.current = true;
-            // Mark all child types as loaded when server data is applied
             childDataLoadedRef.current.delivery_approaches = true;
             childDataLoadedRef.current.operating_systems = true;
             childDataLoadedRef.current.immediate_attention = true;
@@ -548,18 +535,15 @@ export default function TrainingForm() {
             } else if (systems_in_place.length > 0) {
               console.warn('[TrainingForm] Server returned empty systems_in_place but local has data -- preserving local');
             }
-            // Summary: always take server data if available, otherwise keep local
             if (summaryResult) {
               setSummary(summaryResult);
               saveTrainingDataOffline('summary', id, summaryResult).catch(e =>
                 console.warn('[TrainingForm] Non-critical: failed to cache summary', e));
             } else if (!summaryData) {
-              // Initialize summary with a proper UUID if not exists anywhere
               setSummary({ id: crypto.randomUUID(), training_id: id });
             }
           }
         } else if (!offlineTraining) {
-          // Offline and no cached data
           toast.error("Training not available offline", {
             description: "Please connect to the internet to load this training.",
           });
@@ -575,10 +559,12 @@ export default function TrainingForm() {
       } finally {
         setIsLoading(false);
       }
-    };
-
-    loadTraining();
   }, [id, isOnline, navigate]);
+
+  // Load training data
+  useEffect(() => {
+    loadTraining();
+  }, [loadTraining]);
 
   // Listen for JSON import events — reload form state from IndexedDB to prevent
   // stale React state from overwriting imported data on next save
@@ -1471,6 +1457,28 @@ export default function TrainingForm() {
                 }}
               >
                 <HardDrive className="w-4 h-4" />
+              </Button>
+              )}
+              {id && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                title="Refresh Report Data"
+                disabled={refreshing || isSaving}
+                onClick={async () => {
+                  setRefreshing(true);
+                  try {
+                    await loadTraining();
+                    toast.success("Report refreshed", { description: "Latest data loaded successfully." });
+                  } catch {
+                    toast.error("Refresh failed");
+                  } finally {
+                    setRefreshing(false);
+                  }
+                }}
+              >
+                <RefreshCw className={cn("w-4 h-4", refreshing && "animate-spin")} />
               </Button>
               )}
               {training?.status !== 'completed' && (

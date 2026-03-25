@@ -107,6 +107,7 @@ export default function InspectionForm() {
   const isMobileDevice = isMobile();
   useScrollBoundaryDetection(isMobileDevice);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [autoSaving, setAutoSaving] = useState(false);
   const [generatingPdf, setGeneratingPdf] = useState(false);
@@ -2589,6 +2590,34 @@ export default function InspectionForm() {
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent>Force Local Backup</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+              )}
+              {id && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      disabled={refreshing || saving || autoSaving}
+                      onClick={async () => {
+                        setRefreshing(true);
+                        try {
+                          await loadInspection();
+                          toast.success("Report refreshed", { description: "Latest data loaded successfully." });
+                        } catch {
+                          toast.error("Refresh failed");
+                        } finally {
+                          setRefreshing(false);
+                        }
+                      }}
+                    >
+                      <RefreshCw className={cn("w-4 h-4", refreshing && "animate-spin")} />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Refresh Report Data</TooltipContent>
                 </Tooltip>
               </TooltipProvider>
               )}

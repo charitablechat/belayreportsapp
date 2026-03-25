@@ -97,6 +97,7 @@ export default function DailyAssessmentForm() {
   const [showLeaveDialog, setShowLeaveDialog] = useState(false);
   const [isSavingBeforeLeave, setIsSavingBeforeLeave] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [showSubmitDialog, setShowSubmitDialog] = useState(false);
@@ -1535,6 +1536,28 @@ export default function DailyAssessmentForm() {
                 }}
               >
                 <HardDrive className="w-4 h-4" />
+              </Button>
+              )}
+              {id && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                title="Refresh Report Data"
+                disabled={refreshing || saving || submitting}
+                onClick={async () => {
+                  setRefreshing(true);
+                  try {
+                    await loadAssessment();
+                    toast.success("Report refreshed", { description: "Latest data loaded successfully." });
+                  } catch {
+                    toast.error("Refresh failed");
+                  } finally {
+                    setRefreshing(false);
+                  }
+                }}
+              >
+                <RefreshCw className={cn("w-4 h-4", refreshing && "animate-spin")} />
               </Button>
               )}
               {assessment?.status !== 'completed' && (
