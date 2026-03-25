@@ -475,15 +475,20 @@ ${truncatedText}`;
     let extracted = JSON.parse(toolCall.function.arguments);
     let partial = false;
 
-    // If truncated, do a second pass for commonly dropped sections
+    // If truncated, do a second pass for ALL sections
     if (finishReason === "length" || finishReason === "MAX_TOKENS") {
-      console.warn("[parse-inspection-docx] Output was truncated — running second pass for equipment & summary");
+      console.warn("[parse-inspection-docx] Output was truncated — running second pass for all sections");
       partial = true;
 
       try {
-        const secondPrompt = `The previous extraction was truncated. Extract ONLY the following sections from this report — include every item with full verbatim comments:
-1. ALL equipment items (type, category, result, comments, production_year, rope_type — NO quantity)
-2. The complete summary section (repairs_performed, critical_actions, future_considerations, next_inspection_date)
+        const secondPrompt = `The previous extraction was truncated. Extract ALL sections from this report — include every item with full verbatim comments:
+1. ALL operating systems/elements with name, system_name, result, and full comments
+2. ALL equipment items (type, category, result, comments, production_year, rope_type — NO quantity)
+3. ALL ziplines with all measurements and full comments
+4. ALL standards with documentation status and full comments
+5. The complete summary section (repairs_performed, critical_actions, future_considerations, next_inspection_date) — copy ALL text verbatim
+
+Do not skip ANY item. Do not abbreviate or summarize comments.
 
 Report text:
 
@@ -495,25 +500,36 @@ ${truncatedText}`;
         if (secondCall?.function?.arguments) {
           const secondExtracted = JSON.parse(secondCall.function.arguments);
 
-          // Merge: use second pass data if first pass had fewer or empty results
-          if (secondExtracted.equipment?.length > (extracted.equipment?.length || 0)) {
-            console.log(`[parse-inspection-docx] Second pass found ${secondExtracted.equipment.length} equipment (vs ${extracted.equipment?.length || 0})`);
-            extracted.equipment = secondExtracted.equipment;
+          // Merge each section: keep whichever pass returned more items
+          for (const section of ["systems", "equipment", "ziplines", "standards"] as const) {
+            const firstLen = extracted[section]?.length || 0;
+            const secondLen = secondExtracted[section]?.length || 0;
+            if (secondLen > firstLen) {
+              console.log(`[parse-inspection-docx] Second pass: ${section} ${secondLen} items (vs ${firstLen})`);
+              extracted[section] = secondExtracted[section];
+            }
           }
-          if (secondExtracted.summary && !extracted.summary?.repairs_performed && !extracted.summary?.critical_actions) {
-            console.log("[parse-inspection-docx] Using summary from second pass");
-            extracted.summary = secondExtracted.summary;
+
+          // Merge summary: keep whichever has more total content (by character length)
+          if (secondExtracted.summary) {
+            const sumLen = (obj: Record<string, string | undefined> | undefined) =>
+              Object.values(obj || {}).reduce((acc: number, v) => acc + (typeof v === "string" ? v.length : 0), 0);
+            const firstSumLen = sumLen(extracted.summary);
+            const secondSumLen = sumLen(secondExtracted.summary);
+            if (secondSumLen > firstSumLen) {
+              console.log(`[parse-inspection-docx] Second pass summary is longer (${secondSumLen} vs ${firstSumLen} chars)`);
+              extracted.summary = secondExtracted.summary;
+            }
           }
 
           // Check if second pass completed fully
           const secondFinish = secondData.choices?.[0]?.finish_reason;
           if (secondFinish !== "length" && secondFinish !== "MAX_TOKENS") {
-            partial = false; // second pass got everything
+            partial = false;
           }
         }
       } catch (retryErr) {
         console.error("[parse-inspection-docx] Second pass failed:", retryErr);
-        // Keep partial = true so client shows warning
       }
     }
 
