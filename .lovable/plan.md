@@ -1,53 +1,33 @@
-## Import Previous Report from Word Document
+
+
+## Add .doc, Google Docs, and Markdown Support to Report Import
 
 ### Overview
+Extend the existing report import feature to accept `.doc` (legacy Word), Google Docs (exported as `.docx`), and Markdown (`.md`) files, in addition to the current `.docx` and `.pdf` support.
 
-Add a "Clone from Previous Report" feature to the New Inspection page. The user uploads a `.docx or pdf` file of a previous inspection report, an AI-powered edge function extracts structured data from it, and a new inspection is created with all systems, equipment, ziplines, and standards pre-filled.
+### Approach
 
-### How It Works
+**Google Docs note:** Google Docs doesn't have a native file format that can be uploaded directly. Users export Google Docs as `.docx` — which is already supported. The solution is to make this clear in the UI text rather than add a separate parser.
 
-1. On the New Inspection page, a new "Import from Previous Report" button/section appears
-2. User selects a `.docx` file
-3. The file is uploaded to a backend function that uses AI to parse the document and extract structured fields
-4. The extracted data auto-populates the form (organization, location, onsite contact, etc.)
-5. On submit, the new inspection is created with all child rows (systems, equipment, ziplines, standards) pre-inserted
+**Legacy `.doc` note:** `.doc` is a binary format (OLE2) that's extremely difficult to parse without a full library. The practical approach is to attempt basic text extraction from the binary stream similar to the PDF fallback approach.
 
-### Technical Details
+### Changes
 
-**New Edge Function: `parse-inspection-docx**`
+**1. Edge Function: `supabase/functions/parse-inspection-docx/index.ts`**
+- Add a `extractTextFromDoc()` function for legacy `.doc` files — scans for Unicode/ASCII text sequences in the binary OLE2 stream (similar to the PDF fallback)
+- Add a `extractTextFromMarkdown()` function — strips Markdown syntax (headers, bold, links, etc.) and returns clean text
+- Update the file type routing to accept `doc` and `md` extensions alongside `docx` and `pdf`
+- Update error message to list all supported types
 
-- Accepts a `.docx` file upload
-- Converts document content to text using Deno-compatible parsing
-- Sends the extracted text to Lovable AI (Gemini) with a structured JSON schema to extract:
-  - `organization`, `location`, `onsite_contact`, `previous_inspector`, `course_history`
-  - `systems[]` — name, result, comments
-  - `equipment[]` — equipment_type, equipment_category, result, comments, quantity, production_year, rope_type
-  - `ziplines[]` — zipline_name, cable_type, cable_length, braking_system, ead_system, result, comments
-  - `standards[]` — standard_name, has_documentation, comments
-  - `summary` — repairs_performed, critical_actions, future_considerations, next_inspection_date
-- Returns structured JSON to the client
+**2. Frontend: `src/pages/NewInspection.tsx`**
+- Update `accept` attribute on file input: `.docx,.doc,.pdf,.md`
+- Update file extension validation to allow `doc` and `md`
+- Update UI help text to: "Drop a .docx, .doc, .pdf, or .md file here (also works with Google Docs exported as .docx)"
 
-**Modified: `src/pages/NewInspection.tsx**`
+### Files
 
-- Add a file input with drag-and-drop support for `.docx` files
-- On file selection, call the edge function and show a loading state
-- Populate `formData` fields from the response
-- Store extracted child data (systems, equipment, ziplines, standards, summary) in component state
-- On form submit, after creating the inspection, bulk-insert all child rows into their respective tables
+| File | Change |
+|------|--------|
+| `supabase/functions/parse-inspection-docx/index.ts` | Add `.doc` and `.md` text extractors, update routing |
+| `src/pages/NewInspection.tsx` | Update accepted file types, validation, and help text |
 
-**Files to create/modify:**
-
-
-| File                                                | Change                                                                      |
-| --------------------------------------------------- | --------------------------------------------------------------------------- |
-| `supabase/functions/parse-inspection-docx/index.ts` | New edge function — parses .docx, calls AI for structured extraction        |
-| `src/pages/NewInspection.tsx`                       | Add file upload UI, call edge function, store & submit extracted child data |
-
-
-### User Experience
-
-- The upload section shows below the form title with a dashed border drop zone
-- While parsing, a spinner with "Analyzing report..." is shown
-- Once parsed, all form fields auto-fill and a success toast confirms how many systems/equipment/ziplines were found
-- The user can review and edit any pre-filled data before submitting
-- Results default to "Not Inspected" for the new report (previous results are informational only)
