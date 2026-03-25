@@ -380,9 +380,9 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
                       const currentVal = item.equipment_type || "";
                       return currentVal.trim() !== "" ? (
                         <div className="flex items-center gap-1">
-                          <Input
+                          <DebouncedInput
                             value={currentVal}
-                            onChange={(e) => updateEquipment(item, "equipment_type", e.target.value)}
+                            onChange={(value) => updateEquipment(item, "equipment_type", value)}
                             onBlur={onImmediateSave}
                             onKeyDown={(e) => e.key === 'Enter' && onImmediateSave?.()}
                             placeholder="Edit type..."
