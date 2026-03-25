@@ -536,7 +536,7 @@ export default function NewInspection() {
                 </div>
               ) : importedFileName ? (
                 <div className="flex flex-col items-center gap-2">
-                  <CheckCircle2 className="w-8 h-8 text-green-600" />
+                  <CheckCircle2 className="w-8 h-8 text-accent-foreground" />
                   <p className="text-sm font-medium text-foreground">
                     Imported from <span className="text-primary">{importedFileName}</span>
                   </p>
