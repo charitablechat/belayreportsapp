@@ -334,10 +334,21 @@ export default function NewInspection() {
     }
 
     if (childData.equipment.length > 0) {
+      const normalizeCategory = (cat: string): string => {
+        const c = (cat || "").toLowerCase();
+        if (c.includes("harness")) return "harnesses";
+        if (c.includes("helmet") || c.includes("head")) return "helmets";
+        if (c.includes("lanyard") || c.includes("sling")) return "lanyards";
+        if (c.includes("carabiner") || c.includes("connector") || c.includes("quicklink") || c.includes("hardware")) return "connectors";
+        if (c.includes("rope")) return "rope";
+        if (c.includes("belay") || c.includes("descent")) return "belay";
+        if (c.includes("trolley") || c.includes("pulley")) return "trolleys";
+        return "other";
+      };
       const rows = childData.equipment.map((e, i) => ({
         inspection_id: inspectionId,
         equipment_type: e.equipment_type || "Unknown",
-        equipment_category: e.equipment_category || "General",
+        equipment_category: normalizeCategory(e.equipment_category),
         result: e.result || "Not Inspected",
         comments: e.comments || null,
         production_year: e.production_year || null,
