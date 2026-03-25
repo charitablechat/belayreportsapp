@@ -1,42 +1,31 @@
 
 
-## Fix: Imported Equipment Not Showing in Form
+## Fix: Exclude Deleted Photos from Generated Reports
 
-### Root Cause
+### Problem
+When photos are soft-deleted in the app, the **inspection HTML report generator** still includes them because it doesn't filter out records with a non-null `deleted_at` timestamp. The PDF generator and training reports already have this filter.
 
-The AI extraction returns free-text equipment categories like `"Hardware"`, `"PPE"`, `"General"`, while the EquipmentTable component filters by hardcoded category slugs: `harnesses`, `helmets`, `lanyards`, `connectors`, `rope`, `belay`, `trolleys`, `other`.
+### Change
 
-The 18 equipment items ARE in the database and loaded into React state, but every EquipmentTable instance filters them out because `item.equipment_category === "harnesses"` never matches `"Hardware"`.
+**File: `supabase/functions/generate-inspection-html/index.ts` (line ~224)**
 
-### Fix
-
-**File: `src/pages/NewInspection.tsx`** — Add a category normalization function in `insertChildData` that maps AI-returned categories to the app's expected slug values before inserting.
-
-```text
-Mapping logic:
-  - Contains "harness" → "harnesses"
-  - Contains "helmet" or "head" → "helmets"
-  - Contains "lanyard" or "sling" → "lanyards"
-  - Contains "carabiner" or "connector" or "quicklink" or "hardware" → "connectors"
-  - Contains "rope" → "rope"
-  - Contains "belay" or "descent" → "belay"
-  - Contains "trolley" or "pulley" → "trolleys"
-  - Everything else → "other"
-```
-
-Also update the AI tool schema in **`supabase/functions/parse-inspection-docx/index.ts`** to hint the expected categories in the `equipment_category` description, so the AI returns closer matches:
+Add `.is('deleted_at', null)` to the `inspection_photos` query, matching the pattern already used in the PDF generator:
 
 ```
-equipment_category: {
-  type: "string",
-  description: "Category slug: harnesses, helmets, lanyards, connectors, rope, belay, trolleys, or other"
-}
+// Before
+supabase.from("inspection_photos").select("*").eq("inspection_id", inspectionId)
+
+// After
+supabase.from("inspection_photos").select("*").eq("inspection_id", inspectionId).is("deleted_at", null).order("display_order")
 ```
 
-### Files
+This is the only file that needs updating. The other report generators (`generate-inspection-pdf`, `training-formatter`) already filter correctly.
+
+### Impact
+- Retroactive: all existing reports will exclude deleted photos when regenerated
+- Future reports will automatically respect soft-deletes
 
 | File | Change |
 |------|--------|
-| `src/pages/NewInspection.tsx` | Add `normalizeEquipmentCategory()` function; apply it in `insertChildData` when mapping equipment rows |
-| `supabase/functions/parse-inspection-docx/index.ts` | Update `equipment_category` description in tool schema to list valid slugs |
+| `supabase/functions/generate-inspection-html/index.ts` | Add `.is('deleted_at', null)` filter to photo query |
 
