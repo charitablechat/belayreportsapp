@@ -2091,3 +2091,89 @@ export async function listAllBackups(): Promise<Array<{
     'listAllBackups'
   );
 }
+
+// ============= AUTOCOMPLETE HISTORY HELPERS =============
+
+export interface AutocompleteEntry {
+  id: string; // compound key: `${field_type}::${value}`
+  field_type: string;
+  value: string;
+  usage_count: number;
+  last_used_at: string;
+  synced: boolean;
+}
+
+/**
+ * Get all autocomplete entries for a given field type, sorted by usage_count desc.
+ */
+export async function getAutocompleteHistory(fieldType: string): Promise<AutocompleteEntry[]> {
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      const all = await db.getAllFromIndex('autocomplete_history', 'by-field-type', fieldType);
+      return all.sort((a, b) => (b.usage_count || 0) - (a.usage_count || 0));
+    },
+    [],
+    'getAutocompleteHistory'
+  );
+}
+
+/**
+ * Put (create or update) an autocomplete entry in IndexedDB.
+ */
+export async function putAutocompleteEntry(entry: AutocompleteEntry): Promise<void> {
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      await db.put('autocomplete_history', entry);
+    },
+    undefined,
+    'putAutocompleteEntry'
+  );
+}
+
+/**
+ * Delete an autocomplete entry from IndexedDB by its compound key.
+ */
+export async function deleteAutocompleteEntry(id: string): Promise<void> {
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      await db.delete('autocomplete_history', id);
+    },
+    undefined,
+    'deleteAutocompleteEntry'
+  );
+}
+
+/**
+ * Get all unsynced autocomplete entries (for background push to server).
+ */
+export async function getUnsyncedAutocompleteEntries(): Promise<AutocompleteEntry[]> {
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      // synced index stores boolean; false = unsynced
+      return await db.getAllFromIndex('autocomplete_history', 'by-synced', 0 as any);
+    },
+    [],
+    'getUnsyncedAutocompleteEntries'
+  );
+}
+
+/**
+ * Bulk-put multiple autocomplete entries (used during server→local merge).
+ */
+export async function bulkPutAutocompleteEntries(entries: AutocompleteEntry[]): Promise<void> {
+  if (entries.length === 0) return;
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      const tx = db.transaction('autocomplete_history', 'readwrite');
+      await Promise.all(entries.map(e => tx.store.put(e)));
+      await tx.done;
+    },
+    undefined,
+    'bulkPutAutocompleteEntries'
+  );
+}
