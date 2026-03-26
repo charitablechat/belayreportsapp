@@ -43,6 +43,7 @@ const placeCursorAtEnd = (el: HTMLInputElement) => {
   setCaret();
   requestAnimationFrame(setCaret);
   setTimeout(setCaret, 0);
+  setTimeout(setCaret, 50);
 };
 
 const collapseFullSelection = (el: HTMLInputElement) => {
