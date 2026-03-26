@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
+import { updateOfflinePhotoCaption } from "@/lib/offline-storage";
 import { cn } from "@/lib/utils";
 
 interface PhotoCaptionInputProps {
@@ -11,12 +12,12 @@ interface PhotoCaptionInputProps {
   disabled?: boolean;
   className?: string;
   /** When provided, saves caption locally (IndexedDB) instead of to Supabase */
-  onOfflineSave?: (caption: string) => void;
+  onOfflineSave?: (caption: string) => void | Promise<void>;
 }
 
 /**
  * Caption input for photos with 3-second debounce auto-save
- * Follows the Immediate, Irreversible Persistence pattern
+ * Never disables during save to prevent offline input freezes.
  */
 export default function PhotoCaptionInput({
   photoId,
@@ -49,22 +50,32 @@ export default function PhotoCaptionInput({
   }, []);
 
   const saveCaption = useCallback(async (newCaption: string) => {
-    // Offline-only mode: save to IndexedDB via callback
+    // Path 1: Explicit offline callback (unsynced photos)
     if (onOfflineSave) {
-      onOfflineSave(newCaption);
+      try {
+        await onOfflineSave(newCaption);
+      } catch (err) {
+        console.error("[PhotoCaptionInput] onOfflineSave error:", err);
+      }
       lastSavedValueRef.current = newCaption;
       return;
     }
 
+    // Path 2: Synced photo but user is offline — queue in IndexedDB
     if (!isOnline) {
-      console.log("[PhotoCaptionInput] Offline, caption will sync later");
+      console.log("[PhotoCaptionInput] Offline — queuing caption in IndexedDB");
+      try {
+        await updateOfflinePhotoCaption(photoId, newCaption);
+      } catch (err) {
+        console.error("[PhotoCaptionInput] Failed to queue offline caption:", err);
+      }
+      lastSavedValueRef.current = newCaption;
       return;
     }
 
-    // Optimistic UI - don't wait for DB
+    // Path 3: Online — persist to Supabase
     setIsSaving(true);
-    
-    // Safety timeout - NEVER get stuck in saving state (max 5 seconds)
+
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     saveTimeoutRef.current = setTimeout(() => {
       console.warn("[PhotoCaptionInput] Save timeout reached, resetting state");
@@ -85,7 +96,6 @@ export default function PhotoCaptionInput({
     } catch (err) {
       console.error("[PhotoCaptionInput] Error saving caption:", err);
     } finally {
-      // Clear safety timeout and reset state
       if (saveTimeoutRef.current) {
         clearTimeout(saveTimeoutRef.current);
         saveTimeoutRef.current = null;
@@ -98,18 +108,15 @@ export default function PhotoCaptionInput({
     const value = e.target.value;
     setCaption(value);
 
-    // Clear existing timer
     if (debounceTimerRef.current) {
       clearTimeout(debounceTimerRef.current);
     }
 
-    // Set new 3-second debounce timer
     debounceTimerRef.current = setTimeout(() => {
       saveCaption(value);
     }, 3000);
   };
 
-  // Save immediately on blur (if there are pending changes)
   const handleBlur = () => {
     if (debounceTimerRef.current) {
       clearTimeout(debounceTimerRef.current);
@@ -128,7 +135,7 @@ export default function PhotoCaptionInput({
         onChange={handleChange}
         onBlur={handleBlur}
         placeholder="Add caption..."
-        disabled={disabled || isSaving}
+        disabled={disabled}
         className={cn(
           "text-xs h-8 bg-background/80 backdrop-blur-sm",
           "border-muted-foreground/20 focus:border-primary",
