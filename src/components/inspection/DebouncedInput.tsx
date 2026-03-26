@@ -19,6 +19,9 @@ export const DebouncedInput = memo(function DebouncedInput({
   validate,
   delay = 300,
   onBlur,
+  onFocus,
+  onMouseUp,
+  onTouchEnd,
   ...props
 }: DebouncedInputProps) {
   const [local, setLocal] = useState(value);
