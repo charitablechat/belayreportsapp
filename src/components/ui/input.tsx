@@ -2,8 +2,28 @@ import * as React from "react";
 
 import { cn } from "@/lib/utils";
 
+const placeCursorAtEnd = (el: HTMLInputElement) => {
+  const setCaret = () => {
+    const len = el.value.length;
+    el.setSelectionRange(len, len);
+  };
+  setCaret();
+  requestAnimationFrame(setCaret);
+  setTimeout(setCaret, 0);
+};
+
+const collapseFullSelection = (el: HTMLInputElement) => {
+  if (
+    el.value.length > 0 &&
+    el.selectionStart === 0 &&
+    el.selectionEnd === el.value.length
+  ) {
+    placeCursorAtEnd(el);
+  }
+};
+
 const Input = React.forwardRef<HTMLInputElement, React.ComponentProps<"input">>(
-  ({ className, type, ...props }, ref) => {
+  ({ className, type, onFocus, onMouseUp, onTouchEnd, ...props }, ref) => {
     return (
       <input
         type={type}
@@ -12,6 +32,18 @@ const Input = React.forwardRef<HTMLInputElement, React.ComponentProps<"input">>(
           className,
         )}
         ref={ref}
+        onFocus={(e) => {
+          placeCursorAtEnd(e.currentTarget);
+          onFocus?.(e);
+        }}
+        onMouseUp={(e) => {
+          collapseFullSelection(e.currentTarget);
+          onMouseUp?.(e);
+        }}
+        onTouchEnd={(e) => {
+          collapseFullSelection(e.currentTarget);
+          onTouchEnd?.(e);
+        }}
         {...props}
       />
     );
