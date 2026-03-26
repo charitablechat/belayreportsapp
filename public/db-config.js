@@ -2,5 +2,5 @@
 // IMPORTANT: Update this when changing the IndexedDB schema version
 var DB_CONFIG = {
   name: 'rope-works-inspections',
-  version: 8
+  version: 9
 };

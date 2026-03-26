@@ -185,6 +185,18 @@ interface InspectionDB extends DBSchema {
     };
     indexes: { 'by-report': string; 'by-timestamp': number; 'by-report-version': [string, number] };
   };
+  autocomplete_history: {
+    key: string; // compound: `${field_type}::${value}`
+    value: {
+      id: string;
+      field_type: string;
+      value: string;
+      usage_count: number;
+      last_used_at: string;
+      synced: boolean;
+    };
+    indexes: { 'by-field-type': string; 'by-synced': number };
+  };
 }
 
 let dbPromise: Promise<IDBPDatabase<InspectionDB>> | null = null;
@@ -482,7 +494,7 @@ export async function getDB() {
     // Version 8: Add report_versions store for append-only versioning
     // DB_NAME and DB_VERSION shared with public/db-config.js for SW consistency
     const DB_NAME = 'rope-works-inspections';
-    const DB_VERSION = 8;
+    const DB_VERSION = 9;
     const openDBV8WithTimeout = async () => {
       return openDB<InspectionDB>(DB_NAME, DB_VERSION, {
         upgrade(db, oldVersion, newVersion, transaction) {
@@ -611,6 +623,16 @@ export async function getDB() {
             versionStore.createIndex('by-report-version', ['reportId', 'versionNumber']);
             if (import.meta.env.DEV) {
               console.log('[Offline Storage] Created report_versions store (v8 upgrade)');
+            }
+          }
+
+          // === NEW in v9: autocomplete_history store ===
+          if (!db.objectStoreNames.contains('autocomplete_history')) {
+            const acStore = db.createObjectStore('autocomplete_history', { keyPath: 'id' });
+            acStore.createIndex('by-field-type', 'field_type');
+            acStore.createIndex('by-synced', 'synced');
+            if (import.meta.env.DEV) {
+              console.log('[Offline Storage] Created autocomplete_history store (v9 upgrade)');
             }
           }
         },
