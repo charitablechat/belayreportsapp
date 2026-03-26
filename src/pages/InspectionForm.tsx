@@ -78,6 +78,22 @@ import { DataIntegrityBadge, type IntegrityStatus } from "@/components/ui/data-i
 import { VersionHistoryPanel } from "@/components/admin/VersionHistoryPanel";
 import { Shield as ShieldIcon } from "lucide-react";
 
+const STANDARDS_TEMPLATE = [
+  { standard_name: "Local Written Operations Procedures", has_documentation: null },
+  { standard_name: "Local Written Emergency Action Plan", has_documentation: null },
+  { standard_name: "Minimum Annual Training", has_documentation: null },
+  { standard_name: "Written Pre-Use Inspection in Use", has_documentation: null },
+  { standard_name: "Inventory Tracking System in Use", has_documentation: null },
+  { standard_name: "Operational Review Every 5 Years", has_documentation: null },
+];
+
+const mergeStandards = (loaded: any[]) => {
+  return STANDARDS_TEMPLATE.map(template => {
+    const match = loaded.find((s: any) => s.standard_name === template.standard_name);
+    return match || { ...template, id: crypto.randomUUID() };
+  });
+};
+
 export default function InspectionForm() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -2955,22 +2971,6 @@ export default function InspectionForm() {
           </div>
         </Tabs>
       </main>
-
-const STANDARDS_TEMPLATE = [
-  { standard_name: "Local Written Operations Procedures", has_documentation: null },
-  { standard_name: "Local Written Emergency Action Plan", has_documentation: null },
-  { standard_name: "Minimum Annual Training", has_documentation: null },
-  { standard_name: "Written Pre-Use Inspection in Use", has_documentation: null },
-  { standard_name: "Inventory Tracking System in Use", has_documentation: null },
-  { standard_name: "Operational Review Every 5 Years", has_documentation: null },
-];
-
-const mergeStandards = (loaded: any[]) => {
-  return STANDARDS_TEMPLATE.map(template => {
-    const match = loaded.find((s: any) => s.standard_name === template.standard_name);
-    return match || { ...template, id: crypto.randomUUID() };
-  });
-};
 
 
       <HtmlReportViewer
