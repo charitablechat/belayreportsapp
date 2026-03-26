@@ -106,6 +106,22 @@ All colors MUST be HSL.
     right: var(--safe-area-right);
   }
 
+  /* Prevent text overflow on narrow viewports */
+  p, span, label, td, th, div, li {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  /* Allow grid children to shrink below content size */
+  .grid > * {
+    min-width: 0;
+  }
+
+  /* Ellipsis for inputs and selects that overflow */
+  input, select {
+    text-overflow: ellipsis;
+  }
+
   /* Rich Text Editor Styles */
   .ProseMirror {
     outline: none;

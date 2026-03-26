@@ -101,16 +101,16 @@ function ZiplinesTable({ ziplines, onUpdate, onImmediateSave, inspectionId, onGa
 
   return (
     <Card>
-      <CardHeader className="px-4 md:px-6">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+      <CardHeader className="px-4 lg:px-6">
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
           <CardTitle>Ziplines</CardTitle>
-          <Button onClick={addZipline} size="sm" className="w-full md:w-auto shrink-0">
+          <Button onClick={addZipline} size="sm" className="w-full lg:w-auto shrink-0">
             <Plus className="w-4 h-4 mr-2" />
             Add Zipline
           </Button>
         </div>
       </CardHeader>
-      <CardContent className="px-3 md:px-6">
+      <CardContent className="px-3 lg:px-6">
         <div className="mb-4 space-y-1 text-xs text-muted-foreground">
           <p><strong>Cable Type KEY:</strong> GAC = Galvanized Aircraft Cable, SS = Super Swaged</p>
           <p><strong>Braking System KEY:</strong> ZS = Zip Stop, FB = Friction Break, SB = Spring Bank, G = Gravity</p>
@@ -118,7 +118,7 @@ function ZiplinesTable({ ziplines, onUpdate, onImmediateSave, inspectionId, onGa
         </div>
 
         {/* Desktop grid view */}
-        <div className="hidden md:block overflow-x-auto">
+        <div className="hidden lg:block overflow-x-auto">
           <div className="min-w-[1200px]">
             {/* Header */}
             <div className={`grid ${ZIP_GRID_COLS} bg-blue-50 dark:bg-blue-950/20 border-b border-border text-xs`}>
@@ -235,7 +235,7 @@ function ZiplinesTable({ ziplines, onUpdate, onImmediateSave, inspectionId, onGa
         </div>
         
         {/* Mobile/Tablet card view */}
-        <div className="md:hidden space-y-3">
+        <div className="lg:hidden space-y-3">
           {ziplines.map((zipline) => (
             <DraggableMobileCard key={zipline.id} id={zipline.id} {...getDragProps(zipline.id)}>
               <div className="p-4 pl-12 relative border-l-4 border-l-primary/20 rounded-lg bg-muted/30 border border-border">
