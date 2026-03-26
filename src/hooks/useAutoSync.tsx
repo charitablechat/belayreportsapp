@@ -3,7 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { syncAllInspectionsAtomic, syncAllTrainingsAtomic, syncAllDailyAssessmentsAtomic } from '@/lib/atomic-sync-manager';
 import { syncPhotos } from '@/lib/sync-manager';
 import { getUnsyncedInspections, getUnsyncedTrainings, getUnsyncedDailyAssessments, getUnsyncedCounts } from '@/lib/offline-storage';
-import { getUserWithCache } from '@/lib/cached-auth';
+import { getUserWithCache, getCachedUserFromStorage } from '@/lib/cached-auth';
 import { hasPendingOfflineAuth, verifyAndReconcileOfflineAuth } from '@/lib/offline-auth';
 import { useQueryClient } from '@tanstack/react-query';
 import { isMobile, isIOS } from '@/lib/mobile-detection';
@@ -120,11 +120,12 @@ export const useAutoSync = () => {
       return;
     }
     
-    // Skip if no authenticated user - prevents noisy "No valid session" errors
-    const user = await getUserWithCache();
-    if (!user) {
+    // Lightweight sync check — no network call, no lock contention
+    // Each atomic sync function already calls ensureValidSession() for thorough validation
+    const cachedUser = getCachedUserFromStorage();
+    if (!cachedUser) {
       if (import.meta.env.DEV) {
-        console.log('[AutoSync] No authenticated user - skipping sync');
+        console.log('[AutoSync] No cached user session - skipping sync');
       }
       return;
     }
@@ -135,7 +136,6 @@ export const useAutoSync = () => {
         console.log('[AutoSync] Sync already in progress - skipping');
       }
       // Return a promise that resolves when current sync completes
-      // This prevents callers from thinking sync is done immediately
       return new Promise<void>((resolve) => {
         const checkInterval = setInterval(() => {
           if (!syncInProgressRef.current) {
@@ -143,18 +143,29 @@ export const useAutoSync = () => {
             resolve();
           }
         }, 500);
-        // Safety: resolve after 35s regardless
+        // Safety: resolve after 15s regardless (reduced from 35s to prevent long hangs)
         setTimeout(() => {
           clearInterval(checkInterval);
           resolve();
-        }, 35000);
+        }, 15000);
       });
     }
     
-    // Debounce protection
+    // Debounce protection — schedule deferred retry for explicit reconnection syncs
     const now = Date.now();
     if (now - lastSyncAttemptRef.current < MIN_SYNC_INTERVAL) {
-      if (import.meta.env.DEV) {
+      if (!silent) {
+        // Explicit reconnection (online event) — don't silently drop, schedule retry
+        const remaining = MIN_SYNC_INTERVAL - (now - lastSyncAttemptRef.current);
+        if (import.meta.env.DEV) {
+          console.log(`[AutoSync] Debounce guard hit on reconnection — scheduling retry in ${remaining}ms`);
+        }
+        setTimeout(() => {
+          if (navigator.onLine && !syncInProgressRef.current) {
+            performSync(false);
+          }
+        }, remaining + 500);
+      } else if (import.meta.env.DEV) {
         console.log('[AutoSync] Too soon since last sync - debouncing');
       }
       return;
@@ -379,7 +390,25 @@ export const useAutoSync = () => {
    */
   const handleOnline = useCallback(async () => {
     if (import.meta.env.DEV) {
-      console.log('[AutoSync] Network reconnected - checking offline auth then syncing');
+      console.log('[AutoSync] Network reconnected - refreshing session then syncing');
+    }
+    
+    // Pre-refresh session BEFORE sync to ensure fresh JWT
+    // This eliminates race conditions between getUserWithCache and ensureValidSession
+    try {
+      const refreshResult = await Promise.race([
+        supabase.auth.refreshSession(),
+        new Promise<{ error: { message: string } }>((resolve) =>
+          setTimeout(() => resolve({ error: { message: 'Session refresh timeout' } }), 5000)
+        ),
+      ]);
+      if ('error' in refreshResult && refreshResult.error) {
+        console.warn('[AutoSync] Session refresh failed:', refreshResult.error.message);
+      } else if (import.meta.env.DEV) {
+        console.log('[AutoSync] Session refreshed successfully');
+      }
+    } catch (e) {
+      console.warn('[AutoSync] Session refresh error:', e);
     }
     
     // Verify offline credentials before syncing to prevent RLS failures
@@ -388,7 +417,6 @@ export const useAutoSync = () => {
         await verifyAndReconcileOfflineAuth();
       } catch (e) {
         console.warn('[AutoSync] Offline auth verification failed:', e);
-        // Don't block sync - data is still local
       }
     }
     
