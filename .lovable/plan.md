@@ -1,60 +1,33 @@
 
 
-## Fully Offline GlobalAutocomplete via IndexedDB
+## Why the HARD-SAVED toast doesn't appear on Android
 
-### Current State
-- GlobalAutocomplete uses `localStorage` as offline fallback — stores only flat string arrays, losing `usage_count` and `id`
-- Online: fetches from `global_field_history` table, fire-and-forget upserts
-- Module-level in-memory cache (`_globalHistoryCache`) for cross-instance sharing
-- No pending-sync queue for entries created while offline
+### Root Cause
 
-### Plan
+The black-and-green "HARD-SAVED" toast only fires **after** all IndexedDB writes complete successfully (`Promise.all(childOps)`). On your Android device, IndexedDB is timing out (the console shows `[Offline Storage] Operation timed out after 8000ms` repeatedly). When that timeout throws an exception, execution jumps to the `catch` block — **skipping the toast entirely**.
 
-#### 1. Add `autocomplete_history` store to IndexedDB (v9 upgrade)
+Your data IS being saved — the localStorage snapshot (Layer 1) runs synchronously before the IndexedDB writes and always succeeds. But you get no visual feedback because the toast is gated on the IndexedDB step.
 
-**File: `src/lib/offline-storage.ts`**
-- Bump `DB_VERSION` from 8 → 9
-- Add new store to `InspectionDB` schema interface:
-  ```
-  autocomplete_history: {
-    key: string;  // compound: `${field_type}::${value}`
-    value: { field_type, value, usage_count, last_used_at, synced }
-  }
-  ```
-- Add index `by-field-type` on `field_type` for efficient per-field queries
-- Add index `by-synced` on `synced` for pending sync detection
-- Export CRUD helpers: `getAutocompleteHistory(fieldType)`, `putAutocompleteEntry(entry)`, `deleteAutocompleteEntry(key)`, `getUnsyncedAutocompleteEntries()`
+### Fix
 
-#### 2. Refactor GlobalAutocomplete to use IndexedDB-first
+Move the HARD-SAVED toast to fire immediately after the **localStorage snapshot** succeeds (which is synchronous and reliable), rather than waiting for IndexedDB. If IndexedDB subsequently fails, show a subtle warning but keep the green confirmation.
 
-**File: `src/components/GlobalAutocomplete.tsx`**
-- Replace localStorage reads/writes with IndexedDB helpers from offline-storage
-- On mount: load from IndexedDB (instant), then background-fetch from database when online
-- On save: write to IndexedDB immediately (with `synced: false`), then fire-and-forget upsert to database; on success mark `synced: true`
-- On delete: remove from IndexedDB, then fire-and-forget delete from database
-- Keep module-level in-memory cache for instant cross-instance access
-- Remove all `localStorage.getItem/setItem` calls for this feature
+### Changes
 
-#### 3. Background sync for offline-created entries
+**File: `src/pages/InspectionForm.tsx`**
+- Move `showHardSavedToast()` call from after `Promise.all(childSaveOps)` (line 1468) to after `saveReportSnapshot()` (line 1458)
+- In the IndexedDB catch block, show a non-alarming warning ("Saved to backup — retrying storage") instead of the current "Save failed" error
 
-**File: `src/components/GlobalAutocomplete.tsx`**
-- On `fetchGlobalHistory` (when online): also push any `synced: false` entries to the database
-- Simple: iterate unsynced entries, upsert each, mark synced on success
-- No new sync infrastructure needed — piggybacks on existing fetch cycle
+**File: `src/pages/TrainingForm.tsx`**
+- Same pattern: move `showHardSavedToast()` from line 703 to after `saveReportSnapshot()` (line 693)
+- Soften the IndexedDB catch message
 
-#### 4. Migration: localStorage → IndexedDB
+**File: `src/pages/DailyAssessmentForm.tsx`**
+- Same pattern: move `showHardSavedToast()` from line 753 to after `saveReportSnapshot()` (line 744)
+- Soften the IndexedDB catch message
 
-**File: `src/components/GlobalAutocomplete.tsx`**
-- On first IndexedDB load per field type: check if localStorage key exists, migrate entries to IndexedDB, then delete the localStorage key
-- One-time, transparent to the user
-
-### Files to Modify
-
-| File | Change |
-|------|--------|
-| `src/lib/offline-storage.ts` | Add `autocomplete_history` store (v9), schema types, CRUD helpers |
-| `src/components/GlobalAutocomplete.tsx` | Replace localStorage with IndexedDB helpers, add offline sync |
-
-### No UI Changes Needed
-The component already handles loading states, instant local-state updates, and responsive layout. The change is purely in the persistence layer — IndexedDB replaces localStorage for richer offline data with sync tracking.
+### Result
+- Users see "HARD-SAVED" immediately on every manual save (localStorage is instant and never fails)
+- If IndexedDB also succeeds — great, no additional feedback needed
+- If IndexedDB times out — a non-alarming warning appears ("Saved to backup — will retry"), so the user knows data is safe but storage is slow
 
