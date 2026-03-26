@@ -350,27 +350,27 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
 
   return (
     <Card>
-      <CardHeader className="px-4 md:px-6">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-          <CardTitle className="text-base md:text-lg">
+      <CardHeader className="px-4 lg:px-6">
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+          <CardTitle className="text-base lg:text-lg">
             EQUIPMENT - {displayName.toUpperCase()}
           </CardTitle>
-          <div className="flex gap-2 w-full md:w-auto">
-            <Button onClick={addDivider} size="sm" variant="outline" className="flex-1 md:flex-none shrink-0">
+          <div className="flex gap-2 w-full lg:w-auto">
+            <Button onClick={addDivider} size="sm" variant="outline" className="flex-1 lg:flex-none shrink-0">
               <Minus className="w-4 h-4 mr-2" />
               Divider
             </Button>
-            <Button onClick={addEquipment} size="sm" className="flex-1 md:flex-none shrink-0">
+            <Button onClick={addEquipment} size="sm" className="flex-1 lg:flex-none shrink-0">
               <Plus className="w-4 h-4 mr-2" />
-              <span className="md:hidden">Add</span>
-              <span className="hidden md:inline">Add {displayName}</span>
+              <span className="lg:hidden">Add</span>
+              <span className="hidden lg:inline">Add {displayName}</span>
             </Button>
           </div>
         </div>
       </CardHeader>
-      <CardContent className="px-3 md:px-6">
+      <CardContent className="px-3 lg:px-6">
         {/* Desktop grid view */}
-        <div className="hidden md:block overflow-x-auto">
+        <div className="hidden lg:block overflow-x-auto">
           {/* Header */}
           <div className={`grid ${EQ_GRID_COLS} bg-blue-50 dark:bg-blue-950/20 border-b border-border`}>
             <div className="p-3 text-center font-semibold text-sm border-r border-border"></div>
@@ -542,7 +542,7 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
         </div>
         
         {/* Mobile card view */}
-        <div className="md:hidden space-y-3">
+        <div className="lg:hidden space-y-3">
           {categoryEquipment.map((item) => (
             <DraggableMobileCard key={item.id} id={item.id} {...getDragProps(item.id)}>
               {item.is_divider ? (
