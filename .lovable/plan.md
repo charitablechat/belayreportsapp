@@ -1,63 +1,41 @@
 
 
-## Add Divider Rows to Equipment Sections
+## Enable Offline Caption Editing for Photos
 
-### Overview
-Add divider row support to all equipment tables, mirroring the existing implementation in the Operating Systems table. This includes a database migration, UI changes, and report generation updates.
+### Problem
+Currently, the caption input is hidden for unsynced (offline) photos — it shows "Caption available after sync" instead. The `PhotoCaptionInput` component also silently skips saving when offline, meaning any edits would be lost.
+
+### Solution
+Allow editing captions on offline photos by:
+1. Storing captions in IndexedDB alongside the photo blob
+2. Showing the caption input for all photos (not just uploaded ones)
+3. Syncing the caption when the photo eventually uploads
 
 ### Changes
 
-**1. Database Migration**
-Add `is_divider` (boolean, default false) and `divider_text` (text, nullable) columns to `inspection_equipment`.
+**1. `src/lib/offline-storage.ts`** — Add `updateOfflinePhotoCaption` function
+- Opens the `photos` store, gets the record by ID, updates its `caption` field, puts it back
+- Simple IndexedDB read-modify-write
 
-```sql
-ALTER TABLE public.inspection_equipment 
-  ADD COLUMN is_divider boolean NOT NULL DEFAULT false,
-  ADD COLUMN divider_text text;
-```
+**2. `src/components/PhotoGallery.tsx`** — Show caption input for offline photos too
+- Lines 717-735: Replace the conditional that hides captions for unsynced photos
+- Show `PhotoCaptionInput` for all photos, passing the offline caption from the Photo object
+- For unsynced photos, pass an `onOfflineCaptionChange` callback that updates both local state and IndexedDB
 
-**2. `src/components/inspection/EquipmentTable.tsx`**
-- Import `Minus` icon
-- Add `addDivider` callback that inserts a new row with `is_divider: true`, `divider_text: ""`, `equipment_type: ""`, `result: "pass"` (to satisfy NOT NULL)
-- Add Divider button to the left of the existing Add button in the header (matching the systems layout: outline variant, `Minus` icon)
-- In desktop grid: wrap each row's content in a conditional — if `item.is_divider`, render a `col-span-8` merged cell with centered bold `DebouncedInput` + delete button on blue background (`bg-blue-100`), else render normal row
-- In mobile cards: same conditional — divider renders as a styled card with centered input + delete button
-- Filter divider rows from required-field validation (dividers don't need equipment_type)
+**3. `src/components/PhotoCaptionInput.tsx`** — Support offline-only saving
+- Add optional `onOfflineSave` prop
+- When offline (or when `onOfflineSave` is provided), call `onOfflineSave(newCaption)` instead of trying Supabase
+- Remove `disabled={isSaving}` guard so the input stays editable offline
 
-**3. `supabase/functions/generate-inspection-html/index.ts`** (2 places — combined and separate equipment pages)
-- In both equipment `.map()` blocks, add divider check before normal row rendering:
-```typescript
-if (eq.is_divider) {
-  return `<tr><td colspan="6" style="text-align:center; font-weight:bold; padding:10px; background:#dbeafe; font-size:11pt;">${eq.divider_text || ''}</td></tr>`;
-}
-```
+**4. `src/lib/sync-manager.ts`** — Use stored caption during photo sync
+- In `syncPhotos()` (line ~108), read `photo.caption` from the IndexedDB record and use it in the database insert instead of falling back to `photo.section`
 
-**4. `supabase/functions/generate-inspection-pdf/index.ts`**
-- In the `items.map()` block, add divider check matching systems pattern:
-```typescript
-if (eq.is_divider) {
-  return [{ content: eq.divider_text || '', colSpan: 5, styles: { halign: 'center', fontStyle: 'bold', fillColor: [219, 234, 254] } }];
-}
-```
+### File Summary
 
-### Button Layout
-The header buttons will use the same flex layout as Operating Systems:
-```tsx
-<div className="flex gap-2 w-full md:w-auto">
-  <Button onClick={addDivider} size="sm" variant="outline" className="flex-1 md:flex-none shrink-0">
-    <Minus className="w-4 h-4 mr-2" /> Divider
-  </Button>
-  <Button onClick={addEquipment} size="sm" className="flex-1 md:flex-none shrink-0">
-    <Plus className="w-4 h-4 mr-2" /> Add {displayName}
-  </Button>
-</div>
-```
-
-### Files
 | File | Change |
 |------|--------|
-| Database migration | Add `is_divider` + `divider_text` columns to `inspection_equipment` |
-| `src/components/inspection/EquipmentTable.tsx` | Add divider button, divider row rendering (desktop + mobile), `addDivider` callback |
-| `supabase/functions/generate-inspection-html/index.ts` | Render equipment dividers as merged colspan rows (2 locations) |
-| `supabase/functions/generate-inspection-pdf/index.ts` | Render equipment dividers as merged colspan rows |
+| `src/lib/offline-storage.ts` | Add `updateOfflinePhotoCaption(photoId, caption)` function |
+| `src/components/PhotoCaptionInput.tsx` | Add `onOfflineSave` prop; call it when offline instead of Supabase |
+| `src/components/PhotoGallery.tsx` | Show caption input for unsynced photos; wire up offline save to IndexedDB |
+| `src/lib/sync-manager.ts` | Use `photo.caption` from IndexedDB when inserting photo record during sync |
 
