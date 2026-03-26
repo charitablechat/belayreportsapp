@@ -47,9 +47,18 @@ function ItemPhotoUpload({
   const [signedUrl, setSignedUrl] = useState<string | null>(null);
   const [isOfflinePhoto, setIsOfflinePhoto] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const prevObjectUrlRef = useRef<string | null>(null);
   const { isOnline } = useNetworkStatus();
 
   const displayUrl = localPreview || signedUrl;
+
+  // Cleanup object URLs on unmount
+  useEffect(() => {
+    return () => {
+      if (prevObjectUrlRef.current) URL.revokeObjectURL(prevObjectUrlRef.current);
+      if (localPreview) URL.revokeObjectURL(localPreview);
+    };
+  }, []);
 
   const loadSignedUrl = useCallback(async () => {
     if (!photoUrl) { setSignedUrl(null); setIsOfflinePhoto(false); return; }
@@ -57,7 +66,11 @@ function ItemPhotoUpload({
     // 1. Cache-first: check IndexedDB
     const cachedBlob = await getCachedPhotoBlob(photoUrl);
     if (cachedBlob) {
-      setSignedUrl(URL.createObjectURL(cachedBlob));
+      // Revoke previous object URL to prevent memory leak
+      if (prevObjectUrlRef.current) URL.revokeObjectURL(prevObjectUrlRef.current);
+      const url = URL.createObjectURL(cachedBlob);
+      prevObjectUrlRef.current = url;
+      setSignedUrl(url);
       return;
     }
 

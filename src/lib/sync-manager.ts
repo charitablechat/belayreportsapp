@@ -3,6 +3,7 @@ import { getUserWithCache } from "@/lib/cached-auth";
 import { 
   getUnuploadedPhotos,
   markPhotoAsUploaded,
+  incrementPhotoRetryCount,
 } from "./offline-storage";
 
 /**
@@ -44,6 +45,7 @@ export async function syncTrainings(): Promise<never> {
 
 // Photo sync manager - still valid, not deprecated
 const MAX_PHOTO_BATCH_SIZE = 10;
+const MAX_PHOTO_RETRIES = 5;
 
 export async function syncPhotos(): Promise<{ remaining: number }> {
   if (!navigator.onLine) {
@@ -59,11 +61,18 @@ export async function syncPhotos(): Promise<{ remaining: number }> {
 
   try {
     const unuploadedPhotos = await getUnuploadedPhotos();
-    const batch = unuploadedPhotos.slice(0, MAX_PHOTO_BATCH_SIZE);
-    const remaining = Math.max(0, unuploadedPhotos.length - MAX_PHOTO_BATCH_SIZE);
+    // Skip photos that have exceeded retry limit
+    const eligiblePhotos = unuploadedPhotos.filter(p => (p.retryCount || 0) < MAX_PHOTO_RETRIES);
+    const skippedCount = unuploadedPhotos.length - eligiblePhotos.length;
+    const batch = eligiblePhotos.slice(0, MAX_PHOTO_BATCH_SIZE);
+    const remaining = Math.max(0, eligiblePhotos.length - MAX_PHOTO_BATCH_SIZE);
     
+    if (skippedCount > 0 && import.meta.env.DEV) {
+      console.warn(`[Sync Manager] Skipping ${skippedCount} photos that exceeded ${MAX_PHOTO_RETRIES} retries`);
+    }
+
     if (import.meta.env.DEV) {
-      console.log(`[Sync Manager] Uploading photos: ${batch.length} of ${unuploadedPhotos.length} (${remaining} remaining)`);
+      console.log(`[Sync Manager] Uploading photos: ${batch.length} of ${eligiblePhotos.length} (${remaining} remaining)`);
     }
 
     let successCount = 0;
@@ -74,6 +83,15 @@ export async function syncPhotos(): Promise<{ remaining: number }> {
           if (import.meta.env.DEV) {
             console.warn('[Sync Manager] Skipping photo with temporary inspection ID:', photo.id);
           }
+          continue;
+        }
+
+        // Guard: blob must exist (may have been nullified by a previous partial success)
+        if (!photo.blob) {
+          if (import.meta.env.DEV) {
+            console.warn('[Sync Manager] Skipping photo with null blob (already uploaded?):', photo.id);
+          }
+          await markPhotoAsUploaded(photo.id, photo.photoUrl || photo.id);
           continue;
         }
 
@@ -99,19 +117,31 @@ export async function syncPhotos(): Promise<{ remaining: number }> {
 
         if (uploadError) throw uploadError;
 
-        // Save to database with file path (signed URLs generated on read)
-        const { error: dbError } = await (supabase
+        // Deduplication guard: check if a DB row already exists for this photo_url
+        const { data: existing } = await (supabase
           .from(table as any) as any)
-          .insert({
-            [fkColumn]: photo.inspectionId,
-            photo_url: fileName,
-            photo_section: photo.section,
-            caption: photo.caption || photo.section || 'Photo',
-          });
+          .select('id')
+          .eq('photo_url', fileName)
+          .eq(fkColumn, photo.inspectionId)
+          .maybeSingle();
 
-        if (dbError) throw dbError;
+        if (!existing) {
+          // Save to database with file path (signed URLs generated on read)
+          const { error: dbError } = await (supabase
+            .from(table as any) as any)
+            .insert({
+              [fkColumn]: photo.inspectionId,
+              photo_url: fileName,
+              photo_section: photo.section,
+              caption: photo.caption || photo.section || 'Photo',
+            });
 
-        // Mark as uploaded and remove blob from local storage
+          if (dbError) throw dbError;
+        } else if (import.meta.env.DEV) {
+          console.log('[Sync Manager] Skipped duplicate DB row for photo:', photo.id);
+        }
+
+        // Mark as uploaded and release blob from IndexedDB
         await markPhotoAsUploaded(photo.id, fileName);
         successCount++;
 
@@ -120,7 +150,8 @@ export async function syncPhotos(): Promise<{ remaining: number }> {
         }
       } catch (error) {
         console.error('[Sync Manager] Failed to upload photo:', photo.id, error);
-        // Continue with other photos even if one fails
+        // Increment retry counter so we eventually stop retrying broken photos
+        await incrementPhotoRetryCount(photo.id);
       }
     }
 
