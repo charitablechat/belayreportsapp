@@ -25,12 +25,24 @@ interface PhotoCaptureProps {
 
 // Supported image types
 const SUPPORTED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'];
-const MAX_FILE_SIZE_MB = 25; // 25MB max before compression
+const MAX_FILE_SIZE_MB = 25;
 
-// Timeout constants for preventing UI hangs
-const AUTH_TIMEOUT = 5000; // 5 seconds max for auth check
-const PROCESS_SAFETY_TIMEOUT = 20000; // 20 seconds max — aligned with 15s compression timeout
-const PER_FILE_TIMEOUT = 15000; // 15 seconds per file — aligned with compression timeout
+// Timeout constants — relaxed to prevent false timeouts on mobile
+const PER_FILE_TIMEOUT = 30000; // 30s per file (compression can be slow on iPad)
+
+/**
+ * Validate file type and size before processing
+ */
+function validateFile(file: File): { valid: boolean; error?: string } {
+  if (!SUPPORTED_TYPES.includes(file.type) && !file.type.startsWith('image/')) {
+    return { valid: false, error: `Unsupported file type: ${file.type || 'unknown'}. Please use JPEG, PNG, or WebP.` };
+  }
+  const fileSizeMB = file.size / (1024 * 1024);
+  if (fileSizeMB > MAX_FILE_SIZE_MB) {
+    return { valid: false, error: `File too large (${fileSizeMB.toFixed(1)}MB). Maximum size is ${MAX_FILE_SIZE_MB}MB.` };
+  }
+  return { valid: true };
+}
 
 export default function PhotoCapture({ 
   inspectionId, 
@@ -47,32 +59,7 @@ export default function PhotoCapture({
   const uploadMutexRef = useRef(false);
 
   /**
-   * Validate file type and size before processing
-   */
-  const validateFile = (file: File): { valid: boolean; error?: string } => {
-    // Check file type
-    if (!SUPPORTED_TYPES.includes(file.type) && !file.type.startsWith('image/')) {
-      return { 
-        valid: false, 
-        error: `Unsupported file type: ${file.type || 'unknown'}. Please use JPEG, PNG, or WebP.` 
-      };
-    }
-
-    // Check file size (before compression)
-    const fileSizeMB = file.size / (1024 * 1024);
-    if (fileSizeMB > MAX_FILE_SIZE_MB) {
-      return { 
-        valid: false, 
-        error: `File too large (${fileSizeMB.toFixed(1)}MB). Maximum size is ${MAX_FILE_SIZE_MB}MB.` 
-      };
-    }
-
-    return { valid: true };
-  };
-
-  /**
-   * Fire-and-forget background upload function
-   * Does NOT block UI - runs entirely in background
+   * Fire-and-forget background upload — does NOT block UI
    */
   const uploadPhotoInBackground = async (
     photoId: string,
@@ -83,51 +70,40 @@ export default function PhotoCapture({
       const fileExt = processedFile.name.split('.').pop() || 'jpg';
       const fileName = `${userId}/${inspectionId}/${Date.now()}.${fileExt}`;
       
-      // Upload to Supabase storage
       const { error: uploadError } = await supabase.storage
         .from(storageBucket)
         .upload(fileName, processedFile);
-
       if (uploadError) throw uploadError;
 
-      // Insert database record
-      const { error: dbError } = await (supabase
-        .from(tableName) as any)
-        .insert({
-          [foreignKeyColumn]: inspectionId,
-          photo_url: fileName,
-          photo_section: section,
-        });
-
+      const { error: dbError } = await (supabase.from(tableName) as any).insert({
+        [foreignKeyColumn]: inspectionId,
+        photo_url: fileName,
+        photo_section: section,
+      });
       if (dbError) throw dbError;
 
-      // Mark as uploaded in IndexedDB (updates "Pending" to "Synced" badge)
       await markPhotoAsUploaded(photoId, fileName);
       
       if (import.meta.env.DEV) {
         console.log('[PhotoCapture] Background sync completed:', photoId);
       }
     } catch (error) {
-      // Photo remains in IndexedDB with uploaded=false
-      // Will be synced by useAutoSync on next interval
       console.warn('[PhotoCapture] Background sync failed, queued for later:', error);
     }
   };
 
   /**
-   * Process a single file with timeout protection
+   * Process a single file — LOCAL-FIRST: saves to IndexedDB before any network call.
+   * Auth is NOT required for local save; only needed for background upload.
    */
-  const processSingleFile = async (file: File, userId: string): Promise<boolean> => {
-    // Validate file before processing
+  const processSingleFile = async (file: File): Promise<boolean> => {
     const validation = validateFile(file);
     if (!validation.valid) {
-      toast.error('Invalid file', {
-        description: validation.error,
-      });
+      toast.error('Invalid file', { description: validation.error });
       return false;
     }
 
-    // Compress image before save (has internal timeout protection)
+    // Compress image (has internal timeout protection)
     let processedFile = file;
     try {
       if (file.type.startsWith('image/')) {
@@ -137,21 +113,18 @@ export default function PhotoCapture({
           quality: 0.85,
           maxSizeMB: 3,
         });
-        
         if (import.meta.env.DEV) {
           const savedKB = ((file.size - processedFile.size) / 1024).toFixed(1);
           console.log(`[PhotoCapture] Compressed ${file.name}: saved ${savedKB}KB`);
         }
       }
     } catch (compressionError) {
-      const errorMessage = compressionError instanceof Error ? compressionError.message : 'Unknown error';
-      console.warn(`[PhotoCapture] Compression failed for ${file.name}:`, errorMessage);
-      // Continue with original file if compression fails
+      console.warn(`[PhotoCapture] Compression failed for ${file.name}:`, compressionError);
+      // Continue with original file
     }
 
-    // STRICT: Block HEIC files that survived the compression pipeline
+    // Block HEIC files that survived the compression pipeline
     if (isHeicFile(processedFile)) {
-      console.error(`[PhotoCapture] HEIC file was not converted: ${processedFile.name}`);
       toast.error('Photo format not supported', {
         description: 'HEIC conversion failed. Please convert to JPEG before uploading.',
       });
@@ -162,10 +135,9 @@ export default function PhotoCapture({
     const deviceFileName = `RopeWorks_${section}_${Date.now()}.jpg`;
     saveToDevice(processedFile, deviceFileName);
 
-    // ===== LOCAL-FIRST ARCHITECTURE =====
-    // ALWAYS save to IndexedDB FIRST (regardless of online status)
+    // ===== LOCAL-FIRST: Save to IndexedDB IMMEDIATELY (no auth required) =====
     const photoId = `${inspectionId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    await savePhotoOffline({
+    const saved = await savePhotoOffline({
       id: photoId,
       inspectionId,
       section,
@@ -176,8 +148,15 @@ export default function PhotoCapture({
       storageBucket,
       foreignKeyColumn,
     });
+
+    if (!saved) {
+      toast.error('Local storage unavailable', {
+        description: 'Unable to save photo locally. Please check device storage.',
+      });
+      return false;
+    }
     
-    // Vector 5: Save lightweight receipt to localStorage (survives IndexedDB eviction)
+    // Save lightweight receipt to localStorage (survives IndexedDB eviction)
     savePhotoReceipt({
       id: photoId,
       inspectionId,
@@ -193,19 +172,25 @@ export default function PhotoCapture({
     // IMMEDIATELY refresh gallery (user sees photo with "Pending" badge)
     onPhotoAdded();
 
-    // If online, attempt background sync (fire-and-forget - NO await)
+    // If online, attempt background sync (fire-and-forget — NO await, NO blocking)
     if (isOnline) {
-      // Fire-and-forget: don't await, don't block UI
-      uploadPhotoInBackground(photoId, processedFile, userId).catch(() => {
-        // Already logged inside the function
-      });
+      // Resolve user identity in background — failure is OK, sync will retry later
+      getUserWithCache()
+        .then(user => {
+          if (user?.id) {
+            uploadPhotoInBackground(photoId, processedFile, user.id).catch(() => {});
+          }
+        })
+        .catch(() => {
+          // Auth failed — photo stays queued in IndexedDB for useAutoSync
+        });
     }
 
     return true;
   };
 
   const processFiles = async (files: FileList | null) => {
-    // Block all writes in Lovable preview to protect production data
+    // Block all writes in Lovable preview
     if ((await import('@/lib/environment')).isLovablePreview()) {
       toast.info("Preview mode", { description: "Photo uploads are disabled in the Lovable preview." });
       return;
@@ -221,8 +206,8 @@ export default function PhotoCapture({
     triggerHaptic('light');
     setUploading(true);
 
-    // SAFETY: Force release mutex after timeout regardless of promise state
-    // This prevents the UI from getting stuck in "Saving..." state forever
+    // SAFETY: Scale timeout with file count — 30s per file, minimum 30s
+    const safetyTimeoutMs = Math.max(30000, files.length * PER_FILE_TIMEOUT);
     const safetyTimeout = setTimeout(() => {
       if (uploadMutexRef.current) {
         console.warn('[PhotoCapture] Safety timeout reached - force releasing mutex');
@@ -232,33 +217,21 @@ export default function PhotoCapture({
           description: 'Please try again with fewer or smaller images',
         });
       }
-    }, PROCESS_SAFETY_TIMEOUT);
+    }, safetyTimeoutMs);
 
     let successCount = 0;
     let errorCount = 0;
 
     try {
-      // Auth check with timeout to prevent indefinite hang
-      const user = await Promise.race([
-        getUserWithCache(),
-        new Promise<null>((resolve) =>
-          setTimeout(() => {
-            console.warn('[PhotoCapture] Auth check timed out');
-            resolve(null);
-          }, AUTH_TIMEOUT)
-        )
-      ]);
-      if (!user) throw new Error("Not authenticated - please refresh the page");
-
       const fileArray = Array.from(files);
       for (let i = 0; i < fileArray.length; i++) {
         // Yield to main thread between files — prevents UI freeze on iPad Safari
         if (i > 0) await new Promise(r => setTimeout(r, 0));
 
         try {
-          // Wrap per-file processing with timeout to prevent individual hangs
+          // Per-file timeout wrapping
           const success = await Promise.race([
-            processSingleFile(fileArray[i], user.id),
+            processSingleFile(fileArray[i]),
             new Promise<boolean>((_, reject) =>
               setTimeout(() => reject(new Error('Per-file timeout')), PER_FILE_TIMEOUT)
             )
@@ -272,11 +245,9 @@ export default function PhotoCapture({
         } catch (fileError: any) {
           console.warn('[PhotoCapture] File processing failed/timed out:', fileError.message);
           errorCount++;
-          // Continue with other files - don't let one failure stop the batch
         }
       }
 
-      // Show feedback based on results
       if (successCount > 0) {
         triggerHaptic('success');
         toast.success(successCount === 1 ? 'Photo saved' : `${successCount} photos saved`, {
@@ -301,13 +272,8 @@ export default function PhotoCapture({
       clearTimeout(safetyTimeout);
       setUploading(false);
       uploadMutexRef.current = false;
-      // Clear both inputs
-      if (cameraInputRef.current) {
-        cameraInputRef.current.value = '';
-      }
-      if (uploadInputRef.current) {
-        uploadInputRef.current.value = '';
-      }
+      if (cameraInputRef.current) cameraInputRef.current.value = '';
+      if (uploadInputRef.current) uploadInputRef.current.value = '';
     }
   };
 
@@ -321,7 +287,6 @@ export default function PhotoCapture({
 
   return (
     <div className="flex gap-2">
-      {/* Camera capture input - uses device camera */}
       <input
         ref={cameraInputRef}
         type="file"
@@ -331,8 +296,6 @@ export default function PhotoCapture({
         onChange={handleCameraCapture}
         className="hidden"
       />
-      
-      {/* Gallery/storage upload input - opens file picker */}
       <input
         ref={uploadInputRef}
         type="file"
@@ -341,8 +304,6 @@ export default function PhotoCapture({
         onChange={handleFileUpload}
         className="hidden"
       />
-      
-      {/* Camera capture button */}
       <Button
         type="button"
         variant="outline"
@@ -363,8 +324,6 @@ export default function PhotoCapture({
           </>
         )}
       </Button>
-      
-      {/* Upload from device button */}
       <Button
         type="button"
         variant="outline"

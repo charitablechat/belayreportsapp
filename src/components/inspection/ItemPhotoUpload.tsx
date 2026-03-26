@@ -165,31 +165,33 @@ function ItemPhotoUpload({
       const previewUrl = URL.createObjectURL(compressed);
       setLocalPreview(previewUrl);
 
-      // 3. Get user ID (with timeout protection)
-      const cachedUser = await Promise.race([
-        getUserWithCache(),
-        new Promise<null>((resolve) => setTimeout(() => resolve(null), 5000)),
-      ]);
-      const userId = cachedUser?.id;
-      if (!userId) throw new Error("Not authenticated");
-
-      const filePath = `${userId}/${inspectionId}/items/${itemId}.jpg`;
+      // 3. Generate deterministic file path (userId resolved later for background upload)
       const photoId = `item-${itemId}-${Date.now()}`;
+      // Use a placeholder path; background upload will use proper userId path
+      const placeholderPath = `pending/${inspectionId}/items/${itemId}.jpg`;
 
-      // 4. Save to IndexedDB FIRST (local-first)
-      await savePhotoOffline({
+      // 4. LOCAL-FIRST: Save to IndexedDB IMMEDIATELY (no auth required)
+      const saved = await savePhotoOffline({
         id: photoId,
         inspectionId,
         section: photoSection || 'item-photo',
         blob: compressed,
         fileName: `${itemId}.jpg`,
         uploaded: false,
-        photoUrl: filePath,
+        photoUrl: placeholderPath,
         tableName: 'inspection_photos',
         storageBucket: 'inspection-photos',
         foreignKeyColumn: 'inspection_id',
         caption: itemName || 'Item photo',
       });
+
+      if (!saved) {
+        toast.error('Local storage unavailable', {
+          description: 'Unable to save photo locally. Please check device storage.',
+        });
+        setLocalPreview(null);
+        return;
+      }
 
       // 5. Save lightweight receipt to localStorage
       savePhotoReceipt({
@@ -201,13 +203,23 @@ function ItemPhotoUpload({
       });
 
       // 6. Update form state immediately
-      onPhotoChange(filePath);
+      onPhotoChange(placeholderPath);
       onImmediateSave?.();
 
-      // 7. Background upload if online (fire-and-forget)
+      // 7. Background upload if online (fire-and-forget, auth resolved here)
       if (isOnline) {
         toast.info("Syncing photo...");
-        uploadInBackground(photoId, compressed, userId, filePath).catch(() => {});
+        getUserWithCache()
+          .then(user => {
+            if (user?.id) {
+              const realPath = `${user.id}/${inspectionId}/items/${itemId}.jpg`;
+              onPhotoChange(realPath); // Update to real path
+              uploadInBackground(photoId, compressed, user.id, realPath).catch(() => {});
+            }
+          })
+          .catch(() => {
+            // Auth failed — photo stays queued for useAutoSync
+          });
       } else {
         toast.success("Photo saved locally", {
           description: "Will sync when back online",
@@ -220,7 +232,7 @@ function ItemPhotoUpload({
     } finally {
       setUploading(false);
     }
-  }, [itemId, inspectionId, onPhotoChange, onImmediateSave, photoSection, isOnline, uploadInBackground]);
+  }, [itemId, inspectionId, onPhotoChange, onImmediateSave, photoSection, isOnline, uploadInBackground, itemName]);
 
   const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
