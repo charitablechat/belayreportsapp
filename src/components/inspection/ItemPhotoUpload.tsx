@@ -47,9 +47,18 @@ function ItemPhotoUpload({
   const [signedUrl, setSignedUrl] = useState<string | null>(null);
   const [isOfflinePhoto, setIsOfflinePhoto] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const prevObjectUrlRef = useRef<string | null>(null);
   const { isOnline } = useNetworkStatus();
 
   const displayUrl = localPreview || signedUrl;
+
+  // Cleanup object URLs on unmount
+  useEffect(() => {
+    return () => {
+      if (prevObjectUrlRef.current) URL.revokeObjectURL(prevObjectUrlRef.current);
+      if (localPreview) URL.revokeObjectURL(localPreview);
+    };
+  }, []);
 
   const loadSignedUrl = useCallback(async () => {
     if (!photoUrl) { setSignedUrl(null); setIsOfflinePhoto(false); return; }
