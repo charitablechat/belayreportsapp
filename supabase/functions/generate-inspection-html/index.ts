@@ -2282,6 +2282,9 @@ serve(async (req) => {
               <tbody>
                 ${categoryEquipment
                   .map((eq) => {
+                    if (eq.is_divider) {
+                      return `<tr><td colspan="6" style="text-align:center; font-weight:bold; padding:10px; background:#dbeafe; font-size:11pt;">${eq.divider_text || ''}</td></tr>`;
+                    }
                     const resultData = formatResultCheckbox(eq.result);
                     const formattedComments = formatCommentsAsBullets(eq.comments);
                     return `
@@ -2414,6 +2417,9 @@ serve(async (req) => {
             <tbody>
               ${categoryEquipment
                 .map((eq) => {
+                  if (eq.is_divider) {
+                    return `<tr><td colspan="6" style="text-align:center; font-weight:bold; padding:10px; background:#dbeafe; font-size:11pt;">${eq.divider_text || ''}</td></tr>`;
+                  }
                   const resultData = formatResultCheckbox(eq.result);
                   const formattedComments = formatCommentsAsBullets(eq.comments);
                   return `
