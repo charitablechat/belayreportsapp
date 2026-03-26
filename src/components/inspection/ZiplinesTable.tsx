@@ -9,6 +9,7 @@ import ResultSelect from "@/components/ResultSelect";
 import { GlobalAutocomplete } from "@/components/GlobalAutocomplete";
 import { Plus, Trash2 } from "lucide-react";
 import ItemPhotoUpload from "./ItemPhotoUpload";
+import { focusNextCell } from "@/lib/table-focus-utils";
 import { useState, useCallback, useEffect, memo } from "react";
 import {
   AlertDialog,
@@ -179,13 +180,13 @@ function ZiplinesTable({ ziplines, onUpdate, onImmediateSave, inspectionId, onGa
                     </Select>
                   </div>
                   <div className="p-1 border-r border-border">
-                    <DebouncedInput type="number" value={String(zipline.cable_length || "")} onChange={(value) => updateZipline(zipline, "cable_length", parseFloat(value) || null)} onBlur={onImmediateSave} onKeyDown={(e) => e.key === 'Enter' && onImmediateSave?.()} placeholder="ft" className="border-0 bg-transparent h-8 text-xs" />
+                    <DebouncedInput type="number" value={String(zipline.cable_length || "")} onChange={(value) => updateZipline(zipline, "cable_length", parseFloat(value) || null)} onBlur={onImmediateSave} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); onImmediateSave?.(); focusNextCell(e.currentTarget as HTMLElement); } }} placeholder="ft" className="border-0 bg-transparent h-8 text-xs" />
                   </div>
                   <div className="p-1 border-r border-border">
-                    <DebouncedInput type="number" value={String(zipline.unload_tension || "")} onChange={(value) => updateZipline(zipline, "unload_tension", parseFloat(value) || null)} onBlur={onImmediateSave} onKeyDown={(e) => e.key === 'Enter' && onImmediateSave?.()} placeholder="lbf" className="border-0 bg-transparent h-8 text-xs" />
+                    <DebouncedInput type="number" value={String(zipline.unload_tension || "")} onChange={(value) => updateZipline(zipline, "unload_tension", parseFloat(value) || null)} onBlur={onImmediateSave} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); onImmediateSave?.(); focusNextCell(e.currentTarget as HTMLElement); } }} placeholder="lbf" className="border-0 bg-transparent h-8 text-xs" />
                   </div>
                   <div className="p-1 border-r border-border">
-                    <DebouncedInput type="number" value={String(zipline.load_tension || "")} onChange={(value) => updateZipline(zipline, "load_tension", parseFloat(value) || null)} onBlur={onImmediateSave} onKeyDown={(e) => e.key === 'Enter' && onImmediateSave?.()} placeholder="lbf" className="border-0 bg-transparent h-8 text-xs" />
+                    <DebouncedInput type="number" value={String(zipline.load_tension || "")} onChange={(value) => updateZipline(zipline, "load_tension", parseFloat(value) || null)} onBlur={onImmediateSave} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); onImmediateSave?.(); focusNextCell(e.currentTarget as HTMLElement); } }} placeholder="lbf" className="border-0 bg-transparent h-8 text-xs" />
                   </div>
                   <div className="p-1 border-r border-border">
                     <ResultSelect value={zipline.cable_result} onChange={(value) => updateZipline(zipline, "cable_result", value)} />
@@ -283,18 +284,18 @@ function ZiplinesTable({ ziplines, onUpdate, onImmediateSave, inspectionId, onGa
                     </div>
                     <div className="min-w-0">
                       <Label className="text-xs text-muted-foreground">Length (ft)</Label>
-                      <DebouncedInput type="number" value={String(zipline.cable_length || "")} onChange={(value) => updateZipline(zipline, "cable_length", parseFloat(value) || null)} onBlur={onImmediateSave} onKeyDown={(e) => e.key === 'Enter' && onImmediateSave?.()} placeholder="Length" />
+                      <DebouncedInput type="number" value={String(zipline.cable_length || "")} onChange={(value) => updateZipline(zipline, "cable_length", parseFloat(value) || null)} onBlur={onImmediateSave} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); onImmediateSave?.(); focusNextCell(e.currentTarget as HTMLElement); } }} placeholder="Length" />
                     </div>
                   </div>
                   
                   <div className="grid grid-cols-2 gap-4">
                     <div className="min-w-0">
                       <Label className="text-xs text-muted-foreground">Unload</Label>
-                      <DebouncedInput type="number" value={String(zipline.unload_tension || "")} onChange={(value) => updateZipline(zipline, "unload_tension", parseFloat(value) || null)} onBlur={onImmediateSave} onKeyDown={(e) => e.key === 'Enter' && onImmediateSave?.()} placeholder="Unload" />
+                      <DebouncedInput type="number" value={String(zipline.unload_tension || "")} onChange={(value) => updateZipline(zipline, "unload_tension", parseFloat(value) || null)} onBlur={onImmediateSave} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); onImmediateSave?.(); focusNextCell(e.currentTarget as HTMLElement); } }} placeholder="Unload" />
                     </div>
                     <div className="min-w-0">
                       <Label className="text-xs text-muted-foreground">Load</Label>
-                      <DebouncedInput type="number" value={String(zipline.load_tension || "")} onChange={(value) => updateZipline(zipline, "load_tension", parseFloat(value) || null)} onBlur={onImmediateSave} onKeyDown={(e) => e.key === 'Enter' && onImmediateSave?.()} placeholder="Load" />
+                      <DebouncedInput type="number" value={String(zipline.load_tension || "")} onChange={(value) => updateZipline(zipline, "load_tension", parseFloat(value) || null)} onBlur={onImmediateSave} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); onImmediateSave?.(); focusNextCell(e.currentTarget as HTMLElement); } }} placeholder="Load" />
                     </div>
                   </div>
                   
