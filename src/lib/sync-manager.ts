@@ -136,16 +136,8 @@ export async function syncPhotos(): Promise<{ remaining: number }> {
 
         if (uploadError) throw uploadError;
 
-        // Re-check: another thread (uploadInBackground) may have already handled this
-        const recheckPhotos = await getUnuploadedPhotos();
-        const stillUnuploaded = recheckPhotos.find(p => p.id === photo.id);
-        if (!stillUnuploaded) {
-          if (import.meta.env.DEV) {
-            console.log('[Sync Manager] Photo already marked uploaded by another thread:', photo.id);
-          }
-          successCount++;
-          continue;
-        }
+
+
 
         // Deduplication guard: check if a DB row already exists for this photo_url
         const { data: existing } = await (supabase
