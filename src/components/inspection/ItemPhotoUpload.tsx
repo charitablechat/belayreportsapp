@@ -147,9 +147,6 @@ function ItemPhotoUpload({
         onGalleryRefresh?.();
       }
 
-      // Mark as uploaded in IndexedDB
-      await markPhotoAsUploaded(photoId, filePath);
-
       // Update signed URL for display
       const { data: signedData } = await supabase.storage
         .from("inspection-photos")
