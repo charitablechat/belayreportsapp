@@ -29,8 +29,8 @@ const MAX_FILE_SIZE_MB = 25; // 25MB max before compression
 
 // Timeout constants for preventing UI hangs
 const AUTH_TIMEOUT = 5000; // 5 seconds max for auth check
-const PROCESS_SAFETY_TIMEOUT = 12000; // 12 seconds max (auth 5s + compression 3s + save 4s)
-const PER_FILE_TIMEOUT = 10000; // 10 seconds per file
+const PROCESS_SAFETY_TIMEOUT = 20000; // 20 seconds max — aligned with 15s compression timeout
+const PER_FILE_TIMEOUT = 15000; // 15 seconds per file — aligned with compression timeout
 
 export default function PhotoCapture({ 
   inspectionId, 
@@ -250,11 +250,15 @@ export default function PhotoCapture({
       ]);
       if (!user) throw new Error("Not authenticated - please refresh the page");
 
-      for (const file of Array.from(files)) {
+      const fileArray = Array.from(files);
+      for (let i = 0; i < fileArray.length; i++) {
+        // Yield to main thread between files — prevents UI freeze on iPad Safari
+        if (i > 0) await new Promise(r => setTimeout(r, 0));
+
         try {
           // Wrap per-file processing with timeout to prevent individual hangs
           const success = await Promise.race([
-            processSingleFile(file, user.id),
+            processSingleFile(fileArray[i], user.id),
             new Promise<boolean>((_, reject) =>
               setTimeout(() => reject(new Error('Per-file timeout')), PER_FILE_TIMEOUT)
             )

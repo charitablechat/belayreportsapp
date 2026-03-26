@@ -406,7 +406,9 @@ async function withIndexedDBErrorBoundary<T>(
     return fallbackValue;
   }
 
-  const OPERATION_TIMEOUT = 5000; // 5 second timeout for any IndexedDB operation
+  const OPERATION_TIMEOUT = operationName.includes('photo') || operationName.includes('Photo')
+    ? 8000  // 8s for photo blob writes (large on iPad Safari)
+    : 5000; // 5s for everything else
   const TIMEOUT_SENTINEL = Symbol('timeout');
   
   try {
