@@ -434,13 +434,18 @@ serve(async (req) => {
         doc.autoTable({
           startY: yPos,
           head: [['Type', 'Qty', 'Mfg Year(s)', 'Result', 'Comments']],
-          body: items.map(eq => [
-            stripHtml(eq.equipment_type) || 'N/A',
-            eq.quantity?.toString() || 'N/A',
-            eq.production_year === "0" ? "N/A" : eq.production_year?.toString() || 'N/A',
-            eq.result || 'N/A',
-            formatCommentsForPdf(eq.comments)
-          ]),
+          body: items.map(eq => {
+            if (eq.is_divider) {
+              return [{ content: eq.divider_text || '', colSpan: 5, styles: { halign: 'center', fontStyle: 'bold', fillColor: [219, 234, 254] } }];
+            }
+            return [
+              stripHtml(eq.equipment_type) || 'N/A',
+              eq.quantity?.toString() || 'N/A',
+              eq.production_year === "0" ? "N/A" : eq.production_year?.toString() || 'N/A',
+              eq.result || 'N/A',
+              formatCommentsForPdf(eq.comments)
+            ];
+          }),
           styles: { fontSize: 9, cellPadding: 2, textColor: [0, 0, 0] },
           headStyles: { fillColor: [30, 64, 175], textColor: [255, 255, 255], fontStyle: 'bold' },
           alternateRowStyles: { fillColor: [248, 250, 252] },

@@ -748,10 +748,12 @@ export type Database = {
           comments: string | null
           created_at: string | null
           display_order: number
+          divider_text: string | null
           equipment_category: string
           equipment_type: string
           id: string
           inspection_id: string
+          is_divider: boolean
           photo_url: string | null
           production_year: string | null
           quantity: string | null
@@ -762,10 +764,12 @@ export type Database = {
           comments?: string | null
           created_at?: string | null
           display_order?: number
+          divider_text?: string | null
           equipment_category: string
           equipment_type: string
           id?: string
           inspection_id: string
+          is_divider?: boolean
           photo_url?: string | null
           production_year?: string | null
           quantity?: string | null
@@ -776,10 +780,12 @@ export type Database = {
           comments?: string | null
           created_at?: string | null
           display_order?: number
+          divider_text?: string | null
           equipment_category?: string
           equipment_type?: string
           id?: string
           inspection_id?: string
+          is_divider?: boolean
           photo_url?: string | null
           production_year?: string | null
           quantity?: string | null

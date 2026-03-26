@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import ResultSelect from "@/components/ResultSelect";
 import { GlobalAutocomplete } from "@/components/GlobalAutocomplete";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Trash2, X } from "lucide-react";
+import { Plus, Trash2, X, Minus } from "lucide-react";
 import ItemPhotoUpload from "./ItemPhotoUpload";
 import { cn } from "@/lib/utils";
 import { useState, useMemo, useCallback, useEffect, memo, useRef } from "react";
@@ -312,6 +312,22 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
         quantity: null,
         result: "pass",
         comments: "",
+        is_divider: false,
+      },
+      ...prev,
+    ]);
+  }, [category, onUpdate]);
+
+  const addDivider = useCallback(() => {
+    onUpdate(prev => [
+      {
+        id: `temp-${crypto.randomUUID()}`,
+        inspection_id: window.location.pathname.split('/').pop(),
+        equipment_category: category,
+        equipment_type: "",
+        result: "pass",
+        is_divider: true,
+        divider_text: "",
       },
       ...prev,
     ]);
@@ -338,11 +354,17 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
           <CardTitle className="text-base md:text-lg">
             EQUIPMENT - {displayName.toUpperCase()}
           </CardTitle>
-          <Button onClick={addEquipment} size="sm" className="w-full md:w-auto shrink-0">
-            <Plus className="w-4 h-4 mr-2" />
-            <span className="md:hidden">Add</span>
-            <span className="hidden md:inline">Add {displayName}</span>
-          </Button>
+          <div className="flex gap-2 w-full md:w-auto">
+            <Button onClick={addDivider} size="sm" variant="outline" className="flex-1 md:flex-none shrink-0">
+              <Minus className="w-4 h-4 mr-2" />
+              Divider
+            </Button>
+            <Button onClick={addEquipment} size="sm" className="flex-1 md:flex-none shrink-0">
+              <Plus className="w-4 h-4 mr-2" />
+              <span className="md:hidden">Add</span>
+              <span className="hidden md:inline">Add {displayName}</span>
+            </Button>
+          </div>
         </div>
       </CardHeader>
       <CardContent className="px-3 md:px-6">
@@ -369,6 +391,30 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
                 gridCols={EQ_GRID_COLS}
                 {...getDragProps(item.id)}
               >
+                {item.is_divider ? (
+                  <div className="col-span-7 flex items-center bg-blue-100 dark:bg-blue-900/30">
+                    <div className="p-2 flex-1">
+                      <DebouncedInput
+                        value={item.divider_text || ""}
+                        onChange={(value) => updateEquipment(item, "divider_text", value)}
+                        onBlur={onImmediateSave}
+                        placeholder="Enter divider text..."
+                        className="border-0 bg-transparent text-center font-bold text-base"
+                      />
+                    </div>
+                    <div className="p-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setItemToDelete({ item, name: item.divider_text || "this divider" })}
+                        className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
                 <div className="p-2 border-r border-border flex items-center justify-center">
                   <ItemPhotoUpload
                     itemId={item.id}
@@ -487,6 +533,8 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
                     <Trash2 className="h-4 w-4" />
                   </Button>
                 </div>
+                  </>
+                )}
               </DraggableTableRow>
             ))}
           </div>
@@ -496,6 +544,25 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
         <div className="md:hidden space-y-3">
           {categoryEquipment.map((item) => (
             <DraggableMobileCard key={item.id} id={item.id} {...getDragProps(item.id)}>
+              {item.is_divider ? (
+                <div className="p-4 pl-12 relative rounded-lg bg-blue-100 dark:bg-blue-900/30 border border-border flex items-center">
+                  <DebouncedInput
+                    value={item.divider_text || ""}
+                    onChange={(value) => updateEquipment(item, "divider_text", value)}
+                    onBlur={onImmediateSave}
+                    placeholder="Enter divider text..."
+                    className="border-0 bg-transparent text-center font-bold text-base flex-1"
+                  />
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setItemToDelete({ item, name: item.divider_text || "this divider" })}
+                    className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10 ml-2"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              ) : (
               <div className="p-4 pl-12 relative border-l-4 border-l-primary/20 rounded-lg bg-muted/30 border border-border">
                 <Button
                   variant="ghost"
@@ -599,6 +666,7 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
                   </div>
                 </div>
               </div>
+              )}
             </DraggableMobileCard>
           ))}
         </div>
