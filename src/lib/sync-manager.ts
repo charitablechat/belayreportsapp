@@ -3,6 +3,7 @@ import { getUserWithCache } from "@/lib/cached-auth";
 import { 
   getUnuploadedPhotos,
   markPhotoAsUploaded,
+  incrementPhotoRetryCount,
 } from "./offline-storage";
 
 /**

@@ -1007,13 +1007,10 @@ export async function getUnuploadedPhotos(userId?: string) {
     async () => {
       const db = await getDB();
       const allPhotos = await db.getAll('photos');
-      let unuploaded = allPhotos.filter(p => !p.uploaded);
-      
-      if (userId) {
-        const userInspections = await getUnsyncedInspections(userId);
-        const userInspectionIds = new Set(userInspections.map(i => i.id));
-        unuploaded = unuploaded.filter(p => userInspectionIds.has(p.inspectionId));
-      }
+      // Filter to photos that still have a blob and haven't been uploaded
+      // Don't filter by unsynced inspections — photos for already-synced reports
+      // must still be included or they become permanently orphaned
+      const unuploaded = allPhotos.filter(p => !p.uploaded && p.blob != null);
       
       return unuploaded;
     },
@@ -1031,15 +1028,36 @@ export async function markPhotoAsUploaded(id: string, photoUrl: string) {
         photo.uploaded = true;
         photo.photoUrl = photoUrl;
         photo.lastValidated = Date.now();
+        // Release the binary blob to free IndexedDB storage quota
+        photo.blob = null;
+        photo.retryCount = 0;
         await db.put('photos', photo);
         
         if (import.meta.env.DEV) {
-          console.log('[Offline Storage] Marked photo as uploaded:', id);
+          console.log('[Offline Storage] Marked photo as uploaded (blob released):', id);
         }
       }
     },
     undefined,
     'markPhotoAsUploaded'
+  );
+}
+
+export async function incrementPhotoRetryCount(id: string): Promise<number> {
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      const photo = await db.get('photos', id);
+      if (photo) {
+        const newCount = (photo.retryCount || 0) + 1;
+        photo.retryCount = newCount;
+        await db.put('photos', photo);
+        return newCount;
+      }
+      return 0;
+    },
+    0,
+    'incrementPhotoRetryCount'
   );
 }
 
