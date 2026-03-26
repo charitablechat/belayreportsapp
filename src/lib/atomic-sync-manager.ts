@@ -651,7 +651,7 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
 /**
  * Sync all unsynced inspections atomically
  */
-export async function syncAllInspectionsAtomic() {
+export async function syncAllInspectionsAtomic(preValidatedUser?: CachedUser) {
   const capabilities = getMobileCapabilities();
   const ITEM_SYNC_TIMEOUT = 25000; // 25 seconds per item max (increased for mobile networks)
   
@@ -662,16 +662,19 @@ export async function syncAllInspectionsAtomic() {
     return;
   }
   
-  // CRITICAL: Validate session before sync to ensure valid JWT for RLS
-  let user;
-  try {
-    user = await Promise.race([
-      ensureValidSession(),
-      new Promise<null>((_, reject) => setTimeout(() => reject(new Error('Auth timeout')), 5000))
-    ]);
-  } catch (e) {
-    console.warn('[Atomic Sync] Session validation timed out, skipping sync');
-    return { total: 0, success: 0, failed: 0, errors: [] };
+  // Use pre-validated user if provided (avoids redundant LockManager calls)
+  let user: CachedUser | null = preValidatedUser || null;
+  if (!user) {
+    // CRITICAL: Validate session before sync to ensure valid JWT for RLS
+    try {
+      user = await Promise.race([
+        ensureValidSession(),
+        new Promise<null>((_, reject) => setTimeout(() => reject(new Error('Auth timeout')), 5000))
+      ]);
+    } catch (e) {
+      console.warn('[Atomic Sync] Session validation timed out, skipping sync');
+      return { total: 0, success: 0, failed: 0, errors: [] };
+    }
   }
   
   if (!user) {
@@ -1377,7 +1380,7 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
 /**
  * Sync all unsynced trainings atomically
  */
-export async function syncAllTrainingsAtomic() {
+export async function syncAllTrainingsAtomic(preValidatedUser?: CachedUser) {
   const capabilities = getMobileCapabilities();
   const ITEM_SYNC_TIMEOUT = 25000; // 25 seconds per item max (increased for mobile networks)
   
@@ -1388,16 +1391,19 @@ export async function syncAllTrainingsAtomic() {
     return { total: 0, success: 0, failed: 0, errors: [] };
   }
   
-  // CRITICAL: Validate session before sync to ensure valid JWT for RLS
-  let user;
-  try {
-    user = await Promise.race([
-      ensureValidSession(),
-      new Promise<null>((_, reject) => setTimeout(() => reject(new Error('Auth timeout')), 5000))
-    ]);
-  } catch (e) {
-    console.warn('[Atomic Sync] Session validation timed out for trainings, skipping');
-    return { total: 0, success: 0, failed: 0, errors: [] };
+  // Use pre-validated user if provided (avoids redundant LockManager calls)
+  let user: CachedUser | null = preValidatedUser || null;
+  if (!user) {
+    // CRITICAL: Validate session before sync to ensure valid JWT for RLS
+    try {
+      user = await Promise.race([
+        ensureValidSession(),
+        new Promise<null>((_, reject) => setTimeout(() => reject(new Error('Auth timeout')), 5000))
+      ]);
+    } catch (e) {
+      console.warn('[Atomic Sync] Session validation timed out for trainings, skipping');
+      return { total: 0, success: 0, failed: 0, errors: [] };
+    }
   }
   
   if (!user) {
@@ -2038,7 +2044,7 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
 /**
  * Sync all unsynced daily assessments atomically
  */
-export async function syncAllDailyAssessmentsAtomic() {
+export async function syncAllDailyAssessmentsAtomic(preValidatedUser?: CachedUser) {
   const capabilities = getMobileCapabilities();
   const ITEM_SYNC_TIMEOUT = 25000; // 25 seconds per item max (increased for mobile networks)
   
@@ -2049,16 +2055,19 @@ export async function syncAllDailyAssessmentsAtomic() {
     return { total: 0, success: 0, failed: 0, errors: [] };
   }
   
-  // CRITICAL: Validate session before sync to ensure valid JWT for RLS
-  let user;
-  try {
-    user = await Promise.race([
-      ensureValidSession(),
-      new Promise<null>((_, reject) => setTimeout(() => reject(new Error('Auth timeout')), 5000))
-    ]);
-  } catch (e) {
-    console.warn('[Atomic Sync] Session validation timed out for assessments, skipping');
-    return { total: 0, success: 0, failed: 0, errors: [] };
+  // Use pre-validated user if provided (avoids redundant LockManager calls)
+  let user: CachedUser | null = preValidatedUser || null;
+  if (!user) {
+    // CRITICAL: Validate session before sync to ensure valid JWT for RLS
+    try {
+      user = await Promise.race([
+        ensureValidSession(),
+        new Promise<null>((_, reject) => setTimeout(() => reject(new Error('Auth timeout')), 5000))
+      ]);
+    } catch (e) {
+      console.warn('[Atomic Sync] Session validation timed out for assessments, skipping');
+      return { total: 0, success: 0, failed: 0, errors: [] };
+    }
   }
   
   if (!user) {

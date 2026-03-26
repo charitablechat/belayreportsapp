@@ -296,7 +296,13 @@ async function syncInspectionsAtomic() {
   try {
     const db = await openDB(DB_NAME, DB_VERSION);
     const allInspections = await getAllFromStore(db, 'inspections');
-    const unsynced = allInspections.filter(i => !i.synced_at || new Date(i.updated_at) > new Date(i.synced_at));
+    const DRIFT_TOLERANCE_MS = 2000; // Match main thread's 2s drift tolerance
+    const SW_BATCH_LIMIT = 5; // Match main thread MAX_BATCH_SIZE
+    const allUnsynced = allInspections.filter(i => {
+      if (!i.synced_at) return true;
+      return (new Date(i.updated_at).getTime() - new Date(i.synced_at).getTime()) > DRIFT_TOLERANCE_MS;
+    });
+    const unsynced = allUnsynced.slice(0, SW_BATCH_LIMIT);
     
     console.log('[SW Atomic Sync] Found', unsynced.length, 'unsynced inspections');
     
@@ -475,7 +481,13 @@ async function syncTrainingsAtomic() {
   try {
     const db = await openDB(DB_NAME, DB_VERSION);
     const allTrainings = await getAllFromStore(db, 'trainings');
-    const unsynced = allTrainings.filter(t => !t.synced_at || new Date(t.updated_at) > new Date(t.synced_at));
+    const DRIFT_TOLERANCE_MS = 2000;
+    const SW_BATCH_LIMIT = 5;
+    const allUnsynced = allTrainings.filter(t => {
+      if (!t.synced_at) return true;
+      return (new Date(t.updated_at).getTime() - new Date(t.synced_at).getTime()) > DRIFT_TOLERANCE_MS;
+    });
+    const unsynced = allUnsynced.slice(0, SW_BATCH_LIMIT);
     
     console.log('[SW Atomic Sync] Found', unsynced.length, 'unsynced trainings');
     if (unsynced.length === 0) return;
@@ -585,7 +597,13 @@ async function syncDailyAssessmentsAtomic() {
   try {
     const db = await openDB(DB_NAME, DB_VERSION);
     const allAssessments = await getAllFromStore(db, 'daily_assessments');
-    const unsynced = allAssessments.filter(a => !a.synced_at || new Date(a.updated_at) > new Date(a.synced_at));
+    const DRIFT_TOLERANCE_MS = 2000;
+    const SW_BATCH_LIMIT = 5;
+    const allUnsynced = allAssessments.filter(a => {
+      if (!a.synced_at) return true;
+      return (new Date(a.updated_at).getTime() - new Date(a.synced_at).getTime()) > DRIFT_TOLERANCE_MS;
+    });
+    const unsynced = allUnsynced.slice(0, SW_BATCH_LIMIT);
     
     console.log('[SW Atomic Sync] Found', unsynced.length, 'unsynced daily assessments');
     if (unsynced.length === 0) return;
