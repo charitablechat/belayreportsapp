@@ -40,7 +40,7 @@ interface InspectionDB extends DBSchema {
       id: string;
       inspectionId: string;
       section: string;
-      blob: Blob;
+      blob: Blob | null; // Nullified after successful upload to free storage
       fileName: string;
       timestamp: number;
       uploaded: boolean;
@@ -52,6 +52,7 @@ interface InspectionDB extends DBSchema {
       storageBucket?: string; // Storage bucket (e.g. 'training-photos')
       foreignKeyColumn?: string; // FK column (e.g. 'training_id')
       caption?: string; // Photo caption for gallery labeling
+      retryCount?: number; // Failed upload retry counter
     };
     indexes: { 'by-inspection': string; 'by-uploaded': number };
   };
