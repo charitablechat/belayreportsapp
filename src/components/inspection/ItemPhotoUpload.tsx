@@ -215,6 +215,9 @@ function ItemPhotoUpload({
         uploaded: false,
       });
 
+      // ✅ Immediately refresh gallery so the photo appears in the section gallery
+      onGalleryRefresh?.();
+
       // 6. Update form state immediately
       onPhotoChange(placeholderPath);
       onImmediateSave?.();
