@@ -58,6 +58,7 @@ export const DebouncedInput = memo(function DebouncedInput({
     setCaret();
     requestAnimationFrame(setCaret);
     setTimeout(setCaret, 0);
+    setTimeout(setCaret, 50);
   }, []);
 
   const handleFocus = useCallback((e: React.FocusEvent<HTMLInputElement>) => {
