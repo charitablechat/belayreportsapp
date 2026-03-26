@@ -10,6 +10,7 @@ const placeCursorAtEnd = (el: HTMLTextAreaElement) => {
   setCaret();
   requestAnimationFrame(setCaret);
   setTimeout(setCaret, 0);
+  setTimeout(setCaret, 50);
 };
 
 const collapseFullSelection = (el: HTMLTextAreaElement) => {

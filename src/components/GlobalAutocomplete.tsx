@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { supabase } from "@/integrations/supabase/client";
+import { focusNextCell } from "@/lib/table-focus-utils";
 
 /**
  * Comprehensive field type covering ALL autocomplete fields in the application.
@@ -301,6 +302,7 @@ export function GlobalAutocomplete({
     setCaret();
     requestAnimationFrame(setCaret);
     setTimeout(setCaret, 0);
+    setTimeout(setCaret, 50);
   };
 
   const normalizeTriggerSelection = () => {
@@ -350,7 +352,9 @@ export function GlobalAutocomplete({
       e.preventDefault();
       handleSelect(inputValue.trim());
       setIsEditing(false);
-      triggerInputRef.current?.blur();
+      if (triggerInputRef.current) {
+        focusNextCell(triggerInputRef.current);
+      }
     } else if (e.key === "Escape") {
       e.preventDefault();
       setInputValue(value);
