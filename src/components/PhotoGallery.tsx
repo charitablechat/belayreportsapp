@@ -714,25 +714,21 @@ export default function PhotoGallery({
                     </Button>
                   )}
                 </div>
-                {/* Caption input - only show for uploaded photos */}
-                {photo.uploaded && (
-                  <div className="p-2 border-t border-border">
-                    <PhotoCaptionInput
-                      photoId={photo.id}
-                      initialCaption={photo.caption}
-                      tableName={tableName}
-                      disabled={readOnly}
-                    />
-                  </div>
-                )}
-                {/* Show placeholder for offline photos */}
-                {!photo.uploaded && (
-                  <div className="p-2 border-t border-border">
-                    <p className="text-xs text-muted-foreground italic">
-                      Caption available after sync
-                    </p>
-                  </div>
-                )}
+                {/* Caption input - available for all photos (online and offline) */}
+                <div className="p-2 border-t border-border">
+                  <PhotoCaptionInput
+                    photoId={photo.id}
+                    initialCaption={photo.caption}
+                    tableName={tableName}
+                    disabled={readOnly}
+                    onOfflineSave={!photo.uploaded ? async (newCaption) => {
+                      const { updateOfflinePhotoCaption } = await import("@/lib/offline-storage");
+                      await updateOfflinePhotoCaption(photo.id, newCaption);
+                      // Update local state so the UI reflects the change
+                      setPhotos(prev => prev.map(p => p.id === photo.id ? { ...p, caption: newCaption } : p));
+                    } : undefined}
+                  />
+                </div>
               </Card>
             </DraggablePhotoItem>
           ))}
