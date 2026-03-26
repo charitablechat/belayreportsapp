@@ -309,11 +309,11 @@ export default function Dashboard() {
 
     // Visibility change (tab switch, app resume)
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') refreshReports();
+      if (document.visibilityState === 'visible') refreshReports(true);
     };
 
     // Window focus (SPA back-navigation)
-    const handleWindowFocus = () => refreshReports();
+    const handleWindowFocus = () => refreshReports(true);
 
     // iPad/Safari bfcache restore
     const handlePageShow = (e: PageTransitionEvent) => {
@@ -343,7 +343,7 @@ export default function Dashboard() {
       subscription.unsubscribe();
       unsubscribeSyncComplete();
     };
-  }, [location.key]);
+  }, []);
 
   // Helper function to add timeout to network queries
   const withNetworkTimeout = async <T,>(
