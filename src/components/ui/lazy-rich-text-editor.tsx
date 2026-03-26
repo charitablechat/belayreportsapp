@@ -60,8 +60,8 @@ export function LazyRichTextEditor({
         onFocus={() => setIsFocused(true)}
         onClick={() => setIsFocused(true)}
         className={cn(
-          "min-h-[80px] cursor-text rounded-md border bg-background px-3 py-2 text-sm",
-          "hover:bg-muted/50 transition-colors",
+          "min-h-[80px] cursor-text border bg-background px-3 py-2 text-sm transition-colors",
+          !isInline && "rounded-md hover:bg-muted/50",
           className
         )}
       >
