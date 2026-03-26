@@ -99,6 +99,7 @@ export const useAutoSync = () => {
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const staleWarningShownRef = useRef(false);
   const lastSyncCompletedAtRef = useRef<number>(0);
+  const realtimeErrorCountRef = useRef<number>(0);
   
   /**
    * Perform the actual sync operation
@@ -512,22 +513,39 @@ export const useAutoSync = () => {
     window.addEventListener('online', handleOnline);
     document.addEventListener('visibilitychange', handleVisibilityChange);
     
-    // iOS-specific: Handle page show (back/forward cache restore)
-    const handlePageShow = (event: PageTransitionEvent) => {
+    // RC-4: iOS page restore — refresh session before syncing (same as handleOnline)
+    const handlePageShow = async (event: PageTransitionEvent) => {
       if (event.persisted && navigator.onLine) {
         if (import.meta.env.DEV) {
-          console.log('[AutoSync] Page restored from bfcache - syncing');
+          console.log('[AutoSync] Page restored from bfcache - refreshing session then syncing');
+        }
+        // Pre-refresh session before sync to ensure fresh JWT after bfcache restore
+        try {
+          await Promise.race([
+            supabase.auth.refreshSession(),
+            new Promise<void>((resolve) => setTimeout(resolve, 5000)),
+          ]);
+        } catch (e) {
+          console.warn('[AutoSync] Session refresh on pageshow failed:', e);
         }
         performSync(true);
       }
     };
     
+    // RC-2: Gate iOS focus handler behind MIN_SYNC_INTERVAL debounce
     const handleFocus = () => {
-      if (navigator.onLine) performSync(true);
+      if (navigator.onLine) {
+        const now = Date.now();
+        if (now - lastSyncAttemptRef.current >= MIN_SYNC_INTERVAL) {
+          performSync(true);
+        } else if (import.meta.env.DEV) {
+          console.log('[AutoSync] Focus event debounced (too soon since last sync)');
+        }
+      }
     };
     
     if (isIOSDevice) {
-      window.addEventListener('pageshow', handlePageShow);
+      window.addEventListener('pageshow', handlePageShow as EventListener);
       window.addEventListener('focus', handleFocus);
     }
     
@@ -564,6 +582,17 @@ export const useAutoSync = () => {
         if (import.meta.env.DEV) {
           console.log('[AutoSync] Realtime subscription status:', status);
         }
+        // RC-6: Backoff on repeated channel errors — unsubscribe after 3 consecutive errors
+        if (status === 'CHANNEL_ERROR') {
+          realtimeErrorCountRef.current++;
+          if (realtimeErrorCountRef.current >= 3 && channelRef.current) {
+            console.warn('[AutoSync] 3+ consecutive CHANNEL_ERRORs — unsubscribing to prevent reconnect storms. Relying on periodic polling.');
+            supabase.removeChannel(channelRef.current);
+            channelRef.current = null;
+          }
+        } else if (status === 'SUBSCRIBED') {
+          realtimeErrorCountRef.current = 0;
+        }
       });
     
     return () => {
@@ -573,7 +602,7 @@ export const useAutoSync = () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       
       if (isIOSDevice) {
-        window.removeEventListener('pageshow', handlePageShow);
+        window.removeEventListener('pageshow', handlePageShow as EventListener);
         window.removeEventListener('focus', handleFocus);
       }
       
@@ -591,11 +620,9 @@ export const useAutoSync = () => {
     };
   }, [performSync, handleOnline, handleVisibilityChange, handleRemoteChange, updateUnsyncedCounts, isIOSDevice, isMobileDevice, syncInterval, isMobileViewport]);
   
-  // Periodically update unsynced counts
-  useEffect(() => {
-    const interval = setInterval(updateUnsyncedCounts, 30000);
-    return () => clearInterval(interval);
-  }, [updateUnsyncedCounts]);
+  // RC-2: Removed separate 30s updateUnsyncedCounts interval
+  // Unsynced counts are now updated inside the main periodic sync loop (line 262)
+  // and on initial mount (line 508), reducing concurrent IndexedDB access on Safari
   
   // Stale upload detection: warn if items haven't synced for 5+ minutes while online
   useEffect(() => {

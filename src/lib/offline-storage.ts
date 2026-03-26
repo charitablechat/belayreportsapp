@@ -1,5 +1,5 @@
 import { openDB, DBSchema, IDBPDatabase } from 'idb';
-import { checkStorageQuota, requestPersistentStorage } from './mobile-detection';
+import { checkStorageQuota, requestPersistentStorage, isMobile } from './mobile-detection';
 
 interface InspectionDB extends DBSchema {
   inspections: {
@@ -617,13 +617,15 @@ export async function getDB() {
       });
     };
 
+    // RC-3: Use 5s timeout on mobile (Safari bfcache restore can take 3-5s)
+    const DB_OPEN_TIMEOUT = isMobile() ? 5000 : 3000;
     dbPromise = Promise.race([
       openDBV8WithTimeout(),
       new Promise<never>((_, reject) => 
         setTimeout(() => {
-          console.warn('[Offline Storage] IndexedDB open timed out after 3 seconds');
+          console.warn(`[Offline Storage] IndexedDB open timed out after ${DB_OPEN_TIMEOUT / 1000}s`);
           reject(new Error('IndexedDB open timed out'));
-        }, 3000)
+        }, DB_OPEN_TIMEOUT)
       )
     ]).catch(error => {
       console.error('[Offline Storage] Failed to open IndexedDB:', error);
@@ -1726,11 +1728,10 @@ export async function getUnsyncedCounts(userId?: string): Promise<{
         return unsynced;
       };
       
-      const [allInspections, allTrainings, allAssessments] = await Promise.all([
-        db.getAll('inspections'),
-        db.getAll('trainings'),
-        db.getAll('daily_assessments'),
-      ]);
+      // RC-1: Sequential reads instead of parallel to reduce Safari IDB lock contention
+      const allInspections = await db.getAll('inspections');
+      const allTrainings = await db.getAll('trainings');
+      const allAssessments = await db.getAll('daily_assessments');
       
       return {
         inspections: filterUnsynced(allInspections),
