@@ -35,10 +35,26 @@ const CommandDialog = ({ children, ...props }: CommandDialogProps) => {
   );
 };
 
+const placeCursorAtEnd = (el: HTMLInputElement) => {
+  const setCaret = () => {
+    const len = el.value.length;
+    el.setSelectionRange(len, len);
+  };
+  setCaret();
+  requestAnimationFrame(setCaret);
+  setTimeout(setCaret, 0);
+};
+
+const collapseFullSelection = (el: HTMLInputElement) => {
+  if (el.value.length > 0 && el.selectionStart === 0 && el.selectionEnd === el.value.length) {
+    placeCursorAtEnd(el);
+  }
+};
+
 const CommandInput = React.forwardRef<
   React.ElementRef<typeof CommandPrimitive.Input>,
   React.ComponentPropsWithoutRef<typeof CommandPrimitive.Input>
->(({ className, ...props }, ref) => (
+>(({ className, onFocus, onMouseUp, onTouchEnd, ...props }, ref) => (
   <div className="flex items-center border-b px-3" cmdk-input-wrapper="">
     <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
     <CommandPrimitive.Input
@@ -47,6 +63,18 @@ const CommandInput = React.forwardRef<
         "flex h-11 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50",
         className,
       )}
+      onFocus={(e) => {
+        placeCursorAtEnd(e.currentTarget);
+        onFocus?.(e);
+      }}
+      onMouseUp={(e) => {
+        collapseFullSelection(e.currentTarget);
+        onMouseUp?.(e);
+      }}
+      onTouchEnd={(e) => {
+        collapseFullSelection(e.currentTarget);
+        onTouchEnd?.(e);
+      }}
       {...props}
     />
   </div>
