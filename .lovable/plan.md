@@ -1,43 +1,63 @@
 
 
-## Fix: LazyRichTextEditor Color Split on iPad
+## Add Divider Rows to Equipment Sections
 
-### Root Cause
+### Overview
+Add divider row support to all equipment tables, mirroring the existing implementation in the Operating Systems table. This includes a database migration, UI changes, and report generation updates.
 
-The `RichTextEditor` itself was already fixed (lines 85-89), but the **`LazyRichTextEditor`** wrapper — which renders most of the time since the editor is lazy — does **not** apply the same inline-mode logic in its unfocused placeholder state.
+### Changes
 
-In `lazy-rich-text-editor.tsx` lines 61-65, the unfocused div always renders:
+**1. Database Migration**
+Add `is_divider` (boolean, default false) and `divider_text` (text, nullable) columns to `inspection_equipment`.
+
+```sql
+ALTER TABLE public.inspection_equipment 
+  ADD COLUMN is_divider boolean NOT NULL DEFAULT false,
+  ADD COLUMN divider_text text;
 ```
-"min-h-[80px] cursor-text rounded-md border bg-background px-3 py-2 text-sm"
-"hover:bg-muted/50 transition-colors"
+
+**2. `src/components/inspection/EquipmentTable.tsx`**
+- Import `Minus` icon
+- Add `addDivider` callback that inserts a new row with `is_divider: true`, `divider_text: ""`, `equipment_type: ""`, `result: "pass"` (to satisfy NOT NULL)
+- Add Divider button to the left of the existing Add button in the header (matching the systems layout: outline variant, `Minus` icon)
+- In desktop grid: wrap each row's content in a conditional — if `item.is_divider`, render a `col-span-8` merged cell with centered bold `DebouncedInput` + delete button on blue background (`bg-blue-100`), else render normal row
+- In mobile cards: same conditional — divider renders as a styled card with centered input + delete button
+- Filter divider rows from required-field validation (dividers don't need equipment_type)
+
+**3. `supabase/functions/generate-inspection-html/index.ts`** (2 places — combined and separate equipment pages)
+- In both equipment `.map()` blocks, add divider check before normal row rendering:
+```typescript
+if (eq.is_divider) {
+  return `<tr><td colspan="6" style="text-align:center; font-weight:bold; padding:10px; background:#dbeafe; font-size:11pt;">${eq.divider_text || ''}</td></tr>`;
+}
 ```
 
-When passed `className="border-0 bg-transparent"`, Tailwind merge handles `border-0` and `bg-transparent`, but `rounded-md` and `hover:bg-muted/50` remain — producing visible curved corners and a color flash on hover inside rectangular table cells. On iPad Safari's display rendering, the composited `bg-muted/50` over transparent creates the visible color discontinuity.
+**4. `supabase/functions/generate-inspection-pdf/index.ts`**
+- In the `items.map()` block, add divider check matching systems pattern:
+```typescript
+if (eq.is_divider) {
+  return [{ content: eq.divider_text || '', colSpan: 5, styles: { halign: 'center', fontStyle: 'bold', fillColor: [219, 234, 254] } }];
+}
+```
 
-### Fix
-
-**File: `src/components/ui/lazy-rich-text-editor.tsx`**
-
-Apply the same `isInline` detection used in `RichTextEditor`:
-
+### Button Layout
+The header buttons will use the same flex layout as Operating Systems:
 ```tsx
-const isInline = className?.includes('bg-transparent');
+<div className="flex gap-2 w-full md:w-auto">
+  <Button onClick={addDivider} size="sm" variant="outline" className="flex-1 md:flex-none shrink-0">
+    <Minus className="w-4 h-4 mr-2" /> Divider
+  </Button>
+  <Button onClick={addEquipment} size="sm" className="flex-1 md:flex-none shrink-0">
+    <Plus className="w-4 h-4 mr-2" /> Add {displayName}
+  </Button>
+</div>
 ```
 
-Then in the unfocused placeholder div (lines 61-65), conditionally strip `rounded-md` and `hover:bg-muted/50`:
-
-```tsx
-className={cn(
-  "min-h-[80px] cursor-text border bg-background px-3 py-2 text-sm transition-colors",
-  !isInline && "rounded-md hover:bg-muted/50",
-  className
-)}
-```
-
-This is a single-file, 3-line change.
-
-### Impact
-- Only affects editors with `bg-transparent` class (table cell usage)
-- Standalone lazy editors keep their existing bordered + rounded appearance
-- Matches the fix already applied to `RichTextEditor`
+### Files
+| File | Change |
+|------|--------|
+| Database migration | Add `is_divider` + `divider_text` columns to `inspection_equipment` |
+| `src/components/inspection/EquipmentTable.tsx` | Add divider button, divider row rendering (desktop + mobile), `addDivider` callback |
+| `supabase/functions/generate-inspection-html/index.ts` | Render equipment dividers as merged colspan rows (2 locations) |
+| `supabase/functions/generate-inspection-pdf/index.ts` | Render equipment dividers as merged colspan rows |
 
