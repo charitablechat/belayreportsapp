@@ -166,20 +166,11 @@ function ItemPhotoUpload({
       setLocalPreview(previewUrl);
 
       // 3. Get user ID (with timeout protection)
-      let userId: string | undefined;
-      try {
-        const result = await Promise.race([
-          getUserWithCache(),
-          new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000)),
-        ]);
-        userId = result?.data?.user?.id;
-      } catch { /* fall through */ }
-      if (!userId) {
-        try {
-          const { data: sessionData } = await supabase.auth.getSession();
-          userId = sessionData?.session?.user?.id;
-        } catch { /* fall through */ }
-      }
+      const cachedUser = await Promise.race([
+        getUserWithCache(),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 5000)),
+      ]);
+      const userId = cachedUser?.id;
       if (!userId) throw new Error("Not authenticated");
 
       const filePath = `${userId}/${inspectionId}/items/${itemId}.jpg`;

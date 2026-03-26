@@ -52,13 +52,19 @@ export async function convertHeicBlobToJpeg(
   blob: Blob,
   quality = 0.85
 ): Promise<Blob | null> {
+  const HEIC_CONVERSION_TIMEOUT = 10000; // 10s cap for iPad Safari
   try {
     const heic2any = (await import('heic2any')).default;
-    const result = await heic2any({
-      blob,
-      toType: 'image/jpeg',
-      quality,
-    });
+    const result = await Promise.race([
+      heic2any({
+        blob,
+        toType: 'image/jpeg',
+        quality,
+      }),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('HEIC conversion timed out after 10s')), HEIC_CONVERSION_TIMEOUT)
+      ),
+    ]);
     return Array.isArray(result) ? result[0] : result;
   } catch (e) {
     console.warn('[heic-converter] Conversion failed:', e);

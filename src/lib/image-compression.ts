@@ -11,16 +11,21 @@ interface CompressionOptions {
 }
 
 const DEFAULT_OPTIONS: CompressionOptions = {
-  maxWidth: 1920,
-  maxHeight: 1920,
+  maxWidth: 1600,
+  maxHeight: 1600,
   quality: 0.8,
   maxSizeMB: 2,
 };
 
 // Timeout constants - reduced for faster mobile feedback
-const COMPRESSION_TIMEOUT = 8000; // 8 seconds max for entire compression
+const COMPRESSION_TIMEOUT = 15000; // 15 seconds max — accommodates HEIC conversion on iPad
 const IMAGE_LOAD_TIMEOUT = 4000; // 4 seconds max to load/decode image
 const BLOB_CREATION_TIMEOUT = 3000; // 3 seconds max for canvas.toBlob
+
+/** Detect mobile/tablet for reduced canvas dimensions */
+const isMobileDevice = () =>
+  typeof navigator !== 'undefined' &&
+  /iPad|iPhone|iPod|Android/i.test(navigator.userAgent);
 
 import { isHeicFile, convertHeicBlobToJpeg } from '@/lib/heic-converter';
 
@@ -198,6 +203,10 @@ const compressImageInternal = async (
 
     // Create blob with timeout - ALWAYS outputs JPEG
     const blob = await createBlobWithTimeout(canvas, opts.quality || 0.85, BLOB_CREATION_TIMEOUT);
+
+    // Release canvas backing store immediately — critical on iPad Safari (256MB canvas limit)
+    canvas.width = 0;
+    canvas.height = 0;
 
     // Check size and retry with lower quality if needed
     const sizeMB = blob.size / (1024 * 1024);
