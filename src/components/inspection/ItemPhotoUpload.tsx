@@ -131,6 +131,9 @@ function ItemPhotoUpload({
 
       if (uploadError) throw uploadError;
 
+      // ✅ Mark uploaded FIRST to close race window with syncPhotos
+      await markPhotoAsUploaded(photoId, filePath);
+
       // Insert into gallery if applicable
       if (photoSection) {
         const { error: galleryError } = await supabase.from('inspection_photos').insert({
