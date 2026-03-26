@@ -1,64 +1,56 @@
 
 
-## Root Cause Analysis: Reports Hanging After Offline-to-Online Transition
+## Audit: Sync Hanging on Offline-to-Online Transition
 
-### Finding 1: Online Reconnection Sync Silently Dropped (HIGH)
+### Current State (Post-Recent Fixes)
+The previous round addressed: deferred retry on debounce drop, pre-refresh session in `handleOnline`, lightweight `getCachedUserFromStorage()` gate, and reduced lock-wait timeout (35s→15s). These were good fixes. However, one significant issue remains that still causes hangs.
 
-**File:** `src/hooks/useAutoSync.tsx`, lines 155-161
+### Remaining Root Cause: Triple `ensureValidSession` per Sync Cycle
 
-When the browser fires the `online` event, `handleOnline` calls `performSync(false)`. But `performSync` has a `MIN_SYNC_INTERVAL` (5 seconds) debounce guard that **silently returns** if another sync attempt happened recently (e.g., from `visibilitychange` which often fires simultaneously with `online`).
+**File:** `src/lib/atomic-sync-manager.ts` lines 667-675 (inspections), plus equivalent blocks for trainings and assessments.
 
-The critical issue: when the sync is dropped, **no retry is scheduled**. The user must wait for the next periodic poll (30s desktop / 60s mobile) before sync is attempted again. This creates the "hanging" perception.
+Each `syncAll*Atomic` function independently calls `ensureValidSession()`, which internally calls `supabase.auth.getSession()` — a LockManager-guarded operation with a 10-second timeout. Since `performSync` calls three atomic sync functions **sequentially**, this results in **3 separate LockManager acquisitions per sync cycle**. After `handleOnline` already refreshed the session, these calls are redundant and create the following failure mode:
 
-**Fix:** When the debounce guard triggers during an explicit online reconnection (`silent = false`), schedule a deferred retry instead of silently returning.
+1. `handleOnline` refreshes session successfully (1 LockManager call).
+2. `syncAllInspectionsAtomic` → `ensureValidSession` → `getSession()` (LockManager call #2).
+3. `syncAllTrainingsAtomic` → `ensureValidSession` → `getSession()` (LockManager call #3).
+4. `syncAllDailyAssessmentsAtomic` → `ensureValidSession` → `getSession()` (LockManager call #4).
 
-### Finding 2: Expired JWT After Extended Offline Period (HIGH)
+On slow mobile devices, the cumulative LockManager contention causes 10-30 second delays, producing the "hanging" behavior.
 
-**File:** `src/lib/cached-auth.ts`, lines 297-301
+**The fix:** Each `syncAll*Atomic` function already passes the pre-validated `user` down to per-item `sync*Atomic()` calls (line 771). The functions just need to accept an **optional** pre-validated user parameter, skipping `ensureValidSession()` when provided.
 
-`getCachedUserFromStorage()` checks `expiresAt` when online and returns `null` if expired. After a long offline period, the JWT is always expired. The `performSync` flow calls `getUserWithCache()` at line 124 — which hits `getCachedUserFromStorage()` first. If the token is expired and the fast path returns `null`, it falls through to the slow path (`supabase.auth.getUser()`) which can fail or timeout.
+### Secondary Issue: SW Sync Races with Main Thread
 
-Meanwhile, `ensureValidSession()` (called inside `syncAllInspectionsAtomic`) also tries `getSession()` → refresh. If both race, we get duplicate auth calls competing for the Supabase lock manager, causing `LockManager` timeouts.
+**File:** `public/sw-sync.js` line 686
 
-**Fix:** In `handleOnline`, explicitly refresh the session **before** calling `performSync`. This ensures all downstream callers get a fresh token.
+The SW `sync` event handler processes ALL unsynced items with no batch limit and no coordination with the main thread's `syncInProgressRef`. After `handleOnline` sends a fresh JWT to the SW, the browser can fire a `sync` event simultaneously with the main thread's `performSync`. Both paths write to the same DB rows — the deferred `synced_at` pattern and `upsert` prevent data loss, but the duplicate work wastes bandwidth and extends the hang window.
 
-### Finding 3: `syncInProgressRef` Deadlock on Auth Timeout (MEDIUM)
+Additionally, SW line 299 uses no drift tolerance (`updated_at > synced_at`), unlike the main thread's 2-second tolerance, causing the SW to re-process already-synced items.
 
-**File:** `src/hooks/useAutoSync.tsx`, lines 133-151
+### Proposed Changes
 
-When `performSync` is already running (from the `online` handler), subsequent callers enter a polling loop that waits up to 35 seconds for the lock to release. If the first sync hangs on auth validation (5s timeout in `ensureValidSession`), plus IndexedDB reads (15s timeout), the combined duration can approach the 35s safety limit. During this window, no new syncs execute, creating the "stuck" appearance.
+**1. Pass pre-validated user into atomic sync functions** (`src/lib/atomic-sync-manager.ts`)
+- Add optional `preValidatedUser?: CachedUser` parameter to `syncAllInspectionsAtomic`, `syncAllTrainingsAtomic`, `syncAllDailyAssessmentsAtomic`.
+- When provided, skip the internal `ensureValidSession()` call.
+- This eliminates 3 redundant LockManager calls per cycle.
 
-**Fix:** Reduce the wait-for-lock timeout and add an early exit if the first sync is stuck in auth validation.
+**2. Validate session once in `performSync`** (`src/hooks/useAutoSync.tsx`)
+- Replace the lightweight `getCachedUserFromStorage()` check with a single `ensureValidSession()` call (with 5s timeout).
+- Pass the validated user to all three `syncAll*Atomic` functions.
+- Net effect: 1 auth call per cycle instead of 4.
 
-### Finding 4: Double Auth Validation per Sync Cycle (LOW)
+**3. Add drift tolerance to SW sync filter** (`public/sw-sync.js`)
+- Change line 299 from `new Date(i.updated_at) > new Date(i.synced_at)` to include a 2-second tolerance, matching the main thread logic.
 
-**File:** `src/hooks/useAutoSync.tsx` line 124 and `src/lib/atomic-sync-manager.ts` line 668
-
-`performSync` calls `getUserWithCache()` to gate the sync. Then `syncAllInspectionsAtomic` calls `ensureValidSession()` with its own 5s timeout. This means every sync cycle runs two separate auth checks — the second one can trigger a `LockManager` timeout if the first already consumed the lock.
-
-**Fix:** Pass the validated user from `performSync` into the atomic sync functions, or skip the top-level auth check since each atomic function already validates.
-
----
-
-### Implementation Plan
-
-**1. Fix silent sync drop on reconnection** (`src/hooks/useAutoSync.tsx`)
-- In `performSync`, when `MIN_SYNC_INTERVAL` guard fires and `silent === false`, schedule a `setTimeout` retry after `MIN_SYNC_INTERVAL` remaining time instead of returning void.
-
-**2. Pre-refresh session in `handleOnline`** (`src/hooks/useAutoSync.tsx`)
-- Before calling `performSync`, call `supabase.auth.refreshSession()` with a 5s timeout to ensure a fresh JWT is available for all downstream sync operations.
-- This eliminates the race between `getUserWithCache` and `ensureValidSession`.
-
-**3. Remove redundant top-level auth check** (`src/hooks/useAutoSync.tsx`)
-- Remove the `getUserWithCache()` gate at line 124 in `performSync`. Each `syncAll*Atomic` function already calls `ensureValidSession()` which is more thorough.
-- Keep a lightweight check using `getCachedUserFromStorage()` (sync, no network) just to skip when clearly not logged in.
-
-**4. Reduce lock-wait timeout** (`src/hooks/useAutoSync.tsx`)
-- Reduce the "wait for sync in progress" polling timeout from 35s to 15s. If a sync is stuck for 15s, the waiting caller should proceed to schedule a new attempt rather than blocking.
+**4. Add batch limit to SW sync** (`public/sw-sync.js`)
+- Limit SW sync to 5 items per event (matching `MAX_BATCH_SIZE`), preventing long-running SW tasks from blocking the main thread's sync.
 
 ### Files to Modify
 
-| File | Changes |
-|------|---------|
-| `src/hooks/useAutoSync.tsx` | Fix silent drop on reconnect; pre-refresh session in handleOnline; replace blocking auth check with sync cache read; reduce lock-wait timeout |
+| File | Change |
+|------|--------|
+| `src/lib/atomic-sync-manager.ts` | Add optional `preValidatedUser` param to 3 `syncAll*` functions |
+| `src/hooks/useAutoSync.tsx` | Single `ensureValidSession()` call, pass user to all sync functions |
+| `public/sw-sync.js` | Add 2s drift tolerance and batch limit to sync filters |
 
