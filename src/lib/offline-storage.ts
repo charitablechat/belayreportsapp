@@ -890,23 +890,19 @@ export async function savePhotoOffline(photo: {
   storageBucket?: string;
   foreignKeyColumn?: string;
   caption?: string;
-}) {
+}): Promise<boolean> {
   return withIndexedDBErrorBoundary(
     async () => {
       try {
         const db = await getDB();
         
         // NON-BLOCKING quota check - fire-and-forget, don't await
-        // This prevents the save from hanging if storage API is slow
         checkStorageQuota().then(quota => {
           if (quota.percentUsed > 90) {
             console.warn('[Offline Storage] Storage almost full:', quota.percentUsed.toFixed(1), '%');
           }
-        }).catch(() => {
-          // Ignore quota check failures - don't block the save
-        });
+        }).catch(() => {});
         
-        // Proceed with save immediately (don't wait for quota check)
         await db.put('photos', {
           ...photo,
           timestamp: Date.now(),
@@ -920,13 +916,11 @@ export async function savePhotoOffline(photo: {
         // Background sync registration (also non-blocking)
         if (!photo.uploaded) {
           import('./background-sync').then(({ registerPhotoSync }) => {
-            registerPhotoSync().catch(() => {
-              // Ignore registration failures
-            });
-          }).catch(() => {
-            // Ignore import failures
-          });
+            registerPhotoSync().catch(() => {});
+          }).catch(() => {});
         }
+        
+        return true;
       } catch (error: any) {
         console.error('[Offline Storage] Failed to save photo:', error);
         
@@ -937,7 +931,7 @@ export async function savePhotoOffline(photo: {
         throw error;
       }
     },
-    undefined,
+    false,
     'savePhotoOffline'
   );
 }
@@ -988,72 +982,98 @@ export async function getOfflinePhotos(inspectionId: string) {
 /**
  * Update the caption of an offline (unsynced) photo in IndexedDB
  */
-export async function updateOfflinePhotoCaption(photoId: string, caption: string): Promise<void> {
-  const db = await getDB();
-  const photo = await db.get('photos', photoId);
-  if (photo) {
-    photo.caption = caption;
-    await db.put('photos', photo);
-    if (import.meta.env.DEV) {
-      console.log('[Offline Storage] Updated offline photo caption:', photoId);
-    }
-  }
+export async function updateOfflinePhotoCaption(photoId: string, caption: string): Promise<boolean> {
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      const photo = await db.get('photos', photoId);
+      if (photo) {
+        photo.caption = caption;
+        await db.put('photos', photo);
+        if (import.meta.env.DEV) {
+          console.log('[Offline Storage] Updated offline photo caption:', photoId);
+        }
+        return true;
+      }
+      return false;
+    },
+    false,
+    'updateOfflinePhotoCaption'
+  );
 }
 
 export async function getUnuploadedPhotos(userId?: string) {
-  const db = await getDB();
-  const allPhotos = await db.getAll('photos');
-  let unuploaded = allPhotos.filter(p => !p.uploaded);
-  
-  if (userId) {
-    const userInspections = await getUnsyncedInspections(userId);
-    const userInspectionIds = new Set(userInspections.map(i => i.id));
-    unuploaded = unuploaded.filter(p => userInspectionIds.has(p.inspectionId));
-  }
-  
-  return unuploaded;
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      const allPhotos = await db.getAll('photos');
+      let unuploaded = allPhotos.filter(p => !p.uploaded);
+      
+      if (userId) {
+        const userInspections = await getUnsyncedInspections(userId);
+        const userInspectionIds = new Set(userInspections.map(i => i.id));
+        unuploaded = unuploaded.filter(p => userInspectionIds.has(p.inspectionId));
+      }
+      
+      return unuploaded;
+    },
+    [],
+    'getUnuploadedPhotos'
+  );
 }
 
 export async function markPhotoAsUploaded(id: string, photoUrl: string) {
-  const db = await getDB();
-  const photo = await db.get('photos', id);
-  if (photo) {
-    photo.uploaded = true;
-    photo.photoUrl = photoUrl;
-    photo.lastValidated = Date.now();
-    await db.put('photos', photo);
-    
-    if (import.meta.env.DEV) {
-      console.log('[Offline Storage] Marked photo as uploaded:', id);
-    }
-  }
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      const photo = await db.get('photos', id);
+      if (photo) {
+        photo.uploaded = true;
+        photo.photoUrl = photoUrl;
+        photo.lastValidated = Date.now();
+        await db.put('photos', photo);
+        
+        if (import.meta.env.DEV) {
+          console.log('[Offline Storage] Marked photo as uploaded:', id);
+        }
+      }
+    },
+    undefined,
+    'markPhotoAsUploaded'
+  );
 }
 
 export async function deleteOfflinePhoto(id: string) {
-  const db = await getDB();
-  
-  // Finding 4: WAL backup — snapshot photo before deleting (especially important for unuploaded photos)
-  try {
-    const photo = await db.get('photos', id);
-    if (photo && !photo.uploaded && db.objectStoreNames.contains('report_backups')) {
-      await db.put('report_backups', {
-        id: `photo_backup_${id}_${Date.now()}`,
-        reportType: 'photo',
-        reportId: id,
-        reportKey: `photo_${id}`,
-        timestamp: Date.now(),
-        data: photo,
-      });
-    }
-  } catch (e) {
-    console.warn('[Offline Storage] Non-critical: failed to backup photo before delete:', e);
-  }
-  
-  await db.delete('photos', id);
-  
-  if (import.meta.env.DEV) {
-    console.log('[Offline Storage] Deleted photo:', id);
-  }
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      
+      // WAL backup — snapshot photo before deleting
+      try {
+        const photo = await db.get('photos', id);
+        if (photo && !photo.uploaded && db.objectStoreNames.contains('report_backups')) {
+          await db.put('report_backups', {
+            id: `photo_backup_${id}_${Date.now()}`,
+            reportType: 'photo',
+            reportId: id,
+            reportKey: `photo_${id}`,
+            timestamp: Date.now(),
+            data: photo,
+          });
+        }
+      } catch (e) {
+        console.warn('[Offline Storage] Non-critical: failed to backup photo before delete:', e);
+      }
+      
+      await db.delete('photos', id);
+      
+      if (import.meta.env.DEV) {
+        console.log('[Offline Storage] Deleted photo:', id);
+      }
+    },
+    undefined,
+    'deleteOfflinePhoto'
+  );
 }
 
 /**

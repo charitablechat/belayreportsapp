@@ -722,9 +722,16 @@ export default function PhotoGallery({
                     tableName={tableName}
                     disabled={readOnly}
                     onOfflineSave={!photo.uploaded ? async (newCaption) => {
-                      const { updateOfflinePhotoCaption } = await import("@/lib/offline-storage");
-                      await updateOfflinePhotoCaption(photo.id, newCaption);
-                      // Update local state so the UI reflects the change
+                      try {
+                        const { updateOfflinePhotoCaption } = await import("@/lib/offline-storage");
+                        const success = await updateOfflinePhotoCaption(photo.id, newCaption);
+                        if (!success) {
+                          console.warn('[PhotoGallery] Failed to save caption locally for:', photo.id);
+                        }
+                      } catch (e) {
+                        console.warn('[PhotoGallery] Caption save error:', e);
+                      }
+                      // Always update local state so UI reflects the change
                       setPhotos(prev => prev.map(p => p.id === photo.id ? { ...p, caption: newCaption } : p));
                     } : undefined}
                   />
