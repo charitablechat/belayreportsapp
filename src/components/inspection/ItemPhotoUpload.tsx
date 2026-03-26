@@ -66,7 +66,11 @@ function ItemPhotoUpload({
     // 1. Cache-first: check IndexedDB
     const cachedBlob = await getCachedPhotoBlob(photoUrl);
     if (cachedBlob) {
-      setSignedUrl(URL.createObjectURL(cachedBlob));
+      // Revoke previous object URL to prevent memory leak
+      if (prevObjectUrlRef.current) URL.revokeObjectURL(prevObjectUrlRef.current);
+      const url = URL.createObjectURL(cachedBlob);
+      prevObjectUrlRef.current = url;
+      setSignedUrl(url);
       return;
     }
 
