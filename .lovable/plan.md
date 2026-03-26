@@ -1,86 +1,64 @@
 
 
-## Comprehensive Audit: Offline Photo Storage & Upload Module
+## Root Cause Analysis: Reports Hanging After Offline-to-Online Transition
 
-### Critical Finding: `getUnuploadedPhotos` Drops Photos for Synced Reports
+### Finding 1: Online Reconnection Sync Silently Dropped (HIGH)
 
-**Severity: HIGH — Silent data loss**
+**File:** `src/hooks/useAutoSync.tsx`, lines 155-161
 
-In `src/lib/offline-storage.ts` lines 1005-1023, `getUnuploadedPhotos(userId)` filters photos by matching their `inspectionId` against `getUnsyncedInspections(userId)`. Once a report syncs (gets a `synced_at` matching `updated_at`), it disappears from the unsynced list — and any photos still queued for that report are silently excluded from sync.
+When the browser fires the `online` event, `handleOnline` calls `performSync(false)`. But `performSync` has a `MIN_SYNC_INTERVAL` (5 seconds) debounce guard that **silently returns** if another sync attempt happened recently (e.g., from `visibilitychange` which often fires simultaneously with `online`).
 
-This means: if a user takes photos offline, the parent report syncs first (via atomic-sync-manager), but photo upload fails or is deferred, those photos become permanently orphaned in IndexedDB and never upload.
+The critical issue: when the sync is dropped, **no retry is scheduled**. The user must wait for the next periodic poll (30s desktop / 60s mobile) before sync is attempted again. This creates the "hanging" perception.
 
-`syncPhotos()` in `sync-manager.ts` calls `getUnuploadedPhotos()` without a userId (line 61), which returns ALL unuploaded photos. So the bug only manifests when `useUnsyncedPhotos` hook calls `getUnuploadedPhotos(user.id)` for count display — the count underreports, but sync itself is unaffected. **Revised severity: LOW (cosmetic count only).**
+**Fix:** When the debounce guard triggers during an explicit online reconnection (`silent = false`), schedule a deferred retry instead of silently returning.
 
-### Finding 2: `markPhotoAsUploaded` Keeps Blob in IndexedDB
+### Finding 2: Expired JWT After Extended Offline Period (HIGH)
 
-**Severity: MEDIUM — Storage leak**
+**File:** `src/lib/cached-auth.ts`, lines 297-301
 
-In lines 1025-1043, `markPhotoAsUploaded` sets `uploaded = true` and updates `photoUrl`, but does NOT remove the blob. For a 3MB compressed photo, this means every synced photo continues consuming ~3MB of IndexedDB quota indefinitely. With 50 photos, that's 150MB of dead storage.
+`getCachedUserFromStorage()` checks `expiresAt` when online and returns `null` if expired. After a long offline period, the JWT is always expired. The `performSync` flow calls `getUserWithCache()` at line 124 — which hits `getCachedUserFromStorage()` first. If the token is expired and the fast path returns `null`, it falls through to the slow path (`supabase.auth.getUser()`) which can fail or timeout.
 
-The `syncPhotos` comment on line 114 says "remove blob from local storage" but the implementation doesn't do it.
+Meanwhile, `ensureValidSession()` (called inside `syncAllInspectionsAtomic`) also tries `getSession()` → refresh. If both race, we get duplicate auth calls competing for the Supabase lock manager, causing `LockManager` timeouts.
 
-### Finding 3: No Retry Backoff for Failed Photo Uploads
+**Fix:** In `handleOnline`, explicitly refresh the session **before** calling `performSync`. This ensures all downstream callers get a fresh token.
 
-**Severity: MEDIUM — Wasted bandwidth**
+### Finding 3: `syncInProgressRef` Deadlock on Auth Timeout (MEDIUM)
 
-`syncPhotos()` processes every unuploaded photo every cycle (every 30-60s) with no retry counter or exponential backoff. If a photo consistently fails (e.g., corrupt blob, server rejection), it blocks the batch slot and wastes bandwidth on every sync cycle forever.
+**File:** `src/hooks/useAutoSync.tsx`, lines 133-151
 
-### Finding 4: Duplicate Photo DB Rows on Re-sync
+When `performSync` is already running (from the `online` handler), subsequent callers enter a polling loop that waits up to 35 seconds for the lock to release. If the first sync hangs on auth validation (5s timeout in `ensureValidSession`), plus IndexedDB reads (15s timeout), the combined duration can approach the 35s safety limit. During this window, no new syncs execute, creating the "stuck" appearance.
 
-**Severity: MEDIUM — Data integrity**
+**Fix:** Reduce the wait-for-lock timeout and add an early exit if the first sync is stuck in auth validation.
 
-`syncPhotos()` always calls `.insert()` (line 103-110). If the previous upload succeeded in storage but the DB insert failed, the next sync re-uploads the file (with `upsert: true`) and inserts a second DB row. There's no deduplication check on `photo_url` + `[fkColumn]`.
+### Finding 4: Double Auth Validation per Sync Cycle (LOW)
 
-Similarly, `PhotoCapture.uploadPhotoInBackground` (line 78-83) inserts a DB row, then `syncPhotos` may also insert a row for the same photo if `markPhotoAsUploaded` didn't complete.
+**File:** `src/hooks/useAutoSync.tsx` line 124 and `src/lib/atomic-sync-manager.ts` line 668
 
-### Finding 5: Object URL Memory Leak in `ItemPhotoUpload`
+`performSync` calls `getUserWithCache()` to gate the sync. Then `syncAllInspectionsAtomic` calls `ensureValidSession()` with its own 5s timeout. This means every sync cycle runs two separate auth checks — the second one can trigger a `LockManager` timeout if the first already consumed the lock.
 
-**Severity: LOW — Memory leak on mobile**
-
-`ItemPhotoUpload` creates `URL.createObjectURL` in `loadSignedUrl` (line 60) and `handleUpload` (line 165) but only revokes the preview URL when a signed URL replaces it (line 144). If the component unmounts before background upload completes, the blob URL leaks. Also, the `loadSignedUrl` callback creates a new object URL from cached blobs on every call without revoking the previous one.
-
-### Finding 6: `saveToDevice` Called for Every Photo
-
-**Severity: LOW — UX annoyance**
-
-`PhotoCapture` line 135-136 calls `saveToDevice` for every captured photo. On Android, this triggers a download notification per photo. Not an integrity issue but can confuse users.
-
-### Finding 7: Background Upload Race with `syncPhotos`
-
-**Severity: LOW — Potential duplicate upload**
-
-`PhotoCapture.uploadPhotoInBackground` and `syncPhotos` can both attempt to upload the same photo simultaneously. The storage `upsert: true` handles the file, but the DB insert can create duplicate rows (same as Finding 4).
+**Fix:** Pass the validated user from `performSync` into the atomic sync functions, or skip the top-level auth check since each atomic function already validates.
 
 ---
 
-### Recommended Fixes (Priority Order)
+### Implementation Plan
 
-**1. Remove blob after successful sync** (`src/lib/offline-storage.ts`)
-- In `markPhotoAsUploaded`, replace the blob with `null` or a tiny placeholder after setting `uploaded = true`
-- This is the biggest practical improvement — prevents storage quota exhaustion
+**1. Fix silent sync drop on reconnection** (`src/hooks/useAutoSync.tsx`)
+- In `performSync`, when `MIN_SYNC_INTERVAL` guard fires and `silent === false`, schedule a `setTimeout` retry after `MIN_SYNC_INTERVAL` remaining time instead of returning void.
 
-**2. Add deduplication guard in `syncPhotos`** (`src/lib/sync-manager.ts`)
-- Before inserting a photo DB row, check if a row with the same `photo_url` already exists using `.select()` 
-- Skip insert if row exists; just call `markPhotoAsUploaded`
+**2. Pre-refresh session in `handleOnline`** (`src/hooks/useAutoSync.tsx`)
+- Before calling `performSync`, call `supabase.auth.refreshSession()` with a 5s timeout to ensure a fresh JWT is available for all downstream sync operations.
+- This eliminates the race between `getUserWithCache` and `ensureValidSession`.
 
-**3. Add retry counter to photo records** (`src/lib/offline-storage.ts` + `src/lib/sync-manager.ts`)
-- Add `retryCount` field to photo schema
-- Increment on each failed upload attempt
-- Skip photos with >5 retries (log warning) to prevent infinite retry loops
+**3. Remove redundant top-level auth check** (`src/hooks/useAutoSync.tsx`)
+- Remove the `getUserWithCache()` gate at line 124 in `performSync`. Each `syncAll*Atomic` function already calls `ensureValidSession()` which is more thorough.
+- Keep a lightweight check using `getCachedUserFromStorage()` (sync, no network) just to skip when clearly not logged in.
 
-**4. Fix Object URL leak in `ItemPhotoUpload`** (`src/components/inspection/ItemPhotoUpload.tsx`)
-- Track previous object URLs in a ref and revoke on cleanup/replacement
-- Add `useEffect` cleanup that revokes on unmount
-
-**5. Fix `getUnuploadedPhotos(userId)` filter** (`src/lib/offline-storage.ts`)
-- When userId is provided, filter by photos whose `inspectionId` belongs to ANY local inspection (not just unsynced ones), OR remove the userId filter entirely since `syncPhotos()` doesn't use it
+**4. Reduce lock-wait timeout** (`src/hooks/useAutoSync.tsx`)
+- Reduce the "wait for sync in progress" polling timeout from 35s to 15s. If a sync is stuck for 15s, the waiting caller should proceed to schedule a new attempt rather than blocking.
 
 ### Files to Modify
 
-| File | Change |
-|------|--------|
-| `src/lib/offline-storage.ts` | Remove blob on markPhotoAsUploaded; fix getUnuploadedPhotos filter; add retryCount field |
-| `src/lib/sync-manager.ts` | Add dedup check before DB insert; increment retry counter on failure; skip high-retry photos |
-| `src/components/inspection/ItemPhotoUpload.tsx` | Revoke object URLs on unmount and replacement |
+| File | Changes |
+|------|---------|
+| `src/hooks/useAutoSync.tsx` | Fix silent drop on reconnect; pre-refresh session in handleOnline; replace blocking auth check with sync cache read; reduce lock-wait timeout |
 
