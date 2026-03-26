@@ -20,17 +20,11 @@ import { toast } from "sonner";
 const getAuthErrorMessage = (error: any): string => {
   const message = error?.message?.toLowerCase() || '';
   
-  if (message.includes('user already registered') || message.includes('already been registered')) {
-    return 'An account with this email already exists. Try signing in instead.';
-  }
   if (message.includes('invalid login credentials') || message.includes('invalid credentials')) {
     return 'Invalid email or password. Please check your credentials and try again.';
   }
   if (message.includes('email not confirmed')) {
     return 'Please check your email and confirm your account before signing in.';
-  }
-  if (message.includes('password should be at least')) {
-    return 'Password must be at least 6 characters long.';
   }
   if (message.includes('unable to validate email') || message.includes('invalid email')) {
     return 'Please enter a valid email address.';
@@ -51,9 +45,6 @@ export default function Auth() {
   const [loading, setLoading] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [firstName, setFirstName] = useState("");
-  const [lastName, setLastName] = useState("");
-  const [isSignUp, setIsSignUp] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [isForgotPassword, setIsForgotPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -71,11 +62,6 @@ export default function Auth() {
       return;
     }
 
-    if (isSignUp && (!firstName.trim() || !lastName.trim())) {
-      setError("Please enter your first and last name.");
-      return;
-    }
-
     if (password.length < 6) {
       setError("Password must be at least 6 characters long.");
       return;
@@ -85,38 +71,20 @@ export default function Auth() {
     setLoading(true);
 
     try {
-      // OFFLINE SIGN-IN: Allow sign-in (not sign-up) while offline
-      if (!isOnline && !isSignUp) {
+      // OFFLINE SIGN-IN: Allow sign-in while offline
+      if (!isOnline) {
         await createOfflineSession(email, password);
         toast.success("Signed in offline. Credentials will be verified when you reconnect.");
         navigate("/dashboard", { replace: true });
         return;
       }
 
-      if (isSignUp) {
-        const { error } = await supabase.auth.signUp({
-          email,
-          password,
-          options: {
-            emailRedirectTo: `${window.location.origin}/`,
-            data: {
-              first_name: firstName.trim(),
-              last_name: lastName.trim(),
-            },
-          },
-        });
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
 
-        if (error) throw error;
-        toast.success("Account created! Check your email to confirm your account.");
-        setIsSignUp(false);
-      } else {
-        const { error } = await supabase.auth.signInWithPassword({
-          email,
-          password,
-        });
-
-        if (error) throw error;
-      }
+      if (error) throw error;
     } catch (error: any) {
       console.error("Authentication error:", error);
       const friendlyMessage = getAuthErrorMessage(error);
@@ -179,8 +147,6 @@ export default function Auth() {
           <CardDescription>
             {isForgotPassword 
               ? "Reset your password" 
-              : isSignUp 
-              ? "Create your inspector account" 
               : "Sign in to continue"}
           </CardDescription>
         </CardHeader>
@@ -199,8 +165,6 @@ export default function Auth() {
                 <span className="font-semibold">You're offline.</span>{" "}
                 {hasCachedSessionForOffline() 
                   ? "Tap below to access your cached reports."
-                  : isSignUp
-                  ? "Sign up requires an internet connection."
                   : "You can sign in offline. Your credentials will be verified when you reconnect."}
               </AlertDescription>
             </Alert>
@@ -215,34 +179,6 @@ export default function Auth() {
             </GradientButton>
           )}
           <form onSubmit={isForgotPassword ? handleForgotPassword : handleAuth} className="space-y-4">
-            {isSignUp && !isForgotPassword && (
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-2">
-                  <Label htmlFor="firstName">First Name</Label>
-                  <Input
-                    id="firstName"
-                    type="text"
-                    placeholder="John"
-                    value={firstName}
-                    onChange={(e) => setFirstName(e.target.value)}
-                    required
-                    maxLength={50}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="lastName">Last Name</Label>
-                  <Input
-                    id="lastName"
-                    type="text"
-                    placeholder="Smith"
-                    value={lastName}
-                    onChange={(e) => setLastName(e.target.value)}
-                    required
-                    maxLength={50}
-                  />
-                </div>
-              </div>
-            )}
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
               <Input
@@ -283,74 +219,31 @@ export default function Auth() {
                     )}
                   </button>
                 </div>
-                {isSignUp && password.length > 0 && (
-                  <div className="space-y-2 pt-1">
-                    <div className="flex gap-1">
-                      {[1, 2, 3, 4].map((level) => {
-                        const strength = 
-                          (password.length >= 6 ? 1 : 0) +
-                          (/[A-Z]/.test(password) ? 1 : 0) +
-                          (/[0-9]/.test(password) ? 1 : 0) +
-                          (/[^A-Za-z0-9]/.test(password) ? 1 : 0);
-                        const isActive = level <= strength;
-                        const colorClass = strength <= 1 ? 'bg-destructive' : strength === 2 ? 'bg-orange-500' : strength === 3 ? 'bg-yellow-500' : 'bg-green-500';
-                        return (
-                          <div 
-                            key={level} 
-                            className={`h-1 flex-1 rounded-full transition-colors ${isActive ? colorClass : 'bg-muted'}`} 
-                          />
-                        );
-                      })}
-                    </div>
-                    <ul className="text-xs space-y-0.5">
-                      <li className={`flex items-center gap-1.5 ${password.length >= 6 ? 'text-green-600 dark:text-green-400' : 'text-muted-foreground'}`}>
-                        <span className={`w-1 h-1 rounded-full ${password.length >= 6 ? 'bg-green-500' : 'bg-muted-foreground'}`} />
-                        At least 6 characters
-                      </li>
-                      <li className={`flex items-center gap-1.5 ${/[A-Z]/.test(password) ? 'text-green-600 dark:text-green-400' : 'text-muted-foreground'}`}>
-                        <span className={`w-1 h-1 rounded-full ${/[A-Z]/.test(password) ? 'bg-green-500' : 'bg-muted-foreground'}`} />
-                        One uppercase letter
-                      </li>
-                      <li className={`flex items-center gap-1.5 ${/[0-9]/.test(password) ? 'text-green-600 dark:text-green-400' : 'text-muted-foreground'}`}>
-                        <span className={`w-1 h-1 rounded-full ${/[0-9]/.test(password) ? 'bg-green-500' : 'bg-muted-foreground'}`} />
-                        One number
-                      </li>
-                      <li className={`flex items-center gap-1.5 ${/[^A-Za-z0-9]/.test(password) ? 'text-green-600 dark:text-green-400' : 'text-muted-foreground'}`}>
-                        <span className={`w-1 h-1 rounded-full ${/[^A-Za-z0-9]/.test(password) ? 'bg-green-500' : 'bg-muted-foreground'}`} />
-                        One special character
-                      </li>
-                    </ul>
-                  </div>
-                )}
-                {!isSignUp && (
-                  <div className="text-right">
-                    <button
-                      type="button"
-                      onClick={() => setIsForgotPassword(true)}
-                      className="text-sm text-primary hover:underline"
-                    >
-                      Forgot password?
-                    </button>
-                  </div>
-                )}
+                <div className="text-right">
+                  <button
+                    type="button"
+                    onClick={() => setIsForgotPassword(true)}
+                    className="text-sm text-primary hover:underline"
+                  >
+                    Forgot password?
+                  </button>
+                </div>
               </div>
             )}
             <GradientButton
               type="submit"
               className="w-full"
-              disabled={loading || (!isOnline && isSignUp) || (!isOnline && isForgotPassword)}
+              disabled={loading || (!isOnline && isForgotPassword)}
             >
               {loading 
                 ? "Please wait..." 
                 : isForgotPassword 
                 ? "Send Reset Link" 
-                : isSignUp 
-                ? "Create Account" 
                 : !isOnline
                 ? "Sign In Offline"
                 : "Sign In"}
             </GradientButton>
-            {isForgotPassword ? (
+            {isForgotPassword && (
               <Button
                 type="button"
                 variant="ghost"
@@ -359,19 +252,10 @@ export default function Auth() {
               >
                 Back to sign in
               </Button>
-            ) : (
-              <Button
-                type="button"
-                variant="ghost"
-                className="w-full"
-                onClick={() => {
-                  triggerHaptic('light');
-                  setIsSignUp(!isSignUp);
-                }}
-              >
-                {isSignUp ? "Already have an account? Sign in" : "Need an account? Sign up"}
-              </Button>
             )}
+            <p className="text-xs text-center text-muted-foreground">
+              Contact your administrator if you need an account.
+            </p>
           </form>
         </CardContent>
       </Card>
