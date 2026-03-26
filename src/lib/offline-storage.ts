@@ -1,5 +1,5 @@
 import { openDB, DBSchema, IDBPDatabase } from 'idb';
-import { checkStorageQuota, requestPersistentStorage } from './mobile-detection';
+import { checkStorageQuota, requestPersistentStorage, isMobile } from './mobile-detection';
 
 interface InspectionDB extends DBSchema {
   inspections: {
