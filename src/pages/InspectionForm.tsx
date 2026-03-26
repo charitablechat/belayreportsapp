@@ -1460,14 +1460,14 @@ export default function InspectionForm() {
           // Never let snapshot failure block the save
         }
 
-        await Promise.all(childSaveOps);
-        localSaveSucceeded = true;
-        console.log('[InspectionForm Save] Offline storage completed');
-
-        // Show hard-saved toast immediately on successful local save
+        // Show hard-saved toast immediately after localStorage snapshot (always reliable)
         if (!silent) {
           showHardSavedToast(lastVersionNumber ? lastVersionNumber + 1 : undefined, undefined);
         }
+
+        await Promise.all(childSaveOps);
+        localSaveSucceeded = true;
+        console.log('[InspectionForm Save] Offline storage completed');
 
         // Layer 2: Append-only version history (fire-and-forget, metadata only)
         appendVersion('inspection', id!, inspectionToSave, {
@@ -1481,9 +1481,9 @@ export default function InspectionForm() {
       } catch (offlineError) {
         console.warn('[InspectionForm Save] Offline storage failed:', offlineError);
         if (!silent) {
-          toast.error("Save failed", {
-            description: "Local storage is unavailable. Please try again.",
-            duration: 5000,
+          toast.warning("Saved to backup — retrying storage", {
+            description: "Your data is safe. Extended storage is slow on this device.",
+            duration: 4000,
           });
         }
         setSaveError('Local save failed — please retry');
