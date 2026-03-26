@@ -71,6 +71,7 @@ export const DebouncedInput = memo(function DebouncedInput({
       {...props}
       value={local}
       onChange={handleChange}
+      onFocus={handleFocus}
       onBlur={handleBlur}
     />
   );
