@@ -24,9 +24,10 @@ export default function StandardsTable({ standards, onUpdate, onImmediateSave }:
     triggerHaptic('light');
     const updated = [...standards];
     const inspectionId = window.location.pathname.split('/').pop();
+    const existing = updated[index] || {};
     updated[index] = { 
-      ...updated[index], 
-      id: updated[index].id || crypto.randomUUID(),
+      ...existing, 
+      id: existing.id || crypto.randomUUID(),
       inspection_id: inspectionId,
       standard_name: STANDARDS_LIST[index].name,
       has_documentation 
