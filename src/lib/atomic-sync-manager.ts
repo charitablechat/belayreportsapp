@@ -1010,9 +1010,9 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
       });
     }
     
-    // 3. Check for remote record status using RLS-bypassing RPC
-    // This allows detecting soft-deleted records that regular users can't see via normal SELECT
-    const recordStatus = await checkRemoteRecordStatus('trainings', trainingId);
+    // RC-5: Skip remote status check for new records (never synced = never on server)
+    const isNewTraining = !training.synced_at;
+    const recordStatus = isNewTraining ? null : await checkRemoteRecordStatus('trainings', trainingId);
     
     // SAFEGUARD: Check if remote record was soft-deleted by someone else
     // This works for ALL users (regular and super admin) by bypassing RLS
@@ -1680,9 +1680,9 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
       });
     }
     
-    // 3. Check for remote record status using RLS-bypassing RPC
-    // This allows detecting soft-deleted records that regular users can't see via normal SELECT
-    const recordStatus = await checkRemoteRecordStatus('daily_assessments', assessmentId);
+    // RC-5: Skip remote status check for new records (never synced = never on server)
+    const isNewAssessment = !assessment.synced_at;
+    const recordStatus = isNewAssessment ? null : await checkRemoteRecordStatus('daily_assessments', assessmentId);
     
     // SAFEGUARD: Check if remote record was soft-deleted by someone else
     // This works for ALL users (regular and super admin) by bypassing RLS
