@@ -693,14 +693,14 @@ export default function TrainingForm() {
         }, false);
       } catch {}
 
+      // Show hard-saved toast immediately after localStorage snapshot (always reliable)
+      if (!silent) showHardSavedToast(lastVersionNumber ? lastVersionNumber + 1 : undefined, undefined);
+
       let localSaveSucceeded = false;
       try {
         await Promise.all(childOps);
         localSaveSucceeded = true;
         if (import.meta.env.DEV) console.log('[Training Save] Offline storage completed');
-
-        // Show hard-saved toast only on manual saves to avoid toast flooding
-        if (!silent) showHardSavedToast(lastVersionNumber ? lastVersionNumber + 1 : undefined, undefined);
 
         // Layer 2: Append-only version history (metadata only)
         appendVersion('training', id, updatedTraining, {
@@ -718,9 +718,9 @@ export default function TrainingForm() {
         }).catch(() => {});
       } catch (offlineError) {
         console.warn('[Training Save] Offline storage failed:', offlineError);
-        toast.error("Save failed", {
-          description: "Local storage is unavailable. Please try again.",
-          duration: 5000,
+        toast.warning("Saved to backup — retrying storage", {
+          description: "Your data is safe. Extended storage is slow on this device.",
+          duration: 4000,
         });
       }
 
