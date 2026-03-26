@@ -1068,6 +1068,24 @@ export async function markPhotoAsUploaded(id: string, photoUrl: string) {
   );
 }
 
+export async function updatePhotoPath(id: string, newPath: string) {
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      const photo = await db.get('photos', id);
+      if (photo) {
+        photo.photoUrl = newPath;
+        await db.put('photos', photo);
+        if (import.meta.env.DEV) {
+          console.log('[Offline Storage] Updated photo path:', id, '->', newPath);
+        }
+      }
+    },
+    undefined,
+    'updatePhotoPath'
+  );
+}
+
 export async function incrementPhotoRetryCount(id: string): Promise<number> {
   return withIndexedDBErrorBoundary(
     async () => {

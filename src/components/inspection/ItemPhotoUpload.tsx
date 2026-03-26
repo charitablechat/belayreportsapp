@@ -13,7 +13,7 @@ import { compressImage } from "@/lib/image-compression";
 import { toast } from "@/components/ui/sonner";
 import { getUserWithCache } from "@/lib/cached-auth";
 import { getCachedPhotoBlob, cachePhotoFromRemote } from "@/lib/photo-cache";
-import { savePhotoOffline, markPhotoAsUploaded } from "@/lib/offline-storage";
+import { savePhotoOffline, markPhotoAsUploaded, updatePhotoPath } from "@/lib/offline-storage";
 import { savePhotoReceipt } from "@/lib/photo-receipts";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 
@@ -226,10 +226,12 @@ function ItemPhotoUpload({
       if (isOnline) {
         toast.info("Syncing photo...");
         getUserWithCache()
-          .then(user => {
+          .then(async (user) => {
             if (user?.id) {
               const realPath = `${user.id}/${inspectionId}/items/${itemId}.jpg`;
-              onPhotoChange(realPath); // Update to real path
+              // ✅ Update IndexedDB with real path BEFORE upload to prevent path divergence
+              await updatePhotoPath(photoId, realPath);
+              onPhotoChange(realPath);
               uploadInBackground(photoId, compressed, user.id, realPath).catch(() => {});
             }
           })

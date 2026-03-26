@@ -86,6 +86,25 @@ export async function syncPhotos(): Promise<{ remaining: number }> {
           continue;
         }
 
+        // Guard: skip photos with unresolved placeholder paths — uploadInBackground will handle these
+        if (photo.photoUrl?.startsWith('pending/')) {
+          if (import.meta.env.DEV) {
+            console.log('[Sync Manager] Skipping photo with pending path (awaiting real path):', photo.id);
+          }
+          continue;
+        }
+
+        // Re-check: another thread (uploadInBackground) may have already handled this
+        const recheckPhotos = await getUnuploadedPhotos();
+        const stillUnuploaded = recheckPhotos.find(p => p.id === photo.id);
+        if (!stillUnuploaded) {
+          if (import.meta.env.DEV) {
+            console.log('[Sync Manager] Photo already marked uploaded by another thread:', photo.id);
+          }
+          successCount++;
+          continue;
+        }
+
         // Guard: blob must exist (may have been nullified by a previous partial success)
         if (!photo.blob) {
           if (import.meta.env.DEV) {
