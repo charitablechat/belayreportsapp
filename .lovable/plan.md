@@ -1,41 +1,40 @@
 
 
-## Fix: Text Still Highlighted in CommandInput on Popover Open
+## Fix: "Failed to delete report" — RLS UPDATE Policy Issue
 
 ### Root Cause
 
-The `CommandInput` in `command.tsx` now has `placeCursorAtEnd` on `onFocus`, but cmdk's `CommandPrimitive.Input` internally manages value state. When the autocomplete popover opens, the sequence is:
+The database logs confirm: `new row violates row-level security policy for table "inspections"` when attempting the soft-delete `.update()` call.
 
-1. `onFocus` fires → our `placeCursorAtEnd` runs (immediate + rAF + setTimeout(0))
-2. cmdk internally sets/updates the input value **after** focus
-3. The browser re-selects all text due to the programmatic value update
+Three UPDATE policies exist on each report table (`inspections`, `trainings`, `daily_assessments`):
 
-Our current delays (rAF and `setTimeout(0)`) both resolve **before** cmdk finishes its internal state update, so the selection gets overridden.
+1. **"Inspectors can update their own [X]"** — `USING (auth.uid() = inspector_id)`, **WITH CHECK: NULL**
+2. **"Super admins can update all [X]"** — `USING (is_super_admin())`, `WITH CHECK (is_super_admin())`
+3. **"Users can update their own active [X]"** — `USING ((inspector_id = auth.uid()) AND (deleted_at IS NULL))`, `WITH CHECK (inspector_id = auth.uid())`
 
-### Fix
+Policy #1 has a **NULL WITH CHECK**. When PostgreSQL evaluates this, it falls back to the USING expression against the NEW row, but the behavior with NULL `polwithcheck` in `pg_policy` can be unreliable when combined with other policies that DO have explicit WITH CHECK clauses. Additionally, **admin-level users** (non-super-admin) have no UPDATE policies at all, so they cannot soft-delete reports they oversee.
 
-**File: `src/components/ui/command.tsx`**
+### Fix — Database Migration
 
-Add an additional delayed `setTimeout` (50ms) to `placeCursorAtEnd` specifically for `CommandInput`. This ensures the caret reset fires **after** cmdk's internal value-setting completes:
+**Single migration** to fix all three tables (`inspections`, `trainings`, `daily_assessments`):
 
-```typescript
-const placeCursorAtEnd = (el: HTMLInputElement) => {
-  const setCaret = () => {
-    const len = el.value.length;
-    el.setSelectionRange(len, len);
-  };
-  setCaret();
-  requestAnimationFrame(setCaret);
-  setTimeout(setCaret, 0);
-  setTimeout(setCaret, 50);  // catch cmdk's deferred value update
-};
-```
+1. **Drop** the old redundant policies with NULL WITH CHECK:
+   - "Inspectors can update their own inspections"
+   - "Inspectors can update their own assessments"  
+   - "Trainers can update their own trainings"
 
-The extra 50ms timeout is harmless (it's a no-op if the caret is already correct) and ensures we always win the race against cmdk's internal scheduling.
+2. **Replace** the "Users can update their own active [X]" policies with a cleaner version that:
+   - USING: `inspector_id = auth.uid()` (no `deleted_at IS NULL` filter — owners should be able to soft-delete their own records)
+   - WITH CHECK: `inspector_id = auth.uid()` (explicit, not NULL)
+
+3. **Add** admin-level UPDATE policies using `is_admin_or_above()`:
+   - Admins can update all reports (for soft-delete and other admin actions)
 
 ### Files to Modify
 
-| File | Change |
-|------|--------|
-| `src/components/ui/command.tsx` | Add 50ms setTimeout to `placeCursorAtEnd` |
+| Change | Detail |
+|--------|--------|
+| DB Migration | Drop 3 old UPDATE policies, update 3 "active" UPDATE policies, add 3 admin UPDATE policies |
+
+No application code changes needed — the Dashboard soft-delete logic is correct; only the RLS policies need fixing.
 
