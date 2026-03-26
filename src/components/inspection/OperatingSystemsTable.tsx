@@ -108,24 +108,24 @@ function OperatingSystemsTable({ systems, onUpdate, onImmediateSave, inspectionI
 
   return (
     <Card>
-      <CardHeader className="px-4 md:px-6">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+      <CardHeader className="px-4 lg:px-6">
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
           <CardTitle>Operating Systems</CardTitle>
-          <div className="flex gap-2 w-full md:w-auto">
-            <Button onClick={addDivider} size="sm" variant="outline" className="flex-1 md:flex-none shrink-0">
+          <div className="flex gap-2 w-full lg:w-auto">
+            <Button onClick={addDivider} size="sm" variant="outline" className="flex-1 lg:flex-none shrink-0">
               <Minus className="w-4 h-4 mr-2" />
               Divider
             </Button>
-            <Button onClick={addSystem} size="sm" className="flex-1 md:flex-none shrink-0">
+            <Button onClick={addSystem} size="sm" className="flex-1 lg:flex-none shrink-0">
               <Plus className="w-4 h-4 mr-2" />
               Add System
             </Button>
           </div>
         </div>
       </CardHeader>
-      <CardContent className="px-3 md:px-6">
+      <CardContent className="px-3 lg:px-6">
         {/* Desktop grid view */}
-        <div className="hidden md:block overflow-x-auto">
+        <div className="hidden lg:block overflow-x-auto">
           {/* Header */}
           <div className={`grid ${OS_GRID_COLS} bg-blue-50 dark:bg-blue-950/20 border-b border-border`}>
             <div className="p-3 text-center font-semibold text-sm border-r border-border"></div>
@@ -230,7 +230,7 @@ function OperatingSystemsTable({ systems, onUpdate, onImmediateSave, inspectionI
         </div>
         
         {/* Mobile card view */}
-        <div className="md:hidden space-y-3">
+        <div className="lg:hidden space-y-3">
           {systems.map((system) => (
             <DraggableMobileCard key={system.id} id={system.id} {...getDragProps(system.id)}>
               {system.is_divider ? (
