@@ -18,6 +18,14 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { supabase } from "@/integrations/supabase/client";
 import { focusNextCell } from "@/lib/table-focus-utils";
+import {
+  getAutocompleteHistory,
+  putAutocompleteEntry,
+  deleteAutocompleteEntry,
+  getUnsyncedAutocompleteEntries,
+  bulkPutAutocompleteEntries,
+  type AutocompleteEntry,
+} from "@/lib/offline-storage";
 
 /**
  * Comprehensive field type covering ALL autocomplete fields in the application.
@@ -60,15 +68,60 @@ interface HistoryItem {
 // Module-level cache: shared across all GlobalAutocomplete instances
 const _globalHistoryCache = new Map<string, HistoryItem[]>();
 
+// Track which field types have been migrated from localStorage
+const _migratedFields = new Set<string>();
+
+/**
+ * Make a compound key for IndexedDB entries.
+ */
+function makeKey(fieldType: string, value: string): string {
+  return `${fieldType}::${value}`;
+}
+
+/**
+ * One-time migration from localStorage to IndexedDB for a field type.
+ */
+async function migrateLocalStorageToIDB(fieldType: string): Promise<void> {
+  if (_migratedFields.has(fieldType)) return;
+  _migratedFields.add(fieldType);
+
+  const storageKey = `global-autocomplete-${fieldType}`;
+  const saved = localStorage.getItem(storageKey);
+  if (!saved) return;
+
+  try {
+    const parsed = JSON.parse(saved);
+    if (!Array.isArray(parsed) || parsed.length === 0) return;
+
+    const entries: AutocompleteEntry[] = parsed.map((v: string) => ({
+      id: makeKey(fieldType, v),
+      field_type: fieldType,
+      value: v,
+      usage_count: 1,
+      last_used_at: new Date().toISOString(),
+      synced: false,
+    }));
+
+    await bulkPutAutocompleteEntries(entries);
+    localStorage.removeItem(storageKey);
+
+    if (import.meta.env.DEV) {
+      console.log(`[GlobalAutocomplete] Migrated ${entries.length} entries from localStorage for ${fieldType}`);
+    }
+  } catch (e) {
+    console.error('[GlobalAutocomplete] Migration failed:', e);
+  }
+}
+
 /**
  * GlobalAutocomplete - Unified, globally-shared autocomplete component.
  * 
  * Features:
- * - Uses `global_field_history` table exclusively for cross-user sharing
+ * - IndexedDB-first persistence with circuit breaker protection
+ * - Background sync to `global_field_history` table when online
  * - Strictly scoped by `fieldType` - values from one field never pollute another
- * - Lazy-loads suggestions when popover opens (performance optimization)
- * - Fire-and-forget upserts to avoid blocking UI
- * - Maintains localStorage as offline fallback
+ * - Module-level in-memory cache for instant cross-instance access
+ * - localStorage → IndexedDB migration (one-time, transparent)
  */
 export function GlobalAutocomplete({
   value,
@@ -88,49 +141,45 @@ export function GlobalAutocomplete({
   const lastSavedValue = useRef<string | null>(null);
   const triggerInputRef = useRef<HTMLInputElement>(null);
 
-  // Module-level cache for fetched results by fieldType
-  const cacheRef = useRef(_globalHistoryCache);
-  
-  // LocalStorage key for offline fallback
-  const storageKey = `global-autocomplete-${fieldType}`;
-
-  // Load from localStorage on mount AND check module-level cache
+  // Load from IndexedDB on mount, then optionally sync with server
   useEffect(() => {
     // Check module-level cache first (instant, cross-instance)
-    const cached = cacheRef.current.get(fieldType);
+    const cached = _globalHistoryCache.get(fieldType);
     if (cached) {
       setHistoryOptions(cached);
       hasFetchedFromDb.current = true;
-      setIsLoading(false);
       return;
     }
-    // Fallback to localStorage
-    const saved = localStorage.getItem(storageKey);
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) {
-          setHistoryOptions(parsed.map((v: string, i: number) => ({
-            id: `local-${i}`,
-            value: v,
-            usage_count: 1
-          })));
-        }
-      } catch (e) {
-        console.error("Failed to load local history", e);
-      }
+
+    // Load from IndexedDB (with localStorage migration)
+    loadFromIndexedDB();
+  }, [fieldType]);
+
+  const loadFromIndexedDB = async () => {
+    // Migrate localStorage → IndexedDB if needed (one-time)
+    await migrateLocalStorageToIDB(fieldType);
+
+    const entries = await getAutocompleteHistory(fieldType);
+    if (entries.length > 0) {
+      const items: HistoryItem[] = entries.map(e => ({
+        id: e.id,
+        value: e.value,
+        usage_count: e.usage_count,
+      }));
+      setHistoryOptions(items);
+      _globalHistoryCache.set(fieldType, items);
     }
-    // Pre-fetch from DB eagerly on mount (not on focus)
+
+    // Eagerly fetch from server on mount
     if (!hasFetchedFromDb.current) {
       fetchGlobalHistory();
     }
-  }, [storageKey, fieldType]);
+  };
 
-  // Fetch global history from database (on-demand when popover opens)
+  // Fetch global history from database and merge with IndexedDB
   const fetchGlobalHistory = async () => {
     if (hasFetchedFromDb.current) return;
     
-    // Only show spinner if we have no cached items to display
     if (historyOptions.length === 0) {
       setIsLoading(true);
     }
@@ -145,63 +194,126 @@ export function GlobalAutocomplete({
       
       if (error) {
         console.error('Failed to fetch global history:', error);
+        hasFetchedFromDb.current = true;
         return;
       }
       
       if (data && data.length > 0) {
-        // Merge with localStorage, deduplicate (case-insensitive)
-        setHistoryOptions(prev => {
-          const combined = [...data, ...prev];
-          const uniqueMap = new Map<string, HistoryItem>();
-          combined.forEach(item => {
-            const key = item.value.toLowerCase();
-            if (!uniqueMap.has(key) || (item.usage_count || 0) > (uniqueMap.get(key)?.usage_count || 0)) {
-              uniqueMap.set(key, item);
-            }
+        // Merge server data with local IndexedDB data
+        const localEntries = await getAutocompleteHistory(fieldType);
+        const mergedMap = new Map<string, AutocompleteEntry>();
+
+        // Add server entries (marked as synced)
+        for (const item of data) {
+          const key = makeKey(fieldType, item.value);
+          mergedMap.set(item.value.toLowerCase(), {
+            id: key,
+            field_type: fieldType,
+            value: item.value,
+            usage_count: item.usage_count || 1,
+            last_used_at: new Date().toISOString(),
+            synced: true,
           });
-          const merged = Array.from(uniqueMap.values()).sort((a, b) => 
-            (b.usage_count || 0) - (a.usage_count || 0)
-          );
-          // Store in module-level cache for instant access across instances
-          _globalHistoryCache.set(fieldType, merged);
-          return merged;
-        });
-        
-        // Update localStorage with merged results
-        const values = data.map(d => d.value);
-        localStorage.setItem(storageKey, JSON.stringify(values));
+        }
+
+        // Merge local entries (keep higher usage_count, preserve unsynced)
+        for (const local of localEntries) {
+          const lowerKey = local.value.toLowerCase();
+          const existing = mergedMap.get(lowerKey);
+          if (!existing) {
+            mergedMap.set(lowerKey, local);
+          } else if ((local.usage_count || 0) > (existing.usage_count || 0)) {
+            mergedMap.set(lowerKey, { ...existing, usage_count: local.usage_count });
+          }
+        }
+
+        const mergedEntries = Array.from(mergedMap.values());
+
+        // Persist merged data to IndexedDB
+        await bulkPutAutocompleteEntries(mergedEntries);
+
+        // Update in-memory state
+        const items: HistoryItem[] = mergedEntries
+          .sort((a, b) => (b.usage_count || 0) - (a.usage_count || 0))
+          .map(e => ({ id: e.id, value: e.value, usage_count: e.usage_count }));
+
+        setHistoryOptions(items);
+        _globalHistoryCache.set(fieldType, items);
       }
+
+      // Push unsynced entries to server
+      await pushUnsyncedEntries();
       
       hasFetchedFromDb.current = true;
     } catch (err) {
       console.error('Error fetching global history:', err);
+      hasFetchedFromDb.current = true;
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Save value to global history (fire-and-forget)
-  const saveToGlobalHistory = (newValue: string) => {
+  // Push locally-created entries to the server
+  const pushUnsyncedEntries = async () => {
+    try {
+      const unsynced = await getUnsyncedAutocompleteEntries();
+      if (unsynced.length === 0) return;
+
+      for (const entry of unsynced) {
+        const { error } = await supabase
+          .from('global_field_history')
+          .upsert({
+            field_type: entry.field_type,
+            value: entry.value,
+            usage_count: entry.usage_count,
+            last_used_at: entry.last_used_at,
+          }, {
+            onConflict: 'field_type,value',
+            ignoreDuplicates: false,
+          });
+
+        if (!error) {
+          // Mark as synced in IndexedDB
+          await putAutocompleteEntry({ ...entry, synced: true });
+        }
+      }
+    } catch (err) {
+      // Non-critical — will retry next fetch cycle
+      if (import.meta.env.DEV) {
+        console.log('[GlobalAutocomplete] Failed to push unsynced entries:', err);
+      }
+    }
+  };
+
+  // Save value to IndexedDB + fire-and-forget to server
+  const saveToHistory = (newValue: string) => {
     const trimmed = newValue.trim();
     if (!trimmed || trimmed === lastSavedValue.current) return;
     
     lastSavedValue.current = trimmed;
+    const key = makeKey(fieldType, trimmed);
     
-    // Add to local state immediately
+    // Update local state immediately
     setHistoryOptions(prev => {
       const exists = prev.some(opt => opt.value.toLowerCase() === trimmed.toLowerCase());
       if (exists) return prev;
-      return [{ id: `local-new-${Date.now()}`, value: trimmed, usage_count: 1 }, ...prev];
+      const updated = [{ id: key, value: trimmed, usage_count: 1 }, ...prev];
+      _globalHistoryCache.set(fieldType, updated);
+      return updated;
     });
     
-    // Update localStorage
-    const saved = localStorage.getItem(storageKey);
-    const existing = saved ? JSON.parse(saved) : [];
-    if (!existing.some((v: string) => v.toLowerCase() === trimmed.toLowerCase())) {
-      localStorage.setItem(storageKey, JSON.stringify([trimmed, ...existing]));
-    }
+    // Write to IndexedDB (with synced: false)
+    const entry: AutocompleteEntry = {
+      id: key,
+      field_type: fieldType,
+      value: trimmed,
+      usage_count: 1,
+      last_used_at: new Date().toISOString(),
+      synced: false,
+    };
+    putAutocompleteEntry(entry);
     
-    // Fire-and-forget database upsert
+    // Fire-and-forget database upsert; mark synced on success
     supabase
       .from('global_field_history')
       .upsert({
@@ -214,7 +326,9 @@ export function GlobalAutocomplete({
         ignoreDuplicates: false 
       })
       .then(({ error }) => {
-        if (error) {
+        if (!error) {
+          putAutocompleteEntry({ ...entry, synced: true });
+        } else {
           console.error('Failed to save to global history:', error);
         }
       });
@@ -231,7 +345,7 @@ export function GlobalAutocomplete({
 
   const handleSelect = (selectedValue: string) => {
     onChange(selectedValue);
-    saveToGlobalHistory(selectedValue);
+    saveToHistory(selectedValue);
     setOpen(false);
     setInputValue("");
     setIsEditing(false);
@@ -252,23 +366,22 @@ export function GlobalAutocomplete({
   const handleDelete = (option: HistoryItem, e: React.MouseEvent) => {
     e.stopPropagation();
     // Remove from local state
-    setHistoryOptions(prev => prev.filter(opt => opt.value !== option.value));
+    setHistoryOptions(prev => {
+      const updated = prev.filter(opt => opt.value !== option.value);
+      _globalHistoryCache.set(fieldType, updated);
+      return updated;
+    });
     
-    // Update localStorage
-    const saved = localStorage.getItem(storageKey);
-    if (saved) {
-      const existing = JSON.parse(saved);
-      localStorage.setItem(storageKey, JSON.stringify(
-        existing.filter((v: string) => v !== option.value)
-      ));
-    }
+    // Delete from IndexedDB
+    deleteAutocompleteEntry(option.id);
     
     // Delete from database (fire-and-forget)
     if (!option.id.startsWith('local-')) {
       supabase
         .from('global_field_history')
         .delete()
-        .eq('id', option.id)
+        .eq('field_type', fieldType)
+        .eq('value', option.value)
         .then(({ error }) => {
           if (error) console.error('Failed to delete from global history:', error);
         });
@@ -282,7 +395,7 @@ export function GlobalAutocomplete({
         const trimmed = inputValue.trim();
         if (trimmed !== value) {
           onChange(trimmed);
-          saveToGlobalHistory(trimmed);
+          saveToHistory(trimmed);
         }
       }
       setIsEditing(false);
@@ -338,7 +451,7 @@ export function GlobalAutocomplete({
           const trimmed = inputValue.trim();
           if (trimmed !== value) {
             onChange(trimmed);
-            saveToGlobalHistory(trimmed);
+            saveToHistory(trimmed);
           }
         }
         setIsEditing(false);
