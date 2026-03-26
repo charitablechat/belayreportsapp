@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Plus, Trash2, X, Minus } from "lucide-react";
 import ItemPhotoUpload from "./ItemPhotoUpload";
 import { cn } from "@/lib/utils";
+import { focusNextCell } from "@/lib/table-focus-utils";
 import { useState, useMemo, useCallback, useEffect, memo, useRef } from "react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import {
