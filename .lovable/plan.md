@@ -1,48 +1,27 @@
 
 
-## Prevent Default Text Selection on Focus
+## Fix: Text Selection in CommandInput (Autocomplete Search Box)
 
 ### Problem
-When tapping/clicking into editable fields across report forms, some browsers (especially iPad Safari) auto-select all text. The `DebouncedInput` and autocomplete components already have a multi-stage caret reset strategy, but many other input components used throughout the app lack this protection.
+When clicking into an autocomplete field (e.g., equipment name "Bouldering Wall"), the popover opens and the `CommandInput` search box inside it receives the current value with **all text highlighted**. This is because `CommandInput` (from cmdk) lacks the `placeCursorAtEnd` protection already applied to `Input` and `Textarea`.
 
-### Affected Components (No Focus Selection Prevention)
-1. **`src/components/ui/input.tsx`** — Base `Input` used everywhere
-2. **`src/components/ui/textarea.tsx`** — Base `Textarea`
-3. **`src/components/ui/voice-input.tsx`** — Wraps `Input`, no `onFocus` handler
-4. **`src/components/ui/voice-textarea.tsx`** — Wraps `Textarea`, no `onFocus` handler
-5. **`src/components/ui/voice-name-input.tsx`** — Wraps `Input`, no `onFocus` handler
-6. **`src/components/ui/voice-name-textarea.tsx`** — Wraps `Input`, no `onFocus` handler
-7. **`src/components/PhotoCaptionInput.tsx`** — Direct `Input` with no focus handling
-8. **`src/components/daily-assessment/SectionComments.tsx`** — Direct `Textarea`
-9. **`src/components/daily-assessment/OperatingSystemsSection.tsx`** — Direct `Input` for custom OS descriptions
-10. **`src/components/training/OperatingSystemsSection.tsx`** — Direct `Input` for custom OS descriptions
+### Root Cause
+`src/components/ui/command.tsx` — The `CommandInput` component (lines 38-53) renders a raw `CommandPrimitive.Input` with no `onFocus`, `onMouseUp`, or `onTouchEnd` handlers. When the popover opens and the cmdk input auto-focuses with a pre-filled value, the browser selects all text by default.
 
-### Approach
-Apply the cursor-at-end logic at the **base component level** (`Input` and `Textarea`) so every consumer automatically gets the fix. This is the most maintainable approach — one change covers all current and future uses.
+### Fix
+**File: `src/components/ui/command.tsx`** (lines 38-53)
 
-### Changes
+Add the same multi-stage `placeCursorAtEnd` and `collapseFullSelection` logic used in `Input` and `Textarea`:
 
-**1. `src/components/ui/input.tsx`**
-- Add an `onFocus` handler that calls `setSelectionRange(len, len)` using the same multi-stage strategy (immediate + `requestAnimationFrame` + `setTimeout`) proven in `DebouncedInput`.
-- Add `onMouseUp`/`onTouchEnd` handlers that collapse full-text selections to cursor-at-end.
-- Merge with any consumer-provided `onFocus`/`onMouseUp`/`onTouchEnd` props.
+1. Add a `placeCursorAtEnd` helper that calls `setSelectionRange(len, len)` across three frames (immediate + rAF + setTimeout).
+2. Add a `collapseFullSelection` helper that detects full-text selection and collapses it.
+3. Wire `onFocus`, `onMouseUp`, and `onTouchEnd` on `CommandPrimitive.Input`, merging with any consumer-provided handlers via `...props`.
 
-**2. `src/components/ui/textarea.tsx`**
-- Same treatment as `Input`: add `onFocus`, `onMouseUp`, `onTouchEnd` handlers with the multi-stage caret reset.
+This single change fixes all autocomplete components (`GlobalAutocomplete`, `DatabaseAutocomplete`, `OrganizationAutocomplete`, `HistoryAutocomplete`) since they all use `CommandInput`.
 
-### Technical Detail
-```typescript
-// Shared logic for both Input and Textarea
-const placeCursorAtEnd = (el: HTMLInputElement | HTMLTextAreaElement) => {
-  const setCaret = () => {
-    const len = el.value.length;
-    el.setSelectionRange(len, len);
-  };
-  setCaret();
-  requestAnimationFrame(setCaret);
-  setTimeout(setCaret, 0);
-};
-```
+### Files to Modify
 
-This ensures all editable fields — `VoiceInput`, `VoiceTextarea`, `VoiceNameInput`, `PhotoCaptionInput`, `SectionComments`, OS description inputs, and any future consumers — inherit the behavior without individual changes.
+| File | Change |
+|------|--------|
+| `src/components/ui/command.tsx` | Add cursor-at-end handlers to `CommandInput` |
 
