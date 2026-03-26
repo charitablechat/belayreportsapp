@@ -26,6 +26,7 @@ export function LazyRichTextEditor({
 }: LazyRichTextEditorProps) {
   const [isFocused, setIsFocused] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const isInline = className?.includes('bg-transparent');
 
   // Handle click outside to blur
   useEffect(() => {
