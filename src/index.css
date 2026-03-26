@@ -303,6 +303,28 @@ All colors MUST be HSL.
   body {
     @apply bg-background text-foreground;
   }
+
+  /* Global text wrapping safety net for mobile/tablet */
+  td, th, label, p, span, li, dd, dt {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  /* Grid cells must allow children to shrink */
+  .grid > * {
+    min-width: 0;
+  }
+
+  /* Inputs inside tight grid cells: show ellipsis cleanly */
+  input, select {
+    text-overflow: ellipsis;
+    min-width: 0;
+  }
+
+  /* Global touch-action for responsive tap targets */
+  button, [role="checkbox"], [role="switch"], input, select, textarea, [role="combobox"] {
+    touch-action: manipulation;
+  }
 }
 
 @layer components {

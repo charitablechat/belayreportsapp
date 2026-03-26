@@ -36,7 +36,7 @@ interface EquipmentTableProps {
   onGalleryRefresh?: () => void;
 }
 
-const EQ_GRID_COLS = "grid-cols-[40px_88px_minmax(160px,1fr)_128px_96px_192px_minmax(150px,1fr)_64px]";
+const EQ_GRID_COLS = "grid-cols-[40px_88px_minmax(120px,1fr)_128px_96px_160px_minmax(150px,1fr)_64px]";
 
 function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediateSave, typeOptions, inspectionId, onGalleryRefresh }: EquipmentTableProps) {
   const isMobile = useIsMobile();
@@ -370,7 +370,7 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
       </CardHeader>
       <CardContent className="px-3 md:px-6">
         {/* Desktop grid view */}
-        <div className="hidden md:block overflow-visible">
+        <div className="hidden md:block overflow-x-auto">
           {/* Header */}
           <div className={`grid ${EQ_GRID_COLS} bg-blue-50 dark:bg-blue-950/20 border-b border-border`}>
             <div className="p-3 text-center font-semibold text-sm border-r border-border"></div>
