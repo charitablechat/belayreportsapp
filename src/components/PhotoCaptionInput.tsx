@@ -10,6 +10,8 @@ interface PhotoCaptionInputProps {
   tableName: "inspection_photos" | "training_photos" | "daily_assessment_photos";
   disabled?: boolean;
   className?: string;
+  /** When provided, saves caption locally (IndexedDB) instead of to Supabase */
+  onOfflineSave?: (caption: string) => void;
 }
 
 /**
@@ -22,6 +24,7 @@ export default function PhotoCaptionInput({
   tableName,
   disabled = false,
   className,
+  onOfflineSave,
 }: PhotoCaptionInputProps) {
   const [caption, setCaption] = useState(initialCaption || "");
   const [isSaving, setIsSaving] = useState(false);
@@ -46,6 +49,13 @@ export default function PhotoCaptionInput({
   }, []);
 
   const saveCaption = useCallback(async (newCaption: string) => {
+    // Offline-only mode: save to IndexedDB via callback
+    if (onOfflineSave) {
+      onOfflineSave(newCaption);
+      lastSavedValueRef.current = newCaption;
+      return;
+    }
+
     if (!isOnline) {
       console.log("[PhotoCaptionInput] Offline, caption will sync later");
       return;
@@ -82,7 +92,7 @@ export default function PhotoCaptionInput({
       }
       setIsSaving(false);
     }
-  }, [isOnline, photoId, tableName]);
+  }, [isOnline, photoId, tableName, onOfflineSave]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;

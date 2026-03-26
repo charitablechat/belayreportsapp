@@ -985,6 +985,21 @@ export async function getOfflinePhotos(inspectionId: string) {
   );
 }
 
+/**
+ * Update the caption of an offline (unsynced) photo in IndexedDB
+ */
+export async function updateOfflinePhotoCaption(photoId: string, caption: string): Promise<void> {
+  const db = await getDB();
+  const photo = await db.get('photos', photoId);
+  if (photo) {
+    photo.caption = caption;
+    await db.put('photos', photo);
+    if (import.meta.env.DEV) {
+      console.log('[Offline Storage] Updated offline photo caption:', photoId);
+    }
+  }
+}
+
 export async function getUnuploadedPhotos(userId?: string) {
   const db = await getDB();
   const allPhotos = await db.getAll('photos');
