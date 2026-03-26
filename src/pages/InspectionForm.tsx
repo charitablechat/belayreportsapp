@@ -989,7 +989,7 @@ export default function InspectionForm() {
       }
       if (offlineStandards.length > 0) {
         childDataLoadedRef.current.standards = true;
-        setStandards(offlineStandards);
+        setStandards(mergeStandards(offlineStandards));
       }
       if (offlineSummary.length > 0) {
         childDataLoadedRef.current.summary = true;
@@ -1204,7 +1204,7 @@ export default function InspectionForm() {
 
           const { data: standardsData } = standardsResult;
           if (standardsData && standardsData.length > 0) {
-            setStandards(standardsData);
+            setStandards(mergeStandards(standardsData));
             saveRelatedDataOffline('standards', id!, standardsData).catch(e =>
               console.warn('[InspectionForm] Non-critical: failed to cache standards', e)
             );
@@ -1288,7 +1288,7 @@ export default function InspectionForm() {
         setSystems(offSystems); childDataLoadedRef.current.systems = true;
         setZiplines(offZiplines); childDataLoadedRef.current.ziplines = true;
         setEquipment(offEquipment); childDataLoadedRef.current.equipment = true;
-        setStandards(offStandards); childDataLoadedRef.current.standards = true;
+        setStandards(mergeStandards(offStandards)); childDataLoadedRef.current.standards = true;
         if (offSummary.length > 0) { setSummary(offSummary[0]); }
         childDataLoadedRef.current.summary = true;
 
@@ -2955,7 +2955,23 @@ export default function InspectionForm() {
           </div>
         </Tabs>
       </main>
-      
+
+const STANDARDS_TEMPLATE = [
+  { standard_name: "Local Written Operations Procedures", has_documentation: null },
+  { standard_name: "Local Written Emergency Action Plan", has_documentation: null },
+  { standard_name: "Minimum Annual Training", has_documentation: null },
+  { standard_name: "Written Pre-Use Inspection in Use", has_documentation: null },
+  { standard_name: "Inventory Tracking System in Use", has_documentation: null },
+  { standard_name: "Operational Review Every 5 Years", has_documentation: null },
+];
+
+const mergeStandards = (loaded: any[]) => {
+  return STANDARDS_TEMPLATE.map(template => {
+    const match = loaded.find((s: any) => s.standard_name === template.standard_name);
+    return match || { ...template, id: crypto.randomUUID() };
+  });
+};
+
 
       <HtmlReportViewer
         html={reportHtml}
