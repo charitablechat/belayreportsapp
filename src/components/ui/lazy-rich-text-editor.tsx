@@ -26,6 +26,7 @@ export function LazyRichTextEditor({
 }: LazyRichTextEditorProps) {
   const [isFocused, setIsFocused] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const isInline = className?.includes('bg-transparent');
 
   // Handle click outside to blur
   useEffect(() => {
@@ -59,8 +60,8 @@ export function LazyRichTextEditor({
         onFocus={() => setIsFocused(true)}
         onClick={() => setIsFocused(true)}
         className={cn(
-          "min-h-[80px] cursor-text rounded-md border bg-background px-3 py-2 text-sm",
-          "hover:bg-muted/50 transition-colors",
+          "min-h-[80px] cursor-text border bg-background px-3 py-2 text-sm transition-colors",
+          !isInline && "rounded-md hover:bg-muted/50",
           className
         )}
       >
