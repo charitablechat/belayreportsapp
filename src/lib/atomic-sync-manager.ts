@@ -243,12 +243,12 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
       console.log('[Atomic Sync] Validation passed for:', inspectionId);
     }
     
-    // 3. Check for remote record status using RLS-bypassing RPC
-    // This allows detecting soft-deleted records that regular users can't see via normal SELECT
-    const recordStatus = await checkRemoteRecordStatus('inspections', inspectionId);
+    // RC-5: Skip remote status check for new records (no synced_at = never been on server)
+    // This eliminates ~6 network requests per new record (status check + 5 rollback fetches)
+    const isNewRecord = !inspection.synced_at && !inspectionIdMapping?.oldId?.startsWith('temp-') === false;
+    const recordStatus = isNewRecord ? null : await checkRemoteRecordStatus('inspections', inspectionId);
     
     // SAFEGUARD: Check if remote record was soft-deleted by someone else
-    // This works for ALL users (regular and super admin) by bypassing RLS
     if (recordStatus?.record_exists && recordStatus?.is_deleted) {
       console.warn('[Atomic Sync] Remote record was soft-deleted - cleaning up local copy:', inspectionId);
       
