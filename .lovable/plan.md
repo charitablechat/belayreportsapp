@@ -1,51 +1,88 @@
 
 
-## Fix: Global Text Wrapping and Table Overflow for Portrait Mode
+## Analysis: Photo Sync Race Condition and Timeout Root Causes
 
-### Changes
+### Finding 1: Path Divergence Creates Duplicate Gallery Rows
 
-#### 1. `src/index.css` — Add global text-wrapping and grid-child rules
+This is the critical bug. Two different file paths are used for the same photo:
 
-Add to the `@layer base` section:
+```text
+handleUpload saves to IndexedDB:
+  photoUrl = "pending/{inspectionId}/items/{itemId}.jpg"
 
-```css
-/* Prevent text overflow on narrow viewports */
-p, span, label, td, th, div, li {
-  overflow-wrap: anywhere;
-  word-break: break-word;
-}
+uploadInBackground uploads to storage with:
+  realPath = "{userId}/{inspectionId}/items/{itemId}.jpg"
 
-/* Allow grid children to shrink below content size */
-.grid > * {
-  min-width: 0;
-}
+syncPhotos reads IndexedDB and uploads with:
+  fileName = photo.photoUrl = "pending/..." (the placeholder)
+```
 
-/* Ellipsis for inputs and selects that overflow */
-input, select {
-  text-overflow: ellipsis;
+When both run concurrently:
+- `uploadInBackground` uploads blob to `userId/...` path, marks uploaded, inserts gallery row with `userId/...` path
+- `syncPhotos` uploads blob to `pending/...` path, checks dedup with `.eq('photo_url', 'pending/...')` — finds nothing (because the existing row has `userId/...`), inserts a second gallery row
+
+**Result**: Two storage files and two database rows for one photo.
+
+### Finding 2: Re-check Logic Has a Timing Gap
+
+The re-check at `sync-manager.ts:120-129` queries `getUnuploadedPhotos()` after its own storage upload. But `uploadInBackground` calls `markPhotoAsUploaded` after *its* storage upload too. If `syncPhotos` completes its upload before `uploadInBackground` marks it, the re-check still finds the photo as unuploaded and proceeds to insert a duplicate.
+
+### Finding 3: IndexedDB Contention Causes Timeouts
+
+Console shows repeated `[Offline Storage] Operation timed out after 5000ms`. Both `syncPhotos` (every 30s) and `uploadInBackground` (fire-and-forget) hit IndexedDB concurrently — `getUnuploadedPhotos`, `markPhotoAsUploaded`, `getDB()` — creating write-lock contention, especially on Safari's single-writer model.
+
+### Finding 4: `markPhotoAsUploaded` Placement is Correct but Insufficient
+
+In `ItemPhotoUpload.tsx:134-135`, `markPhotoAsUploaded` is correctly called after storage upload and before gallery insert. However, this doesn't prevent `syncPhotos` from picking up the photo *before* `uploadInBackground` even starts (the auth resolution via `getUserWithCache` adds latency).
+
+---
+
+## Proposed Fix (3 files)
+
+### 1. `src/components/inspection/ItemPhotoUpload.tsx` — Update IndexedDB path before background upload
+
+After resolving the real path (line 231), update the IndexedDB record's `photoUrl` to the real path *before* calling `uploadInBackground`. This eliminates path divergence so `syncPhotos` uses the same path if it wins the race.
+
+```typescript
+// Line 230-233: After resolving userId
+const realPath = `${user.id}/${inspectionId}/items/${itemId}.jpg`;
+// ✅ Update IndexedDB with real path BEFORE upload starts
+await updatePhotoPath(photoId, realPath);  // new helper
+onPhotoChange(realPath);
+uploadInBackground(photoId, compressed, user.id, realPath).catch(() => {});
+```
+
+### 2. `src/lib/offline-storage.ts` — Add `updatePhotoPath` helper
+
+New function that atomically updates just the `photoUrl` field without changing `uploaded` status:
+
+```typescript
+export async function updatePhotoPath(id: string, newPath: string) {
+  // Update photoUrl in IndexedDB so syncPhotos uses the correct path
 }
 ```
 
-#### 2. `src/components/ui/card.tsx` — Already has `overflow-hidden`
-Line 6 already includes `overflow-hidden`. No change needed.
+### 3. `src/lib/sync-manager.ts` — Skip photos with `pending/` placeholder paths
 
-#### 3. `src/components/inspection/OperatingSystemsTable.tsx` — Update breakpoints `md:` to `lg:`
-Same fix as was applied to EquipmentTable:
-- Line 126: `px-3 md:px-6` → `px-3 lg:px-6`
-- Line 128: `hidden md:block` → `hidden lg:block`
-- Line 233: `md:hidden` → `lg:hidden`
-- Also update the header flex classes if any use `md:`
+Add a guard to skip photos whose `photoUrl` starts with `pending/` — these are actively being handled by `uploadInBackground` which will update the path momentarily:
 
-#### 4. `src/components/inspection/ZiplinesTable.tsx` — Update breakpoints `md:` to `lg:`
-- Line 121: `hidden md:block` → `hidden lg:block`
-- Line 238: `md:hidden` → `lg:hidden`
-- Update any `md:px-6` or `md:flex-row` classes to `lg:` equivalents
+```typescript
+// After the temp-ID check (line 87):
+if (photo.photoUrl?.startsWith('pending/')) {
+  // Path not yet resolved — uploadInBackground will handle this
+  continue;
+}
+```
 
-#### 5. `src/components/inspection/EquipmentTable.tsx` — Adjust grid column minima
-- Line 39: Update `EQ_GRID_COLS` — ensure Type column uses `minmax(120px, 1fr)` (already correct) and Result column uses `160px` (already correct)
+Also move the re-check *before* the storage upload (not after) to avoid uploading a blob that's already been handled.
 
-### Files Modified
-- `src/index.css` (global CSS rules)
-- `src/components/inspection/OperatingSystemsTable.tsx` (breakpoint `md:` → `lg:`)
-- `src/components/inspection/ZiplinesTable.tsx` (breakpoint `md:` → `lg:`)
+### Summary of Changes
+
+| File | Change | Purpose |
+|------|--------|---------|
+| `ItemPhotoUpload.tsx` | Update IndexedDB path before upload | Eliminate path divergence |
+| `offline-storage.ts` | Add `updatePhotoPath()` | Atomic path update without marking uploaded |
+| `sync-manager.ts` | Skip `pending/` photos + move re-check earlier | Prevent concurrent uploads of same photo |
+
+This eliminates both the duplicate gallery rows and reduces IndexedDB contention (fewer concurrent operations on the same record).
 
