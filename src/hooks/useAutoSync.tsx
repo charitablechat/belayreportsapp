@@ -3,7 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { syncAllInspectionsAtomic, syncAllTrainingsAtomic, syncAllDailyAssessmentsAtomic } from '@/lib/atomic-sync-manager';
 import { syncPhotos } from '@/lib/sync-manager';
 import { getUnsyncedInspections, getUnsyncedTrainings, getUnsyncedDailyAssessments, getUnsyncedCounts } from '@/lib/offline-storage';
-import { getUserWithCache, getCachedUserFromStorage } from '@/lib/cached-auth';
+import { getUserWithCache, getCachedUserFromStorage, ensureValidSession, type CachedUser } from '@/lib/cached-auth';
 import { hasPendingOfflineAuth, verifyAndReconcileOfflineAuth } from '@/lib/offline-auth';
 import { useQueryClient } from '@tanstack/react-query';
 import { isMobile, isIOS } from '@/lib/mobile-detection';
@@ -120,13 +120,29 @@ export const useAutoSync = () => {
       return;
     }
     
-    // Lightweight sync check — no network call, no lock contention
-    // Each atomic sync function already calls ensureValidSession() for thorough validation
+    // Quick sync gate — no network call needed to reject unauthenticated state
     const cachedUser = getCachedUserFromStorage();
     if (!cachedUser) {
       if (import.meta.env.DEV) {
         console.log('[AutoSync] No cached user session - skipping sync');
       }
+      return;
+    }
+    
+    // Single session validation for the entire sync cycle
+    // This eliminates 3 redundant LockManager calls (one per atomic sync function)
+    let validatedUser: CachedUser | null = null;
+    try {
+      validatedUser = await Promise.race([
+        ensureValidSession(),
+        new Promise<null>((_, reject) => setTimeout(() => reject(new Error('Auth timeout')), 5000))
+      ]);
+    } catch (e) {
+      console.warn('[AutoSync] Session validation timed out, skipping sync');
+      return;
+    }
+    if (!validatedUser) {
+      console.warn('[AutoSync] No valid session, skipping sync');
       return;
     }
     
@@ -204,11 +220,11 @@ export const useAutoSync = () => {
       
       const syncResult = await withSyncTimeout(
         (async () => {
-          const inspResult = await syncAllInspectionsAtomic().catch(e => { console.error('[AutoSync] Inspections sync failed:', e); return null; });
+          const inspResult = await syncAllInspectionsAtomic(validatedUser).catch(e => { console.error('[AutoSync] Inspections sync failed:', e); return null; });
           await yieldToUI();
-          const trainResult = await syncAllTrainingsAtomic().catch(e => { console.error('[AutoSync] Trainings sync failed:', e); return null; });
+          const trainResult = await syncAllTrainingsAtomic(validatedUser).catch(e => { console.error('[AutoSync] Trainings sync failed:', e); return null; });
           await yieldToUI();
-          const assessResult = await syncAllDailyAssessmentsAtomic().catch(e => { console.error('[AutoSync] Assessments sync failed:', e); return null; });
+          const assessResult = await syncAllDailyAssessmentsAtomic(validatedUser).catch(e => { console.error('[AutoSync] Assessments sync failed:', e); return null; });
           await yieldToUI();
           const photoResult = await syncPhotos().catch(e => { console.error('[AutoSync] Photos sync failed:', e); return null; });
           return [inspResult, trainResult, assessResult, photoResult];
