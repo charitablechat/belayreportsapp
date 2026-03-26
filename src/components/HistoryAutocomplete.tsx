@@ -265,16 +265,37 @@ export default function HistoryAutocomplete({
     setOpen(isOpen);
   };
 
+  const placeCursorAtEnd = () => {
+    const input = triggerInputRef.current;
+    if (!input) return;
+
+    const setCaret = () => {
+      const len = input.value.length;
+      input.setSelectionRange(len, len);
+    };
+
+    setCaret();
+    requestAnimationFrame(setCaret);
+    setTimeout(setCaret, 0);
+  };
+
+  const normalizeTriggerSelection = () => {
+    const input = triggerInputRef.current;
+    if (!input) return;
+
+    if (
+      input.value.length > 0 &&
+      input.selectionStart === 0 &&
+      input.selectionEnd === input.value.length
+    ) {
+      placeCursorAtEnd();
+    }
+  };
+
   const handleTriggerFocus = () => {
     setIsEditing(true);
     setInputValue(value);
-    requestAnimationFrame(() => {
-      const input = triggerInputRef.current;
-      if (input) {
-        const len = input.value.length;
-        input.setSelectionRange(len, len);
-      }
-    });
+    placeCursorAtEnd();
     if (!open) setOpen(true);
   };
 
@@ -333,6 +354,8 @@ export default function HistoryAutocomplete({
               if (!open) setOpen(true);
             }}
             onFocus={handleTriggerFocus}
+            onMouseUp={normalizeTriggerSelection}
+            onTouchEnd={normalizeTriggerSelection}
             onBlur={handleTriggerBlur}
             onKeyDown={handleTriggerKeyDown}
             placeholder={placeholder}
