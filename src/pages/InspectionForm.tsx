@@ -1371,7 +1371,6 @@ export default function InspectionForm() {
           : undefined;
         
         const errorMsg = `Validation warning: ${firstError}`;
-        setSaveError(errorMsg);
         
         // Only log for manual saves, not auto-saves
         if (!silent && import.meta.env.DEV) {
