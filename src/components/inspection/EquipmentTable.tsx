@@ -438,7 +438,7 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
                             value={currentVal}
                             onChange={(value) => updateEquipment(item, "equipment_type", value)}
                             onBlur={onImmediateSave}
-                            onKeyDown={(e) => e.key === 'Enter' && onImmediateSave?.()}
+                            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); onImmediateSave?.(); focusNextCell(e.currentTarget as HTMLElement); } }}
                             placeholder="Edit type..."
                             className="border-0 bg-transparent flex-1"
                           />
@@ -492,7 +492,7 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
                             if (val && !/^(0|\d{4}(-\d{4})?)$/.test(val)) { updateEquipment(item, "production_year", null); }
                             onImmediateSave?.();
                           }}
-                          onKeyDown={(e) => e.key === 'Enter' && onImmediateSave?.()}
+                          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); onImmediateSave?.(); focusNextCell(e.currentTarget as HTMLElement); } }}
                           placeholder="e.g. 2018-2026"
                           className="border-0 bg-transparent w-full"
                         />
@@ -513,7 +513,7 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
                     }}
                     onChange={(value) => updateEquipment(item, "quantity", value === "" ? null : value)}
                     onBlur={onImmediateSave}
-                    onKeyDown={(e) => e.key === 'Enter' && onImmediateSave?.()}
+                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); onImmediateSave?.(); focusNextCell(e.currentTarget as HTMLElement); } }}
                     placeholder="Qty"
                     className="border-0 bg-transparent"
                   />
@@ -592,7 +592,7 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
                         const currentVal = item.equipment_type || "";
                         return currentVal.trim() !== "" ? (
                           <div className="flex items-center gap-1">
-                            <DebouncedInput value={currentVal} onChange={(value) => updateEquipment(item, "equipment_type", value)} onBlur={onImmediateSave} onKeyDown={(e) => e.key === 'Enter' && onImmediateSave?.()} placeholder="Edit type..." />
+                            <DebouncedInput value={currentVal} onChange={(value) => updateEquipment(item, "equipment_type", value)} onBlur={onImmediateSave} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); onImmediateSave?.(); focusNextCell(e.currentTarget as HTMLElement); } }} placeholder="Edit type..." />
                             <Button variant="ghost" size="sm" className="h-7 w-7 p-0 shrink-0" onClick={() => { updateEquipment(item, "equipment_type", ""); onImmediateSave?.(); }} title="Re-select type">
                               <X className="h-3 w-3" />
                             </Button>
@@ -637,7 +637,7 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
                               validate={(raw) => { if (raw === "") return ""; if (/^\d{0,4}(-\d{0,4})?$/.test(raw)) return raw; return null; }}
                               onChange={(value) => updateEquipment(item, "production_year", value === "" ? null : value)}
                               onBlur={() => { const val = item.production_year; if (val && !/^(0|\d{4}(-\d{4})?)$/.test(val)) { updateEquipment(item, "production_year", null); } onImmediateSave?.(); }}
-                              onKeyDown={(e) => e.key === 'Enter' && onImmediateSave?.()}
+                              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); onImmediateSave?.(); focusNextCell(e.currentTarget as HTMLElement); } }}
                               placeholder="e.g. 2018-2026" className="w-full"
                             />
                             <Button variant="outline" size="sm" className="h-8 w-full text-xs" onClick={() => { updateEquipment(item, "production_year", "0"); onImmediateSave?.(); }}>N/A</Button>
@@ -651,7 +651,7 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
                         type="text" inputMode="numeric" value={item.quantity || ""}
                         validate={(raw) => { if (raw === "") return ""; if (/^\d+\+?$/.test(raw)) return raw; return null; }}
                         onChange={(value) => updateEquipment(item, "quantity", value === "" ? null : value)}
-                        onBlur={onImmediateSave} onKeyDown={(e) => e.key === 'Enter' && onImmediateSave?.()} placeholder="Qty"
+                        onBlur={onImmediateSave} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); onImmediateSave?.(); focusNextCell(e.currentTarget as HTMLElement); } }} placeholder="Qty"
                       />
                     </div>
                   </div>
