@@ -243,7 +243,7 @@ export default function NewInspection() {
       // Store child data
       setChildData({
         systems: data.systems || [],
-        equipment: data.equipment || [],
+        equipment: [], // Temporarily disabled — keep AI extraction but skip auto-populate
         ziplines: data.ziplines || [],
         standards: data.standards || [],
         summary: data.summary || null,
