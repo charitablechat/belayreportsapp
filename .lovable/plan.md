@@ -1,24 +1,38 @@
 
 
-## Temporarily Disable Equipment Auto-Populate on Import
+## Fix: Duplicate Photos in Gallery
 
-### What changes
-**One file: `src/pages/NewInspection.tsx`**
+### Root Cause
+Two paths insert into `inspection_photos` for the same photo:
+1. `ItemPhotoUpload.uploadInBackground` inserts with real path (`userId/inspectionId/items/itemId.jpg`)
+2. `syncPhotos` finds the photo still `uploaded=false` in IndexedDB, uploads again, and its dedup check uses the original `pending/...` path — no match → second row
 
-On line 246, where imported child data is stored in state, change:
-```typescript
-equipment: data.equipment || [],
+### Changes
+
+#### 1. `src/components/inspection/ItemPhotoUpload.tsx`
+Move `markPhotoAsUploaded(photoId, filePath)` from line 148 to immediately after the storage upload succeeds (after line 132), **before** the gallery insert. This closes the race window — if `syncPhotos` runs concurrently, it will see `uploaded=true` and skip the photo.
+
 ```
-to:
-```typescript
-equipment: [], // Temporarily disabled — keep AI extraction but skip auto-populate
+// Line 132: if (uploadError) throw uploadError;
+
+// ✅ Mark uploaded FIRST to close race window with syncPhotos
+await markPhotoAsUploaded(photoId, filePath);
+
+// Then insert into gallery...
 ```
 
-This means:
-- The edge function still extracts equipment from the document (no backend changes)
-- The extracted equipment data is simply discarded client-side before it reaches state
-- The `insertChildData` function's equipment block (lines 336-363) remains intact but never fires because `childData.equipment` will always be empty
-- The success toast (lines 255-260) will no longer count equipment items since none are stored
+#### 2. `src/lib/sync-manager.ts`
+After the storage upload succeeds (line 118), re-read the photo from IndexedDB to check if another thread already marked it uploaded. If so, skip the DB insert.
 
-All other imported data (systems, ziplines, standards, summary, form fields) remains fully operational. Re-enabling is a one-line revert.
-
+Add after line 118:
+```typescript
+// Re-check: another thread (uploadInBackground) may have already handled this
+const recheckPhotos = await getUnuploadedPhotos();
+const stillUnuploaded = recheckPhotos.find(p => p.id === photo.id);
+if (!stillUnuploaded) {
+  if (import.meta.env.DEV) {
+    console.log('[Sync Manager] Photo already marked uploaded by another thread:', photo.id);
+  }
+  successCount++;
+  continue;
+}
