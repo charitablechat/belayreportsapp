@@ -46,6 +46,15 @@ export const DebouncedInput = memo(function DebouncedInput({
     }
   }, [validate, delay]);
 
+  // Prevent iPad Safari from selecting all text on focus
+  const handleFocus = useCallback((e: React.FocusEvent<HTMLInputElement>) => {
+    const input = e.currentTarget;
+    requestAnimationFrame(() => {
+      const len = input.value.length;
+      input.setSelectionRange(len, len);
+    });
+  }, []);
+
   const handleBlur = useCallback((e: React.FocusEvent<HTMLInputElement>) => {
     // Flush pending debounce immediately
     clearTimeout(timeoutRef.current);

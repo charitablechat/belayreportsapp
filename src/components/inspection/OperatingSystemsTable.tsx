@@ -48,7 +48,13 @@ function OperatingSystemsTable({ systems, onUpdate, onImmediateSave, inspectionI
         const input = row.querySelector<HTMLElement>(
           'input:not([disabled]):not([type="file"]), [contenteditable="true"], [tabindex="0"]'
         );
-        input?.focus();
+        if (input) {
+          input.focus();
+          if (input instanceof HTMLInputElement || input instanceof HTMLTextAreaElement) {
+            const len = input.value.length;
+            input.setSelectionRange(len, len);
+          }
+        }
       }
       setNewItemId(null);
     });
