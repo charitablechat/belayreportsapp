@@ -1,60 +1,38 @@
 
 
-## Fix: Standards Checkboxes Unresponsive for Unsaved Rows
+## Fix: Dashboard Not Refreshing Reports on Return Navigation
 
 ### Root Cause
 
-When standards data loads from the database (line 1207) or offline storage (line 992), `setStandards(standardsData)` replaces the initial 6-item array with only the records that were previously saved (e.g., 3 items if only 3 were checked). 
+The main data-loading `useEffect` (line 251) depends on `[location.key]`. When the user navigates back to `/dashboard` via browser back button or swipe-back, React Router restores the previous history entry **with the same `location.key`**. Since the key hasn't changed, the useEffect doesn't re-run, leaving stale (or empty) data on screen.
 
-In `StandardsTable.updateStandard` (line 29), the code does:
+Additionally, the `visibilitychange` and `focus` event handlers call `refreshReports()` **without** `force=true`, making them subject to the 3-second throttle — which can silently skip the refresh if the last fetch was recent.
+
+### Fix (1 file: `src/pages/Dashboard.tsx`)
+
+#### 1. Change useEffect dependency from `[location.key]` to `[]`
+The Dashboard component fully unmounts/remounts on forward navigation (different route elements). The `location.key` dependency was meant to handle re-entries, but it fails on back-navigation. Using `[]` ensures the initial load always fires on mount.
+
+#### 2. Force-refresh on visibility/focus events
+Change the `handleVisibilityChange` and `handleWindowFocus` handlers to pass `force=true`:
+
 ```typescript
-updated[index] = { 
-  ...updated[index],        // undefined if index >= array length
-  id: updated[index].id || crypto.randomUUID(),  // TypeError!
-```
-
-For indices beyond the loaded array length, `updated[index]` is `undefined`, causing a silent `TypeError` that prevents the checkbox from toggling.
-
-### Fix (2 changes)
-
-#### 1. `src/components/inspection/StandardsTable.tsx` — Defensive access in `updateStandard`
-
-Replace lines 25-33 to handle missing array entries:
-```typescript
-const updated = [...standards];
-const inspectionId = window.location.pathname.split('/').pop();
-const existing = updated[index] || {};
-updated[index] = { 
-  ...existing, 
-  id: existing.id || crypto.randomUUID(),
-  inspection_id: inspectionId,
-  standard_name: STANDARDS_LIST[index].name,
-  has_documentation 
+// Line 311-312
+const handleVisibilityChange = () => {
+  if (document.visibilityState === 'visible') refreshReports(true);
 };
+
+// Line 316
+const handleWindowFocus = () => refreshReports(true);
 ```
 
-#### 2. `src/pages/InspectionForm.tsx` — Pad loaded standards to always have 6 entries
+This ensures that when the user returns to the Dashboard tab (via browser back, swipe-back, or tab switch), data is always re-fetched regardless of the throttle window.
 
-When loading from DB (line 1205-1210) and offline storage (lines 990-993, 1291), merge loaded data into the full 6-item template so unset standards keep their placeholder entries:
-
-```typescript
-// Helper: merge loaded standards into full 6-item template
-const mergeStandards = (loaded: any[]) => {
-  return STANDARDS_TEMPLATE.map(template => {
-    const match = loaded.find(s => s.standard_name === template.standard_name);
-    return match || { ...template, id: crypto.randomUUID() };
-  });
-};
-```
-
-Add `STANDARDS_TEMPLATE` constant (matching `STANDARDS_LIST` from StandardsTable) near the top of InspectionForm, and apply `mergeStandards()` at all 3 `setStandards` call sites that load from external sources.
+#### 3. Keep `pageshow` handler as-is
+The `handlePageShow` handler already uses `force=true` for bfcache restores — no change needed.
 
 ### Result
-- All 6 standard rows always exist in the array, even if only some were saved
-- Clicking any YES/NO checkbox works reliably on desktop, iOS, and Android
-- Previously saved selections are preserved through the merge
-
-### Files Modified
-- `src/components/inspection/StandardsTable.tsx` (defensive access)
-- `src/pages/InspectionForm.tsx` (pad loaded standards array)
+- Returning to Dashboard via any navigation method (back button, swipe-back, link, tab switch) triggers a fresh data load
+- The 3-second throttle still prevents redundant rapid-fire refreshes during normal use (e.g., pull-to-refresh)
+- No performance regression — `refreshInFlightRef` guard prevents concurrent fetches
 
