@@ -1,38 +1,37 @@
 
 
-## Fix: Dashboard Not Refreshing Reports on Return Navigation
+## Fix: Item Photos Not Appearing in Section Gallery
 
 ### Root Cause
 
-The main data-loading `useEffect` (line 251) depends on `[location.key]`. When the user navigates back to `/dashboard` via browser back button or swipe-back, React Router restores the previous history entry **with the same `location.key`**. Since the key hasn't changed, the useEffect doesn't re-run, leaving stale (or empty) data on screen.
+When a photo is captured via `ItemPhotoUpload`, it is saved to IndexedDB immediately with the correct `section` (e.g., `"systems"`, `"equipment"`). However, the gallery refresh (`onGalleryRefresh`) is only triggered inside `uploadInBackground` — which runs asynchronously after the cloud upload succeeds (or not at all when offline).
 
-Additionally, the `visibilitychange` and `focus` event handlers call `refreshReports()` **without** `force=true`, making them subject to the 3-second throttle — which can silently skip the refresh if the last fetch was recent.
+The `PhotoGallery` component at the bottom of each tab is keyed on `photoRefreshKey`. Without an immediate increment of that key after the local save, the gallery never re-renders to pick up the new offline photo from IndexedDB.
 
-### Fix (1 file: `src/pages/Dashboard.tsx`)
+### Fix (1 file)
 
-#### 1. Change useEffect dependency from `[location.key]` to `[]`
-The Dashboard component fully unmounts/remounts on forward navigation (different route elements). The `location.key` dependency was meant to handle re-entries, but it fails on back-navigation. Using `[]` ensures the initial load always fires on mount.
+**`src/components/inspection/ItemPhotoUpload.tsx`** — Call `onGalleryRefresh` immediately after saving to IndexedDB (line 199-216 area), not just inside the background upload callback.
 
-#### 2. Force-refresh on visibility/focus events
-Change the `handleVisibilityChange` and `handleWindowFocus` handlers to pass `force=true`:
+Add `onGalleryRefresh?.()` right after the `savePhotoReceipt` call (around line 216), so the gallery re-renders and picks up the new photo from IndexedDB instantly — whether online or offline.
 
 ```typescript
-// Line 311-312
-const handleVisibilityChange = () => {
-  if (document.visibilityState === 'visible') refreshReports(true);
-};
+// After savePhotoReceipt (line 216):
+savePhotoReceipt({ ... });
 
-// Line 316
-const handleWindowFocus = () => refreshReports(true);
+// ✅ Immediately refresh gallery so the photo appears in the section gallery
+onGalleryRefresh?.();
+
+// Then proceed with background upload...
 ```
 
-This ensures that when the user returns to the Dashboard tab (via browser back, swipe-back, or tab switch), data is always re-fetched regardless of the throttle window.
-
-#### 3. Keep `pageshow` handler as-is
-The `handlePageShow` handler already uses `force=true` for bfcache restores — no change needed.
+This ensures:
+- Photo appears in the item's inline thumbnail immediately (already works via `onPhotoChange`)
+- Photo also appears in the section gallery at the bottom immediately (via gallery remount picking up the IndexedDB entry)
+- When the background upload completes, a second `onGalleryRefresh` fires, updating the gallery with the cloud-synced version
+- Works identically offline and online
 
 ### Result
-- Returning to Dashboard via any navigation method (back button, swipe-back, link, tab switch) triggers a fresh data load
-- The 3-second throttle still prevents redundant rapid-fire refreshes during normal use (e.g., pull-to-refresh)
-- No performance regression — `refreshInFlightRef` guard prevents concurrent fetches
+- Item photos show both inline (thumbnail in table row) and in the dedicated photo gallery section at the bottom of the tab
+- No delay — gallery updates instantly on capture
+- Works on desktop, iOS, and Android, online and offline
 
