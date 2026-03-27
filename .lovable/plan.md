@@ -1,88 +1,73 @@
 
 
-## Analysis: Photo Sync Race Condition and Timeout Root Causes
+## Diagnosis: Persistent IndexedDB Timeouts and "Storage Unavailable" Warning
 
-### Finding 1: Path Divergence Creates Duplicate Gallery Rows
+### What the warning means
+The app has a **circuit breaker** in `offline-storage.ts` that trips after 3 consecutive IndexedDB operation failures (timeouts). When tripped, all IndexedDB writes are silently dropped for 60 seconds and you see the "Local storage unavailable / Your changes are at risk" banner plus a destructive toast.
 
-This is the critical bug. Two different file paths are used for the same photo:
+### Root cause
+The console logs show `Operation timed out after 8000ms` **every 60 seconds** in a continuous loop. Here's the cycle:
 
 ```text
-handleUpload saves to IndexedDB:
-  photoUrl = "pending/{inspectionId}/items/{itemId}.jpg"
-
-uploadInBackground uploads to storage with:
-  realPath = "{userId}/{inspectionId}/items/{itemId}.jpg"
-
-syncPhotos reads IndexedDB and uploads with:
-  fileName = photo.photoUrl = "pending/..." (the placeholder)
+1. Periodic sync fires (every 30s desktop / 60s mobile)
+2. performSync() calls syncAllInspectionsAtomic/syncPhotos/etc.
+3. These call getDB() → operations like db.getAll() or index queries
+4. The operations hang (never resolve) → 5-8s timeout fires
+5. withIndexedDBErrorBoundary records failure → circuit breaker trips after 3
+6. Circuit breaker resets after 60s → next sync cycle hits same stale connection
+7. Loop repeats indefinitely
 ```
 
-When both run concurrently:
-- `uploadInBackground` uploads blob to `userId/...` path, marks uploaded, inserts gallery row with `userId/...` path
-- `syncPhotos` uploads blob to `pending/...` path, checks dedup with `.eq('photo_url', 'pending/...')` — finds nothing (because the existing row has `userId/...`), inserts a second gallery row
+**The critical bug**: When `getDB()` succeeds but the returned connection becomes **stale** (e.g., after a Service Worker upgrade, bfcache restore, or Safari evicting the connection), `dbPromise` remains cached with the dead connection. Every subsequent operation hangs because it reuses this zombie connection. The timeout fires, `dbConnectionVerified` is reset, the health check passes (opens a *separate* test DB), but the cached `dbPromise` still points to the dead connection.
 
-**Result**: Two storage files and two database rows for one photo.
+### Fix (2 files)
 
-### Finding 2: Re-check Logic Has a Timing Gap
+#### 1. `src/lib/offline-storage.ts` — Reset stale `dbPromise` on timeout
 
-The re-check at `sync-manager.ts:120-129` queries `getUnuploadedPhotos()` after its own storage upload. But `uploadInBackground` calls `markPhotoAsUploaded` after *its* storage upload too. If `syncPhotos` completes its upload before `uploadInBackground` marks it, the re-check still finds the photo as unuploaded and proceeds to insert a duplicate.
-
-### Finding 3: IndexedDB Contention Causes Timeouts
-
-Console shows repeated `[Offline Storage] Operation timed out after 5000ms`. Both `syncPhotos` (every 30s) and `uploadInBackground` (fire-and-forget) hit IndexedDB concurrently — `getUnuploadedPhotos`, `markPhotoAsUploaded`, `getDB()` — creating write-lock contention, especially on Safari's single-writer model.
-
-### Finding 4: `markPhotoAsUploaded` Placement is Correct but Insufficient
-
-In `ItemPhotoUpload.tsx:134-135`, `markPhotoAsUploaded` is correctly called after storage upload and before gallery insert. However, this doesn't prevent `syncPhotos` from picking up the photo *before* `uploadInBackground` even starts (the auth resolution via `getUserWithCache` adds latency).
-
----
-
-## Proposed Fix (3 files)
-
-### 1. `src/components/inspection/ItemPhotoUpload.tsx` — Update IndexedDB path before background upload
-
-After resolving the real path (line 231), update the IndexedDB record's `photoUrl` to the real path *before* calling `uploadInBackground`. This eliminates path divergence so `syncPhotos` uses the same path if it wins the race.
+In `withIndexedDBErrorBoundary` (around line 449), when a timeout is detected, **reset `dbPromise = null`** so the next operation opens a fresh connection instead of reusing the dead one. Also close the stale connection to release locks.
 
 ```typescript
-// Line 230-233: After resolving userId
-const realPath = `${user.id}/${inspectionId}/items/${itemId}.jpg`;
-// ✅ Update IndexedDB with real path BEFORE upload starts
-await updatePhotoPath(photoId, realPath);  // new helper
-onPhotoChange(realPath);
-uploadInBackground(photoId, compressed, user.id, realPath).catch(() => {});
-```
-
-### 2. `src/lib/offline-storage.ts` — Add `updatePhotoPath` helper
-
-New function that atomically updates just the `photoUrl` field without changing `uploaded` status:
-
-```typescript
-export async function updatePhotoPath(id: string, newPath: string) {
-  // Update photoUrl in IndexedDB so syncPhotos uses the correct path
+// Line ~449-453: After timeout sentinel check
+if (result === TIMEOUT_SENTINEL) {
+  console.warn(`[Offline Storage] Timeout for ${operationName}, resetting DB connection`);
+  dbConnectionVerified = false;
+  recordIndexedDBFailure();
+  // ✅ NEW: Close and discard the stale connection
+  if (dbPromise) {
+    dbPromise.then(db => db.close()).catch(() => {});
+    dbPromise = null;
+  }
+  return fallbackValue;
 }
 ```
 
-### 3. `src/lib/sync-manager.ts` — Skip photos with `pending/` placeholder paths
+#### 2. `src/hooks/useAutoSync.tsx` — Skip sync cycle when circuit breaker is active
 
-Add a guard to skip photos whose `photoUrl` starts with `pending/` — these are actively being handled by `uploadInBackground` which will update the path momentarily:
+The periodic sync currently fires regardless of circuit breaker state, hammering a broken IndexedDB with new timeout attempts every cycle. Add a guard at the top of `performSync` to skip when the circuit breaker is open:
 
 ```typescript
-// After the temp-ID check (line 87):
-if (photo.photoUrl?.startsWith('pending/')) {
-  // Path not yet resolved — uploadInBackground will handle this
-  continue;
+// After the navigator.onLine check (~line 117):
+import { getCircuitBreakerStatus } from '@/lib/offline-storage';
+
+// Inside performSync, after the online check:
+const cbStatus = getCircuitBreakerStatus();
+if (cbStatus.open) {
+  if (import.meta.env.DEV) {
+    console.log('[AutoSync] Circuit breaker open - skipping sync cycle');
+  }
+  return;
 }
 ```
 
-Also move the re-check *before* the storage upload (not after) to avoid uploading a blob that's already been handled.
+### Why this fixes it
 
-### Summary of Changes
+| Problem | Fix |
+|---------|-----|
+| Stale cached `dbPromise` causes every operation to hang | Reset `dbPromise = null` and `db.close()` on timeout, forcing fresh connection |
+| Periodic sync hammers broken IndexedDB every 30-60s | Skip sync when circuit breaker is open — let the 60s cooldown work |
+| Circuit breaker resets but immediately hits same dead connection | Connection is now discarded on timeout, so post-reset operations get a new one |
 
-| File | Change | Purpose |
-|------|--------|---------|
-| `ItemPhotoUpload.tsx` | Update IndexedDB path before upload | Eliminate path divergence |
-| `offline-storage.ts` | Add `updatePhotoPath()` | Atomic path update without marking uploaded |
-| `sync-manager.ts` | Skip `pending/` photos + move re-check earlier | Prevent concurrent uploads of same photo |
-
-This eliminates both the duplicate gallery rows and reduces IndexedDB contention (fewer concurrent operations on the same record).
+### Files modified
+- `src/lib/offline-storage.ts` (reset `dbPromise` on timeout, ~5 lines)
+- `src/hooks/useAutoSync.tsx` (skip sync when circuit breaker open, ~8 lines)
 
