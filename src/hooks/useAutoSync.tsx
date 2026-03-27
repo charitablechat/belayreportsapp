@@ -120,6 +120,15 @@ export const useAutoSync = () => {
       }
       return;
     }
+
+    // Skip sync when circuit breaker is open to avoid hammering a broken IndexedDB
+    const cbStatus = getCircuitBreakerStatus();
+    if (cbStatus.open) {
+      if (import.meta.env.DEV) {
+        console.log('[AutoSync] Circuit breaker open - skipping sync cycle');
+      }
+      return;
+    }
     
     // Quick sync gate — no network call needed to reject unauthenticated state
     const cachedUser = getCachedUserFromStorage();
