@@ -447,9 +447,14 @@ async function withIndexedDBErrorBoundary<T>(
     
     // Check if the result is the sentinel -- meaning a timeout occurred
     if (result === TIMEOUT_SENTINEL) {
-      console.warn(`[Offline Storage] Timeout detected for ${operationName}, counting as failure`);
+      console.warn(`[Offline Storage] Timeout detected for ${operationName}, resetting DB connection`);
       dbConnectionVerified = false;
       recordIndexedDBFailure();
+      // Close and discard the stale connection so the next operation opens a fresh one
+      if (dbPromise) {
+        dbPromise.then(db => db.close()).catch(() => {});
+        dbPromise = null;
+      }
       return fallbackValue;
     }
     

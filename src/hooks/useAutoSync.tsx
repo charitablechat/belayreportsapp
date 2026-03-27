@@ -2,7 +2,7 @@ import { useEffect, useCallback, useRef, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { syncAllInspectionsAtomic, syncAllTrainingsAtomic, syncAllDailyAssessmentsAtomic } from '@/lib/atomic-sync-manager';
 import { syncPhotos } from '@/lib/sync-manager';
-import { getUnsyncedInspections, getUnsyncedTrainings, getUnsyncedDailyAssessments, getUnsyncedCounts } from '@/lib/offline-storage';
+import { getUnsyncedInspections, getUnsyncedTrainings, getUnsyncedDailyAssessments, getUnsyncedCounts, getCircuitBreakerStatus } from '@/lib/offline-storage';
 import { getUserWithCache, getCachedUserFromStorage, ensureValidSession, type CachedUser } from '@/lib/cached-auth';
 import { hasPendingOfflineAuth, verifyAndReconcileOfflineAuth } from '@/lib/offline-auth';
 import { useQueryClient } from '@tanstack/react-query';
@@ -117,6 +117,15 @@ export const useAutoSync = () => {
     if (!navigator.onLine) {
       if (import.meta.env.DEV) {
         console.log('[AutoSync] Offline - skipping sync');
+      }
+      return;
+    }
+
+    // Skip sync when circuit breaker is open to avoid hammering a broken IndexedDB
+    const cbStatus = getCircuitBreakerStatus();
+    if (cbStatus.open) {
+      if (import.meta.env.DEV) {
+        console.log('[AutoSync] Circuit breaker open - skipping sync cycle');
       }
       return;
     }
