@@ -210,26 +210,97 @@ const HEALTH_CHECK_TTL = 30000; // 30 seconds
 // Prevents repeated IndexedDB failures from blocking the app
 let indexedDBFailureCount = 0;
 const CIRCUIT_BREAKER_THRESHOLD = 3;
-const CIRCUIT_BREAKER_RESET_TIME = 60000; // 1 minute cooldown
+const BASE_CIRCUIT_BREAKER_RESET_TIME = 60000; // 1 minute base cooldown
+const MAX_CIRCUIT_BREAKER_RESET_TIME = 300000; // 5 minute max cooldown
 let circuitBreakerTrippedAt: number | null = null;
+let circuitBreakerResetCount = 0; // Tracks consecutive trips for exponential backoff
+let circuitBreakerProbing = false; // Prevents concurrent probe attempts
+
+/**
+ * Calculate current circuit breaker reset time with exponential backoff
+ */
+function getCircuitBreakerResetTime(): number {
+  return Math.min(
+    BASE_CIRCUIT_BREAKER_RESET_TIME * Math.pow(2, circuitBreakerResetCount),
+    MAX_CIRCUIT_BREAKER_RESET_TIME
+  );
+}
+
+/**
+ * Run a lightweight IndexedDB probe to verify the connection is actually healthy
+ * before re-enabling operations after a circuit breaker cooldown.
+ */
+async function probeIndexedDB(): Promise<boolean> {
+  if (circuitBreakerProbing) return false;
+  circuitBreakerProbing = true;
+  try {
+    const db = await Promise.race([
+      openDB('rope-works-inspections', undefined),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000))
+    ]);
+    if (!db) return false;
+    // Lightweight count query to verify the connection is live
+    const count = await Promise.race([
+      db.count('inspections'),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), 2000))
+    ]);
+    db.close();
+    return count !== null;
+  } catch {
+    return false;
+  } finally {
+    circuitBreakerProbing = false;
+  }
+}
 
 /**
  * Check if circuit breaker is open (IndexedDB disabled temporarily)
  */
 function isCircuitBreakerOpen(): boolean {
   if (circuitBreakerTrippedAt) {
-    if (Date.now() - circuitBreakerTrippedAt > CIRCUIT_BREAKER_RESET_TIME) {
-      // Reset circuit breaker after cooldown
+    const resetTime = getCircuitBreakerResetTime();
+    if (Date.now() - circuitBreakerTrippedAt > resetTime) {
+      // Cooldown expired — but don't reset yet. The probe will confirm health.
+      // For synchronous callers, return false to allow a single operation attempt.
+      // The probe runs asynchronously via scheduleCircuitBreakerProbe.
       circuitBreakerTrippedAt = null;
       indexedDBFailureCount = 0;
       if (import.meta.env.DEV) {
-        console.log('[Offline Storage] Circuit breaker reset - IndexedDB re-enabled');
+        console.log(`[Offline Storage] Circuit breaker cooldown expired (${resetTime / 1000}s, attempt #${circuitBreakerResetCount + 1}) - probing...`);
       }
+      // Schedule async probe — if it fails, the next operation timeout will re-trip
+      scheduleCircuitBreakerProbe();
       return false;
     }
     return true; // Circuit is still open
   }
   return false;
+}
+
+/**
+ * Schedule an async probe after circuit breaker cooldown expires.
+ * If probe fails, re-trip with incremented backoff.
+ */
+function scheduleCircuitBreakerProbe(): void {
+  probeIndexedDB().then((healthy) => {
+    if (healthy) {
+      // Connection recovered — reset backoff counter
+      circuitBreakerResetCount = 0;
+      dbPromise = null; // Force fresh connection for real operations
+      dbConnectionVerified = false;
+      if (import.meta.env.DEV) {
+        console.log('[Offline Storage] Circuit breaker probe succeeded - fully re-enabled');
+      }
+    } else {
+      // Still broken — re-trip with higher backoff
+      circuitBreakerResetCount++;
+      recordIndexedDBFailure();
+      recordIndexedDBFailure();
+      recordIndexedDBFailure(); // Trip immediately
+      const nextResetTime = getCircuitBreakerResetTime();
+      console.warn(`[Offline Storage] Circuit breaker probe failed - re-tripping with ${nextResetTime / 1000}s backoff`);
+    }
+  });
 }
 
 /**
@@ -239,31 +310,35 @@ function recordIndexedDBFailure(): void {
   indexedDBFailureCount++;
   if (indexedDBFailureCount >= CIRCUIT_BREAKER_THRESHOLD) {
     circuitBreakerTrippedAt = Date.now();
-    console.warn('[Offline Storage] Circuit breaker tripped - IndexedDB disabled for 60s after', indexedDBFailureCount, 'failures');
+    const resetTime = getCircuitBreakerResetTime();
+    console.warn(`[Offline Storage] Circuit breaker tripped - IndexedDB disabled for ${resetTime / 1000}s after ${indexedDBFailureCount} failures (backoff #${circuitBreakerResetCount})`);
   }
 }
 
 /**
- * Record an IndexedDB success - resets failure counter
+ * Record an IndexedDB success - resets failure counter AND backoff
  */
 function recordIndexedDBSuccess(): void {
   if (indexedDBFailureCount > 0) {
     indexedDBFailureCount = 0;
     circuitBreakerTrippedAt = null;
+    circuitBreakerResetCount = 0; // Full recovery — reset backoff
   }
 }
 
 /**
  * Get circuit breaker status (for debugging/UI)
  */
-export function getCircuitBreakerStatus(): { open: boolean; failureCount: number; resetIn: number | null } {
+export function getCircuitBreakerStatus(): { open: boolean; failureCount: number; resetIn: number | null; backoffLevel: number } {
   const open = isCircuitBreakerOpen();
+  const resetTime = getCircuitBreakerResetTime();
   return {
     open,
     failureCount: indexedDBFailureCount,
     resetIn: circuitBreakerTrippedAt 
-      ? Math.max(0, CIRCUIT_BREAKER_RESET_TIME - (Date.now() - circuitBreakerTrippedAt))
+      ? Math.max(0, resetTime - (Date.now() - circuitBreakerTrippedAt))
       : null,
+    backoffLevel: circuitBreakerResetCount,
   };
 }
 // ============= END CIRCUIT BREAKER =============
@@ -412,9 +487,13 @@ async function withIndexedDBErrorBoundary<T>(
             variant: "destructive",
           });
         }).catch(() => {});
-        // Clear after circuit breaker reset window (60s)
-        setTimeout(() => sessionStorage.removeItem(cbWarningKey), 61000);
+        // Clear after circuit breaker reset window (use current backoff time)
+        const resetTime = getCircuitBreakerResetTime();
+        setTimeout(() => sessionStorage.removeItem(cbWarningKey), resetTime + 1000);
       }
+
+      // DEFENSE-IN-DEPTH: Attempt emergency localStorage save for report write operations
+      emergencyLocalStorageFallback(operationName, fallbackValue);
     }
     return fallbackValue;
   }
@@ -1036,16 +1115,52 @@ export async function getUnuploadedPhotos(userId?: string) {
   return withIndexedDBErrorBoundary(
     async () => {
       const db = await getDB();
-      const allPhotos = await db.getAll('photos');
-      // Filter to photos that still have a blob and haven't been uploaded
-      // Don't filter by unsynced inspections — photos for already-synced reports
-      // must still be included or they become permanently orphaned
-      const unuploaded = allPhotos.filter(p => !p.uploaded && p.blob != null);
-      
-      return unuploaded;
+      // Use index query instead of full table scan to avoid timeouts on large photo stores
+      const tx = db.transaction('photos', 'readonly');
+      const index = tx.store.index('by-uploaded');
+      // IndexedDB stores booleans as 0/1 in indexes; false = 0
+      const unuploaded = await index.getAll(IDBKeyRange.only(0));
+      await tx.done;
+      // Still need to filter for non-null blob (nullified after sync)
+      return unuploaded.filter(p => p.blob != null);
     },
     [],
     'getUnuploadedPhotos'
+  );
+}
+
+/**
+ * Auto-prune synced photo blobs older than 7 days to free IndexedDB storage.
+ * Never touches unsynced (uploaded = false) photos.
+ */
+export async function pruneOldSyncedPhotoBlobs(): Promise<number> {
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      const SEVEN_DAYS = 7 * 24 * 60 * 60 * 1000;
+      const cutoff = Date.now() - SEVEN_DAYS;
+      const tx = db.transaction('photos', 'readwrite');
+      const index = tx.store.index('by-uploaded');
+      // uploaded = true = 1 in IndexedDB index
+      let cursor = await index.openCursor(IDBKeyRange.only(1));
+      let pruned = 0;
+      while (cursor) {
+        const photo = cursor.value;
+        if (photo.blob != null && photo.cachedAt && photo.cachedAt < cutoff) {
+          photo.blob = null;
+          await cursor.update(photo);
+          pruned++;
+        }
+        cursor = await cursor.continue();
+      }
+      await tx.done;
+      if (pruned > 0 && import.meta.env.DEV) {
+        console.log(`[Offline Storage] Pruned ${pruned} old synced photo blobs`);
+      }
+      return pruned;
+    },
+    0,
+    'pruneOldSyncedPhotoBlobs'
   );
 }
 

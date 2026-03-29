@@ -47,11 +47,11 @@ export const useUnsyncedPhotos = () => {
     }
   }, []);
 
-  // Update on mount and every 30 seconds
+  // Update on mount only — no independent polling.
+  // The main sync cycle in useAutoSync calls updatePhotoCount after photo sync completes,
+  // eliminating concurrent IndexedDB access that contributes to timeouts on Safari.
   useEffect(() => {
     updatePhotoCount();
-    const interval = setInterval(updatePhotoCount, 30000);
-    return () => clearInterval(interval);
   }, [updatePhotoCount]);
 
   return {
