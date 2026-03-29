@@ -48,10 +48,13 @@ export const useUnsyncedPhotos = () => {
   }, []);
 
   // Update on mount only — no independent polling.
-  // The main sync cycle in useAutoSync calls updatePhotoCount after photo sync completes,
-  // eliminating concurrent IndexedDB access that contributes to timeouts on Safari.
+  // Listen for sync-photos-updated event from useAutoSync instead.
   useEffect(() => {
     updatePhotoCount();
+    
+    const handleSyncUpdate = () => updatePhotoCount();
+    window.addEventListener('sync-photos-updated', handleSyncUpdate);
+    return () => window.removeEventListener('sync-photos-updated', handleSyncUpdate);
   }, [updatePhotoCount]);
 
   return {
