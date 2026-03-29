@@ -47,11 +47,14 @@ export const useUnsyncedPhotos = () => {
     }
   }, []);
 
-  // Update on mount and every 30 seconds
+  // Update on mount only — no independent polling.
+  // Listen for sync-photos-updated event from useAutoSync instead.
   useEffect(() => {
     updatePhotoCount();
-    const interval = setInterval(updatePhotoCount, 30000);
-    return () => clearInterval(interval);
+    
+    const handleSyncUpdate = () => updatePhotoCount();
+    window.addEventListener('sync-photos-updated', handleSyncUpdate);
+    return () => window.removeEventListener('sync-photos-updated', handleSyncUpdate);
   }, [updatePhotoCount]);
 
   return {

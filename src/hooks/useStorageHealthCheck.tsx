@@ -17,7 +17,9 @@ export function useStorageHealthCheck(enabled: boolean = true) {
     };
 
     check(); // immediate
-    const interval = setInterval(check, 30000);
+    // Poll every 10s — this is a cheap in-memory check (no IndexedDB access),
+    // so faster polling means the warning banner disappears sooner after recovery
+    const interval = setInterval(check, 10000);
     return () => clearInterval(interval);
   }, [enabled]);
 
