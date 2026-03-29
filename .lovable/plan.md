@@ -1,73 +1,87 @@
 
 
-## Diagnosis: Persistent IndexedDB Timeouts and "Storage Unavailable" Warning
+## Harden Offline Storage: Maximum Reliability + Hybrid Cleanup
 
-### What the warning means
-The app has a **circuit breaker** in `offline-storage.ts` that trips after 3 consecutive IndexedDB operation failures (timeouts). When tripped, all IndexedDB writes are silently dropped for 60 seconds and you see the "Local storage unavailable / Your changes are at risk" banner plus a destructive toast.
+### Problem Summary
+The "Storage temporarily unavailable" red toast appears when the circuit breaker in `offline-storage.ts` trips after 3 consecutive IndexedDB timeouts. Even though we previously added `dbPromise = null` reset on timeout, the system can still loop because:
 
-### Root cause
-The console logs show `Operation timed out after 8000ms` **every 60 seconds** in a continuous loop. Here's the cycle:
+1. **Aggressive re-polling**: `useUnsyncedPhotos` polls every 30s independently, `useAutoSync` polls every 30-60s, and `useStorageHealthCheck` polls every 30s -- all hitting IndexedDB concurrently
+2. **Full table scans**: `getUnuploadedPhotos()` uses `db.getAll('photos')` which is slow on large photo stores and contributes to timeouts
+3. **No exponential backoff**: Circuit breaker resets after exactly 60s and immediately gets hammered again
+4. **No proactive connection test**: After circuit breaker resets, the first real operation may timeout again, instantly re-tripping the breaker
+
+### Changes
+
+#### 1. `src/lib/offline-storage.ts` — Exponential backoff + connection probe on reset
+
+**Circuit breaker reset time**: Change from fixed 60s to exponential backoff (60s, 120s, 240s, max 5min). After the cooldown expires, run a lightweight probe (`db.count('inspections')`) before re-enabling operations.
 
 ```text
-1. Periodic sync fires (every 30s desktop / 60s mobile)
-2. performSync() calls syncAllInspectionsAtomic/syncPhotos/etc.
-3. These call getDB() → operations like db.getAll() or index queries
-4. The operations hang (never resolve) → 5-8s timeout fires
-5. withIndexedDBErrorBoundary records failure → circuit breaker trips after 3
-6. Circuit breaker resets after 60s → next sync cycle hits same stale connection
-7. Loop repeats indefinitely
+Current:  60s fixed cooldown → immediately re-enable → timeout → re-trip
+Proposed: 60s → 120s → 240s (max 300s) → probe first → re-enable only on success
 ```
 
-**The critical bug**: When `getDB()` succeeds but the returned connection becomes **stale** (e.g., after a Service Worker upgrade, bfcache restore, or Safari evicting the connection), `dbPromise` remains cached with the dead connection. Every subsequent operation hangs because it reuses this zombie connection. The timeout fires, `dbConnectionVerified` is reset, the health check passes (opens a *separate* test DB), but the cached `dbPromise` still points to the dead connection.
+- Add `circuitBreakerResetCount` to track how many times the breaker has tripped consecutively
+- Calculate reset time as `min(60000 * 2^resetCount, 300000)`
+- In `isCircuitBreakerOpen()`, when cooldown expires, run a synchronous-style probe before returning `false`
+- On successful probe: reset all counters. On failed probe: re-trip with incremented backoff
 
-### Fix (2 files)
+#### 2. `src/lib/offline-storage.ts` — Use index query for `getUnuploadedPhotos`
 
-#### 1. `src/lib/offline-storage.ts` — Reset stale `dbPromise` on timeout
-
-In `withIndexedDBErrorBoundary` (around line 449), when a timeout is detected, **reset `dbPromise = null`** so the next operation opens a fresh connection instead of reusing the dead one. Also close the stale connection to release locks.
+Replace `db.getAll('photos')` full table scan with an index query on `by-uploaded`:
 
 ```typescript
-// Line ~449-453: After timeout sentinel check
-if (result === TIMEOUT_SENTINEL) {
-  console.warn(`[Offline Storage] Timeout for ${operationName}, resetting DB connection`);
-  dbConnectionVerified = false;
-  recordIndexedDBFailure();
-  // ✅ NEW: Close and discard the stale connection
-  if (dbPromise) {
-    dbPromise.then(db => db.close()).catch(() => {});
-    dbPromise = null;
-  }
-  return fallbackValue;
-}
+// Before (slow - reads every photo including uploaded ones with null blobs)
+const allPhotos = await db.getAll('photos');
+const unuploaded = allPhotos.filter(p => !p.uploaded && p.blob != null);
+
+// After (fast - only reads photos where uploaded = false)
+const index = db.transaction('photos').store.index('by-uploaded');
+const unuploaded = await index.getAll(0); // uploaded is stored as 0/1
+// Still need to filter for non-null blob
+return unuploaded.filter(p => p.blob != null);
 ```
 
-#### 2. `src/hooks/useAutoSync.tsx` — Skip sync cycle when circuit breaker is active
+Note: The `by-uploaded` index stores boolean as 0/1 in IndexedDB. We need to verify this works correctly; if not, we'll use `IDBKeyRange.only(0)`.
 
-The periodic sync currently fires regardless of circuit breaker state, hammering a broken IndexedDB with new timeout attempts every cycle. Add a guard at the top of `performSync` to skip when the circuit breaker is open:
+#### 3. `src/hooks/useUnsyncedPhotos.tsx` — Eliminate independent polling
+
+Remove the independent 30s interval. Instead, export `updatePhotoCount` for the main sync cycle to call after photo sync completes. This eliminates one concurrent IndexedDB reader.
 
 ```typescript
-// After the navigator.onLine check (~line 117):
-import { getCircuitBreakerStatus } from '@/lib/offline-storage';
-
-// Inside performSync, after the online check:
-const cbStatus = getCircuitBreakerStatus();
-if (cbStatus.open) {
-  if (import.meta.env.DEV) {
-    console.log('[AutoSync] Circuit breaker open - skipping sync cycle');
-  }
-  return;
-}
+// Remove: const interval = setInterval(updatePhotoCount, 30000);
+// Keep: updatePhotoCount on mount only
+// The PWAProvider/useAutoSync will call updatePhotoCount after sync
 ```
 
-### Why this fixes it
+#### 4. `src/hooks/useStorageHealthCheck.tsx` — Reduce polling frequency
 
-| Problem | Fix |
-|---------|-----|
-| Stale cached `dbPromise` causes every operation to hang | Reset `dbPromise = null` and `db.close()` on timeout, forcing fresh connection |
-| Periodic sync hammers broken IndexedDB every 30-60s | Skip sync when circuit breaker is open — let the 60s cooldown work |
-| Circuit breaker resets but immediately hits same dead connection | Connection is now discarded on timeout, so post-reset operations get a new one |
+Change from 30s to 10s polling. The circuit breaker status is an in-memory check (no IndexedDB access), so this is cheap. More frequent checks mean the warning banner disappears faster after recovery.
 
-### Files modified
-- `src/lib/offline-storage.ts` (reset `dbPromise` on timeout, ~5 lines)
-- `src/hooks/useAutoSync.tsx` (skip sync when circuit breaker open, ~8 lines)
+#### 5. `src/lib/offline-storage.ts` — localStorage-first guarantee for saves
+
+When `withIndexedDBErrorBoundary` detects circuit breaker is open for a **write** operation, instead of silently dropping the write, attempt to save a compressed version to `localStorage` via `saveReportSnapshot` as a last resort. This is already done at the form level, but adding it at the storage layer provides defense-in-depth.
+
+Add a new exported function `emergencyLocalStorageSave(key, data)` that the circuit breaker path calls for write operations matching inspection/training/assessment saves.
+
+#### 6. `src/hooks/useAutoSync.tsx` — Call `updatePhotoCount` after sync
+
+After the sync cycle completes successfully, import and call the photo count update so it stays in sync without independent polling.
+
+#### 7. Auto-prune synced photo blobs (Hybrid cleanup)
+
+In `getDB()` upgrade handler or as a periodic task in `useAutoSync`, add a cleanup pass that:
+- Finds photos where `uploaded = true` AND `blob != null` AND `cachedAt < 7 days ago`
+- Nullifies their blob to free storage
+- Never touches unsynced (`uploaded = false`) photos
+
+This prevents gradual storage quota exhaustion from cached remote photo blobs.
+
+### Files Modified
+| File | Change | Impact |
+|------|--------|--------|
+| `src/lib/offline-storage.ts` | Exponential backoff, connection probe, index query for photos, emergency localStorage | Core reliability |
+| `src/hooks/useUnsyncedPhotos.tsx` | Remove independent 30s polling | Reduce IndexedDB pressure |
+| `src/hooks/useStorageHealthCheck.tsx` | 30s → 10s polling (cheap in-memory check) | Faster UI recovery |
+| `src/hooks/useAutoSync.tsx` | Call updatePhotoCount post-sync, add photo blob cleanup | Unified sync + hybrid cleanup |
 
