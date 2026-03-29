@@ -2,7 +2,7 @@ import { useEffect, useCallback, useRef, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { syncAllInspectionsAtomic, syncAllTrainingsAtomic, syncAllDailyAssessmentsAtomic } from '@/lib/atomic-sync-manager';
 import { syncPhotos } from '@/lib/sync-manager';
-import { getUnsyncedInspections, getUnsyncedTrainings, getUnsyncedDailyAssessments, getUnsyncedCounts, getCircuitBreakerStatus } from '@/lib/offline-storage';
+import { getUnsyncedInspections, getUnsyncedTrainings, getUnsyncedDailyAssessments, getUnsyncedCounts, getCircuitBreakerStatus, pruneOldSyncedPhotoBlobs } from '@/lib/offline-storage';
 import { getUserWithCache, getCachedUserFromStorage, ensureValidSession, type CachedUser } from '@/lib/cached-auth';
 import { hasPendingOfflineAuth, verifyAndReconcileOfflineAuth } from '@/lib/offline-auth';
 import { useQueryClient } from '@tanstack/react-query';
@@ -270,6 +270,12 @@ export const useAutoSync = () => {
         if (!allFetchesFailed) {
           // Refresh unsynced counts (non-blocking)
           updateUnsyncedCounts().catch(() => {});
+          
+          // Update photo count for useUnsyncedPhotos (no longer polls independently)
+          window.dispatchEvent(new CustomEvent('sync-photos-updated'));
+          
+          // Hybrid cleanup: prune old synced photo blobs (non-blocking)
+          pruneOldSyncedPhotoBlobs().catch(() => {});
           
           // Invalidate queries to refresh UI
           queryClient.invalidateQueries({ queryKey: ['inspections'] });

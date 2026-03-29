@@ -450,6 +450,35 @@ async function ensureStorage(): Promise<void> {
   await withTimeout(storagePromise, 2000, undefined);
 }
 
+/**
+ * Emergency localStorage fallback for write operations when circuit breaker is open.
+ * Attempts to persist critical report data via the backup ledger so it isn't lost.
+ */
+function emergencyLocalStorageFallback(operationName: string, data: any): void {
+  try {
+    // Only attempt for report-level saves that carry meaningful data
+    if (!data || typeof data !== 'object') return;
+    const id = data.id;
+    if (!id || typeof id !== 'string') return;
+
+    let reportType: 'inspection' | 'training' | 'daily_assessment' | null = null;
+    const opLower = operationName.toLowerCase();
+    if (opLower.includes('inspection')) reportType = 'inspection';
+    else if (opLower.includes('training')) reportType = 'training';
+    else if (opLower.includes('assessment') || opLower.includes('daily')) reportType = 'daily_assessment';
+
+    if (!reportType) return;
+
+    // Dynamic import to avoid circular dependency
+    import('@/lib/local-backup-ledger').then(({ saveReportSnapshot }) => {
+      saveReportSnapshot(reportType!, id, data, {}, false);
+      console.warn(`[Offline Storage] Emergency localStorage save for ${reportType} ${id.substring(0, 8)}`);
+    }).catch(() => {});
+  } catch {
+    // Fail silently — this is a best-effort fallback
+  }
+}
+
 // Track if DB has been successfully opened (skip health check after first success)
 let dbConnectionVerified = false;
 
