@@ -6,7 +6,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { toast } from "@/components/ui/sonner";
 import { addSaveNotification, addSyncNotification } from "@/lib/notification-center";
-import { onSyncComplete, emitSyncComplete, markPendingDashboardRefresh } from "@/lib/sync-events";
+import { onSyncComplete, emitSyncComplete, markPendingDashboardRefresh, dispatchDashboardRefresh } from "@/lib/sync-events";
 import { useNavigate, useParams } from "react-router-dom";
 import { goBack } from "@/lib/navigation";
 import { isLocalDataNewer } from "@/lib/local-data-guards";
@@ -2414,6 +2414,7 @@ export default function InspectionForm() {
             ]);
             emitSyncComplete();
             markPendingDashboardRefresh();
+            dispatchDashboardRefresh();
           } catch (e) {
             console.warn('[InspectionForm] Save-before-leave error:', e);
           } finally {
@@ -2425,6 +2426,7 @@ export default function InspectionForm() {
         }}
         onLeave={() => {
           markPendingDashboardRefresh();
+          dispatchDashboardRefresh();
           setShowLeaveDialog(false);
           bypassAndProceed();
           navigate('/dashboard');

@@ -46,7 +46,7 @@ import { usePullToRefresh } from "@/hooks/usePullToRefresh";
 import { getOfflineInspections, deleteOfflineInspection, queueOperation, saveInspectionOffline, getOfflineTrainings, saveTrainingOffline, deleteOfflineTraining, getOfflineDailyAssessments, saveDailyAssessmentOffline, deleteOfflineDailyAssessment, getOfflineInspection, getOfflineTraining, getOfflineDailyAssessment, clearRelatedDataOffline, clearTrainingDataOffline, clearAssessmentDataOffline } from "@/lib/offline-storage";
 import { shouldPreserveLocalRecord } from "@/lib/local-data-guards";
 import { ContactDeveloperSheet } from "@/components/ContactDeveloperSheet";
-import { onSyncComplete, isSyncInProgress, consumePendingDashboardRefresh } from "@/lib/sync-events";
+import { onSyncComplete, isSyncInProgress, consumePendingDashboardRefresh, dispatchDashboardRefresh } from "@/lib/sync-events";
 import { InspectionsEmptyState, TrainingsEmptyState, DailyAssessmentsEmptyState } from "@/components/EmptyState";
 import { getUserWithCache, getSuperAdminStatusWithCache, invalidateSuperAdminCache, ensureValidSession, getOfflineUserId } from "@/lib/cached-auth";
 /* Holiday Theme Components - DISABLED */
@@ -78,8 +78,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-// Stale-while-revalidate: read cached dashboard data with 5-min TTL
-const DASHBOARD_CACHE_TTL = 5 * 60 * 1000;
+// Stale-while-revalidate: read cached dashboard data with 30-min TTL
+// Users commonly spend 15-30 min in a report; cache is just initial-render optimization
+const DASHBOARD_CACHE_TTL = 30 * 60 * 1000;
 function readDashboardCache(key: string): any[] {
   try {
     const raw = sessionStorage.getItem(key);
@@ -223,24 +224,28 @@ export default function Dashboard() {
     refreshInFlightRef.current = true;
     lastRefreshTsRef.current = Date.now();
 
+    // Capture session validity — gate network queries on this
+    let sessionValid = false;
     try {
-      await Promise.race([
+      const sessionUser = await Promise.race([
         ensureValidSession(),
-        new Promise(resolve => setTimeout(resolve, 3000))
+        new Promise<null>(resolve => setTimeout(() => resolve(null), 3000))
       ]);
+      sessionValid = !!sessionUser;
     } catch (e) {
       console.warn('[Dashboard] Session validation failed:', e);
     }
 
     const user = await getUserWithCache();
     const userId = user?.id || getOfflineUserId();
-    const superAdminStatus = user ? await getSuperAdminStatusWithCache() : false;
+    // Only check super admin if session is valid (avoids RLS failures)
+    const superAdminStatus = user && sessionValid ? await getSuperAdminStatusWithCache() : false;
 
     try {
       await Promise.all([
-        loadInspections(userId, superAdminStatus),
-        loadTrainingReports(userId, superAdminStatus),
-        loadDailyAssessments(userId, superAdminStatus),
+        loadInspections(userId, superAdminStatus, sessionValid),
+        loadTrainingReports(userId, superAdminStatus, sessionValid),
+        loadDailyAssessments(userId, superAdminStatus, sessionValid),
       ]);
     } finally {
       setDataValidated(true);
@@ -328,10 +333,22 @@ export default function Dashboard() {
       setTimeout(() => refreshReports(true), 300);
     }
 
+    // popstate: reliable back-navigation refresh (iOS Safari fix)
+    const handlePopState = () => {
+      if (window.location.pathname === '/dashboard') {
+        refreshReports(true);
+      }
+    };
+
+    // Custom event dispatched by report form pages before navigating away
+    const handleDashboardRefresh = () => refreshReports(true);
+
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
     window.addEventListener('focus', handleWindowFocus);
     window.addEventListener('pageshow', handlePageShow);
+    window.addEventListener('popstate', handlePopState);
+    window.addEventListener('dashboard-refresh', handleDashboardRefresh);
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
@@ -339,6 +356,8 @@ export default function Dashboard() {
       window.removeEventListener('offline', handleOffline);
       window.removeEventListener('focus', handleWindowFocus);
       window.removeEventListener('pageshow', handlePageShow);
+      window.removeEventListener('popstate', handlePopState);
+      window.removeEventListener('dashboard-refresh', handleDashboardRefresh);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       subscription.unsubscribe();
       unsubscribeSyncComplete();
@@ -360,7 +379,7 @@ export default function Dashboard() {
     ]);
   };
 
-  const loadInspections = async (cachedUserId?: string, cachedIsSuperAdmin?: boolean) => {
+  const loadInspections = async (cachedUserId?: string, cachedIsSuperAdmin?: boolean, sessionValid: boolean = true) => {
     try {
       // Use passed userId or fetch from cache
       const userId = cachedUserId || (await getUserWithCache())?.id;
@@ -373,7 +392,7 @@ export default function Dashboard() {
       const offlinePromise = getOfflineInspections(userId, isSuperAdmin).catch(() => []);
       
       let supabasePromise: Promise<any[] | null> = Promise.resolve([]);
-      if (navigator.onLine) {
+      if (navigator.onLine && sessionValid) {
         // Wrap in Promise.resolve to get a proper Promise with .catch()
         // Add 6-second timeout to prevent hanging
         supabasePromise = withNetworkTimeout(
@@ -419,7 +438,7 @@ export default function Dashboard() {
       }
 
       // Always try to get fresh data from network (runs in parallel)
-      if (navigator.onLine) {
+      if (navigator.onLine && sessionValid) {
         const networkData = await supabasePromise;
         if (networkData && networkData.length > 0) {
           setInspections(networkData);
@@ -515,9 +534,9 @@ export default function Dashboard() {
           if (import.meta.env.DEV) {
             console.log('[Dashboard] Loaded from Supabase:', networkData.length);
           }
-        } else if (networkData !== null && offlineData.length === 0) {
-          // Only clear when server CONFIRMED zero records (not timeout/error)
-          setInspections([]);
+        } else if (networkData !== null && offlineData.length === 0 && sessionValid) {
+          // Only clear when session is VERIFIED valid and server confirmed zero
+          setInspections(prev => prev.length > 0 ? prev : []);
         } else if (networkData === null && offlineData.length > 0) {
           // Network failed -- fall back to offline data
           setInspections(offlineData);
@@ -528,7 +547,7 @@ export default function Dashboard() {
     }
   };
 
-  const loadTrainingReports = async (cachedUserId?: string, cachedIsSuperAdmin?: boolean) => {
+  const loadTrainingReports = async (cachedUserId?: string, cachedIsSuperAdmin?: boolean, sessionValid: boolean = true) => {
     try {
       // Use passed userId or fetch from cache
       const userId = cachedUserId || (await getUserWithCache())?.id;
@@ -540,7 +559,7 @@ export default function Dashboard() {
       const offlinePromise = getOfflineTrainings(userId, isSuperAdmin).catch(() => []);
       
       let supabasePromise: Promise<any[] | null> = Promise.resolve([]);
-      if (navigator.onLine) {
+      if (navigator.onLine && sessionValid) {
         // Add 6-second timeout to prevent hanging
         supabasePromise = withNetworkTimeout(
           Promise.resolve(
@@ -582,7 +601,7 @@ export default function Dashboard() {
       }
 
       // Always try to get fresh data from network
-      if (navigator.onLine) {
+      if (navigator.onLine && sessionValid) {
         const networkData = await supabasePromise;
         if (networkData && networkData.length > 0) {
           setTrainings(networkData);
@@ -666,9 +685,9 @@ export default function Dashboard() {
           if (import.meta.env.DEV) {
             console.log('[Dashboard] Loaded training reports from Supabase:', networkData.length);
           }
-        } else if (networkData !== null && offlineData.length === 0) {
-          // Only clear when server CONFIRMED zero records (not timeout/error)
-          setTrainings([]);
+        } else if (networkData !== null && offlineData.length === 0 && sessionValid) {
+          // Only clear when session is VERIFIED valid and server confirmed zero
+          setTrainings(prev => prev.length > 0 ? prev : []);
         } else if (networkData === null && offlineData.length > 0) {
           // Network failed -- fall back to offline data
           setTrainings(offlineData);
@@ -679,7 +698,7 @@ export default function Dashboard() {
     }
   };
 
-  const loadDailyAssessments = async (cachedUserId?: string, cachedIsSuperAdmin?: boolean) => {
+  const loadDailyAssessments = async (cachedUserId?: string, cachedIsSuperAdmin?: boolean, sessionValid: boolean = true) => {
     try {
       // Use passed userId or fetch from cache
       const userId = cachedUserId || (await getUserWithCache())?.id;
@@ -691,7 +710,7 @@ export default function Dashboard() {
       const offlinePromise = getOfflineDailyAssessments(userId, isSuperAdmin).catch(() => []);
       
       let supabasePromise: Promise<any[] | null> = Promise.resolve([]);
-      if (navigator.onLine) {
+      if (navigator.onLine && sessionValid) {
         // Add 6-second timeout to prevent hanging
         supabasePromise = withNetworkTimeout(
           Promise.resolve(
@@ -733,7 +752,7 @@ export default function Dashboard() {
       }
 
       // Always try to get fresh data from network
-      if (navigator.onLine) {
+      if (navigator.onLine && sessionValid) {
         const networkData = await supabasePromise;
         if (networkData && networkData.length > 0) {
           setDailyAssessments(networkData);
@@ -817,9 +836,9 @@ export default function Dashboard() {
           if (import.meta.env.DEV) {
             console.log('[Dashboard] Loaded daily assessments from Supabase:', networkData.length);
           }
-        } else if (networkData !== null && offlineData.length === 0) {
-          // Only clear when server CONFIRMED zero records (not timeout/error)
-          setDailyAssessments([]);
+        } else if (networkData !== null && offlineData.length === 0 && sessionValid) {
+          // Only clear when session is VERIFIED valid and server confirmed zero
+          setDailyAssessments(prev => prev.length > 0 ? prev : []);
         } else if (networkData === null && offlineData.length > 0) {
           // Network failed -- fall back to offline data
           setDailyAssessments(offlineData);

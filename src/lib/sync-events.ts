@@ -51,6 +51,15 @@ export function emitSyncComplete(): void {
   });
 }
 
+/**
+ * Dispatch a custom DOM event that tells the Dashboard to refresh immediately.
+ * Called by report form pages before navigating back to Dashboard.
+ * This works even when sessionStorage flags are unreliable (e.g. iOS Safari).
+ */
+export function dispatchDashboardRefresh(): void {
+  window.dispatchEvent(new CustomEvent('dashboard-refresh'));
+}
+
 const PENDING_REFRESH_KEY = 'pendingDashboardRefresh';
 
 export function markPendingDashboardRefresh(): void {
