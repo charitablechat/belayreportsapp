@@ -424,9 +424,7 @@ export default function Dashboard() {
       }
 
       // Always try to get fresh data from network (runs in parallel)
-      if (navigator.onLine) {
-        const networkData = await supabasePromise;
-        if (networkData && networkData.length > 0) {
+      if (navigator.onLine && sessionValid) {
           setInspections(networkData);
           writeDashboardCache('dashboard-cache-inspections', networkData);
           
