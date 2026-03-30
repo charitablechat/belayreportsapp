@@ -397,8 +397,27 @@ export async function ensureValidSession(): Promise<CachedUser | null> {
       return null;
     }
     
-    // If no session, user needs to log in
+    // If no session, try refreshing using stored refresh token before giving up
     if (!session) {
+      if (navigator.onLine) {
+        if (import.meta.env.DEV) {
+          console.log('[CachedAuth] No active session — attempting refresh via stored token');
+        }
+        try {
+          const { data: { session: refreshedSession }, error: refreshError } = 
+            await supabase.auth.refreshSession();
+          if (refreshedSession && !refreshError) {
+            cachedUser = refreshedSession.user;
+            cacheTimestamp = Date.now();
+            if (import.meta.env.DEV) {
+              console.log('[CachedAuth] Session recovered via refresh token');
+            }
+            return refreshedSession.user;
+          }
+        } catch (refreshErr) {
+          console.warn('[CachedAuth] Refresh token attempt failed:', refreshErr);
+        }
+      }
       console.warn('[CachedAuth] No active session for sync');
       return null;
     }
