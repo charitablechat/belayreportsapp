@@ -78,8 +78,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-// Stale-while-revalidate: read cached dashboard data with 5-min TTL
-const DASHBOARD_CACHE_TTL = 5 * 60 * 1000;
+// Stale-while-revalidate: read cached dashboard data with 30-min TTL
+// Users commonly spend 15-30 min in a report; cache is just initial-render optimization
+const DASHBOARD_CACHE_TTL = 30 * 60 * 1000;
 function readDashboardCache(key: string): any[] {
   try {
     const raw = sessionStorage.getItem(key);
