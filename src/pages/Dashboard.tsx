@@ -365,7 +365,7 @@ export default function Dashboard() {
     ]);
   };
 
-  const loadInspections = async (cachedUserId?: string, cachedIsSuperAdmin?: boolean) => {
+  const loadInspections = async (cachedUserId?: string, cachedIsSuperAdmin?: boolean, sessionValid: boolean = true) => {
     try {
       // Use passed userId or fetch from cache
       const userId = cachedUserId || (await getUserWithCache())?.id;
@@ -378,7 +378,7 @@ export default function Dashboard() {
       const offlinePromise = getOfflineInspections(userId, isSuperAdmin).catch(() => []);
       
       let supabasePromise: Promise<any[] | null> = Promise.resolve([]);
-      if (navigator.onLine) {
+      if (navigator.onLine && sessionValid) {
         // Wrap in Promise.resolve to get a proper Promise with .catch()
         // Add 6-second timeout to prevent hanging
         supabasePromise = withNetworkTimeout(
