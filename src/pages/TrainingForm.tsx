@@ -7,7 +7,7 @@ import {
 import { isLocalDataNewer } from "@/lib/local-data-guards";
 import { useParams, useNavigate } from "react-router-dom";
 import { goBack } from "@/lib/navigation";
-import { emitSyncComplete, markPendingDashboardRefresh } from "@/lib/sync-events";
+import { emitSyncComplete, markPendingDashboardRefresh, dispatchDashboardRefresh } from "@/lib/sync-events";
 import { supabase } from "@/integrations/supabase/client";
 import { getUserWithCache, getOfflineUserId } from "@/lib/cached-auth";
 import { Button } from "@/components/ui/button";
