@@ -224,24 +224,28 @@ export default function Dashboard() {
     refreshInFlightRef.current = true;
     lastRefreshTsRef.current = Date.now();
 
+    // Capture session validity — gate network queries on this
+    let sessionValid = false;
     try {
-      await Promise.race([
+      const sessionUser = await Promise.race([
         ensureValidSession(),
-        new Promise(resolve => setTimeout(resolve, 3000))
+        new Promise<null>(resolve => setTimeout(() => resolve(null), 3000))
       ]);
+      sessionValid = !!sessionUser;
     } catch (e) {
       console.warn('[Dashboard] Session validation failed:', e);
     }
 
     const user = await getUserWithCache();
     const userId = user?.id || getOfflineUserId();
-    const superAdminStatus = user ? await getSuperAdminStatusWithCache() : false;
+    // Only check super admin if session is valid (avoids RLS failures)
+    const superAdminStatus = user && sessionValid ? await getSuperAdminStatusWithCache() : false;
 
     try {
       await Promise.all([
-        loadInspections(userId, superAdminStatus),
-        loadTrainingReports(userId, superAdminStatus),
-        loadDailyAssessments(userId, superAdminStatus),
+        loadInspections(userId, superAdminStatus, sessionValid),
+        loadTrainingReports(userId, superAdminStatus, sessionValid),
+        loadDailyAssessments(userId, superAdminStatus, sessionValid),
       ]);
     } finally {
       setDataValidated(true);
