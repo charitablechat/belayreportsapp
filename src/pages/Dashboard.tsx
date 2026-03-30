@@ -684,7 +684,7 @@ export default function Dashboard() {
     }
   };
 
-  const loadDailyAssessments = async (cachedUserId?: string, cachedIsSuperAdmin?: boolean) => {
+  const loadDailyAssessments = async (cachedUserId?: string, cachedIsSuperAdmin?: boolean, sessionValid: boolean = true) => {
     try {
       // Use passed userId or fetch from cache
       const userId = cachedUserId || (await getUserWithCache())?.id;
@@ -696,7 +696,7 @@ export default function Dashboard() {
       const offlinePromise = getOfflineDailyAssessments(userId, isSuperAdmin).catch(() => []);
       
       let supabasePromise: Promise<any[] | null> = Promise.resolve([]);
-      if (navigator.onLine) {
+      if (navigator.onLine && sessionValid) {
         // Add 6-second timeout to prevent hanging
         supabasePromise = withNetworkTimeout(
           Promise.resolve(
