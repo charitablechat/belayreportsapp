@@ -822,9 +822,9 @@ export default function Dashboard() {
           if (import.meta.env.DEV) {
             console.log('[Dashboard] Loaded daily assessments from Supabase:', networkData.length);
           }
-        } else if (networkData !== null && offlineData.length === 0) {
-          // Only clear when server CONFIRMED zero records (not timeout/error)
-          setDailyAssessments([]);
+        } else if (networkData !== null && offlineData.length === 0 && sessionValid) {
+          // Only clear when session is VERIFIED valid and server confirmed zero
+          setDailyAssessments(prev => prev.length > 0 ? prev : []);
         } else if (networkData === null && offlineData.length > 0) {
           // Network failed -- fall back to offline data
           setDailyAssessments(offlineData);
