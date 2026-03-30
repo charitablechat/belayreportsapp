@@ -225,15 +225,33 @@ export default function Dashboard() {
     lastRefreshTsRef.current = Date.now();
 
     // Capture session validity — gate network queries on this
+    // Use 8s timeout (mobile auth round-trips can take 3-5s)
     let sessionValid = false;
     try {
       const sessionUser = await Promise.race([
         ensureValidSession(),
-        new Promise<null>(resolve => setTimeout(() => resolve(null), 3000))
+        new Promise<null>(resolve => setTimeout(() => resolve(null), 8000))
       ]);
       sessionValid = !!sessionUser;
     } catch (e) {
       console.warn('[Dashboard] Session validation failed:', e);
+    }
+
+    // Retry once after 2s if first attempt failed while online
+    if (!sessionValid && navigator.onLine) {
+      try {
+        await new Promise(r => setTimeout(r, 2000));
+        const retryUser = await Promise.race([
+          ensureValidSession(),
+          new Promise<null>(resolve => setTimeout(() => resolve(null), 5000))
+        ]);
+        sessionValid = !!retryUser;
+        if (sessionValid && import.meta.env.DEV) {
+          console.log('[Dashboard] Session recovered on retry');
+        }
+      } catch {
+        // Still failed — proceed with offline data
+      }
     }
 
     const user = await getUserWithCache();
@@ -432,6 +450,7 @@ export default function Dashboard() {
       const offlineData = await offlineWithTimeout;
       if (offlineData.length > 0) {
         setInspections(prev => prev.length === 0 ? offlineData : prev);
+        writeDashboardCache('dashboard-cache-inspections', offlineData);
         if (import.meta.env.DEV) {
           console.log('[Dashboard] Stale-while-revalidate inspections from cache:', offlineData.length);
         }
@@ -595,6 +614,7 @@ export default function Dashboard() {
       const offlineData = await offlineWithTimeout;
       if (offlineData.length > 0) {
         setTrainings(prev => prev.length === 0 ? offlineData : prev);
+        writeDashboardCache('dashboard-cache-trainings', offlineData);
         if (import.meta.env.DEV) {
           console.log('[Dashboard] Stale-while-revalidate trainings from cache:', offlineData.length);
         }
@@ -746,6 +766,7 @@ export default function Dashboard() {
       const offlineData = await offlineWithTimeout;
       if (offlineData.length > 0) {
         setDailyAssessments(prev => prev.length === 0 ? offlineData : prev);
+        writeDashboardCache('dashboard-cache-daily', offlineData);
         if (import.meta.env.DEV) {
           console.log('[Dashboard] Stale-while-revalidate assessments from cache:', offlineData.length);
         }
