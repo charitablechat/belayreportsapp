@@ -1315,6 +1315,7 @@ export default function TrainingForm() {
         }}
         onLeave={() => {
           markPendingDashboardRefresh();
+          dispatchDashboardRefresh();
           setShowLeaveDialog(false);
           bypassAndProceed();
           navigate('/dashboard');
