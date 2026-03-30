@@ -329,7 +329,7 @@ function recordIndexedDBSuccess(): void {
 /**
  * Get circuit breaker status (for debugging/UI)
  */
-export function getCircuitBreakerStatus(): { open: boolean; failureCount: number; resetIn: number | null; backoffLevel: number } {
+export function getCircuitBreakerStatus(): { open: boolean; failureCount: number; resetIn: number | null; backoffLevel: number; fallbackActive: boolean } {
   const open = isCircuitBreakerOpen();
   const resetTime = getCircuitBreakerResetTime();
   return {
@@ -339,7 +339,22 @@ export function getCircuitBreakerStatus(): { open: boolean; failureCount: number
       ? Math.max(0, resetTime - (Date.now() - circuitBreakerTrippedAt))
       : null,
     backoffLevel: circuitBreakerResetCount,
+    fallbackActive: open && isLocalStorageAvailable(),
   };
+}
+
+/**
+ * Quick check if localStorage is functional (used to determine fallback status)
+ */
+function isLocalStorageAvailable(): boolean {
+  try {
+    const testKey = '__ls_test__';
+    localStorage.setItem(testKey, '1');
+    localStorage.removeItem(testKey);
+    return true;
+  } catch {
+    return false;
+  }
 }
 // ============= END CIRCUIT BREAKER =============
 
@@ -454,12 +469,12 @@ async function ensureStorage(): Promise<void> {
  * Emergency localStorage fallback for write operations when circuit breaker is open.
  * Attempts to persist critical report data via the backup ledger so it isn't lost.
  */
-function emergencyLocalStorageFallback(operationName: string, data: any): void {
+function emergencyLocalStorageFallback(operationName: string, data: any): boolean {
   try {
     // Only attempt for report-level saves that carry meaningful data
-    if (!data || typeof data !== 'object') return;
+    if (!data || typeof data !== 'object') return false;
     const id = data.id;
-    if (!id || typeof id !== 'string') return;
+    if (!id || typeof id !== 'string') return false;
 
     let reportType: 'inspection' | 'training' | 'daily_assessment' | null = null;
     const opLower = operationName.toLowerCase();
@@ -467,15 +482,25 @@ function emergencyLocalStorageFallback(operationName: string, data: any): void {
     else if (opLower.includes('training')) reportType = 'training';
     else if (opLower.includes('assessment') || opLower.includes('daily')) reportType = 'daily_assessment';
 
-    if (!reportType) return;
+    if (!reportType) return false;
 
-    // Dynamic import to avoid circular dependency
-    import('@/lib/local-backup-ledger').then(({ saveReportSnapshot }) => {
-      saveReportSnapshot(reportType!, id, data, {}, false);
-      console.warn(`[Offline Storage] Emergency localStorage save for ${reportType} ${id.substring(0, 8)}`);
-    }).catch(() => {});
+    // Synchronous localStorage write — must return immediately so caller knows success/failure
+    const key = `rw_backup_${reportType}_${id}`;
+    const snapshot = {
+      v: 1,
+      ts: Date.now(),
+      synced: false,
+      device: isMobile() ? 'mobile' : 'desktop',
+      parent: data,
+      children: {},
+    };
+    const json = JSON.stringify(snapshot);
+    localStorage.setItem(key, json);
+    console.warn(`[Offline Storage] Emergency localStorage save for ${reportType} ${id.substring(0, 8)} (${(json.length / 1024).toFixed(1)}KB)`);
+    return true;
   } catch {
-    // Fail silently — this is a best-effort fallback
+    // localStorage full or unavailable
+    return false;
   }
 }
 
@@ -498,31 +523,44 @@ async function withIndexedDBErrorBoundary<T>(
     if (import.meta.env.DEV) {
       console.log(`[Offline Storage] Circuit breaker open, returning fallback for ${operationName}`);
     }
-    // Finding 2: Surface user-visible warning when write operations are silently dropped
-    const isWriteOp = operationName.toLowerCase().includes('save') || 
-                      operationName.toLowerCase().includes('put') || 
-                      operationName.toLowerCase().includes('delete') ||
-                      operationName.toLowerCase().includes('queue') ||
-                      operationName.toLowerCase().includes('update');
-    if (isWriteOp && typeof window !== 'undefined') {
-      const cbWarningKey = 'circuit-breaker-warning-shown';
-      if (!sessionStorage.getItem(cbWarningKey)) {
-        sessionStorage.setItem(cbWarningKey, 'true');
-        // Dynamic import to avoid circular deps
-        import('@/hooks/use-toast').then(({ toast }) => {
-          toast({
-            title: "Storage temporarily unavailable",
-            description: "Your changes may not be saved locally. Stay connected to sync your work.",
-            variant: "destructive",
-          });
-        }).catch(() => {});
-        // Clear after circuit breaker reset window (use current backoff time)
-        const resetTime = getCircuitBreakerResetTime();
-        setTimeout(() => sessionStorage.removeItem(cbWarningKey), resetTime + 1000);
-      }
+    const opLower = operationName.toLowerCase();
+    const isWriteOp = opLower.includes('save') || opLower.includes('put') || 
+                      opLower.includes('delete') || opLower.includes('queue') || 
+                      opLower.includes('update');
+    
+    // Classify: is this a user-facing report save or a background operation?
+    const isUserFacingSave = ['saveinspectionoffline', 'savetrainingoffline', 'savedailyassessmentoffline']
+      .some(op => opLower.includes(op.toLowerCase()));
 
-      // DEFENSE-IN-DEPTH: Attempt emergency localStorage save for report write operations
-      emergencyLocalStorageFallback(operationName, fallbackValue);
+    if (isWriteOp && typeof window !== 'undefined') {
+      // Attempt emergency localStorage save for all write ops
+      const fallbackSucceeded = emergencyLocalStorageFallback(operationName, fallbackValue);
+
+      // Only show toasts for user-facing saves (not background ops like photo marking)
+      if (isUserFacingSave) {
+        const cbWarningKey = 'circuit-breaker-warning-shown';
+        if (!sessionStorage.getItem(cbWarningKey)) {
+          sessionStorage.setItem(cbWarningKey, 'true');
+          import('@/hooks/use-toast').then(({ toast }) => {
+            if (fallbackSucceeded) {
+              // Soft toast — data IS saved to localStorage backup
+              toast({
+                title: "Using backup storage",
+                description: "Your changes are saved locally. They'll sync when storage recovers.",
+              });
+            } else {
+              // Red toast — both IndexedDB and localStorage failed
+              toast({
+                title: "Storage temporarily unavailable",
+                description: "Your changes may not be saved locally. Stay connected to sync your work.",
+                variant: "destructive",
+              });
+            }
+          }).catch(() => {});
+          const resetTime = getCircuitBreakerResetTime();
+          setTimeout(() => sessionStorage.removeItem(cbWarningKey), resetTime + 1000);
+        }
+      }
     }
     return fallbackValue;
   }

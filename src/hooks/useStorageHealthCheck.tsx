@@ -2,18 +2,20 @@ import { useState, useEffect } from 'react';
 import { getCircuitBreakerStatus } from '@/lib/offline-storage';
 
 /**
- * Polls circuit breaker status every 30 seconds.
- * Returns true when IndexedDB is unreachable (circuit breaker open).
+ * Polls circuit breaker status every 10 seconds.
+ * Returns storage state: fully unavailable vs using fallback localStorage.
  */
 export function useStorageHealthCheck(enabled: boolean = true) {
   const [storageUnavailable, setStorageUnavailable] = useState(false);
+  const [usingFallbackStorage, setUsingFallbackStorage] = useState(false);
 
   useEffect(() => {
     if (!enabled) return;
 
     const check = () => {
       const status = getCircuitBreakerStatus();
-      setStorageUnavailable(status.open);
+      setStorageUnavailable(status.open && !status.fallbackActive);
+      setUsingFallbackStorage(status.open && status.fallbackActive);
     };
 
     check(); // immediate
@@ -23,5 +25,5 @@ export function useStorageHealthCheck(enabled: boolean = true) {
     return () => clearInterval(interval);
   }, [enabled]);
 
-  return storageUnavailable;
+  return { storageUnavailable, usingFallbackStorage };
 }
