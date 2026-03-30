@@ -333,10 +333,22 @@ export default function Dashboard() {
       setTimeout(() => refreshReports(true), 300);
     }
 
+    // popstate: reliable back-navigation refresh (iOS Safari fix)
+    const handlePopState = () => {
+      if (window.location.pathname === '/dashboard') {
+        refreshReports(true);
+      }
+    };
+
+    // Custom event dispatched by report form pages before navigating away
+    const handleDashboardRefresh = () => refreshReports(true);
+
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
     window.addEventListener('focus', handleWindowFocus);
     window.addEventListener('pageshow', handlePageShow);
+    window.addEventListener('popstate', handlePopState);
+    window.addEventListener('dashboard-refresh', handleDashboardRefresh);
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
@@ -344,6 +356,8 @@ export default function Dashboard() {
       window.removeEventListener('offline', handleOffline);
       window.removeEventListener('focus', handleWindowFocus);
       window.removeEventListener('pageshow', handlePageShow);
+      window.removeEventListener('popstate', handlePopState);
+      window.removeEventListener('dashboard-refresh', handleDashboardRefresh);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       subscription.unsubscribe();
       unsubscribeSyncComplete();
