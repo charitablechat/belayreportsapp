@@ -671,9 +671,9 @@ export default function Dashboard() {
           if (import.meta.env.DEV) {
             console.log('[Dashboard] Loaded training reports from Supabase:', networkData.length);
           }
-        } else if (networkData !== null && offlineData.length === 0) {
-          // Only clear when server CONFIRMED zero records (not timeout/error)
-          setTrainings([]);
+        } else if (networkData !== null && offlineData.length === 0 && sessionValid) {
+          // Only clear when session is VERIFIED valid and server confirmed zero
+          setTrainings(prev => prev.length > 0 ? prev : []);
         } else if (networkData === null && offlineData.length > 0) {
           // Network failed -- fall back to offline data
           setTrainings(offlineData);
