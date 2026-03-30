@@ -614,6 +614,7 @@ export default function Dashboard() {
       const offlineData = await offlineWithTimeout;
       if (offlineData.length > 0) {
         setTrainings(prev => prev.length === 0 ? offlineData : prev);
+        writeDashboardCache('dashboard-cache-trainings', offlineData);
         if (import.meta.env.DEV) {
           console.log('[Dashboard] Stale-while-revalidate trainings from cache:', offlineData.length);
         }
