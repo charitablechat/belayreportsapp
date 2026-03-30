@@ -1381,6 +1381,7 @@ export default function DailyAssessmentForm() {
             ]);
             emitSyncComplete();
             markPendingDashboardRefresh();
+            dispatchDashboardRefresh();
           } catch (e) {
             console.warn('[DailyAssessmentForm] Save-before-leave error:', e);
           } finally {
