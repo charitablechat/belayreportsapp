@@ -766,6 +766,7 @@ export default function Dashboard() {
       const offlineData = await offlineWithTimeout;
       if (offlineData.length > 0) {
         setDailyAssessments(prev => prev.length === 0 ? offlineData : prev);
+        writeDashboardCache('dashboard-cache-daily', offlineData);
         if (import.meta.env.DEV) {
           console.log('[Dashboard] Stale-while-revalidate assessments from cache:', offlineData.length);
         }
