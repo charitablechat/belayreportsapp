@@ -738,7 +738,7 @@ export default function Dashboard() {
       }
 
       // Always try to get fresh data from network
-      if (navigator.onLine) {
+      if (navigator.onLine && sessionValid) {
         const networkData = await supabasePromise;
         if (networkData && networkData.length > 0) {
           setDailyAssessments(networkData);
