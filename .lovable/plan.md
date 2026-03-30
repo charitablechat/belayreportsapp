@@ -2,139 +2,108 @@
 
 ## Fix: Dashboard Shows Zero Data After Navigating Back from Reports
 
-### Root Cause
+### Root Cause Analysis
 
-Three bugs combine to produce the "all zeros" issue when returning to Dashboard from any report form:
+Despite the previous session-gating fix, the Dashboard still shows zeros because of three remaining gaps:
 
-**Bug 1 — Session validation result is discarded.** In `refreshReports()`, `ensureValidSession()` is called but its return value is thrown away:
-```typescript
-// Current code (line 226-233):
-await Promise.race([
-  ensureValidSession(),     // <-- result ignored!
-  new Promise(resolve => setTimeout(resolve, 3000))
-]);
-// ... proceeds to query Supabase regardless
-```
-If the JWT expired while the user was editing a report (common after 5+ minutes), the Supabase queries run with an invalid token. RLS silently returns `[]` (not an error), so the Dashboard interprets this as "server confirmed zero records."
+**Gap 1 — `ensureValidSession()` gives up when `getSession()` returns null (line 401-403 of cached-auth.ts).** On iOS Safari, after 10+ minutes in a report form, the in-memory session can be garbage-collected. `getSession()` returns `null`, but the **refresh token in localStorage is still valid**. The function returns `null` immediately without attempting `refreshSession()`, so `sessionValid = false` and all network queries are skipped.
 
-**Bug 2 — Empty RLS result clears state unconditionally.** When the network returns `[]` (due to expired JWT) AND IndexedDB also returns `[]` (due to 2s timeout or circuit breaker), line 518 fires:
-```typescript
-else if (networkData !== null && offlineData.length === 0) {
-  setInspections([]);  // Wipes everything!
-}
-```
-There is no check for whether the session was actually valid.
+**Gap 2 — The 3-second timeout on session validation is too aggressive.** `refreshSession()` makes a network round-trip that can take 2-4 seconds on mobile. The `Promise.race` resolves to `null` before the refresh completes, producing `sessionValid = false`.
 
-**Bug 3 — No state preservation during failed loads.** The initial state comes from `sessionStorage` with a 5-minute TTL. If the user spent >5 minutes in a report, the cache expires, initial state is `[]`, and if the refresh fails (bugs 1+2), the user sees zeros with no recovery path except manual refresh.
+**Gap 3 — No retry mechanism.** When session validation fails (timeout, transient error), `refreshReports` makes exactly one attempt and then stops. The user is left with stale or empty data.
+
+**Combined effect:** User navigates back → Dashboard mounts → sessionStorage cache may be expired → `ensureValidSession` fails → `sessionValid = false` → network queries skipped → IndexedDB 2s timeout may return `[]` → user sees zeros.
 
 ### Changes
 
-#### 1. `src/pages/Dashboard.tsx` — Use session validation result to gate network queries
+#### 1. `src/lib/cached-auth.ts` — Attempt `refreshSession()` when `getSession()` returns null
 
-In `refreshReports()`, capture the result of `ensureValidSession()`. If the session is invalid AND we're online, attempt one session refresh. If still invalid, skip network queries entirely and rely on offline/cached data:
+When `getSession()` returns no session but we're online, try `refreshSession()` using the stored refresh token before giving up:
 
 ```typescript
-const refreshReports = async (force = false) => {
-  // ... throttle checks ...
-  
-  let sessionValid = false;
-  try {
-    const sessionUser = await Promise.race([
-      ensureValidSession(),
-      new Promise<null>(resolve => setTimeout(() => resolve(null), 3000))
-    ]);
-    sessionValid = !!sessionUser;
-  } catch { /* continue with offline data */ }
-
-  const user = await getUserWithCache();
-  const userId = user?.id || getOfflineUserId();
-  const superAdminStatus = user && sessionValid ? await getSuperAdminStatusWithCache() : false;
-
-  await Promise.all([
-    loadInspections(userId, superAdminStatus, sessionValid),
-    loadTrainingReports(userId, superAdminStatus, sessionValid),
-    loadDailyAssessments(userId, superAdminStatus, sessionValid),
-  ]);
-  // ...
-};
-```
-
-#### 2. `src/pages/Dashboard.tsx` — Guard network queries with `sessionValid` flag
-
-Pass `sessionValid` to each load function. When `sessionValid` is `false`:
-- Skip the Supabase network query (treat as offline)
-- Never clear state to `[]` based on network results
-- Use offline/cached data only
-
-In each load function (inspections, trainings, assessments):
-```typescript
-// Only make network request if session is verified valid
-if (navigator.onLine && sessionValid) {
-  supabasePromise = withNetworkTimeout(/* ... */);
+// Current: returns null immediately
+if (!session) {
+  console.warn('[CachedAuth] No active session for sync');
+  return null;
 }
 
-// Guard against clearing data without valid session
-if (networkData && networkData.length > 0) {
-  setInspections(networkData);
-} else if (networkData !== null && offlineData.length === 0 && sessionValid) {
-  // Only clear when session is VERIFIED valid and server confirmed zero
-  setInspections([]);
-}
-```
-
-#### 3. `src/pages/Dashboard.tsx` — Preserve last-known-good data during refresh
-
-Never reset state to `[]` during a refresh if we already have data. Add a guard:
-```typescript
-// In each load function, before clearing:
-if (networkData !== null && offlineData.length === 0 && sessionValid) {
-  setInspections(prev => prev.length > 0 ? prev : []);
-  // Only truly clear if we had no data before either
-}
-```
-
-#### 4. `src/pages/Dashboard.tsx` — Extend sessionStorage cache TTL
-
-Change `DASHBOARD_CACHE_TTL` from 5 minutes to 30 minutes. Users commonly spend 15-30 minutes on a report. The cache is just an initial-render optimization — it gets replaced by fresh data on successful load.
-
-#### 5. `src/pages/Dashboard.tsx` — Add `popstate` listener for reliable back-navigation refresh
-
-On iOS Safari, `focus` events are unreliable during SPA back-navigation. Add a `popstate` listener that forces a refresh when the user navigates back:
-
-```typescript
-const handlePopState = () => {
-  if (location.pathname === '/dashboard') {
-    refreshReports(true);
+// Fixed: try refresh first
+if (!session) {
+  if (navigator.onLine) {
+    const { data: { session: refreshed }, error } = await supabase.auth.refreshSession();
+    if (refreshed) {
+      cachedUser = refreshed.user;
+      cacheTimestamp = Date.now();
+      return refreshed.user;
+    }
   }
-};
-window.addEventListener('popstate', handlePopState);
-```
-
-#### 6. `src/lib/sync-events.ts` — Add custom event for cross-component refresh
-
-Add a `dashboard-refresh` custom DOM event that form pages dispatch before navigating away. This gives the Dashboard a synchronous signal to refresh immediately on mount, independent of `sessionStorage` flags:
-
-```typescript
-export function dispatchDashboardRefresh(): void {
-  window.dispatchEvent(new CustomEvent('dashboard-refresh'));
+  return null;
 }
 ```
 
-#### 7. Report form pages — Dispatch refresh event on every exit
+#### 2. `src/pages/Dashboard.tsx` — Increase session validation timeout from 3s to 8s
 
-In `InspectionForm.tsx`, `TrainingForm.tsx`, `DailyAssessmentForm.tsx`, call `dispatchDashboardRefresh()` alongside the existing `markPendingDashboardRefresh()` on every navigation back to Dashboard. This ensures the Dashboard picks up the signal even if sessionStorage is unreliable.
+Mobile networks routinely need 3-5 seconds for auth round-trips. The current 3s timeout causes false negatives:
+
+```typescript
+// Change from 3000 to 8000
+const sessionUser = await Promise.race([
+  ensureValidSession(),
+  new Promise<null>(resolve => setTimeout(() => resolve(null), 8000))
+]);
+```
+
+#### 3. `src/pages/Dashboard.tsx` — Add session retry with delay
+
+If the first session validation fails while online, wait 2 seconds and retry once. This handles transient network blips and iOS Safari's delayed connectivity restoration:
+
+```typescript
+if (!sessionValid && navigator.onLine) {
+  await new Promise(r => setTimeout(r, 2000));
+  try {
+    const retryUser = await Promise.race([
+      ensureValidSession(),
+      new Promise<null>(resolve => setTimeout(() => resolve(null), 5000))
+    ]);
+    sessionValid = !!retryUser;
+  } catch {}
+}
+```
+
+#### 4. `src/pages/Dashboard.tsx` — Never overwrite existing state when session is invalid
+
+When `sessionValid` is false, the load functions should never touch state if data already exists on screen. Currently, if both network and offline return empty, the cache-initialized state is preserved. But there's an edge case: if offline returns `[]` due to timeout and `sessionValid` is false, `setInspections(prev => prev.length === 0 ? offlineData : prev)` sets `[]`. Add a guard:
+
+```typescript
+// In the offline-data-only path (when sessionValid is false):
+if (offlineData.length > 0) {
+  setInspections(prev => prev.length === 0 ? offlineData : prev);
+}
+// If offlineData is also empty, do NOT touch state — preserve whatever cache had
+```
+
+#### 5. `src/pages/Dashboard.tsx` — Write cache on every successful data display
+
+Currently `writeDashboardCache` only fires after a successful network fetch. If the user navigates back and sees offline data, that data should also be cached to sessionStorage for the next navigation:
+
+```typescript
+// After offline data is set:
+if (offlineData.length > 0) {
+  setInspections(prev => prev.length === 0 ? offlineData : prev);
+  writeDashboardCache('dashboard-cache-inspections', offlineData); // NEW
+}
+```
+
+This ensures the sessionStorage cache always has the latest known-good data, so the next mount starts with real values instead of `[]`.
 
 ### Files Modified
 | File | Change |
 |------|--------|
-| `src/pages/Dashboard.tsx` | Session-gated network queries, preserve data on failed refresh, extended cache TTL, popstate listener |
-| `src/lib/sync-events.ts` | Add `dispatchDashboardRefresh` custom event |
-| `src/pages/InspectionForm.tsx` | Dispatch refresh event on exit |
-| `src/pages/TrainingForm.tsx` | Dispatch refresh event on exit |
-| `src/pages/DailyAssessmentForm.tsx` | Dispatch refresh event on exit |
+| `src/lib/cached-auth.ts` | Try `refreshSession()` when `getSession()` returns null |
+| `src/pages/Dashboard.tsx` | 8s timeout, retry mechanism, never-clear guard, cache offline data |
 
 ### Impact
-- Eliminates the "zero data" issue caused by expired JWT / RLS silent failures
-- Data is never cleared unless we have verified proof the server has zero records
-- Works on all platforms (iOS Safari, Android Chrome, desktop) since the fix is at the data-loading layer, not browser-event-dependent
+- Covers the remaining failure modes: expired in-memory session, slow mobile auth, transient errors
+- Zero risk of data loss — changes only prevent premature state clearing
+- No performance impact — retry only fires when initial validation fails (edge case)
 
