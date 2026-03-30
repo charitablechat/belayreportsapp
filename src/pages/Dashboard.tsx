@@ -46,7 +46,7 @@ import { usePullToRefresh } from "@/hooks/usePullToRefresh";
 import { getOfflineInspections, deleteOfflineInspection, queueOperation, saveInspectionOffline, getOfflineTrainings, saveTrainingOffline, deleteOfflineTraining, getOfflineDailyAssessments, saveDailyAssessmentOffline, deleteOfflineDailyAssessment, getOfflineInspection, getOfflineTraining, getOfflineDailyAssessment, clearRelatedDataOffline, clearTrainingDataOffline, clearAssessmentDataOffline } from "@/lib/offline-storage";
 import { shouldPreserveLocalRecord } from "@/lib/local-data-guards";
 import { ContactDeveloperSheet } from "@/components/ContactDeveloperSheet";
-import { onSyncComplete, isSyncInProgress, consumePendingDashboardRefresh } from "@/lib/sync-events";
+import { onSyncComplete, isSyncInProgress, consumePendingDashboardRefresh, dispatchDashboardRefresh } from "@/lib/sync-events";
 import { InspectionsEmptyState, TrainingsEmptyState, DailyAssessmentsEmptyState } from "@/components/EmptyState";
 import { getUserWithCache, getSuperAdminStatusWithCache, invalidateSuperAdminCache, ensureValidSession, getOfflineUserId } from "@/lib/cached-auth";
 /* Holiday Theme Components - DISABLED */
