@@ -51,7 +51,7 @@ function writeMarker(): void {
   fs.writeFileSync(TIMESTAMP_MARKER, String(Date.now()));
 }
 
-export function viteAutoVersion(): Plugin {
+export function viteAutoVersion() {
   let versionDefines: Record<string, string> = {};
 
   return {
