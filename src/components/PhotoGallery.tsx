@@ -91,6 +91,7 @@ export default function PhotoGallery({
 
   // Confirmation dialog state
   const [deleteConfirm, setDeleteConfirm] = useState<{ type: 'single'; photo: Photo } | { type: 'batch' } | null>(null);
+  const [selectedPhoto, setSelectedPhoto] = useState<Photo | null>(null);
 
   // Desktop-first sensor configuration with mobile support
   const sensors = useSensors(
