@@ -1,109 +1,73 @@
 
 
-## Fix: Dashboard Shows Zero Data After Navigating Back from Reports
+## Comprehensive Audit: Remaining Dashboard Refresh Bugs
 
-### Root Cause Analysis
+### Bugs Found
 
-Despite the previous session-gating fix, the Dashboard still shows zeros because of three remaining gaps:
+**Bug 1 — `dispatchDashboardRefresh()` fires before Dashboard mounts (event is lost)**
 
-**Gap 1 — `ensureValidSession()` gives up when `getSession()` returns null (line 401-403 of cached-auth.ts).** On iOS Safari, after 10+ minutes in a report form, the in-memory session can be garbage-collected. `getSession()` returns `null`, but the **refresh token in localStorage is still valid**. The function returns `null` immediately without attempting `refreshSession()`, so `sessionValid = false` and all network queries are skipped.
+All three report forms call `dispatchDashboardRefresh()` then `navigate('/dashboard')`. Since `goBack()` always does `navigate("/dashboard")` (forward navigation, not `navigate(-1)`), this unmounts the report form and mounts the Dashboard. But the `dashboard-refresh` custom event is dispatched WHILE the report form is still the active component — Dashboard hasn't mounted yet and has no listener registered. The event is lost every time.
 
-**Gap 2 — The 3-second timeout on session validation is too aggressive.** `refreshSession()` makes a network round-trip that can take 2-4 seconds on mobile. The `Promise.race` resolves to `null` before the refresh completes, producing `sessionValid = false`.
+**Bug 2 — `consumePendingDashboardRefresh()` triggers a redundant, throttle-blocked call**
 
-**Gap 3 — No retry mechanism.** When session validation fails (timeout, transient error), `refreshReports` makes exactly one attempt and then stops. The user is left with stale or empty data.
+Line 350: `if (consumePendingDashboardRefresh()) { setTimeout(() => refreshReports(true), 300); }` — but `refreshReports(true)` is already called at line 287. When the 300ms timer fires, `refreshInFlightRef.current` is still `true` (the first call is still awaiting the 8s session validation), so the pending refresh returns immediately at line 222. The pending mechanism is a no-op.
 
-**Combined effect:** User navigates back → Dashboard mounts → sessionStorage cache may be expired → `ensureValidSession` fails → `sessionValid = false` → network queries skipped → IndexedDB 2s timeout may return `[]` → user sees zeros.
+**Bug 3 — `refreshReports` is a stale `useCallback(fn, [])` — `loadInspections` etc. capture the initial closure**
 
-### Changes
+`refreshReports` is created with `useCallback(async () => { ... }, [])`. Inside it, `loadInspections`, `loadTrainingReports`, and `loadDailyAssessments` are plain functions defined in the component body. Because `useCallback` with `[]` deps captures the closure from the first render, these function references are always the first-render versions. This means the `sessionValid` argument works (it's passed directly), but any future changes to referenced state could produce stale reads. Currently not an active bug, but fragile.
 
-#### 1. `src/lib/cached-auth.ts` — Attempt `refreshSession()` when `getSession()` returns null
+**Bug 4 — `popstate` never fires for SPA `navigate('/dashboard')`**
 
-When `getSession()` returns no session but we're online, try `refreshSession()` using the stored refresh token before giving up:
+`popstate` fires when the browser's history is traversed (back/forward button). Since `goBack()` calls `navigate("/dashboard")` which is a `pushState`, not a `popstate`, the `handlePopState` listener never triggers during normal report-to-dashboard navigation. It only fires if the user uses the browser/device back button.
 
-```typescript
-// Current: returns null immediately
-if (!session) {
-  console.warn('[CachedAuth] No active session for sync');
-  return null;
-}
+**Bug 5 — 2-second IndexedDB timeout returns `[]`, bypassing stale-while-revalidate**
 
-// Fixed: try refresh first
-if (!session) {
-  if (navigator.onLine) {
-    const { data: { session: refreshed }, error } = await supabase.auth.refreshSession();
-    if (refreshed) {
-      cachedUser = refreshed.user;
-      cacheTimestamp = Date.now();
-      return refreshed.user;
-    }
-  }
-  return null;
-}
-```
+When IndexedDB is slow (common on iOS after a long form session), the 2s timeout resolves to `[]`. The guard `if (offlineData.length > 0)` fails, so the stale-while-revalidate step is completely skipped. If sessionStorage cache is also expired (>30 min), the user sees empty state for the full duration of the network request (8-15s).
 
-#### 2. `src/pages/Dashboard.tsx` — Increase session validation timeout from 3s to 8s
+**Bug 6 — sessionStorage cache expires, initial state is `[]`, no fallback**
 
-Mobile networks routinely need 3-5 seconds for auth round-trips. The current 3s timeout causes false negatives:
+`readDashboardCache` returns `[]` when TTL expires. The `useState(() => readDashboardCache(...))` initializer sets state to `[]`. There is no secondary fallback (e.g., localStorage) to provide data while the network loads.
 
-```typescript
-// Change from 3000 to 8000
-const sessionUser = await Promise.race([
-  ensureValidSession(),
-  new Promise<null>(resolve => setTimeout(() => resolve(null), 8000))
-]);
-```
+**Bug 7 — `navigator.onLine` can be briefly `false` during iOS page transitions**
 
-#### 3. `src/pages/Dashboard.tsx` — Add session retry with delay
+On iOS Safari, `navigator.onLine` can momentarily report `false` during in-app navigation. If `refreshReports` runs during this window, `sessionValid` stays false (session validation is skipped), AND all network queries are skipped. The result is empty data with no recovery until a focus/visibility event fires.
 
-If the first session validation fails while online, wait 2 seconds and retry once. This handles transient network blips and iOS Safari's delayed connectivity restoration:
+### Solution
 
-```typescript
-if (!sessionValid && navigator.onLine) {
-  await new Promise(r => setTimeout(r, 2000));
-  try {
-    const retryUser = await Promise.race([
-      ensureValidSession(),
-      new Promise<null>(resolve => setTimeout(() => resolve(null), 5000))
-    ]);
-    sessionValid = !!retryUser;
-  } catch {}
-}
-```
+#### 1. `src/pages/Dashboard.tsx` — Replace lost event with sessionStorage timestamp
 
-#### 4. `src/pages/Dashboard.tsx` — Never overwrite existing state when session is invalid
+Remove reliance on `dispatchDashboardRefresh()` custom event. Instead, report forms write a timestamp to sessionStorage. Dashboard reads it on mount and uses it to decide if data is definitely stale (force network refresh even if cache looks valid).
 
-When `sessionValid` is false, the load functions should never touch state if data already exists on screen. Currently, if both network and offline return empty, the cache-initialized state is preserved. But there's an edge case: if offline returns `[]` due to timeout and `sessionValid` is false, `setInspections(prev => prev.length === 0 ? offlineData : prev)` sets `[]`. Add a guard:
+#### 2. `src/pages/Dashboard.tsx` — Add localStorage as a long-lived cache fallback
 
-```typescript
-// In the offline-data-only path (when sessionValid is false):
-if (offlineData.length > 0) {
-  setInspections(prev => prev.length === 0 ? offlineData : prev);
-}
-// If offlineData is also empty, do NOT touch state — preserve whatever cache had
-```
+When sessionStorage cache is expired, fall back to localStorage which stores the last-known-good data indefinitely. Update `readDashboardCache` to check localStorage as a secondary source. Write to both sessionStorage and localStorage on every successful data load.
 
-#### 5. `src/pages/Dashboard.tsx` — Write cache on every successful data display
+#### 3. `src/pages/Dashboard.tsx` — Increase IndexedDB timeout to 4s; add localStorage data as fallback for `[]` results
 
-Currently `writeDashboardCache` only fires after a successful network fetch. If the user navigates back and sees offline data, that data should also be cached to sessionStorage for the next navigation:
+When IndexedDB times out with `[]`, check localStorage backup before accepting empty state. This ensures the stale-while-revalidate pattern always has data to show.
 
-```typescript
-// After offline data is set:
-if (offlineData.length > 0) {
-  setInspections(prev => prev.length === 0 ? offlineData : prev);
-  writeDashboardCache('dashboard-cache-inspections', offlineData); // NEW
-}
-```
+#### 4. `src/pages/Dashboard.tsx` — Add `navigator.onLine` delayed recheck
 
-This ensures the sessionStorage cache always has the latest known-good data, so the next mount starts with real values instead of `[]`.
+If `navigator.onLine` is `false` at the start of `refreshReports`, schedule a 1s delayed recheck. If it flips to `true`, restart with network queries enabled.
+
+#### 5. `src/pages/Dashboard.tsx` — Remove dead `popstate` and `dashboard-refresh` listeners
+
+These never fire during normal SPA navigation. Remove them to reduce confusion. Keep `visibilitychange`, `focus`, `pageshow`, and `online` which DO work.
+
+#### 6. `src/lib/sync-events.ts` — Remove `dispatchDashboardRefresh` (dead code)
+
+Replace with a `markDashboardStaleTimestamp()` that writes `Date.now()` to sessionStorage, which Dashboard can read on mount.
+
+#### 7. Report form pages — Replace `dispatchDashboardRefresh()` with timestamp marker
+
+Update `InspectionForm.tsx`, `TrainingForm.tsx`, `DailyAssessmentForm.tsx` to call `markDashboardStaleTimestamp()` instead of `dispatchDashboardRefresh()`.
 
 ### Files Modified
 | File | Change |
 |------|--------|
-| `src/lib/cached-auth.ts` | Try `refreshSession()` when `getSession()` returns null |
-| `src/pages/Dashboard.tsx` | 8s timeout, retry mechanism, never-clear guard, cache offline data |
-
-### Impact
-- Covers the remaining failure modes: expired in-memory session, slow mobile auth, transient errors
-- Zero risk of data loss — changes only prevent premature state clearing
-- No performance impact — retry only fires when initial validation fails (edge case)
+| `src/pages/Dashboard.tsx` | localStorage fallback cache, increased IDB timeout, online recheck, remove dead listeners |
+| `src/lib/sync-events.ts` | Replace `dispatchDashboardRefresh` with `markDashboardStaleTimestamp` |
+| `src/pages/InspectionForm.tsx` | Use `markDashboardStaleTimestamp` |
+| `src/pages/TrainingForm.tsx` | Use `markDashboardStaleTimestamp` |
+| `src/pages/DailyAssessmentForm.tsx` | Use `markDashboardStaleTimestamp` |
 
