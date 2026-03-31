@@ -617,10 +617,10 @@ export default function Dashboard() {
         );
       }
 
-      // SHORT TIMEOUT for IndexedDB (2 seconds)
+      // IndexedDB timeout (4s) — increased from 2s to avoid empty results on slow iOS devices
       const offlineWithTimeout = Promise.race([
         offlinePromise,
-        new Promise<any[]>((resolve) => setTimeout(() => resolve([]), 2000))
+        new Promise<any[]>((resolve) => setTimeout(() => resolve([]), 4000))
       ]);
       
       const offlineData = await offlineWithTimeout;
