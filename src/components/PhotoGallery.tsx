@@ -776,6 +776,22 @@ export default function PhotoGallery({
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
+
+    {/* Full-size image lightbox */}
+    <Dialog open={!!selectedPhoto} onOpenChange={(open) => { if (!open) setSelectedPhoto(null); }}>
+      <DialogContent hideDefaultClose className="max-w-4xl p-2 bg-black/95 border-none [&>button]:hidden">
+        {selectedPhoto && (
+          <img
+            src={selectedPhoto.photoUrl}
+            alt={selectedPhoto.caption || "Full size photo"}
+            className="w-full h-auto max-h-[85vh] object-contain rounded"
+          />
+        )}
+        {selectedPhoto?.caption && (
+          <p className="text-center text-white/80 text-sm mt-2">{selectedPhoto.caption}</p>
+        )}
+      </DialogContent>
+    </Dialog>
     </>
   );
 }
