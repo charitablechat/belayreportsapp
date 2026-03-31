@@ -78,22 +78,36 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-// Stale-while-revalidate: read cached dashboard data with 30-min TTL
-// Users commonly spend 15-30 min in a report; cache is just initial-render optimization
+// Stale-while-revalidate: read cached dashboard data
+// Primary: sessionStorage (30-min TTL for fast reads)
+// Fallback: localStorage (no TTL — last-known-good data survives session expiry)
 const DASHBOARD_CACHE_TTL = 30 * 60 * 1000;
+const LS_CACHE_PREFIX = 'dashboard-ls-';
+
 function readDashboardCache(key: string): any[] {
   try {
+    // Try sessionStorage first (fast, session-scoped)
     const raw = sessionStorage.getItem(key);
     if (raw) {
       const { data, ts } = JSON.parse(raw);
       if (Date.now() - ts < DASHBOARD_CACHE_TTL) return data;
     }
+    // Fallback: localStorage (no TTL — last-known-good)
+    const lsRaw = localStorage.getItem(LS_CACHE_PREFIX + key);
+    if (lsRaw) {
+      const { data } = JSON.parse(lsRaw);
+      if (Array.isArray(data) && data.length > 0) return data;
+    }
   } catch {}
   return [];
 }
+
 function writeDashboardCache(key: string, data: any[]) {
   try {
-    sessionStorage.setItem(key, JSON.stringify({ data, ts: Date.now() }));
+    const payload = JSON.stringify({ data, ts: Date.now() });
+    sessionStorage.setItem(key, payload);
+    // Also persist to localStorage as long-lived fallback
+    localStorage.setItem(LS_CACHE_PREFIX + key, payload);
   } catch {}
 }
 
