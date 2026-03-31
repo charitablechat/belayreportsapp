@@ -238,33 +238,43 @@ export default function Dashboard() {
     refreshInFlightRef.current = true;
     lastRefreshTsRef.current = Date.now();
 
+    // Bug 7 fix: navigator.onLine can briefly be false during iOS page transitions.
+    // If offline at start, wait 1s and recheck before giving up on network.
+    let effectiveOnline = navigator.onLine;
+    if (!effectiveOnline) {
+      await new Promise(r => setTimeout(r, 1000));
+      effectiveOnline = navigator.onLine;
+    }
+
     // Capture session validity — gate network queries on this
     // Use 8s timeout (mobile auth round-trips can take 3-5s)
     let sessionValid = false;
-    try {
-      const sessionUser = await Promise.race([
-        ensureValidSession(),
-        new Promise<null>(resolve => setTimeout(() => resolve(null), 8000))
-      ]);
-      sessionValid = !!sessionUser;
-    } catch (e) {
-      console.warn('[Dashboard] Session validation failed:', e);
-    }
-
-    // Retry once after 2s if first attempt failed while online
-    if (!sessionValid && navigator.onLine) {
+    if (effectiveOnline) {
       try {
-        await new Promise(r => setTimeout(r, 2000));
-        const retryUser = await Promise.race([
+        const sessionUser = await Promise.race([
           ensureValidSession(),
-          new Promise<null>(resolve => setTimeout(() => resolve(null), 5000))
+          new Promise<null>(resolve => setTimeout(() => resolve(null), 8000))
         ]);
-        sessionValid = !!retryUser;
-        if (sessionValid && import.meta.env.DEV) {
-          console.log('[Dashboard] Session recovered on retry');
+        sessionValid = !!sessionUser;
+      } catch (e) {
+        console.warn('[Dashboard] Session validation failed:', e);
+      }
+
+      // Retry once after 2s if first attempt failed while online
+      if (!sessionValid) {
+        try {
+          await new Promise(r => setTimeout(r, 2000));
+          const retryUser = await Promise.race([
+            ensureValidSession(),
+            new Promise<null>(resolve => setTimeout(() => resolve(null), 5000))
+          ]);
+          sessionValid = !!retryUser;
+          if (sessionValid && import.meta.env.DEV) {
+            console.log('[Dashboard] Session recovered on retry');
+          }
+        } catch {
+          // Still failed — proceed with offline data
         }
-      } catch {
-        // Still failed — proceed with offline data
       }
     }
 
