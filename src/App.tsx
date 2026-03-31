@@ -59,36 +59,29 @@ const RootLayout = () => {
   // Enable scroll restoration
   useScrollRestoration(true);
   
-  // Trigger haptic feedback on navigation (mobile only)
-  useEffect(() => {
-    if (!isMobileDevice) return;
-    
-    const handleNavigation = () => {
-      triggerNavigationHaptic();
-    };
-    
-    // Listen for route changes
-    window.addEventListener('popstate', handleNavigation);
-    
-    return () => {
-      window.removeEventListener('popstate', handleNavigation);
-    };
-  }, [isMobileDevice]);
-  
-  // History exit guard — prevent device back button from exiting the app
+  // History exit guard + haptic feedback + depth sync — single popstate listener
   useEffect(() => {
     window.history.pushState({ lovableGuard: true }, "");
 
     const handlePopState = (event: PopStateEvent) => {
+      // Haptic feedback on mobile
+      if (isMobileDevice) {
+        triggerNavigationHaptic();
+      }
+
       if (event.state?.lovableGuard && getNavigationDepth() === 0) {
+        // User exhausted in-app history — trap exit and redirect to dashboard
         window.history.pushState({ lovableGuard: true }, "");
         navigate("/dashboard");
+      } else if (getNavigationDepth() > 0) {
+        // Hardware back press — keep depth counter in sync
+        decrementNavigation();
       }
     };
 
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
-  }, [navigate]);
+  }, [navigate, isMobileDevice]);
 
   useEffect(() => {
     // Log mobile capabilities on mount

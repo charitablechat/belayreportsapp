@@ -17,6 +17,12 @@ export function getNavigationDepth() {
   return navigationDepth;
 }
 
+export function decrementNavigation() {
+  if (navigationDepth > 0) {
+    navigationDepth--;
+  }
+}
+
 /**
  * Navigate back if there is a real in-app page to return to,
  * otherwise fall back to /dashboard.
