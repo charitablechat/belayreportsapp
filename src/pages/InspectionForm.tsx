@@ -2414,7 +2414,7 @@ export default function InspectionForm() {
             ]);
             emitSyncComplete();
             markPendingDashboardRefresh();
-            dispatchDashboardRefresh();
+            markDashboardStaleTimestamp();
           } catch (e) {
             console.warn('[InspectionForm] Save-before-leave error:', e);
           } finally {
