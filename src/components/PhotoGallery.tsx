@@ -25,6 +25,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 import {
   DndContext,
   closestCenter,
@@ -90,6 +91,7 @@ export default function PhotoGallery({
 
   // Confirmation dialog state
   const [deleteConfirm, setDeleteConfirm] = useState<{ type: 'single'; photo: Photo } | { type: 'batch' } | null>(null);
+  const [selectedPhoto, setSelectedPhoto] = useState<Photo | null>(null);
 
   // Desktop-first sensor configuration with mobile support
   const sensors = useSensors(
@@ -665,7 +667,7 @@ export default function PhotoGallery({
                 } ${batchMode ? 'cursor-pointer' : ''}`}
                 onClick={batchMode ? () => toggleSelection(photo.id) : undefined}
               >
-                <div className="relative">
+                <div className="relative" onClick={!batchMode ? (e) => { e.stopPropagation(); setSelectedPhoto(photo); } : undefined} style={!batchMode ? { cursor: 'pointer' } : undefined}>
                   {/* Batch selection checkbox overlay */}
                   {batchMode && (
                     <div className="absolute top-2 left-2 z-10">
@@ -775,6 +777,22 @@ export default function PhotoGallery({
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
+
+    {/* Full-size image lightbox */}
+    <Dialog open={!!selectedPhoto} onOpenChange={(open) => { if (!open) setSelectedPhoto(null); }}>
+      <DialogContent hideDefaultClose className="max-w-4xl p-2 bg-black/95 border-none [&>button]:hidden">
+        {selectedPhoto && (
+          <img
+            src={selectedPhoto.photoUrl}
+            alt={selectedPhoto.caption || "Full size photo"}
+            className="w-full h-auto max-h-[85vh] object-contain rounded"
+          />
+        )}
+        {selectedPhoto?.caption && (
+          <p className="text-center text-white/80 text-sm mt-2">{selectedPhoto.caption}</p>
+        )}
+      </DialogContent>
+    </Dialog>
     </>
   );
 }
