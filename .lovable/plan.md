@@ -1,52 +1,44 @@
 
 
-## Fix Device Back Button Navigation
+## Add Full-Size Image Modal to Photo Gallery
 
-### Root Cause
+**What**: Tapping a photo thumbnail in the bottom gallery section opens a full-size lightbox modal. Clicking outside the image closes it. This matches the existing `ItemPhotoUpload` lightbox pattern.
 
-There are two bugs causing the back button to malfunction:
+### Changes
 
-1. **`navigationDepth` gets out of sync with reality.** It increments on every forward navigation but only decrements when `goBack()` is called from in-app buttons. When the user presses the **device back button**, the browser navigates back via `popstate`, but `navigationDepth` is never decremented. After a few hardware back presses, the depth counter is wrong, causing `goBack()` to misjudge whether there's history.
+**1. `src/components/PhotoGallery.tsx`** — Add lightbox state and modal
 
-2. **The sentinel `pushState` on mount adds a phantom history entry.** When the app mounts, it pushes `{ lovableGuard: true }` into the history stack. This means the user's first device back press navigates to the sentinel entry instead of the previous page, creating a "dead" back press that does nothing visible (or redirects to dashboard unexpectedly).
+- Add `selectedPhoto` state (`Photo | null`) to track which photo is expanded
+- On thumbnail click (when NOT in batch mode and NOT dragging), set `selectedPhoto`
+- Render a `Dialog` at the bottom of the component that shows the full-size image
+- Use `DialogContent` with `hideDefaultClose` and transparent/minimal styling so clicking the overlay closes it
+- The modal displays the image at full resolution with the caption below it
 
-### Solution
+**Key implementation detail**: The click handler goes on the `OptimizedImage` container (line ~680). In batch mode, clicks already go to `toggleSelection`. We add an `onClick` to the image area only when `!batchMode`:
 
-**1. `src/App.tsx` — Fix the history guard to also track depth on hardware back**
+```tsx
+// New state
+const [selectedPhoto, setSelectedPhoto] = useState<Photo | null>(null);
 
-Consolidate the popstate handling into a single listener that:
-- Decrements `navigationDepth` on every hardware back press (when depth > 0 and it's not the sentinel)
-- Only traps exit attempts when the sentinel is actually hit and depth is 0
-- Re-pushes the sentinel after trapping to maintain the guard
+// On the image div (line ~668), add click when not in batch mode:
+onClick={!batchMode ? () => setSelectedPhoto(photo) : undefined}
 
-**2. `src/lib/navigation.ts` — Add a `decrementNavigation()` export**
-
-Add a function to decrement the depth counter, so the popstate handler in `App.tsx` can keep it in sync when the device back button is used (bypassing `goBack()`).
-
-### Technical Detail
-
-```text
-Before (broken):
-  Forward nav: depth++ ✓
-  In-app back button (goBack): depth-- ✓
-  Device back button (popstate): depth unchanged ✗ ← BUG
-
-After (fixed):
-  Forward nav: depth++ ✓
-  In-app back button (goBack): depth-- ✓
-  Device back button (popstate): depth-- ✓  ← FIXED
+// New Dialog after the delete confirmation dialog:
+<Dialog open={!!selectedPhoto} onOpenChange={(open) => { if (!open) setSelectedPhoto(null); }}>
+  <DialogContent className="max-w-4xl p-2 bg-black/95 border-none">
+    {selectedPhoto && (
+      <img
+        src={selectedPhoto.photoUrl}
+        alt={selectedPhoto.caption || "Full size photo"}
+        className="w-full h-auto max-h-[85vh] object-contain rounded"
+      />
+    )}
+    {selectedPhoto?.caption && (
+      <p className="text-center text-white/80 text-sm mt-2">{selectedPhoto.caption}</p>
+    )}
+  </DialogContent>
+</Dialog>
 ```
 
-The updated popstate handler logic:
-```
-on popstate:
-  if event.state has lovableGuard AND depth === 0:
-    → re-push sentinel, navigate to /dashboard (exit guard)
-  else if depth > 0:
-    → decrement depth (keep counter in sync with browser history)
-```
-
-### Files Changed
-- `src/lib/navigation.ts` — Add `decrementNavigation()` export
-- `src/App.tsx` — Merge popstate listeners, add depth decrement on hardware back
+No new files needed. Single file change, consistent with the existing `Dialog`-based lightbox in `ItemPhotoUpload`.
 
