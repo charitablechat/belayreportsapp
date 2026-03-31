@@ -1,36 +1,52 @@
 
 
-## Prevent Device Back Button from Exiting the App
+## Fix Device Back Button Navigation
 
-**Problem**: When a user presses the device/browser back button and there's no more browser history (e.g., they opened the app directly), the app exits instead of staying in the app.
+### Root Cause
 
-**Solution**: Push a sentinel history entry on app mount so the browser always has something to "go back" to. When that sentinel is hit (popstate), redirect to `/dashboard` instead of exiting.
+There are two bugs causing the back button to malfunction:
 
-### Changes
+1. **`navigationDepth` gets out of sync with reality.** It increments on every forward navigation but only decrements when `goBack()` is called from in-app buttons. When the user presses the **device back button**, the browser navigates back via `popstate`, but `navigationDepth` is never decremented. After a few hardware back presses, the depth counter is wrong, causing `goBack()` to misjudge whether there's history.
 
-**1. `src/App.tsx` — Add history exit guard in `RootLayout`**
+2. **The sentinel `pushState` on mount adds a phantom history entry.** When the app mounts, it pushes `{ lovableGuard: true }` into the history stack. This means the user's first device back press navigates to the sentinel entry instead of the previous page, creating a "dead" back press that does nothing visible (or redirects to dashboard unexpectedly).
 
-Add a `useEffect` that:
-- Pushes a sentinel state entry (`{ lovableGuard: true }`) into `window.history` on mount
-- Listens for `popstate` — if the event state has the sentinel flag and `navigationDepth` is 0, it means the user has exhausted in-app history, so we push the sentinel again and navigate to `/dashboard`
+### Solution
 
-This ensures the device back button never exits the app — it either goes back one step (handled by React Router) or lands on the dashboard.
+**1. `src/App.tsx` — Fix the history guard to also track depth on hardware back**
 
-**2. `src/lib/navigation.ts` — Export `getNavigationDepth()`**
+Consolidate the popstate handling into a single listener that:
+- Decrements `navigationDepth` on every hardware back press (when depth > 0 and it's not the sentinel)
+- Only traps exit attempts when the sentinel is actually hit and depth is 0
+- Re-pushes the sentinel after trapping to maintain the guard
 
-Add a getter so `App.tsx` can read the current depth without importing the mutable variable directly.
+**2. `src/lib/navigation.ts` — Add a `decrementNavigation()` export**
 
-### Technical detail
+Add a function to decrement the depth counter, so the popstate handler in `App.tsx` can keep it in sync when the device back button is used (bypassing `goBack()`).
+
+### Technical Detail
 
 ```text
-User flow:
-  [App opens] → pushState(sentinel)
-  [User navigates] → /dashboard → /inspection/123 → /inspection/123/photos
-  [Back button x1] → /inspection/123  (normal browser back, depth > 0)
-  [Back button x2] → /dashboard       (normal browser back, depth > 0)
-  [Back button x3] → hits sentinel → re-push sentinel, navigate(/dashboard)
-                      (user stays in app)
+Before (broken):
+  Forward nav: depth++ ✓
+  In-app back button (goBack): depth-- ✓
+  Device back button (popstate): depth unchanged ✗ ← BUG
+
+After (fixed):
+  Forward nav: depth++ ✓
+  In-app back button (goBack): depth-- ✓
+  Device back button (popstate): depth-- ✓  ← FIXED
 ```
 
-No changes needed to any of the 11 files using `goBack()` — they already work correctly with the depth-based logic.
+The updated popstate handler logic:
+```
+on popstate:
+  if event.state has lovableGuard AND depth === 0:
+    → re-push sentinel, navigate to /dashboard (exit guard)
+  else if depth > 0:
+    → decrement depth (keep counter in sync with browser history)
+```
+
+### Files Changed
+- `src/lib/navigation.ts` — Add `decrementNavigation()` export
+- `src/App.tsx` — Merge popstate listeners, add depth decrement on hardware back
 
