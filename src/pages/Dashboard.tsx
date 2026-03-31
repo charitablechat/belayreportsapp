@@ -231,7 +231,10 @@ export default function Dashboard() {
     },
   });
 
-  // Centralized, deduplicated, throttled refresh
+  // Centralized, deduplicated, throttled refresh.
+  // NOTE: deps intentionally kept as [] — the load* functions inside only use
+  // their arguments and stable useState setters, so the closure is safe.
+  // If you add direct state reads here, move to useRef or add to deps.
   const refreshReports = React.useCallback(async (force = false) => {
     if (refreshInFlightRef.current) return;
     if (!force && Date.now() - lastRefreshTsRef.current < REFRESH_THROTTLE_MS) return;
