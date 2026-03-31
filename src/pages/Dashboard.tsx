@@ -46,7 +46,7 @@ import { usePullToRefresh } from "@/hooks/usePullToRefresh";
 import { getOfflineInspections, deleteOfflineInspection, queueOperation, saveInspectionOffline, getOfflineTrainings, saveTrainingOffline, deleteOfflineTraining, getOfflineDailyAssessments, saveDailyAssessmentOffline, deleteOfflineDailyAssessment, getOfflineInspection, getOfflineTraining, getOfflineDailyAssessment, clearRelatedDataOffline, clearTrainingDataOffline, clearAssessmentDataOffline } from "@/lib/offline-storage";
 import { shouldPreserveLocalRecord } from "@/lib/local-data-guards";
 import { ContactDeveloperSheet } from "@/components/ContactDeveloperSheet";
-import { onSyncComplete, isSyncInProgress, consumePendingDashboardRefresh, dispatchDashboardRefresh } from "@/lib/sync-events";
+import { onSyncComplete, isSyncInProgress, consumePendingDashboardRefresh, consumeDashboardStaleTimestamp } from "@/lib/sync-events";
 import { InspectionsEmptyState, TrainingsEmptyState, DailyAssessmentsEmptyState } from "@/components/EmptyState";
 import { getUserWithCache, getSuperAdminStatusWithCache, invalidateSuperAdminCache, ensureValidSession, getOfflineUserId } from "@/lib/cached-auth";
 /* Holiday Theme Components - DISABLED */
@@ -78,22 +78,36 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-// Stale-while-revalidate: read cached dashboard data with 30-min TTL
-// Users commonly spend 15-30 min in a report; cache is just initial-render optimization
+// Stale-while-revalidate: read cached dashboard data
+// Primary: sessionStorage (30-min TTL for fast reads)
+// Fallback: localStorage (no TTL — last-known-good data survives session expiry)
 const DASHBOARD_CACHE_TTL = 30 * 60 * 1000;
+const LS_CACHE_PREFIX = 'dashboard-ls-';
+
 function readDashboardCache(key: string): any[] {
   try {
+    // Try sessionStorage first (fast, session-scoped)
     const raw = sessionStorage.getItem(key);
     if (raw) {
       const { data, ts } = JSON.parse(raw);
       if (Date.now() - ts < DASHBOARD_CACHE_TTL) return data;
     }
+    // Fallback: localStorage (no TTL — last-known-good)
+    const lsRaw = localStorage.getItem(LS_CACHE_PREFIX + key);
+    if (lsRaw) {
+      const { data } = JSON.parse(lsRaw);
+      if (Array.isArray(data) && data.length > 0) return data;
+    }
   } catch {}
   return [];
 }
+
 function writeDashboardCache(key: string, data: any[]) {
   try {
-    sessionStorage.setItem(key, JSON.stringify({ data, ts: Date.now() }));
+    const payload = JSON.stringify({ data, ts: Date.now() });
+    sessionStorage.setItem(key, payload);
+    // Also persist to localStorage as long-lived fallback
+    localStorage.setItem(LS_CACHE_PREFIX + key, payload);
   } catch {}
 }
 
@@ -224,33 +238,43 @@ export default function Dashboard() {
     refreshInFlightRef.current = true;
     lastRefreshTsRef.current = Date.now();
 
+    // Bug 7 fix: navigator.onLine can briefly be false during iOS page transitions.
+    // If offline at start, wait 1s and recheck before giving up on network.
+    let effectiveOnline = navigator.onLine;
+    if (!effectiveOnline) {
+      await new Promise(r => setTimeout(r, 1000));
+      effectiveOnline = navigator.onLine;
+    }
+
     // Capture session validity — gate network queries on this
     // Use 8s timeout (mobile auth round-trips can take 3-5s)
     let sessionValid = false;
-    try {
-      const sessionUser = await Promise.race([
-        ensureValidSession(),
-        new Promise<null>(resolve => setTimeout(() => resolve(null), 8000))
-      ]);
-      sessionValid = !!sessionUser;
-    } catch (e) {
-      console.warn('[Dashboard] Session validation failed:', e);
-    }
-
-    // Retry once after 2s if first attempt failed while online
-    if (!sessionValid && navigator.onLine) {
+    if (effectiveOnline) {
       try {
-        await new Promise(r => setTimeout(r, 2000));
-        const retryUser = await Promise.race([
+        const sessionUser = await Promise.race([
           ensureValidSession(),
-          new Promise<null>(resolve => setTimeout(() => resolve(null), 5000))
+          new Promise<null>(resolve => setTimeout(() => resolve(null), 8000))
         ]);
-        sessionValid = !!retryUser;
-        if (sessionValid && import.meta.env.DEV) {
-          console.log('[Dashboard] Session recovered on retry');
+        sessionValid = !!sessionUser;
+      } catch (e) {
+        console.warn('[Dashboard] Session validation failed:', e);
+      }
+
+      // Retry once after 2s if first attempt failed while online
+      if (!sessionValid) {
+        try {
+          await new Promise(r => setTimeout(r, 2000));
+          const retryUser = await Promise.race([
+            ensureValidSession(),
+            new Promise<null>(resolve => setTimeout(() => resolve(null), 5000))
+          ]);
+          sessionValid = !!retryUser;
+          if (sessionValid && import.meta.env.DEV) {
+            console.log('[Dashboard] Session recovered on retry');
+          }
+        } catch {
+          // Still failed — proceed with offline data
         }
-      } catch {
-        // Still failed — proceed with offline data
       }
     }
 
@@ -346,27 +370,17 @@ export default function Dashboard() {
       }
     };
 
-    // Pending dashboard refresh flag
-    if (consumePendingDashboardRefresh()) {
-      setTimeout(() => refreshReports(true), 300);
+    // Check if a report form marked data as stale before navigating here
+    if (consumeDashboardStaleTimestamp() || consumePendingDashboardRefresh()) {
+      // Data is definitely stale — the initial refreshReports(true) above handles it.
+      // No need for a delayed second call (it would be throttle-blocked anyway).
+      if (import.meta.env.DEV) console.log('[Dashboard] Stale timestamp detected from report form');
     }
-
-    // popstate: reliable back-navigation refresh (iOS Safari fix)
-    const handlePopState = () => {
-      if (window.location.pathname === '/dashboard') {
-        refreshReports(true);
-      }
-    };
-
-    // Custom event dispatched by report form pages before navigating away
-    const handleDashboardRefresh = () => refreshReports(true);
 
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
     window.addEventListener('focus', handleWindowFocus);
     window.addEventListener('pageshow', handlePageShow);
-    window.addEventListener('popstate', handlePopState);
-    window.addEventListener('dashboard-refresh', handleDashboardRefresh);
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
@@ -374,8 +388,6 @@ export default function Dashboard() {
       window.removeEventListener('offline', handleOffline);
       window.removeEventListener('focus', handleWindowFocus);
       window.removeEventListener('pageshow', handlePageShow);
-      window.removeEventListener('popstate', handlePopState);
-      window.removeEventListener('dashboard-refresh', handleDashboardRefresh);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       subscription.unsubscribe();
       unsubscribeSyncComplete();
@@ -440,10 +452,10 @@ export default function Dashboard() {
         );
       }
 
-      // SHORT TIMEOUT for IndexedDB (2 seconds) - prefer network data on mobile
+      // IndexedDB timeout (4s) — increased from 2s to avoid empty results on slow iOS devices
       const offlineWithTimeout = Promise.race([
         offlinePromise,
-        new Promise<any[]>((resolve) => setTimeout(() => resolve([]), 2000))
+        new Promise<any[]>((resolve) => setTimeout(() => resolve([]), 4000))
       ]);
       
       // Show offline/cached data immediately (stale-while-revalidate)
@@ -605,10 +617,10 @@ export default function Dashboard() {
         );
       }
 
-      // SHORT TIMEOUT for IndexedDB (2 seconds)
+      // IndexedDB timeout (4s) — increased from 2s to avoid empty results on slow iOS devices
       const offlineWithTimeout = Promise.race([
         offlinePromise,
-        new Promise<any[]>((resolve) => setTimeout(() => resolve([]), 2000))
+        new Promise<any[]>((resolve) => setTimeout(() => resolve([]), 4000))
       ]);
       
       const offlineData = await offlineWithTimeout;
@@ -757,10 +769,10 @@ export default function Dashboard() {
         );
       }
 
-      // SHORT TIMEOUT for IndexedDB (2 seconds)
+      // IndexedDB timeout (4s) — increased from 2s to avoid empty results on slow iOS devices
       const offlineWithTimeout = Promise.race([
         offlinePromise,
-        new Promise<any[]>((resolve) => setTimeout(() => resolve([]), 2000))
+        new Promise<any[]>((resolve) => setTimeout(() => resolve([]), 4000))
       ]);
       
       const offlineData = await offlineWithTimeout;

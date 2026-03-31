@@ -51,13 +51,37 @@ export function emitSyncComplete(): void {
   });
 }
 
+const STALE_TIMESTAMP_KEY = 'dashboardStaleTimestamp';
+
 /**
- * Dispatch a custom DOM event that tells the Dashboard to refresh immediately.
+ * Mark the dashboard data as stale by writing a timestamp to sessionStorage.
  * Called by report form pages before navigating back to Dashboard.
- * This works even when sessionStorage flags are unreliable (e.g. iOS Safari).
+ * Dashboard reads this on mount to force a fresh network fetch.
+ * 
+ * Replaces the old dispatchDashboardRefresh() which fired a DOM event
+ * that was always lost because Dashboard hadn't mounted yet during SPA navigation.
  */
-export function dispatchDashboardRefresh(): void {
-  window.dispatchEvent(new CustomEvent('dashboard-refresh'));
+export function markDashboardStaleTimestamp(): void {
+  try {
+    sessionStorage.setItem(STALE_TIMESTAMP_KEY, String(Date.now()));
+  } catch {}
+}
+
+/**
+ * Check if Dashboard data was marked stale by a report form.
+ * Consumes the flag so it only triggers once.
+ * Returns true if a stale marker was found (meaning a report form navigated away recently).
+ */
+export function consumeDashboardStaleTimestamp(): boolean {
+  try {
+    const ts = sessionStorage.getItem(STALE_TIMESTAMP_KEY);
+    if (ts) {
+      sessionStorage.removeItem(STALE_TIMESTAMP_KEY);
+      // Only consider stale if marked within the last 60 seconds
+      return (Date.now() - parseInt(ts, 10)) < 60000;
+    }
+  } catch {}
+  return false;
 }
 
 const PENDING_REFRESH_KEY = 'pendingDashboardRefresh';
