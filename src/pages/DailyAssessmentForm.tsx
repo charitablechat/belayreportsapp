@@ -1393,7 +1393,7 @@ export default function DailyAssessmentForm() {
         }}
         onLeave={() => {
           markPendingDashboardRefresh();
-          dispatchDashboardRefresh();
+          markDashboardStaleTimestamp();
           setShowLeaveDialog(false);
           bypassAndProceed();
           navigate('/dashboard');

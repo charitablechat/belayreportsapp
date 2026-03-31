@@ -2426,7 +2426,7 @@ export default function InspectionForm() {
         }}
         onLeave={() => {
           markPendingDashboardRefresh();
-          dispatchDashboardRefresh();
+          markDashboardStaleTimestamp();
           setShowLeaveDialog(false);
           bypassAndProceed();
           navigate('/dashboard');
