@@ -1,44 +1,26 @@
 
 
-## Add Full-Size Image Modal to Photo Gallery
+## Generate Copyright Deposit Pages
 
-**What**: Tapping a photo thumbnail in the bottom gallery section opens a full-size lightbox modal. Clicking outside the image closes it. This matches the existing `ItemPhotoUpload` lightbox pattern.
+**What**: Create a text file containing the first 25 pages (~1,250 lines) and last 25 pages (~1,250 lines) of your source code, formatted for copyright registration with the US Copyright Office.
 
-### Changes
+### Approach
 
-**1. `src/components/PhotoGallery.tsx`** — Add lightbox state and modal
+1. **Concatenate all source files** in a logical order (e.g., `src/` files alphabetically) into one continuous listing, with file headers marking each file boundary
+2. **Extract first 1,250 lines** (≈25 pages at 50 lines/page)
+3. **Extract last 1,250 lines** (≈25 pages at 50 lines/page)
+4. **Add a separator** between the two sections indicating omitted material
+5. **Output** to `/mnt/documents/copyright-deposit.txt`
 
-- Add `selectedPhoto` state (`Photo | null`) to track which photo is expanded
-- On thumbnail click (when NOT in batch mode and NOT dragging), set `selectedPhoto`
-- Render a `Dialog` at the bottom of the component that shows the full-size image
-- Use `DialogContent` with `hideDefaultClose` and transparent/minimal styling so clicking the overlay closes it
-- The modal displays the image at full resolution with the caption below it
+### Format
 
-**Key implementation detail**: The click handler goes on the `OptimizedImage` container (line ~680). In batch mode, clicks already go to `toggleSelection`. We add an `onClick` to the image area only when `!batchMode`:
+Each page will include:
+- File path header when a new file begins
+- Line numbers for reference
+- Standard 50 lines per page with page markers
 
-```tsx
-// New state
-const [selectedPhoto, setSelectedPhoto] = useState<Photo | null>(null);
+### Notes
 
-// On the image div (line ~668), add click when not in batch mode:
-onClick={!batchMode ? () => setSelectedPhoto(photo) : undefined}
-
-// New Dialog after the delete confirmation dialog:
-<Dialog open={!!selectedPhoto} onOpenChange={(open) => { if (!open) setSelectedPhoto(null); }}>
-  <DialogContent className="max-w-4xl p-2 bg-black/95 border-none">
-    {selectedPhoto && (
-      <img
-        src={selectedPhoto.photoUrl}
-        alt={selectedPhoto.caption || "Full size photo"}
-        className="w-full h-auto max-h-[85vh] object-contain rounded"
-      />
-    )}
-    {selectedPhoto?.caption && (
-      <p className="text-center text-white/80 text-sm mt-2">{selectedPhoto.caption}</p>
-    )}
-  </DialogContent>
-</Dialog>
-```
-
-No new files needed. Single file change, consistent with the existing `Dialog`-based lightbox in `ItemPhotoUpload`.
+- The Copyright Office accepts identifying portions as either the first/last 25 pages OR first/last 10 pages with trade secret material blocked out
+- This will be a plain text file you can print or submit digitally
 
