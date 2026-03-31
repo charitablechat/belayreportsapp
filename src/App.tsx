@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ThemeProvider } from "next-themes";
 import { createBrowserRouter, RouterProvider, useNavigate, Outlet, useLocation } from "react-router-dom";
 import { lazy, Suspense, useEffect, useRef } from "react";
-import { trackNavigation } from "@/lib/navigation";
+import { trackNavigation, getNavigationDepth } from "@/lib/navigation";
 import Index from "./pages/Index";
 
 // Lazy-loaded routes for code splitting
@@ -75,6 +75,21 @@ const RootLayout = () => {
     };
   }, [isMobileDevice]);
   
+  // History exit guard — prevent device back button from exiting the app
+  useEffect(() => {
+    window.history.pushState({ lovableGuard: true }, "");
+
+    const handlePopState = (event: PopStateEvent) => {
+      if (event.state?.lovableGuard && getNavigationDepth() === 0) {
+        window.history.pushState({ lovableGuard: true }, "");
+        navigate("/dashboard");
+      }
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [navigate]);
+
   useEffect(() => {
     // Log mobile capabilities on mount
     if (import.meta.env.DEV) {

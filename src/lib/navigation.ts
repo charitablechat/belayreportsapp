@@ -13,6 +13,14 @@ export function trackNavigation() {
  * Navigate back if there is a real in-app page to return to,
  * otherwise fall back to /dashboard.
  */
+export function getNavigationDepth() {
+  return navigationDepth;
+}
+
+/**
+ * Navigate back if there is a real in-app page to return to,
+ * otherwise fall back to /dashboard.
+ */
 export function goBack(navigate: (to: string | number) => void) {
   if (navigationDepth > 0) {
     navigationDepth--;
