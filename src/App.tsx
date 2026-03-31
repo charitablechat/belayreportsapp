@@ -75,6 +75,21 @@ const RootLayout = () => {
     };
   }, [isMobileDevice]);
   
+  // History exit guard — prevent device back button from exiting the app
+  useEffect(() => {
+    window.history.pushState({ lovableGuard: true }, "");
+
+    const handlePopState = (event: PopStateEvent) => {
+      if (event.state?.lovableGuard && getNavigationDepth() === 0) {
+        window.history.pushState({ lovableGuard: true }, "");
+        navigate("/dashboard");
+      }
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [navigate]);
+
   useEffect(() => {
     // Log mobile capabilities on mount
     if (import.meta.env.DEV) {
