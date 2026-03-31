@@ -1303,7 +1303,7 @@ export default function TrainingForm() {
             ]);
             emitSyncComplete();
             markPendingDashboardRefresh();
-            dispatchDashboardRefresh();
+            markDashboardStaleTimestamp();
           } catch (e) {
             console.warn('[TrainingForm] Save-before-leave error:', e);
           } finally {
