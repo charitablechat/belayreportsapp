@@ -370,27 +370,17 @@ export default function Dashboard() {
       }
     };
 
-    // Pending dashboard refresh flag
-    if (consumePendingDashboardRefresh()) {
-      setTimeout(() => refreshReports(true), 300);
+    // Check if a report form marked data as stale before navigating here
+    if (consumeDashboardStaleTimestamp() || consumePendingDashboardRefresh()) {
+      // Data is definitely stale — the initial refreshReports(true) above handles it.
+      // No need for a delayed second call (it would be throttle-blocked anyway).
+      if (import.meta.env.DEV) console.log('[Dashboard] Stale timestamp detected from report form');
     }
-
-    // popstate: reliable back-navigation refresh (iOS Safari fix)
-    const handlePopState = () => {
-      if (window.location.pathname === '/dashboard') {
-        refreshReports(true);
-      }
-    };
-
-    // Custom event dispatched by report form pages before navigating away
-    const handleDashboardRefresh = () => refreshReports(true);
 
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
     window.addEventListener('focus', handleWindowFocus);
     window.addEventListener('pageshow', handlePageShow);
-    window.addEventListener('popstate', handlePopState);
-    window.addEventListener('dashboard-refresh', handleDashboardRefresh);
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
@@ -398,8 +388,6 @@ export default function Dashboard() {
       window.removeEventListener('offline', handleOffline);
       window.removeEventListener('focus', handleWindowFocus);
       window.removeEventListener('pageshow', handlePageShow);
-      window.removeEventListener('popstate', handlePopState);
-      window.removeEventListener('dashboard-refresh', handleDashboardRefresh);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       subscription.unsubscribe();
       unsubscribeSyncComplete();
