@@ -12,7 +12,7 @@ import { Building2, Users, FileText, Bell, UserPlus, Pencil, Trash2, ClipboardLi
 import { format } from "date-fns";
 import { useNavigate } from "react-router-dom";
 import { goBack } from "@/lib/navigation";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { AdminTabsSection } from "@/components/admin/AdminTabsSection";
 import { UserManagementDialog } from "@/components/admin/UserManagementDialog";
 
