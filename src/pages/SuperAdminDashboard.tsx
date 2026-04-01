@@ -38,9 +38,9 @@ export default function SuperAdminDashboard() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [userToDelete, setUserToDelete] = useState<any>(null);
   const [isMergeDialogOpen, setIsMergeDialogOpen] = useState(false);
-  const [superAdminDialogOpen, setSuperAdminDialogOpen] = useState(false);
-  const [superAdminAction, setSuperAdminAction] = useState<'grant' | 'revoke'>('grant');
-  const [superAdminTargetUser, setSuperAdminTargetUser] = useState<any>(null);
+  const [adminDialogOpen, setAdminDialogOpen] = useState(false);
+  const [adminAction, setAdminAction] = useState<'grant' | 'revoke'>('grant');
+  const [adminTargetUser, setAdminTargetUser] = useState<any>(null);
   const [deactivateDialogOpen, setDeactivateDialogOpen] = useState(false);
   const [userToDeactivate, setUserToDeactivate] = useState<any>(null);
   
