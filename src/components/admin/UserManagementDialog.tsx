@@ -159,7 +159,7 @@ export function UserManagementDialog({
               <Label htmlFor="role">Role</Label>
               <Select
                 value={formData.role}
-                onValueChange={(value: 'inspector' | 'trainer' | 'admin' | 'super_admin') => setFormData({ ...formData, role: value })}
+                onValueChange={(value: 'inspector' | 'trainer' | 'admin') => setFormData({ ...formData, role: value })}
               >
                 <SelectTrigger>
                   <SelectValue />
