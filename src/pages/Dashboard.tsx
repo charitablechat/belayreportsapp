@@ -182,18 +182,15 @@ export default function Dashboard() {
   const { data: isSuperAdmin, isLoading: isSuperAdminLoading } = useQuery({
     queryKey: ["is-super-admin"],
     queryFn: async () => {
-      // Always check localStorage cache first for immediate UI feedback
-      const cachedValue = localStorage.getItem('cached-super-admin-status');
+      const cachedValue = localStorage.getItem('cached-admin-status') || localStorage.getItem('cached-super-admin-status');
       
-      // Skip network check if offline - use cached value
       if (!navigator.onLine) {
         return cachedValue === 'true';
       }
 
-      // Use cached auth instead of direct supabase.auth.getUser()
       const user = await getUserWithCache();
       if (!user) {
-        localStorage.setItem('cached-super-admin-status', 'false');
+        localStorage.setItem('cached-admin-status', 'false');
         return false;
       }
 
@@ -202,31 +199,29 @@ export default function Dashboard() {
           .from("user_roles")
           .select("role")
           .eq("user_id", user.id)
-          .eq("role", "super_admin");
+          .eq("role", "admin");
 
         if (error) {
-          console.warn('[Dashboard] Error checking super admin status:', error);
-          // On error, return cached value if available
+          console.warn('[Dashboard] Error checking admin status:', error);
           return cachedValue === 'true';
         }
 
         const isAdmin = roles && roles.length > 0;
         
-        // Cache the result for offline use and immediate UI on next load
+        localStorage.setItem('cached-admin-status', isAdmin.toString());
         localStorage.setItem('cached-super-admin-status', isAdmin.toString());
         
         return isAdmin;
       } catch (err) {
-        console.warn('[Dashboard] Exception checking super admin status:', err);
+        console.warn('[Dashboard] Exception checking admin status:', err);
         return cachedValue === 'true';
       }
     },
-    staleTime: 2 * 60 * 1000, // Cache for 2 minutes (reduced for faster refresh)
-    retry: 2, // Retry twice on failure
-    retryDelay: 1000, // 1 second between retries
-    // Initialize with cached value to prevent flash of missing badge
+    staleTime: 2 * 60 * 1000,
+    retry: 2,
+    retryDelay: 1000,
     placeholderData: () => {
-      const cached = localStorage.getItem('cached-super-admin-status');
+      const cached = localStorage.getItem('cached-admin-status') || localStorage.getItem('cached-super-admin-status');
       return cached === 'true';
     },
   });
