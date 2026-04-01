@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Building2, Users, FileText, Bell, UserPlus, Pencil, Trash2, ClipboardList, ArrowLeft, Merge, Clock, Calendar, Wrench, Loader2, Image, Shield, ShieldOff, GraduationCap, ClipboardCheck, Check, Settings, RotateCcw, UserCog, AlertTriangle, UserX, UserCheck } from "lucide-react";
+import { Building2, Users, FileText, Bell, UserPlus, Pencil, Trash2, ClipboardList, ArrowLeft, Merge, Clock, Calendar, Shield, ShieldOff, GraduationCap, ClipboardCheck, Check, Settings, RotateCcw, UserCog, AlertTriangle, UserX, UserCheck } from "lucide-react";
 import { format } from "date-fns";
 import { useNavigate } from "react-router-dom";
 import { goBack } from "@/lib/navigation";
@@ -50,7 +50,7 @@ export default function SuperAdminDashboard() {
   const [isInspectionsListOpen, setIsInspectionsListOpen] = useState(false);
   const [isTrainingsListOpen, setIsTrainingsListOpen] = useState(false);
   const [isDailyListOpen, setIsDailyListOpen] = useState(false);
-  const [isCleaningUp, setIsCleaningUp] = useState(false);
+  
   const [resetMetricDialogOpen, setResetMetricDialogOpen] = useState(false);
   
   // Organization edit/delete states
@@ -562,23 +562,6 @@ export default function SuperAdminDashboard() {
     }
   };
 
-  // Cleanup function for duplicate summaries
-  const handleCleanupDuplicates = async () => {
-    setIsCleaningUp(true);
-    try {
-      const { data, error } = await supabase.functions.invoke('cleanup-duplicate-summaries');
-
-      if (error) throw error;
-      if (!data.success) throw new Error(data.error);
-
-      toast.success(`Cleanup complete: ${data.updatedCount} records updated`);
-    } catch (error: any) {
-      console.error('Error during cleanup:', error);
-      toast.error(error?.message || 'Cleanup failed');
-    } finally{
-      setIsCleaningUp(false);
-    }
-  };
 
   // Organization management functions
   const handleEditOrg = (org: any) => {
@@ -1242,69 +1225,6 @@ export default function SuperAdminDashboard() {
           <DataRecoveryTool deletedRecordsSlot={<DeletedRecordsRecovery />} />
         </TabsContent>
 
-        <TabsContent value="maintenance" className="space-y-4">
-          <div className="rounded-md border p-6 space-y-6">
-            <div className="flex items-start gap-4">
-              <div className="flex-shrink-0 mt-1">
-                <Image className="h-6 w-6 text-primary" />
-              </div>
-              <div className="flex-1 space-y-2">
-                <h3 className="text-lg font-semibold">Report Logo Management</h3>
-                <p className="text-sm text-muted-foreground">
-                  Upload and manage the Rope Works and ACCT logos that appear in all generated PDF reports.
-                  Changes will be reflected in all future reports without requiring code changes.
-                </p>
-                <div className="pt-4">
-                  <Button
-                    onClick={() => navigate('/admin/logos')}
-                    className="gap-2"
-                  >
-                    <Image className="h-4 w-4" />
-                    Manage Logos
-                  </Button>
-                </div>
-              </div>
-            </div>
-            
-            <div className="flex items-start gap-4">
-              <div className="flex-shrink-0 mt-1">
-                <Wrench className="h-6 w-6 text-primary" />
-              </div>
-              <div className="flex-1 space-y-2">
-                <h3 className="text-lg font-semibold">Cleanup Duplicate Summary Data</h3>
-                <p className="text-sm text-muted-foreground">
-                  This tool deduplicates corrupted summary data in the inspection_summary table.
-                  It removes duplicate list items from the "repairs_performed" and "critical_actions" fields
-                  that were caused by the auto-generation bug.
-                </p>
-                <div className="pt-4">
-                  <Button
-                    onClick={handleCleanupDuplicates}
-                    disabled={isCleaningUp}
-                    className="gap-2"
-                  >
-                    {isCleaningUp ? (
-                      <>
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        Cleaning up...
-                      </>
-                    ) : (
-                      <>
-                        <Wrench className="h-4 w-4" />
-                        Run Cleanup
-                      </>
-                    )}
-                  </Button>
-                </div>
-                <div className="pt-2">
-                  <p className="text-xs text-muted-foreground">
-                    ⚠️ This operation will update all affected inspection summaries. Make sure to review the results in the console.
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </TabsContent>
 
         <TabsContent value="report-ownership" className="space-y-4">
           <ReportOwnershipTool />
