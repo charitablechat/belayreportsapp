@@ -5,18 +5,21 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { Database, Download, Upload, Loader2, Clock, HardDrive, RefreshCw } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Database, Download, Upload, Loader2, Clock, HardDrive, RefreshCw, FileSpreadsheet, FileArchive, FileJson, ChevronDown } from "lucide-react";
 import { toast } from "sonner";
 import { format, formatDistanceToNow } from "date-fns";
 import {
   triggerFullBackup,
   downloadBackupFile,
+  downloadBackupFileRaw,
   listServerBackups,
   getLatestBackup,
   restoreFromFile,
   restoreFromServer,
   formatFileSize,
 } from "@/lib/full-backup";
+import { downloadBackupAsExcel, downloadBackupAsCsv } from "@/lib/backup-export";
 
 export function DatabaseBackupsPanel() {
   const queryClient = useQueryClient();
@@ -52,7 +55,7 @@ export function DatabaseBackupsPanel() {
         duration: 15000,
         action: {
           label: "Download",
-          onClick: () => handleDownload(latest.file_path),
+          onClick: () => handleDownload(latest.file_path, "json"),
         },
         onDismiss: () => localStorage.setItem("lastBackupDismissedId", latest.id),
       });
@@ -74,10 +77,19 @@ export function DatabaseBackupsPanel() {
     }
   };
 
-  const handleDownload = async (filePath: string) => {
+  const handleDownload = async (filePath: string, format: "json" | "excel" | "csv" = "json") => {
     setIsDownloading(filePath);
     try {
-      await downloadBackupFile(filePath);
+      if (format === "json") {
+        await downloadBackupFile(filePath);
+      } else {
+        const blob = await downloadBackupFileRaw(filePath);
+        if (format === "excel") {
+          await downloadBackupAsExcel(blob);
+        } else {
+          await downloadBackupAsCsv(blob);
+        }
+      }
       toast.success("Download started");
     } catch (err: any) {
       toast.error("Download failed", { description: err.message });
@@ -232,19 +244,37 @@ export function DatabaseBackupsPanel() {
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-2">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleDownload(backup.file_path)}
-                              disabled={isDownloading === backup.file_path}
-                            >
-                              {isDownloading === backup.file_path ? (
-                                <Loader2 className="h-3 w-3 animate-spin" />
-                              ) : (
-                                <Download className="h-3 w-3" />
-                              )}
-                              Download
-                            </Button>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  disabled={isDownloading === backup.file_path}
+                                >
+                                  {isDownloading === backup.file_path ? (
+                                    <Loader2 className="h-3 w-3 animate-spin" />
+                                  ) : (
+                                    <Download className="h-3 w-3" />
+                                  )}
+                                  Download
+                                  <ChevronDown className="h-3 w-3" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={() => handleDownload(backup.file_path, "json")}>
+                                  <FileJson className="h-4 w-4 mr-2" />
+                                  JSON
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handleDownload(backup.file_path, "excel")}>
+                                  <FileSpreadsheet className="h-4 w-4 mr-2" />
+                                  Excel (.xlsx)
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handleDownload(backup.file_path, "csv")}>
+                                  <FileArchive className="h-4 w-4 mr-2" />
+                                  CSV (.zip)
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
                             <Button
                               variant="outline"
                               size="sm"
