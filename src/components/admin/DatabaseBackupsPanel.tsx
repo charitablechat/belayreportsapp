@@ -5,18 +5,21 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { Database, Download, Upload, Loader2, Clock, HardDrive, RefreshCw } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Database, Download, Upload, Loader2, Clock, HardDrive, RefreshCw, FileSpreadsheet, FileArchive, FileJson, ChevronDown } from "lucide-react";
 import { toast } from "sonner";
 import { format, formatDistanceToNow } from "date-fns";
 import {
   triggerFullBackup,
   downloadBackupFile,
+  downloadBackupFileRaw,
   listServerBackups,
   getLatestBackup,
   restoreFromFile,
   restoreFromServer,
   formatFileSize,
 } from "@/lib/full-backup";
+import { downloadBackupAsExcel, downloadBackupAsCsv } from "@/lib/backup-export";
 
 export function DatabaseBackupsPanel() {
   const queryClient = useQueryClient();
