@@ -1006,7 +1006,7 @@ export default function SuperAdminDashboard() {
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => handleSuperAdminToggle(user)}
+                        onClick={() => handleAdminToggle(user)}
                         title={user.isSuperAdmin ? 'Remove Admin' : 'Make Admin'}
                       >
                         {user.isSuperAdmin ? (
