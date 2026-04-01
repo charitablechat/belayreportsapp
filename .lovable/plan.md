@@ -1,26 +1,18 @@
 
 
-## Generate Copyright Deposit Pages
+## Grant Super Admin Role to kale@belayreports.com
 
-**What**: Create a text file containing the first 25 pages (~1,250 lines) and last 25 pages (~1,250 lines) of your source code, formatted for copyright registration with the US Copyright Office.
+**What**: Insert a `super_admin` role for user `kale@belayreports.com` (ID: `759e973e-2484-4db3-862a-0cb2ec6d6ea3`) into the `user_roles` table. This user currently has no roles assigned.
 
-### Approach
+### Change
 
-1. **Concatenate all source files** in a logical order (e.g., `src/` files alphabetically) into one continuous listing, with file headers marking each file boundary
-2. **Extract first 1,250 lines** (≈25 pages at 50 lines/page)
-3. **Extract last 1,250 lines** (≈25 pages at 50 lines/page)
-4. **Add a separator** between the two sections indicating omitted material
-5. **Output** to `/mnt/documents/copyright-deposit.txt`
+**Database migration** — single INSERT statement:
 
-### Format
+```sql
+INSERT INTO public.user_roles (user_id, role, organization_id)
+VALUES ('759e973e-2484-4db3-862a-0cb2ec6d6ea3', 'super_admin', NULL)
+ON CONFLICT (user_id, role) DO NOTHING;
+```
 
-Each page will include:
-- File path header when a new file begins
-- Line numbers for reference
-- Standard 50 lines per page with page markers
-
-### Notes
-
-- The Copyright Office accepts identifying portions as either the first/last 25 pages OR first/last 10 pages with trade secret material blocked out
-- This will be a plain text file you can print or submit digitally
+No code changes needed. One migration, one row inserted.
 
