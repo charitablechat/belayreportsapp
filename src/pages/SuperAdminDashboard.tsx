@@ -1,4 +1,4 @@
-import { useRequireSuperAdmin } from "@/hooks/useRequireSuperAdmin";
+import { useRequireAdmin } from "@/hooks/useRequireAdmin";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Tabs, TabsContent } from "@/components/ui/tabs";
