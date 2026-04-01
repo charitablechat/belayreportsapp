@@ -35,6 +35,11 @@ export default function SuperAdminDashboard() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  useEffect(() => {
+    getUserWithCache().then(u => setCurrentUserId(u?.id || null));
+  }, []);
+  
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogMode, setDialogMode] = useState<'create' | 'edit'>('create');
   const [selectedUser, setSelectedUser] = useState<any>(null);
