@@ -244,19 +244,37 @@ export function DatabaseBackupsPanel() {
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-2">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleDownload(backup.file_path)}
-                              disabled={isDownloading === backup.file_path}
-                            >
-                              {isDownloading === backup.file_path ? (
-                                <Loader2 className="h-3 w-3 animate-spin" />
-                              ) : (
-                                <Download className="h-3 w-3" />
-                              )}
-                              Download
-                            </Button>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  disabled={isDownloading === backup.file_path}
+                                >
+                                  {isDownloading === backup.file_path ? (
+                                    <Loader2 className="h-3 w-3 animate-spin" />
+                                  ) : (
+                                    <Download className="h-3 w-3" />
+                                  )}
+                                  Download
+                                  <ChevronDown className="h-3 w-3" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={() => handleDownload(backup.file_path, "json")}>
+                                  <FileJson className="h-4 w-4 mr-2" />
+                                  JSON
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handleDownload(backup.file_path, "excel")}>
+                                  <FileSpreadsheet className="h-4 w-4 mr-2" />
+                                  Excel (.xlsx)
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handleDownload(backup.file_path, "csv")}>
+                                  <FileArchive className="h-4 w-4 mr-2" />
+                                  CSV (.zip)
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
                             <Button
                               variant="outline"
                               size="sm"
