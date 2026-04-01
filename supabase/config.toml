@@ -62,3 +62,6 @@ verify_jwt = false
 
 [functions.parse-inspection-docx]
 verify_jwt = true
+
+[functions.scheduled-backup-notify]
+verify_jwt = false
