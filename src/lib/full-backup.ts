@@ -12,13 +12,17 @@ export async function triggerFullBackup(): Promise<{
   return data;
 }
 
-export async function downloadBackupFile(filePath: string): Promise<void> {
+export async function downloadBackupFileRaw(filePath: string): Promise<Blob> {
   const { data, error } = await supabase.storage
     .from("database-backups")
     .download(filePath);
 
   if (error || !data) throw new Error("Failed to download backup file");
+  return data;
+}
 
+export async function downloadBackupFile(filePath: string): Promise<void> {
+  const data = await downloadBackupFileRaw(filePath);
   const timestamp = filePath.replace("backup-", "").replace(".json", "");
   saveToDevice(data, `ropeworks-full-backup-${timestamp}.json`);
 }
