@@ -55,7 +55,7 @@ export function DatabaseBackupsPanel() {
         duration: 15000,
         action: {
           label: "Download",
-          onClick: () => handleDownload(latest.file_path),
+          onClick: () => handleDownload(latest.file_path, "json"),
         },
         onDismiss: () => localStorage.setItem("lastBackupDismissedId", latest.id),
       });
