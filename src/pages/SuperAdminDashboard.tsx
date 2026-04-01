@@ -836,7 +836,7 @@ export default function SuperAdminDashboard() {
 
       {/* Tabs for different sections */}
       <Tabs defaultValue="organizations" className="space-y-6">
-        <AdminTabsSection />
+        <AdminTabsSection showBackupTab={currentUserId === BACKUP_ADMIN_ID} />
 
         <TabsContent value="organizations" className="space-y-4">
           <div className="rounded-md border">
