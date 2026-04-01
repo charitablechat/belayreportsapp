@@ -14,11 +14,11 @@ let pendingUserPromise: Promise<CachedUser | null> | null = null;
 let authListenerInitialized = false;
 const CACHE_TTL = 60000; // 1 minute cache
 
-// Super admin status cache - reduces redundant RPC calls
-let cachedSuperAdminStatus: boolean | null = null;
-let superAdminCacheTimestamp: number = 0;
-let pendingSuperAdminPromise: Promise<boolean> | null = null;
-const SUPER_ADMIN_CACHE_TTL = 120000; // 2 minutes
+// Admin status cache - reduces redundant RPC calls
+let cachedAdminStatus: boolean | null = null;
+let adminCacheTimestamp: number = 0;
+let pendingAdminPromise: Promise<boolean> | null = null;
+const ADMIN_CACHE_TTL = 120000; // 2 minutes
 const SESSION_REFRESH_BUFFER = 60; // Refresh if within 60 seconds of expiry
 const AUTH_NETWORK_TIMEOUT = 8000; // 8 seconds max for network auth fetch
 
