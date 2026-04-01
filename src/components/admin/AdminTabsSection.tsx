@@ -46,7 +46,7 @@ export const AdminTabsSection = ({ children, showBackupTab = false }: AdminTabsS
   return (
     <TooltipProvider delayDuration={300}>
       <TabsList className="flex flex-col h-auto w-full items-stretch backdrop-blur-md bg-white/[0.03] dark:bg-white/[0.02] border border-white/10 dark:border-white/[0.06] rounded-xl p-1.5 shadow-lg shadow-black/5">
-        {tabs.map((tab) => (
+        {allTabs.map((tab) => (
           <AdminTab
             key={tab.value}
             value={tab.value}
