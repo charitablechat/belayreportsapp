@@ -1,18 +1,15 @@
 
 
-## Grant Super Admin Role to kale@belayreports.com
+## Remove Maintenance Tab from Admin Dashboard
 
-**What**: Insert a `super_admin` role for user `kale@belayreports.com` (ID: `759e973e-2484-4db3-862a-0cb2ec6d6ea3`) into the `user_roles` table. This user currently has no roles assigned.
+### Changes
 
-### Change
+**1. `src/components/admin/AdminTabsSection.tsx`**
+- Remove the `maintenance` entry from the `tabs` array (the one with `icon: Wrench, title: "Maintenance"`)
+- Remove the `Wrench` import from lucide-react
 
-**Database migration** — single INSERT statement:
-
-```sql
-INSERT INTO public.user_roles (user_id, role, organization_id)
-VALUES ('759e973e-2484-4db3-862a-0cb2ec6d6ea3', 'super_admin', NULL)
-ON CONFLICT (user_id, role) DO NOTHING;
-```
-
-No code changes needed. One migration, one row inserted.
+**2. `src/pages/SuperAdminDashboard.tsx`**
+- Remove the entire `<TabsContent value="maintenance">` block (lines 1245–1307)
+- Remove related state/handler (`isCleaningUp`, `handleCleanupDuplicates`) if they're only used by the maintenance tab
+- Clean up any unused imports (`Image`, `Wrench`, `Loader2` if no longer referenced elsewhere)
 
