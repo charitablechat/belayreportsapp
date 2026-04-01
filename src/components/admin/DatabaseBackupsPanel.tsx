@@ -77,10 +77,19 @@ export function DatabaseBackupsPanel() {
     }
   };
 
-  const handleDownload = async (filePath: string) => {
+  const handleDownload = async (filePath: string, format: "json" | "excel" | "csv" = "json") => {
     setIsDownloading(filePath);
     try {
-      await downloadBackupFile(filePath);
+      if (format === "json") {
+        await downloadBackupFile(filePath);
+      } else {
+        const blob = await downloadBackupFileRaw(filePath);
+        if (format === "excel") {
+          await downloadBackupAsExcel(blob);
+        } else {
+          await downloadBackupAsCsv(blob);
+        }
+      }
       toast.success("Download started");
     } catch (err: any) {
       toast.error("Download failed", { description: err.message });
