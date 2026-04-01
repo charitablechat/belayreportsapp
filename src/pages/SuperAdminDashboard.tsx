@@ -26,6 +26,10 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "
 import { toast } from "sonner";
 import { parseLocalDate } from "@/lib/date-utils";
 import { getSessionBackground } from "@/lib/background-manager";
+import { getUserWithCache } from "@/lib/cached-auth";
+
+const BACKUP_ADMIN_ID = '759e973e-2484-4db3-862a-0cb2ec6d6ea3';
+import { getSessionBackground } from "@/lib/background-manager";
 
 export default function SuperAdminDashboard() {
   const { loading } = useRequireAdmin();
