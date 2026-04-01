@@ -88,15 +88,10 @@ Deno.serve(async (req) => {
     const userId = claimsData.claims.sub;
 
     const adminClient = createClient(supabaseUrl, serviceRoleKey);
-    const { data: roleCheck } = await adminClient
-      .from("user_roles")
-      .select("role")
-      .eq("user_id", userId)
-      .eq("role", "super_admin")
-      .maybeSingle();
-
-    if (!roleCheck) {
-      return new Response(JSON.stringify({ error: "Super admin required" }), {
+    // Only Kale can access backups
+    const BACKUP_ADMIN_ID = '759e973e-2484-4db3-862a-0cb2ec6d6ea3';
+    if (userId !== BACKUP_ADMIN_ID) {
+      return new Response(JSON.stringify({ error: "Backup access restricted" }), {
         status: 403,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });

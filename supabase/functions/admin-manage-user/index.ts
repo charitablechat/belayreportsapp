@@ -362,41 +362,38 @@ Deno.serve(async (req) => {
         );
       }
 
-      case 'grant_super_admin': {
+      case 'grant_admin': {
         const { userId } = payload as { userId: string };
 
-        // Prevent granting to self
         if (userId === user.id) {
-          throw new Error('Cannot grant super admin to yourself');
+          throw new Error('Cannot grant admin to yourself');
         }
 
-        // Check if user already has super_admin role
         const { data: existingRole } = await supabaseAdmin
           .from('user_roles')
           .select('id')
           .eq('user_id', userId)
-          .eq('role', 'super_admin')
+          .eq('role', 'admin')
           .single();
 
         if (existingRole) {
-          throw new Error('User is already a super admin');
+          throw new Error('User is already an admin');
         }
 
-        // Grant super admin role
         const { error: roleError } = await supabaseAdmin
           .from('user_roles')
           .insert({
             user_id: userId,
-            role: 'super_admin',
+            role: 'admin',
             organization_id: null,
           });
 
         if (roleError) {
-          console.error('Error granting super admin:', roleError);
+          console.error('Error granting admin:', roleError);
           throw roleError;
         }
 
-        console.log(`Super admin granted to user: ${userId}`);
+        console.log(`Admin granted to user: ${userId}`);
 
         return new Response(
           JSON.stringify({ success: true }),
@@ -404,37 +401,25 @@ Deno.serve(async (req) => {
         );
       }
 
-      case 'revoke_super_admin': {
+      case 'revoke_admin': {
         const { userId } = payload as { userId: string };
 
-        // Prevent revoking from self
         if (userId === user.id) {
-          throw new Error('Cannot revoke your own super admin status');
+          throw new Error('Cannot revoke your own admin status');
         }
 
-        // Count remaining super admins
-        const { count } = await supabaseAdmin
-          .from('user_roles')
-          .select('*', { count: 'exact', head: true })
-          .eq('role', 'super_admin');
-
-        if (count && count <= 1) {
-          throw new Error('Cannot revoke the last super admin');
-        }
-
-        // Revoke super admin role
         const { error: deleteError } = await supabaseAdmin
           .from('user_roles')
           .delete()
           .eq('user_id', userId)
-          .eq('role', 'super_admin');
+          .eq('role', 'admin');
 
         if (deleteError) {
-          console.error('Error revoking super admin:', deleteError);
+          console.error('Error revoking admin:', deleteError);
           throw deleteError;
         }
 
-        console.log(`Super admin revoked from user: ${userId}`);
+        console.log(`Admin revoked from user: ${userId}`);
 
         return new Response(
           JSON.stringify({ success: true }),
