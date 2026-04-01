@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { Upload, Image as ImageIcon, Loader2, CheckCircle2, Info } from 'lucide-react';
-import { useRequireSuperAdmin } from '@/hooks/useRequireSuperAdmin';
+import { useRequireAdmin } from '@/hooks/useRequireAdmin';
 import { optimizeImage, formatFileSize, formatDimensions, LOGO_PRESETS, type OptimizedResult } from '@/lib/image-optimizer';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
