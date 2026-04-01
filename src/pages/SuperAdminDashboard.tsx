@@ -1579,23 +1579,23 @@ export default function SuperAdminDashboard() {
       />
 
       {/* Admin Toggle Confirmation Dialog */}
-      <AlertDialog open={superAdminDialogOpen} onOpenChange={setSuperAdminDialogOpen}>
+      <AlertDialog open={adminDialogOpen} onOpenChange={setAdminDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {superAdminAction === 'grant' ? 'Grant Admin Access' : 'Revoke Admin Access'}
+              {adminAction === 'grant' ? 'Grant Admin Access' : 'Revoke Admin Access'}
             </AlertDialogTitle>
             <AlertDialogDescription>
-              {superAdminAction === 'grant' ? (
+              {adminAction === 'grant' ? (
                 <>
                   Are you sure you want to grant admin privileges to{' '}
-                  <strong>{superAdminTargetUser?.email}</strong>?
+                  <strong>{adminTargetUser?.email}</strong>?
                   They will have full access to manage all organizations, users, and system settings.
                 </>
               ) : (
                 <>
                   Are you sure you want to revoke admin privileges from{' '}
-                  <strong>{superAdminTargetUser?.email}</strong>?
+                  <strong>{adminTargetUser?.email}</strong>?
                   They will lose access to the admin dashboard and system-wide management capabilities.
                 </>
               )}
@@ -1604,10 +1604,10 @@ export default function SuperAdminDashboard() {
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction 
-              onClick={handleConfirmSuperAdminToggle}
-              className={superAdminAction === 'grant' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-orange-600 hover:bg-orange-700'}
+              onClick={handleConfirmAdminToggle}
+              className={adminAction === 'grant' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-orange-600 hover:bg-orange-700'}
             >
-              {superAdminAction === 'grant' ? 'Grant Access' : 'Revoke Access'}
+              {adminAction === 'grant' ? 'Grant Access' : 'Revoke Access'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
