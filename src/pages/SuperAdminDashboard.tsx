@@ -478,31 +478,31 @@ export default function SuperAdminDashboard() {
     setDeleteDialogOpen(true);
   };
 
-  const handleSuperAdminToggle = (user: any) => {
-    setSuperAdminTargetUser(user);
-    setSuperAdminAction(user.isSuperAdmin ? 'revoke' : 'grant');
-    setSuperAdminDialogOpen(true);
+  const handleAdminToggle = (user: any) => {
+    setAdminTargetUser(user);
+    setAdminAction(user.isSuperAdmin ? 'revoke' : 'grant');
+    setAdminDialogOpen(true);
   };
 
-  const handleConfirmSuperAdminToggle = async () => {
-    if (!superAdminTargetUser) return;
+  const handleConfirmAdminToggle = async () => {
+    if (!adminTargetUser) return;
 
     try {
       const { data, error } = await supabase.functions.invoke('admin-manage-user', {
         body: {
-          action: superAdminAction === 'grant' ? 'grant_super_admin' : 'revoke_super_admin',
-          userId: superAdminTargetUser.id
+          action: adminAction === 'grant' ? 'grant_admin' : 'revoke_admin',
+          userId: adminTargetUser.id
         }
       });
 
       if (error) throw error;
       if (!data.success) throw new Error(data.error);
 
-      toast.success(superAdminAction === 'grant' 
+      toast.success(adminAction === 'grant' 
         ? 'Admin privileges granted' 
         : 'Admin privileges revoked');
-      setSuperAdminDialogOpen(false);
-      setSuperAdminTargetUser(null);
+      setAdminDialogOpen(false);
+      setAdminTargetUser(null);
       refetchUsers();
       queryClient.invalidateQueries({ queryKey: ["admin-users"] });
     } catch (error: any) {
