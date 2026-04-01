@@ -100,12 +100,12 @@ serve(async (req) => {
 
     const { organizationId, notificationType, title, body, data } = payload;
 
-    // Step 1: Get super_admin user_ids for the organization
+    // Step 1: Get admin user_ids for the organization
     const { data: adminRoles, error: fetchRolesError } = await supabaseServiceClient
       .from('user_roles')
       .select('user_id')
       .eq('organization_id', organizationId)
-      .eq('role', 'super_admin');
+      .eq('role', 'admin');
 
     if (fetchRolesError) {
       console.error('Error fetching super admins:', fetchRolesError);

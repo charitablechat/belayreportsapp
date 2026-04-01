@@ -97,7 +97,7 @@ serve(async (req) => {
     const { data: adminRoles, error: rolesError } = await supabaseAdmin
       .from('user_roles')
       .select('user_id')
-      .eq('role', 'super_admin');
+      .eq('role', 'admin');
 
     if (rolesError) {
       console.error('Error fetching admin roles:', rolesError);
