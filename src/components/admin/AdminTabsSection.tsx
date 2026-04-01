@@ -33,6 +33,7 @@ const tabs = [
 
 interface AdminTabsSectionProps {
   children?: React.ReactNode;
+  showBackupTab?: boolean;
 }
 
 export const AdminTabsSection = ({ children }: AdminTabsSectionProps) => {
