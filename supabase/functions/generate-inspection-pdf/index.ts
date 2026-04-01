@@ -74,7 +74,7 @@ serve(async (req) => {
     if (inspectionError) throw inspectionError;
 
     // Authorization check
-    const isSuperAdmin = await supabase.from('user_roles').select('role').eq('user_id', user.id).eq('role', 'super_admin').single();
+    const isSuperAdmin = await supabase.from('user_roles').select('role').eq('user_id', user.id).eq('role', 'admin').single();
     if (!isSuperAdmin.data && inspection.inspector_id !== user.id) {
       throw new Error('Unauthorized to generate this report');
     }

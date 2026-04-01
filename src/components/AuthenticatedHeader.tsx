@@ -87,12 +87,13 @@ export function AuthenticatedHeader() {
           .from("user_roles")
           .select("role")
           .eq("user_id", user.id)
-          .eq("role", "super_admin");
+          .eq("role", "admin");
 
         if (error) return cachedValue === "true";
 
         const isAdmin = roles && roles.length > 0;
         localStorage.setItem("cached-super-admin-status", isAdmin.toString());
+        localStorage.setItem("cached-admin-status", isAdmin.toString());
         return isAdmin;
       } catch {
         return cachedValue === "true";

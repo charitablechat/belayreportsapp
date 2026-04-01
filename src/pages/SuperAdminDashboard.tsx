@@ -1,4 +1,4 @@
-import { useRequireSuperAdmin } from "@/hooks/useRequireSuperAdmin";
+import { useRequireAdmin } from "@/hooks/useRequireAdmin";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Tabs, TabsContent } from "@/components/ui/tabs";
@@ -12,7 +12,7 @@ import { Building2, Users, FileText, Bell, UserPlus, Pencil, Trash2, ClipboardLi
 import { format } from "date-fns";
 import { useNavigate } from "react-router-dom";
 import { goBack } from "@/lib/navigation";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { AdminTabsSection } from "@/components/admin/AdminTabsSection";
 import { UserManagementDialog } from "@/components/admin/UserManagementDialog";
 
@@ -26,11 +26,19 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "
 import { toast } from "sonner";
 import { parseLocalDate } from "@/lib/date-utils";
 import { getSessionBackground } from "@/lib/background-manager";
+import { getUserWithCache } from "@/lib/cached-auth";
+
+const BACKUP_ADMIN_ID = '759e973e-2484-4db3-862a-0cb2ec6d6ea3';
 
 export default function SuperAdminDashboard() {
-  const { loading } = useRequireSuperAdmin();
+  const { loading } = useRequireAdmin();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  useEffect(() => {
+    getUserWithCache().then(u => setCurrentUserId(u?.id || null));
+  }, []);
   
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogMode, setDialogMode] = useState<'create' | 'edit'>('create');
@@ -38,9 +46,9 @@ export default function SuperAdminDashboard() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [userToDelete, setUserToDelete] = useState<any>(null);
   const [isMergeDialogOpen, setIsMergeDialogOpen] = useState(false);
-  const [superAdminDialogOpen, setSuperAdminDialogOpen] = useState(false);
-  const [superAdminAction, setSuperAdminAction] = useState<'grant' | 'revoke'>('grant');
-  const [superAdminTargetUser, setSuperAdminTargetUser] = useState<any>(null);
+  const [adminDialogOpen, setAdminDialogOpen] = useState(false);
+  const [adminAction, setAdminAction] = useState<'grant' | 'revoke'>('grant');
+  const [adminTargetUser, setAdminTargetUser] = useState<any>(null);
   const [deactivateDialogOpen, setDeactivateDialogOpen] = useState(false);
   const [userToDeactivate, setUserToDeactivate] = useState<any>(null);
   
@@ -462,7 +470,7 @@ export default function SuperAdminDashboard() {
   const handleEditClick = (user: any) => {
     // Determine the user's primary role
     const primaryRole = user.isSuperAdmin 
-      ? 'super_admin' 
+      ? 'admin' 
       : user.roles?.find((r: any) => r.role === 'admin') 
         ? 'admin' 
         : user.roles?.find((r: any) => r.role === 'inspector')
@@ -478,31 +486,31 @@ export default function SuperAdminDashboard() {
     setDeleteDialogOpen(true);
   };
 
-  const handleSuperAdminToggle = (user: any) => {
-    setSuperAdminTargetUser(user);
-    setSuperAdminAction(user.isSuperAdmin ? 'revoke' : 'grant');
-    setSuperAdminDialogOpen(true);
+  const handleAdminToggle = (user: any) => {
+    setAdminTargetUser(user);
+    setAdminAction(user.isSuperAdmin ? 'revoke' : 'grant');
+    setAdminDialogOpen(true);
   };
 
-  const handleConfirmSuperAdminToggle = async () => {
-    if (!superAdminTargetUser) return;
+  const handleConfirmAdminToggle = async () => {
+    if (!adminTargetUser) return;
 
     try {
       const { data, error } = await supabase.functions.invoke('admin-manage-user', {
         body: {
-          action: superAdminAction === 'grant' ? 'grant_super_admin' : 'revoke_super_admin',
-          userId: superAdminTargetUser.id
+          action: adminAction === 'grant' ? 'grant_admin' : 'revoke_admin',
+          userId: adminTargetUser.id
         }
       });
 
       if (error) throw error;
       if (!data.success) throw new Error(data.error);
 
-      toast.success(superAdminAction === 'grant' 
+      toast.success(adminAction === 'grant' 
         ? 'Admin privileges granted' 
         : 'Admin privileges revoked');
-      setSuperAdminDialogOpen(false);
-      setSuperAdminTargetUser(null);
+      setAdminDialogOpen(false);
+      setAdminTargetUser(null);
       refetchUsers();
       queryClient.invalidateQueries({ queryKey: ["admin-users"] });
     } catch (error: any) {
@@ -828,7 +836,7 @@ export default function SuperAdminDashboard() {
 
       {/* Tabs for different sections */}
       <Tabs defaultValue="organizations" className="space-y-6">
-        <AdminTabsSection />
+        <AdminTabsSection showBackupTab={currentUserId === BACKUP_ADMIN_ID} />
 
         <TabsContent value="organizations" className="space-y-4">
           <div className="rounded-md border">
@@ -1006,7 +1014,7 @@ export default function SuperAdminDashboard() {
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => handleSuperAdminToggle(user)}
+                        onClick={() => handleAdminToggle(user)}
                         title={user.isSuperAdmin ? 'Remove Admin' : 'Make Admin'}
                       >
                         {user.isSuperAdmin ? (
@@ -1579,23 +1587,23 @@ export default function SuperAdminDashboard() {
       />
 
       {/* Admin Toggle Confirmation Dialog */}
-      <AlertDialog open={superAdminDialogOpen} onOpenChange={setSuperAdminDialogOpen}>
+      <AlertDialog open={adminDialogOpen} onOpenChange={setAdminDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {superAdminAction === 'grant' ? 'Grant Admin Access' : 'Revoke Admin Access'}
+              {adminAction === 'grant' ? 'Grant Admin Access' : 'Revoke Admin Access'}
             </AlertDialogTitle>
             <AlertDialogDescription>
-              {superAdminAction === 'grant' ? (
+              {adminAction === 'grant' ? (
                 <>
                   Are you sure you want to grant admin privileges to{' '}
-                  <strong>{superAdminTargetUser?.email}</strong>?
+                  <strong>{adminTargetUser?.email}</strong>?
                   They will have full access to manage all organizations, users, and system settings.
                 </>
               ) : (
                 <>
                   Are you sure you want to revoke admin privileges from{' '}
-                  <strong>{superAdminTargetUser?.email}</strong>?
+                  <strong>{adminTargetUser?.email}</strong>?
                   They will lose access to the admin dashboard and system-wide management capabilities.
                 </>
               )}
@@ -1604,10 +1612,10 @@ export default function SuperAdminDashboard() {
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction 
-              onClick={handleConfirmSuperAdminToggle}
-              className={superAdminAction === 'grant' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-orange-600 hover:bg-orange-700'}
+              onClick={handleConfirmAdminToggle}
+              className={adminAction === 'grant' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-orange-600 hover:bg-orange-700'}
             >
-              {superAdminAction === 'grant' ? 'Grant Access' : 'Revoke Access'}
+              {adminAction === 'grant' ? 'Grant Access' : 'Revoke Access'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

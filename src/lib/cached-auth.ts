@@ -14,11 +14,11 @@ let pendingUserPromise: Promise<CachedUser | null> | null = null;
 let authListenerInitialized = false;
 const CACHE_TTL = 60000; // 1 minute cache
 
-// Super admin status cache - reduces redundant RPC calls
-let cachedSuperAdminStatus: boolean | null = null;
-let superAdminCacheTimestamp: number = 0;
-let pendingSuperAdminPromise: Promise<boolean> | null = null;
-const SUPER_ADMIN_CACHE_TTL = 120000; // 2 minutes
+// Admin status cache - reduces redundant RPC calls
+let cachedAdminStatus: boolean | null = null;
+let adminCacheTimestamp: number = 0;
+let pendingAdminPromise: Promise<boolean> | null = null;
+const ADMIN_CACHE_TTL = 120000; // 2 minutes
 const SESSION_REFRESH_BUFFER = 60; // Refresh if within 60 seconds of expiry
 const AUTH_NETWORK_TIMEOUT = 8000; // 8 seconds max for network auth fetch
 
@@ -219,67 +219,75 @@ export function invalidateUserCache() {
   cachedUser = null;
   cacheTimestamp = 0;
   pendingUserPromise = null;
-  // Also invalidate super admin cache on user cache invalidation
-  invalidateSuperAdminCache();
+  // Also invalidate admin cache on user cache invalidation
+  invalidateAdminCache();
   // Clear offline auth credentials on sign-out
   clearOfflineAuth().catch(() => {});
 }
 
 /**
- * Gets the super admin status with session-level caching.
+ * Gets the admin status with session-level caching.
  * Uses a single-flight pattern to deduplicate concurrent requests.
  * Falls back to localStorage when offline.
  */
-export async function getSuperAdminStatusWithCache(): Promise<boolean> {
+export async function getAdminStatusWithCache(): Promise<boolean> {
   const now = Date.now();
   
   // Return cached value if still valid
-  if (cachedSuperAdminStatus !== null && (now - superAdminCacheTimestamp) < SUPER_ADMIN_CACHE_TTL) {
-    return cachedSuperAdminStatus;
+  if (cachedAdminStatus !== null && (now - adminCacheTimestamp) < ADMIN_CACHE_TTL) {
+    return cachedAdminStatus;
   }
   
   // Single-flight pattern - dedupe concurrent requests
-  if (pendingSuperAdminPromise) {
-    return pendingSuperAdminPromise;
+  if (pendingAdminPromise) {
+    return pendingAdminPromise;
   }
   
   // Check localStorage for offline fallback
-  const localCached = localStorage.getItem('cached-super-admin-status');
+  const localCached = localStorage.getItem('cached-admin-status');
   if (!navigator.onLine && localCached !== null) {
     return localCached === 'true';
   }
   
-  pendingSuperAdminPromise = (async () => {
+  pendingAdminPromise = (async () => {
     try {
       const { data, error } = await supabase.rpc('is_super_admin');
       if (error) throw error;
       
       const status = !!data;
-      cachedSuperAdminStatus = status;
-      superAdminCacheTimestamp = Date.now();
+      cachedAdminStatus = status;
+      adminCacheTimestamp = Date.now();
+      localStorage.setItem('cached-admin-status', status.toString());
+      // Also update legacy key for backward compatibility
       localStorage.setItem('cached-super-admin-status', status.toString());
       
       return status;
     } catch (error) {
-      console.warn('[CachedAuth] Error checking super admin status:', error);
+      console.warn('[CachedAuth] Error checking admin status:', error);
       // Return cached localStorage value on error
       return localCached === 'true';
     } finally {
-      pendingSuperAdminPromise = null;
+      pendingAdminPromise = null;
     }
   })();
   
-  return pendingSuperAdminPromise;
+  return pendingAdminPromise;
 }
 
+// Backward compatibility alias
+export const getSuperAdminStatusWithCache = getAdminStatusWithCache;
+
 /**
- * Invalidates the super admin status cache - call this on role changes or sign-out
+ * Invalidates the admin status cache - call this on role changes or sign-out
  */
-export function invalidateSuperAdminCache() {
-  cachedSuperAdminStatus = null;
-  superAdminCacheTimestamp = 0;
-  pendingSuperAdminPromise = null;
+export function invalidateAdminCache() {
+  cachedAdminStatus = null;
+  adminCacheTimestamp = 0;
+  pendingAdminPromise = null;
 }
+
+// Backward compatibility alias
+export const invalidateSuperAdminCache = invalidateAdminCache;
 
 /**
  * Gets the cached user from localStorage (Supabase session)

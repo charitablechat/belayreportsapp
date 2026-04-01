@@ -2246,6 +2246,7 @@ export type Database = {
       }
       internal_get_webhook_secret: { Args: never; Returns: string }
       is_admin_or_above: { Args: never; Returns: boolean }
+      is_backup_admin: { Args: never; Returns: boolean }
       is_report_owner: {
         Args: { report_inspector_id: string }
         Returns: boolean

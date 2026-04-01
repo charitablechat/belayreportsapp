@@ -12,7 +12,7 @@ interface UserFormData {
   firstName: string;
   lastName: string;
   organizationId?: string;
-  role?: 'admin' | 'inspector' | 'trainer' | 'super_admin';
+  role?: 'admin' | 'inspector' | 'trainer';
 }
 
 interface UserManagementDialogProps {
@@ -57,7 +57,7 @@ export function UserManagementDialog({
           firstName: user.firstName,
           lastName: user.lastName,
           organizationId: '',
-          role: (user.currentRole as 'admin' | 'inspector' | 'super_admin') || 'inspector',
+          role: (user.currentRole as 'admin' | 'inspector') || 'inspector',
         });
       } else if (mode === 'create') {
         setFormData({
@@ -159,7 +159,7 @@ export function UserManagementDialog({
               <Label htmlFor="role">Role</Label>
               <Select
                 value={formData.role}
-                onValueChange={(value: 'inspector' | 'trainer' | 'admin' | 'super_admin') => setFormData({ ...formData, role: value })}
+                onValueChange={(value: 'inspector' | 'trainer' | 'admin') => setFormData({ ...formData, role: value })}
               >
                 <SelectTrigger>
                   <SelectValue />
@@ -167,7 +167,7 @@ export function UserManagementDialog({
                 <SelectContent>
                   <SelectItem value="inspector">Inspector</SelectItem>
                   <SelectItem value="trainer">Trainer</SelectItem>
-                  <SelectItem value="super_admin">Admin</SelectItem>
+                  <SelectItem value="admin">Admin</SelectItem>
                 </SelectContent>
               </Select>
             </div>

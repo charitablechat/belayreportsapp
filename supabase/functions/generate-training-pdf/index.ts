@@ -63,7 +63,7 @@ serve(async (req) => {
         .select('role')
         .eq('user_id', user.id);
       
-      const isSuperAdmin = roles?.some(r => r.role === 'super_admin');
+      const isSuperAdmin = roles?.some(r => r.role === 'admin');
       if (!isSuperAdmin) {
         throw new Error('Unauthorized to generate this report');
       }

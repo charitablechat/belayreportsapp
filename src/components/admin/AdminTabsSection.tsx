@@ -29,21 +29,24 @@ const tabs = [
   { value: "notifications", icon: Bell, title: "Notifications", description: "View notification history and logs" },
   { value: "data-recovery", icon: RotateCcw, title: "Data Recovery", description: "Recover deleted or corrupted data" },
   { value: "report-ownership", icon: UserCog, title: "Report Ownership", description: "Transfer report ownership between users" },
-  
-  { value: "database-backups", icon: Database, title: "Database Backups", description: "Full database backup and restore" },
 ];
 
 interface AdminTabsSectionProps {
   children?: React.ReactNode;
+  showBackupTab?: boolean;
 }
 
-export const AdminTabsSection = ({ children }: AdminTabsSectionProps) => {
+export const AdminTabsSection = ({ children, showBackupTab = false }: AdminTabsSectionProps) => {
   const { theme, setTheme } = useTheme();
+  
+  const allTabs = showBackupTab 
+    ? [...tabs, { value: "database-backups", icon: Database, title: "Database Backups", description: "Full database backup and restore" }]
+    : tabs;
 
   return (
     <TooltipProvider delayDuration={300}>
       <TabsList className="flex flex-col h-auto w-full items-stretch backdrop-blur-md bg-white/[0.03] dark:bg-white/[0.02] border border-white/10 dark:border-white/[0.06] rounded-xl p-1.5 shadow-lg shadow-black/5">
-        {tabs.map((tab) => (
+        {allTabs.map((tab) => (
           <AdminTab
             key={tab.value}
             value={tab.value}

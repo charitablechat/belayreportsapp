@@ -152,11 +152,11 @@ serve(async (req) => {
       );
     }
 
-    // Fetch all super_admin users
+    // Fetch all admin users
     const { data: superAdminRoles, error: rolesError } = await supabaseAdmin
       .from('user_roles')
       .select('user_id')
-      .eq('role', 'super_admin');
+      .eq('role', 'admin');
 
     if (rolesError) {
       console.error('Error fetching super admin roles:', rolesError);
