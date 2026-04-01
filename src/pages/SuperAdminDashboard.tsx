@@ -28,7 +28,7 @@ import { parseLocalDate } from "@/lib/date-utils";
 import { getSessionBackground } from "@/lib/background-manager";
 
 export default function SuperAdminDashboard() {
-  const { loading } = useRequireSuperAdmin();
+  const { loading } = useRequireAdmin();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   

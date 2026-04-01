@@ -15,7 +15,7 @@ import { AutoLogoInitializer } from '@/components/admin/AutoLogoInitializer';
 
 export default function AdminLogoManagement() {
   const navigate = useNavigate();
-  const { loading: authLoading } = useRequireSuperAdmin();
+  const { loading: authLoading } = useRequireAdmin();
   
   const [ropeWorksFile, setRopeWorksFile] = useState<File | null>(null);
   const [acctFile, setAcctFile] = useState<File | null>(null);
