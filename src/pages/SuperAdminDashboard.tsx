@@ -562,23 +562,6 @@ export default function SuperAdminDashboard() {
     }
   };
 
-  // Cleanup function for duplicate summaries
-  const handleCleanupDuplicates = async () => {
-    setIsCleaningUp(true);
-    try {
-      const { data, error } = await supabase.functions.invoke('cleanup-duplicate-summaries');
-
-      if (error) throw error;
-      if (!data.success) throw new Error(data.error);
-
-      toast.success(`Cleanup complete: ${data.updatedCount} records updated`);
-    } catch (error: any) {
-      console.error('Error during cleanup:', error);
-      toast.error(error?.message || 'Cleanup failed');
-    } finally{
-      setIsCleaningUp(false);
-    }
-  };
 
   // Organization management functions
   const handleEditOrg = (org: any) => {
