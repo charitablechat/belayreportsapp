@@ -29,7 +29,7 @@ const tabs = [
   { value: "notifications", icon: Bell, title: "Notifications", description: "View notification history and logs" },
   { value: "data-recovery", icon: RotateCcw, title: "Data Recovery", description: "Recover deleted or corrupted data" },
   { value: "report-ownership", icon: UserCog, title: "Report Ownership", description: "Transfer report ownership between users" },
-  { value: "maintenance", icon: Wrench, title: "Maintenance", description: "System maintenance and cleanup tools" },
+  
   { value: "database-backups", icon: Database, title: "Database Backups", description: "Full database backup and restore" },
 ];
 
