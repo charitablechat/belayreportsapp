@@ -36,8 +36,12 @@ interface AdminTabsSectionProps {
   showBackupTab?: boolean;
 }
 
-export const AdminTabsSection = ({ children }: AdminTabsSectionProps) => {
+export const AdminTabsSection = ({ children, showBackupTab = false }: AdminTabsSectionProps) => {
   const { theme, setTheme } = useTheme();
+  
+  const allTabs = showBackupTab 
+    ? [...tabs, { value: "database-backups", icon: Database, title: "Database Backups", description: "Full database backup and restore" }]
+    : tabs;
 
   return (
     <TooltipProvider delayDuration={300}>
