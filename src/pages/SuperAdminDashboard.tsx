@@ -50,7 +50,7 @@ export default function SuperAdminDashboard() {
   const [isInspectionsListOpen, setIsInspectionsListOpen] = useState(false);
   const [isTrainingsListOpen, setIsTrainingsListOpen] = useState(false);
   const [isDailyListOpen, setIsDailyListOpen] = useState(false);
-  const [isCleaningUp, setIsCleaningUp] = useState(false);
+  
   const [resetMetricDialogOpen, setResetMetricDialogOpen] = useState(false);
   
   // Organization edit/delete states
