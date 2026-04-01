@@ -1225,69 +1225,6 @@ export default function SuperAdminDashboard() {
           <DataRecoveryTool deletedRecordsSlot={<DeletedRecordsRecovery />} />
         </TabsContent>
 
-        <TabsContent value="maintenance" className="space-y-4">
-          <div className="rounded-md border p-6 space-y-6">
-            <div className="flex items-start gap-4">
-              <div className="flex-shrink-0 mt-1">
-                <Image className="h-6 w-6 text-primary" />
-              </div>
-              <div className="flex-1 space-y-2">
-                <h3 className="text-lg font-semibold">Report Logo Management</h3>
-                <p className="text-sm text-muted-foreground">
-                  Upload and manage the Rope Works and ACCT logos that appear in all generated PDF reports.
-                  Changes will be reflected in all future reports without requiring code changes.
-                </p>
-                <div className="pt-4">
-                  <Button
-                    onClick={() => navigate('/admin/logos')}
-                    className="gap-2"
-                  >
-                    <Image className="h-4 w-4" />
-                    Manage Logos
-                  </Button>
-                </div>
-              </div>
-            </div>
-            
-            <div className="flex items-start gap-4">
-              <div className="flex-shrink-0 mt-1">
-                <Wrench className="h-6 w-6 text-primary" />
-              </div>
-              <div className="flex-1 space-y-2">
-                <h3 className="text-lg font-semibold">Cleanup Duplicate Summary Data</h3>
-                <p className="text-sm text-muted-foreground">
-                  This tool deduplicates corrupted summary data in the inspection_summary table.
-                  It removes duplicate list items from the "repairs_performed" and "critical_actions" fields
-                  that were caused by the auto-generation bug.
-                </p>
-                <div className="pt-4">
-                  <Button
-                    onClick={handleCleanupDuplicates}
-                    disabled={isCleaningUp}
-                    className="gap-2"
-                  >
-                    {isCleaningUp ? (
-                      <>
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        Cleaning up...
-                      </>
-                    ) : (
-                      <>
-                        <Wrench className="h-4 w-4" />
-                        Run Cleanup
-                      </>
-                    )}
-                  </Button>
-                </div>
-                <div className="pt-2">
-                  <p className="text-xs text-muted-foreground">
-                    ⚠️ This operation will update all affected inspection summaries. Make sure to review the results in the console.
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </TabsContent>
 
         <TabsContent value="report-ownership" className="space-y-4">
           <ReportOwnershipTool />
