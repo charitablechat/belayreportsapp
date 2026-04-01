@@ -337,7 +337,7 @@ Deno.serve(async (req) => {
           const profile = profiles?.find(p => p.id === authUser.id);
           const userRoles = roles?.filter(r => r.user_id === authUser.id) || [];
           const userMemberships = memberships?.filter(m => m.user_id === authUser.id) || [];
-          const isSuperAdmin = userRoles.some(r => r.role === 'super_admin');
+          const isSuperAdmin = userRoles.some(r => r.role === 'admin');
 
           return {
             id: authUser.id,
