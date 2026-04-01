@@ -462,7 +462,7 @@ export default function SuperAdminDashboard() {
   const handleEditClick = (user: any) => {
     // Determine the user's primary role
     const primaryRole = user.isSuperAdmin 
-      ? 'super_admin' 
+      ? 'admin' 
       : user.roles?.find((r: any) => r.role === 'admin') 
         ? 'admin' 
         : user.roles?.find((r: any) => r.role === 'inspector')
