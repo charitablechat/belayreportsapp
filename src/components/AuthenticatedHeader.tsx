@@ -90,7 +90,6 @@ export function AuthenticatedHeader() {
         if (error) return cachedValue === "true";
 
         const isAdmin = !!data;
-        localStorage.setItem("cached-super-admin-status", isAdmin.toString());
         localStorage.setItem("cached-admin-status", isAdmin.toString());
         return isAdmin;
       } catch {
