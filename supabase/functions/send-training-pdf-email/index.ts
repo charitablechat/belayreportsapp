@@ -76,7 +76,7 @@ serve(async (req) => {
     }
 
     // Check if user has access (is the inspector or super admin)
-    const { data: isSuperAdmin } = await supabase.rpc("is_super_admin");
+    const { data: isSuperAdmin } = await supabase.rpc("is_admin_or_above");
     
     if (training.inspector_id !== user.id && !isSuperAdmin) {
       throw new Error("Unauthorized to access this training");
