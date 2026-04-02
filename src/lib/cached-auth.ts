@@ -253,7 +253,7 @@ export async function getAdminStatusWithCache(): Promise<boolean> {
   
   pendingAdminPromise = (async () => {
     try {
-      const { data, error } = await supabase.rpc('is_super_admin');
+      const { data, error } = await supabase.rpc('is_admin_or_above');
       if (error) throw error;
       
       const status = !!data;
