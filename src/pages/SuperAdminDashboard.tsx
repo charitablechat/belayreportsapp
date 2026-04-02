@@ -1013,6 +1013,8 @@ export default function SuperAdminDashboard() {
             </Button>
           </div>
           
+          {/* Desktop table */}
+          <div className="hidden md:block overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow>
@@ -1101,9 +1103,53 @@ export default function SuperAdminDashboard() {
               })}
             </TableBody>
           </Table>
+          </div>
+
+          {/* Mobile cards */}
+          <div className="md:hidden space-y-3">
+            {managedUsers?.map((user: any) => {
+              const isInactive = user.isActive === false;
+              return (
+                <div key={user.id} className={`rounded-lg border bg-card p-4 space-y-2 ${isInactive ? 'opacity-50' : ''}`}>
+                  <div className="font-medium text-sm break-all">{user.email}</div>
+                  <div className="text-sm text-muted-foreground">{user.firstName} {user.lastName}</div>
+                  <div className="flex flex-wrap gap-1.5 items-center">
+                    {isInactive ? (
+                      <Badge variant="destructive" className="text-xs">Deactivated</Badge>
+                    ) : (
+                      <Badge variant="outline" className="text-xs bg-emerald-500/10 text-emerald-500 border-emerald-500/30">Active</Badge>
+                    )}
+                    {user.isSuperAdmin && <Badge className="text-xs">Admin</Badge>}
+                    {user.roles?.map((r: any, idx: number) => (
+                      <Badge key={idx} variant="outline" className="text-xs">{r.role}</Badge>
+                    ))}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    Last sign in: {user.lastSignIn ? format(new Date(user.lastSignIn), "PP p") : 'Never'}
+                  </div>
+                  <div className="flex gap-1 pt-1 flex-wrap">
+                    <Button variant="ghost" size="sm" onClick={() => handleDeactivateClick(user)} title={isInactive ? 'Reactivate' : 'Deactivate'}>
+                      {isInactive ? <UserCheck className="h-4 w-4 text-emerald-500" /> : <UserX className="h-4 w-4 text-amber-500" />}
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => handleAdminToggle(user)} title={user.isSuperAdmin ? 'Remove Admin' : 'Make Admin'}>
+                      {user.isSuperAdmin ? <ShieldOff className="h-4 w-4 text-orange-500" /> : <Shield className="h-4 w-4 text-blue-500" />}
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => handleEditClick(user)}>
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => handleDeleteClick(user)}>
+                      <Trash2 className="h-4 w-4 text-destructive" />
+                    </Button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </TabsContent>
 
         <TabsContent value="inspections" className="space-y-4">
+          {/* Desktop table */}
+          <div className="hidden md:block overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow>
@@ -1144,9 +1190,40 @@ export default function SuperAdminDashboard() {
               ))}
             </TableBody>
           </Table>
+          </div>
+
+          {/* Mobile cards */}
+          <div className="md:hidden space-y-3">
+            {allInspections?.map((inspection) => (
+              <div key={inspection.id} className="rounded-lg border bg-card p-4 space-y-2 cursor-pointer active:bg-muted/50" onClick={() => navigate(`/inspection/${inspection.id}`)}>
+                <div className="font-medium text-sm">{inspection.organizations?.name}</div>
+                <div className="text-sm text-muted-foreground">{inspection.location}</div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge className={
+                    inspection.status === "completed" ? "bg-emerald-400/15 text-emerald-400 border-emerald-400/30" :
+                    inspection.status === "in_progress" ? "bg-indigo-500/15 text-indigo-400 border-indigo-500/30" :
+                    "bg-slate-500/15 text-slate-400 border-slate-400/30"
+                  }>
+                    {inspection.status}
+                  </Badge>
+                  <span className="text-xs text-muted-foreground">
+                    {(inspection as any).inspector?.first_name && (inspection as any).inspector?.last_name
+                      ? `${(inspection as any).inspector.first_name} ${(inspection as any).inspector.last_name}`
+                      : 'Unknown'}
+                  </span>
+                </div>
+                <div className="flex justify-between text-xs text-muted-foreground">
+                  <span>Date: {parseLocalDate(inspection.inspection_date) ? format(parseLocalDate(inspection.inspection_date)!, "PP") : '-'}</span>
+                  <span>Created: {format(new Date(inspection.created_at), "PP")}</span>
+                </div>
+              </div>
+            ))}
+          </div>
         </TabsContent>
 
         <TabsContent value="trainings" className="space-y-4">
+          {/* Desktop table */}
+          <div className="hidden md:block overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow>
@@ -1187,9 +1264,37 @@ export default function SuperAdminDashboard() {
               ))}
             </TableBody>
           </Table>
+          </div>
+
+          {/* Mobile cards */}
+          <div className="md:hidden space-y-3">
+            {allTrainings?.map((training) => (
+              <div key={training.id} className="rounded-lg border bg-card p-4 space-y-2 cursor-pointer active:bg-muted/50" onClick={() => navigate(`/training/${training.id}`)}>
+                <div className="font-medium text-sm">{training.organizations?.name || training.organization}</div>
+                <div className="text-sm text-muted-foreground">
+                  {(training as any).trainer?.first_name && (training as any).trainer?.last_name
+                    ? `${(training as any).trainer.first_name} ${(training as any).trainer.last_name}`
+                    : training.trainer_of_record || 'Unknown'}
+                </div>
+                <Badge className={
+                  training.status === "completed" ? "bg-emerald-400/15 text-emerald-400 border-emerald-400/30" :
+                  training.status === "in_progress" ? "bg-indigo-500/15 text-indigo-400 border-indigo-500/30" :
+                  "bg-slate-500/15 text-slate-400 border-slate-400/30"
+                }>
+                  {training.status}
+                </Badge>
+                <div className="flex justify-between text-xs text-muted-foreground">
+                  <span>Start: {parseLocalDate(training.start_date) ? format(parseLocalDate(training.start_date)!, "PP") : '-'}</span>
+                  <span>End: {parseLocalDate(training.end_date) ? format(parseLocalDate(training.end_date)!, "PP") : '-'}</span>
+                </div>
+              </div>
+            ))}
+          </div>
         </TabsContent>
 
         <TabsContent value="daily-assessments" className="space-y-4">
+          {/* Desktop table */}
+          <div className="hidden md:block overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow>
@@ -1230,10 +1335,41 @@ export default function SuperAdminDashboard() {
               ))}
             </TableBody>
           </Table>
+          </div>
+
+          {/* Mobile cards */}
+          <div className="md:hidden space-y-3">
+            {allDailyAssessments?.map((assessment) => (
+              <div key={assessment.id} className="rounded-lg border bg-card p-4 space-y-2 cursor-pointer active:bg-muted/50" onClick={() => navigate(`/daily-assessment/${assessment.id}`)}>
+                <div className="font-medium text-sm">{assessment.organizations?.name || assessment.organization}</div>
+                <div className="text-sm text-muted-foreground">{assessment.site || '-'}</div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge className={
+                    assessment.status === "completed" ? "bg-emerald-400/15 text-emerald-400 border-emerald-400/30" :
+                    assessment.status === "in_progress" ? "bg-indigo-500/15 text-indigo-400 border-indigo-500/30" :
+                    "bg-slate-500/15 text-slate-400 border-slate-400/30"
+                  }>
+                    {assessment.status}
+                  </Badge>
+                  <span className="text-xs text-muted-foreground">
+                    {(assessment as any).inspector?.first_name && (assessment as any).inspector?.last_name
+                      ? `${(assessment as any).inspector.first_name} ${(assessment as any).inspector.last_name}`
+                      : assessment.trainer_of_record || 'Unknown'}
+                  </span>
+                </div>
+                <div className="flex justify-between text-xs text-muted-foreground">
+                  <span>Date: {parseLocalDate(assessment.assessment_date) ? format(parseLocalDate(assessment.assessment_date)!, "PP") : '-'}</span>
+                  <span>Created: {format(new Date(assessment.created_at), "PP")}</span>
+                </div>
+              </div>
+            ))}
+          </div>
         </TabsContent>
 
 
         <TabsContent value="notifications" className="space-y-4">
+          {/* Desktop table */}
+          <div className="hidden md:block overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow>
@@ -1260,10 +1396,29 @@ export default function SuperAdminDashboard() {
               ))}
             </TableBody>
           </Table>
+          </div>
+
+          {/* Mobile cards */}
+          <div className="md:hidden space-y-3">
+            {notifications?.map((notif) => (
+              <div key={notif.id} className="rounded-lg border bg-card p-4 space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <Badge variant="outline" className="text-xs">{notif.notification_type}</Badge>
+                  <Badge variant={notif.status === "sent" ? "default" : "destructive"} className="text-xs">
+                    {notif.status}
+                  </Badge>
+                </div>
+                <div className="text-sm font-medium">{notif.title}</div>
+                <div className="text-xs text-muted-foreground">{format(new Date(notif.sent_at), "PPp")}</div>
+              </div>
+            ))}
+          </div>
         </TabsContent>
 
 
         <TabsContent value="subscriptions" className="space-y-4">
+          {/* Desktop table */}
+          <div className="hidden md:block overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow>
@@ -1284,6 +1439,21 @@ export default function SuperAdminDashboard() {
               ))}
             </TableBody>
           </Table>
+          </div>
+
+          {/* Mobile cards */}
+          <div className="md:hidden space-y-3">
+            {subscriptions?.map((sub) => (
+              <div key={sub.id} className="rounded-lg border bg-card p-4 space-y-1">
+                <div className="font-mono text-xs">{sub.user_id.slice(0, 8)}...</div>
+                <div className="text-xs text-muted-foreground break-all">{sub.user_agent}</div>
+                <div className="flex justify-between text-xs text-muted-foreground">
+                  <span>Created: {format(new Date(sub.created_at), "PP")}</span>
+                  <span>Last: {format(new Date(sub.last_used_at), "PP")}</span>
+                </div>
+              </div>
+            ))}
+          </div>
         </TabsContent>
 
         <TabsContent value="data-recovery" className="space-y-4">
