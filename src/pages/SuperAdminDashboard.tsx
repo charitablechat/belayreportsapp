@@ -1476,6 +1476,8 @@ export default function SuperAdminDashboard() {
           <DialogHeader>
             <DialogTitle>All Users ({managedUsers?.length || 0})</DialogTitle>
           </DialogHeader>
+          {/* Desktop table */}
+          <div className="hidden md:block overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow>
@@ -1514,6 +1516,22 @@ export default function SuperAdminDashboard() {
               ))}
             </TableBody>
           </Table>
+          </div>
+          {/* Mobile cards */}
+          <div className="md:hidden space-y-3">
+            {managedUsers?.slice((usersPage - 1) * ITEMS_PER_PAGE, usersPage * ITEMS_PER_PAGE).map((user: any) => (
+              <div key={user.id} className="rounded-lg border bg-card p-3 space-y-1">
+                <div className="font-medium text-sm break-all">{user.email}</div>
+                <div className="text-sm text-muted-foreground">{user.firstName || user.lastName ? `${user.firstName} ${user.lastName}`.trim() : '-'}</div>
+                <div className="flex flex-wrap gap-1">
+                  {user.roles?.map((r: any, idx: number) => (
+                    <Badge key={idx} variant="outline" className="text-xs">{r.role}</Badge>
+                  ))}
+                </div>
+                <div className="text-xs text-muted-foreground">Joined: {format(new Date(user.createdAt), "PP")}</div>
+              </div>
+            ))}
+          </div>
           {managedUsers && managedUsers.length > ITEMS_PER_PAGE && (
             <div className="flex items-center justify-between pt-4 border-t">
               <span className="text-sm text-muted-foreground">
