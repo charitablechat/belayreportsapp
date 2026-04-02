@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { goBack } from "@/lib/navigation";
 import { supabase } from "@/integrations/supabase/client";
-import { getUserWithCache } from "@/lib/cached-auth";
+import { getUserWithCache, getOfflineUserId } from "@/lib/cached-auth";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -51,11 +51,21 @@ export default function Profile() {
 
   const loadProfile = async () => {
     try {
-      const authUser = await getUserWithCache();
+      let authUser = await getUserWithCache();
       
+      // Gap 5: Offline / transient-null fallback before redirecting
       if (!authUser) {
-        navigate("/");
-        return;
+        const offlineId = getOfflineUserId();
+        if (offlineId) {
+          authUser = { id: offlineId } as any;
+        } else if (navigator.onLine) {
+          navigate("/");
+          return;
+        } else {
+          // Offline with no cached identity – stay on page with stale data
+          setLoading(false);
+          return;
+        }
       }
 
       setUser(authUser);

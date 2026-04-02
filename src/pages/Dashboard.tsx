@@ -182,7 +182,7 @@ export default function Dashboard() {
   const { data: isSuperAdmin, isLoading: isSuperAdminLoading } = useQuery({
     queryKey: ["is-super-admin"],
     queryFn: async () => {
-      const cachedValue = localStorage.getItem('cached-admin-status') || localStorage.getItem('cached-super-admin-status');
+      const cachedValue = localStorage.getItem('cached-admin-status');
       
       if (!navigator.onLine) {
         return cachedValue === 'true';
@@ -210,7 +210,6 @@ export default function Dashboard() {
         const isAdmin = !!data;
         
         localStorage.setItem('cached-admin-status', isAdmin.toString());
-        localStorage.setItem('cached-super-admin-status', isAdmin.toString());
         
         return isAdmin;
       } catch (err) {
@@ -222,7 +221,7 @@ export default function Dashboard() {
     retry: 2,
     retryDelay: 1000,
     placeholderData: () => {
-      const cached = localStorage.getItem('cached-admin-status') || localStorage.getItem('cached-super-admin-status');
+      const cached = localStorage.getItem('cached-admin-status');
       return cached === 'true';
     },
   });

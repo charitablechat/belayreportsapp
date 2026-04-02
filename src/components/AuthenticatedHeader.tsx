@@ -72,7 +72,7 @@ export function AuthenticatedHeader() {
   const { data: isSuperAdmin } = useQuery({
     queryKey: ["is-super-admin-global"],
     queryFn: async () => {
-      const cachedValue = localStorage.getItem("cached-super-admin-status");
+      const cachedValue = localStorage.getItem("cached-admin-status");
 
       if (!navigator.onLine) return cachedValue === "true";
 
@@ -90,7 +90,6 @@ export function AuthenticatedHeader() {
         if (error) return cachedValue === "true";
 
         const isAdmin = !!data;
-        localStorage.setItem("cached-super-admin-status", isAdmin.toString());
         localStorage.setItem("cached-admin-status", isAdmin.toString());
         return isAdmin;
       } catch {
@@ -100,7 +99,7 @@ export function AuthenticatedHeader() {
     staleTime: 2 * 60 * 1000,
     retry: 2,
     retryDelay: 1000,
-    placeholderData: () => localStorage.getItem("cached-super-admin-status") === "true",
+    placeholderData: () => localStorage.getItem("cached-admin-status") === "true",
     enabled: !!currentUser,
   });
 
