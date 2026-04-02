@@ -50,6 +50,27 @@ serve(async (req) => {
       throw new Error('Inspection ID is required');
     }
 
+    // G2 Fix: Authorization check — verify user owns the inspection or is admin
+    const { data: inspectionOwner } = await supabase
+      .from('inspections')
+      .select('inspector_id')
+      .eq('id', inspectionId)
+      .single();
+
+    if (!inspectionOwner) {
+      throw new Error('Inspection not found');
+    }
+
+    if (inspectionOwner.inspector_id !== user.id) {
+      // Check if user is admin
+      const userClient = createClient(supabaseUrl, Deno.env.get('SUPABASE_ANON_KEY')!, {
+        global: { headers: { Authorization: authHeader } },
+      });
+      const { data: isAdmin } = await userClient.rpc('is_admin_or_above');
+      if (!isAdmin) {
+        throw new Error('Unauthorized: You do not have access to this inspection');
+    }
+
     console.log('Fetching inspection data for:', inspectionId);
 
     // Fetch all data in parallel

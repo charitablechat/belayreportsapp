@@ -68,7 +68,7 @@ Deno.serve(async (req) => {
       throw new Error('Unauthorized: Not authenticated');
     }
 
-    const { data: isSuperAdmin } = await supabase.rpc('is_super_admin');
+    const { data: isSuperAdmin } = await supabase.rpc('is_admin_or_above');
     if (!isSuperAdmin) {
       throw new Error('Unauthorized: Admin access required');
     }
