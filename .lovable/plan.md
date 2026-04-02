@@ -1,49 +1,54 @@
 
 
-## Fix Mobile Wrapping for All Super Admin Tables
+## Replace Resend with Lovable Emails for Backup Notifications
 
 ### Problem
-All admin tables render as standard HTML `<table>` on every screen size. On mobile, narrow columns force text to wrap vertically character-by-character, making the UI unusable (as shown in the screenshot).
+The `scheduled-backup-notify` edge function uses Resend with the test domain `@resend.dev`, which only allows sending to the Resend account owner's email. Emails to `kale@belayreports.com` are rejected with a 403 error.
 
-### Approach
-For each table section in `SuperAdminDashboard.tsx`, use a **responsive dual-layout pattern**:
-- **Desktop/tablet** (`md:` and up): Keep existing `<Table>` with `overflow-x-auto`
-- **Mobile** (below `md`): Render a stacked card list instead
+### Solution
+Switch to Lovable's built-in email infrastructure, eliminating the need for Resend entirely.
 
-This follows the existing project convention documented in the responsive text handling memory.
+### Steps
 
-### Tables to Convert (all in `SuperAdminDashboard.tsx`)
+**Step 1: Set up email domain**
+Configure a sender domain (e.g., `belayreports.com`) through Lovable's email setup. This requires adding DNS records at your domain provider.
 
-| Tab / Section | Columns | Priority |
-|---|---|---|
-| User Management | Email, Name, Status, Roles, Last Sign In, Actions | High (screenshot) |
-| Organizations | Org, Inspections, Trainings, Daily, Last Inspection, Created, Actions | High |
-| Inspections | Org, Location, Status, Date, Created, Inspector | Medium |
-| Trainings | Org, Trainer, Status, Start, End, Created | Medium |
-| Daily Assessments | Org, Site, Inspector, Status, Date, Created | Medium |
-| Notifications | Type, Title, Status, Sent | Low |
-| Stat card dialogs (5) | Various | Low |
+**Step 2: Set up email infrastructure**
+Run the email infrastructure setup to create the queue system, database tables, and processing cron job.
 
-### Implementation Detail
+**Step 3: Update `scheduled-backup-notify` edge function**
+- Remove the Resend import and API call
+- Replace with a call to `send-transactional-email` via `supabase.functions.invoke`
+- Keep the existing HTML email template (it's well-designed)
 
-For each table section, wrap the existing `<Table>` in `<div className="hidden md:block overflow-x-auto">` and add a sibling `<div className="md:hidden space-y-3">` containing mapped card items. Each card uses the existing `Card` component with key fields as stacked rows.
+**Step 4: Create a backup notification template**
+- Create a React Email template in `_shared/transactional-email-templates/`
+- Register it in the template registry
+- Style it to match the existing backup email design
 
-**Example card layout for User Management:**
-```text
-┌─────────────────────────────┐
-│ john@example.com            │
-│ John Doe                    │
-│ [Active]  [inspector]       │
-│ Last sign in: Mar 23, 2026  │
-│ [⚡] [🛡] [✏] [🗑]          │
-└─────────────────────────────┘
-```
+**Step 5: Update other Resend-dependent functions**
+Check and update these functions that also use Resend:
+- `send-report-email`
+- `send-contact-email`
+- `send-notification-email`
+- `send-training-pdf-email`
+
+**Step 6: Deploy all updated edge functions**
 
 ### Files Changed
 
 | File | Change |
 |---|---|
-| `src/pages/SuperAdminDashboard.tsx` | Add mobile card layouts alongside each table; wrap tables in `hidden md:block` |
+| `supabase/functions/scheduled-backup-notify/index.ts` | Remove Resend, use `send-transactional-email` |
+| `supabase/functions/_shared/transactional-email-templates/backup-notification.tsx` | New template |
+| `supabase/functions/_shared/transactional-email-templates/registry.ts` | Register new template |
+| `supabase/functions/send-report-email/index.ts` | Remove Resend (later) |
+| Other Resend-using functions | Remove Resend (later) |
 
-No new files or dependencies needed. Single file change, pattern repeated for each tab.
+### First Action Required
+You need to set up your email domain. Click below to start:
+
+<lov-actions>
+<lov-open-email-setup>Set up email domain</lov-open-email-setup>
+</lov-actions>
 
