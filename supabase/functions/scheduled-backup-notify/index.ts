@@ -1,5 +1,4 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { Resend } from "https://esm.sh/resend@2.0.0";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -82,73 +81,6 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function buildEmailHtml(params: {
-  timestamp: string;
-  fileSize: string;
-  totalRows: number;
-  tableCounts: Record<string, number>;
-  downloadUrl: string;
-}): string {
-  const { timestamp, fileSize, totalRows, tableCounts, downloadUrl } = params;
-
-  const tableRows = Object.entries(tableCounts)
-    .sort(([, a], [, b]) => b - a)
-    .map(
-      ([table, count]) =>
-        `<tr><td style="padding:6px 12px;border-bottom:1px solid #e5e7eb;font-size:13px;">${table}</td><td style="padding:6px 12px;border-bottom:1px solid #e5e7eb;font-size:13px;text-align:right;">${count.toLocaleString()}</td></tr>`
-    )
-    .join("");
-
-  return `
-<!DOCTYPE html>
-<html lang="en">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
-<body style="margin:0;padding:0;background-color:#f3f4f6;font-family:Arial,sans-serif;">
-  <div style="max-width:600px;margin:0 auto;background:#ffffff;">
-    <div style="background-color:#1a365d;color:white;padding:24px;text-align:center;">
-      <h1 style="margin:0;font-size:22px;">✅ Daily Backup Complete</h1>
-      <p style="margin:8px 0 0;font-size:14px;opacity:0.9;">${timestamp}</p>
-    </div>
-    <div style="padding:24px;">
-      <div style="display:flex;gap:16px;margin-bottom:24px;">
-        <div style="flex:1;background:#f0fdf4;border-radius:8px;padding:16px;text-align:center;">
-          <div style="font-size:24px;font-weight:bold;color:#166534;">${totalRows.toLocaleString()}</div>
-          <div style="font-size:12px;color:#6b7280;">Total Rows</div>
-        </div>
-        <div style="flex:1;background:#eff6ff;border-radius:8px;padding:16px;text-align:center;">
-          <div style="font-size:24px;font-weight:bold;color:#1e40af;">${fileSize}</div>
-          <div style="font-size:12px;color:#6b7280;">File Size</div>
-        </div>
-        <div style="flex:1;background:#fef3c7;border-radius:8px;padding:16px;text-align:center;">
-          <div style="font-size:24px;font-weight:bold;color:#92400e;">${Object.keys(tableCounts).length}</div>
-          <div style="font-size:12px;color:#6b7280;">Tables</div>
-        </div>
-      </div>
-      <div style="text-align:center;margin-bottom:24px;">
-        <a href="${downloadUrl}" style="display:inline-block;background-color:#1a365d;color:white;padding:12px 32px;border-radius:6px;text-decoration:none;font-weight:bold;font-size:14px;">
-          Download Backup
-        </a>
-        <p style="font-size:12px;color:#6b7280;margin-top:8px;">Link valid for 7 days</p>
-      </div>
-      <h3 style="font-size:14px;color:#374151;margin:0 0 12px;">Table Breakdown</h3>
-      <table style="width:100%;border-collapse:collapse;border:1px solid #e5e7eb;border-radius:6px;">
-        <thead>
-          <tr style="background:#f9fafb;">
-            <th style="padding:8px 12px;text-align:left;font-size:12px;color:#6b7280;border-bottom:2px solid #e5e7eb;">Table</th>
-            <th style="padding:8px 12px;text-align:right;font-size:12px;color:#6b7280;border-bottom:2px solid #e5e7eb;">Rows</th>
-          </tr>
-        </thead>
-        <tbody>${tableRows}</tbody>
-      </table>
-    </div>
-    <div style="background:#f8f9fa;padding:16px;text-align:center;border-top:1px solid #e5e7eb;">
-      <p style="margin:0;font-size:12px;color:#6b7280;">Rope Works Inc. — Automated Daily Backup</p>
-    </div>
-  </div>
-</body>
-</html>`;
-}
-
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -157,14 +89,8 @@ Deno.serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const resendApiKey = Deno.env.get("RESEND_API_KEY");
-
-    if (!resendApiKey) {
-      throw new Error("RESEND_API_KEY not configured");
-    }
 
     const adminClient = createClient(supabaseUrl, serviceRoleKey);
-    const resend = new Resend(resendApiKey);
 
     console.log("[scheduled-backup-notify] Starting automated backup...");
 
@@ -215,7 +141,7 @@ Deno.serve(async (req) => {
       file_path: filePath,
       file_size_bytes: bytes.length,
       table_counts: tableCounts,
-      created_by: null, // system-scheduled
+      created_by: null,
     });
 
     // 4. Generate signed download URL (7 days)
@@ -227,7 +153,7 @@ Deno.serve(async (req) => {
       throw new Error(`Failed to generate download URL: ${signedUrlError?.message}`);
     }
 
-    // 5. Send email notification
+    // 5. Send email via transactional email system
     const dateDisplay = now.toLocaleDateString("en-US", {
       weekday: "long",
       year: "numeric",
@@ -243,22 +169,29 @@ Deno.serve(async (req) => {
       timeZoneName: "short",
     });
 
-    const emailHtml = buildEmailHtml({
-      timestamp: `${dateDisplay} at ${timeDisplay}`,
-      fileSize: formatFileSize(bytes.length),
-      totalRows,
-      tableCounts,
-      downloadUrl: signedUrlData.signedUrl,
+    const emailTimestamp = `${dateDisplay} at ${timeDisplay}`;
+
+    const { error: emailError } = await adminClient.functions.invoke("send-transactional-email", {
+      body: {
+        templateName: "backup-notification",
+        recipientEmail: "kale@belayreports.com",
+        idempotencyKey: `daily-backup-${filePath}`,
+        templateData: {
+          timestamp: emailTimestamp,
+          fileSize: formatFileSize(bytes.length),
+          totalRows,
+          tableCounts,
+          tableCount: Object.keys(tableCounts).length,
+          downloadUrl: signedUrlData.signedUrl,
+        },
+      },
     });
 
-    const emailResponse = await resend.emails.send({
-      from: "Rope Works <reports@resend.dev>",
-      to: ["kale@belayreports.com"],
-      subject: `Ropeworks Daily Backup — ${dateDisplay}`,
-      html: emailHtml,
-    });
-
-    console.log("[scheduled-backup-notify] Email sent:", emailResponse);
+    if (emailError) {
+      console.error("[scheduled-backup-notify] Email send error:", emailError);
+    } else {
+      console.log("[scheduled-backup-notify] Email queued successfully");
+    }
 
     return new Response(
       JSON.stringify({
@@ -266,7 +199,7 @@ Deno.serve(async (req) => {
         file_path: filePath,
         file_size_bytes: bytes.length,
         total_rows: totalRows,
-        email_sent: true,
+        email_sent: !emailError,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
