@@ -20,6 +20,8 @@ const TABLES = [
   "inspection_summary",
   "inspection_reports",
   "trainings",
+  "training_systems",
+  "training_equipment",
   "training_photos",
   "training_operating_systems",
   "training_delivery_approaches",
@@ -88,56 +90,6 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function buildEmailHtml(
-  emailTimestamp: string,
-  totalSize: string,
-  totalRows: number,
-  tableCounts: Record<string, number>,
-  tableCount: number,
-  downloadUrl: string,
-): string {
-  const tableRows = Object.entries(tableCounts)
-    .filter(([, count]) => count > 0)
-    .sort(([, a], [, b]) => b - a)
-    .map(([name, count]) => `<tr><td style="padding:4px 12px;border-bottom:1px solid #eee;">${name}</td><td style="padding:4px 12px;border-bottom:1px solid #eee;text-align:right;">${count.toLocaleString()}</td></tr>`)
-    .join("");
-
-  return `
-    <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:20px;">
-      <h2 style="color:#1a1a1a;">✅ Daily Backup Complete</h2>
-      <p style="color:#555;">${emailTimestamp}</p>
-      <table style="width:100%;border-collapse:collapse;margin:16px 0;">
-        <tr><td style="padding:6px 0;color:#555;">Total Rows</td><td style="text-align:right;font-weight:bold;">${totalRows.toLocaleString()}</td></tr>
-        <tr><td style="padding:6px 0;color:#555;">Tables</td><td style="text-align:right;font-weight:bold;">${tableCount}</td></tr>
-        <tr><td style="padding:6px 0;color:#555;">Total Size</td><td style="text-align:right;font-weight:bold;">${totalSize}</td></tr>
-      </table>
-      <p style="margin:16px 0;">
-        <a href="${downloadUrl}" style="display:inline-block;padding:10px 20px;background:#2563eb;color:#fff;text-decoration:none;border-radius:6px;font-weight:bold;">📦 Download Backup (.json)</a>
-      </p>
-      <p style="font-size:12px;color:#999;">Link expires in 7 days.</p>
-      <details style="margin-top:16px;">
-        <summary style="cursor:pointer;color:#555;">Table breakdown</summary>
-        <table style="width:100%;border-collapse:collapse;margin-top:8px;font-size:13px;">
-          ${tableRows}
-        </table>
-      </details>
-    </div>
-  `;
-}
-
-/**
- * Gets the select columns for a table, excluding large regenerable fields.
- * Uses a metadata query to discover columns dynamically.
- */
-function getSelectColumns(table: string): string {
-  if (!EXCLUDE_COLUMNS[table]) return "*";
-  // Return all columns except excluded ones using Supabase select syntax
-  // We'll handle this by selecting * and removing excluded columns client-side
-  // Actually, we can't easily do column exclusion in PostgREST
-  // Instead, we'll strip the columns after fetching
-  return "*";
-}
-
 function stripColumns(rows: any[], table: string): any[] {
   const excluded = EXCLUDE_COLUMNS[table];
   if (!excluded || excluded.length === 0) return rows;
@@ -148,6 +100,84 @@ function stripColumns(rows: any[], table: string): any[] {
     }
     return cleaned;
   });
+}
+
+async function gzipCompress(data: Uint8Array): Promise<Uint8Array> {
+  const cs = new CompressionStream("gzip");
+  const writer = cs.writable.getWriter();
+  writer.write(data);
+  writer.close();
+
+  const reader = cs.readable.getReader();
+  const chunks: Uint8Array[] = [];
+  let totalLen = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    totalLen += value.length;
+  }
+
+  const result = new Uint8Array(totalLen);
+  let offset = 0;
+  for (const chunk of chunks) {
+    result.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return result;
+}
+
+function uint8ToBase64(bytes: Uint8Array): string {
+  let binary = "";
+  const chunkSize = 8192;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const chunk = bytes.subarray(i, Math.min(i + chunkSize, bytes.length));
+    binary += String.fromCharCode(...chunk);
+  }
+  return btoa(binary);
+}
+
+function buildEmailHtml(
+  emailTimestamp: string,
+  totalSize: string,
+  totalRows: number,
+  tableCounts: Record<string, number>,
+  tableCount: number,
+  downloadUrl: string,
+  failedTables: string[],
+): string {
+  const tableRows = Object.entries(tableCounts)
+    .filter(([, count]) => count > 0)
+    .sort(([, a], [, b]) => b - a)
+    .map(([name, count]) => `<tr><td style="padding:4px 12px;border-bottom:1px solid #eee;">${name}</td><td style="padding:4px 12px;border-bottom:1px solid #eee;text-align:right;">${count.toLocaleString()}</td></tr>`)
+    .join("");
+
+  const failedWarning = failedTables.length > 0
+    ? `<p style="color:#dc2626;font-weight:bold;">⚠️ ${failedTables.length} table upload(s) failed: ${failedTables.join(", ")}</p>`
+    : "";
+
+  return `
+    <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:20px;">
+      <h2 style="color:#1a1a1a;">✅ Daily Backup Complete</h2>
+      <p style="color:#555;">${emailTimestamp}</p>
+      ${failedWarning}
+      <table style="width:100%;border-collapse:collapse;margin:16px 0;">
+        <tr><td style="padding:6px 0;color:#555;">Total Rows</td><td style="text-align:right;font-weight:bold;">${totalRows.toLocaleString()}</td></tr>
+        <tr><td style="padding:6px 0;color:#555;">Tables</td><td style="text-align:right;font-weight:bold;">${tableCount}</td></tr>
+        <tr><td style="padding:6px 0;color:#555;">Total Size</td><td style="text-align:right;font-weight:bold;">${totalSize}</td></tr>
+      </table>
+      <p style="margin:16px 0;">
+        <a href="${downloadUrl}" style="display:inline-block;padding:10px 20px;background:#2563eb;color:#fff;text-decoration:none;border-radius:6px;font-weight:bold;">📦 Download Backup (.json)</a>
+      </p>
+      <p style="font-size:12px;color:#999;">Link expires in 7 days. A compressed .json.gz backup is also attached to this email.</p>
+      <details style="margin-top:16px;">
+        <summary style="cursor:pointer;color:#555;">Table breakdown</summary>
+        <table style="width:100%;border-collapse:collapse;margin-top:8px;font-size:13px;">
+          ${tableRows}
+        </table>
+      </details>
+    </div>
+  `;
 }
 
 Deno.serve(async (req) => {
@@ -171,6 +201,8 @@ Deno.serve(async (req) => {
     const now = new Date();
     const timestamp = now.toISOString().replace(/[:.]/g, "-");
     const tableCounts: Record<string, number> = {};
+    const backupData: Record<string, any[]> = {};
+    const failedTables: string[] = [];
     let totalSizeBytes = 0;
 
     // Process each table individually to avoid memory issues
@@ -178,6 +210,7 @@ Deno.serve(async (req) => {
       let rows = await fetchAllRows(adminClient, table, "*");
       rows = stripColumns(rows, table);
       tableCounts[table] = rows.length;
+      backupData[table] = rows;
 
       if (rows.length === 0) continue;
 
@@ -195,8 +228,8 @@ Deno.serve(async (req) => {
 
       if (uploadErr) {
         console.warn(`[scheduled-backup-notify] Upload error for ${table}: ${uploadErr.message}`);
+        failedTables.push(table);
       }
-      // tableJson, tableBytes, rows can all be GC'd now
     }
 
     const totalRows = Object.values(tableCounts).reduce((a, b) => a + b, 0);
@@ -211,22 +244,31 @@ Deno.serve(async (req) => {
       total_size_bytes: totalSizeBytes,
       tables: TABLES,
       excluded_columns: EXCLUDE_COLUMNS,
+      failed_uploads: failedTables,
     };
     const manifestBytes = new TextEncoder().encode(JSON.stringify(manifest, null, 2));
-    await adminClient.storage
+    const { error: manifestUploadErr } = await adminClient.storage
       .from("database-backups")
       .upload(`daily/${timestamp}/manifest.json`, manifestBytes, {
         contentType: "application/json",
         upsert: false,
       });
 
+    if (manifestUploadErr) {
+      console.warn(`[scheduled-backup-notify] Manifest upload error: ${manifestUploadErr.message}`);
+    }
+
     // Record in backup_history
-    await adminClient.from("backup_history").insert({
+    const { error: historyErr } = await adminClient.from("backup_history").insert({
       file_path: `daily/${timestamp}`,
       file_size_bytes: totalSizeBytes,
       table_counts: tableCounts,
       created_by: null,
     });
+
+    if (historyErr) {
+      console.warn(`[scheduled-backup-notify] backup_history insert error: ${historyErr.message}`);
+    }
 
     // Generate signed URL for manifest (as entry point)
     const { data: manifestUrlData } = await adminClient.storage
@@ -237,7 +279,27 @@ Deno.serve(async (req) => {
 
     const downloadUrl = manifestUrlData?.signedUrl || "#";
 
-    // Send email via Resend
+    // Build combined backup JSON, gzip compress, and base64 encode for attachment
+    const combinedPayload = {
+      version: 1,
+      exported_at: now.toISOString(),
+      exported_by: "system-scheduled",
+      table_counts: tableCounts,
+      data: backupData,
+    };
+    const combinedJson = JSON.stringify(combinedPayload);
+    const combinedBytes = new TextEncoder().encode(combinedJson);
+    console.log(`[scheduled-backup-notify] Combined backup JSON: ${formatFileSize(combinedBytes.length)}`);
+
+    const gzippedBytes = await gzipCompress(combinedBytes);
+    console.log(`[scheduled-backup-notify] Gzip compressed: ${formatFileSize(gzippedBytes.length)}`);
+
+    const base64Attachment = uint8ToBase64(gzippedBytes);
+
+    // Free memory
+    backupData && Object.keys(backupData).forEach(k => delete backupData[k]);
+
+    // Send email via Resend with gzip attachment
     const dateDisplay = now.toLocaleDateString("en-US", {
       weekday: "long",
       year: "numeric",
@@ -262,7 +324,12 @@ Deno.serve(async (req) => {
       tableCounts,
       Object.keys(tableCounts).filter(t => tableCounts[t] > 0).length,
       downloadUrl,
+      failedTables,
     );
+
+    const emailSubject = failedTables.length > 0
+      ? `⚠️ Ropeworks Daily Backup (${failedTables.length} upload failures) — ${emailTimestamp}`
+      : `Ropeworks Daily Backup — ${emailTimestamp}`;
 
     const emailResponse = await fetch(`${GATEWAY_URL}/emails`, {
       method: "POST",
@@ -272,10 +339,16 @@ Deno.serve(async (req) => {
         "X-Connection-Api-Key": RESEND_API_KEY,
       },
       body: JSON.stringify({
-        from: "Ropeworks <noreply@notify.belayreports.com>",
+        from: "Ropeworks <noreply@mail.belayreports.com>",
         to: ["kale@belayreports.com"],
-        subject: `Ropeworks Daily Backup — ${emailTimestamp}`,
+        subject: emailSubject,
         html,
+        attachments: [
+          {
+            filename: `ropeworks-backup-${timestamp}.json.gz`,
+            content: base64Attachment,
+          },
+        ],
       }),
     });
 
@@ -285,7 +358,7 @@ Deno.serve(async (req) => {
     if (!emailSuccess) {
       console.error(`[scheduled-backup-notify] Resend error [${emailResponse.status}]:`, JSON.stringify(emailResult));
     } else {
-      console.log("[scheduled-backup-notify] Email sent successfully via Resend");
+      console.log("[scheduled-backup-notify] Email sent successfully via Resend with gzip attachment");
     }
 
     return new Response(
@@ -296,6 +369,8 @@ Deno.serve(async (req) => {
         total_rows: totalRows,
         table_count: Object.keys(tableCounts).filter(t => tableCounts[t] > 0).length,
         email_sent: emailSuccess,
+        attachment_size_bytes: gzippedBytes.length,
+        failed_uploads: failedTables,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
