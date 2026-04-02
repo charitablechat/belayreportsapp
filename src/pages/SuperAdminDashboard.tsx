@@ -405,7 +405,10 @@ export default function SuperAdminDashboard() {
         }
       });
 
-      if (error) throw error;
+      if (error) {
+        const msg = data?.error || error.message || 'Failed to create user';
+        throw new Error(msg);
+      }
       if (!data.success) throw new Error(data.error);
 
       toast.success(`User ${userData.email} created successfully`);
@@ -413,8 +416,7 @@ export default function SuperAdminDashboard() {
       queryClient.invalidateQueries({ queryKey: ["admin-users"] });
     } catch (error: any) {
       console.error('Error creating user:', error);
-      const message = error?.message || 'Failed to create user';
-      toast.error(message);
+      toast.error(error?.message || 'Failed to create user');
       throw error;
     }
   };
