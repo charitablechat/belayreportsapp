@@ -234,22 +234,28 @@ export default function PhotoGallery({
       const STALE_THRESHOLD_MS = 10 * 60 * 1000;
       const now = Date.now();
       const offlinePhotosList: Photo[] = offlinePhotos
-        .filter(p => p.section === section)
+        .filter(p => p.section === section && p.blob != null)
         .map((p, index) => {
-          const objectUrl = URL.createObjectURL(p.blob);
-          newObjectUrls.push(objectUrl);
-          const createdAt = (p as any).createdAt || (p as any).created_at;
-          const isStale = !p.uploaded && createdAt && (now - new Date(createdAt).getTime() > STALE_THRESHOLD_MS);
-          return {
-            id: p.id,
-            photoUrl: objectUrl,
-            blob: p.blob,
-            uploaded: p.uploaded,
-            caption: null,
-            display_order: p.display_order ?? index,
-            staleUpload: isStale,
-          };
-        });
+          try {
+            const objectUrl = URL.createObjectURL(p.blob);
+            newObjectUrls.push(objectUrl);
+            const createdAt = (p as any).createdAt || (p as any).created_at;
+            const isStale = !p.uploaded && createdAt && (now - new Date(createdAt).getTime() > STALE_THRESHOLD_MS);
+            return {
+              id: p.id,
+              photoUrl: objectUrl,
+              blob: p.blob,
+              uploaded: p.uploaded,
+              caption: null,
+              display_order: p.display_order ?? index,
+              staleUpload: isStale,
+            };
+          } catch (e) {
+            console.warn('[PhotoGallery] Skipping photo with invalid blob:', p.id, e);
+            return null;
+          }
+        })
+        .filter(Boolean) as Photo[];
 
       const receipts = getPhotoReceipts(inspectionId, section);
       const offlinePhotoIds = new Set(offlinePhotos.filter(p => p.section === section).map(p => p.id));

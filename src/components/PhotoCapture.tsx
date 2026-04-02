@@ -9,7 +9,7 @@ import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { triggerHaptic } from "@/lib/haptics";
 import { compressImage } from "@/lib/image-compression";
 import { isHeicFile } from "@/lib/heic-converter";
-import { saveToDevice } from "@/lib/save-to-device";
+
 import { toast } from "sonner";
 
 type PhotoTableName = "inspection_photos" | "training_photos" | "daily_assessment_photos";
@@ -59,30 +59,32 @@ export default function PhotoCapture({
   const uploadMutexRef = useRef(false);
 
   /**
-   * Fire-and-forget background upload — does NOT block UI
+   * Fire-and-forget background upload — does NOT block UI.
+   * Uses pre-resolved storage path for consistency with IndexedDB record.
    */
   const uploadPhotoInBackground = async (
     photoId: string,
     processedFile: File,
-    userId: string
+    userId: string,
+    storagePath: string
   ) => {
     try {
-      const fileExt = processedFile.name.split('.').pop() || 'jpg';
-      const fileName = `${userId}/${inspectionId}/${Date.now()}.${fileExt}`;
-      
       const { error: uploadError } = await supabase.storage
         .from(storageBucket)
-        .upload(fileName, processedFile);
+        .upload(storagePath, processedFile);
       if (uploadError) throw uploadError;
 
       const { error: dbError } = await (supabase.from(tableName) as any).insert({
         [foreignKeyColumn]: inspectionId,
-        photo_url: fileName,
+        photo_url: storagePath,
         photo_section: section,
       });
       if (dbError) throw dbError;
 
-      await markPhotoAsUploaded(photoId, fileName);
+      await markPhotoAsUploaded(photoId, storagePath);
+      
+      // Refresh gallery so photo moves from "Pending" to "Synced"
+      onPhotoAdded();
       
       if (import.meta.env.DEV) {
         console.log('[PhotoCapture] Background sync completed:', photoId);
@@ -131,12 +133,11 @@ export default function PhotoCapture({
       return false;
     }
 
-    // Auto-save to device Downloads folder (fire-and-forget)
-    const deviceFileName = `RopeWorks_${section}_${Date.now()}.jpg`;
-    saveToDevice(processedFile, deviceFileName);
-
     // ===== LOCAL-FIRST: Save to IndexedDB IMMEDIATELY (no auth required) =====
     const photoId = `${inspectionId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const fileExt = processedFile.name.split('.').pop() || 'jpg';
+    // Resolve deterministic storage path NOW so IndexedDB and cloud stay in sync
+    const storagePath = `pending/${inspectionId}/${photoId}.${fileExt}`;
     const saved = await savePhotoOffline({
       id: photoId,
       inspectionId,
@@ -147,6 +148,7 @@ export default function PhotoCapture({
       tableName,
       storageBucket,
       foreignKeyColumn,
+      photoUrl: storagePath,
     });
 
     if (!saved) {
@@ -172,13 +174,13 @@ export default function PhotoCapture({
     // IMMEDIATELY refresh gallery (user sees photo with "Pending" badge)
     onPhotoAdded();
 
-    // If online, attempt background sync (fire-and-forget — NO await, NO blocking)
-    if (isOnline) {
-      // Resolve user identity in background — failure is OK, sync will retry later
+    // If online AND not a temp ID, attempt background sync (fire-and-forget)
+    // Temp IDs will fail the DB foreign-key insert, so defer to useAutoSync
+    if (isOnline && !inspectionId.startsWith('temp-')) {
       getUserWithCache()
         .then(user => {
           if (user?.id) {
-            uploadPhotoInBackground(photoId, processedFile, user.id).catch(() => {});
+            uploadPhotoInBackground(photoId, processedFile, user.id, storagePath).catch(() => {});
           }
         })
         .catch(() => {
