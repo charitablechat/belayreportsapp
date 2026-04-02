@@ -1126,6 +1126,10 @@ export async function relinkPhotosToNewInspectionId(
       let relinkedCount = 0;
       for (const photo of photos) {
         photo.inspectionId = newInspectionId;
+        // Also normalize any photoUrl that still embeds the old temp ID
+        if (photo.photoUrl && photo.photoUrl.includes(oldInspectionId)) {
+          photo.photoUrl = photo.photoUrl.replace(oldInspectionId, newInspectionId);
+        }
         await tx.store.put(photo);
         relinkedCount++;
       }
@@ -1140,6 +1144,27 @@ export async function relinkPhotosToNewInspectionId(
     },
     0,
     'relinkPhotosToNewInspectionId'
+  );
+}
+
+/**
+ * Update the photoUrl for a specific photo record in IndexedDB.
+ * Used by sync-manager to normalize pending/ paths.
+ */
+export async function updatePhotoUrl(photoId: string, newUrl: string): Promise<void> {
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      const tx = db.transaction('photos', 'readwrite');
+      const photo = await tx.store.get(photoId);
+      if (photo) {
+        photo.photoUrl = newUrl;
+        await tx.store.put(photo);
+      }
+      await tx.done;
+    },
+    undefined,
+    'updatePhotoUrl'
   );
 }
 

@@ -86,12 +86,28 @@ export async function syncPhotos(): Promise<{ remaining: number }> {
           continue;
         }
 
-        // Guard: skip photos with unresolved placeholder paths — uploadInBackground will handle these
+        // Normalize pending/ paths: replace placeholder prefix with real userId
+        // so the upload satisfies bucket RLS (path must start with auth.uid())
         if (photo.photoUrl?.startsWith('pending/')) {
-          if (import.meta.env.DEV) {
-            console.log('[Sync Manager] Skipping photo with pending path (awaiting real path):', photo.id);
+          const user = await getUserWithCache();
+          if (!user?.id) {
+            if (import.meta.env.DEV) {
+              console.log('[Sync Manager] Skipping pending photo (no auth):', photo.id);
+            }
+            continue;
           }
-          continue;
+          const normalizedPath = photo.photoUrl.replace(/^pending\//, `${user.id}/`);
+          photo.photoUrl = normalizedPath;
+          // Persist the corrected path to IndexedDB so future cycles don't re-normalize
+          try {
+            const { updatePhotoUrl } = await import('./offline-storage');
+            await updatePhotoUrl(photo.id, normalizedPath);
+          } catch (e) {
+            console.warn('[Sync Manager] Failed to persist normalized path:', e);
+          }
+          if (import.meta.env.DEV) {
+            console.log('[Sync Manager] Normalized pending path to:', normalizedPath);
+          }
         }
 
         // Re-check: another thread (uploadInBackground) may have already handled this
