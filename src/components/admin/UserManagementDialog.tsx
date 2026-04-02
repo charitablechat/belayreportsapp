@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2 } from "lucide-react";
+import { Loader2, Eye, EyeOff } from "lucide-react";
 
 interface UserFormData {
   email: string;
@@ -39,6 +39,8 @@ export function UserManagementDialog({
   onSubmit,
 }: UserManagementDialogProps) {
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [passwordError, setPasswordError] = useState('');
   const [formData, setFormData] = useState<UserFormData>({
     email: user?.email || '',
     password: '',
@@ -74,9 +76,27 @@ export function UserManagementDialog({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setPasswordError('');
+
+    // Validate password client-side
+    const trimmedPassword = (formData.password || '').trim();
+    if (mode === 'create' && trimmedPassword.length < 6) {
+      setPasswordError('Password must be at least 6 characters');
+      return;
+    }
+    if (mode === 'edit' && trimmedPassword.length > 0 && trimmedPassword.length < 6) {
+      setPasswordError('Password must be at least 6 characters');
+      return;
+    }
+
+    const submitData = {
+      ...formData,
+      password: trimmedPassword || undefined,
+    };
+
     setLoading(true);
     try {
-      await onSubmit(formData);
+      await onSubmit(submitData);
       onOpenChange(false);
       // Reset form
       setFormData({
@@ -122,15 +142,33 @@ export function UserManagementDialog({
               <Label htmlFor="password">
                 Password {mode === 'edit' && '(leave blank to keep current)'}
               </Label>
-              <Input
-                id="password"
-                type="password"
-                value={formData.password}
-                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                required={mode === 'create'}
-                placeholder={mode === 'edit' ? 'Enter new password' : 'Min. 6 characters'}
-                minLength={6}
-              />
+              <div className="relative">
+                <Input
+                  id="password"
+                  type={showPassword ? 'text' : 'password'}
+                  value={formData.password}
+                  onChange={(e) => {
+                    setFormData({ ...formData, password: e.target.value });
+                    setPasswordError('');
+                  }}
+                  required={mode === 'create'}
+                  placeholder={mode === 'edit' ? 'Enter new password' : 'Min. 6 characters'}
+                  className="pr-10"
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                  onClick={() => setShowPassword(!showPassword)}
+                  tabIndex={-1}
+                >
+                  {showPassword ? <EyeOff className="h-4 w-4 text-muted-foreground" /> : <Eye className="h-4 w-4 text-muted-foreground" />}
+                </Button>
+              </div>
+              {passwordError && (
+                <p className="text-sm text-destructive">{passwordError}</p>
+              )}
             </div>
 
             <div className="grid grid-cols-2 gap-4">

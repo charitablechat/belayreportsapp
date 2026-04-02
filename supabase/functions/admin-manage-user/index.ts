@@ -79,8 +79,16 @@ Deno.serve(async (req) => {
 
     switch (action) {
       case 'create': {
-        const { email, password, firstName, lastName, organizationId, role } = payload as CreateUserPayload;
+        const { email, firstName, lastName, organizationId, role } = payload as CreateUserPayload;
+        const password = (payload as CreateUserPayload).password?.trim();
         
+        if (!password || password.length < 6) {
+          return new Response(
+            JSON.stringify({ success: false, error: 'Password must be at least 6 characters' }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
         // Create user in auth
         const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
           email,
@@ -146,7 +154,15 @@ Deno.serve(async (req) => {
       }
 
       case 'update': {
-        const { userId, email, firstName, lastName, password, role } = payload as UpdateUserPayload;
+        const { userId, email, firstName, lastName, role } = payload as UpdateUserPayload;
+        const password = (payload as UpdateUserPayload).password?.trim() || '';
+
+        if (password && password.length < 6) {
+          return new Response(
+            JSON.stringify({ success: false, error: 'Password must be at least 6 characters' }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
 
         const updateData: any = {};
         if (email) updateData.email = email;
