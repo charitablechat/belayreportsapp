@@ -210,7 +210,6 @@ export default function Dashboard() {
         const isAdmin = !!data;
         
         localStorage.setItem('cached-admin-status', isAdmin.toString());
-        localStorage.setItem('cached-super-admin-status', isAdmin.toString());
         
         return isAdmin;
       } catch (err) {
