@@ -39,6 +39,8 @@ export function UserManagementDialog({
   onSubmit,
 }: UserManagementDialogProps) {
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [passwordError, setPasswordError] = useState('');
   const [formData, setFormData] = useState<UserFormData>({
     email: user?.email || '',
     password: '',
