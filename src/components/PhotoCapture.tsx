@@ -133,11 +133,25 @@ export default function PhotoCapture({
       return false;
     }
 
-    // ===== LOCAL-FIRST: Save to IndexedDB IMMEDIATELY (no auth required) =====
+    // ===== LOCAL-FIRST: Save to IndexedDB IMMEDIATELY =====
     const photoId = `${inspectionId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     const fileExt = processedFile.name.split('.').pop() || 'jpg';
-    // Resolve deterministic storage path NOW so IndexedDB and cloud stay in sync
-    const storagePath = `pending/${inspectionId}/${photoId}.${fileExt}`;
+
+    // Resolve a valid storage path that starts with userId (required by bucket RLS).
+    // If auth is unavailable (offline), fall back to a pending/ placeholder that
+    // sync-manager will normalize later.
+    let storagePath: string;
+    try {
+      const user = await getUserWithCache();
+      if (user?.id) {
+        storagePath = `${user.id}/${inspectionId}/${photoId}.${fileExt}`;
+      } else {
+        storagePath = `pending/${inspectionId}/${photoId}.${fileExt}`;
+      }
+    } catch {
+      storagePath = `pending/${inspectionId}/${photoId}.${fileExt}`;
+    }
+
     const saved = await savePhotoOffline({
       id: photoId,
       inspectionId,
