@@ -852,7 +852,8 @@ export default function SuperAdminDashboard() {
         <AdminTabsSection showBackupTab={currentUserId === BACKUP_ADMIN_ID} />
 
         <TabsContent value="organizations" className="space-y-4">
-          <div className="rounded-md border">
+          {/* Desktop table */}
+          <div className="hidden md:block rounded-md border overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -939,6 +940,49 @@ export default function SuperAdminDashboard() {
                 )}
               </TableBody>
             </Table>
+          </div>
+
+          {/* Mobile cards */}
+          <div className="md:hidden space-y-3">
+            {organizations?.length === 0 ? (
+              <p className="text-center text-muted-foreground py-8">No organizations found</p>
+            ) : (
+              organizations?.map((org) => {
+                const inspectionCount = org.inspections?.length || 0;
+                const trainingCount = (org as any).trainings?.length || 0;
+                const dailyAssessmentCount = (org as any).daily_assessments?.length || 0;
+                const lastInspectionDate = org.inspections && org.inspections.length > 0
+                  ? org.inspections.reduce((latest: any, insp: any) => {
+                      if (!insp.inspection_date) return latest;
+                      if (!latest || new Date(insp.inspection_date) > new Date(latest)) return insp.inspection_date;
+                      return latest;
+                    }, null)
+                  : null;
+
+                return (
+                  <div key={org.id} className="rounded-lg border bg-card p-4 space-y-2 cursor-pointer active:bg-muted/50" onClick={() => setSelectedOrgForReports({ id: org.id, name: org.name })}>
+                    <div className="font-medium text-sm">{org.name}</div>
+                    <div className="flex flex-wrap gap-2">
+                      <Badge variant={inspectionCount > 0 ? "default" : "outline"} className="text-xs">{inspectionCount} Inspections</Badge>
+                      <Badge variant={trainingCount > 0 ? "default" : "outline"} className="text-xs">{trainingCount} Trainings</Badge>
+                      <Badge variant={dailyAssessmentCount > 0 ? "default" : "outline"} className="text-xs">{dailyAssessmentCount} Daily</Badge>
+                    </div>
+                    <div className="flex items-center justify-between text-xs text-muted-foreground">
+                      <span>Last: {lastInspectionDate ? format(new Date(lastInspectionDate), "PP") : 'None'}</span>
+                      <span>Created: {format(new Date(org.created_at), "PP")}</span>
+                    </div>
+                    <div className="flex justify-end gap-1 pt-1">
+                      <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); handleEditOrg(org); }}>
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); handleDeleteOrgClick(org); }}>
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })
+            )}
           </div>
 
           <Sheet open={!!selectedOrgForReports} onOpenChange={(open) => { if (!open) setSelectedOrgForReports(null); }}>
