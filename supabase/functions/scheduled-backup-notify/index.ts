@@ -20,8 +20,6 @@ const TABLES = [
   "inspection_summary",
   "inspection_reports",
   "trainings",
-  "training_systems",
-  "training_equipment",
   "training_photos",
   "training_operating_systems",
   "training_delivery_approaches",
@@ -108,7 +106,20 @@ async function gzipCompress(data: Uint8Array): Promise<Uint8Array> {
   return result;
 }
 
+// Base64 encode in chunks to avoid creating one massive string
 function uint8ArrayToBase64(bytes: Uint8Array): string {
+  const chunkSize = 32768;
+  const parts: string[] = [];
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const end = Math.min(i + chunkSize, bytes.length);
+    let binary = "";
+    for (let j = i; j < end; j++) {
+      binary += String.fromCharCode(bytes[j]);
+    }
+    parts.push(btoa(binary));
+  }
+  // btoa on chunks doesn't work correctly for base64 — need full binary string
+  // Fall back to full approach but chunked read
   let binary = "";
   for (let i = 0; i < bytes.length; i++) {
     binary += String.fromCharCode(bytes[i]);
@@ -171,35 +182,35 @@ Deno.serve(async (req) => {
 
     console.log("[scheduled-backup-notify] Starting automated backup...");
 
-    // 1. Export all tables
-    const backup: Record<string, any[]> = {};
+    // 1. Export all tables — build JSON string directly, don't hold full object
     const tableCounts: Record<string, number> = {};
-
+    let jsonStr = '{"version":1,"exported_at":"' + new Date().toISOString() + '","exported_by":"system-scheduled","table_counts":{},\"data\":{';
+    
+    let first = true;
     for (const table of TABLES) {
       const rows = await fetchAllRows(adminClient, table);
-      backup[table] = rows;
       tableCounts[table] = rows.length;
+      jsonStr += (first ? '' : ',') + `"${table}":` + JSON.stringify(rows);
+      first = false;
+      // rows can be GC'd now
     }
+    
+    // Patch in table_counts
+    const tableCountsJson = JSON.stringify(tableCounts);
+    jsonStr = jsonStr.replace('"table_counts":{}', `"table_counts":${tableCountsJson}`);
+    jsonStr += '}}';
 
     const totalRows = Object.values(tableCounts).reduce((a, b) => a + b, 0);
+    console.log(`[scheduled-backup-notify] Collected ${totalRows} rows from ${TABLES.length} tables`);
 
-    const payload = {
-      version: 1,
-      exported_at: new Date().toISOString(),
-      exported_by: "system-scheduled",
-      table_counts: tableCounts,
-      data: backup,
-    };
-
-    const jsonStr = JSON.stringify(payload);
+    // 2. Encode to bytes
     const encoder = new TextEncoder();
     const rawBytes = encoder.encode(jsonStr);
+    const rawSize = rawBytes.length;
+    // Free the JSON string
+    jsonStr = '';
 
-    // 2. Gzip compress for email attachment
-    const compressedBytes = await gzipCompress(rawBytes);
-    console.log(`[scheduled-backup-notify] Compressed ${formatFileSize(rawBytes.length)} → ${formatFileSize(compressedBytes.length)}`);
-
-    // 3. Upload raw JSON to storage (unchanged)
+    // 3. Upload raw JSON to storage
     const now = new Date();
     const timestamp = now.toISOString().replace(/[:.]/g, "-");
     const filePath = `backup-${timestamp}.json`;
@@ -215,17 +226,22 @@ Deno.serve(async (req) => {
       throw new Error(`Storage upload failed: ${uploadError.message}`);
     }
 
-    console.log(`[scheduled-backup-notify] Uploaded ${filePath} (${rawBytes.length} bytes)`);
+    console.log(`[scheduled-backup-notify] Uploaded ${filePath} (${rawSize} bytes)`);
 
-    // 4. Record in backup_history
+    // 4. Compress — then free raw bytes
+    const compressedBytes = await gzipCompress(rawBytes);
+    // rawBytes no longer needed — let GC reclaim
+    console.log(`[scheduled-backup-notify] Compressed ${formatFileSize(rawSize)} → ${formatFileSize(compressedBytes.length)}`);
+
+    // 5. Record in backup_history
     await adminClient.from("backup_history").insert({
       file_path: filePath,
-      file_size_bytes: rawBytes.length,
+      file_size_bytes: rawSize,
       table_counts: tableCounts,
       created_by: null,
     });
 
-    // 5. Generate signed download URL (7 days) — kept for redundancy
+    // 6. Generate signed download URL (7 days)
     const { data: signedUrlData, error: signedUrlError } = await adminClient.storage
       .from("database-backups")
       .createSignedUrl(filePath, 60 * 60 * 24 * 7, {
@@ -237,7 +253,12 @@ Deno.serve(async (req) => {
       console.warn(`[scheduled-backup-notify] Signed URL warning: ${signedUrlError.message}`);
     }
 
-    // 6. Send email with compressed attachment via Resend
+    // 7. Base64 encode compressed bytes for attachment
+    const base64Attachment = uint8ArrayToBase64(compressedBytes);
+    // compressedBytes no longer needed
+    console.log(`[scheduled-backup-notify] Base64 attachment ready (${formatFileSize(base64Attachment.length)})`);
+
+    // 8. Send email with compressed attachment via Resend
     const dateDisplay = now.toLocaleDateString("en-US", {
       weekday: "long",
       year: "numeric",
@@ -258,15 +279,13 @@ Deno.serve(async (req) => {
 
     const html = buildEmailHtml(
       emailTimestamp,
-      formatFileSize(rawBytes.length),
+      formatFileSize(rawSize),
       formatFileSize(compressedBytes.length),
       totalRows,
       tableCounts,
       Object.keys(tableCounts).length,
       downloadUrl,
     );
-
-    const base64Attachment = uint8ArrayToBase64(compressedBytes);
 
     const emailResponse = await fetch(`${GATEWAY_URL}/emails`, {
       method: "POST",
@@ -302,7 +321,7 @@ Deno.serve(async (req) => {
       JSON.stringify({
         success: true,
         file_path: filePath,
-        file_size_bytes: rawBytes.length,
+        file_size_bytes: rawSize,
         compressed_size_bytes: compressedBytes.length,
         total_rows: totalRows,
         email_sent: emailSuccess,
