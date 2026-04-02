@@ -1,95 +1,70 @@
 
 
-# Security Audit: Admin Privilege Loss & Unexpected Session Termination
+# Comprehensive Security Audit: Final Gaps
 
-## Status of Previous Fixes
+## Summary
 
-The P0-P3 fixes and Gap 1-5 fixes have been successfully applied. The `cached-super-admin-status` key is fully eliminated. `useRequireAdmin`, `AuthenticatedHeader`, `Dashboard`, and `Profile` all have proper offline/transient-failure resilience. This audit focuses on **remaining gaps** not yet addressed.
-
----
-
-## Remaining Vulnerabilities Found
-
-### V1: `getAdminStatusWithCache()` calls `is_super_admin` instead of `is_admin_or_above` (Inconsistency)
-
-**File:** `src/lib/cached-auth.ts`, line 256
-**Severity:** Low (functionally equivalent today, but a maintenance hazard)
-
-While `useRequireAdmin`, `Dashboard`, and `AuthenticatedHeader` all call `is_admin_or_above`, the shared `getAdminStatusWithCache()` function still calls `is_super_admin`. Both RPCs currently return the same result, but if they ever diverge, every consumer of `getSuperAdminStatusWithCache()` (used by `useReportEditPermission`, `Dashboard.refreshReports`) would silently produce different results than the UI admin checks.
-
-**Fix:** Change line 256 from `supabase.rpc('is_super_admin')` to `supabase.rpc('is_admin_or_above')` for consistency.
+After thoroughly reviewing all session management, RBAC, auth listeners, edge functions, and client-side caching across the entire codebase, the previous fixes (P0-P3, Gaps 1-5, V1-V2) have closed the major vulnerability surface. Two remaining gaps warrant code changes.
 
 ---
 
-### V2: `useReportEditPermission` clears `isSuperAdmin` on transient offline sign-out
+## Remaining Gaps
 
-**File:** `src/hooks/useReportEditPermission.tsx`, lines 92-94
+### G1: Edge functions still call `is_super_admin` RPC instead of `is_admin_or_above`
 
-When `onAuthStateChange` fires with a null session while online, `isSuperAdmin` is set to `false`. However, it does NOT fall back to `cached-admin-status` in localStorage. If the event fires due to a transient token refresh failure that briefly reports `navigator.onLine === true`, an admin editing another user's report would lose edit capability mid-session.
+**Files:**
+- `supabase/functions/send-training-pdf-email/index.ts` (line 79)
+- `supabase/functions/admin-manage-user/index.ts` (line 71)
 
-**Impact:** Medium — admin loses edit access on someone else's report during a network flicker. The report becomes read-only until the next successful auth check.
+Both edge functions call `supabase.rpc("is_super_admin")` for authorization. While `is_super_admin()` is currently aliased to check for the `admin` role (so it works today), this is inconsistent with the client-side unification to `is_admin_or_above`. If `is_super_admin()` is ever deprecated or its semantics change, these functions would silently break.
 
-**Fix:** In the `else if (navigator.onLine)` branch (line 92), read `localStorage.getItem('cached-admin-status')` before setting `isSuperAdmin(false)`. Only clear if the cache also confirms non-admin.
+**Severity:** Low (functionally correct today, maintenance hazard)
 
----
-
-### V3: `cached-auth.ts` auth listener is not cleaned up (minor leak)
-
-**File:** `src/lib/cached-auth.ts`, line 42
-
-The `onAuthStateChange` listener in `initAuthListener()` is registered once and never unsubscribed. This is intentional (singleton pattern), but if the Supabase client is ever re-initialized (e.g., during testing or hot reload in dev), the old listener remains attached, potentially calling `invalidateUserCache()` on stale events.
-
-**Impact:** Low — only affects dev/test environments. In production the client is never re-created.
-
-**Recommendation:** No code change needed, but document this as an intentional design choice.
+**Fix:** Replace `supabase.rpc("is_super_admin")` with `supabase.rpc("is_admin_or_above")` in both edge functions.
 
 ---
 
-### V4: Multiple `onAuthStateChange` subscriptions across components
+### G2: `generate-inspection-pdf` edge function uses service role key to fetch data, bypassing RLS
 
-**Files:** `AuthenticatedHeader.tsx`, `Dashboard.tsx`, `InspectionForm.tsx`, `useReportEditPermission.tsx`, `cached-auth.ts`
+**File:** `supabase/functions/generate-inspection-pdf/index.ts` (line 24-25)
 
-Five separate `onAuthStateChange` listeners are active simultaneously. Each handles the `SIGNED_OUT` event independently. While they all have the `navigator.onLine` guard, there's a subtle race: if one listener fires `navigate("/")` before another has finished processing, React state updates can interleave unpredictably.
+The function authenticates the user via their JWT token (correct), but then creates a Supabase client using `SUPABASE_SERVICE_ROLE_KEY` to fetch inspection data. This means any authenticated user who knows an inspection ID could generate a PDF for any report, regardless of RLS policies. The function does not check ownership or admin status.
 
-**Impact:** Low — the guards are consistent, and React batches state updates. The main risk is redundant processing, not privilege loss. No code change recommended.
+**Severity:** Medium — any authenticated user can generate PDFs for reports they shouldn't have access to.
 
----
-
-### V5: `InspectionForm.tsx` auth listener clears user without offline fallback
-
-**File:** `src/pages/InspectionForm.tsx`, lines 467-471
-
-```typescript
-} else if (navigator.onLine) {
-  setCurrentUser(null);
-}
-```
-
-When the auth state fires with a null session while online, `currentUser` is set to null. This doesn't redirect, but it could disable UI elements that depend on `currentUser` (save buttons, photo capture). The report forms already have an initial offline fallback for `fetchUser`, but the auth listener does not attempt `getOfflineUserId()` before clearing.
-
-**Impact:** Low — the form data is preserved in IndexedDB, and the user can refresh to recover. The `useReportEditPermission` hook independently maintains its own `currentUserId` with the offline guard, so edit permissions are not affected.
-
-**Recommendation:** Consider consistency but not a security vulnerability.
+**Fix:** Either:
+- (a) Add an ownership/admin check before fetching data (e.g., verify `inspection.inspector_id === user.id || is_admin_or_above`), or
+- (b) Use the user's JWT-scoped client instead of the service role client for data fetching, so RLS enforces access.
 
 ---
 
-## Summary Table
+## Items Verified as Secure (No Changes Needed)
 
-| # | Gap | Severity | File | Action |
-|---|-----|----------|------|--------|
-| V1 | `getAdminStatusWithCache` uses wrong RPC | Low | `cached-auth.ts:256` | Change to `is_admin_or_above` |
-| V2 | `useReportEditPermission` clears admin on transient failure | Medium | `useReportEditPermission.tsx:92` | Add localStorage fallback |
-| V3 | Auth listener never unsubscribed | Low | `cached-auth.ts:42` | Document only |
-| V4 | Multiple auth listeners race | Low | Multiple files | No change needed |
-| V5 | InspectionForm clears user on transient auth | Low | `InspectionForm.tsx:467` | Optional consistency fix |
+| Area | Status |
+|------|--------|
+| `cached-admin-status` key is the single source of truth | Confirmed — `cached-super-admin-status` fully eliminated |
+| `useRequireAdmin` has offline/transient fallback | Confirmed |
+| `useReportEditPermission` has localStorage fallback for admin | Confirmed (V2 fix applied) |
+| `getAdminStatusWithCache` calls `is_admin_or_above` | Confirmed (V1 fix applied) |
+| Dashboard/Header don't poison cache on transient failure | Confirmed (P0 fix applied) |
+| `cached-auth.ts` guards `invalidateUserCache` with `navigator.onLine` | Confirmed (P1 fix applied) |
+| `SESSION_REFRESH_BUFFER` is 300s | Confirmed (P2 fix applied) |
+| Profile page has offline fallback | Confirmed (Gap 5 fix applied) |
+| `InspectionForm` auth listener guards `setCurrentUser(null)` with `navigator.onLine` | Confirmed |
+| `TrainingForm` and `DailyAssessmentForm` do not have auth listeners (rely on `useReportEditPermission`) | Confirmed — no gap |
+| `send-report-email` validates auth and has rate limiting | Confirmed |
+| `generate-training-pdf` authenticates user via JWT | Confirmed |
 
-## Recommended Implementation
+---
 
-Only V1 and V2 warrant code changes:
+## Implementation Plan
 
-1. **`src/lib/cached-auth.ts` line 256** — Replace `supabase.rpc('is_super_admin')` with `supabase.rpc('is_admin_or_above')` to unify all admin checks on the same RPC.
+### Step 1: Unify edge function RPC calls
+- `supabase/functions/send-training-pdf-email/index.ts` line 79: change `is_super_admin` to `is_admin_or_above`
+- `supabase/functions/admin-manage-user/index.ts` line 71: change `is_super_admin` to `is_admin_or_above`
 
-2. **`src/hooks/useReportEditPermission.tsx` lines 92-94** — Before setting `isSuperAdmin(false)`, check `localStorage.getItem('cached-admin-status') === 'true'` as a fallback, matching the resilience pattern used everywhere else.
+### Step 2: Add authorization check to `generate-inspection-pdf`
+- After authenticating the user (line 28-32), add a check: if the fetched `inspection.inspector_id !== user.id`, call `is_admin_or_above` RPC and reject if not admin. This preserves the service-role data fetch (needed for cross-table joins) while enforcing access control.
 
-No database migrations needed. Both fixes are backward-compatible.
+No database migrations needed. All fixes are backward-compatible.
 
