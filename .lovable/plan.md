@@ -1,35 +1,49 @@
 
 
-## Fix User Password Update — Cross-Platform
+## Fix Mobile Wrapping for All Super Admin Tables
 
 ### Problem
-When editing a user and setting a new password, the edge function returns a non-2xx error. The root causes are:
+All admin tables render as standard HTML `<table>` on every screen size. On mobile, narrow columns force text to wrap vertically character-by-character, making the UI unusable (as shown in the screenshot).
 
-1. **Poor error surfacing**: `supabase.functions.invoke` sets `error` on non-2xx responses, but the actual error message from the function body (`data.error`) is not always read because `throw error` fires first with a generic "Edge Function returned a non-2xx status code" message.
-2. **Unreliable HTML `minLength`**: The `minLength={6}` attribute on password inputs is not consistently enforced on Android/iOS mobile browsers, allowing short passwords to be submitted.
-3. **Empty password sent as update**: When editing, if the password field has whitespace-only content, it passes the `if (password)` check in the edge function but fails Supabase Auth's validation.
+### Approach
+For each table section in `SuperAdminDashboard.tsx`, use a **responsive dual-layout pattern**:
+- **Desktop/tablet** (`md:` and up): Keep existing `<Table>` with `overflow-x-auto`
+- **Mobile** (below `md`): Render a stacked card list instead
 
-### Changes
+This follows the existing project convention documented in the responsive text handling memory.
 
-#### 1. `src/components/admin/UserManagementDialog.tsx`
-- Add explicit password validation before submit: trim and check length >= 6 (only when password is non-empty in edit mode)
-- Show inline validation error for password field
-- Add a "show/hide password" toggle button for mobile usability
+### Tables to Convert (all in `SuperAdminDashboard.tsx`)
 
-#### 2. `src/pages/SuperAdminDashboard.tsx` — `handleUpdateUser`
-- Fix error handling: read `data?.error` from the function response body before falling back to the generic `error` object
-- Pattern: `if (error) { const msg = data?.error || error.message; throw new Error(msg); }`
-- Apply same fix to `handleCreateUser` and other edge function calls for consistency
+| Tab / Section | Columns | Priority |
+|---|---|---|
+| User Management | Email, Name, Status, Roles, Last Sign In, Actions | High (screenshot) |
+| Organizations | Org, Inspections, Trainings, Daily, Last Inspection, Created, Actions | High |
+| Inspections | Org, Location, Status, Date, Created, Inspector | Medium |
+| Trainings | Org, Trainer, Status, Start, End, Created | Medium |
+| Daily Assessments | Org, Site, Inspector, Status, Date, Created | Medium |
+| Notifications | Type, Title, Status, Sent | Low |
+| Stat card dialogs (5) | Various | Low |
 
-#### 3. `supabase/functions/admin-manage-user/index.ts`
-- Trim and validate password server-side: if password is provided but less than 6 characters, return a clear 400 error before calling `updateUserById`
-- Strip empty/whitespace-only passwords so they don't get sent to the Auth API
+### Implementation Detail
 
-### Summary
+For each table section, wrap the existing `<Table>` in `<div className="hidden md:block overflow-x-auto">` and add a sibling `<div className="md:hidden space-y-3">` containing mapped card items. Each card uses the existing `Card` component with key fields as stacked rows.
+
+**Example card layout for User Management:**
+```text
+┌─────────────────────────────┐
+│ john@example.com            │
+│ John Doe                    │
+│ [Active]  [inspector]       │
+│ Last sign in: Mar 23, 2026  │
+│ [⚡] [🛡] [✏] [🗑]          │
+└─────────────────────────────┘
+```
+
+### Files Changed
 
 | File | Change |
-|------|--------|
-| `UserManagementDialog.tsx` | Client-side password validation + show/hide toggle |
-| `SuperAdminDashboard.tsx` | Fix error message extraction from edge function responses |
-| `admin-manage-user/index.ts` | Server-side password validation and trimming |
+|---|---|
+| `src/pages/SuperAdminDashboard.tsx` | Add mobile card layouts alongside each table; wrap tables in `hidden md:block` |
+
+No new files or dependencies needed. Single file change, pattern repeated for each tab.
 
