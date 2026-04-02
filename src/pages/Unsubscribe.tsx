@@ -100,7 +100,7 @@ const Unsubscribe = () => {
 
           {status === "success" && (
             <div className="flex flex-col items-center gap-3 py-4">
-              <CheckCircle className="h-10 w-10 text-green-500" />
+              <CheckCircle className="h-10 w-10 text-success" />
               <p className="font-medium">You've been unsubscribed</p>
               <p className="text-sm text-muted-foreground">
                 You will no longer receive email notifications from Rope Works.
