@@ -406,10 +406,14 @@ export default function SuperAdminDashboard() {
       });
 
       if (error) {
-        const msg = data?.error || error.message || 'Failed to create user';
+        let msg = 'Failed to create user';
+        try {
+          const errorBody = await (error as any).context?.json?.();
+          msg = errorBody?.error || error.message || msg;
+        } catch { msg = error.message || msg; }
         throw new Error(msg);
       }
-      if (!data.success) throw new Error(data.error);
+      if (!data?.success) throw new Error(data?.error || 'Failed to create user');
 
       toast.success(`User ${userData.email} created successfully`);
       refetchUsers();
@@ -432,10 +436,14 @@ export default function SuperAdminDashboard() {
       });
 
       if (error) {
-        const msg = data?.error || error.message || 'Failed to update user';
+        let msg = 'Failed to update user';
+        try {
+          const errorBody = await (error as any).context?.json?.();
+          msg = errorBody?.error || error.message || msg;
+        } catch { msg = error.message || msg; }
         throw new Error(msg);
       }
-      if (!data.success) throw new Error(data.error);
+      if (!data?.success) throw new Error(data?.error || 'Failed to update user');
 
       toast.success('User updated successfully');
       refetchUsers();
