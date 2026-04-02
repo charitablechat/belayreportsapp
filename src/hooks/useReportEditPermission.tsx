@@ -89,8 +89,12 @@ export function useReportEditPermission({
         if (session?.user) {
           const superAdminStatus = await getSuperAdminStatusWithCache();
           setIsSuperAdmin(superAdminStatus);
-        } else if (navigator.onLine) {
-          setIsSuperAdmin(false);
+      } else if (navigator.onLine) {
+          // Only clear admin if localStorage also confirms non-admin
+          const cachedAdmin = localStorage.getItem('cached-admin-status');
+          if (cachedAdmin !== 'true') {
+            setIsSuperAdmin(false);
+          }
         }
       }
     );
