@@ -1,67 +1,95 @@
 
 
-# Audit: Remaining Gaps in Admin Privilege Loss / Session Termination
+# Security Audit: Admin Privilege Loss & Unexpected Session Termination
 
-## Findings
+## Status of Previous Fixes
 
-After a thorough review of the codebase, the previous P0-P3 fixes addressed the most critical vectors. However, **five additional gaps** remain.
-
----
-
-### Gap 1: `useRequireAdmin` has no resilience to transient failures
-**File:** `src/hooks/useRequireAdmin.tsx`
-
-The `catch` block (line 44-48) unconditionally sets `isAdmin(false)` and redirects to `/dashboard` on any error — including network timeouts, LockManager contention, or transient RPC failures. Unlike Dashboard and Header, it has no fallback to `localStorage` cached admin status.
-
-**Fix:** Before redirecting on error, check `localStorage.getItem('cached-admin-status')`. Only redirect if the cached value is also not `'true'`. This makes the SuperAdminDashboard and Onboarding pages survive transient failures.
+The P0-P3 fixes and Gap 1-5 fixes have been successfully applied. The `cached-super-admin-status` key is fully eliminated. `useRequireAdmin`, `AuthenticatedHeader`, `Dashboard`, and `Profile` all have proper offline/transient-failure resilience. This audit focuses on **remaining gaps** not yet addressed.
 
 ---
 
-### Gap 2: `useRequireAdmin` redirects when `getUserWithCache()` returns null transiently
-**File:** `src/hooks/useRequireAdmin.tsx` (line 23-25)
+## Remaining Vulnerabilities Found
 
-If `getUserWithCache()` returns `null` due to a timeout or LockManager error (not a real sign-out), the hook immediately redirects to `/`. It does not attempt `getOfflineUserId()` as a fallback, unlike the report forms.
+### V1: `getAdminStatusWithCache()` calls `is_super_admin` instead of `is_admin_or_above` (Inconsistency)
 
-**Fix:** Add an `getOfflineUserId()` fallback before redirecting. Only redirect if both return null AND `navigator.onLine` is true.
+**File:** `src/lib/cached-auth.ts`, line 256
+**Severity:** Low (functionally equivalent today, but a maintenance hazard)
 
----
+While `useRequireAdmin`, `Dashboard`, and `AuthenticatedHeader` all call `is_admin_or_above`, the shared `getAdminStatusWithCache()` function still calls `is_super_admin`. Both RPCs currently return the same result, but if they ever diverge, every consumer of `getSuperAdminStatusWithCache()` (used by `useReportEditPermission`, `Dashboard.refreshReports`) would silently produce different results than the UI admin checks.
 
-### Gap 3: `useRequireAdmin` makes a redundant `is_super_admin` RPC call
-**File:** `src/hooks/useRequireAdmin.tsx` (line 37)
-
-After confirming admin access via `is_admin_or_above`, it makes a second RPC call to `is_super_admin`. Both functions now check for the same `admin` role (per the unification documented in memory). This is a wasted network call that adds latency and another failure point. If this second call fails, `isSuperAdmin` stays `false`, which could hide admin-only UI controls.
-
-**Fix:** Remove the second RPC call. Set `isSuperAdmin = hasAccess` directly, since `is_super_admin` and `is_admin_or_above` are functionally identical after the role unification.
+**Fix:** Change line 256 from `supabase.rpc('is_super_admin')` to `supabase.rpc('is_admin_or_above')` for consistency.
 
 ---
 
-### Gap 4: `getSuperAdminStatusWithCache()` in `cached-auth.ts` still calls `is_super_admin` RPC
-**File:** `src/lib/cached-auth.ts` (line 256)
+### V2: `useReportEditPermission` clears `isSuperAdmin` on transient offline sign-out
 
-This function is used by `useReportEditPermission` and the Dashboard report loaders. It calls `is_super_admin` — which is correct (same result as `is_admin_or_above`). However, it writes results to `cached-admin-status` in localStorage, while consuming components also read `cached-super-admin-status`. The dual-key pattern creates a subtle inconsistency: if one key is stale and the other is fresh, the fallback value depends on which component reads first.
+**File:** `src/hooks/useReportEditPermission.tsx`, lines 92-94
 
-**Fix:** Consolidate to a single localStorage key (`cached-admin-status`). Remove all reads/writes of `cached-super-admin-status` across the codebase. The backward-compat aliases in `cached-auth.ts` can stay as code aliases but should write to one key only.
+When `onAuthStateChange` fires with a null session while online, `isSuperAdmin` is set to `false`. However, it does NOT fall back to `cached-admin-status` in localStorage. If the event fires due to a transient token refresh failure that briefly reports `navigator.onLine === true`, an admin editing another user's report would lose edit capability mid-session.
 
----
+**Impact:** Medium — admin loses edit access on someone else's report during a network flicker. The report becomes read-only until the next successful auth check.
 
-### Gap 5: `Profile.tsx` redirects to `/` on transient auth failure
-**File:** `src/pages/Profile.tsx` (line 56-58)
-
-If `getUserWithCache()` returns null (network timeout, LockManager), the Profile page redirects to the login screen. No offline fallback, no cached session check.
-
-**Fix:** Add the same `getOfflineUserId()` fallback pattern used in report forms. Only redirect if genuinely unauthenticated (online + no cached session).
+**Fix:** In the `else if (navigator.onLine)` branch (line 92), read `localStorage.getItem('cached-admin-status')` before setting `isSuperAdmin(false)`. Only clear if the cache also confirms non-admin.
 
 ---
 
-## Implementation Summary
+### V3: `cached-auth.ts` auth listener is not cleaned up (minor leak)
 
-| # | Gap | File | Fix |
-|---|-----|------|-----|
-| 1 | `useRequireAdmin` catch redirects on transient errors | `src/hooks/useRequireAdmin.tsx` | Fallback to `cached-admin-status` before redirect |
-| 2 | `useRequireAdmin` redirects on null user without offline fallback | `src/hooks/useRequireAdmin.tsx` | Add `getOfflineUserId()` + online guard |
-| 3 | Redundant `is_super_admin` RPC in `useRequireAdmin` | `src/hooks/useRequireAdmin.tsx` | Remove second call; `isSuperAdmin = hasAccess` |
-| 4 | Dual localStorage keys for admin cache | `src/lib/cached-auth.ts`, `src/components/AuthenticatedHeader.tsx`, `src/pages/Dashboard.tsx` | Consolidate to single `cached-admin-status` key |
-| 5 | `Profile.tsx` redirects on transient null user | `src/pages/Profile.tsx` | Add offline fallback before redirect |
+**File:** `src/lib/cached-auth.ts`, line 42
 
-All fixes are backward-compatible, require no database migration, and follow the resilience patterns already established in Dashboard and report forms.
+The `onAuthStateChange` listener in `initAuthListener()` is registered once and never unsubscribed. This is intentional (singleton pattern), but if the Supabase client is ever re-initialized (e.g., during testing or hot reload in dev), the old listener remains attached, potentially calling `invalidateUserCache()` on stale events.
+
+**Impact:** Low — only affects dev/test environments. In production the client is never re-created.
+
+**Recommendation:** No code change needed, but document this as an intentional design choice.
+
+---
+
+### V4: Multiple `onAuthStateChange` subscriptions across components
+
+**Files:** `AuthenticatedHeader.tsx`, `Dashboard.tsx`, `InspectionForm.tsx`, `useReportEditPermission.tsx`, `cached-auth.ts`
+
+Five separate `onAuthStateChange` listeners are active simultaneously. Each handles the `SIGNED_OUT` event independently. While they all have the `navigator.onLine` guard, there's a subtle race: if one listener fires `navigate("/")` before another has finished processing, React state updates can interleave unpredictably.
+
+**Impact:** Low — the guards are consistent, and React batches state updates. The main risk is redundant processing, not privilege loss. No code change recommended.
+
+---
+
+### V5: `InspectionForm.tsx` auth listener clears user without offline fallback
+
+**File:** `src/pages/InspectionForm.tsx`, lines 467-471
+
+```typescript
+} else if (navigator.onLine) {
+  setCurrentUser(null);
+}
+```
+
+When the auth state fires with a null session while online, `currentUser` is set to null. This doesn't redirect, but it could disable UI elements that depend on `currentUser` (save buttons, photo capture). The report forms already have an initial offline fallback for `fetchUser`, but the auth listener does not attempt `getOfflineUserId()` before clearing.
+
+**Impact:** Low — the form data is preserved in IndexedDB, and the user can refresh to recover. The `useReportEditPermission` hook independently maintains its own `currentUserId` with the offline guard, so edit permissions are not affected.
+
+**Recommendation:** Consider consistency but not a security vulnerability.
+
+---
+
+## Summary Table
+
+| # | Gap | Severity | File | Action |
+|---|-----|----------|------|--------|
+| V1 | `getAdminStatusWithCache` uses wrong RPC | Low | `cached-auth.ts:256` | Change to `is_admin_or_above` |
+| V2 | `useReportEditPermission` clears admin on transient failure | Medium | `useReportEditPermission.tsx:92` | Add localStorage fallback |
+| V3 | Auth listener never unsubscribed | Low | `cached-auth.ts:42` | Document only |
+| V4 | Multiple auth listeners race | Low | Multiple files | No change needed |
+| V5 | InspectionForm clears user on transient auth | Low | `InspectionForm.tsx:467` | Optional consistency fix |
+
+## Recommended Implementation
+
+Only V1 and V2 warrant code changes:
+
+1. **`src/lib/cached-auth.ts` line 256** — Replace `supabase.rpc('is_super_admin')` with `supabase.rpc('is_admin_or_above')` to unify all admin checks on the same RPC.
+
+2. **`src/hooks/useReportEditPermission.tsx` lines 92-94** — Before setting `isSuperAdmin(false)`, check `localStorage.getItem('cached-admin-status') === 'true'` as a fallback, matching the resilience pattern used everywhere else.
+
+No database migrations needed. Both fixes are backward-compatible.
 
