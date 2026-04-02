@@ -255,7 +255,7 @@ export default function PhotoGallery({
             return null;
           }
         })
-        .filter((p): p is Photo => p !== null);
+        .filter(Boolean) as Photo[];
 
       const receipts = getPhotoReceipts(inspectionId, section);
       const offlinePhotoIds = new Set(offlinePhotos.filter(p => p.section === section).map(p => p.id));
