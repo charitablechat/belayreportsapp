@@ -69,6 +69,7 @@ serve(async (req) => {
       const { data: isAdmin } = await userClient.rpc('is_admin_or_above');
       if (!isAdmin) {
         throw new Error('Unauthorized: You do not have access to this inspection');
+      }
     }
 
     console.log('Fetching inspection data for:', inspectionId);
