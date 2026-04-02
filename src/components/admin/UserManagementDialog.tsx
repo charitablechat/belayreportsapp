@@ -76,9 +76,27 @@ export function UserManagementDialog({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setPasswordError('');
+
+    // Validate password client-side
+    const trimmedPassword = (formData.password || '').trim();
+    if (mode === 'create' && trimmedPassword.length < 6) {
+      setPasswordError('Password must be at least 6 characters');
+      return;
+    }
+    if (mode === 'edit' && trimmedPassword.length > 0 && trimmedPassword.length < 6) {
+      setPasswordError('Password must be at least 6 characters');
+      return;
+    }
+
+    const submitData = {
+      ...formData,
+      password: trimmedPassword || undefined,
+    };
+
     setLoading(true);
     try {
-      await onSubmit(formData);
+      await onSubmit(submitData);
       onOpenChange(false);
       // Reset form
       setFormData({
