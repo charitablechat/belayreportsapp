@@ -9,7 +9,7 @@ import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { triggerHaptic } from "@/lib/haptics";
 import { compressImage } from "@/lib/image-compression";
 import { isHeicFile } from "@/lib/heic-converter";
-import { saveToDevice } from "@/lib/save-to-device";
+
 import { toast } from "sonner";
 
 type PhotoTableName = "inspection_photos" | "training_photos" | "daily_assessment_photos";
