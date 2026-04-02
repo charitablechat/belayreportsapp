@@ -26,6 +26,7 @@ const Onboarding = lazy(() => import("./pages/Onboarding"));
 const UploadLogos = lazy(() => import("./pages/UploadLogos"));
 const UploadLogosToStorage = lazy(() => import("./pages/UploadLogosToStorage"));
 const AdminLogoManagement = lazy(() => import("./pages/AdminLogoManagement"));
+const Unsubscribe = lazy(() => import("./pages/Unsubscribe"));
 
 import { InstallBanner } from "@/components/pwa/InstallBanner";
 import { UpdateNotification } from "@/components/pwa/UpdateNotification";
