@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { goBack } from "@/lib/navigation";
 import { supabase } from "@/integrations/supabase/client";
-import { getUserWithCache } from "@/lib/cached-auth";
+import { getUserWithCache, getOfflineUserId } from "@/lib/cached-auth";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
