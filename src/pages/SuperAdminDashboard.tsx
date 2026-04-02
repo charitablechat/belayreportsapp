@@ -1556,6 +1556,8 @@ export default function SuperAdminDashboard() {
           <DialogHeader>
             <DialogTitle>All Organizations ({organizations?.length || 0})</DialogTitle>
           </DialogHeader>
+          {/* Desktop table */}
+          <div className="hidden md:block overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow>
@@ -1576,6 +1578,15 @@ export default function SuperAdminDashboard() {
               ))}
             </TableBody>
           </Table>
+          </div>
+          <div className="md:hidden space-y-3">
+            {organizations?.slice((orgsPage - 1) * ITEMS_PER_PAGE, orgsPage * ITEMS_PER_PAGE).map((org: any) => (
+              <div key={org.id} className="rounded-lg border bg-card p-3 space-y-1">
+                <div className="font-medium text-sm">{org.name}</div>
+                <div className="text-xs text-muted-foreground">Created: {format(new Date(org.created_at), "PP")}</div>
+              </div>
+            ))}
+          </div>
           {organizations && organizations.length > ITEMS_PER_PAGE && (
             <div className="flex items-center justify-between pt-4 border-t">
               <span className="text-sm text-muted-foreground">
@@ -1600,6 +1611,8 @@ export default function SuperAdminDashboard() {
           <DialogHeader>
             <DialogTitle>All Inspections ({allInspections?.length || 0})</DialogTitle>
           </DialogHeader>
+          {/* Desktop table */}
+          <div className="hidden md:block overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow>
@@ -1624,6 +1637,19 @@ export default function SuperAdminDashboard() {
               ))}
             </TableBody>
           </Table>
+          </div>
+          <div className="md:hidden space-y-3">
+            {allInspections?.slice((inspectionsPage - 1) * ITEMS_PER_PAGE, inspectionsPage * ITEMS_PER_PAGE).map((inspection) => (
+              <div key={inspection.id} className="rounded-lg border bg-card p-3 space-y-1 cursor-pointer active:bg-muted/50" onClick={() => { setIsInspectionsListOpen(false); navigate(`/inspection/${inspection.id}`); }}>
+                <div className="font-medium text-sm">{inspection.organization}</div>
+                <div className="text-sm text-muted-foreground">{inspection.location}</div>
+                <div className="flex items-center justify-between">
+                  <Badge variant={inspection.status === 'completed' ? 'default' : 'secondary'} className="text-xs">{inspection.status}</Badge>
+                  <span className="text-xs text-muted-foreground">{format(new Date(inspection.inspection_date), "PP")}</span>
+                </div>
+              </div>
+            ))}
+          </div>
           {allInspections && allInspections.length > ITEMS_PER_PAGE && (
             <div className="flex items-center justify-between pt-4 border-t">
               <span className="text-sm text-muted-foreground">
@@ -1648,6 +1674,8 @@ export default function SuperAdminDashboard() {
           <DialogHeader>
             <DialogTitle>All Training Reports ({allTrainings?.length || 0})</DialogTitle>
           </DialogHeader>
+          {/* Desktop table */}
+          <div className="hidden md:block overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow>
@@ -1676,6 +1704,23 @@ export default function SuperAdminDashboard() {
               ))}
             </TableBody>
           </Table>
+          </div>
+          <div className="md:hidden space-y-3">
+            {allTrainings?.slice((trainingsPage - 1) * ITEMS_PER_PAGE, trainingsPage * ITEMS_PER_PAGE).map((training) => (
+              <div key={training.id} className="rounded-lg border bg-card p-3 space-y-1 cursor-pointer active:bg-muted/50" onClick={() => { setIsTrainingsListOpen(false); navigate(`/training/${training.id}`); }}>
+                <div className="font-medium text-sm">{training.organizations?.name || training.organization}</div>
+                <div className="text-sm text-muted-foreground">
+                  {(training as any).trainer?.first_name && (training as any).trainer?.last_name
+                    ? `${(training as any).trainer.first_name} ${(training as any).trainer.last_name}`
+                    : training.trainer_of_record || 'Unknown'}
+                </div>
+                <div className="flex items-center justify-between">
+                  <Badge variant={training.status === 'completed' ? 'default' : 'secondary'} className="text-xs">{training.status}</Badge>
+                  <span className="text-xs text-muted-foreground">{parseLocalDate(training.start_date) ? format(parseLocalDate(training.start_date)!, "PP") : '-'}</span>
+                </div>
+              </div>
+            ))}
+          </div>
           {allTrainings && allTrainings.length > ITEMS_PER_PAGE && (
             <div className="flex items-center justify-between pt-4 border-t">
               <span className="text-sm text-muted-foreground">
@@ -1700,6 +1745,8 @@ export default function SuperAdminDashboard() {
           <DialogHeader>
             <DialogTitle>All Daily Assessments ({allDailyAssessments?.length || 0})</DialogTitle>
           </DialogHeader>
+          {/* Desktop table */}
+          <div className="hidden md:block overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow>
@@ -1724,6 +1771,19 @@ export default function SuperAdminDashboard() {
               ))}
             </TableBody>
           </Table>
+          </div>
+          <div className="md:hidden space-y-3">
+            {allDailyAssessments?.slice((dailyPage - 1) * ITEMS_PER_PAGE, dailyPage * ITEMS_PER_PAGE).map((assessment) => (
+              <div key={assessment.id} className="rounded-lg border bg-card p-3 space-y-1 cursor-pointer active:bg-muted/50" onClick={() => { setIsDailyListOpen(false); navigate(`/daily-assessment/${assessment.id}`); }}>
+                <div className="font-medium text-sm">{assessment.organizations?.name || assessment.organization}</div>
+                <div className="text-sm text-muted-foreground">{assessment.site || '-'}</div>
+                <div className="flex items-center justify-between">
+                  <Badge variant={assessment.status === 'completed' ? 'default' : 'secondary'} className="text-xs">{assessment.status}</Badge>
+                  <span className="text-xs text-muted-foreground">{parseLocalDate(assessment.assessment_date) ? format(parseLocalDate(assessment.assessment_date)!, "PP") : '-'}</span>
+                </div>
+              </div>
+            ))}
+          </div>
           {allDailyAssessments && allDailyAssessments.length > ITEMS_PER_PAGE && (
             <div className="flex items-center justify-between pt-4 border-t">
               <span className="text-sm text-muted-foreground">
