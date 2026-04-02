@@ -147,7 +147,9 @@ Deno.serve(async (req) => {
     // 4. Generate signed download URL (7 days)
     const { data: signedUrlData, error: signedUrlError } = await adminClient.storage
       .from("database-backups")
-      .createSignedUrl(filePath, 60 * 60 * 24 * 7);
+      .createSignedUrl(filePath, 60 * 60 * 24 * 7, {
+        download: `ropeworks-backup-${timestamp}.json`,
+      });
 
     if (signedUrlError || !signedUrlData?.signedUrl) {
       throw new Error(`Failed to generate download URL: ${signedUrlError?.message}`);
