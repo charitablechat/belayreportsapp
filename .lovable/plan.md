@@ -1,26 +1,39 @@
 
 
-## Fix: Backup download link saves as .json file instead of displaying in browser
+## Attach Compressed Backup JSON to Daily Email via Resend
 
-### Problem
-The signed URL in the daily backup email opens raw JSON in the browser tab instead of prompting a file download.
+### What Changes
 
-### Solution
-Use Supabase storage's built-in `download` option when generating the signed URL. This sets `Content-Disposition: attachment; filename="..."` on the response, forcing the browser to save it as a file.
+Modify `supabase/functions/scheduled-backup-notify/index.ts` to send the daily backup email through the Resend connector gateway with the backup JSON as a **gzip-compressed file attachment** (`.json.gz`), instead of sending a download link via the transactional email system.
 
-### Change
-**File: `supabase/functions/scheduled-backup-notify/index.ts`** (line ~150)
+### Why
 
-Change the `createSignedUrl` call from:
-```typescript
-.createSignedUrl(filePath, 60 * 60 * 24 * 7);
-```
-To:
-```typescript
-.createSignedUrl(filePath, 60 * 60 * 24 * 7, {
-  download: `ropeworks-backup-${timestamp}.json`,
-});
-```
+- Make.com can parse an actual file attachment but cannot follow signed download links
+- Gzip compression typically reduces JSON by 90%+ (~29 MB becomes ~2-3 MB), well within Resend's 40 MB limit and future-proof as the database grows
 
-This is a one-line change. The `download` parameter tells the storage API to include a `Content-Disposition: attachment` header with the specified filename, so clicking the link in the email will save a properly named `.json` file.
+### Implementation
+
+**File: `supabase/functions/scheduled-backup-notify/index.ts`**
+
+1. After the backup JSON is built and uploaded to storage (existing steps 1-3 stay the same), **gzip compress** the JSON bytes using Deno's built-in `CompressionStream` API
+2. **Base64-encode** the compressed bytes
+3. **Replace** the `send-transactional-email` invocation (step 5) with a direct call to the Resend connector gateway:
+   - URL: `https://connector-gateway.lovable.dev/resend/emails`
+   - Headers: `Authorization: Bearer $LOVABLE_API_KEY`, `X-Connection-Api-Key: $RESEND_API_KEY_1`
+   - Body includes `attachments` array with one entry: `{ filename: "ropeworks-backup-YYYY-MM-DD.json.gz", content: <base64 gzip data> }`
+   - Simple HTML body with backup summary (timestamp, file size, row count, table counts)
+   - From: `Ropeworks <noreply@notify.belayreports.com>`
+   - To: `kale@belayreports.com`
+4. The signed download URL generation (step 4) and storage upload remain as-is for redundancy
+
+### Existing behavior preserved
+- Backup JSON still uploaded to `database-backups` storage bucket
+- `backup_history` record still created
+- Email subject and summary info remain the same
+
+### Technical Details
+- Uses Deno's native `CompressionStream("gzip")` — no external dependencies
+- The connector gateway handles Resend auth token refresh automatically
+- Secrets used: `LOVABLE_API_KEY` (already exists), `RESEND_API_KEY_1` (just connected)
+- Edge function will be redeployed after changes
 
