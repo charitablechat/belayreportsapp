@@ -72,7 +72,7 @@ export function AuthenticatedHeader() {
   const { data: isSuperAdmin } = useQuery({
     queryKey: ["is-super-admin-global"],
     queryFn: async () => {
-      const cachedValue = localStorage.getItem("cached-super-admin-status");
+      const cachedValue = localStorage.getItem("cached-admin-status");
 
       if (!navigator.onLine) return cachedValue === "true";
 
