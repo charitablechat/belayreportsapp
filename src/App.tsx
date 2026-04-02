@@ -150,6 +150,7 @@ const router = createBrowserRouter([
       { path: "/upload-logos", element: <UploadLogos /> },
       { path: "/upload-logos-storage", element: <UploadLogosToStorage /> },
       { path: "/admin/logos", element: <AdminLogoManagement /> },
+      { path: "/unsubscribe", element: <Unsubscribe /> },
       { path: "*", element: <NotFound /> },
     ],
   },
