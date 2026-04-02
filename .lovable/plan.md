@@ -1,70 +1,122 @@
 
 
-# Comprehensive Security Audit: Final Gaps
+# Comprehensive Audit: `scheduled-backup-notify` and Backup System
 
-## Summary
+## Critical Findings
 
-After thoroughly reviewing all session management, RBAC, auth listeners, edge functions, and client-side caching across the entire codebase, the previous fixes (P0-P3, Gaps 1-5, V1-V2) have closed the major vulnerability surface. Two remaining gaps warrant code changes.
+### F1: No Gzip Compression or Base64 Encoding (Missing Feature)
+**Severity:** High — the user's request specifically asks to verify gzip compression, but it does not exist.
 
----
+`scheduled-backup-notify/index.ts` has **zero** usage of `CompressionStream('gzip')` or base64 encoding. The backup data is uploaded as raw JSON to storage, and the email contains only an HTML body with a signed download URL — no compressed attachment is sent.
 
-## Remaining Gaps
+Per the memory note (`features/data-recovery/system-management-v5`), backups should be "sent as Gzip-compressed (.json.gz) attachments via the Resend connector gateway." This is not implemented.
 
-### G1: Edge functions still call `is_super_admin` RPC instead of `is_admin_or_above`
+**Fix:** After uploading all table JSON files to storage, reassemble a combined JSON payload, pipe it through `new CompressionStream('gzip')`, convert the resulting bytes to base64, and attach it to the Resend email as:
+```typescript
+attachments: [{
+  filename: `ropeworks-backup-${timestamp}.json.gz`,
+  content: base64GzipString,  // base64-encoded gzip bytes
+}]
+```
 
-**Files:**
-- `supabase/functions/send-training-pdf-email/index.ts` (line 79)
-- `supabase/functions/admin-manage-user/index.ts` (line 71)
+This requires:
+1. A helper to gzip via `CompressionStream` (available in Deno)
+2. A helper to convert `Uint8Array` to base64
+3. Adding the `attachments` field to the Resend API call
 
-Both edge functions call `supabase.rpc("is_super_admin")` for authorization. While `is_super_admin()` is currently aliased to check for the `admin` role (so it works today), this is inconsistent with the client-side unification to `is_admin_or_above`. If `is_super_admin()` is ever deprecated or its semantics change, these functions would silently break.
-
-**Severity:** Low (functionally correct today, maintenance hazard)
-
-**Fix:** Replace `supabase.rpc("is_super_admin")` with `supabase.rpc("is_admin_or_above")` in both edge functions.
-
----
-
-### G2: `generate-inspection-pdf` edge function uses service role key to fetch data, bypassing RLS
-
-**File:** `supabase/functions/generate-inspection-pdf/index.ts` (line 24-25)
-
-The function authenticates the user via their JWT token (correct), but then creates a Supabase client using `SUPABASE_SERVICE_ROLE_KEY` to fetch inspection data. This means any authenticated user who knows an inspection ID could generate a PDF for any report, regardless of RLS policies. The function does not check ownership or admin status.
-
-**Severity:** Medium — any authenticated user can generate PDFs for reports they shouldn't have access to.
-
-**Fix:** Either:
-- (a) Add an ownership/admin check before fetching data (e.g., verify `inspection.inspector_id === user.id || is_admin_or_above`), or
-- (b) Use the user's JWT-scoped client instead of the service role client for data fetching, so RLS enforces access.
+**Memory concern:** The combined backup (~1.6 MB after HTML stripping, per memory) should compress to ~200-400 KB, well within Resend's 40 MB attachment limit and Deno's memory budget.
 
 ---
 
-## Items Verified as Secure (No Changes Needed)
+### F2: Missing Tables in `scheduled-backup-notify` vs `export-full-backup`
+**Severity:** Medium — daily automated backups silently skip two tables.
 
-| Area | Status |
-|------|--------|
-| `cached-admin-status` key is the single source of truth | Confirmed — `cached-super-admin-status` fully eliminated |
-| `useRequireAdmin` has offline/transient fallback | Confirmed |
-| `useReportEditPermission` has localStorage fallback for admin | Confirmed (V2 fix applied) |
-| `getAdminStatusWithCache` calls `is_admin_or_above` | Confirmed (V1 fix applied) |
-| Dashboard/Header don't poison cache on transient failure | Confirmed (P0 fix applied) |
-| `cached-auth.ts` guards `invalidateUserCache` with `navigator.onLine` | Confirmed (P1 fix applied) |
-| `SESSION_REFRESH_BUFFER` is 300s | Confirmed (P2 fix applied) |
-| Profile page has offline fallback | Confirmed (Gap 5 fix applied) |
-| `InspectionForm` auth listener guards `setCurrentUser(null)` with `navigator.onLine` | Confirmed |
-| `TrainingForm` and `DailyAssessmentForm` do not have auth listeners (rely on `useReportEditPermission`) | Confirmed — no gap |
-| `send-report-email` validates auth and has rate limiting | Confirmed |
-| `generate-training-pdf` authenticates user via JWT | Confirmed |
+`export-full-backup` includes `training_systems` and `training_equipment`. The `scheduled-backup-notify` TABLES array is **missing both**. This means daily automated backups lose training equipment/system data that manual backups capture.
+
+**Fix:** Add `"training_systems"` and `"training_equipment"` to the TABLES array in `scheduled-backup-notify/index.ts` (after `"trainings"`, matching the order in `export-full-backup`).
 
 ---
+
+### F3: Dead Code — `getSelectColumns()` Function
+**Severity:** Low — no functional impact, but confusing.
+
+The `getSelectColumns()` function (lines 132-139) always returns `"*"` and is never called. Column exclusion is handled by `stripColumns()` after fetching. This is dead code.
+
+**Fix:** Remove the `getSelectColumns()` function.
+
+---
+
+### F4: Resend Gateway Integration — Correct but Incomplete
+**Severity:** Low (gateway usage is correct; attachment is missing per F1).
+
+The Resend call at line 267 is correctly structured:
+- Endpoint: `https://connector-gateway.lovable.dev/resend/emails` ✅
+- `Authorization: Bearer ${LOVABLE_API_KEY}` ✅
+- `X-Connection-Api-Key: ${RESEND_API_KEY}` (from `RESEND_API_KEY_1`) ✅
+- `from` uses verified domain `notify.belayreports.com` ✅
+
+No issues with the gateway integration itself — the gap is only the missing attachment (F1).
+
+---
+
+### F5: Storage Upload Errors Are Logged but Not Fatal
+**Severity:** Low — intentional resilience, but worth noting.
+
+If a table's upload to `database-backups` fails (line 196-198), execution continues. The backup_history record and email are still sent, potentially reporting a backup that is partially incomplete. The manifest `table_counts` would show the correct row counts, but the storage files may be missing.
+
+**Recommendation:** Track upload failures in the manifest and include a warning in the email if any uploads failed.
+
+---
+
+### F6: Manifest Upload Error Not Handled
+**Severity:** Low — if the manifest upload fails (line 216-221), the error is silently ignored (no `error` destructuring or check). The backup_history insert and email proceed regardless.
+
+**Fix:** Add error handling for the manifest upload, at minimum logging a warning.
+
+---
+
+### F7: `backup_history` Insert Error Not Handled
+**Severity:** Low — line 224-229 has no error check. If the insert fails, there's no log.
+
+**Fix:** Add `.then`/destructure error and log a warning (matching the pattern in `export-full-backup`).
+
+---
+
+## Security Findings
+
+All secrets (`LOVABLE_API_KEY`, `RESEND_API_KEY_1`, `SUPABASE_SERVICE_ROLE_KEY`) are read from `Deno.env.get()` server-side only — none are exposed in frontend code. The function has `verify_jwt = false` (correct for pg_cron triggers). No security vulnerabilities found.
+
+---
+
+## Summary Table
+
+| # | Finding | Severity | Action |
+|---|---------|----------|--------|
+| F1 | No gzip compression or base64 attachment | High | Implement `CompressionStream` gzip, base64 encode, add Resend attachment |
+| F2 | Missing `training_systems` and `training_equipment` tables | Medium | Add both tables to TABLES array |
+| F3 | Dead `getSelectColumns()` function | Low | Remove |
+| F4 | Resend gateway integration correct | — | No change |
+| F5 | Partial upload failures not surfaced | Low | Track failures in manifest/email |
+| F6 | Manifest upload error not handled | Low | Add error logging |
+| F7 | backup_history insert error not handled | Low | Add error logging |
 
 ## Implementation Plan
 
-### Step 1: Unify edge function RPC calls
-- `supabase/functions/send-training-pdf-email/index.ts` line 79: change `is_super_admin` to `is_admin_or_above`
-- `supabase/functions/admin-manage-user/index.ts` line 71: change `is_super_admin` to `is_admin_or_above`
+### Step 1: Add missing tables (F2)
+Add `"training_systems"` and `"training_equipment"` after `"trainings"` in the TABLES array.
 
-### Step 2: Add authorization check to `generate-inspection-pdf`
-- After authenticating the user (line 28-32), add a check: if the fetched `inspection.inspector_id !== user.id`, call `is_admin_or_above` RPC and reject if not admin. This preserves the service-role data fetch (needed for cross-table joins) while enforcing access control.
+### Step 2: Implement gzip compression + base64 attachment (F1)
+Add two helper functions:
+- `gzipCompress(data: Uint8Array): Promise<Uint8Array>` using `CompressionStream('gzip')`
+- `uint8ToBase64(bytes: Uint8Array): string` using Deno's `btoa` or `encodeBase64`
 
-No database migrations needed. All fixes are backward-compatible.
+After all tables are uploaded, build the combined backup JSON (reusing `tableCounts` and stripping excluded columns), compress it, base64-encode it, and add it to the Resend email payload as an attachment.
+
+### Step 3: Clean up dead code and add error handling (F3, F5, F6, F7)
+- Remove `getSelectColumns()`
+- Add error destructuring and `console.warn` for manifest upload and backup_history insert
+- Track failed table uploads in a `failedTables` array and include count in email subject/body if > 0
+
+### Step 4: Redeploy
+Deploy the updated `scheduled-backup-notify` edge function.
 
