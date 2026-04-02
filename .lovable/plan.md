@@ -1,45 +1,35 @@
 
 
-## Add Excel & CSV Export Options to Backup Panel
+## Fix User Password Update — Cross-Platform
 
-**What you get**: Two new download buttons alongside the existing JSON download — one for Excel (.xlsx with each table as a sheet) and one for CSV (.zip with one file per table). Both convert the existing JSON backup on the client side.
+### Problem
+When editing a user and setting a new password, the edge function returns a non-2xx error. The root causes are:
 
----
+1. **Poor error surfacing**: `supabase.functions.invoke` sets `error` on non-2xx responses, but the actual error message from the function body (`data.error`) is not always read because `throw error` fires first with a generic "Edge Function returned a non-2xx status code" message.
+2. **Unreliable HTML `minLength`**: The `minLength={6}` attribute on password inputs is not consistently enforced on Android/iOS mobile browsers, allowing short passwords to be submitted.
+3. **Empty password sent as update**: When editing, if the password field has whitespace-only content, it passes the `if (password)` check in the edge function but fails Supabase Auth's validation.
 
-### 1. New utility: `src/lib/backup-export.ts`
+### Changes
 
-Client-side conversion functions that take the downloaded JSON backup blob and convert it:
+#### 1. `src/components/admin/UserManagementDialog.tsx`
+- Add explicit password validation before submit: trim and check length >= 6 (only when password is non-empty in edit mode)
+- Show inline validation error for password field
+- Add a "show/hide password" toggle button for mobile usability
 
-- **`downloadBackupAsExcel(blob)`** — Uses the `xlsx` library (SheetJS) to create a workbook with one sheet per table, then triggers download as `.xlsx`
-- **`downloadBackupAsCsv(blob)`** — Uses `xlsx` to create individual CSV strings per table, bundles them into a ZIP using `jszip`, triggers download as `.zip`
+#### 2. `src/pages/SuperAdminDashboard.tsx` — `handleUpdateUser`
+- Fix error handling: read `data?.error` from the function response body before falling back to the generic `error` object
+- Pattern: `if (error) { const msg = data?.error || error.message; throw new Error(msg); }`
+- Apply same fix to `handleCreateUser` and other edge function calls for consistency
 
-Dependencies to install: `xlsx`, `jszip`
-
----
-
-### 2. Update `src/lib/full-backup.ts`
-
-Add a new `downloadBackupFileRaw(filePath)` function that returns the raw `Blob` instead of immediately saving to device. The existing `downloadBackupFile` stays unchanged. The Excel/CSV converters will use this raw blob.
-
----
-
-### 3. Update `DatabaseBackupsPanel.tsx`
-
-Add a dropdown or two additional icon buttons per backup row:
-- **Download JSON** (existing behavior)
-- **Download Excel** — calls `downloadBackupFileRaw` → `downloadBackupAsExcel`
-- **Download CSV** — calls `downloadBackupFileRaw` → `downloadBackupAsCsv`
-
-Uses a small dropdown menu on the existing download button to keep the UI clean.
-
----
+#### 3. `supabase/functions/admin-manage-user/index.ts`
+- Trim and validate password server-side: if password is provided but less than 6 characters, return a clear 400 error before calling `updateUserById`
+- Strip empty/whitespace-only passwords so they don't get sent to the Auth API
 
 ### Summary
 
-| Change | File |
-|--------|------|
-| New file | `src/lib/backup-export.ts` — Excel & CSV conversion |
-| Edit | `src/lib/full-backup.ts` — add raw blob download |
-| Edit | `src/components/admin/DatabaseBackupsPanel.tsx` — download format dropdown |
-| Install | `xlsx`, `jszip` packages |
+| File | Change |
+|------|--------|
+| `UserManagementDialog.tsx` | Client-side password validation + show/hide toggle |
+| `SuperAdminDashboard.tsx` | Fix error message extraction from edge function responses |
+| `admin-manage-user/index.ts` | Server-side password validation and trimming |
 
