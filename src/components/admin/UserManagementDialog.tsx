@@ -142,15 +142,33 @@ export function UserManagementDialog({
               <Label htmlFor="password">
                 Password {mode === 'edit' && '(leave blank to keep current)'}
               </Label>
-              <Input
-                id="password"
-                type="password"
-                value={formData.password}
-                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                required={mode === 'create'}
-                placeholder={mode === 'edit' ? 'Enter new password' : 'Min. 6 characters'}
-                minLength={6}
-              />
+              <div className="relative">
+                <Input
+                  id="password"
+                  type={showPassword ? 'text' : 'password'}
+                  value={formData.password}
+                  onChange={(e) => {
+                    setFormData({ ...formData, password: e.target.value });
+                    setPasswordError('');
+                  }}
+                  required={mode === 'create'}
+                  placeholder={mode === 'edit' ? 'Enter new password' : 'Min. 6 characters'}
+                  className="pr-10"
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                  onClick={() => setShowPassword(!showPassword)}
+                  tabIndex={-1}
+                >
+                  {showPassword ? <EyeOff className="h-4 w-4 text-muted-foreground" /> : <Eye className="h-4 w-4 text-muted-foreground" />}
+                </Button>
+              </div>
+              {passwordError && (
+                <p className="text-sm text-destructive">{passwordError}</p>
+              )}
             </div>
 
             <div className="grid grid-cols-2 gap-4">

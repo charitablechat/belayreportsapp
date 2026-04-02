@@ -431,7 +431,10 @@ export default function SuperAdminDashboard() {
         }
       });
 
-      if (error) throw error;
+      if (error) {
+        const msg = data?.error || error.message || 'Failed to update user';
+        throw new Error(msg);
+      }
       if (!data.success) throw new Error(data.error);
 
       toast.success('User updated successfully');
