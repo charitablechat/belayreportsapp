@@ -182,7 +182,7 @@ export default function Dashboard() {
   const { data: isSuperAdmin, isLoading: isSuperAdminLoading } = useQuery({
     queryKey: ["is-super-admin"],
     queryFn: async () => {
-      const cachedValue = localStorage.getItem('cached-admin-status') || localStorage.getItem('cached-super-admin-status');
+      const cachedValue = localStorage.getItem('cached-admin-status');
       
       if (!navigator.onLine) {
         return cachedValue === 'true';
