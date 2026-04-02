@@ -78,20 +78,18 @@ export function AuthenticatedHeader() {
 
       const user = await getUserWithCache();
       if (!user) {
-        localStorage.setItem("cached-super-admin-status", "false");
-        return false;
+        // P0 FIX: Do NOT poison cache on transient auth failure
+        console.warn('[Header] getUserWithCache returned null — preserving cached admin status');
+        return cachedValue === "true";
       }
 
       try {
-        const { data: roles, error } = await supabase
-          .from("user_roles")
-          .select("role")
-          .eq("user_id", user.id)
-          .eq("role", "admin");
+        // P3 FIX: Use SECURITY DEFINER RPC instead of direct table query
+        const { data, error } = await supabase.rpc('is_admin_or_above');
 
         if (error) return cachedValue === "true";
 
-        const isAdmin = roles && roles.length > 0;
+        const isAdmin = !!data;
         localStorage.setItem("cached-super-admin-status", isAdmin.toString());
         localStorage.setItem("cached-admin-status", isAdmin.toString());
         return isAdmin;
