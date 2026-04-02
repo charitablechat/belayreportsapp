@@ -190,23 +190,24 @@ export default function Dashboard() {
 
       const user = await getUserWithCache();
       if (!user) {
-        localStorage.setItem('cached-admin-status', 'false');
-        return false;
+        // P0 FIX: Do NOT write "false" to cache on transient auth failure.
+        // getUserWithCache() can return null due to network timeouts or
+        // LockManager contention — not necessarily a real sign-out.
+        console.warn('[Dashboard] getUserWithCache returned null — preserving cached admin status');
+        return cachedValue === 'true';
       }
 
       try {
-        const { data: roles, error } = await supabase
-          .from("user_roles")
-          .select("role")
-          .eq("user_id", user.id)
-          .eq("role", "admin");
+        // P3 FIX: Use SECURITY DEFINER RPC instead of direct table query
+        // to match useRequireAdmin and avoid silent RLS failures.
+        const { data, error } = await supabase.rpc('is_admin_or_above');
 
         if (error) {
           console.warn('[Dashboard] Error checking admin status:', error);
           return cachedValue === 'true';
         }
 
-        const isAdmin = roles && roles.length > 0;
+        const isAdmin = !!data;
         
         localStorage.setItem('cached-admin-status', isAdmin.toString());
         localStorage.setItem('cached-super-admin-status', isAdmin.toString());

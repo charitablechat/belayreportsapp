@@ -19,7 +19,7 @@ let cachedAdminStatus: boolean | null = null;
 let adminCacheTimestamp: number = 0;
 let pendingAdminPromise: Promise<boolean> | null = null;
 const ADMIN_CACHE_TTL = 120000; // 2 minutes
-const SESSION_REFRESH_BUFFER = 60; // Refresh if within 60 seconds of expiry
+const SESSION_REFRESH_BUFFER = 300; // P2 FIX: Refresh if within 5 minutes of expiry (matches pre-emptive window)
 const AUTH_NETWORK_TIMEOUT = 8000; // 8 seconds max for network auth fetch
 
 /**
@@ -40,7 +40,9 @@ function initAuthListener() {
   
   try {
     supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_OUT') {
+      if (event === 'SIGNED_OUT' && navigator.onLine) {
+        // P1 FIX: Only invalidate cache on genuine sign-out (online).
+        // Offline SIGNED_OUT events are often transient token refresh failures.
         invalidateUserCache();
       }
       // Forward fresh JWT to service worker on every auth event (login, refresh, etc.)
