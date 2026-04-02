@@ -1,56 +1,107 @@
 
-Root cause analysis
 
-- I checked the current training photo flow and the storage policies. There is no dedicated multipart/form-data upload endpoint for training photos right now; the app uploads directly from the browser to private storage, then inserts a row into `training_photos`.
-- The main defect is in `src/components/PhotoCapture.tsx`: it saves and uploads files to paths like `pending/{trainingId}/{photoId}.ext`.
-- The `training-photos` bucket policies only allow uploads when the first path segment is the authenticated user id. So the current path shape is rejected by storage RLS.
-- `PhotoCapture` already fetches `userId`, but the upload path never uses it. That means the storage upload fails before the DB insert happens, so photos never persist on the server.
-- A second defect makes this permanent: `src/lib/sync-manager.ts` skips any queued photo whose `photoUrl` still starts with `pending/`. So failed or offline training photos never self-recover later.
-- The frontend rendering failure is a downstream effect of the same bug: after reload, there is no valid remote object + no persisted `training_photos` row to load.
-- I also checked frontend secret exposure. I did not find private storage credentials or service-role keys in `src/`; only expected public client env vars are referenced.
-- I checked runtime evidence too, but there was no usable session replay, no relevant console snapshot, and no matching network snapshot available in this turn, so the RCA is code-based rather than log-based.
+# Security Investigation: Admin Privilege Loss / Unexpected Session Termination
 
-Implementation plan
+## Executive Summary
 
-1. Fix the shared photo upload path in `src/components/PhotoCapture.tsx`
-- Build a valid storage path that starts with the authenticated user id.
-- Save that resolved path into IndexedDB before attempting upload.
-- Keep local-first behavior, but stop leaving training photos stuck on invalid `pending/...` paths.
-- Improve error reporting so storage/db failures are visible in logs instead of silently appearing as “saved”.
+After auditing the session management, RBAC, and auth state handling code, I identified **five concrete vulnerability vectors** that can cause an admin to lose privileges or get signed out unexpectedly. Several are race conditions in the existing architecture; one is a cache-poisoning risk.
 
-2. Make queued training photos recover in `src/lib/sync-manager.ts`
-- Replace the current “skip pending path” behavior with path normalization + retry.
-- When a queued photo still has a placeholder path, derive the real path from the current user + report id + filename metadata, update IndexedDB, and continue the upload.
-- This ensures offline captures and temp-id captures can eventually persist once the training record is real.
+---
 
-3. Harden photo relinking in `src/lib/offline-storage.ts`
-- When a temp training id is relinked to a real id, also normalize any placeholder photo path that still embeds the old temp id.
-- This is a safeguard so the sync layer has less path drift to correct later.
+## 1. Session Management Vulnerabilities
 
-4. Leave storage security intact
-- Do not loosen bucket privacy or expose files publicly.
-- The policies already look correct; the code path is what needs to match them.
-- No secret changes are needed.
+### 1a. Token Expiry Race with 60-Second Refresh Buffer
+**File:** `src/lib/cached-auth.ts` (line 22, 434-436)
 
-5. Add targeted diagnostics in the upload chain
-- Log the resolved bucket, storage path, table name, report id, and exact storage/db error.
-- If anything still fails after the fix, those logs will identify whether the bottleneck is storage RLS, auth/session state, IndexedDB, or the DB insert.
+The session refresh buffer is only 60 seconds. If a user's tab is backgrounded (mobile Safari aggressively freezes tabs), the JWT can expire without triggering the pre-emptive refresh. When the tab resumes:
+- `getCachedUserFromStorage()` returns `null` because `expiresAt * 1000 <= Date.now()` (line 307)
+- `getUserWithCache()` falls through to the network path
+- If the network call fails or the refresh token is also expired, the user appears unauthenticated
 
-What I would not change right now
+**Impact:** Admin is redirected to `/` by `useRequireAdmin` (line 23-25) or to `/dashboard` by the catch block (line 48).
 
-- I would not add a new multipart upload endpoint unless we later decide to move uploads server-side.
-- I would not change the backend report generators yet; the current code already reads training photos from storage, and the persistence break appears earlier in the pipeline.
-- I do not see a database schema mismatch that requires a migration for this issue.
+### 1b. LockManager Contention (Supabase auth-js)
+**File:** `src/lib/cached-auth.ts` (lines 29-32, 389-400)
 
-Files likely to change
+Multiple concurrent auth operations (background sync, pre-emptive refresh, visibility-change queries) compete for the browser's `LockManager`. If the lock times out, the fallback reads from localStorage—but if the token just expired, localStorage returns `null`, and the user is treated as unauthenticated.
 
-- `src/components/PhotoCapture.tsx`
-- `src/lib/sync-manager.ts`
-- possibly `src/lib/offline-storage.ts`
+### 1c. `SIGNED_OUT` Event While Offline Is Guarded—But Not Everywhere
+**Files:** `Dashboard.tsx` (line 334), `AuthenticatedHeader.tsx` (line 46)
 
-Validation
+Both guard `SIGNED_OUT` with `navigator.onLine`. However, `cached-auth.ts` (line 43) does **not** check `navigator.onLine` before calling `invalidateUserCache()`. If the Supabase client emits a `SIGNED_OUT` event during a transient network glitch, the in-memory cache is destroyed, and subsequent `getUserWithCache()` calls will fail until a successful network fetch.
 
-- Upload a photo to an existing synced training and confirm storage upload + `training_photos` insert both succeed.
-- Reload the training page and confirm the image still renders.
-- Upload photos to a new/offline training, sync it, and confirm the queued photos backfill to storage/server after the training gets a real id.
-- Re-test specifically on mobile Safari, since the screenshot suggests that environment is affected.
+---
+
+## 2. RBAC Synchronization Issues
+
+### 2a. Admin Status Cache Poisoning via Transient Auth Failure
+**Files:** `AuthenticatedHeader.tsx` (lines 79-82), `Dashboard.tsx` (lines 191-194)
+
+Both admin-check queries set `cached-super-admin-status` to `"false"` in localStorage when `getUserWithCache()` returns `null`—even if the null is caused by a transient network timeout rather than an actual sign-out. Once written, this poisoned value persists and is used as the `placeholderData` for future renders, meaning:
+
+1. Network blip → `getUserWithCache()` returns null
+2. `localStorage.setItem("cached-super-admin-status", "false")` is written
+3. User regains connectivity, but the query's `placeholderData` returns `false`
+4. UI hides admin controls; `useRequireAdmin` redirects to `/dashboard`
+
+This is the **most likely root cause** for "lost admin privileges while session remained active."
+
+### 2b. Dual-Path Admin Check Inconsistency
+- `useRequireAdmin` uses `supabase.rpc("is_admin_or_above")` — a SECURITY DEFINER function checking `user_roles` for `admin` or `super_admin`.
+- `AuthenticatedHeader` and `Dashboard` query `user_roles` table directly via the client SDK with `.eq("role", "admin")`.
+
+If the RLS policy on `user_roles` is restrictive (e.g., users can only see their own roles), the direct query path works. But if there's any RLS evaluation failure (e.g., during token refresh), the direct query silently returns an empty array, which the code interprets as "not admin."
+
+---
+
+## 3. Client-Side / Browser Interference
+
+### 3a. localStorage Clearing
+iOS Safari can evict localStorage under memory pressure (especially in PWA/WebView contexts). If `sb-...-auth-token` is cleared:
+- All auth checks fail
+- Admin status cache keys are lost
+- User appears unauthenticated
+
+### 3b. Multiple Tabs / Service Worker Token Forwarding
+The service worker receives `AUTH_TOKEN` messages on every auth event (line 47-52 of `cached-auth.ts`). If two tabs are open and one signs out, the `SIGNED_OUT` event propagates to the `cached-auth` listener in the other tab, invalidating its cache.
+
+---
+
+## 4. Audit Log Analysis Strategy
+
+### What to Query
+The database has an `audit_logs` table and `audit_user_role_changes` trigger. To pinpoint the incident:
+
+```sql
+-- Check if admin role was removed or modified
+SELECT * FROM audit_logs
+WHERE action_type IN ('role_removed', 'role_changed')
+  AND (old_values->>'role' = 'admin' OR new_values->>'role' = 'admin')
+ORDER BY created_at DESC
+LIMIT 20;
+
+-- Verify the user still has the admin role right now
+SELECT * FROM user_roles
+WHERE user_id = '<admin-user-id>';
+
+-- Check auth logs for forced sign-outs or token refresh failures
+-- (Available via Lovable Cloud auth logs, not queryable via SQL)
+```
+
+### Interpretation
+- If the `user_roles` row is intact and no `role_removed` audit entry exists → the issue is **client-side cache poisoning** (vector 2a above), not a real privilege revocation.
+- If the role was removed → check `audit_logs.metadata->>'affected_user_id'` to identify who performed the action.
+
+---
+
+## 5. Recommended Fixes (Implementation Ready)
+
+| Priority | Fix | Files |
+|----------|-----|-------|
+| **P0** | Stop writing `"false"` to admin cache on transient auth failures. Only write `"false"` when online AND a valid user is confirmed AND the role query succeeds with no error. | `AuthenticatedHeader.tsx`, `Dashboard.tsx` |
+| **P1** | Guard `invalidateUserCache()` in `cached-auth.ts` against offline `SIGNED_OUT` events, matching the pattern already used in Dashboard/Header. | `cached-auth.ts` |
+| **P2** | Increase `SESSION_REFRESH_BUFFER` from 60s to 300s to match the pre-emptive refresh window already used elsewhere. | `cached-auth.ts` |
+| **P3** | Unify admin checks: replace direct `user_roles` table queries in Header/Dashboard with `supabase.rpc("is_admin_or_above")` to match `useRequireAdmin`. | `AuthenticatedHeader.tsx`, `Dashboard.tsx` |
+
+Shall I implement these fixes?
+
