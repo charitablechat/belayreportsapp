@@ -4,7 +4,8 @@ import { fetchTrainingData, formatTrainingContent } from "../_shared/training-fo
 import { 
   getLogoBase64, 
   createPageHeader, 
-  createPageFooter 
+  createPageFooter,
+  arrayBufferToBase64 
 } from "../_shared/report-layout.ts";
 
 const corsHeaders = {
@@ -83,35 +84,35 @@ serve(async (req) => {
     const trainingData = await fetchTrainingData(trainingId, supabase);
     const content = formatTrainingContent(trainingData);
 
-    // Generate signed URLs for photos, skipping files that still contain HEIC bytes
+    // Download photos and embed as data: URIs (persistent, no expiring signed URLs)
     const photoUrls: { url: string; caption: string }[] = [];
     if (trainingData.photos && trainingData.photos.length > 0) {
       for (const photo of trainingData.photos) {
         try {
-          // Download the file to check if it's actually HEIC (mislabeled .jpg)
           const { data: fileData, error: dlError } = await supabase.storage
             .from('training-photos')
             .download(photo.photo_url);
 
           if (dlError || !fileData) {
-            console.error('Failed to download photo for HEIC check:', photo.photo_url, dlError);
+            console.error('Failed to download photo:', photo.photo_url, dlError);
             continue;
           }
 
           const buffer = await fileData.arrayBuffer();
           if (isHeicBytes(buffer)) {
-            // File still contains HEIC bytes — skip with warning
-            console.warn(`[generate-training-html] Skipping HEIC-disguised photo: ${photo.photo_url} (will be auto-fixed on next client gallery view)`);
+            console.warn(`[generate-training-html] Skipping HEIC-disguised photo: ${photo.photo_url}`);
             continue;
           }
 
-          // File is a real JPEG/PNG — generate signed URL
-          const { data: urlData } = await supabase.storage
-            .from('training-photos')
-            .createSignedUrl(photo.photo_url, 60 * 60 * 24);
-          if (urlData?.signedUrl) {
-            photoUrls.push({ url: urlData.signedUrl, caption: photo.caption || '' });
+          // Detect MIME from magic bytes
+          const bytes = new Uint8Array(buffer);
+          let mime = 'image/jpeg';
+          if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4E && bytes[3] === 0x47) {
+            mime = 'image/png';
           }
+
+          const base64 = arrayBufferToBase64(buffer);
+          photoUrls.push({ url: `data:${mime};base64,${base64}`, caption: photo.caption || '' });
         } catch (e) {
           console.error('Failed to process photo:', photo.photo_url, e);
         }

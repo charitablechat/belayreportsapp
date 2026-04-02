@@ -4,6 +4,7 @@ import { jsPDF } from "https://esm.sh/jspdf@2.5.2";
 import "https://esm.sh/jspdf-autotable@3.8.2";
 import { fetchTrainingData, formatTrainingContent } from "../_shared/training-formatter.ts";
 import { checkRateLimit, createRateLimitResponse } from "../_shared/rate-limiter.ts";
+import { arrayBufferToBase64 } from "../_shared/report-layout.ts";
 
 
 const corsHeaders = {
@@ -76,13 +77,11 @@ serve(async (req) => {
     let customFontLoaded = false;
     let fontData = '';
     try {
-      // Fetch Roboto Regular font from Google Fonts
       const fontUrl = 'https://fonts.gstatic.com/s/roboto/v30/KFOmCnqEu92Fr1Mu4mxK.woff';
       const fontResponse = await fetch(fontUrl);
       if (fontResponse.ok) {
         const fontBlob = await fontResponse.arrayBuffer();
-        const fontArray = new Uint8Array(fontBlob);
-        fontData = btoa(String.fromCharCode(...fontArray));
+        fontData = arrayBufferToBase64(fontBlob);
         
         console.log('Custom font loaded successfully');
         customFontLoaded = true;
@@ -148,9 +147,7 @@ serve(async (req) => {
       const logoResponse = await fetch('https://ssgzcgvygnsrqalisshx.supabase.co/storage/v1/object/public/pdf-templates/rope-works-logo.png');
       if (logoResponse.ok) {
         const logoBlob = await logoResponse.arrayBuffer();
-        const logoArray = new Uint8Array(logoBlob);
-        const binary = logoArray.reduce((acc, byte) => acc + String.fromCharCode(byte), '');
-        logoBase64 = btoa(binary);
+        logoBase64 = arrayBufferToBase64(logoBlob);
       }
     } catch (error) {
       console.error('Failed to load logo:', error);
@@ -578,8 +575,7 @@ serve(async (req) => {
                 }
               }
 
-              const binary = imgArray.reduce((acc: string, byte: number) => acc + String.fromCharCode(byte), '');
-              const imgBase64 = btoa(binary);
+              const imgBase64 = arrayBufferToBase64(imgBlob);
               
               // Detect image format from magic bytes
               let imgFormat: 'JPEG' | 'PNG' = 'JPEG';
