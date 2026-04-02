@@ -260,8 +260,6 @@ export async function getAdminStatusWithCache(): Promise<boolean> {
       cachedAdminStatus = status;
       adminCacheTimestamp = Date.now();
       localStorage.setItem('cached-admin-status', status.toString());
-      // Also update legacy key for backward compatibility
-      localStorage.setItem('cached-super-admin-status', status.toString());
       
       return status;
     } catch (error) {

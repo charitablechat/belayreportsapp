@@ -221,7 +221,7 @@ export default function Dashboard() {
     retry: 2,
     retryDelay: 1000,
     placeholderData: () => {
-      const cached = localStorage.getItem('cached-admin-status') || localStorage.getItem('cached-super-admin-status');
+      const cached = localStorage.getItem('cached-admin-status');
       return cached === 'true';
     },
   });

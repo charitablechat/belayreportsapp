@@ -99,7 +99,7 @@ export function AuthenticatedHeader() {
     staleTime: 2 * 60 * 1000,
     retry: 2,
     retryDelay: 1000,
-    placeholderData: () => localStorage.getItem("cached-super-admin-status") === "true",
+    placeholderData: () => localStorage.getItem("cached-admin-status") === "true",
     enabled: !!currentUser,
   });
 
