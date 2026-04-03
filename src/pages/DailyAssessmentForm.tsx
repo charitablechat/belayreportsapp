@@ -1285,7 +1285,21 @@ export default function DailyAssessmentForm() {
 
       if (error) throw error;
 
-      const html = data.html;
+      // Backend now returns a signed URL instead of raw HTML
+      let html: string;
+      
+      if (data?.htmlUrl) {
+        console.log('[Report Generation] Fetching HTML from signed URL...');
+        const htmlResponse = await fetch(data.htmlUrl);
+        if (!htmlResponse.ok) {
+          throw new Error(`Failed to fetch report: ${htmlResponse.status} ${htmlResponse.statusText}`);
+        }
+        html = await htmlResponse.text();
+      } else if (data?.html) {
+        html = data.html;
+      } else {
+        throw new Error('No HTML content or URL received from server');
+      }
       
       // Auto-sync report to database for "latest report" functionality (non-blocking)
       syncReport(html).catch(syncErr => {

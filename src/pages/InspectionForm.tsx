@@ -2288,7 +2288,7 @@ export default function InspectionForm() {
     setGeneratingHtml(true);
     
     // Safety timeout - NEVER get stuck in generating state (60 seconds max)
-    const GENERATION_TIMEOUT = 60000;
+    const GENERATION_TIMEOUT = 120000;
     const safetyTimeoutHandle = setTimeout(() => {
       console.error('[HTML Generation] Safety timeout reached after 60 seconds - force resetting state');
       setGeneratingHtml(false);

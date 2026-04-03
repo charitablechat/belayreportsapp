@@ -929,12 +929,46 @@ serve(async (req) => {
 </body>
 </html>`;
 
+    // Upload HTML to storage and return signed URL (avoids massive JSON response)
+    console.log(`[generate-training-html] Uploading HTML to storage for training ${trainingId}...`);
+    
+    const timestamp = Date.now();
+    const filePath = `html-reports/training-${trainingId}-${timestamp}.html`;
+    const htmlBlob = new Blob([html], { type: 'text/html' });
+    
+    const { error: uploadError } = await supabase.storage
+      .from('inspection-reports')
+      .upload(filePath, htmlBlob, {
+        contentType: 'text/html',
+        upsert: false,
+      });
+
+    if (uploadError) {
+      console.error(`[generate-training-html] Storage upload failed:`, uploadError);
+      // Fallback: return HTML directly if upload fails
+      return new Response(
+        JSON.stringify({ html }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+      );
+    }
+
+    const { data: signedUrlData, error: signedUrlError } = await supabase.storage
+      .from('inspection-reports')
+      .createSignedUrl(filePath, 86400); // 24 hours
+
+    if (signedUrlError || !signedUrlData?.signedUrl) {
+      console.error(`[generate-training-html] Signed URL creation failed:`, signedUrlError);
+      // Fallback: return HTML directly
+      return new Response(
+        JSON.stringify({ html }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+      );
+    }
+
+    console.log(`[generate-training-html] Complete. Returning signed URL.`);
     return new Response(
-      JSON.stringify({ html }),
-      {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 200,
-      }
+      JSON.stringify({ htmlUrl: signedUrlData.signedUrl, html }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
     );
   } catch (error) {
     console.error('Error generating HTML report:', error);
