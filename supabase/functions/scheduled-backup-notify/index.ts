@@ -219,7 +219,7 @@ function buildEmailHtml(opts: {
   const {
     emailTimestamp, totalSize, totalRows, tableCounts, tableCount,
     downloadUrl, failedTables, totalReports, attachedReports, archiveSize,
-    exceededSizeLimit,
+    exceededSizeLimit, photoBackup,
   } = opts;
 
   const tableRows = Object.entries(tableCounts)
