@@ -232,8 +232,40 @@ async function generateMissingReports(
           },
         );
         if (res.ok) {
-          generated++;
-          console.log(`[catch-up] Generated HTML for ${item.table}/${item.id.substring(0, 8)}`);
+          // The generation function returns { htmlUrl, fileName }
+          // Download the HTML and store it on the record
+          const result = await res.json();
+          if (result.htmlUrl) {
+            try {
+              const htmlRes = await fetch(result.htmlUrl);
+              if (htmlRes.ok) {
+                const htmlContent = await htmlRes.text();
+                const { error: updateErr } = await supabase
+                  .from(item.table)
+                  .update({
+                    latest_report_html: htmlContent,
+                    latest_report_generated_at: new Date().toISOString(),
+                  })
+                  .eq("id", item.id);
+                if (updateErr) {
+                  console.warn(`[catch-up] Failed to store HTML for ${item.table}/${item.id.substring(0, 8)}: ${updateErr.message}`);
+                  failed++;
+                } else {
+                  generated++;
+                  console.log(`[catch-up] Generated & stored HTML for ${item.table}/${item.id.substring(0, 8)}`);
+                }
+              } else {
+                failed++;
+                console.warn(`[catch-up] Failed to download HTML for ${item.table}/${item.id.substring(0, 8)}: ${htmlRes.status}`);
+              }
+            } catch (dlErr: any) {
+              failed++;
+              console.warn(`[catch-up] Download error ${item.table}/${item.id.substring(0, 8)}: ${dlErr.message}`);
+            }
+          } else {
+            failed++;
+            console.warn(`[catch-up] No htmlUrl returned for ${item.table}/${item.id.substring(0, 8)}`);
+          }
         } else {
           failed++;
           const errText = await res.text().catch(() => "unknown");
