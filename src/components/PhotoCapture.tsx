@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Camera, Upload, CloudOff, ImagePlus } from "lucide-react";
+import { Camera, Loader2, CloudOff, ImagePlus } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { getUserWithCache } from "@/lib/cached-auth";
 import { savePhotoOffline, markPhotoAsUploaded } from "@/lib/offline-storage";
@@ -329,7 +329,7 @@ export default function PhotoCapture({
       >
         {uploading ? (
           <>
-            <Upload className="w-4 h-4 mr-2 animate-spin" />
+            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
             Saving...
           </>
         ) : (
@@ -349,7 +349,7 @@ export default function PhotoCapture({
       >
         {uploading ? (
           <>
-            <Upload className="w-4 h-4 mr-2 animate-spin" />
+            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
             Saving...
           </>
         ) : (

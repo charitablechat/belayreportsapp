@@ -39,6 +39,7 @@ export function OptimizedImage({
   // Track previous src base for smart cross-fade (no flash on signed URL rotation)
   const prevSrcBaseRef = useRef<string>(getUrlBase(src));
   const [currentSrc, setCurrentSrc] = useState(src);
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     const newBase = getUrlBase(src);
@@ -51,6 +52,16 @@ export function OptimizedImage({
     setCurrentSrc(src);
     prevSrcBaseRef.current = newBase;
   }, [src]);
+
+  // Clean up retry timer on unmount
+  useEffect(() => {
+    return () => {
+      if (retryTimerRef.current) {
+        clearTimeout(retryTimerRef.current);
+        retryTimerRef.current = null;
+      }
+    };
+  }, []);
 
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -84,10 +95,10 @@ export function OptimizedImage({
 
   const handleError = useCallback(() => {
     if (retryCount < 1) {
-      // Retry once after 3 seconds
-      const timer = setTimeout(() => {
+      // Retry once after 3 seconds — store timer in ref for proper cleanup
+      retryTimerRef.current = setTimeout(() => {
+        retryTimerRef.current = null;
         setRetryCount(prev => prev + 1);
-        // Force re-render by appending a cache-buster
         setCurrentSrc(prev => {
           try {
             const u = new URL(prev);
@@ -98,7 +109,7 @@ export function OptimizedImage({
           }
         });
       }, 3000);
-      return () => clearTimeout(timer);
+      return;
     }
     // After retry failed, show broken-image fallback
     setFailed(true);

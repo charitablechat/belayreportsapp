@@ -306,12 +306,21 @@ export default function PhotoGallery({
     }
   }, [inspectionId, section, isOnline, tableName, foreignKeyColumn, storageBucket]);
 
-  // Initial load — shows spinner
+  // Initial load — shows spinner with 15s safety timeout
   useEffect(() => {
     initialLoadDone.current = false;
     loadPhotos();
     
+    const safetyTimeout = setTimeout(() => {
+      if (!initialLoadDone.current) {
+        console.warn('[PhotoGallery] Safety timeout (15s) — forcing loading=false');
+        setLoading(false);
+        initialLoadDone.current = true;
+      }
+    }, 15000);
+    
     return () => {
+      clearTimeout(safetyTimeout);
       objectUrlsRef.current.forEach(url => {
         URL.revokeObjectURL(url);
       });
