@@ -214,11 +214,12 @@ function buildEmailHtml(opts: {
   attachedReports: number;
   archiveSize: string;
   exceededSizeLimit: boolean;
+  photoBackup?: { total_copied: number; total_skipped: number; total_errors: number; total_size_bytes: number; timed_out: boolean } | null;
 }): string {
   const {
     emailTimestamp, totalSize, totalRows, tableCounts, tableCount,
     downloadUrl, failedTables, totalReports, attachedReports, archiveSize,
-    exceededSizeLimit,
+    exceededSizeLimit, photoBackup,
   } = opts;
 
   const tableRows = Object.entries(tableCounts)
@@ -253,6 +254,12 @@ function buildEmailHtml(opts: {
         <tr><td style="padding:6px 0;color:#555;">JSON Size</td><td style="text-align:right;font-weight:bold;">${totalSize}</td></tr>
         <tr><td style="padding:6px 0;color:#555;">HTML Reports</td><td style="text-align:right;font-weight:bold;">${totalReports}</td></tr>
         <tr><td style="padding:6px 0;color:#555;">Archive Size</td><td style="text-align:right;font-weight:bold;">${archiveSize}</td></tr>
+        ${photoBackup ? `
+        <tr><td style="padding:6px 0;color:#555;">📷 Photos Backed Up</td><td style="text-align:right;font-weight:bold;">${photoBackup.total_copied}</td></tr>
+        <tr><td style="padding:6px 0;color:#555;">Photos Size</td><td style="text-align:right;font-weight:bold;">${formatFileSize(photoBackup.total_size_bytes)}</td></tr>
+        ${photoBackup.total_errors > 0 ? `<tr><td style="padding:6px 0;color:#dc2626;">Photo Errors</td><td style="text-align:right;font-weight:bold;color:#dc2626;">${photoBackup.total_errors}</td></tr>` : ""}
+        ${photoBackup.timed_out ? `<tr><td colspan="2" style="padding:6px 0;color:#f59e0b;font-size:12px;">⚠️ Photo backup timed out — partial results</td></tr>` : ""}
+        ` : `<tr><td colspan="2" style="padding:6px 0;color:#dc2626;font-size:12px;">⚠️ Photo storage backup was not performed</td></tr>`}
       </table>
       ${reportAttachNote}
       <p style="margin:16px 0;">
@@ -329,7 +336,35 @@ Deno.serve(async (req) => {
     const totalRows = Object.values(tableCounts).reduce((a, b) => a + b, 0);
     console.log(`[scheduled-backup-notify] Uploaded ${TABLES.length} tables (${totalRows} rows, ${formatFileSize(totalSizeBytes)})`);
 
-    // ── Step 2: Extract ALL HTML reports ──
+    // ── Step 2: Backup photo storage blobs ──
+    console.log("[scheduled-backup-notify] Starting photo storage backup...");
+    let photoBackupResult: any = null;
+    try {
+      const photoBackupRes = await fetch(
+        `${supabaseUrl}/functions/v1/backup-photo-storage`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${serviceRoleKey}`,
+          },
+          body: JSON.stringify({ timestamp }),
+        },
+      );
+      if (photoBackupRes.ok) {
+        photoBackupResult = await photoBackupRes.json();
+        console.log(
+          `[scheduled-backup-notify] Photo backup: copied=${photoBackupResult.total_copied}, skipped=${photoBackupResult.total_skipped}, errors=${photoBackupResult.total_errors}, size=${formatFileSize(photoBackupResult.total_size_bytes)}`,
+        );
+      } else {
+        const errText = await photoBackupRes.text();
+        console.error(`[scheduled-backup-notify] Photo backup failed [${photoBackupRes.status}]: ${errText}`);
+      }
+    } catch (photoErr: any) {
+      console.error(`[scheduled-backup-notify] Photo backup error: ${photoErr.message}`);
+    }
+
+    // ── Step 3: Extract ALL HTML reports ──
     console.log("[scheduled-backup-notify] Extracting HTML reports...");
     const htmlReports = await extractHtmlReports(adminClient);
     console.log(`[scheduled-backup-notify] Found ${htmlReports.length} total HTML reports`);
@@ -414,7 +449,7 @@ Deno.serve(async (req) => {
 
     // ── Step 6: Upload manifest ──
     const manifest = {
-      version: 2,
+      version: 3,
       exported_at: now.toISOString(),
       exported_by: "system-scheduled",
       table_counts: tableCounts,
@@ -431,6 +466,14 @@ Deno.serve(async (req) => {
           id: r.id,
         })),
       },
+      photo_backup: photoBackupResult ? {
+        total_copied: photoBackupResult.total_copied,
+        total_skipped: photoBackupResult.total_skipped,
+        total_errors: photoBackupResult.total_errors,
+        total_size_bytes: photoBackupResult.total_size_bytes,
+        timed_out: photoBackupResult.timed_out,
+        buckets: photoBackupResult.buckets,
+      } : null,
     };
     const manifestBytes = new TextEncoder().encode(JSON.stringify(manifest, null, 2));
     await adminClient.storage
@@ -490,6 +533,7 @@ Deno.serve(async (req) => {
       attachedReports: attachedReportCount,
       archiveSize: formatFileSize(archiveSizeBytes),
       exceededSizeLimit,
+      photoBackup: photoBackupResult,
     });
 
     const reportLabel = htmlReports.length > 0
@@ -538,6 +582,12 @@ Deno.serve(async (req) => {
             total_rows: totalRows,
             total_reports: htmlReports.length,
             archive_size_bytes: archiveSizeBytes,
+            photo_backup: photoBackupResult ? {
+              total_copied: photoBackupResult.total_copied,
+              total_size_bytes: photoBackupResult.total_size_bytes,
+              total_errors: photoBackupResult.total_errors,
+              timed_out: photoBackupResult.timed_out,
+            } : null,
           }),
         });
         webhookSuccess = webhookRes.ok;

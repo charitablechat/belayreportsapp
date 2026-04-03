@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Database, Download, Upload, Loader2, Clock, HardDrive, RefreshCw, FileSpreadsheet, FileArchive, FileJson, ChevronDown } from "lucide-react";
+import { Database, Download, Upload, Loader2, Clock, HardDrive, RefreshCw, FileSpreadsheet, FileArchive, FileJson, ChevronDown, ImageDown } from "lucide-react";
 import { toast } from "sonner";
 import { format, formatDistanceToNow } from "date-fns";
 import {
@@ -26,6 +26,7 @@ export function DatabaseBackupsPanel() {
   const [isBackingUp, setIsBackingUp] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
   const [isDownloading, setIsDownloading] = useState<string | null>(null);
+  const [isDownloadingPhotos, setIsDownloadingPhotos] = useState(false);
   const [restoreDialogOpen, setRestoreDialogOpen] = useState(false);
   const [restoreSource, setRestoreSource] = useState<{ type: "file"; file: File } | { type: "server"; path: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -132,6 +133,54 @@ export function DatabaseBackupsPanel() {
     }
   };
 
+  const handleDownloadAllPhotos = async (backupPath: string) => {
+    setIsDownloadingPhotos(true);
+    try {
+      const { supabase } = await import("@/integrations/supabase/client");
+      const photoBuckets = ["inspection-photos", "training-photos", "daily-assessment-photos"];
+      let totalDownloaded = 0;
+
+      for (const bucket of photoBuckets) {
+        const prefix = `${backupPath}/photos/${bucket}`;
+        const { data: files } = await supabase.storage
+          .from("database-backups")
+          .list(prefix, { limit: 1000 });
+
+        if (!files || files.length === 0) continue;
+
+        for (const file of files) {
+          if (!file.id) continue;
+          const filePath = `${prefix}/${file.name}`;
+          const { data: signedData } = await supabase.storage
+            .from("database-backups")
+            .createSignedUrl(filePath, 300, { download: file.name });
+
+          if (signedData?.signedUrl) {
+            const link = document.createElement("a");
+            link.href = signedData.signedUrl;
+            link.download = file.name;
+            link.click();
+            totalDownloaded++;
+            // Stagger downloads to avoid browser throttling
+            if (totalDownloaded % 3 === 0) {
+              await new Promise(r => setTimeout(r, 500));
+            }
+          }
+        }
+      }
+
+      if (totalDownloaded === 0) {
+        toast.info("No photos found in this backup");
+      } else {
+        toast.success(`Started download of ${totalDownloaded} photo(s)`);
+      }
+    } catch (err: any) {
+      toast.error("Photo download failed", { description: err.message });
+    } finally {
+      setIsDownloadingPhotos(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Controls */}
@@ -142,7 +191,8 @@ export function DatabaseBackupsPanel() {
             Database Backups
           </CardTitle>
           <CardDescription>
-            Daily backups include all database tables (JSON) plus individual HTML reports with embedded photos.
+            Daily backups include all database tables (JSON), individual HTML reports with embedded photos,
+            and raw photo storage blobs from all three photo buckets.
             Archives are emailed automatically and stored on the server with a 7-day download link.
           </CardDescription>
         </CardHeader>
@@ -275,6 +325,19 @@ export function DatabaseBackupsPanel() {
                                 </DropdownMenuItem>
                               </DropdownMenuContent>
                             </DropdownMenu>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleDownloadAllPhotos(backup.file_path)}
+                              disabled={isDownloadingPhotos}
+                            >
+                              {isDownloadingPhotos ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : (
+                                <ImageDown className="h-3 w-3" />
+                              )}
+                              Photos
+                            </Button>
                             <Button
                               variant="outline"
                               size="sm"
