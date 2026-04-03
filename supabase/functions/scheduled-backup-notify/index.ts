@@ -248,7 +248,6 @@ function buildEmailHtml(opts: {
       <h2 style="color:#1a1a1a;">✅ Daily Backup Complete</h2>
       <p style="color:#555;">${emailTimestamp}</p>
       ${failedWarning}
-      ${catchUpNote}
       <table style="width:100%;border-collapse:collapse;margin:16px 0;">
         <tr><td style="padding:6px 0;color:#555;">Total Rows</td><td style="text-align:right;font-weight:bold;">${totalRows.toLocaleString()}</td></tr>
         <tr><td style="padding:6px 0;color:#555;">Tables</td><td style="text-align:right;font-weight:bold;">${tableCount}</td></tr>
