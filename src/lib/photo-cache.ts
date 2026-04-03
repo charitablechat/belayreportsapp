@@ -107,25 +107,30 @@ export async function getCachedPhotoBlob(photoId: string): Promise<Blob | null> 
 }
 
 /**
- * Clean up stale cached photos
+ * Clean up stale cached photos using cursor-based iteration
+ * to avoid loading all blobs into memory at once (prevents OOM on iPad Safari)
  */
 export async function cleanupStaleCachedPhotos(): Promise<number> {
   const db = await getDB();
-  const allPhotos = await db.getAll('photos');
-  
-  let cleanedCount = 0;
   const now = Date.now();
+  let cleanedCount = 0;
   
-  for (const photo of allPhotos) {
+  const tx = db.transaction('photos', 'readwrite');
+  let cursor = await tx.store.openCursor();
+  
+  while (cursor) {
+    const photo = cursor.value;
     if (photo.cachedAt && photo.uploaded) {
       const age = now - photo.cachedAt;
       if (age > CACHE_DURATION) {
-        // Only delete if it's a cached remote photo (not a local pending upload)
-        await db.delete('photos', photo.id);
+        await cursor.delete();
         cleanedCount++;
       }
     }
+    cursor = await cursor.continue();
   }
+  
+  await tx.done;
   
   if (import.meta.env.DEV && cleanedCount > 0) {
     console.log('[Photo Cache] Cleaned up', cleanedCount, 'stale cached photos');

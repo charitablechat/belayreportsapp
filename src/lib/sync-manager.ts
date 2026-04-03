@@ -76,9 +76,16 @@ export async function syncPhotos(): Promise<{ remaining: number }> {
     }
 
     let successCount = 0;
+    // Track IDs already processed in this batch to skip duplicates without N+1 queries
+    const processedIds = new Set<string>();
 
     for (const photo of batch) {
       try {
+        if (processedIds.has(photo.id)) {
+          successCount++;
+          continue;
+        }
+
         if (photo.inspectionId?.startsWith('temp-')) {
           if (import.meta.env.DEV) {
             console.warn('[Sync Manager] Skipping photo with temporary inspection ID:', photo.id);
@@ -108,17 +115,6 @@ export async function syncPhotos(): Promise<{ remaining: number }> {
           if (import.meta.env.DEV) {
             console.log('[Sync Manager] Normalized pending path to:', normalizedPath);
           }
-        }
-
-        // Re-check: another thread (uploadInBackground) may have already handled this
-        const recheckPhotos = await getUnuploadedPhotos();
-        const stillUnuploaded = recheckPhotos.find(p => p.id === photo.id);
-        if (!stillUnuploaded) {
-          if (import.meta.env.DEV) {
-            console.log('[Sync Manager] Photo already marked uploaded by another thread:', photo.id);
-          }
-          successCount++;
-          continue;
         }
 
         // Guard: blob must exist (may have been nullified by a previous partial success)
@@ -181,6 +177,7 @@ export async function syncPhotos(): Promise<{ remaining: number }> {
 
         // Mark as uploaded and release blob from IndexedDB
         await markPhotoAsUploaded(photo.id, fileName);
+        processedIds.add(photo.id);
         successCount++;
 
         if (import.meta.env.DEV) {
