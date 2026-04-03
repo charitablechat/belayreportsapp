@@ -2091,6 +2091,15 @@ export default function InspectionForm() {
     setGeneratingPdf(true);
     console.log('[PDF Generation] State updated: generatingPdf = true');
 
+    const GENERATION_TIMEOUT = 120000;
+    const safetyTimeout = setTimeout(() => {
+      console.warn('[PDF Generation] Safety timeout reached (120s) — force-releasing spinner');
+      setGeneratingPdf(false);
+      toast.error('PDF generation timed out', {
+        description: 'The service is taking too long. Please try again.',
+      });
+    }, GENERATION_TIMEOUT);
+
     try {
       console.log('[PDF Generation] Invoking edge function...');
       console.log('[PDF Generation] Request payload:', { 
