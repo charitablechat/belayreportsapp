@@ -425,7 +425,6 @@ Deno.serve(async (req) => {
       html_reports: {
         total: htmlReports.length,
         upload_errors: htmlUploadErrors,
-        catch_up: catchUpResult,
         reports: htmlReports.map(r => ({
           filename: r.filename,
           table: r.table,
