@@ -154,35 +154,155 @@ function getReportTypePath(table: string): string {
 
 function getDateField(table: string): string {
   if (table === "inspections") return "inspection_date";
-  if (table === "trainings") return "training_date";
+  if (table === "trainings") return "start_date";
   return "assessment_date";
+}
+
+// ── Generate Missing HTML Reports ───────────────────────────────────
+
+interface MissingReport {
+  table: string;
+  id: string;
+  functionName: string;
+  bodyKey: string;
+}
+
+async function generateMissingReports(
+  supabase: any,
+  supabaseUrl: string,
+  serviceRoleKey: string,
+): Promise<{ generated: number; failed: number }> {
+  const missing: MissingReport[] = [];
+
+  // Find completed records with no HTML
+  for (const table of REPORT_TABLES) {
+    const { data, error } = await supabase
+      .from(table)
+      .select("id")
+      .eq("status", "completed")
+      .is("latest_report_html", null);
+
+    if (error) {
+      console.warn(`[catch-up] Error querying ${table}: ${error.message}`);
+      continue;
+    }
+    if (!data || data.length === 0) continue;
+
+    const functionName = table === "inspections"
+      ? "generate-inspection-html"
+      : table === "trainings"
+        ? "generate-training-html"
+        : "generate-daily-assessment-html";
+
+    const bodyKey = table === "inspections"
+      ? "inspectionId"
+      : table === "trainings"
+        ? "trainingId"
+        : "assessmentId";
+
+    for (const row of data) {
+      missing.push({ table, id: row.id, functionName, bodyKey });
+    }
+  }
+
+  if (missing.length === 0) {
+    console.log("[catch-up] No missing HTML reports found");
+    return { generated: 0, failed: 0 };
+  }
+
+  console.log(`[catch-up] Found ${missing.length} completed records missing HTML, generating...`);
+
+  let generated = 0;
+  let failed = 0;
+
+  // Process in batches of 5 to avoid timeouts
+  for (let i = 0; i < missing.length; i += 5) {
+    const batch = missing.slice(i, i + 5);
+    const promises = batch.map(async (item) => {
+      try {
+        const res = await fetch(
+          `${supabaseUrl}/functions/v1/${item.functionName}`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${serviceRoleKey}`,
+            },
+            body: JSON.stringify({ [item.bodyKey]: item.id }),
+          },
+        );
+        if (res.ok) {
+          // The generation function returns { htmlUrl, fileName }
+          // Download the HTML and store it on the record
+          const result = await res.json();
+          if (result.htmlUrl) {
+            try {
+              const htmlRes = await fetch(result.htmlUrl);
+              if (htmlRes.ok) {
+                const htmlContent = await htmlRes.text();
+                const { error: updateErr } = await supabase
+                  .from(item.table)
+                  .update({
+                    latest_report_html: htmlContent,
+                    latest_report_generated_at: new Date().toISOString(),
+                  })
+                  .eq("id", item.id);
+                if (updateErr) {
+                  console.warn(`[catch-up] Failed to store HTML for ${item.table}/${item.id.substring(0, 8)}: ${updateErr.message}`);
+                  failed++;
+                } else {
+                  generated++;
+                  console.log(`[catch-up] Generated & stored HTML for ${item.table}/${item.id.substring(0, 8)}`);
+                }
+              } else {
+                failed++;
+                console.warn(`[catch-up] Failed to download HTML for ${item.table}/${item.id.substring(0, 8)}: ${htmlRes.status}`);
+              }
+            } catch (dlErr: any) {
+              failed++;
+              console.warn(`[catch-up] Download error ${item.table}/${item.id.substring(0, 8)}: ${dlErr.message}`);
+            }
+          } else {
+            failed++;
+            console.warn(`[catch-up] No htmlUrl returned for ${item.table}/${item.id.substring(0, 8)}`);
+          }
+        } else {
+          failed++;
+          const errText = await res.text().catch(() => "unknown");
+          console.warn(`[catch-up] Failed ${item.table}/${item.id.substring(0, 8)}: ${res.status} ${errText.substring(0, 200)}`);
+        }
+      } catch (err: any) {
+        failed++;
+        console.warn(`[catch-up] Error ${item.table}/${item.id.substring(0, 8)}: ${err.message}`);
+      }
+    });
+    await Promise.all(promises);
+  }
+
+  console.log(`[catch-up] Done: ${generated} generated, ${failed} failed`);
+  return { generated, failed };
 }
 
 // ── HTML Report Extraction ──────────────────────────────────────────
 
 interface HtmlReport {
-  filename: string; // e.g. "inspections/Acme-Corp_2026-03-15_a1b2c3d4.html"
+  filename: string;
   html: string;
   table: string;
   id: string;
-  isNew: boolean; // generated since last backup
 }
 
-async function extractHtmlReports(
-  supabase: any,
-  lastBackupAt: string | null,
-): Promise<HtmlReport[]> {
+async function extractHtmlReports(supabase: any): Promise<HtmlReport[]> {
   const reports: HtmlReport[] = [];
 
   for (const table of REPORT_TABLES) {
     const dateField = getDateField(table);
     const typePath = getReportTypePath(table);
 
-    // Fetch only rows that have generated HTML
     const rows = await fetchAllRows(
       supabase,
       table,
-      `id, organization, ${dateField}, latest_report_html, latest_report_generated_at`,
+      `id, organization, ${dateField}, latest_report_html`,
     );
 
     for (const row of rows) {
@@ -193,16 +313,11 @@ async function extractHtmlReports(
       const idPrefix = (row.id || "").substring(0, 8);
       const filename = `${typePath}/${org}_${date}_${idPrefix}.html`;
 
-      const isNew = lastBackupAt
-        ? row.latest_report_generated_at && row.latest_report_generated_at > lastBackupAt
-        : true;
-
       reports.push({
         filename,
         html: row.latest_report_html,
         table,
         id: row.id,
-        isNew: !!isNew,
       });
     }
   }
@@ -221,15 +336,16 @@ function buildEmailHtml(opts: {
   downloadUrl: string;
   failedTables: string[];
   totalReports: number;
-  newReports: number;
   attachedReports: number;
   archiveSize: string;
   exceededSizeLimit: boolean;
+  catchUpGenerated: number;
+  catchUpFailed: number;
 }): string {
   const {
     emailTimestamp, totalSize, totalRows, tableCounts, tableCount,
-    downloadUrl, failedTables, totalReports, newReports, attachedReports, archiveSize,
-    exceededSizeLimit,
+    downloadUrl, failedTables, totalReports, attachedReports, archiveSize,
+    exceededSizeLimit, catchUpGenerated, catchUpFailed,
   } = opts;
 
   const tableRows = Object.entries(tableCounts)
@@ -244,6 +360,10 @@ function buildEmailHtml(opts: {
     ? `<p style="color:#dc2626;font-weight:bold;">⚠️ ${failedTables.length} table upload(s) failed: ${failedTables.join(", ")}</p>`
     : "";
 
+  const catchUpNote = catchUpGenerated > 0 || catchUpFailed > 0
+    ? `<p style="font-size:13px;color:#2563eb;">🔄 Catch-up: Generated ${catchUpGenerated} missing HTML report(s)${catchUpFailed > 0 ? `, ${catchUpFailed} failed` : ""}</p>`
+    : "";
+
   const reportAttachNote = exceededSizeLimit
     ? `<p style="font-size:13px;color:#dc2626;font-weight:bold;">⚠️ Full archive too large for email (${archiveSize}) — download all ${totalReports} HTML reports below.</p>`
     : attachedReports > 0
@@ -255,11 +375,12 @@ function buildEmailHtml(opts: {
       <h2 style="color:#1a1a1a;">✅ Daily Backup Complete</h2>
       <p style="color:#555;">${emailTimestamp}</p>
       ${failedWarning}
+      ${catchUpNote}
       <table style="width:100%;border-collapse:collapse;margin:16px 0;">
         <tr><td style="padding:6px 0;color:#555;">Total Rows</td><td style="text-align:right;font-weight:bold;">${totalRows.toLocaleString()}</td></tr>
         <tr><td style="padding:6px 0;color:#555;">Tables</td><td style="text-align:right;font-weight:bold;">${tableCount}</td></tr>
         <tr><td style="padding:6px 0;color:#555;">JSON Size</td><td style="text-align:right;font-weight:bold;">${totalSize}</td></tr>
-        <tr><td style="padding:6px 0;color:#555;">HTML Reports</td><td style="text-align:right;font-weight:bold;">${totalReports} total (${newReports} new)</td></tr>
+        <tr><td style="padding:6px 0;color:#555;">HTML Reports</td><td style="text-align:right;font-weight:bold;">${totalReports}</td></tr>
         <tr><td style="padding:6px 0;color:#555;">Archive Size</td><td style="text-align:right;font-weight:bold;">${archiveSize}</td></tr>
       </table>
       ${reportAttachNote}
@@ -301,17 +422,7 @@ Deno.serve(async (req) => {
     const now = new Date();
     const timestamp = now.toISOString().replace(/[:.]/g, "-");
 
-    // ── Step 1: Get last backup timestamp for delta detection ──
-    const { data: lastBackupRow } = await adminClient
-      .from("backup_history")
-      .select("created_at")
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    const lastBackupAt: string | null = lastBackupRow?.created_at || null;
-    console.log(`[scheduled-backup-notify] Last backup: ${lastBackupAt || "none"}`);
-
-    // ── Step 2: Fetch all tables (stripped of HTML blobs) ──
+    // ── Step 1: Fetch all tables (stripped of HTML blobs) ──
     const tableCounts: Record<string, number> = {};
     const backupData: Record<string, any[]> = {};
     const failedTables: string[] = [];
@@ -347,11 +458,14 @@ Deno.serve(async (req) => {
     const totalRows = Object.values(tableCounts).reduce((a, b) => a + b, 0);
     console.log(`[scheduled-backup-notify] Uploaded ${TABLES.length} tables (${totalRows} rows, ${formatFileSize(totalSizeBytes)})`);
 
-    // ── Step 3: Extract HTML reports ──
+    // ── Step 2: Generate missing HTML reports (catch-up) ──
+    console.log("[scheduled-backup-notify] Running HTML catch-up generation...");
+    const catchUpResult = await generateMissingReports(adminClient, supabaseUrl, serviceRoleKey);
+
+    // ── Step 3: Extract ALL HTML reports ──
     console.log("[scheduled-backup-notify] Extracting HTML reports...");
-    const htmlReports = await extractHtmlReports(adminClient, lastBackupAt);
-    const newReports = htmlReports.filter(r => r.isNew);
-    console.log(`[scheduled-backup-notify] Found ${htmlReports.length} total reports, ${newReports.length} new since last backup`);
+    const htmlReports = await extractHtmlReports(adminClient);
+    console.log(`[scheduled-backup-notify] Found ${htmlReports.length} total HTML reports`);
 
     // Upload each HTML report to storage
     let htmlUploadErrors = 0;
@@ -395,7 +509,7 @@ Deno.serve(async (req) => {
     // Free memory
     Object.keys(backupData).forEach(k => delete backupData[k]);
 
-    // ── Step 5: Prepare HTML report attachments (ALL reports) ──
+    // ── Step 5: Prepare email attachments ──
     const attachments: Array<{ filename: string; content: string }> = [
       {
         filename: `ropeworks-backup-${timestamp}.json.gz`,
@@ -443,13 +557,12 @@ Deno.serve(async (req) => {
       failed_uploads: failedTables,
       html_reports: {
         total: htmlReports.length,
-        new_since_last_backup: newReports.length,
         upload_errors: htmlUploadErrors,
+        catch_up: catchUpResult,
         reports: htmlReports.map(r => ({
           filename: r.filename,
           table: r.table,
           id: r.id,
-          is_new: r.isNew,
         })),
       },
     };
@@ -508,10 +621,11 @@ Deno.serve(async (req) => {
       downloadUrl,
       failedTables,
       totalReports: htmlReports.length,
-      newReports: newReports.length,
       attachedReports: attachedReportCount,
       archiveSize: formatFileSize(archiveSizeBytes),
       exceededSizeLimit,
+      catchUpGenerated: catchUpResult.generated,
+      catchUpFailed: catchUpResult.failed,
     });
 
     const reportLabel = htmlReports.length > 0
@@ -559,7 +673,6 @@ Deno.serve(async (req) => {
             download_url: downloadUrl,
             total_rows: totalRows,
             total_reports: htmlReports.length,
-            new_reports: newReports.length,
             archive_size_bytes: archiveSizeBytes,
           }),
         });
@@ -578,7 +691,7 @@ Deno.serve(async (req) => {
         total_rows: totalRows,
         table_count: Object.keys(tableCounts).filter(t => tableCounts[t] > 0).length,
         html_reports: htmlReports.length,
-        new_reports: newReports.length,
+        catch_up: catchUpResult,
         attached_reports: attachedReportCount,
         email_sent: emailSuccess,
         webhook_sent: webhookSuccess,
