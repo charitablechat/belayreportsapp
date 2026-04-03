@@ -214,8 +214,6 @@ function buildEmailHtml(opts: {
   attachedReports: number;
   archiveSize: string;
   exceededSizeLimit: boolean;
-  catchUpGenerated: number;
-  catchUpFailed: number;
 }): string {
   const {
     emailTimestamp, totalSize, totalRows, tableCounts, tableCount,
