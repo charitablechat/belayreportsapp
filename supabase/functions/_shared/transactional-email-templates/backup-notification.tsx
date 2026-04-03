@@ -31,6 +31,7 @@ const BackupNotificationEmail = ({
   newReports = 0,
   attachedReports = 0,
   archiveSize = '0 B',
+  exceededSizeLimit = false,
 }: BackupNotificationProps) => {
   const tableEntries = Object.entries(tableCounts).sort(([, a], [, b]) => b - a)
   const displayTableCount = tableCount || Object.keys(tableCounts).length
