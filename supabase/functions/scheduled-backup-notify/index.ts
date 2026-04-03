@@ -555,7 +555,7 @@ Deno.serve(async (req) => {
         total_rows: totalRows,
         table_count: Object.keys(tableCounts).filter(t => tableCounts[t] > 0).length,
         html_reports: htmlReports.length,
-        catch_up: catchUpResult,
+        
         attached_reports: attachedReportCount,
         email_sent: emailSuccess,
         webhook_sent: webhookSuccess,
