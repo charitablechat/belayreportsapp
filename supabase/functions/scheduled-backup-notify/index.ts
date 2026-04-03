@@ -449,7 +449,7 @@ Deno.serve(async (req) => {
 
     // ── Step 6: Upload manifest ──
     const manifest = {
-      version: 2,
+      version: 3,
       exported_at: now.toISOString(),
       exported_by: "system-scheduled",
       table_counts: tableCounts,
@@ -466,6 +466,14 @@ Deno.serve(async (req) => {
           id: r.id,
         })),
       },
+      photo_backup: photoBackupResult ? {
+        total_copied: photoBackupResult.total_copied,
+        total_skipped: photoBackupResult.total_skipped,
+        total_errors: photoBackupResult.total_errors,
+        total_size_bytes: photoBackupResult.total_size_bytes,
+        timed_out: photoBackupResult.timed_out,
+        buckets: photoBackupResult.buckets,
+      } : null,
     };
     const manifestBytes = new TextEncoder().encode(JSON.stringify(manifest, null, 2));
     await adminClient.storage
