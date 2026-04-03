@@ -1,70 +1,64 @@
 
 
-# Fix: Spinner Timeout During Report Generation
+# Fix Photo Loading, Unloading & Saving Gaps
 
-## Root Cause
+## Issues Found
 
-The spinner timeout has **three distinct failure points**, all related to photo processing in the edge functions:
+### 1. OptimizedImage: Permanent shimmer on error (no retry, no fallback)
+When `<img onError>` fires, `loaded` is set to `false` — the shimmer skeleton shows forever. There's no retry mechanism and no timeout to show a broken-image placeholder. If a signed URL expires mid-session, the photo is permanently stuck on shimmer.
 
-### 1. Edge Function Photo Download Budget (Primary Cause)
-The `generate-inspection-html` function has a **10-second budget** (`PHOTO_BUDGET_MS = 10000`) to download ALL photos from Supabase Storage, convert them to Base64, and embed them as `data:` URIs. When an inspection has many photos (gallery + per-item thumbnails), this budget is easily exceeded — especially with larger images or any storage latency. Photos that miss the budget are silently skipped, producing incomplete reports.
+### 2. PhotoGallery: Signed URLs expire after 1 hour with no refresh
+Signed URLs are created with `3600` (1 hour). If a user keeps the form open longer than 1 hour, all photos break silently — `OptimizedImage` shows the shimmer skeleton with no recovery path. There's no periodic refresh or re-fetch logic.
 
-The `generate-training-html` function is **worse** — it downloads photos **sequentially** in a `for` loop with **no time budget at all**, meaning a report with many large photos can push the entire function past the Supabase edge function timeout (~150s free / ~400s paid).
+### 3. PhotoGallery: `loadPhotos` dependency array missing `isOnline`
+The silent refresh effect (line 147-150) calls `loadPhotos(true)` when `isOnline` changes but `loadPhotos` closes over `isOnline` without being in a `useCallback` with `isOnline` as a dependency — it captures the stale value. This means going offline→online may not properly fetch server photos.
 
-### 2. Response Size / Transfer Time
-- **Inspection reports** already mitigate this by uploading HTML to storage and returning a signed URL.
-- **Training and Daily Assessment reports** return the full HTML (including all Base64-embedded photos) **directly in the JSON response body**. A report with 10+ photos can easily be 20-50 MB of JSON, causing the Supabase response to truncate or the client fetch to stall within the 58-second `Promise.race` timeout.
+### 4. cleanupStaleCachedPhotos uses full table scan (`getAll`)
+`photo-cache.ts` line 114 calls `db.getAll('photos')` which loads every photo record (including blobs) into memory. On devices with hundreds of photos, this can cause memory pressure and crashes — especially on iPad Safari with its ~350MB WebView limit.
 
-### 3. Client-Side 60-Second Safety Timeout
-All three form pages have a 60-second safety timeout that forcefully resets the spinner state. If the edge function takes longer (due to photo downloads), the user sees "Report generation timed out" even though the function may still be processing.
+### 5. CameraCaptureDialog: Canvas not zeroed after capture
+After `canvas.toBlob()`, the canvas retains its backing store in memory. On iPad Safari (256MB canvas limit), repeated captures without zeroing can exhaust canvas memory and cause the camera to fail silently.
 
-## Proposed Fix
+### 6. ItemPhotoUpload: Hard-delete instead of soft-delete
+`handleRemove` (line 261) calls `supabase.storage.remove()` and `supabase.from().delete()` — a permanent hard delete. This is inconsistent with PhotoGallery which uses soft-delete with 60-day retention. Users lose the safety net for item photos.
 
-### Part 1: Increase photo budget and add parallel downloads (Inspection)
-**File:** `supabase/functions/generate-inspection-html/index.ts`
-- Increase `PHOTO_BUDGET_MS` from 10s → 25s (well within function timeout)
-- Already uses parallel downloads — no change needed
+### 7. syncPhotos re-queries full unuploaded list per photo (N+1)
+Line 114 in `sync-manager.ts` calls `getUnuploadedPhotos()` inside the `for` loop for every single photo — a full IndexedDB index query per batch item. With 10 photos this is 10 extra queries that can stall on mobile.
 
-### Part 2: Add time budget and parallel downloads (Training)
-**File:** `supabase/functions/generate-training-html/index.ts`
-- Add a `PHOTO_BUDGET_MS = 25000` time budget
-- Switch from sequential `for` loop to `Promise.allSettled()` for parallel photo downloads
-- Skip photos that exceed budget (with warning log)
+### 8. PhotoGallery: Background HEIC conversion re-fetches already-loaded blobs
+The background HEIC conversion effect (line 164-225) fetches photo blobs from network (`fetch(photo.photoUrl)`) for server photos that were just loaded via signed URLs. This doubles bandwidth for every HEIC photo.
 
-### Part 3: Upload-and-return-URL pattern for Training & Daily Assessment
-**Files:**
-- `supabase/functions/generate-training-html/index.ts`
-- `supabase/functions/generate-daily-assessment-html/index.ts`
-- `src/pages/TrainingForm.tsx`
-- `src/pages/DailyAssessmentForm.tsx`
+## Proposed Fixes
 
-Apply the same pattern inspection already uses:
-1. Edge function uploads HTML to `inspection-reports` bucket (or a shared `html-reports` bucket)
-2. Returns a signed URL instead of raw HTML
-3. Client fetches HTML from the signed URL
+### File: `src/components/ui/optimized-image.tsx`
+- Add error state with retry: on error, wait 3 seconds then retry once. After second failure, show a broken-image icon instead of infinite shimmer.
+- Add a `src` change detection that resets `loaded` only when the URL domain/path changes (not just query params from URL rotation).
 
-This eliminates the response-size bottleneck completely.
+### File: `src/components/PhotoGallery.tsx`
+- **Signed URL refresh**: Add a 45-minute interval that calls `loadPhotos(true)` silently to refresh signed URLs before they expire.
+- **Wrap `loadPhotos` in `useCallback`** with `isOnline` in the dependency array so the silent network-change refresh captures the correct online state.
+- **Background HEIC**: Skip the network fetch for photos that already have a blob from the initial load — use the cached blob directly.
 
-### Part 4: Increase client-side timeout to match
-**Files:** `src/pages/InspectionForm.tsx`, `TrainingForm.tsx`, `DailyAssessmentForm.tsx`
-- Increase `GENERATION_TIMEOUT` from 60s → 120s to accommodate reports with many photos
-- The safety timeout already handles stuck states, so a longer window is safe
+### File: `src/lib/photo-cache.ts`
+- Replace `db.getAll('photos')` in `cleanupStaleCachedPhotos` with a cursor-based approach that processes records one at a time, avoiding loading all blobs into memory.
 
-## Technical Details
+### File: `src/components/ui/camera-capture-dialog.tsx`
+- Zero the canvas dimensions (`canvas.width = 0; canvas.height = 0`) after `toBlob` completes to release the backing store immediately.
 
-- The storage upload pattern adds ~2s overhead but eliminates the multi-MB JSON response problem
-- Parallel photo downloads with `Promise.allSettled` prevent one slow photo from blocking all others
-- The 25s photo budget allows ~25 photos at ~1s each (typical Supabase Storage download time)
-- Photos that fail or exceed budget are gracefully skipped with console warnings
+### File: `src/components/inspection/ItemPhotoUpload.tsx`
+- Change `handleRemove` from hard-delete to soft-delete (set `deleted_at` + `retention_until`) to match PhotoGallery's 60-day retention policy.
+
+### File: `src/lib/sync-manager.ts`
+- Remove the per-photo `getUnuploadedPhotos()` re-check (N+1 query). Instead, collect uploaded IDs in a `Set` and skip if the ID was already processed by the background thread.
 
 ## Summary of Changes
 
 | File | Change |
 |------|--------|
-| `generate-inspection-html/index.ts` | Increase photo budget 10s → 25s |
-| `generate-training-html/index.ts` | Add 25s budget, parallelize downloads, upload-to-storage pattern |
-| `generate-daily-assessment-html/index.ts` | Upload-to-storage pattern (no photos but future-proofs) |
-| `src/pages/TrainingForm.tsx` | Handle `htmlUrl` response, increase timeout to 120s |
-| `src/pages/DailyAssessmentForm.tsx` | Handle `htmlUrl` response, increase timeout to 120s |
-| `src/pages/InspectionForm.tsx` | Increase timeout to 120s |
+| `optimized-image.tsx` | Error retry + broken-image fallback |
+| `PhotoGallery.tsx` | 45-min signed URL refresh, fix `isOnline` closure, skip redundant HEIC fetch |
+| `photo-cache.ts` | Cursor-based cleanup instead of `getAll` |
+| `camera-capture-dialog.tsx` | Zero canvas after capture |
+| `ItemPhotoUpload.tsx` | Soft-delete instead of hard-delete |
+| `sync-manager.ts` | Remove N+1 re-check query |
 
