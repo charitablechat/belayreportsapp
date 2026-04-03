@@ -224,10 +224,12 @@ function buildEmailHtml(opts: {
   newReports: number;
   attachedReports: number;
   archiveSize: string;
+  exceededSizeLimit: boolean;
 }): string {
   const {
     emailTimestamp, totalSize, totalRows, tableCounts, tableCount,
     downloadUrl, failedTables, totalReports, newReports, attachedReports, archiveSize,
+    exceededSizeLimit,
   } = opts;
 
   const tableRows = Object.entries(tableCounts)
@@ -242,10 +244,10 @@ function buildEmailHtml(opts: {
     ? `<p style="color:#dc2626;font-weight:bold;">⚠️ ${failedTables.length} table upload(s) failed: ${failedTables.join(", ")}</p>`
     : "";
 
-  const reportAttachNote = attachedReports > 0
-    ? `<p style="font-size:13px;color:#555;">📎 ${attachedReports} new HTML report(s) attached to this email.</p>`
-    : newReports > 0
-      ? `<p style="font-size:13px;color:#555;">⚠️ New reports exceeded size limit — download the full archive below.</p>`
+  const reportAttachNote = exceededSizeLimit
+    ? `<p style="font-size:13px;color:#dc2626;font-weight:bold;">⚠️ Full archive too large for email (${archiveSize}) — download all ${totalReports} HTML reports below.</p>`
+    : attachedReports > 0
+      ? `<p style="font-size:13px;color:#059669;font-weight:bold;">📎 All ${attachedReports} HTML report(s) attached to this email.</p>`
       : "";
 
   return `
@@ -393,7 +395,7 @@ Deno.serve(async (req) => {
     // Free memory
     Object.keys(backupData).forEach(k => delete backupData[k]);
 
-    // ── Step 5: Prepare HTML report attachments (delta only) ──
+    // ── Step 5: Prepare HTML report attachments (ALL reports) ──
     const attachments: Array<{ filename: string; content: string }> = [
       {
         filename: `ropeworks-backup-${timestamp}.json.gz`,
@@ -403,24 +405,31 @@ Deno.serve(async (req) => {
 
     let totalAttachmentSize = gzippedBytes.length;
     let attachedReportCount = 0;
+    let exceededSizeLimit = false;
 
-    // Attach new HTML reports if they fit within the size limit
-    for (const report of newReports) {
-      const htmlBytes = new TextEncoder().encode(report.html);
-      const estimatedBase64Size = Math.ceil(htmlBytes.length * 1.37); // base64 overhead
-      if (totalAttachmentSize + htmlBytes.length > MAX_ATTACHMENT_BYTES) {
-        console.log(`[scheduled-backup-notify] Skipping remaining HTML attachments — would exceed ${formatFileSize(MAX_ATTACHMENT_BYTES)} limit`);
-        break;
-      }
-      attachments.push({
-        filename: report.filename.replace(/\//g, "_"), // flatten path for email attachment
-        content: uint8ToBase64(htmlBytes),
-      });
-      totalAttachmentSize += htmlBytes.length;
-      attachedReportCount++;
+    // Calculate total size of all HTML reports
+    let allReportsSize = 0;
+    for (const report of htmlReports) {
+      allReportsSize += new TextEncoder().encode(report.html).length;
     }
 
-    console.log(`[scheduled-backup-notify] Attaching ${attachedReportCount} of ${newReports.length} new HTML reports to email`);
+    if (gzippedBytes.length + allReportsSize <= MAX_ATTACHMENT_BYTES) {
+      // All reports fit — attach every one
+      for (const report of htmlReports) {
+        const htmlBytes = new TextEncoder().encode(report.html);
+        attachments.push({
+          filename: report.filename.replace(/\//g, "_"),
+          content: uint8ToBase64(htmlBytes),
+        });
+        totalAttachmentSize += htmlBytes.length;
+        attachedReportCount++;
+      }
+      console.log(`[scheduled-backup-notify] Attaching ALL ${attachedReportCount} HTML reports (${formatFileSize(totalAttachmentSize)} total)`);
+    } else {
+      // Too large — attach only the JSON, provide download link
+      exceededSizeLimit = true;
+      console.log(`[scheduled-backup-notify] Full archive too large for email (${formatFileSize(gzippedBytes.length + allReportsSize)}), using download link only`);
+    }
 
     // ── Step 6: Upload manifest ──
     const manifest = {
@@ -502,14 +511,15 @@ Deno.serve(async (req) => {
       newReports: newReports.length,
       attachedReports: attachedReportCount,
       archiveSize: formatFileSize(archiveSizeBytes),
+      exceededSizeLimit,
     });
 
-    const newReportLabel = newReports.length > 0
-      ? ` — ${newReports.length} new report${newReports.length === 1 ? "" : "s"}`
+    const reportLabel = htmlReports.length > 0
+      ? ` — ${htmlReports.length} report${htmlReports.length === 1 ? "" : "s"}${exceededSizeLimit ? " (download link)" : " attached"}`
       : "";
     const emailSubject = failedTables.length > 0
-      ? `⚠️ Ropeworks Daily Backup${newReportLabel} (${failedTables.length} failures) — ${emailTimestamp}`
-      : `Ropeworks Daily Backup${newReportLabel} — ${emailTimestamp}`;
+      ? `⚠️ Ropeworks Daily Backup${reportLabel} (${failedTables.length} failures) — ${emailTimestamp}`
+      : `Ropeworks Daily Backup${reportLabel} — ${emailTimestamp}`;
 
     const emailResponse = await fetch(`${GATEWAY_URL}/emails`, {
       method: "POST",

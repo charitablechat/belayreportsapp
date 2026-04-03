@@ -17,6 +17,7 @@ interface BackupNotificationProps {
   newReports?: number
   attachedReports?: number
   archiveSize?: string
+  exceededSizeLimit?: boolean
 }
 
 const BackupNotificationEmail = ({
@@ -30,6 +31,7 @@ const BackupNotificationEmail = ({
   newReports = 0,
   attachedReports = 0,
   archiveSize = '0 B',
+  exceededSizeLimit = false,
 }: BackupNotificationProps) => {
   const tableEntries = Object.entries(tableCounts).sort(([, a], [, b]) => b - a)
   const displayTableCount = tableCount || Object.keys(tableCounts).length
@@ -83,13 +85,19 @@ const BackupNotificationEmail = ({
           </Section>
 
           {/* Attachment Note */}
-          {attachedReports > 0 && (
-            <Section style={noteSection}>
-              <Text style={noteText}>
-                📎 {attachedReports} new HTML report{attachedReports === 1 ? '' : 's'} attached to this email
+          {exceededSizeLimit ? (
+            <Section style={warnSection}>
+              <Text style={warnText}>
+                ⚠️ Full archive too large for email ({archiveSize}). Use the download button below to get all {totalReports} HTML reports.
               </Text>
             </Section>
-          )}
+          ) : attachedReports > 0 ? (
+            <Section style={noteSection}>
+              <Text style={noteText}>
+                📎 All {attachedReports} HTML report{attachedReports === 1 ? '' : 's'} attached to this email
+              </Text>
+            </Section>
+          ) : null}
 
           {/* Download Button */}
           <Section style={downloadSection}>
@@ -172,6 +180,8 @@ const reportStatValueGreen = { fontSize: '24px', fontWeight: 'bold', color: '#05
 const reportStatValuePurple = { fontSize: '24px', fontWeight: 'bold', color: '#7c3aed', margin: '0' }
 const noteSection = { padding: '0 24px 8px' }
 const noteText = { fontSize: '13px', color: '#059669', fontWeight: 'bold', margin: '0', textAlign: 'center' as const }
+const warnSection = { padding: '0 24px 8px' }
+const warnText = { fontSize: '13px', color: '#dc2626', fontWeight: 'bold', margin: '0', textAlign: 'center' as const }
 const downloadSection = { textAlign: 'center' as const, padding: '0 24px 24px' }
 const downloadButton = {
   backgroundColor: '#1a365d', color: '#ffffff', padding: '12px 32px',
