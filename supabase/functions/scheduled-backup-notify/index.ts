@@ -213,7 +213,7 @@ async function generateMissingReports(
 
   // Limit to 5 per run to stay within the function's time budget.
   // Remaining records will be caught up on subsequent nightly runs.
-  const MAX_CATCHUP = 5;
+  const MAX_CATCHUP = 3;
   const toProcess = missing.slice(0, MAX_CATCHUP);
   console.log(`[catch-up] Found ${missing.length} completed records missing HTML, processing ${toProcess.length} this run...`);
 
