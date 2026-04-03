@@ -23,8 +23,9 @@ export async function downloadBackupFileRaw(filePath: string): Promise<Blob> {
 
 export async function downloadBackupFile(filePath: string): Promise<void> {
   const data = await downloadBackupFileRaw(filePath);
-  const timestamp = filePath.replace("backup-", "").replace(".json", "");
-  saveToDevice(data, `ropeworks-full-backup-${timestamp}.json`);
+  const timestamp = filePath.replace("backup-", "").replace(".json", "").replace("daily/", "");
+  const ext = filePath.endsWith(".zip") ? "zip" : "json";
+  saveToDevice(data, `ropeworks-full-backup-${timestamp}.${ext}`);
 }
 
 export async function listServerBackups(): Promise<
