@@ -180,7 +180,8 @@ async function generateMissingReports(
       .from(table)
       .select("id")
       .eq("status", "completed")
-      .is("latest_report_html", null);
+      .is("latest_report_html", null)
+      .is("deleted_at", null);
 
     if (error) {
       console.warn(`[catch-up] Error querying ${table}: ${error.message}`);
@@ -210,73 +211,86 @@ async function generateMissingReports(
     return { generated: 0, failed: 0 };
   }
 
-  console.log(`[catch-up] Found ${missing.length} completed records missing HTML, generating...`);
+  // Limit to 5 per run to stay within the function's time budget.
+  // Remaining records will be caught up on subsequent nightly runs.
+  const MAX_CATCHUP = 3;
+  const toProcess = missing.slice(0, MAX_CATCHUP);
+  console.log(`[catch-up] Found ${missing.length} completed records missing HTML, processing ${toProcess.length} this run...`);
 
   let generated = 0;
   let failed = 0;
 
-  // Process in batches of 5 to avoid timeouts
-  for (let i = 0; i < missing.length; i += 5) {
-    const batch = missing.slice(i, i + 5);
-    const promises = batch.map(async (item) => {
-      try {
-        const res = await fetch(
-          `${supabaseUrl}/functions/v1/${item.functionName}`,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "Authorization": `Bearer ${serviceRoleKey}`,
-            },
-            body: JSON.stringify({ [item.bodyKey]: item.id }),
-          },
-        );
-        if (res.ok) {
-          // The generation function returns { htmlUrl, fileName }
-          // Download the HTML and store it on the record
-          const result = await res.json();
-          if (result.htmlUrl) {
-            try {
-              const htmlRes = await fetch(result.htmlUrl);
-              if (htmlRes.ok) {
-                const htmlContent = await htmlRes.text();
-                const { error: updateErr } = await supabase
-                  .from(item.table)
-                  .update({
-                    latest_report_html: htmlContent,
-                    latest_report_generated_at: new Date().toISOString(),
-                  })
-                  .eq("id", item.id);
-                if (updateErr) {
-                  console.warn(`[catch-up] Failed to store HTML for ${item.table}/${item.id.substring(0, 8)}: ${updateErr.message}`);
-                  failed++;
-                } else {
-                  generated++;
-                  console.log(`[catch-up] Generated & stored HTML for ${item.table}/${item.id.substring(0, 8)}`);
-                }
-              } else {
-                failed++;
-                console.warn(`[catch-up] Failed to download HTML for ${item.table}/${item.id.substring(0, 8)}: ${htmlRes.status}`);
-              }
-            } catch (dlErr: any) {
-              failed++;
-              console.warn(`[catch-up] Download error ${item.table}/${item.id.substring(0, 8)}: ${dlErr.message}`);
-            }
-          } else {
-            failed++;
-            console.warn(`[catch-up] No htmlUrl returned for ${item.table}/${item.id.substring(0, 8)}`);
-          }
-        } else {
-          failed++;
-          const errText = await res.text().catch(() => "unknown");
-          console.warn(`[catch-up] Failed ${item.table}/${item.id.substring(0, 8)}: ${res.status} ${errText.substring(0, 200)}`);
-        }
-      } catch (err: any) {
-        failed++;
-        console.warn(`[catch-up] Error ${item.table}/${item.id.substring(0, 8)}: ${err.message}`);
+  // Process sequentially with delays to avoid 502 errors from concurrent load
+  for (const item of toProcess) {
+    try {
+      // Small delay between requests to avoid overwhelming the host
+      if (generated + failed > 0) {
+        await new Promise(r => setTimeout(r, 2000));
       }
-    });
-    await Promise.all(promises);
+
+      const res = await fetch(
+        `${supabaseUrl}/functions/v1/${item.functionName}`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${serviceRoleKey}`,
+          },
+          body: JSON.stringify({ [item.bodyKey]: item.id }),
+        },
+      );
+      if (!res.ok) {
+        failed++;
+        const errText = await res.text().catch(() => "unknown");
+        console.warn(`[catch-up] Failed ${item.table}/${item.id.substring(0, 8)}: ${res.status} ${errText.substring(0, 200)}`);
+        continue;
+      }
+
+      const result = await res.json();
+      let htmlContent: string | null = null;
+
+      if (result.htmlUrl) {
+        // Inspection returns { htmlUrl } — download from signed URL
+        try {
+          const htmlRes = await fetch(result.htmlUrl);
+          if (htmlRes.ok) {
+            htmlContent = await htmlRes.text();
+          } else {
+            console.warn(`[catch-up] Failed to download HTML for ${item.table}/${item.id.substring(0, 8)}: ${htmlRes.status}`);
+          }
+        } catch (dlErr: any) {
+          console.warn(`[catch-up] Download error ${item.table}/${item.id.substring(0, 8)}: ${dlErr.message}`);
+        }
+      } else if (result.html) {
+        // Training & daily assessment return { html } directly
+        htmlContent = result.html;
+      }
+
+      if (!htmlContent) {
+        failed++;
+        console.warn(`[catch-up] No HTML content for ${item.table}/${item.id.substring(0, 8)}`);
+        continue;
+      }
+
+      const { error: updateErr } = await supabase
+        .from(item.table)
+        .update({
+          latest_report_html: htmlContent,
+          latest_report_generated_at: new Date().toISOString(),
+        })
+        .eq("id", item.id);
+
+      if (updateErr) {
+        failed++;
+        console.warn(`[catch-up] Failed to store HTML for ${item.table}/${item.id.substring(0, 8)}: ${updateErr.message}`);
+      } else {
+        generated++;
+        console.log(`[catch-up] Generated & stored HTML for ${item.table}/${item.id.substring(0, 8)}`);
+      }
+    } catch (err: any) {
+      failed++;
+      console.warn(`[catch-up] Error ${item.table}/${item.id.substring(0, 8)}: ${err.message}`);
+    }
   }
 
   console.log(`[catch-up] Done: ${generated} generated, ${failed} failed`);
