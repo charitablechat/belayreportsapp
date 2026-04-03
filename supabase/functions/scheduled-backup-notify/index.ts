@@ -233,9 +233,8 @@ function buildEmailHtml(opts: {
     ? `<p style="color:#dc2626;font-weight:bold;">⚠️ ${failedTables.length} table upload(s) failed: ${failedTables.join(", ")}</p>`
     : "";
 
-  const catchUpNote = catchUpGenerated > 0 || catchUpFailed > 0
-    ? `<p style="font-size:13px;color:#2563eb;">🔄 Catch-up: Generated ${catchUpGenerated} missing HTML report(s)${catchUpFailed > 0 ? `, ${catchUpFailed} failed` : ""}</p>`
-    : "";
+
+
 
   const reportAttachNote = exceededSizeLimit
     ? `<p style="font-size:13px;color:#dc2626;font-weight:bold;">⚠️ Full archive too large for email (${archiveSize}) — download all ${totalReports} HTML reports below.</p>`
