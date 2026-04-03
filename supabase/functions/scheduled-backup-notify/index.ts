@@ -533,6 +533,7 @@ Deno.serve(async (req) => {
       attachedReports: attachedReportCount,
       archiveSize: formatFileSize(archiveSizeBytes),
       exceededSizeLimit,
+      photoBackup: photoBackupResult,
     });
 
     const reportLabel = htmlReports.length > 0
