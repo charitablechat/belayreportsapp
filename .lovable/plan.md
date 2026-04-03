@@ -1,64 +1,65 @@
 
 
-# Fix Photo Loading, Unloading & Saving Gaps
+# Refine Photo Handling in Daily Backup System
 
-## Issues Found
+## The Gap
 
-### 1. OptimizedImage: Permanent shimmer on error (no retry, no fallback)
-When `<img onError>` fires, `loaded` is set to `false` — the shimmer skeleton shows forever. There's no retry mechanism and no timeout to show a broken-image placeholder. If a signed URL expires mid-session, the photo is permanently stuck on shimmer.
+The daily backup system (`scheduled-backup-notify`) backs up:
+- All 40+ database tables as JSON (including photo **metadata** rows from `inspection_photos`, `training_photos`, `daily_assessment_photos`)
+- HTML reports with embedded Base64 photos
 
-### 2. PhotoGallery: Signed URLs expire after 1 hour with no refresh
-Signed URLs are created with `3600` (1 hour). If a user keeps the form open longer than 1 hour, all photos break silently — `OptimizedImage` shows the shimmer skeleton with no recovery path. There's no periodic refresh or re-fetch logic.
+But the **raw photo blobs** stored in the three storage buckets (`inspection-photos`, `training-photos`, `daily-assessment-photos`) are **never archived**. If storage is lost, the metadata records point to files that no longer exist. The HTML reports contain embedded photos, but only for completed reports — draft/in-progress report photos have zero backup.
 
-### 3. PhotoGallery: `loadPhotos` dependency array missing `isOnline`
-The silent refresh effect (line 147-150) calls `loadPhotos(true)` when `isOnline` changes but `loadPhotos` closes over `isOnline` without being in a `useCallback` with `isOnline` as a dependency — it captures the stale value. This means going offline→online may not properly fetch server photos.
+The Make.com webhook only receives a download URL for the JSON+HTML archive — no photo data.
 
-### 4. cleanupStaleCachedPhotos uses full table scan (`getAll`)
-`photo-cache.ts` line 114 calls `db.getAll('photos')` which loads every photo record (including blobs) into memory. On devices with hundreds of photos, this can cause memory pressure and crashes — especially on iPad Safari with its ~350MB WebView limit.
+## Proposed Fix: Add Photo Storage Sync to Backup
 
-### 5. CameraCaptureDialog: Canvas not zeroed after capture
-After `canvas.toBlob()`, the canvas retains its backing store in memory. On iPad Safari (256MB canvas limit), repeated captures without zeroing can exhaust canvas memory and cause the camera to fail silently.
+### New Edge Function: `backup-photo-storage`
 
-### 6. ItemPhotoUpload: Hard-delete instead of soft-delete
-`handleRemove` (line 261) calls `supabase.storage.remove()` and `supabase.from().delete()` — a permanent hard delete. This is inconsistent with PhotoGallery which uses soft-delete with 60-day retention. Users lose the safety net for item photos.
+A dedicated edge function that copies all photo blobs from the three source buckets into the `database-backups` bucket under the daily backup folder. This runs as a separate step called from `scheduled-backup-notify` after the JSON export completes.
 
-### 7. syncPhotos re-queries full unuploaded list per photo (N+1)
-Line 114 in `sync-manager.ts` calls `getUnuploadedPhotos()` inside the `for` loop for every single photo — a full IndexedDB index query per batch item. With 10 photos this is 10 extra queries that can stall on mobile.
+**Strategy:**
+1. List all files in each of the 3 photo buckets (paginated, 1000 at a time)
+2. For each file, check if it already exists in `database-backups/daily/{timestamp}/photos/{bucket}/{path}` — skip if present (idempotent)
+3. Download blob from source bucket → upload to backup bucket
+4. Process in batches of 5 concurrent copies to avoid memory pressure
+5. Return a manifest of copied files with sizes and any errors
+6. Has a configurable timeout safety valve (4 minutes) — if time runs out, it stops gracefully and reports partial results
 
-### 8. PhotoGallery: Background HEIC conversion re-fetches already-loaded blobs
-The background HEIC conversion effect (line 164-225) fetches photo blobs from network (`fetch(photo.photoUrl)`) for server photos that were just loaded via signed URLs. This doubles bandwidth for every HEIC photo.
+**File:** `supabase/functions/backup-photo-storage/index.ts`
 
-## Proposed Fixes
+### Modify: `scheduled-backup-notify/index.ts`
 
-### File: `src/components/ui/optimized-image.tsx`
-- Add error state with retry: on error, wait 3 seconds then retry once. After second failure, show a broken-image icon instead of infinite shimmer.
-- Add a `src` change detection that resets `loaded` only when the URL domain/path changes (not just query params from URL rotation).
+Add a new Step (between current Steps 1 and 2) that invokes `backup-photo-storage` via an internal edge function call. Results are included in the email summary and manifest.
 
-### File: `src/components/PhotoGallery.tsx`
-- **Signed URL refresh**: Add a 45-minute interval that calls `loadPhotos(true)` silently to refresh signed URLs before they expire.
-- **Wrap `loadPhotos` in `useCallback`** with `isOnline` in the dependency array so the silent network-change refresh captures the correct online state.
-- **Background HEIC**: Skip the network fetch for photos that already have a blob from the initial load — use the cached blob directly.
+- Add photo backup stats to email HTML (total photos copied, total size, any failures)
+- Add photo manifest to the `manifest.json` uploaded to storage
+- Include photo backup signed URL in the Make.com webhook payload
 
-### File: `src/lib/photo-cache.ts`
-- Replace `db.getAll('photos')` in `cleanupStaleCachedPhotos` with a cursor-based approach that processes records one at a time, avoiding loading all blobs into memory.
+### Add "Download All Photos" Button to Admin Panel
 
-### File: `src/components/ui/camera-capture-dialog.tsx`
-- Zero the canvas dimensions (`canvas.width = 0; canvas.height = 0`) after `toBlob` completes to release the backing store immediately.
+**File:** `src/components/admin/DatabaseBackupsPanel.tsx`
 
-### File: `src/components/inspection/ItemPhotoUpload.tsx`
-- Change `handleRemove` from hard-delete to soft-delete (set `deleted_at` + `retention_until`) to match PhotoGallery's 60-day retention policy.
+Add a button that generates signed download URLs for all photos in a backup folder and triggers a batch download (or a ZIP if the function supports it). This serves as the manual fallback when the automated sync encounters issues.
 
-### File: `src/lib/sync-manager.ts`
-- Remove the per-photo `getUnuploadedPhotos()` re-check (N+1 query). Instead, collect uploaded IDs in a `Set` and skip if the ID was already processed by the background thread.
+### Soft-Deleted Photo Exclusion
+
+Skip photos where the corresponding database record has `deleted_at IS NOT NULL`. This prevents backing up photos that users have already soft-deleted, reducing storage waste.
 
 ## Summary of Changes
 
 | File | Change |
 |------|--------|
-| `optimized-image.tsx` | Error retry + broken-image fallback |
-| `PhotoGallery.tsx` | 45-min signed URL refresh, fix `isOnline` closure, skip redundant HEIC fetch |
-| `photo-cache.ts` | Cursor-based cleanup instead of `getAll` |
-| `camera-capture-dialog.tsx` | Zero canvas after capture |
-| `ItemPhotoUpload.tsx` | Soft-delete instead of hard-delete |
-| `sync-manager.ts` | Remove N+1 re-check query |
+| `supabase/functions/backup-photo-storage/index.ts` | New edge function — copies photo blobs to backup bucket |
+| `supabase/functions/scheduled-backup-notify/index.ts` | Call photo backup, add stats to email/manifest/webhook |
+| `src/components/admin/DatabaseBackupsPanel.tsx` | Add "Download All Photos" button for manual fallback |
+
+## Edge Cases Handled
+
+- **Large photo counts**: Paginated listing + batch processing with concurrency limit
+- **Timeout protection**: 4-minute safety valve with graceful partial completion
+- **Idempotency**: Checks if backup copy already exists before re-downloading
+- **Memory**: Streams one photo at a time (download → upload → discard), never holds all blobs in memory
+- **Soft-deleted photos**: Excluded from backup to save space
+- **Network failures**: Per-photo error tracking with retry-on-next-run capability
 
