@@ -582,6 +582,12 @@ Deno.serve(async (req) => {
             total_rows: totalRows,
             total_reports: htmlReports.length,
             archive_size_bytes: archiveSizeBytes,
+            photo_backup: photoBackupResult ? {
+              total_copied: photoBackupResult.total_copied,
+              total_size_bytes: photoBackupResult.total_size_bytes,
+              total_errors: photoBackupResult.total_errors,
+              timed_out: photoBackupResult.timed_out,
+            } : null,
           }),
         });
         webhookSuccess = webhookRes.ok;
