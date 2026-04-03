@@ -393,7 +393,7 @@ Deno.serve(async (req) => {
     // Free memory
     Object.keys(backupData).forEach(k => delete backupData[k]);
 
-    // ── Step 5: Prepare HTML report attachments (delta only) ──
+    // ── Step 5: Prepare HTML report attachments (ALL reports) ──
     const attachments: Array<{ filename: string; content: string }> = [
       {
         filename: `ropeworks-backup-${timestamp}.json.gz`,
@@ -403,24 +403,31 @@ Deno.serve(async (req) => {
 
     let totalAttachmentSize = gzippedBytes.length;
     let attachedReportCount = 0;
+    let exceededSizeLimit = false;
 
-    // Attach new HTML reports if they fit within the size limit
-    for (const report of newReports) {
-      const htmlBytes = new TextEncoder().encode(report.html);
-      const estimatedBase64Size = Math.ceil(htmlBytes.length * 1.37); // base64 overhead
-      if (totalAttachmentSize + htmlBytes.length > MAX_ATTACHMENT_BYTES) {
-        console.log(`[scheduled-backup-notify] Skipping remaining HTML attachments — would exceed ${formatFileSize(MAX_ATTACHMENT_BYTES)} limit`);
-        break;
-      }
-      attachments.push({
-        filename: report.filename.replace(/\//g, "_"), // flatten path for email attachment
-        content: uint8ToBase64(htmlBytes),
-      });
-      totalAttachmentSize += htmlBytes.length;
-      attachedReportCount++;
+    // Calculate total size of all HTML reports
+    let allReportsSize = 0;
+    for (const report of htmlReports) {
+      allReportsSize += new TextEncoder().encode(report.html).length;
     }
 
-    console.log(`[scheduled-backup-notify] Attaching ${attachedReportCount} of ${newReports.length} new HTML reports to email`);
+    if (gzippedBytes.length + allReportsSize <= MAX_ATTACHMENT_BYTES) {
+      // All reports fit — attach every one
+      for (const report of htmlReports) {
+        const htmlBytes = new TextEncoder().encode(report.html);
+        attachments.push({
+          filename: report.filename.replace(/\//g, "_"),
+          content: uint8ToBase64(htmlBytes),
+        });
+        totalAttachmentSize += htmlBytes.length;
+        attachedReportCount++;
+      }
+      console.log(`[scheduled-backup-notify] Attaching ALL ${attachedReportCount} HTML reports (${formatFileSize(totalAttachmentSize)} total)`);
+    } else {
+      // Too large — attach only the JSON, provide download link
+      exceededSizeLimit = true;
+      console.log(`[scheduled-backup-notify] Full archive too large for email (${formatFileSize(gzippedBytes.length + allReportsSize)}), using download link only`);
+    }
 
     // ── Step 6: Upload manifest ──
     const manifest = {

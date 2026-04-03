@@ -17,6 +17,7 @@ interface BackupNotificationProps {
   newReports?: number
   attachedReports?: number
   archiveSize?: string
+  exceededSizeLimit?: boolean
 }
 
 const BackupNotificationEmail = ({
