@@ -130,6 +130,182 @@ export default function PhotoGallery({
 
   const initialLoadDone = useRef(false);
 
+  const loadPhotos = useCallback(async (silent = false) => {
+    try {
+      if (!silent) setLoading(true);
+      let signedUrlFailures = 0;
+      const newObjectUrls: string[] = [];
+      
+      const offlinePhotos = await getOfflinePhotos(inspectionId);
+      const STALE_THRESHOLD_MS = 10 * 60 * 1000;
+      const now = Date.now();
+      const offlinePhotosList: Photo[] = offlinePhotos
+        .filter(p => p.section === section && p.blob != null)
+        .map((p, index) => {
+          try {
+            const objectUrl = URL.createObjectURL(p.blob);
+            newObjectUrls.push(objectUrl);
+            const createdAt = (p as any).createdAt || (p as any).created_at;
+            const isStale = !p.uploaded && createdAt && (now - new Date(createdAt).getTime() > STALE_THRESHOLD_MS);
+            return {
+              id: p.id,
+              photoUrl: objectUrl,
+              blob: p.blob,
+              uploaded: p.uploaded,
+              caption: null,
+              display_order: p.display_order ?? index,
+              staleUpload: isStale,
+            };
+          } catch (e) {
+            console.warn('[PhotoGallery] Skipping photo with invalid blob:', p.id, e);
+            return null;
+          }
+        })
+        .filter(Boolean) as Photo[];
+
+      const receipts = getPhotoReceipts(inspectionId, section);
+      const offlinePhotoIds = new Set(offlinePhotos.filter(p => p.section === section).map(p => p.id));
+      const evictedPhotos = receipts.filter(r => !r.uploaded && !offlinePhotoIds.has(r.id));
+      setEvictedCount(evictedPhotos.length);
+
+      if (isOnline) {
+      const { data, error } = await (supabase
+          .from(tableName) as any)
+          .select('*')
+          .eq(foreignKeyColumn, inspectionId)
+          .eq('photo_section', section)
+          .is('deleted_at', null)
+          .order('display_order', { ascending: true });
+
+        if (error) throw error;
+
+        const supabasePhotoIds = (data || []).map((p: any) => p.id);
+        const validCacheIds = await batchValidateCachedPhotos(supabasePhotoIds);
+
+        // Split photos into cached (instant) vs uncached (need signed URLs)
+        const allPhotos = (data || []) as any[];
+        const cachedPhotos: Photo[] = [];
+        const uncachedPhotos: { photo: any; index: number }[] = [];
+
+        for (let i = 0; i < allPhotos.length; i++) {
+          const photo = allPhotos[i];
+          const existingOfflinePhoto = offlinePhotos.find(p => p.photoUrl === photo.photo_url);
+
+          if (existingOfflinePhoto?.blob && validCacheIds.has(photo.id)) {
+            const objectUrl = URL.createObjectURL(existingOfflinePhoto.blob);
+            newObjectUrls.push(objectUrl);
+            cachedPhotos.push({
+              id: photo.id,
+              photoUrl: objectUrl,
+              blob: existingOfflinePhoto.blob,
+              uploaded: true,
+              caption: photo.caption,
+              display_order: photo.display_order ?? i,
+            });
+          } else {
+            uncachedPhotos.push({ photo, index: i });
+          }
+        }
+
+        // Single batch call for all uncached photos
+        let batchPhotos: Photo[] = [];
+        if (uncachedPhotos.length > 0) {
+          const paths = uncachedPhotos.map(u => u.photo.photo_url);
+          const { data: signedUrlsData, error: batchError } = await supabase.storage
+            .from(storageBucket)
+            .createSignedUrls(paths, 3600);
+
+          if (batchError) {
+            console.error('[PhotoGallery] Batch signed URL generation failed:', batchError);
+            signedUrlFailures = uncachedPhotos.length;
+          } else {
+            batchPhotos = (signedUrlsData || [])
+              .map((urlData, idx) => {
+                const { photo, index } = uncachedPhotos[idx];
+                if (urlData.error || !urlData.signedUrl) {
+                  console.error(`[PhotoGallery] Failed signed URL for photo ${photo.id}:`, urlData.error);
+                  signedUrlFailures++;
+                  return null;
+                }
+                return {
+                  id: photo.id,
+                  photoUrl: urlData.signedUrl,
+                  uploaded: true,
+                  caption: photo.caption,
+                  display_order: photo.display_order ?? index,
+                } as Photo;
+              })
+              .filter((p): p is Photo => p !== null);
+
+            // Background-cache all fetched photos in one idle callback
+            const cacheWork = (signedUrlsData || [])
+              .map((urlData, idx) => ({ urlData, photo: uncachedPhotos[idx].photo }))
+              .filter(w => w.urlData.signedUrl && !w.urlData.error);
+
+            const doCaching = () => {
+              for (const { urlData, photo } of cacheWork) {
+                fetch(urlData.signedUrl!)
+                  .then(r => { if (r.ok) return r.blob(); throw new Error('fetch failed'); })
+                  .then(async (blob) => {
+                    // Detect HEIC by magic bytes (catches mislabeled .jpg files too)
+                    const heicDetected = isHeicPath(photo.photo_url) || await isHeicBlob(blob);
+                    if (heicDetected) {
+                      const jpegBlob = await convertHeicBlobToJpeg(blob, 0.85);
+                      if (jpegBlob) {
+                        // Re-upload the real JPEG to storage so reports work
+                        reuploadConvertedJpeg(photo.photo_url, jpegBlob);
+                        return cachePhotoFromRemote(photo.id, jpegBlob, photo.photo_url, inspectionId, section);
+                      }
+                    }
+                    return cachePhotoFromRemote(photo.id, blob, photo.photo_url, inspectionId, section);
+                  })
+                  .catch(e => console.warn('[PhotoGallery] Background cache failed:', e));
+              }
+            };
+            if (typeof requestIdleCallback === 'function') {
+              requestIdleCallback(doCaching);
+            } else {
+              setTimeout(doCaching, 100);
+            }
+          }
+        }
+
+
+        const supabasePhotos: Photo[] = [...cachedPhotos, ...batchPhotos];
+
+        const pendingPhotos = offlinePhotosList.filter(p => !p.uploaded);
+        const mergedPhotos = [...pendingPhotos, ...supabasePhotos].sort(
+          (a, b) => a.display_order - b.display_order
+        );
+        const oldUrls = objectUrlsRef.current;
+        objectUrlsRef.current = newObjectUrls;
+        setPhotos(mergedPhotos);
+        setFailedCount(signedUrlFailures);
+        requestAnimationFrame(() => {
+          setTimeout(() => {
+            oldUrls.forEach(url => URL.revokeObjectURL(url));
+          }, 0);
+        });
+      } else {
+        const sortedOffline = offlinePhotosList.sort((a, b) => a.display_order - b.display_order);
+        const oldUrls = objectUrlsRef.current;
+        objectUrlsRef.current = newObjectUrls;
+        setPhotos(sortedOffline);
+        setFailedCount(0);
+        requestAnimationFrame(() => {
+          setTimeout(() => {
+            oldUrls.forEach(url => URL.revokeObjectURL(url));
+          }, 0);
+        });
+      }
+    } catch (error) {
+      console.error('[PhotoGallery] Failed to load photos:', error);
+    } finally {
+      setLoading(false);
+      initialLoadDone.current = true;
+    }
+  }, [inspectionId, section, isOnline, tableName, foreignKeyColumn, storageBucket]);
+
   // Initial load — shows spinner
   useEffect(() => {
     initialLoadDone.current = false;
@@ -147,7 +323,20 @@ export default function PhotoGallery({
   useEffect(() => {
     if (!initialLoadDone.current) return;
     loadPhotos(true);
-  }, [isOnline]);
+  }, [isOnline, loadPhotos]);
+
+  // Refresh signed URLs every 45 minutes to prevent expiration (URLs last 1 hour)
+  useEffect(() => {
+    if (!initialLoadDone.current) return;
+    const REFRESH_INTERVAL_MS = 45 * 60 * 1000;
+    const interval = setInterval(() => {
+      if (import.meta.env.DEV) {
+        console.log('[PhotoGallery] Refreshing signed URLs (45-min interval)');
+      }
+      loadPhotos(true);
+    }, REFRESH_INTERVAL_MS);
+    return () => clearInterval(interval);
+  }, [loadPhotos]);
 
   // Exit batch mode when photos change and selection becomes stale
   useEffect(() => {
