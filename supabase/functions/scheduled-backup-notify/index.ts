@@ -210,13 +210,17 @@ async function generateMissingReports(
     return { generated: 0, failed: 0 };
   }
 
-  console.log(`[catch-up] Found ${missing.length} completed records missing HTML, generating...`);
+  // Limit to 5 per run to stay within the function's time budget.
+  // Remaining records will be caught up on subsequent nightly runs.
+  const MAX_CATCHUP = 5;
+  const toProcess = missing.slice(0, MAX_CATCHUP);
+  console.log(`[catch-up] Found ${missing.length} completed records missing HTML, processing ${toProcess.length} this run...`);
 
   let generated = 0;
   let failed = 0;
 
   // Process sequentially with delays to avoid 502 errors from concurrent load
-  for (const item of missing) {
+  for (const item of toProcess) {
     try {
       // Small delay between requests to avoid overwhelming the host
       if (generated + failed > 0) {
