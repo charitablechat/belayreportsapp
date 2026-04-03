@@ -254,6 +254,12 @@ function buildEmailHtml(opts: {
         <tr><td style="padding:6px 0;color:#555;">JSON Size</td><td style="text-align:right;font-weight:bold;">${totalSize}</td></tr>
         <tr><td style="padding:6px 0;color:#555;">HTML Reports</td><td style="text-align:right;font-weight:bold;">${totalReports}</td></tr>
         <tr><td style="padding:6px 0;color:#555;">Archive Size</td><td style="text-align:right;font-weight:bold;">${archiveSize}</td></tr>
+        ${photoBackup ? `
+        <tr><td style="padding:6px 0;color:#555;">📷 Photos Backed Up</td><td style="text-align:right;font-weight:bold;">${photoBackup.total_copied}</td></tr>
+        <tr><td style="padding:6px 0;color:#555;">Photos Size</td><td style="text-align:right;font-weight:bold;">${formatFileSize(photoBackup.total_size_bytes)}</td></tr>
+        ${photoBackup.total_errors > 0 ? `<tr><td style="padding:6px 0;color:#dc2626;">Photo Errors</td><td style="text-align:right;font-weight:bold;color:#dc2626;">${photoBackup.total_errors}</td></tr>` : ""}
+        ${photoBackup.timed_out ? `<tr><td colspan="2" style="padding:6px 0;color:#f59e0b;font-size:12px;">⚠️ Photo backup timed out — partial results</td></tr>` : ""}
+        ` : `<tr><td colspan="2" style="padding:6px 0;color:#dc2626;font-size:12px;">⚠️ Photo storage backup was not performed</td></tr>`}
       </table>
       ${reportAttachNote}
       <p style="margin:16px 0;">
