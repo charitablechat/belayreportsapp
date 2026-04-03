@@ -329,7 +329,35 @@ Deno.serve(async (req) => {
     const totalRows = Object.values(tableCounts).reduce((a, b) => a + b, 0);
     console.log(`[scheduled-backup-notify] Uploaded ${TABLES.length} tables (${totalRows} rows, ${formatFileSize(totalSizeBytes)})`);
 
-    // ── Step 2: Extract ALL HTML reports ──
+    // ── Step 2: Backup photo storage blobs ──
+    console.log("[scheduled-backup-notify] Starting photo storage backup...");
+    let photoBackupResult: any = null;
+    try {
+      const photoBackupRes = await fetch(
+        `${supabaseUrl}/functions/v1/backup-photo-storage`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${serviceRoleKey}`,
+          },
+          body: JSON.stringify({ timestamp }),
+        },
+      );
+      if (photoBackupRes.ok) {
+        photoBackupResult = await photoBackupRes.json();
+        console.log(
+          `[scheduled-backup-notify] Photo backup: copied=${photoBackupResult.total_copied}, skipped=${photoBackupResult.total_skipped}, errors=${photoBackupResult.total_errors}, size=${formatFileSize(photoBackupResult.total_size_bytes)}`,
+        );
+      } else {
+        const errText = await photoBackupRes.text();
+        console.error(`[scheduled-backup-notify] Photo backup failed [${photoBackupRes.status}]: ${errText}`);
+      }
+    } catch (photoErr: any) {
+      console.error(`[scheduled-backup-notify] Photo backup error: ${photoErr.message}`);
+    }
+
+    // ── Step 3: Extract ALL HTML reports ──
     console.log("[scheduled-backup-notify] Extracting HTML reports...");
     const htmlReports = await extractHtmlReports(adminClient);
     console.log(`[scheduled-backup-notify] Found ${htmlReports.length} total HTML reports`);
