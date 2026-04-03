@@ -511,6 +511,7 @@ Deno.serve(async (req) => {
       newReports: newReports.length,
       attachedReports: attachedReportCount,
       archiveSize: formatFileSize(archiveSizeBytes),
+      exceededSizeLimit,
     });
 
     const newReportLabel = newReports.length > 0
