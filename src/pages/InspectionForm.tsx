@@ -2261,22 +2261,17 @@ export default function InspectionForm() {
       console.log('[PDF Generation] ✅ SUCCESS - PDF downloaded');
 
     } catch (error: any) {
-      console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      console.error('[PDF Generation] ❌ FAILED');
-      console.error('[PDF Generation] Error type:', error.constructor.name);
-      console.error('[PDF Generation] Error message:', error.message);
-      console.error('[PDF Generation] Full error:', error);
-      console.error('[PDF Generation] Stack trace:', error.stack);
-      console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.error('[PDF Generation] ❌ FAILED:', error.message);
       
-      // Log detailed error information for debugging
-      if (import.meta.env.DEV) {
-        console.error('[PDF Generation] Detailed error:', {
-          message: error.message,
-          type: error.constructor.name
-        });
-      }
+      const userMessage = error.message?.includes('NETWORK_ERROR')
+        ? 'Network error — check your connection and try again.'
+        : error.message?.includes('AUTH_ERROR')
+        ? 'Authentication failed. Please log out and log in again.'
+        : 'Failed to generate PDF. Please try again.';
+      
+      toast.error('PDF generation failed', { description: userMessage });
     } finally {
+      clearTimeout(safetyTimeout);
       setGeneratingPdf(false);
       console.log('[PDF Generation] State updated: generatingPdf = false');
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');

@@ -1007,7 +1007,11 @@ export default function TrainingForm() {
       }
     } catch (error: any) {
       console.error('Error generating PDF:', error);
+      toast.error('Failed to generate PDF', {
+        description: error.message || 'Please try again.',
+      });
     } finally {
+      clearTimeout(safetyTimeout);
       setIsGeneratingPDF(false);
     }
   };
