@@ -85,13 +85,19 @@ const BackupNotificationEmail = ({
           </Section>
 
           {/* Attachment Note */}
-          {attachedReports > 0 && (
-            <Section style={noteSection}>
-              <Text style={noteText}>
-                📎 {attachedReports} new HTML report{attachedReports === 1 ? '' : 's'} attached to this email
+          {exceededSizeLimit ? (
+            <Section style={warnSection}>
+              <Text style={warnText}>
+                ⚠️ Full archive too large for email ({archiveSize}). Use the download button below to get all {totalReports} HTML reports.
               </Text>
             </Section>
-          )}
+          ) : attachedReports > 0 ? (
+            <Section style={noteSection}>
+              <Text style={noteText}>
+                📎 All {attachedReports} HTML report{attachedReports === 1 ? '' : 's'} attached to this email
+              </Text>
+            </Section>
+          ) : null}
 
           {/* Download Button */}
           <Section style={downloadSection}>
