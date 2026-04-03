@@ -180,7 +180,8 @@ async function generateMissingReports(
       .from(table)
       .select("id")
       .eq("status", "completed")
-      .is("latest_report_html", null);
+      .is("latest_report_html", null)
+      .is("deleted_at", null);
 
     if (error) {
       console.warn(`[catch-up] Error querying ${table}: ${error.message}`);
