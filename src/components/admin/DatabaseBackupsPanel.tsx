@@ -142,8 +142,8 @@ export function DatabaseBackupsPanel() {
             Database Backups
           </CardTitle>
           <CardDescription>
-            Full database backups are stored on the server and run automatically every week.
-            You can also trigger a manual backup or restore from a previous backup.
+            Daily backups include all database tables (JSON) plus individual HTML reports with embedded photos.
+            Archives are emailed automatically and stored on the server with a 7-day download link.
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-wrap gap-3">

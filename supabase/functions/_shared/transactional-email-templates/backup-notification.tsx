@@ -13,6 +13,10 @@ interface BackupNotificationProps {
   tableCounts?: Record<string, number>
   downloadUrl?: string
   tableCount?: number
+  totalReports?: number
+  newReports?: number
+  attachedReports?: number
+  archiveSize?: string
 }
 
 const BackupNotificationEmail = ({
@@ -22,6 +26,10 @@ const BackupNotificationEmail = ({
   tableCounts = {},
   downloadUrl = '#',
   tableCount = 0,
+  totalReports = 0,
+  newReports = 0,
+  attachedReports = 0,
+  archiveSize = '0 B',
 }: BackupNotificationProps) => {
   const tableEntries = Object.entries(tableCounts).sort(([, a], [, b]) => b - a)
   const displayTableCount = tableCount || Object.keys(tableCounts).length
@@ -29,7 +37,7 @@ const BackupNotificationEmail = ({
   return (
     <Html lang="en" dir="ltr">
       <Head />
-      <Preview>✅ Daily Backup Complete — {timestamp}</Preview>
+      <Preview>✅ Daily Backup Complete — {totalReports} reports — {timestamp}</Preview>
       <Body style={main}>
         <Container style={container}>
           {/* Header */}
@@ -47,7 +55,7 @@ const BackupNotificationEmail = ({
               </Column>
               <Column style={statBoxBlue}>
                 <Text style={statValueBlue}>{fileSize}</Text>
-                <Text style={statLabel}>File Size</Text>
+                <Text style={statLabel}>JSON Size</Text>
               </Column>
               <Column style={statBoxYellow}>
                 <Text style={statValueYellow}>{displayTableCount.toString()}</Text>
@@ -56,12 +64,41 @@ const BackupNotificationEmail = ({
             </Row>
           </Section>
 
+          {/* Reports Stats */}
+          <Section style={reportsSection}>
+            <Row>
+              <Column style={reportStatBox}>
+                <Text style={reportStatValue}>{totalReports.toString()}</Text>
+                <Text style={statLabel}>HTML Reports</Text>
+              </Column>
+              <Column style={reportStatBoxGreen}>
+                <Text style={reportStatValueGreen}>{newReports.toString()}</Text>
+                <Text style={statLabel}>New Today</Text>
+              </Column>
+              <Column style={reportStatBoxPurple}>
+                <Text style={reportStatValuePurple}>{archiveSize}</Text>
+                <Text style={statLabel}>Archive Size</Text>
+              </Column>
+            </Row>
+          </Section>
+
+          {/* Attachment Note */}
+          {attachedReports > 0 && (
+            <Section style={noteSection}>
+              <Text style={noteText}>
+                📎 {attachedReports} new HTML report{attachedReports === 1 ? '' : 's'} attached to this email
+              </Text>
+            </Section>
+          )}
+
           {/* Download Button */}
           <Section style={downloadSection}>
             <Button style={downloadButton} href={downloadUrl}>
-              Download Backup
+              Download Full Archive
             </Button>
-            <Text style={downloadNote}>Link valid for 7 days</Text>
+            <Text style={downloadNote}>
+              Link valid for 7 days • Contains backup.json.gz + all {totalReports} HTML reports
+            </Text>
           </Section>
 
           {/* Table Breakdown */}
@@ -74,7 +111,7 @@ const BackupNotificationEmail = ({
                     <Text style={tableName}>{table}</Text>
                   </Column>
                   <Column style={tableCountCol}>
-                    <Text style={tableCount}>{count.toLocaleString()}</Text>
+                    <Text style={tableCountStyle}>{count.toLocaleString()}</Text>
                   </Column>
                 </Row>
               ))}
@@ -93,7 +130,10 @@ const BackupNotificationEmail = ({
 
 export const template = {
   component: BackupNotificationEmail,
-  subject: (data: Record<string, any>) => `Ropeworks Daily Backup — ${data.timestamp || 'Complete'}`,
+  subject: (data: Record<string, any>) => {
+    const newLabel = data.newReports > 0 ? ` — ${data.newReports} new report${data.newReports === 1 ? '' : 's'}` : ''
+    return `Ropeworks Daily Backup${newLabel} — ${data.timestamp || 'Complete'}`
+  },
   displayName: 'Daily backup notification',
   previewData: {
     timestamp: 'Wednesday, April 2, 2026 at 8:00 PM ET',
@@ -102,6 +142,10 @@ export const template = {
     tableCount: 35,
     tableCounts: { profiles: 25, inspections: 340, trainings: 120 },
     downloadUrl: 'https://example.com/download',
+    totalReports: 45,
+    newReports: 2,
+    attachedReports: 2,
+    archiveSize: '18.3 MB',
   },
 } satisfies TemplateEntry
 
@@ -111,7 +155,7 @@ const container = { padding: '0', maxWidth: '600px', margin: '0 auto' }
 const header = { backgroundColor: '#1a365d', padding: '24px', textAlign: 'center' as const }
 const headerTitle = { color: '#ffffff', fontSize: '22px', fontWeight: 'bold', margin: '0' }
 const headerSubtitle = { color: 'rgba(255,255,255,0.9)', fontSize: '14px', margin: '8px 0 0' }
-const statsContainer = { padding: '24px 16px' }
+const statsContainer = { padding: '24px 16px 8px' }
 const statBox = { backgroundColor: '#f0fdf4', borderRadius: '8px', padding: '16px', textAlign: 'center' as const, width: '33%' }
 const statBoxBlue = { backgroundColor: '#eff6ff', borderRadius: '8px', padding: '16px', textAlign: 'center' as const, width: '33%' }
 const statBoxYellow = { backgroundColor: '#fef3c7', borderRadius: '8px', padding: '16px', textAlign: 'center' as const, width: '33%' }
@@ -119,6 +163,15 @@ const statValue = { fontSize: '24px', fontWeight: 'bold', color: '#166534', marg
 const statValueBlue = { fontSize: '24px', fontWeight: 'bold', color: '#1e40af', margin: '0' }
 const statValueYellow = { fontSize: '24px', fontWeight: 'bold', color: '#92400e', margin: '0' }
 const statLabel = { fontSize: '12px', color: '#6b7280', margin: '4px 0 0' }
+const reportsSection = { padding: '8px 16px 24px' }
+const reportStatBox = { backgroundColor: '#f5f3ff', borderRadius: '8px', padding: '16px', textAlign: 'center' as const, width: '33%' }
+const reportStatBoxGreen = { backgroundColor: '#ecfdf5', borderRadius: '8px', padding: '16px', textAlign: 'center' as const, width: '33%' }
+const reportStatBoxPurple = { backgroundColor: '#faf5ff', borderRadius: '8px', padding: '16px', textAlign: 'center' as const, width: '33%' }
+const reportStatValue = { fontSize: '24px', fontWeight: 'bold', color: '#6d28d9', margin: '0' }
+const reportStatValueGreen = { fontSize: '24px', fontWeight: 'bold', color: '#059669', margin: '0' }
+const reportStatValuePurple = { fontSize: '24px', fontWeight: 'bold', color: '#7c3aed', margin: '0' }
+const noteSection = { padding: '0 24px 8px' }
+const noteText = { fontSize: '13px', color: '#059669', fontWeight: 'bold', margin: '0', textAlign: 'center' as const }
 const downloadSection = { textAlign: 'center' as const, padding: '0 24px 24px' }
 const downloadButton = {
   backgroundColor: '#1a365d', color: '#ffffff', padding: '12px 32px',
@@ -132,6 +185,6 @@ const tableRow = { borderBottom: '1px solid #e5e7eb' }
 const tableNameCol = { padding: '6px 0', width: '70%' }
 const tableCountCol = { padding: '6px 0', width: '30%', textAlign: 'right' as const }
 const tableName = { fontSize: '13px', color: '#374151', margin: '0' }
-const tableCount = { fontSize: '13px', color: '#374151', margin: '0' }
+const tableCountStyle = { fontSize: '13px', color: '#374151', margin: '0' }
 const divider = { borderColor: '#e5e7eb', margin: '0' }
 const footer = { fontSize: '12px', color: '#6b7280', textAlign: 'center' as const, padding: '16px', margin: '0' }
