@@ -328,6 +328,19 @@ export function DatabaseBackupsPanel() {
                             <Button
                               variant="outline"
                               size="sm"
+                              onClick={() => handleDownloadAllPhotos(backup.file_path)}
+                              disabled={isDownloadingPhotos}
+                            >
+                              {isDownloadingPhotos ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : (
+                                <ImageDown className="h-3 w-3" />
+                              )}
+                              Photos
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
                               onClick={() => handleRestoreFromServer(backup.file_path)}
                               disabled={isRestoring}
                             >
