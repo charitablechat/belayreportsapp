@@ -514,12 +514,12 @@ Deno.serve(async (req) => {
       exceededSizeLimit,
     });
 
-    const newReportLabel = newReports.length > 0
-      ? ` — ${newReports.length} new report${newReports.length === 1 ? "" : "s"}`
+    const reportLabel = htmlReports.length > 0
+      ? ` — ${htmlReports.length} report${htmlReports.length === 1 ? "" : "s"}${exceededSizeLimit ? " (download link)" : " attached"}`
       : "";
     const emailSubject = failedTables.length > 0
-      ? `⚠️ Ropeworks Daily Backup${newReportLabel} (${failedTables.length} failures) — ${emailTimestamp}`
-      : `Ropeworks Daily Backup${newReportLabel} — ${emailTimestamp}`;
+      ? `⚠️ Ropeworks Daily Backup${reportLabel} (${failedTables.length} failures) — ${emailTimestamp}`
+      : `Ropeworks Daily Backup${reportLabel} — ${emailTimestamp}`;
 
     const emailResponse = await fetch(`${GATEWAY_URL}/emails`, {
       method: "POST",
