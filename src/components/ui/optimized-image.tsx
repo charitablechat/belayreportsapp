@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { cn } from "@/lib/utils";
+import { ImageOff } from "lucide-react";
 
 interface OptimizedImageProps {
   src: string;
@@ -9,6 +10,16 @@ interface OptimizedImageProps {
   priority?: boolean;
   width?: number;
   height?: number;
+}
+
+/** Extract origin+pathname from a URL, ignoring query params (signed URL rotation) */
+function getUrlBase(url: string): string {
+  try {
+    const u = new URL(url);
+    return u.origin + u.pathname;
+  } catch {
+    return url;
+  }
 }
 
 export function OptimizedImage({
@@ -22,17 +33,23 @@ export function OptimizedImage({
 }: OptimizedImageProps) {
   const [loaded, setLoaded] = useState(false);
   const [inView, setInView] = useState(priority);
+  const [retryCount, setRetryCount] = useState(0);
+  const [failed, setFailed] = useState(false);
 
-  // Track previous src for smart cross-fade (no flash on signed URL rotation)
-  const prevSrcRef = useRef<string>(src);
+  // Track previous src base for smart cross-fade (no flash on signed URL rotation)
+  const prevSrcBaseRef = useRef<string>(getUrlBase(src));
   const [currentSrc, setCurrentSrc] = useState(src);
 
   useEffect(() => {
-    if (src !== prevSrcRef.current) {
-      // URL changed — update src but keep old image visible (don't reset loaded)
-      setCurrentSrc(src);
-      prevSrcRef.current = src;
+    const newBase = getUrlBase(src);
+    if (newBase !== prevSrcBaseRef.current) {
+      // URL path changed — reset loaded state for new image
+      setLoaded(false);
+      setRetryCount(0);
+      setFailed(false);
     }
+    setCurrentSrc(src);
+    prevSrcBaseRef.current = newBase;
   }, [src]);
 
   const containerRef = useRef<HTMLDivElement>(null);
@@ -59,27 +76,60 @@ export function OptimizedImage({
     setInView(true);
   }, [priority]);
 
-  const handleLoad = useCallback(() => setLoaded(true), []);
-  const handleError = useCallback(() => {
-    // Show skeleton on error so user sees feedback
-    setLoaded(false);
+  const handleLoad = useCallback(() => {
+    setLoaded(true);
+    setFailed(false);
+    setRetryCount(0);
   }, []);
+
+  const handleError = useCallback(() => {
+    if (retryCount < 1) {
+      // Retry once after 3 seconds
+      const timer = setTimeout(() => {
+        setRetryCount(prev => prev + 1);
+        // Force re-render by appending a cache-buster
+        setCurrentSrc(prev => {
+          try {
+            const u = new URL(prev);
+            u.searchParams.set('_retry', String(Date.now()));
+            return u.toString();
+          } catch {
+            return prev + (prev.includes('?') ? '&' : '?') + '_retry=' + Date.now();
+          }
+        });
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+    // After retry failed, show broken-image fallback
+    setFailed(true);
+    setLoaded(false);
+  }, [retryCount]);
 
   return (
     <div
       ref={containerRef}
       className={cn("relative overflow-hidden bg-zinc-950", containerClassName)}
     >
-      {/* Retro-Tech scanline skeleton — visible until image loads */}
-      <div
-        className={cn(
-          "absolute inset-0 optimized-image-shimmer border-2 border-black dark:border-white transition-opacity duration-300 ease-in-out",
-          loaded ? "opacity-0" : "opacity-100"
-        )}
-        aria-hidden
-      />
+      {/* Shimmer skeleton — visible until image loads */}
+      {!failed && (
+        <div
+          className={cn(
+            "absolute inset-0 optimized-image-shimmer border-2 border-black dark:border-white transition-opacity duration-300 ease-in-out",
+            loaded ? "opacity-0" : "opacity-100"
+          )}
+          aria-hidden
+        />
+      )}
 
-      {inView && (
+      {/* Broken image fallback */}
+      {failed && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 text-muted-foreground bg-muted/50">
+          <ImageOff className="w-6 h-6" />
+          <span className="text-xs">Failed to load</span>
+        </div>
+      )}
+
+      {inView && !failed && (
         <img
           src={currentSrc}
           alt={alt}
@@ -99,4 +149,3 @@ export function OptimizedImage({
     </div>
   );
 }
-

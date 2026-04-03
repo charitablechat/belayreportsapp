@@ -91,6 +91,9 @@ export function CameraCaptureDialog({
     ctx.drawImage(video, 0, 0);
     canvas.toBlob(
       (blob) => {
+        // Zero canvas dimensions to release backing store memory (critical for iPad Safari)
+        canvas.width = 0;
+        canvas.height = 0;
         if (!blob) return;
         setCapturedBlob(blob);
         setPreviewUrl(URL.createObjectURL(blob));

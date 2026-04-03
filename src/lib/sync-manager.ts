@@ -177,6 +177,7 @@ export async function syncPhotos(): Promise<{ remaining: number }> {
 
         // Mark as uploaded and release blob from IndexedDB
         await markPhotoAsUploaded(photo.id, fileName);
+        processedIds.add(photo.id);
         successCount++;
 
         if (import.meta.env.DEV) {
