@@ -1,48 +1,44 @@
 
 
-# Daily Backup Email — Full Archive Every Time
+# Fix: Full Backup of Every Report (JSON + HTML)
 
-## Current State
-- 10 HTML reports, ~26 MB total
-- JSON backup ~1.6 MB compressed
-- **Total: ~28 MB** — fits within Resend's 40 MB limit
+## The Problem
 
-## Plan
+The backup function looks for `latest_report_html` on each record, but **13 inspections, 1 training, and 2 daily assessments** that are completed have no HTML stored. These reports were completed before the "Latest Pointer" sync system was added, so their HTML was never saved back to the database. The backup correctly skips them because there's nothing to attach.
 
-Modify `scheduled-backup-notify` to attach ALL HTML reports (not just deltas) plus the JSON backup. Add a safety valve: if total attachments exceed 35 MB, fall back to a download link instead.
+## The Fix (Two Parts)
 
-### Changes to `supabase/functions/scheduled-backup-notify/index.ts`
+### Part 1: Generate missing HTML at backup time
 
-1. **Fetch ALL reports with HTML** — query `inspections`, `trainings`, `daily_assessments` where `latest_report_html IS NOT NULL`
-2. **Build individual `.html` attachments** — one per report, named `{type}/{Org}_{Date}_{id-prefix}.html`
-3. **Build `backup.json.gz`** — same as current (all tables, HTML blobs stripped)
-4. **Size check before sending**:
-   - Calculate total attachment size
-   - If ≤ 35 MB: attach everything directly to the email
-   - If > 35 MB: upload a ZIP to `database-backups` bucket, attach only `backup.json.gz` to email, include a 7-day signed download link for the full archive
-5. **Update email template stats** — show total reports attached, total size, and whether it's a full or partial attachment
+Modify the `scheduled-backup-notify` edge function to detect completed records where `latest_report_html IS NULL`, and for each one, call the existing `generate-inspection-html` / `generate-training-html` / `generate-daily-assessment-html` edge functions to produce the HTML, then store it back on the record. This is a one-time catch-up that runs before the attachment logic.
 
-### Email Structure (when it fits)
-```
-Attachments:
-  backup.json.gz                              (~1.6 MB)
-  reports/inspections/Acme_2026-03-15.html    (~3 MB)
-  reports/trainings/Safety_2026-01-10.html    (~4 MB)
-  ... all other reports ...
-```
+This approach:
+- Uses the same HTML generation logic the app already uses
+- Stores the result so future backups don't need to regenerate
+- Happens server-side with `service_role` auth, no user interaction needed
 
-### Email Structure (when too large)
-```
-Attachments:
-  backup.json.gz                              (~1.6 MB)
+### Part 2: Simplify the backup flow
 
-Body includes:
-  "⚠️ Full archive too large for email (42 MB). Download here: [link]"
-```
+Clean up the function to remove the delta/new tracking complexity. Every backup simply:
+1. Fetches all tables → builds `backup.json.gz`
+2. Generates any missing HTML reports (catch-up)
+3. Collects ALL `latest_report_html` as individual `.html` attachments
+4. If total size ≤ 35 MB → attach everything to email
+5. If too large → attach only JSON, include download link
+6. Upload everything to storage + send to Make.com webhook
 
 ### Files Modified
-1. **`supabase/functions/scheduled-backup-notify/index.ts`** — change delta logic to fetch ALL HTML reports; add 35 MB threshold check with fallback to storage + download link
-2. **`supabase/functions/_shared/transactional-email-templates/backup-notification.tsx`** — add conditional messaging for "full attachment" vs "download link" scenarios
 
-No database or client-side changes needed.
+1. **`supabase/functions/scheduled-backup-notify/index.ts`**
+   - Add a `generateMissingReports()` step that calls the 3 HTML generation edge functions for any completed record missing HTML
+   - Remove `lastBackupAt` / `isNew` delta tracking — no longer needed
+   - Simplify `HtmlReport` interface and extraction logic
+
+### Technical Details
+
+- The HTML generation functions are called via `fetch()` to the Supabase edge function URL with service role auth
+- Each call is: `POST /functions/v1/generate-inspection-html` with `{ inspectionId: "..." }`
+- Similar pattern for trainings (`trainingId`) and daily assessments (`assessmentId`)
+- The generation functions already store the result in `latest_report_html`, so no extra write needed
+- To avoid timeout issues with many missing reports, process in batches of 5 with sequential calls
 
