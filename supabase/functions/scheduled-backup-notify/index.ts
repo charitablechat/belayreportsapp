@@ -154,7 +154,7 @@ function getReportTypePath(table: string): string {
 
 function getDateField(table: string): string {
   if (table === "inspections") return "inspection_date";
-  if (table === "trainings") return "training_date";
+  if (table === "trainings") return "start_date";
   return "assessment_date";
 }
 
