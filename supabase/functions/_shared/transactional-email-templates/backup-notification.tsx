@@ -180,6 +180,8 @@ const reportStatValueGreen = { fontSize: '24px', fontWeight: 'bold', color: '#05
 const reportStatValuePurple = { fontSize: '24px', fontWeight: 'bold', color: '#7c3aed', margin: '0' }
 const noteSection = { padding: '0 24px 8px' }
 const noteText = { fontSize: '13px', color: '#059669', fontWeight: 'bold', margin: '0', textAlign: 'center' as const }
+const warnSection = { padding: '0 24px 8px' }
+const warnText = { fontSize: '13px', color: '#dc2626', fontWeight: 'bold', margin: '0', textAlign: 'center' as const }
 const downloadSection = { textAlign: 'center' as const, padding: '0 24px 24px' }
 const downloadButton = {
   backgroundColor: '#1a365d', color: '#ffffff', padding: '12px 32px',
