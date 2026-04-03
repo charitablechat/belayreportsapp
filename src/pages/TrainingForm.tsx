@@ -965,6 +965,15 @@ export default function TrainingForm() {
     
     setIsGeneratingPDF(true);
     
+    const GENERATION_TIMEOUT = 120000;
+    const safetyTimeout = setTimeout(() => {
+      console.warn('[Training PDF] Safety timeout reached (120s) — force-releasing spinner');
+      setIsGeneratingPDF(false);
+      toast.error('PDF generation timed out', {
+        description: 'The service is taking too long. Please try again.',
+      });
+    }, GENERATION_TIMEOUT);
+    
     try {
       // First save any pending changes
       await saveTraining();
