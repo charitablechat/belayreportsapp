@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Camera, Upload, CloudOff, ImagePlus } from "lucide-react";
+import { Camera, Loader2, CloudOff, ImagePlus } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { getUserWithCache } from "@/lib/cached-auth";
 import { savePhotoOffline, markPhotoAsUploaded } from "@/lib/offline-storage";
