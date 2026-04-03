@@ -224,10 +224,12 @@ function buildEmailHtml(opts: {
   newReports: number;
   attachedReports: number;
   archiveSize: string;
+  exceededSizeLimit: boolean;
 }): string {
   const {
     emailTimestamp, totalSize, totalRows, tableCounts, tableCount,
     downloadUrl, failedTables, totalReports, newReports, attachedReports, archiveSize,
+    exceededSizeLimit,
   } = opts;
 
   const tableRows = Object.entries(tableCounts)
@@ -242,10 +244,10 @@ function buildEmailHtml(opts: {
     ? `<p style="color:#dc2626;font-weight:bold;">⚠️ ${failedTables.length} table upload(s) failed: ${failedTables.join(", ")}</p>`
     : "";
 
-  const reportAttachNote = attachedReports > 0
-    ? `<p style="font-size:13px;color:#555;">📎 ${attachedReports} new HTML report(s) attached to this email.</p>`
-    : newReports > 0
-      ? `<p style="font-size:13px;color:#555;">⚠️ New reports exceeded size limit — download the full archive below.</p>`
+  const reportAttachNote = exceededSizeLimit
+    ? `<p style="font-size:13px;color:#dc2626;font-weight:bold;">⚠️ Full archive too large for email (${archiveSize}) — download all ${totalReports} HTML reports below.</p>`
+    : attachedReports > 0
+      ? `<p style="font-size:13px;color:#059669;font-weight:bold;">📎 All ${attachedReports} HTML report(s) attached to this email.</p>`
       : "";
 
   return `
