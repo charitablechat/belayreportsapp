@@ -158,145 +158,6 @@ function getDateField(table: string): string {
   return "assessment_date";
 }
 
-// ── Generate Missing HTML Reports ───────────────────────────────────
-
-interface MissingReport {
-  table: string;
-  id: string;
-  functionName: string;
-  bodyKey: string;
-}
-
-async function generateMissingReports(
-  supabase: any,
-  supabaseUrl: string,
-  serviceRoleKey: string,
-): Promise<{ generated: number; failed: number }> {
-  const missing: MissingReport[] = [];
-
-  // Find completed records with no HTML
-  for (const table of REPORT_TABLES) {
-    const { data, error } = await supabase
-      .from(table)
-      .select("id")
-      .eq("status", "completed")
-      .is("latest_report_html", null)
-      .is("deleted_at", null);
-
-    if (error) {
-      console.warn(`[catch-up] Error querying ${table}: ${error.message}`);
-      continue;
-    }
-    if (!data || data.length === 0) continue;
-
-    const functionName = table === "inspections"
-      ? "generate-inspection-html"
-      : table === "trainings"
-        ? "generate-training-html"
-        : "generate-daily-assessment-html";
-
-    const bodyKey = table === "inspections"
-      ? "inspectionId"
-      : table === "trainings"
-        ? "trainingId"
-        : "assessmentId";
-
-    for (const row of data) {
-      missing.push({ table, id: row.id, functionName, bodyKey });
-    }
-  }
-
-  if (missing.length === 0) {
-    console.log("[catch-up] No missing HTML reports found");
-    return { generated: 0, failed: 0 };
-  }
-
-  // Limit to 5 per run to stay within the function's time budget.
-  // Remaining records will be caught up on subsequent nightly runs.
-  const MAX_CATCHUP = 3;
-  const toProcess = missing.slice(0, MAX_CATCHUP);
-  console.log(`[catch-up] Found ${missing.length} completed records missing HTML, processing ${toProcess.length} this run...`);
-
-  let generated = 0;
-  let failed = 0;
-
-  // Process sequentially with delays to avoid 502 errors from concurrent load
-  for (const item of toProcess) {
-    try {
-      // Small delay between requests to avoid overwhelming the host
-      if (generated + failed > 0) {
-        await new Promise(r => setTimeout(r, 2000));
-      }
-
-      const res = await fetch(
-        `${supabaseUrl}/functions/v1/${item.functionName}`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${serviceRoleKey}`,
-          },
-          body: JSON.stringify({ [item.bodyKey]: item.id }),
-        },
-      );
-      if (!res.ok) {
-        failed++;
-        const errText = await res.text().catch(() => "unknown");
-        console.warn(`[catch-up] Failed ${item.table}/${item.id.substring(0, 8)}: ${res.status} ${errText.substring(0, 200)}`);
-        continue;
-      }
-
-      const result = await res.json();
-      let htmlContent: string | null = null;
-
-      if (result.htmlUrl) {
-        // Inspection returns { htmlUrl } — download from signed URL
-        try {
-          const htmlRes = await fetch(result.htmlUrl);
-          if (htmlRes.ok) {
-            htmlContent = await htmlRes.text();
-          } else {
-            console.warn(`[catch-up] Failed to download HTML for ${item.table}/${item.id.substring(0, 8)}: ${htmlRes.status}`);
-          }
-        } catch (dlErr: any) {
-          console.warn(`[catch-up] Download error ${item.table}/${item.id.substring(0, 8)}: ${dlErr.message}`);
-        }
-      } else if (result.html) {
-        // Training & daily assessment return { html } directly
-        htmlContent = result.html;
-      }
-
-      if (!htmlContent) {
-        failed++;
-        console.warn(`[catch-up] No HTML content for ${item.table}/${item.id.substring(0, 8)}`);
-        continue;
-      }
-
-      const { error: updateErr } = await supabase
-        .from(item.table)
-        .update({
-          latest_report_html: htmlContent,
-          latest_report_generated_at: new Date().toISOString(),
-        })
-        .eq("id", item.id);
-
-      if (updateErr) {
-        failed++;
-        console.warn(`[catch-up] Failed to store HTML for ${item.table}/${item.id.substring(0, 8)}: ${updateErr.message}`);
-      } else {
-        generated++;
-        console.log(`[catch-up] Generated & stored HTML for ${item.table}/${item.id.substring(0, 8)}`);
-      }
-    } catch (err: any) {
-      failed++;
-      console.warn(`[catch-up] Error ${item.table}/${item.id.substring(0, 8)}: ${err.message}`);
-    }
-  }
-
-  console.log(`[catch-up] Done: ${generated} generated, ${failed} failed`);
-  return { generated, failed };
-}
-
 // ── HTML Report Extraction ──────────────────────────────────────────
 
 interface HtmlReport {
@@ -353,13 +214,11 @@ function buildEmailHtml(opts: {
   attachedReports: number;
   archiveSize: string;
   exceededSizeLimit: boolean;
-  catchUpGenerated: number;
-  catchUpFailed: number;
 }): string {
   const {
     emailTimestamp, totalSize, totalRows, tableCounts, tableCount,
     downloadUrl, failedTables, totalReports, attachedReports, archiveSize,
-    exceededSizeLimit, catchUpGenerated, catchUpFailed,
+    exceededSizeLimit,
   } = opts;
 
   const tableRows = Object.entries(tableCounts)
@@ -374,9 +233,8 @@ function buildEmailHtml(opts: {
     ? `<p style="color:#dc2626;font-weight:bold;">⚠️ ${failedTables.length} table upload(s) failed: ${failedTables.join(", ")}</p>`
     : "";
 
-  const catchUpNote = catchUpGenerated > 0 || catchUpFailed > 0
-    ? `<p style="font-size:13px;color:#2563eb;">🔄 Catch-up: Generated ${catchUpGenerated} missing HTML report(s)${catchUpFailed > 0 ? `, ${catchUpFailed} failed` : ""}</p>`
-    : "";
+
+
 
   const reportAttachNote = exceededSizeLimit
     ? `<p style="font-size:13px;color:#dc2626;font-weight:bold;">⚠️ Full archive too large for email (${archiveSize}) — download all ${totalReports} HTML reports below.</p>`
@@ -389,7 +247,6 @@ function buildEmailHtml(opts: {
       <h2 style="color:#1a1a1a;">✅ Daily Backup Complete</h2>
       <p style="color:#555;">${emailTimestamp}</p>
       ${failedWarning}
-      ${catchUpNote}
       <table style="width:100%;border-collapse:collapse;margin:16px 0;">
         <tr><td style="padding:6px 0;color:#555;">Total Rows</td><td style="text-align:right;font-weight:bold;">${totalRows.toLocaleString()}</td></tr>
         <tr><td style="padding:6px 0;color:#555;">Tables</td><td style="text-align:right;font-weight:bold;">${tableCount}</td></tr>
@@ -472,11 +329,7 @@ Deno.serve(async (req) => {
     const totalRows = Object.values(tableCounts).reduce((a, b) => a + b, 0);
     console.log(`[scheduled-backup-notify] Uploaded ${TABLES.length} tables (${totalRows} rows, ${formatFileSize(totalSizeBytes)})`);
 
-    // ── Step 2: Generate missing HTML reports (catch-up) ──
-    console.log("[scheduled-backup-notify] Running HTML catch-up generation...");
-    const catchUpResult = await generateMissingReports(adminClient, supabaseUrl, serviceRoleKey);
-
-    // ── Step 3: Extract ALL HTML reports ──
+    // ── Step 2: Extract ALL HTML reports ──
     console.log("[scheduled-backup-notify] Extracting HTML reports...");
     const htmlReports = await extractHtmlReports(adminClient);
     console.log(`[scheduled-backup-notify] Found ${htmlReports.length} total HTML reports`);
@@ -572,7 +425,6 @@ Deno.serve(async (req) => {
       html_reports: {
         total: htmlReports.length,
         upload_errors: htmlUploadErrors,
-        catch_up: catchUpResult,
         reports: htmlReports.map(r => ({
           filename: r.filename,
           table: r.table,
@@ -638,8 +490,6 @@ Deno.serve(async (req) => {
       attachedReports: attachedReportCount,
       archiveSize: formatFileSize(archiveSizeBytes),
       exceededSizeLimit,
-      catchUpGenerated: catchUpResult.generated,
-      catchUpFailed: catchUpResult.failed,
     });
 
     const reportLabel = htmlReports.length > 0
@@ -705,7 +555,7 @@ Deno.serve(async (req) => {
         total_rows: totalRows,
         table_count: Object.keys(tableCounts).filter(t => tableCounts[t] > 0).length,
         html_reports: htmlReports.length,
-        catch_up: catchUpResult,
+        
         attached_reports: attachedReportCount,
         email_sent: emailSuccess,
         webhook_sent: webhookSuccess,
