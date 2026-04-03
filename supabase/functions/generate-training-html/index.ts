@@ -85,9 +85,19 @@ serve(async (req) => {
     const content = formatTrainingContent(trainingData);
 
     // Download photos and embed as data: URIs (persistent, no expiring signed URLs)
+    // Use parallel downloads with a 25-second time budget to prevent function timeout
+    const PHOTO_BUDGET_MS = 25000;
+    const photoStart = Date.now();
     const photoUrls: { url: string; caption: string }[] = [];
+    
     if (trainingData.photos && trainingData.photos.length > 0) {
-      for (const photo of trainingData.photos) {
+      console.log(`[generate-training-html] Downloading ${trainingData.photos.length} photos in parallel (budget: ${PHOTO_BUDGET_MS}ms)`);
+      
+      const downloadPhoto = async (photo: any): Promise<{ url: string; caption: string } | null> => {
+        if (Date.now() - photoStart > PHOTO_BUDGET_MS) {
+          console.warn(`[generate-training-html] Photo budget exceeded, skipping photo ${photo.photo_url}`);
+          return null;
+        }
         try {
           const { data: fileData, error: dlError } = await supabase.storage
             .from('training-photos')
@@ -95,16 +105,15 @@ serve(async (req) => {
 
           if (dlError || !fileData) {
             console.error('Failed to download photo:', photo.photo_url, dlError);
-            continue;
+            return null;
           }
 
           const buffer = await fileData.arrayBuffer();
           if (isHeicBytes(buffer)) {
             console.warn(`[generate-training-html] Skipping HEIC-disguised photo: ${photo.photo_url}`);
-            continue;
+            return null;
           }
 
-          // Detect MIME from magic bytes
           const bytes = new Uint8Array(buffer);
           let mime = 'image/jpeg';
           if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4E && bytes[3] === 0x47) {
@@ -112,11 +121,19 @@ serve(async (req) => {
           }
 
           const base64 = arrayBufferToBase64(buffer);
-          photoUrls.push({ url: `data:${mime};base64,${base64}`, caption: photo.caption || '' });
+          console.log(`[generate-training-html] Photo ${photo.photo_url} converted (${Math.round(buffer.byteLength / 1024)}KB)`);
+          return { url: `data:${mime};base64,${base64}`, caption: photo.caption || '' };
         } catch (e) {
           console.error('Failed to process photo:', photo.photo_url, e);
+          return null;
         }
+      };
+
+      const results = await Promise.allSettled(trainingData.photos.map((p: any) => downloadPhoto(p)));
+      for (const r of results) {
+        if (r.status === 'fulfilled' && r.value) photoUrls.push(r.value);
       }
+      console.log(`[generate-training-html] Photo processing complete in ${Date.now() - photoStart}ms: ${photoUrls.length}/${trainingData.photos.length} photos`);
     }
 
     // Footer disclaimer text for training reports
