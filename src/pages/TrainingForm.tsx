@@ -1052,7 +1052,7 @@ export default function TrainingForm() {
     setIsGeneratingHTML(true);
     
     // Safety timeout - NEVER get stuck in generating state (60 seconds max)
-    const GENERATION_TIMEOUT = 60000;
+    const GENERATION_TIMEOUT = 120000;
     const safetyTimeoutHandle = setTimeout(() => {
       console.error('[HTML Generation] Safety timeout reached after 60 seconds - force resetting state');
       setIsGeneratingHTML(false);
@@ -1079,7 +1079,21 @@ export default function TrainingForm() {
       
       if (error) throw error;
       
-      const html = data.html;
+      // Backend now returns a signed URL instead of raw HTML
+      let html: string;
+      
+      if (data?.htmlUrl) {
+        console.log('[HTML Generation] Fetching HTML from signed URL...');
+        const htmlResponse = await fetch(data.htmlUrl);
+        if (!htmlResponse.ok) {
+          throw new Error(`Failed to fetch report: ${htmlResponse.status} ${htmlResponse.statusText}`);
+        }
+        html = await htmlResponse.text();
+      } else if (data?.html) {
+        html = data.html;
+      } else {
+        throw new Error('No HTML content or URL received from server');
+      }
       
       // Auto-sync report to database for "latest report" functionality
       await syncReport(html);

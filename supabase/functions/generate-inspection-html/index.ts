@@ -235,7 +235,7 @@ serve(async (req) => {
 
     // Convert photos to base64 data URIs for reliable PDF rendering
     // Parallelize all downloads with a shared 15-second time budget
-    const PHOTO_BUDGET_MS = 10000;
+    const PHOTO_BUDGET_MS = 25000;
     const photoStart = Date.now();
 
     const isHeic = (arrayBuffer: ArrayBuffer): boolean => {
