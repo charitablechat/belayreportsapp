@@ -333,11 +333,7 @@ Deno.serve(async (req) => {
     const totalRows = Object.values(tableCounts).reduce((a, b) => a + b, 0);
     console.log(`[scheduled-backup-notify] Uploaded ${TABLES.length} tables (${totalRows} rows, ${formatFileSize(totalSizeBytes)})`);
 
-    // ── Step 2: Generate missing HTML reports (catch-up) ──
-    console.log("[scheduled-backup-notify] Running HTML catch-up generation...");
-    const catchUpResult = await generateMissingReports(adminClient, supabaseUrl, serviceRoleKey);
-
-    // ── Step 3: Extract ALL HTML reports ──
+    // ── Step 2: Extract ALL HTML reports ──
     console.log("[scheduled-backup-notify] Extracting HTML reports...");
     const htmlReports = await extractHtmlReports(adminClient);
     console.log(`[scheduled-backup-notify] Found ${htmlReports.length} total HTML reports`);
