@@ -569,6 +569,12 @@ Deno.serve(async (req) => {
       archiveSize: formatFileSize(archiveSizeBytes),
       exceededSizeLimit,
       photoBackup: photoBackupResult,
+      offsiteSync: offsiteSyncResult?.external_supabase ? {
+        success: offsiteSyncResult.external_supabase.success,
+        files_synced: offsiteSyncResult.external_supabase.files_synced,
+        files_errored: offsiteSyncResult.external_supabase.files_errored,
+        timed_out: offsiteSyncResult.external_supabase.timed_out,
+      } : null,
     });
 
     const reportLabel = htmlReports.length > 0
