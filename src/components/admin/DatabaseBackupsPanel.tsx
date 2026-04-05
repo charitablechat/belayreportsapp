@@ -367,6 +367,19 @@ export function DatabaseBackupsPanel() {
                             <Button
                               variant="outline"
                               size="sm"
+                              onClick={() => handleSyncOffsite(backup.file_path)}
+                              disabled={isSyncingOffsite === backup.file_path}
+                            >
+                              {isSyncingOffsite === backup.file_path ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : (
+                                <Cloud className="h-3 w-3" />
+                              )}
+                              Sync Off-Site
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
                               onClick={() => handleRestoreFromServer(backup.file_path)}
                               disabled={isRestoring}
                             >
