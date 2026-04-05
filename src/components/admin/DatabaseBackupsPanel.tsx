@@ -27,6 +27,7 @@ export function DatabaseBackupsPanel() {
   const [isRestoring, setIsRestoring] = useState(false);
   const [isDownloading, setIsDownloading] = useState<string | null>(null);
   const [isDownloadingPhotos, setIsDownloadingPhotos] = useState(false);
+  const [isSyncingOffsite, setIsSyncingOffsite] = useState<string | null>(null);
   const [restoreDialogOpen, setRestoreDialogOpen] = useState(false);
   const [restoreSource, setRestoreSource] = useState<{ type: "file"; file: File } | { type: "server"; path: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
