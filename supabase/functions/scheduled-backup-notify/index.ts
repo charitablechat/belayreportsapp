@@ -261,6 +261,11 @@ function buildEmailHtml(opts: {
         ${photoBackup.total_errors > 0 ? `<tr><td style="padding:6px 0;color:#dc2626;">Photo Errors</td><td style="text-align:right;font-weight:bold;color:#dc2626;">${photoBackup.total_errors}</td></tr>` : ""}
         ${photoBackup.timed_out ? `<tr><td colspan="2" style="padding:6px 0;color:#f59e0b;font-size:12px;">⚠️ Photo backup timed out — partial results</td></tr>` : ""}
         ` : `<tr><td colspan="2" style="padding:6px 0;color:#dc2626;font-size:12px;">⚠️ Photo storage backup was not performed</td></tr>`}
+        ${offsiteSync ? `
+        <tr><td style="padding:6px 0;color:#555;">🌐 Off-Site Sync</td><td style="text-align:right;font-weight:bold;color:${offsiteSync.success ? '#059669' : '#dc2626'};">${offsiteSync.success ? `✅ ${offsiteSync.files_synced} files` : '❌ Failed'}</td></tr>
+        ${offsiteSync.files_errored > 0 ? `<tr><td style="padding:6px 0;color:#dc2626;">Off-Site Errors</td><td style="text-align:right;font-weight:bold;color:#dc2626;">${offsiteSync.files_errored}</td></tr>` : ""}
+        ${offsiteSync.timed_out ? `<tr><td colspan="2" style="padding:6px 0;color:#f59e0b;font-size:12px;">⚠️ Off-site sync timed out — partial results</td></tr>` : ""}
+        ` : ""}
       </table>
       ${reportAttachNote}
       <p style="margin:16px 0;">
