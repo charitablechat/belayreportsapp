@@ -629,6 +629,11 @@ Deno.serve(async (req) => {
               total_errors: photoBackupResult.total_errors,
               timed_out: photoBackupResult.timed_out,
             } : null,
+            offsite_sync: offsiteSyncResult?.external_supabase ? {
+              success: offsiteSyncResult.external_supabase.success,
+              files_synced: offsiteSyncResult.external_supabase.files_synced,
+              files_errored: offsiteSyncResult.external_supabase.files_errored,
+            } : null,
           }),
         });
         webhookSuccess = webhookRes.ok;
