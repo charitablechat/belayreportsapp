@@ -215,6 +215,7 @@ function buildEmailHtml(opts: {
   archiveSize: string;
   exceededSizeLimit: boolean;
   photoBackup?: { total_copied: number; total_skipped: number; total_errors: number; total_size_bytes: number; timed_out: boolean } | null;
+  offsiteSync?: { success: boolean; files_synced: number; files_errored: number; timed_out: boolean } | null;
 }): string {
   const {
     emailTimestamp, totalSize, totalRows, tableCounts, tableCount,
