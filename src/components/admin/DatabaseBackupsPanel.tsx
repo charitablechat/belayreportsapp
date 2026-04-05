@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Database, Download, Upload, Loader2, Clock, HardDrive, RefreshCw, FileSpreadsheet, FileArchive, FileJson, ChevronDown, ImageDown } from "lucide-react";
+import { Database, Download, Upload, Loader2, Clock, HardDrive, RefreshCw, FileSpreadsheet, FileArchive, FileJson, ChevronDown, ImageDown, Cloud } from "lucide-react";
 import { toast } from "sonner";
 import { format, formatDistanceToNow } from "date-fns";
 import {
@@ -27,6 +27,7 @@ export function DatabaseBackupsPanel() {
   const [isRestoring, setIsRestoring] = useState(false);
   const [isDownloading, setIsDownloading] = useState<string | null>(null);
   const [isDownloadingPhotos, setIsDownloadingPhotos] = useState(false);
+  const [isSyncingOffsite, setIsSyncingOffsite] = useState<string | null>(null);
   const [restoreDialogOpen, setRestoreDialogOpen] = useState(false);
   const [restoreSource, setRestoreSource] = useState<{ type: "file"; file: File } | { type: "server"; path: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -178,6 +179,31 @@ export function DatabaseBackupsPanel() {
       toast.error("Photo download failed", { description: err.message });
     } finally {
       setIsDownloadingPhotos(false);
+    }
+  };
+
+  const handleSyncOffsite = async (filePath: string) => {
+    setIsSyncingOffsite(filePath);
+    try {
+      const { supabase } = await import("@/integrations/supabase/client");
+      const { data, error } = await supabase.functions.invoke("sync-offsite-backup", {
+        body: { backup_path: filePath },
+      });
+      if (error) throw new Error(error.message || "Sync failed");
+      if (!data?.success) {
+        const ext = data?.external_supabase;
+        throw new Error(
+          ext?.errors?.length ? ext.errors[0] : "Off-site sync failed"
+        );
+      }
+      const ext = data.external_supabase;
+      toast.success("Off-site sync complete", {
+        description: `${ext.files_synced} file(s) synced, ${ext.files_skipped} skipped`,
+      });
+    } catch (err: any) {
+      toast.error("Off-site sync failed", { description: err.message });
+    } finally {
+      setIsSyncingOffsite(null);
     }
   };
 
@@ -337,6 +363,19 @@ export function DatabaseBackupsPanel() {
                                 <ImageDown className="h-3 w-3" />
                               )}
                               Photos
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleSyncOffsite(backup.file_path)}
+                              disabled={isSyncingOffsite === backup.file_path}
+                            >
+                              {isSyncingOffsite === backup.file_path ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : (
+                                <Cloud className="h-3 w-3" />
+                              )}
+                              Sync Off-Site
                             </Button>
                             <Button
                               variant="outline"

@@ -215,11 +215,12 @@ function buildEmailHtml(opts: {
   archiveSize: string;
   exceededSizeLimit: boolean;
   photoBackup?: { total_copied: number; total_skipped: number; total_errors: number; total_size_bytes: number; timed_out: boolean } | null;
+  offsiteSync?: { success: boolean; files_synced: number; files_errored: number; timed_out: boolean } | null;
 }): string {
   const {
     emailTimestamp, totalSize, totalRows, tableCounts, tableCount,
     downloadUrl, failedTables, totalReports, attachedReports, archiveSize,
-    exceededSizeLimit, photoBackup,
+    exceededSizeLimit, photoBackup, offsiteSync,
   } = opts;
 
   const tableRows = Object.entries(tableCounts)
@@ -260,6 +261,11 @@ function buildEmailHtml(opts: {
         ${photoBackup.total_errors > 0 ? `<tr><td style="padding:6px 0;color:#dc2626;">Photo Errors</td><td style="text-align:right;font-weight:bold;color:#dc2626;">${photoBackup.total_errors}</td></tr>` : ""}
         ${photoBackup.timed_out ? `<tr><td colspan="2" style="padding:6px 0;color:#f59e0b;font-size:12px;">⚠️ Photo backup timed out — partial results</td></tr>` : ""}
         ` : `<tr><td colspan="2" style="padding:6px 0;color:#dc2626;font-size:12px;">⚠️ Photo storage backup was not performed</td></tr>`}
+        ${offsiteSync ? `
+        <tr><td style="padding:6px 0;color:#555;">🌐 Off-Site Sync</td><td style="text-align:right;font-weight:bold;color:${offsiteSync.success ? '#059669' : '#dc2626'};">${offsiteSync.success ? `✅ ${offsiteSync.files_synced} files` : '❌ Failed'}</td></tr>
+        ${offsiteSync.files_errored > 0 ? `<tr><td style="padding:6px 0;color:#dc2626;">Off-Site Errors</td><td style="text-align:right;font-weight:bold;color:#dc2626;">${offsiteSync.files_errored}</td></tr>` : ""}
+        ${offsiteSync.timed_out ? `<tr><td colspan="2" style="padding:6px 0;color:#f59e0b;font-size:12px;">⚠️ Off-site sync timed out — partial results</td></tr>` : ""}
+        ` : ""}
       </table>
       ${reportAttachNote}
       <p style="margin:16px 0;">
@@ -491,7 +497,36 @@ Deno.serve(async (req) => {
       created_by: null,
     });
 
-    // ── Step 8: Generate signed download URL ──
+    // ── Step 8: Sync to external Supabase (off-site backup) ──
+    let offsiteSyncResult: any = null;
+    try {
+      console.log("[scheduled-backup-notify] Starting off-site sync...");
+      const offsiteRes = await fetch(
+        `${supabaseUrl}/functions/v1/sync-offsite-backup`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${serviceRoleKey}`,
+          },
+          body: JSON.stringify({ backup_path: `daily/${timestamp}` }),
+        },
+      );
+      if (offsiteRes.ok) {
+        offsiteSyncResult = await offsiteRes.json();
+        const ext = offsiteSyncResult.external_supabase;
+        console.log(
+          `[scheduled-backup-notify] Off-site sync: synced=${ext?.files_synced}, errors=${ext?.files_errored}, timed_out=${ext?.timed_out}`,
+        );
+      } else {
+        const errText = await offsiteRes.text();
+        console.error(`[scheduled-backup-notify] Off-site sync failed [${offsiteRes.status}]: ${errText}`);
+      }
+    } catch (offsiteErr: any) {
+      console.error(`[scheduled-backup-notify] Off-site sync error: ${offsiteErr.message}`);
+    }
+
+    // ── Step 9: Generate signed download URL ──
     const { data: manifestUrlData } = await adminClient.storage
       .from("database-backups")
       .createSignedUrl(`daily/${timestamp}/manifest.json`, 60 * 60 * 24 * 7, {
@@ -534,6 +569,12 @@ Deno.serve(async (req) => {
       archiveSize: formatFileSize(archiveSizeBytes),
       exceededSizeLimit,
       photoBackup: photoBackupResult,
+      offsiteSync: offsiteSyncResult?.external_supabase ? {
+        success: offsiteSyncResult.external_supabase.success,
+        files_synced: offsiteSyncResult.external_supabase.files_synced,
+        files_errored: offsiteSyncResult.external_supabase.files_errored,
+        timed_out: offsiteSyncResult.external_supabase.timed_out,
+      } : null,
     });
 
     const reportLabel = htmlReports.length > 0
@@ -587,6 +628,11 @@ Deno.serve(async (req) => {
               total_size_bytes: photoBackupResult.total_size_bytes,
               total_errors: photoBackupResult.total_errors,
               timed_out: photoBackupResult.timed_out,
+            } : null,
+            offsite_sync: offsiteSyncResult?.external_supabase ? {
+              success: offsiteSyncResult.external_supabase.success,
+              files_synced: offsiteSyncResult.external_supabase.files_synced,
+              files_errored: offsiteSyncResult.external_supabase.files_errored,
             } : null,
           }),
         });
