@@ -497,7 +497,36 @@ Deno.serve(async (req) => {
       created_by: null,
     });
 
-    // ── Step 8: Generate signed download URL ──
+    // ── Step 8: Sync to external Supabase (off-site backup) ──
+    let offsiteSyncResult: any = null;
+    try {
+      console.log("[scheduled-backup-notify] Starting off-site sync...");
+      const offsiteRes = await fetch(
+        `${supabaseUrl}/functions/v1/sync-offsite-backup`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${serviceRoleKey}`,
+          },
+          body: JSON.stringify({ backup_path: `daily/${timestamp}` }),
+        },
+      );
+      if (offsiteRes.ok) {
+        offsiteSyncResult = await offsiteRes.json();
+        const ext = offsiteSyncResult.external_supabase;
+        console.log(
+          `[scheduled-backup-notify] Off-site sync: synced=${ext?.files_synced}, errors=${ext?.files_errored}, timed_out=${ext?.timed_out}`,
+        );
+      } else {
+        const errText = await offsiteRes.text();
+        console.error(`[scheduled-backup-notify] Off-site sync failed [${offsiteRes.status}]: ${errText}`);
+      }
+    } catch (offsiteErr: any) {
+      console.error(`[scheduled-backup-notify] Off-site sync error: ${offsiteErr.message}`);
+    }
+
+    // ── Step 9: Generate signed download URL ──
     const { data: manifestUrlData } = await adminClient.storage
       .from("database-backups")
       .createSignedUrl(`daily/${timestamp}/manifest.json`, 60 * 60 * 24 * 7, {
