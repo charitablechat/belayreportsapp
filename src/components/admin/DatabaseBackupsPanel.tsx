@@ -182,6 +182,31 @@ export function DatabaseBackupsPanel() {
     }
   };
 
+  const handleSyncOffsite = async (filePath: string) => {
+    setIsSyncingOffsite(filePath);
+    try {
+      const { supabase } = await import("@/integrations/supabase/client");
+      const { data, error } = await supabase.functions.invoke("sync-offsite-backup", {
+        body: { backup_path: filePath },
+      });
+      if (error) throw new Error(error.message || "Sync failed");
+      if (!data?.success) {
+        const ext = data?.external_supabase;
+        throw new Error(
+          ext?.errors?.length ? ext.errors[0] : "Off-site sync failed"
+        );
+      }
+      const ext = data.external_supabase;
+      toast.success("Off-site sync complete", {
+        description: `${ext.files_synced} file(s) synced, ${ext.files_skipped} skipped`,
+      });
+    } catch (err: any) {
+      toast.error("Off-site sync failed", { description: err.message });
+    } finally {
+      setIsSyncingOffsite(null);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Controls */}
