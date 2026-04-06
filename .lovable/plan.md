@@ -1,46 +1,50 @@
 
+Goal: make training reports preserve bullet-point structure consistently when users generate HTML and then save/print to PDF, so the PDF matches the HTML output exactly.
 
-# Fix: Training Summary Bullet Points Not Rendering in HTML Report
+What I found
+- The shared formatter already has the key content fix: `parseTextToList()` in `supabase/functions/_shared/training-formatter.ts` now converts `</p>`, `</div>`, `</li>`, and `<br>` into newlines before stripping HTML. That should correctly split each entered line into a separate bullet item.
+- The generated training HTML already renders `observationsList` and `recommendationsList` as `<ul><li>...</li></ul>` in `supabase/functions/generate-training-html/index.ts`.
+- The direct PDF path (`supabase/functions/generate-training-pdf/index.ts`) does not use the HTML at all; it rebuilds the summary using jsPDF tables. So there are two separate rendering paths today.
+- The user issue is specifically about “HTML then save as PDF,” which means the critical gap is likely in the HTML print styles, not only in the shared parsing logic.
 
-## Problem
+Implementation plan
+1. Audit and align the training HTML print CSS
+- Update the training HTML generator so summary bullet lists use a dedicated class instead of only inline styles.
+- Add print-safe list rules for the summary section in `generate-training-html/index.ts`, including:
+  - explicit `display: block`
+  - reliable left padding/margin
+  - `list-style-type: disc`
+  - `list-style-position: outside`
+  - print-safe `li` spacing and wrapping
+- Ensure no global `ul` / `li` styling overrides interfere with summary bullets during print-to-PDF.
 
-The rich text editor (TipTap) stores each line as a `<p>` tag:
-```html
-<p>It is recommended that the site institute a written pre-use checklist</p>
-<p>It is recommended that maintenance check the sturdiness...</p>
-<p>It is recommended that a rope for each the TTT...</p>
-```
+2. Make summary bullets structurally consistent
+- Apply dedicated classes to both observations and recommendations lists/items.
+- Keep the same class names and hierarchy in HTML so browser print output is predictable and easier to maintain.
+- Preserve fallback plain-text rendering only when no parsed bullet items exist.
 
-The `parseTextToList()` function in `training-formatter.ts` calls `stripHtml()` first, which does `html.replace(/<[^>]*>/g, '')`. This strips **all** tags without inserting any separators, so the three paragraphs become one continuous string:
+3. Review parity between HTML and direct PDF generation
+- Compare the training summary section in `generate-training-html` and `generate-training-pdf`.
+- If needed, adjust the direct PDF bullet indentation/spacing so both outputs visually match more closely, even though they use different renderers.
+- Keep shared content parsing in `_shared/training-formatter.ts` as the single source of truth for item splitting.
 
-```
-"It is recommended that the site institute...checklistIt is recommended that maintenance check..."
-```
+4. Verify the client HTML viewing/print flow
+- Confirm the HTML viewer path in `src/pages/TrainingForm.tsx` and `src/components/HtmlReportViewer.tsx` does not inject mobile or iframe styles that suppress list markers in print.
+- If needed, scope viewer-injected styles so they do not override report bullet formatting when printing from the iframe.
 
-The sentence-splitting regex then partially recovers this (splitting on `. Capital`), but since these lines don't end with periods, they get concatenated into a single bullet point — exactly what the screenshot shows.
+Technical details
+- Files most likely to change:
+  - `supabase/functions/generate-training-html/index.ts`
+  - possibly `supabase/functions/generate-training-pdf/index.ts`
+  - possibly `src/components/HtmlReportViewer.tsx`
+- Root design principle:
+  - shared formatter decides what the bullet items are
+  - HTML generator defines semantic list markup
+  - print CSS guarantees browser PDF output preserves those bullets
+- Important existing risk:
+  - `generate-training-html/index.ts` has global `ul { list-style: none; padding-left: 0; }` and global `li` styling. Inline styles currently re-enable bullets, but print rendering can be fragile. Dedicated classes with explicit print rules are the safest fix.
 
-## Fix
-
-**File: `supabase/functions/_shared/training-formatter.ts`**
-
-Update `parseTextToList()` to convert block-level HTML boundaries (`</p>`, `</div>`, `<br>`, `</li>`) into newline characters **before** stripping HTML tags. This preserves the line structure the user entered in the editor.
-
-```typescript
-export function parseTextToList(textContent: string | null | undefined): string[] {
-  if (!textContent) return [];
-  
-  // Convert block-level HTML boundaries to newlines BEFORE stripping tags
-  let preprocessed = textContent
-    .replace(/<\/p>/gi, '\n')
-    .replace(/<\/div>/gi, '\n')
-    .replace(/<\/li>/gi, '\n')
-    .replace(/<br\s*\/?>/gi, '\n');
-  
-  let text = stripHtml(preprocessed);
-  if (!text || text === 'N/A') return [];
-  
-  // ... rest of the function stays the same
-```
-
-This is a one-line-category fix in a single shared file. No other files need changes — the HTML generation template already correctly renders `observationsList` and `recommendationsList` as `<li>` elements.
-
+Expected outcome
+- Every line entered in the training summary becomes its own bullet item in generated HTML.
+- When that HTML is saved/printed to PDF, the bullet points remain separate and visually match the HTML report.
+- The output remains stable for normal use, off-site backup, and stored report artifacts.
