@@ -362,8 +362,8 @@ serve(async (req) => {
     .info-grid {
       display: grid;
       grid-template-columns: repeat(2, 1fr);
-      gap: 12px;
-      margin-bottom: 15px;
+      gap: 10px;
+      margin-bottom: 10px;
     }
 
     .info-item {
