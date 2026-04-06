@@ -1,50 +1,57 @@
 
-Goal: make training reports preserve bullet-point structure consistently when users generate HTML and then save/print to PDF, so the PDF matches the HTML output exactly.
 
-What I found
-- The shared formatter already has the key content fix: `parseTextToList()` in `supabase/functions/_shared/training-formatter.ts` now converts `</p>`, `</div>`, `</li>`, and `<br>` into newlines before stripping HTML. That should correctly split each entered line into a separate bullet item.
-- The generated training HTML already renders `observationsList` and `recommendationsList` as `<ul><li>...</li></ul>` in `supabase/functions/generate-training-html/index.ts`.
-- The direct PDF path (`supabase/functions/generate-training-pdf/index.ts`) does not use the HTML at all; it rebuilds the summary using jsPDF tables. So there are two separate rendering paths today.
-- The user issue is specifically about “HTML then save as PDF,” which means the critical gap is likely in the HTML print styles, not only in the shared parsing logic.
+# Fix Typing Lag in Forms
 
-Implementation plan
-1. Audit and align the training HTML print CSS
-- Update the training HTML generator so summary bullet lists use a dedicated class instead of only inline styles.
-- Add print-safe list rules for the summary section in `generate-training-html/index.ts`, including:
-  - explicit `display: block`
-  - reliable left padding/margin
-  - `list-style-type: disc`
-  - `list-style-position: outside`
-  - print-safe `li` spacing and wrapping
-- Ensure no global `ul` / `li` styling overrides interfere with summary bullets during print-to-PDF.
+## Problem
 
-2. Make summary bullets structurally consistent
-- Apply dedicated classes to both observations and recommendations lists/items.
-- Keep the same class names and hierarchy in HTML so browser print output is predictable and easier to maintain.
-- Preserve fallback plain-text rendering only when no parsed bullet items exist.
+Every keystroke in the Training and Daily Assessment forms causes a full parent re-render because:
 
-3. Review parity between HTML and direct PDF generation
-- Compare the training summary section in `generate-training-html` and `generate-training-pdf`.
-- If needed, adjust the direct PDF bullet indentation/spacing so both outputs visually match more closely, even though they use different renderers.
-- Keep shared content parsing in `_shared/training-formatter.ts` as the single source of truth for item splitting.
+1. **Direct parent state mutation on each key press**: Child components (e.g., `BeginningOfDaySection`, `TrainingSummarySection`) call `onUpdate()` on every keystroke, which calls `setTraining(...)`, `setBeginningOfDay(...)`, etc. in the parent form.
+2. **`setHasUnsavedChanges(true)` on every change**: Both the `useEffect` auto-save watcher AND individual update handlers call `setHasUnsavedChanges(true)`, triggering an additional re-render of the entire 1800-line form.
+3. **No debounced inputs**: Unlike InspectionForm which uses `DebouncedInput` for table cells, Training and Daily Assessment forms pass raw `<Input>`, `<VoiceInput>`, and `<VoiceTextarea>` components that propagate every keystroke to the parent.
 
-4. Verify the client HTML viewing/print flow
-- Confirm the HTML viewer path in `src/pages/TrainingForm.tsx` and `src/components/HtmlReportViewer.tsx` does not inject mobile or iframe styles that suppress list markers in print.
-- If needed, scope viewer-injected styles so they do not override report bullet formatting when printing from the iframe.
+The InspectionForm partially solved this with `DebouncedInput` (300ms local state) and `hasUnsavedRef` (prevents re-render from the unsaved flag), but the other two forms never adopted these patterns.
 
-Technical details
-- Files most likely to change:
-  - `supabase/functions/generate-training-html/index.ts`
-  - possibly `supabase/functions/generate-training-pdf/index.ts`
-  - possibly `src/components/HtmlReportViewer.tsx`
-- Root design principle:
-  - shared formatter decides what the bullet items are
-  - HTML generator defines semantic list markup
-  - print CSS guarantees browser PDF output preserves those bullets
-- Important existing risk:
-  - `generate-training-html/index.ts` has global `ul { list-style: none; padding-left: 0; }` and global `li` styling. Inline styles currently re-enable bullets, but print rendering can be fragile. Dedicated classes with explicit print rules are the safest fix.
+## Solution
 
-Expected outcome
-- Every line entered in the training summary becomes its own bullet item in generated HTML.
-- When that HTML is saved/printed to PDF, the bullet points remain separate and visually match the HTML report.
-- The output remains stable for normal use, off-site backup, and stored report artifacts.
+Apply the same proven patterns from InspectionForm across all forms:
+
+### 1. Add `hasUnsavedRef` guard to Training and Daily Assessment forms
+Prevent `setHasUnsavedChanges(true)` from firing on every keystroke when the flag is already `true`. This eliminates one full parent re-render per keystroke.
+
+**Files:** `TrainingForm.tsx`, `DailyAssessmentForm.tsx`
+
+In the auto-save `useEffect`, replace `setHasUnsavedChanges(true)` with the ref-guarded pattern already used in InspectionForm:
+```typescript
+const hasUnsavedRef = useRef(false);
+// In the useEffect:
+if (!hasUnsavedRef.current) {
+  hasUnsavedRef.current = true;
+  setHasUnsavedChanges(true);
+}
+// After save completes, reset: hasUnsavedRef.current = false;
+```
+
+Also remove the redundant `setHasUnsavedChanges(true)` calls from individual update handlers (`handleBeginningOfDayUpdate`, `updateTrainingField`, `updateSummaryField`, etc.) since the `useEffect` watcher already handles this.
+
+### 2. Use `DebouncedInput` in Training and Daily Assessment child components
+Replace raw `<Input>` / `<VoiceInput>` usage in text-field-heavy sections with `DebouncedInput` or a new `DebouncedVoiceInput` wrapper. This keeps local state in the child and only propagates to the parent after 300ms or on blur.
+
+**Files:** Training child components (`TrainingSummarySection.tsx`, `ImmediateAttentionSection.tsx`, `VerifiableItemsSection.tsx`, `SystemsInPlaceSection.tsx`), Daily Assessment child components (`BeginningOfDaySection.tsx`, `EndOfDaySection.tsx`, `EquipmentChecksSection.tsx`, `StructureChecksSection.tsx`, `EnvironmentChecksSection.tsx`)
+
+### 3. Create `DebouncedTextarea` component
+Same pattern as `DebouncedInput` but for `<Textarea>` (used in section comments and daily assessment comment fields). Local state + debounced parent propagation.
+
+**File:** New `src/components/inspection/DebouncedTextarea.tsx`
+
+### 4. Create `DebouncedVoiceInput` wrapper
+Wraps `DebouncedInput` with the microphone button, matching `VoiceInput` API but with local debouncing.
+
+**File:** New `src/components/ui/debounced-voice-input.tsx`
+
+## Impact
+- Each keystroke only updates local component state (fast, no parent re-render)
+- Parent state updates are batched every 300ms
+- `hasUnsavedChanges` state change happens at most once per edit session until saved
+- Matches the existing proven pattern in InspectionForm
+
