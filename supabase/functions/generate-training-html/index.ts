@@ -419,11 +419,11 @@ serve(async (req) => {
       list-style-type: disc !important;
     }
     .text-content {
-      padding: 15px;
+      padding: 10px;
       background: #c2c2c2;
       border-radius: 4px;
       white-space: pre-wrap;
-      line-height: 1.8;
+      line-height: 1.6;
     }
     .disclaimer {
       background: #fef3c7;
