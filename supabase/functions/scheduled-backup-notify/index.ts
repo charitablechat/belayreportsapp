@@ -452,6 +452,19 @@ Deno.serve(async (req) => {
 
     const base64JsonGz = uint8ToBase64(gzippedBytes);
 
+    // Upload combined backup to storage so off-site sync picks it up
+    const { error: gzUploadErr } = await adminClient.storage
+      .from("database-backups")
+      .upload(`daily/${timestamp}/backup.json.gz`, gzippedBytes, {
+        contentType: "application/gzip",
+        upsert: false,
+      });
+    if (gzUploadErr) {
+      console.warn(`[scheduled-backup-notify] Failed to upload backup.json.gz: ${gzUploadErr.message}`);
+    } else {
+      console.log(`[scheduled-backup-notify] Uploaded backup.json.gz to storage (${formatFileSize(gzippedBytes.length)})`);
+    }
+
     // Free memory
     Object.keys(backupData).forEach(k => delete backupData[k]);
 
