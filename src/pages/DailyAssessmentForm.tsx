@@ -209,6 +209,7 @@ export default function DailyAssessmentForm() {
     }
     try {
       await handleSaveProgressRef.current?.();
+      hasUnsavedRef.current = false;
       setHasUnsavedChanges(false);
       console.log('[DailyAssessmentForm] Save-before-leave completed');
     } catch (e) {

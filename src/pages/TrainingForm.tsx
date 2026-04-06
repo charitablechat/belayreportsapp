@@ -209,6 +209,7 @@ export default function TrainingForm() {
     }
     try {
       await saveTrainingRef.current?.();
+      hasUnsavedRef.current = false;
       setHasUnsavedChanges(false);
       console.log('[TrainingForm] Save-before-leave completed');
     } catch (e) {
