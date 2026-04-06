@@ -54,9 +54,6 @@ const TABLES = [
   "app_announcements",
 ];
 
-// Tables that contain latest_report_html
-const REPORT_TABLES = ["inspections", "trainings", "daily_assessments"] as const;
-
 // Columns to exclude from backup JSON (large regenerable HTML)
 const EXCLUDE_COLUMNS: Record<string, string[]> = {
   inspections: ["latest_report_html"],
@@ -65,7 +62,6 @@ const EXCLUDE_COLUMNS: Record<string, string[]> = {
 };
 
 const GATEWAY_URL = "https://connector-gateway.lovable.dev/resend";
-const MAX_ATTACHMENT_BYTES = 35 * 1024 * 1024; // 35 MB safety limit
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -146,54 +142,111 @@ function sanitizeFilename(str: string): string {
     .substring(0, 60);
 }
 
-function getReportTypePath(table: string): string {
-  if (table === "inspections") return "inspections";
-  if (table === "trainings") return "trainings";
-  return "daily-assessments";
-}
+// ── Denormalized Report Builder ─────────────────────────────────────
 
-function getDateField(table: string): string {
-  if (table === "inspections") return "inspection_date";
-  if (table === "trainings") return "start_date";
-  return "assessment_date";
-}
-
-// ── HTML Report Extraction ──────────────────────────────────────────
-
-interface HtmlReport {
+interface DenormalizedReport {
   filename: string;
-  html: string;
-  table: string;
-  id: string;
+  data: Record<string, any>;
 }
 
-async function extractHtmlReports(supabase: any): Promise<HtmlReport[]> {
-  const reports: HtmlReport[] = [];
+// Map of parent table → { child tables, date field, type label }
+const REPORT_CONFIG: Record<string, {
+  type: string;
+  dateField: string;
+  children: string[];
+}> = {
+  inspections: {
+    type: "inspection",
+    dateField: "inspection_date",
+    children: [
+      "inspection_systems",
+      "inspection_equipment",
+      "inspection_standards",
+      "inspection_photos",
+      "inspection_ziplines",
+      "inspection_summary",
+    ],
+  },
+  trainings: {
+    type: "training",
+    dateField: "start_date",
+    children: [
+      "training_systems",
+      "training_equipment",
+      "training_photos",
+      "training_operating_systems",
+      "training_delivery_approaches",
+      "training_verifiable_items",
+      "training_immediate_attention",
+      "training_systems_in_place",
+      "training_summary",
+    ],
+  },
+  daily_assessments: {
+    type: "daily-assessment",
+    dateField: "assessment_date",
+    children: [
+      "daily_assessment_beginning_of_day",
+      "daily_assessment_end_of_day",
+      "daily_assessment_environment_checks",
+      "daily_assessment_equipment_checks",
+      "daily_assessment_operating_systems",
+      "daily_assessment_structure_checks",
+      "daily_assessment_photos",
+    ],
+  },
+};
 
-  for (const table of REPORT_TABLES) {
-    const dateField = getDateField(table);
-    const typePath = getReportTypePath(table);
+// FK column that links child → parent
+function getParentFk(parentTable: string): string {
+  if (parentTable === "inspections") return "inspection_id";
+  if (parentTable === "trainings") return "training_id";
+  return "assessment_id";
+}
 
-    const rows = await fetchAllRows(
-      supabase,
-      table,
-      `id, organization, ${dateField}, latest_report_html`,
-    );
+async function buildDenormalizedReports(
+  backupData: Record<string, any[]>,
+): Promise<DenormalizedReport[]> {
+  const reports: DenormalizedReport[] = [];
 
-    for (const row of rows) {
-      if (!row.latest_report_html) continue;
+  for (const [parentTable, config] of Object.entries(REPORT_CONFIG)) {
+    const parentRows = backupData[parentTable] || [];
+    const fkCol = getParentFk(parentTable);
 
-      const org = sanitizeFilename(row.organization || "Unknown");
-      const date = row[dateField] || "undated";
-      const idPrefix = (row.id || "").substring(0, 8);
-      const filename = `${typePath}/${org}_${date}_${idPrefix}.html`;
+    // Pre-index child data by parent ID
+    const childIndex: Record<string, Record<string, any[]>> = {};
+    for (const childTable of config.children) {
+      const childRows = backupData[childTable] || [];
+      const shortName = childTable.replace(`${parentTable.replace(/s$/, "")}_`, "")
+        .replace(`${parentTable.replace(/ies$/, "y").replace(/s$/, "")}_`, "");
+      for (const row of childRows) {
+        const pid = row[fkCol];
+        if (!pid) continue;
+        if (!childIndex[pid]) childIndex[pid] = {};
+        if (!childIndex[pid][shortName]) childIndex[pid][shortName] = [];
+        childIndex[pid][shortName].push(row);
+      }
+    }
 
-      reports.push({
-        filename,
-        html: row.latest_report_html,
-        table,
-        id: row.id,
-      });
+    for (const parent of parentRows) {
+      const org = sanitizeFilename(parent.organization || "Unknown");
+      const date = parent[config.dateField] || "undated";
+      const idPrefix = (parent.id || "").substring(0, 8);
+      const filename = `reports/${config.type}s/${org}_${date}_${idPrefix}.json`;
+
+      // Build denormalized object — parent fields + nested children
+      const denormalized: Record<string, any> = {
+        _type: config.type,
+        ...parent,
+      };
+
+      // Attach children
+      const children = childIndex[parent.id] || {};
+      for (const [childName, childRows] of Object.entries(children)) {
+        denormalized[childName] = childRows;
+      }
+
+      reports.push({ filename, data: denormalized });
     }
   }
 
@@ -210,17 +263,13 @@ function buildEmailHtml(opts: {
   tableCount: number;
   downloadUrl: string;
   failedTables: string[];
-  totalReports: number;
-  attachedReports: number;
-  archiveSize: string;
-  exceededSizeLimit: boolean;
+  denormalizedReports: number;
   photoBackup?: { total_copied: number; total_skipped: number; total_errors: number; total_size_bytes: number; timed_out: boolean } | null;
   offsiteSync?: { success: boolean; files_synced: number; files_errored: number; timed_out: boolean } | null;
 }): string {
   const {
     emailTimestamp, totalSize, totalRows, tableCounts, tableCount,
-    downloadUrl, failedTables, totalReports, attachedReports, archiveSize,
-    exceededSizeLimit, photoBackup, offsiteSync,
+    downloadUrl, failedTables, denormalizedReports, photoBackup, offsiteSync,
   } = opts;
 
   const tableRows = Object.entries(tableCounts)
@@ -235,15 +284,6 @@ function buildEmailHtml(opts: {
     ? `<p style="color:#dc2626;font-weight:bold;">⚠️ ${failedTables.length} table upload(s) failed: ${failedTables.join(", ")}</p>`
     : "";
 
-
-
-
-  const reportAttachNote = exceededSizeLimit
-    ? `<p style="font-size:13px;color:#dc2626;font-weight:bold;">⚠️ Full archive too large for email (${archiveSize}) — download all ${totalReports} HTML reports below.</p>`
-    : attachedReports > 0
-      ? `<p style="font-size:13px;color:#059669;font-weight:bold;">📎 All ${attachedReports} HTML report(s) attached to this email.</p>`
-      : "";
-
   return `
     <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:20px;">
       <h2 style="color:#1a1a1a;">✅ Daily Backup Complete</h2>
@@ -253,8 +293,7 @@ function buildEmailHtml(opts: {
         <tr><td style="padding:6px 0;color:#555;">Total Rows</td><td style="text-align:right;font-weight:bold;">${totalRows.toLocaleString()}</td></tr>
         <tr><td style="padding:6px 0;color:#555;">Tables</td><td style="text-align:right;font-weight:bold;">${tableCount}</td></tr>
         <tr><td style="padding:6px 0;color:#555;">JSON Size</td><td style="text-align:right;font-weight:bold;">${totalSize}</td></tr>
-        <tr><td style="padding:6px 0;color:#555;">HTML Reports</td><td style="text-align:right;font-weight:bold;">${totalReports}</td></tr>
-        <tr><td style="padding:6px 0;color:#555;">Archive Size</td><td style="text-align:right;font-weight:bold;">${archiveSize}</td></tr>
+        <tr><td style="padding:6px 0;color:#555;">📋 Denormalized Reports</td><td style="text-align:right;font-weight:bold;">${denormalizedReports}</td></tr>
         ${photoBackup ? `
         <tr><td style="padding:6px 0;color:#555;">📷 Photos Backed Up</td><td style="text-align:right;font-weight:bold;">${photoBackup.total_copied}</td></tr>
         <tr><td style="padding:6px 0;color:#555;">Photos Size</td><td style="text-align:right;font-weight:bold;">${formatFileSize(photoBackup.total_size_bytes)}</td></tr>
@@ -267,11 +306,10 @@ function buildEmailHtml(opts: {
         ${offsiteSync.timed_out ? `<tr><td colspan="2" style="padding:6px 0;color:#f59e0b;font-size:12px;">⚠️ Off-site sync timed out — partial results</td></tr>` : ""}
         ` : ""}
       </table>
-      ${reportAttachNote}
       <p style="margin:16px 0;">
         <a href="${downloadUrl}" style="display:inline-block;padding:10px 20px;background:#2563eb;color:#fff;text-decoration:none;border-radius:6px;font-weight:bold;">📦 Download Full Archive</a>
       </p>
-      <p style="font-size:12px;color:#999;">Link expires in 7 days. Archive contains backup.json.gz + all ${totalReports} HTML reports.</p>
+      <p style="font-size:12px;color:#999;">Link expires in 7 days. Archive contains backup.json.gz + ${denormalizedReports} denormalized report JSON files.</p>
       <details style="margin-top:16px;">
         <summary style="cursor:pointer;color:#555;">Table breakdown</summary>
         <table style="width:100%;border-collapse:collapse;margin-top:8px;font-size:13px;">
@@ -370,31 +408,31 @@ Deno.serve(async (req) => {
       console.error(`[scheduled-backup-notify] Photo backup error: ${photoErr.message}`);
     }
 
-    // ── Step 3: Extract ALL HTML reports ──
-    console.log("[scheduled-backup-notify] Extracting HTML reports...");
-    const htmlReports = await extractHtmlReports(adminClient);
-    console.log(`[scheduled-backup-notify] Found ${htmlReports.length} total HTML reports`);
+    // ── Step 3: Build denormalized JSON reports ──
+    console.log("[scheduled-backup-notify] Building denormalized reports...");
+    const denormalizedReports = await buildDenormalizedReports(backupData);
+    console.log(`[scheduled-backup-notify] Built ${denormalizedReports.length} denormalized reports`);
 
-    // Upload each HTML report to storage
-    let htmlUploadErrors = 0;
-    for (const report of htmlReports) {
-      const htmlPath = `daily/${timestamp}/reports/${report.filename}`;
-      const htmlBytes = new TextEncoder().encode(report.html);
+    // Upload each denormalized report to storage
+    let reportUploadErrors = 0;
+    for (const report of denormalizedReports) {
+      const reportPath = `daily/${timestamp}/${report.filename}`;
+      const reportBytes = new TextEncoder().encode(JSON.stringify(report.data, null, 2));
       const { error } = await adminClient.storage
         .from("database-backups")
-        .upload(htmlPath, htmlBytes, {
-          contentType: "text/html",
+        .upload(reportPath, reportBytes, {
+          contentType: "application/json",
           upsert: false,
         });
       if (error) {
-        htmlUploadErrors++;
-        if (htmlUploadErrors <= 3) {
-          console.warn(`[scheduled-backup-notify] HTML upload error for ${report.filename}: ${error.message}`);
+        reportUploadErrors++;
+        if (reportUploadErrors <= 3) {
+          console.warn(`[scheduled-backup-notify] Report upload error for ${report.filename}: ${error.message}`);
         }
       }
     }
-    if (htmlUploadErrors > 0) {
-      console.warn(`[scheduled-backup-notify] ${htmlUploadErrors} HTML report upload(s) failed`);
+    if (reportUploadErrors > 0) {
+      console.warn(`[scheduled-backup-notify] ${reportUploadErrors} denormalized report upload(s) failed`);
     }
 
     // ── Step 4: Build combined backup JSON (gzip compressed) ──
@@ -417,7 +455,7 @@ Deno.serve(async (req) => {
     // Free memory
     Object.keys(backupData).forEach(k => delete backupData[k]);
 
-    // ── Step 5: Prepare email attachments ──
+    // ── Step 5: Prepare email attachment (just the gzipped JSON) ──
     const attachments: Array<{ filename: string; content: string }> = [
       {
         filename: `ropeworks-backup-${timestamp}.json.gz`,
@@ -425,37 +463,11 @@ Deno.serve(async (req) => {
       },
     ];
 
-    let totalAttachmentSize = gzippedBytes.length;
-    let attachedReportCount = 0;
-    let exceededSizeLimit = false;
-
-    // Calculate total size of all HTML reports
-    let allReportsSize = 0;
-    for (const report of htmlReports) {
-      allReportsSize += new TextEncoder().encode(report.html).length;
-    }
-
-    if (gzippedBytes.length + allReportsSize <= MAX_ATTACHMENT_BYTES) {
-      // All reports fit — attach every one
-      for (const report of htmlReports) {
-        const htmlBytes = new TextEncoder().encode(report.html);
-        attachments.push({
-          filename: report.filename.replace(/\//g, "_"),
-          content: uint8ToBase64(htmlBytes),
-        });
-        totalAttachmentSize += htmlBytes.length;
-        attachedReportCount++;
-      }
-      console.log(`[scheduled-backup-notify] Attaching ALL ${attachedReportCount} HTML reports (${formatFileSize(totalAttachmentSize)} total)`);
-    } else {
-      // Too large — attach only the JSON, provide download link
-      exceededSizeLimit = true;
-      console.log(`[scheduled-backup-notify] Full archive too large for email (${formatFileSize(gzippedBytes.length + allReportsSize)}), using download link only`);
-    }
+    console.log(`[scheduled-backup-notify] Email attachment: ${formatFileSize(gzippedBytes.length)}`);
 
     // ── Step 6: Upload manifest ──
     const manifest = {
-      version: 3,
+      version: 4,
       exported_at: now.toISOString(),
       exported_by: "system-scheduled",
       table_counts: tableCounts,
@@ -463,13 +475,13 @@ Deno.serve(async (req) => {
       tables: TABLES,
       excluded_columns: EXCLUDE_COLUMNS,
       failed_uploads: failedTables,
-      html_reports: {
-        total: htmlReports.length,
-        upload_errors: htmlUploadErrors,
-        reports: htmlReports.map(r => ({
+      denormalized_reports: {
+        total: denormalizedReports.length,
+        upload_errors: reportUploadErrors,
+        reports: denormalizedReports.map(r => ({
           filename: r.filename,
-          table: r.table,
-          id: r.id,
+          type: r.data._type,
+          id: r.data.id,
         })),
       },
       photo_backup: photoBackupResult ? {
@@ -534,13 +546,7 @@ Deno.serve(async (req) => {
       });
     const downloadUrl = manifestUrlData?.signedUrl || "#";
 
-    // Calculate total archive size (JSON + HTML reports)
-    let archiveSizeBytes = totalSizeBytes;
-    for (const report of htmlReports) {
-      archiveSizeBytes += new TextEncoder().encode(report.html).length;
-    }
-
-    // ── Step 9: Send email ──
+    // ── Step 10: Send email ──
     const dateDisplay = now.toLocaleDateString("en-US", {
       weekday: "long",
       year: "numeric",
@@ -564,10 +570,7 @@ Deno.serve(async (req) => {
       tableCount: Object.keys(tableCounts).filter(t => tableCounts[t] > 0).length,
       downloadUrl,
       failedTables,
-      totalReports: htmlReports.length,
-      attachedReports: attachedReportCount,
-      archiveSize: formatFileSize(archiveSizeBytes),
-      exceededSizeLimit,
+      denormalizedReports: denormalizedReports.length,
       photoBackup: photoBackupResult,
       offsiteSync: offsiteSyncResult?.external_supabase ? {
         success: offsiteSyncResult.external_supabase.success,
@@ -577,12 +580,9 @@ Deno.serve(async (req) => {
       } : null,
     });
 
-    const reportLabel = htmlReports.length > 0
-      ? ` — ${htmlReports.length} report${htmlReports.length === 1 ? "" : "s"}${exceededSizeLimit ? " (download link)" : " attached"}`
-      : "";
     const emailSubject = failedTables.length > 0
-      ? `⚠️ Ropeworks Daily Backup${reportLabel} (${failedTables.length} failures) — ${emailTimestamp}`
-      : `Ropeworks Daily Backup${reportLabel} — ${emailTimestamp}`;
+      ? `⚠️ Ropeworks Daily Backup (${failedTables.length} failures) — ${emailTimestamp}`
+      : `Ropeworks Daily Backup — ${emailTimestamp}`;
 
     const emailResponse = await fetch(`${GATEWAY_URL}/emails`, {
       method: "POST",
@@ -609,7 +609,7 @@ Deno.serve(async (req) => {
       console.log(`[scheduled-backup-notify] Email sent with ${attachments.length} attachment(s)`);
     }
 
-    // ── Step 10: POST to Make.com webhook for off-site archival ──
+    // ── Step 11: POST to Make.com webhook for off-site archival ──
     let webhookSuccess = false;
     if (MAKE_WEBHOOK_URL) {
       try {
@@ -621,8 +621,7 @@ Deno.serve(async (req) => {
             timestamp: now.toISOString(),
             download_url: downloadUrl,
             total_rows: totalRows,
-            total_reports: htmlReports.length,
-            archive_size_bytes: archiveSizeBytes,
+            denormalized_reports: denormalizedReports.length,
             photo_backup: photoBackupResult ? {
               total_copied: photoBackupResult.total_copied,
               total_size_bytes: photoBackupResult.total_size_bytes,
@@ -650,9 +649,7 @@ Deno.serve(async (req) => {
         total_size_bytes: totalSizeBytes,
         total_rows: totalRows,
         table_count: Object.keys(tableCounts).filter(t => tableCounts[t] > 0).length,
-        html_reports: htmlReports.length,
-        
-        attached_reports: attachedReportCount,
+        denormalized_reports: denormalizedReports.length,
         email_sent: emailSuccess,
         webhook_sent: webhookSuccess,
         failed_uploads: failedTables,
