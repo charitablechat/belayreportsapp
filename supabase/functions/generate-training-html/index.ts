@@ -386,6 +386,38 @@ serve(async (req) => {
       font-size: 14px;
       margin-top: 4px;
     }
+    /* Summary bullet lists - dedicated class to override global ul/li resets */
+    .summary-list {
+      list-style-type: disc !important;
+      list-style-position: outside !important;
+      padding-left: 24px !important;
+      margin: 0 !important;
+    }
+    .summary-list li {
+      background: none !important;
+      border-left: none !important;
+      border-radius: 0 !important;
+      padding: 4px 0 !important;
+      margin-bottom: 6px !important;
+      line-height: 1.6 !important;
+      display: list-item !important;
+      list-style-type: disc !important;
+    }
+    /* Trainee names list - same override pattern */
+    .trainee-names-list {
+      list-style-type: disc !important;
+      list-style-position: outside !important;
+      padding-left: 20px !important;
+      margin-top: 8px !important;
+    }
+    .trainee-names-list li {
+      background: none !important;
+      border-left: none !important;
+      padding: 4px 0 !important;
+      margin-bottom: 2px !important;
+      display: list-item !important;
+      list-style-type: disc !important;
+    }
     .text-content {
       padding: 15px;
       background: #c2c2c2;
@@ -530,6 +562,33 @@ serve(async (req) => {
 
       li {
         page-break-inside: avoid;
+      }
+
+      /* CRITICAL: Preserve summary bullet markers in print/PDF */
+      .summary-list {
+        list-style-type: disc !important;
+        list-style-position: outside !important;
+        padding-left: 24px !important;
+        display: block !important;
+      }
+      .summary-list li {
+        display: list-item !important;
+        list-style-type: disc !important;
+        background: none !important;
+        border-left: none !important;
+        padding: 4px 0 !important;
+        margin-bottom: 6px !important;
+        line-height: 1.5 !important;
+      }
+      .trainee-names-list {
+        list-style-type: disc !important;
+        padding-left: 20px !important;
+      }
+      .trainee-names-list li {
+        display: list-item !important;
+        list-style-type: disc !important;
+        background: none !important;
+        border-left: none !important;
       }
 
       .info-grid,
@@ -720,8 +779,8 @@ serve(async (req) => {
             <div class="info-label">Trainee Names</div>
             <div class="info-value">
               ${content.facilityInfo.traineeNamesList.length > 0 
-                ? `<ul class="trainee-names-list" style="margin-top: 8px; list-style: disc; padding-left: 20px;">
-                    ${content.facilityInfo.traineeNamesList.map(name => `<li style="background: none; border-left: none; padding: 4px 0; margin-bottom: 2px;">${name}</li>`).join('')}
+                ? `<ul class="trainee-names-list">
+                    ${content.facilityInfo.traineeNamesList.map(name => `<li>${name}</li>`).join('')}
                    </ul>`
                 : content.facilityInfo.traineeNames}
             </div>
@@ -837,8 +896,8 @@ serve(async (req) => {
               This area lists/describes any observations at the time of training pertaining to staff, equipment function, or operations:
             </p>
             ${content.summary.observationsList.length > 0 
-              ? `<ul style="margin: 0; list-style: disc; padding-left: 24px;">
-                  ${content.summary.observationsList.map(item => `<li style="background: none; border-left: none; padding: 6px 0; margin-bottom: 4px; line-height: 1.5;">${item}</li>`).join('')}
+              ? `<ul class="summary-list">
+                  ${content.summary.observationsList.map(item => `<li>${item}</li>`).join('')}
                  </ul>`
               : `<div class="text-content">${deduplicateHtmlContent(content.summary.observations)}</div>`}
           </div>
@@ -850,8 +909,8 @@ serve(async (req) => {
               This area lists recommendations from the trainer after visiting your site regarding staff, equipment function, or operations:
             </p>
             ${content.summary.recommendationsList.length > 0 
-              ? `<ul style="margin: 0; list-style: disc; padding-left: 24px;">
-                  ${content.summary.recommendationsList.map(item => `<li style="background: none; border-left: none; padding: 6px 0; margin-bottom: 4px; line-height: 1.5;">${item}</li>`).join('')}
+              ? `<ul class="summary-list">
+                  ${content.summary.recommendationsList.map(item => `<li>${item}</li>`).join('')}
                  </ul>`
               : `<div class="text-content">${deduplicateHtmlContent(content.summary.recommendations)}</div>`}
           </div>
