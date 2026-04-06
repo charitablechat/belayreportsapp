@@ -1004,9 +1004,14 @@ export default function Dashboard() {
               console.log('[Dashboard] Training soft-deleted:', reportToDelete.id);
             }
           } else {
-            triggerHaptic('error');
-            toast.error("Cannot delete training while offline.");
-            return;
+            // Queue for later soft-deletion when back online
+            await queueOperation('update', reportToDelete.id, { ...reportToDelete, ...softDeleteData });
+            triggerHaptic('success');
+            toast.success("Training will be deleted when you're back online.");
+            
+            if (import.meta.env.DEV) {
+              console.log('[Dashboard] Training soft-deletion queued:', reportToDelete.id);
+            }
           }
 
           // Update UI
