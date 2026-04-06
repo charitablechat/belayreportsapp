@@ -362,8 +362,11 @@ export default function DailyAssessmentForm() {
     // Skip internal/programmatic updates (initial load, server hydration)
     if (isInternalUpdateRef.current) return;
     
-    // Mark as having unsaved changes
-    setHasUnsavedChanges(true);
+    // Mark as having unsaved changes (ref-guarded to avoid redundant re-renders)
+    if (!hasUnsavedRef.current) {
+      hasUnsavedRef.current = true;
+      setHasUnsavedChanges(true);
+    }
     
     // Clear existing debounce timer
     if (autoSaveTimerRef.current) {
