@@ -266,10 +266,11 @@ function buildEmailHtml(opts: {
   denormalizedReports: number;
   photoBackup?: { total_copied: number; total_skipped: number; total_errors: number; total_size_bytes: number; timed_out: boolean } | null;
   offsiteSync?: { success: boolean; files_synced: number; files_errored: number; timed_out: boolean } | null;
+  pdfBackup?: { generated: number; skipped: number; no_pdf: number; errors: number } | null;
 }): string {
   const {
     emailTimestamp, totalSize, totalRows, tableCounts, tableCount,
-    downloadUrl, failedTables, denormalizedReports, photoBackup, offsiteSync,
+    downloadUrl, failedTables, denormalizedReports, photoBackup, offsiteSync, pdfBackup,
   } = opts;
 
   const tableRows = Object.entries(tableCounts)
