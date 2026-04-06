@@ -896,8 +896,8 @@ serve(async (req) => {
               This area lists/describes any observations at the time of training pertaining to staff, equipment function, or operations:
             </p>
             ${content.summary.observationsList.length > 0 
-              ? `<ul style="margin: 0; list-style: disc; padding-left: 24px;">
-                  ${content.summary.observationsList.map(item => `<li style="background: none; border-left: none; padding: 6px 0; margin-bottom: 4px; line-height: 1.5;">${item}</li>`).join('')}
+              ? `<ul class="summary-list">
+                  ${content.summary.observationsList.map(item => `<li>${item}</li>`).join('')}
                  </ul>`
               : `<div class="text-content">${deduplicateHtmlContent(content.summary.observations)}</div>`}
           </div>
@@ -909,8 +909,8 @@ serve(async (req) => {
               This area lists recommendations from the trainer after visiting your site regarding staff, equipment function, or operations:
             </p>
             ${content.summary.recommendationsList.length > 0 
-              ? `<ul style="margin: 0; list-style: disc; padding-left: 24px;">
-                  ${content.summary.recommendationsList.map(item => `<li style="background: none; border-left: none; padding: 6px 0; margin-bottom: 4px; line-height: 1.5;">${item}</li>`).join('')}
+              ? `<ul class="summary-list">
+                  ${content.summary.recommendationsList.map(item => `<li>${item}</li>`).join('')}
                  </ul>`
               : `<div class="text-content">${deduplicateHtmlContent(content.summary.recommendations)}</div>`}
           </div>
