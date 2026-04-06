@@ -1848,7 +1848,7 @@ serve(async (req) => {
     </div>
   </div>
 
-  <!-- PAGE 4: INSPECTION RESULTS KEY -->
+  <!-- PAGE 3: INSPECTION RESULTS KEY -->
   <div class="page">
     <div class="page-header">
       <div class="header-left">
