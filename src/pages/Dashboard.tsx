@@ -1375,7 +1375,7 @@ export default function Dashboard() {
               Are you sure you want to delete this report for{" "}
               <strong>
                 {inspectionToDelete?.organization || reportToDelete?.organization}
-              </strong>? This action cannot be undone.
+              </strong>? This report will be moved to trash and permanently deleted after 60 days.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
