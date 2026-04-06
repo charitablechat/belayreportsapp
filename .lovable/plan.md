@@ -1,102 +1,73 @@
 
 
-# Off-Site Backup to AWS S3 + External Supabase
+# Replace HTML Reports with User-Friendly Backup Format
 
-## Overview
+## Problem
 
-Add a new step to the daily automated backup pipeline that pushes the complete backup archive (JSON, HTML reports, and photos) to **both** an external AWS S3 bucket and an external Supabase project. This runs automatically after the existing backup completes, with a manual trigger option in the admin UI.
+The daily backup pipeline currently extracts `latest_report_html` from every inspection, training, and daily assessment, then uploads each as individual `.html` files to storage, attaches them to email, and syncs them off-site. This is slow, bloats the archive, and doesn't serve your needs.
 
-## Prerequisites
+## What stays the same
 
-1. **AWS S3 Connector** — needs to be connected via Lovable's built-in AWS S3 connector (handles auth automatically)
-2. **External Supabase credentials** — the user provides their external Supabase project URL and service role key as secrets
+- Compressed `backup.json.gz` with all table data (already strips HTML blobs) — emailed and synced off-site
+- Individual table JSON files uploaded to `database-backups` storage
+- Photo storage backup
+- Off-site sync to external Supabase
+- Make.com webhook
+- Manifest file
 
-## Architecture
+## What gets removed
 
-```text
-Daily Backup Pipeline (existing)
-  ├─ Step 1: Export all tables → database-backups bucket
-  ├─ Step 2: Backup photos → database-backups bucket  
-  ├─ Step 3: Extract HTML reports → database-backups bucket
-  ├─ ...existing email + Make.com steps...
-  │
-  └─ NEW Step (after manifest upload, before email):
-       ├─ Push backup.json.gz → AWS S3  (via connector gateway signed URL)
-       ├─ Push backup.json.gz → External Supabase storage
-       ├─ Push manifest.json → both destinations
-       └─ Report results in email + webhook payload
+- Step 3 entirely: no more `extractHtmlReports()` call
+- No more uploading individual `.html` files to storage
+- No more attaching HTML reports to email
+- No more archive size calculations based on HTML content
+- Email template simplified (no "HTML Reports" row, no attachment size warnings)
+
+## Replacement options for external Supabase
+
+Here are three ideas for what to send instead — all are more portable and queryable than HTML:
+
+### Option A: Denormalized JSON reports (recommended)
+One JSON file per inspection/training/assessment with all child table data joined inline. Example structure:
+```json
+{
+  "type": "inspection",
+  "id": "abc-123",
+  "organization": "Adventure Park",
+  "inspection_date": "2026-04-01",
+  "systems": [...],
+  "equipment": [...],
+  "standards": [...],
+  "photos": [{ "id": "...", "caption": "...", "storage_path": "..." }],
+  "summary": {...}
+}
 ```
+These are human-readable, machine-queryable, and could be used to regenerate HTML/PDF on demand later. Uploaded as `reports/inspections/org_date_id.json`.
 
-## Implementation Plan
+### Option B: CSV exports per table
+Each table exported as a `.csv` file alongside the JSON. Opens directly in Excel or Google Sheets. Simple but loses the relational structure between parent/child tables.
 
-### 1. Connect AWS S3 Connector
-Use the built-in AWS S3 connector to link an S3 bucket to the project. This provides `AWS_S3_API_KEY` automatically. Write scope is required for uploads.
+### Option C: Combined summary spreadsheet
+A single multi-sheet Excel file (using a Deno-compatible library) with one sheet per table. Most "spreadsheet friendly" but adds a dependency and complexity.
 
-### 2. Add External Supabase Secrets
-Two new secrets:
-- `EXTERNAL_SUPABASE_URL` — the external project's API URL
-- `EXTERNAL_SUPABASE_SERVICE_KEY` — the external project's service role key
+## Recommended approach: Option A
 
-### 3. New Edge Function: `sync-offsite-backup`
-**File:** `supabase/functions/sync-offsite-backup/index.ts`
+Denormalized JSON reports give you the best of both worlds — human-readable, machine-parseable, and contain everything needed to reconstruct any report format later. They're also much smaller than HTML (no embedded base64 photos, no CSS/markup).
 
-A dedicated function that receives a backup path (e.g. `daily/2026-04-05T...`) and pushes key files to both destinations.
-
-**What gets synced:**
-- `backup.json.gz` (the combined compressed database dump, ~2-10MB)
-- `manifest.json` (metadata about the backup)
-- HTML report files (from `daily/{ts}/reports/`)
-- Photo files (from `daily/{ts}/photos/`) — these are the largest, processed in batches
-
-**AWS S3 flow:**
-1. For each file, request a signed upload URL via the connector gateway (`POST /api/v1/sign_storage_url?provider=aws_s3&mode=write`)
-2. Download file from the `database-backups` bucket
-3. Upload to S3 via the signed URL (`PUT`)
-4. Track success/failure per file
-
-**External Supabase flow:**
-1. Create a Supabase client using the external URL + service key
-2. Upload each file to a `ropeworks-backups` bucket on the external project
-3. Uses the same batched concurrency (5 at a time) as existing photo backup
-
-**Safety features:**
-- 5-minute timeout safety valve
-- Per-file error tracking (continues on individual failures)
-- Idempotent — checks if destination file exists before uploading
-- Graceful degradation — if one destination fails, the other still proceeds
-
-### 4. Modify: `scheduled-backup-notify/index.ts`
-Add a new step (after Step 6 manifest upload, before Step 8 email) that calls `sync-offsite-backup` internally, similar to how `backup-photo-storage` is called.
-
-- Pass the backup timestamp so it knows which folder to sync
-- Capture results (files synced, errors, per-destination status)
-- Add off-site sync stats to the email HTML and Make.com webhook payload
-- Non-blocking: if off-site sync fails entirely, the backup still succeeds
-
-### 5. Modify: `DatabaseBackupsPanel.tsx`
-Add a "Sync Off-Site" button per backup row that manually triggers `sync-offsite-backup` for that backup path. Shows sync status (syncing spinner, success checkmark, error badge).
-
-### 6. Email & Webhook Enhancements
-Add an "Off-Site Sync" section to the backup email:
-- AWS S3: ✅ 47 files synced (12.3 MB) or ❌ Failed
-- External Supabase: ✅ 47 files synced or ❌ Failed
-
-Add `offsite_sync` object to the Make.com webhook payload.
-
-## Summary of Changes
+## Technical changes
 
 | File | Change |
 |------|--------|
-| `supabase/functions/sync-offsite-backup/index.ts` | New — pushes backup files to S3 + external Supabase |
-| `supabase/functions/scheduled-backup-notify/index.ts` | Call sync-offsite-backup, add results to email/webhook |
-| `src/components/admin/DatabaseBackupsPanel.tsx` | Add manual "Sync Off-Site" button |
-| Secrets | `EXTERNAL_SUPABASE_URL`, `EXTERNAL_SUPABASE_SERVICE_KEY` |
-| Connector | AWS S3 connector (write scope) |
+| `scheduled-backup-notify/index.ts` | Remove `extractHtmlReports()` and all HTML-related steps. Add new `buildDenormalizedReports()` that joins parent + child tables into per-report JSON files. Simplify email template. |
+| `sync-offsite-backup/index.ts` | No changes needed — it already syncs whatever is in the backup folder |
+| `DatabaseBackupsPanel.tsx` | Minor: remove any HTML report count references if displayed |
+| Email template | Simplified — no HTML report count/attachment logic, just JSON backup stats |
 
-## Setup Steps for You
+## Impact
 
-1. I'll prompt you to connect the AWS S3 connector (select your bucket, enable write access)
-2. I'll ask you to provide two secrets for your external Supabase project
-3. Your external Supabase project needs a storage bucket called `ropeworks-backups` (I'll provide the SQL to create it)
-4. Your S3 bucket needs CORS configured to allow uploads from the edge function (I'll provide the config)
+- Faster daily backups (no HTML extraction loop)
+- Smaller email attachments (just the gzipped JSON)
+- Smaller storage footprint per backup
+- External Supabase gets structured, queryable data instead of opaque HTML blobs
+- HTML reports can still be generated on-demand via existing edge functions when needed
 
