@@ -912,8 +912,11 @@ export default function TrainingForm() {
     // Skip internal/programmatic updates (initial load, server hydration, auto-populate)
     if (isInternalUpdateRef.current) return;
     
-    // Mark as having unsaved changes
-    setHasUnsavedChanges(true);
+    // Mark as having unsaved changes (ref-guarded to avoid redundant re-renders)
+    if (!hasUnsavedRef.current) {
+      hasUnsavedRef.current = true;
+      setHasUnsavedChanges(true);
+    }
     
     // Clear existing debounce timer
     if (saveDebounceTimerRef.current) {
