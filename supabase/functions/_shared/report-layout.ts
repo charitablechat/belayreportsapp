@@ -221,7 +221,7 @@ export const SHARED_PRINT_CSS = `
     
     @page {
       size: Letter;
-      margin: 0.5in 0.5in 0.7in 0.5in;
+      margin: 0.5in 0.35in 0.6in 0.35in;
     }
     
     html, body {
