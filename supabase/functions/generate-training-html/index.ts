@@ -321,7 +321,7 @@ serve(async (req) => {
     }
     
     .section {
-      margin-bottom: 25px;
+      margin-bottom: 14px;
     }
     .section-title {
       background: #1e40af;
