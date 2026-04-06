@@ -561,7 +561,7 @@ serve(async (req) => {
       /* Reserve space for content - prevents footer overlap */
       @page {
         size: letter portrait;
-        margin: 0.5in 0.5in 0.7in 0.5in;
+        margin: 0.4in 0.35in 0.6in 0.35in;
       }
 
       .page {
