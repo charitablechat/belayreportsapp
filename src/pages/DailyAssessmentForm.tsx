@@ -157,6 +157,7 @@ export default function DailyAssessmentForm() {
   }, [isCompletionLocked]);
 
   const isInternalUpdateRef = useRef(false);
+  const hasUnsavedRef = useRef(false);
 
   // Track which child data types loaded successfully (not from timeout fallback)
   const childDataLoadedRef = useRef<Record<string, boolean>>({
@@ -208,6 +209,7 @@ export default function DailyAssessmentForm() {
     }
     try {
       await handleSaveProgressRef.current?.();
+      hasUnsavedRef.current = false;
       setHasUnsavedChanges(false);
       console.log('[DailyAssessmentForm] Save-before-leave completed');
     } catch (e) {
@@ -361,8 +363,11 @@ export default function DailyAssessmentForm() {
     // Skip internal/programmatic updates (initial load, server hydration)
     if (isInternalUpdateRef.current) return;
     
-    // Mark as having unsaved changes
-    setHasUnsavedChanges(true);
+    // Mark as having unsaved changes (ref-guarded to avoid redundant re-renders)
+    if (!hasUnsavedRef.current) {
+      hasUnsavedRef.current = true;
+      setHasUnsavedChanges(true);
+    }
     
     // Clear existing debounce timer
     if (autoSaveTimerRef.current) {
@@ -582,7 +587,6 @@ export default function DailyAssessmentForm() {
   const handleUpdateAssessment = async (field: string, value: any) => {
     const updatedAssessment = { ...assessment, [field]: value, updated_at: new Date().toISOString() };
     setAssessment(updatedAssessment);
-    setHasUnsavedChanges(true);
     try {
       // Save offline first
       await saveDailyAssessmentOffline(updatedAssessment);
@@ -955,6 +959,7 @@ export default function DailyAssessmentForm() {
         }
       }
 
+      hasUnsavedRef.current = false;
       setHasUnsavedChanges(false);
       setLastSaved(new Date());
       setAssessment(updatedAssessment);
@@ -977,32 +982,26 @@ export default function DailyAssessmentForm() {
   // Wrapper handlers for data section updates
   const handleBeginningOfDayUpdate = useCallback((items: any[]) => {
     setBeginningOfDay(items);
-    setHasUnsavedChanges(true);
   }, []);
 
   const handleEndOfDayUpdate = useCallback((items: any[]) => {
     setEndOfDay(items);
-    setHasUnsavedChanges(true);
   }, []);
 
   const handleOperatingSystemsUpdate = useCallback((items: any[]) => {
     setOperatingSystems(items);
-    setHasUnsavedChanges(true);
   }, []);
 
   const handleEquipmentChecksUpdate = useCallback((items: any[]) => {
     setEquipmentChecks(items);
-    setHasUnsavedChanges(true);
   }, []);
 
   const handleStructureChecksUpdate = useCallback((items: any[]) => {
     setStructureChecks(items);
-    setHasUnsavedChanges(true);
   }, []);
 
   const handleEnvironmentChecksUpdate = useCallback((items: any[]) => {
     setEnvironmentChecks(items);
-    setHasUnsavedChanges(true);
   }, []);
 
   // Submit and complete the assessment

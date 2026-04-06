@@ -1,6 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
-import { VoiceInput } from "@/components/ui/voice-input";
+import { DebouncedVoiceInput } from "@/components/ui/debounced-voice-input";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
@@ -52,10 +52,10 @@ const TrainingSummarySection = React.memo(function TrainingSummarySection({ summ
           <p className="text-sm text-muted-foreground">
             The trainer listed on this report verifies the report is complete and ready for client submission on the following date.
           </p>
-          <VoiceInput
+          <DebouncedVoiceInput
             id="person_submitting"
             value={summary?.person_submitting || ''}
-            onChange={(e) => onUpdate('person_submitting', e.target.value)}
+            onChange={(value) => onUpdate('person_submitting', value)}
             placeholder="Enter name"
           />
         </div>

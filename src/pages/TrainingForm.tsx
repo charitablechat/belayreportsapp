@@ -154,6 +154,7 @@ export default function TrainingForm() {
   const autoSaveTimer = useRef<NodeJS.Timeout | null>(null);
   const isInternalUpdateRef = useRef(false);
   const summaryAutoPopulatedRef = useRef(false);
+  const hasUnsavedRef = useRef(false);
 
   // Track which child data types loaded successfully (not from timeout fallback)
   const childDataLoadedRef = useRef<Record<string, boolean>>({
@@ -208,6 +209,7 @@ export default function TrainingForm() {
     }
     try {
       await saveTrainingRef.current?.();
+      hasUnsavedRef.current = false;
       setHasUnsavedChanges(false);
       console.log('[TrainingForm] Save-before-leave completed');
     } catch (e) {
@@ -885,6 +887,7 @@ export default function TrainingForm() {
       }
 
       setLastSaved(new Date());
+      hasUnsavedRef.current = false;
       setHasUnsavedChanges(false);
     } catch (error) {
       console.error('[Training Save] Error saving training:', error);
@@ -911,8 +914,11 @@ export default function TrainingForm() {
     // Skip internal/programmatic updates (initial load, server hydration, auto-populate)
     if (isInternalUpdateRef.current) return;
     
-    // Mark as having unsaved changes
-    setHasUnsavedChanges(true);
+    // Mark as having unsaved changes (ref-guarded to avoid redundant re-renders)
+    if (!hasUnsavedRef.current) {
+      hasUnsavedRef.current = true;
+      setHasUnsavedChanges(true);
+    }
     
     // Clear existing debounce timer
     if (saveDebounceTimerRef.current) {
@@ -1289,12 +1295,10 @@ export default function TrainingForm() {
 
   const updateTrainingField = (field: string, value: any) => {
     setTraining({ ...training, [field]: value });
-    setHasUnsavedChanges(true);
   };
 
   const updateSummaryField = (field: string, value: any) => {
     setSummary({ ...summary, [field]: value });
-    setHasUnsavedChanges(true);
   };
 
   if (isLoading) {

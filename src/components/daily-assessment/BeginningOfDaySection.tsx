@@ -1,7 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
-import { VoiceTextarea } from "@/components/ui/voice-textarea";
+import { DebouncedVoiceTextarea } from "@/components/ui/debounced-voice-textarea";
 import { triggerHaptic } from "@/lib/haptics";
 
 const BEGINNING_OF_DAY_ITEMS = [
@@ -33,7 +33,6 @@ const BeginningOfDaySection = React.memo(function BeginningOfDaySection({ items,
           : i
       ));
     } else {
-      // Generate stable ID immediately when creating new item
       onUpdate([{ 
         id: crypto.randomUUID(),
         item_key: itemKey, 
@@ -54,7 +53,6 @@ const BeginningOfDaySection = React.memo(function BeginningOfDaySection({ items,
           : i
       ));
     } else {
-      // Generate stable ID immediately when creating new item
       onUpdate([{ 
         id: crypto.randomUUID(),
         item_key: itemKey, 
@@ -85,10 +83,10 @@ const BeginningOfDaySection = React.memo(function BeginningOfDaySection({ items,
                   {item.label}
                 </Label>
               </div>
-              <VoiceTextarea
+              <DebouncedVoiceTextarea
                 placeholder="Comments (optional)"
                 value={existingItem?.comments || ''}
-                onChange={(e) => handleCommentChange(item.key, e.target.value)}
+                onChange={(value) => handleCommentChange(item.key, value)}
                 className="text-sm"
                 rows={2}
               />
