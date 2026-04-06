@@ -650,8 +650,8 @@ serve(async (req) => {
     .info-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 18px 30px;
-      margin: 25px 0;
+      gap: 10px 20px;
+      margin: 14px 0;
       border: none;
     }
 
