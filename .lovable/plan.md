@@ -1,91 +1,75 @@
 
 
-# Batch PDF Generation with Incremental Nightly Sync
+# Fix PDF Backfill: Generate PDFs Instead of Just Copying
 
-## Overview
+## Problem
 
-Two-phase approach:
-1. **One-time backfill**: A new edge function generates PDFs for all existing completed reports and uploads them to a persistent `pdfs/` folder in the `database-backups` bucket.
-2. **Nightly incremental**: The daily backup only generates PDFs for reports completed **that day**, uploads them to the same `pdfs/` folder, and the off-site sync replicates new files.
+The current `generate-backup-pdfs` function only looks for **already-existing** PDFs in the `inspection-reports` bucket. Since PDFs are generated on-demand when users view reports (and none have been generated yet for most reports), the backfill found 0 PDFs to copy — returning `no_pdf: 24`.
 
-The key insight: PDFs live in a **persistent top-level folder** (`pdfs/inspections/`, `pdfs/trainings/`) rather than inside each `daily/{timestamp}/` folder. This way the off-site sync can check what already exists and only transfer new ones.
+## Root Cause
 
-## Architecture
+- Inspection PDFs are stored at `inspection-{org}-{timestamp}.pdf` in the `inspection-reports` bucket
+- Training PDFs are stored at `training-reports/training-report-{id}-{timestamp}.pdf`
+- The `inspection_reports` and `training_reports` database tables track these, but both are empty — no PDFs have ever been generated
+- The existing PDF generators (`generate-inspection-pdf`, `generate-training-pdf`) require a user JWT for auth + rate limiting, making them hard to call from a service-role context
 
-```text
-database-backups/
-├── pdfs/                          ← persistent, accumulates over time
-│   ├── inspections/
-│   │   ├── org_2026-01-15_abc.pdf
-│   │   └── org_2026-03-20_def.pdf
-│   └── trainings/
-│       └── org_2026-02-10_ghi.pdf
-├── daily/2026-04-06/              ← nightly snapshot
-│   ├── backup.json.gz
-│   ├── tables/
-│   ├── reports/
-│   └── manifest.json
-```
+## Solution
 
-## New Edge Function: `generate-backup-pdfs`
+Rewrite `generate-backup-pdfs` to **generate PDFs directly** using the same jsPDF logic from the existing generators, but running with service-role privileges (no user auth needed). This avoids the auth/rate-limit issues of calling the existing functions via HTTP.
 
-**Purpose**: Generates PDFs by calling existing `generate-inspection-pdf` and `generate-training-pdf` internally, then saves to `pdfs/{type}/{filename}.pdf` in the `database-backups` bucket.
+Specifically:
+1. Import the same shared utilities (`training-formatter.ts`, `report-layout.ts`) used by the existing generators
+2. For each completed report, fetch data directly with the service-role client, generate the PDF in-memory using jsPDF, and upload directly to `database-backups/pdfs/{type}/{filename}.pdf`
+3. Skip the `inspection-reports` bucket entirely — write straight to the backup bucket
 
-**Modes**:
-- `backfill` — Process ALL completed reports (one-time use). Processes in batches of 3 concurrent to stay within timeout.
-- `incremental` — Only process reports where `updated_at` falls within the last 24 hours and status is `completed`. This is what the nightly backup calls.
+## Why not call the existing generators via HTTP?
 
-**Logic**:
-1. Query completed inspections/trainings (filtered by date in incremental mode)
-2. For each report, check if `pdfs/{type}/{org}_{date}_{id}.pdf` already exists in storage — skip if so
-3. Call the existing PDF generator via internal HTTP (`fetch` to same Supabase instance with service role key)
-4. The existing generators save PDFs to `inspection-reports` bucket — download from there
-5. Re-upload to `database-backups/pdfs/{type}/{filename}.pdf`
-6. Return summary (generated count, skipped count, errors)
+- They require a real user JWT (not service-role)
+- They have rate limiting (10/hour per user)
+- They save to `inspection-reports` bucket and create DB records — we don't want side effects
+- Calling 24+ functions sequentially via HTTP would likely timeout
 
-## Changes to Nightly Backup
-
-**File: `scheduled-backup-notify/index.ts`**
-
-Add a new step between denormalized reports (Step 3) and the combined backup (Step 4):
-
-- Call `generate-backup-pdfs` with `{ mode: "incremental" }`
-- Log how many new PDFs were generated
-- Include PDF stats in the manifest and email
-
-## Off-Site Sync Enhancement
-
-**File: `sync-offsite-backup/index.ts`**
-
-Currently syncs only `daily/{timestamp}/` folder. Add a second sync pass for the `pdfs/` folder:
-- List all files in source `pdfs/` folder
-- List all files in external `pdfs/` folder  
-- Only upload files that don't exist externally (idempotent skip)
-- This naturally handles the incremental model — new PDFs appear, old ones are already synced
-
-## Config
-
-**File: `supabase/config.toml`**
-
-Add `[functions.generate-backup-pdfs]` with `verify_jwt = false` (called internally by service role).
-
-## Email Template Update
-
-Add a "PDFs Generated" stat to the backup notification showing how many new PDFs were created that night.
-
-## Summary of Changes
+## Technical Changes
 
 | File | Change |
 |------|--------|
-| `supabase/functions/generate-backup-pdfs/index.ts` | **New** — orchestrator with backfill/incremental modes |
-| `supabase/functions/scheduled-backup-notify/index.ts` | Add Step 3.5: call `generate-backup-pdfs` in incremental mode |
-| `supabase/functions/sync-offsite-backup/index.ts` | Add second sync pass for persistent `pdfs/` folder |
-| `supabase/config.toml` | Add function config entry |
-| `supabase/functions/_shared/transactional-email-templates/backup-notification.tsx` | Add PDF count stat |
+| `supabase/functions/generate-backup-pdfs/index.ts` | Rewrite to inline the PDF generation logic (import jsPDF, fetch data with service role, generate PDF, upload to backup bucket) |
 
-## Usage
+The function will:
+1. Query all completed inspections and trainings (or just recent ones in incremental mode)
+2. For each, fetch the full data (inspection + systems + equipment + standards + photos, or training + formatter)
+3. Generate the PDF using jsPDF (reusing the same layout logic from the existing generators)
+4. Upload to `database-backups/pdfs/inspections/{org}_{date}_{id}.pdf` or `pdfs/trainings/...`
+5. Skip if the file already exists in the backup bucket
 
-1. **First time**: Manually trigger `generate-backup-pdfs` with `{ mode: "backfill" }` to generate all historical PDFs
-2. **Every night**: The daily backup automatically calls it with `{ mode: "incremental" }` — only new reports get PDFs
-3. **Off-site sync**: Automatically replicates the persistent `pdfs/` folder, skipping already-synced files
+## Complexity Note
+
+The inspection PDF generator is ~800 lines and the training one is ~750 lines. Rather than duplicating all that, the function will call the existing generators via internal HTTP **but with a bypass**: we'll modify the generators to accept a service-role key as auth (checking if the caller is service-role and skipping rate limiting). This is a much smaller change.
+
+## Revised Approach (Minimal Changes)
+
+**Option chosen**: Modify `generate-inspection-pdf` and `generate-training-pdf` to accept service-role auth (skip rate limiting + user check when called with service role key), then have `generate-backup-pdfs` call them via internal HTTP with the service role key.
+
+| File | Change |
+|------|--------|
+| `generate-inspection-pdf/index.ts` | Add service-role auth bypass: if Authorization header contains the service role key, skip user auth and rate limiting |
+| `generate-training-pdf/index.ts` | Same service-role auth bypass |
+| `generate-backup-pdfs/index.ts` | Rewrite to call the PDF generators via internal `fetch()`, download the generated PDF from `inspection-reports` bucket, re-upload to `database-backups/pdfs/`, then clean up the temp file from `inspection-reports` |
+
+## Flow
+
+```text
+generate-backup-pdfs (backfill)
+  → for each completed inspection:
+      → POST generate-inspection-pdf { inspectionId } with service-role auth
+      → PDF saved to inspection-reports/{filename}
+      → Download from inspection-reports
+      → Upload to database-backups/pdfs/inspections/{org}_{date}_{id}.pdf
+      → Delete temp file from inspection-reports (cleanup)
+  → for each completed training:
+      → POST generate-training-pdf { trainingId } with service-role auth
+      → same download/upload/cleanup flow
+```
+
+After backfill completes, trigger `sync-offsite-backup` with `pdfs` folder to replicate to external Supabase.
 
