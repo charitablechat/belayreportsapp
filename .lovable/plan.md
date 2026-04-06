@@ -1,49 +1,55 @@
 
 
-# Add Daily Assessments to Backup PDF Pipeline
+# Report Deletion Investigation — Findings and Fixes
 
-## Problem
-The `generate-backup-pdfs` orchestrator only processes inspections and trainings. Completed daily assessments are missing from the rendered-report backups.
+## Current State
 
-## Approach
-Use the existing `generate-daily-assessment-html` function to produce self-contained HTML reports (with embedded Base64 photos and inline CSS) and store them alongside the PDFs. These HTML files are fully portable — openable and printable from any browser, even offline.
+Report deletion **does work** for authenticated owners while online. The flow is:
+1. User clicks Delete on a report card → confirmation dialog opens
+2. On confirm, Dashboard calls `supabase.from(table).update({ deleted_at, deleted_by, retention_until })` with `.eq('id', reportId)`
+3. RLS UPDATE policies for all three tables allow owners to update their own records (no `deleted_at IS NULL` restriction in the USING clause)
 
-No new PDF generator needs to be built. The HTML output is functionally equivalent for backup/archival purposes.
+**No RLS blocker exists.** Owners can soft-delete their own inspections, trainings, and daily assessments.
 
-## Technical Changes
+## Issues Found
+
+### 1. Training deletion fails offline (inconsistency)
+**Severity: Medium**
+
+Inspections and daily assessments show a success message when deleted offline. Trainings show an **error toast** ("Cannot delete training while offline") and abort. This is confusing and inconsistent.
+
+**Fix:** Handle offline training deletion the same way as daily assessments — remove from local storage and show a "will be deleted when online" message.
+
+### 2. Misleading "cannot be undone" dialog text
+**Severity: Low**
+
+The delete confirmation says *"This action cannot be undone"* — but soft-delete **is** recoverable within 60 days by an admin. The message should reflect this.
+
+**Fix:** Change to *"This report will be moved to trash and permanently deleted after 60 days."*
+
+### 3. Daily assessment offline deletion doesn't actually queue the operation
+**Severity: Medium**
+
+For inspections, the offline path calls `queueOperation('update', ...)` to sync the soft-delete later. For daily assessments, it just shows a success toast **without** queueing. The report is removed from IndexedDB but the server record remains active — it will reappear on next sync.
+
+**Fix:** Add `queueOperation` call for daily assessments (same pattern as inspections).
+
+### 4. No ownership guard on the delete button
+**Severity: Low**
+
+The delete button in `ReportCard` is always visible. If an admin is viewing someone else's report, they can trigger deletion. The soft-delete sets `deleted_by` to the admin's ID, so it's auditable, but there's no visual distinction or confirmation that you're deleting someone else's report.
+
+**Fix:** Optional — add a warning in the confirmation dialog when `inspector_id !== currentUserId`.
+
+## Compatibility with Backup Pipeline
+
+The backup pipeline (`generate-backup-pdfs`, `sync-offsite-backup`) already filters for `deleted_at IS NULL` when querying reports. Soft-deleted reports are excluded from future backups. Previously generated PDFs/HTMLs in the persistent `pdfs/` folder remain in storage (they are not cleaned up when a report is soft-deleted) — this is correct behavior for archival purposes.
+
+No changes needed for backup compatibility.
+
+## Summary of Changes
 
 | File | Change |
 |------|--------|
-| `supabase/functions/generate-daily-assessment-html/index.ts` | Add service-role auth bypass (same pattern as inspection/training PDF generators) |
-| `supabase/functions/generate-backup-pdfs/index.ts` | Add daily assessment query + job type; call `generate-daily-assessment-html` with service-role auth; download the HTML from `inspection-reports` bucket; upload to `database-backups/pdfs/daily-assessments/{org}_{date}_{id}.html` |
-
-## Changes in Detail
-
-**1. `generate-daily-assessment-html/index.ts`** — Add ~10 lines near the auth section:
-- Check if the Bearer token matches `SUPABASE_SERVICE_ROLE_KEY`
-- If so, skip user auth and proceed directly (same pattern already used in the inspection/training PDF generators)
-
-**2. `generate-backup-pdfs/index.ts`**:
-- Add a third query for `daily_assessments` table (status = completed, deleted_at is null, with incremental date filter)
-- Add `"daily_assessment"` to the Job type union
-- For daily assessment jobs, call `generate-daily-assessment-html` with `{ assessmentId: job.id }`
-- The HTML generator uploads to `inspection-reports` bucket and returns `{ htmlUrl }` — download from there
-- Upload to `database-backups/pdfs/daily-assessments/{org}_{date}_{id}.html`
-- Storage path uses `pdfs/daily-assessments/` to keep it alongside inspection/training PDFs
-
-## Storage Layout After Change
-
-```text
-database-backups/
-├── pdfs/
-│   ├── inspections/     ← PDF files
-│   ├── trainings/       ← PDF files
-│   └── daily-assessments/ ← HTML files (self-contained, print-ready)
-```
-
-## Off-Site Sync
-No changes needed — `sync-offsite-backup` already syncs everything under `pdfs/` recursively, so daily assessment HTML files will be picked up automatically.
-
-## Backfill
-After deploying, run `generate-backup-pdfs` with `{ "mode": "backfill" }` once more to pick up all historical daily assessments. Existing inspection/training PDFs will be skipped (already present).
+| `src/pages/Dashboard.tsx` | Fix offline training deletion (queue instead of error); fix offline daily assessment deletion (add queueOperation); update dialog text to reflect 60-day retention |
 
