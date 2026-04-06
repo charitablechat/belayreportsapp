@@ -204,7 +204,7 @@ serve(async (req) => {
     :root {
       --pdf-header-h: 85px;
       --pdf-footer-h: 80px;
-      --page-padding: 0.25in;
+      --page-padding: 0.2in;
     }
     
     * {
