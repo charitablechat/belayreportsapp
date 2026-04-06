@@ -564,6 +564,33 @@ serve(async (req) => {
         page-break-inside: avoid;
       }
 
+      /* CRITICAL: Preserve summary bullet markers in print/PDF */
+      .summary-list {
+        list-style-type: disc !important;
+        list-style-position: outside !important;
+        padding-left: 24px !important;
+        display: block !important;
+      }
+      .summary-list li {
+        display: list-item !important;
+        list-style-type: disc !important;
+        background: none !important;
+        border-left: none !important;
+        padding: 4px 0 !important;
+        margin-bottom: 6px !important;
+        line-height: 1.5 !important;
+      }
+      .trainee-names-list {
+        list-style-type: disc !important;
+        padding-left: 20px !important;
+      }
+      .trainee-names-list li {
+        display: list-item !important;
+        list-style-type: disc !important;
+        background: none !important;
+        border-left: none !important;
+      }
+
       .info-grid,
       .standards-box,
       .disclaimer {
