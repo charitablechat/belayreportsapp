@@ -982,32 +982,26 @@ export default function DailyAssessmentForm() {
   // Wrapper handlers for data section updates
   const handleBeginningOfDayUpdate = useCallback((items: any[]) => {
     setBeginningOfDay(items);
-    setHasUnsavedChanges(true);
   }, []);
 
   const handleEndOfDayUpdate = useCallback((items: any[]) => {
     setEndOfDay(items);
-    setHasUnsavedChanges(true);
   }, []);
 
   const handleOperatingSystemsUpdate = useCallback((items: any[]) => {
     setOperatingSystems(items);
-    setHasUnsavedChanges(true);
   }, []);
 
   const handleEquipmentChecksUpdate = useCallback((items: any[]) => {
     setEquipmentChecks(items);
-    setHasUnsavedChanges(true);
   }, []);
 
   const handleStructureChecksUpdate = useCallback((items: any[]) => {
     setStructureChecks(items);
-    setHasUnsavedChanges(true);
   }, []);
 
   const handleEnvironmentChecksUpdate = useCallback((items: any[]) => {
     setEnvironmentChecks(items);
-    setHasUnsavedChanges(true);
   }, []);
 
   // Submit and complete the assessment
