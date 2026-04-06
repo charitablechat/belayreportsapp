@@ -619,6 +619,7 @@ Deno.serve(async (req) => {
       failedTables,
       denormalizedReports: denormalizedReports.length,
       photoBackup: photoBackupResult,
+      pdfBackup: pdfBackupResult,
       offsiteSync: offsiteSyncResult?.external_supabase ? {
         success: offsiteSyncResult.external_supabase.success,
         files_synced: offsiteSyncResult.external_supabase.files_synced,

@@ -14,6 +14,7 @@ interface BackupNotificationProps {
   downloadUrl?: string
   tableCount?: number
   denormalizedReports?: number
+  pdfsGenerated?: number
 }
 
 const BackupNotificationEmail = ({
