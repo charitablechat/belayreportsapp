@@ -326,10 +326,10 @@ serve(async (req) => {
     .section-title {
       background: #1e40af;
       color: white;
-      padding: 12px 20px;
+      padding: 8px 14px;
       font-size: 18px;
       font-weight: 600;
-      margin-bottom: 15px;
+      margin-bottom: 8px;
       border-radius: 4px;
     }
     .standards-box {
