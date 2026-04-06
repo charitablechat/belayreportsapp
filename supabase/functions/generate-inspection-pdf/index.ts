@@ -82,10 +82,12 @@ serve(async (req) => {
 
     if (inspectionError) throw inspectionError;
 
-    // Authorization check
-    const isSuperAdmin = await supabase.from('user_roles').select('role').eq('user_id', user.id).eq('role', 'admin').single();
-    if (!isSuperAdmin.data && inspection.inspector_id !== user.id) {
-      throw new Error('Unauthorized to generate this report');
+    // Authorization check (skip for service-role callers)
+    if (!isServiceRole) {
+      const isSuperAdmin = await supabase.from('user_roles').select('role').eq('user_id', user.id).eq('role', 'admin').single();
+      if (!isSuperAdmin.data && inspection.inspector_id !== user.id) {
+        throw new Error('Unauthorized to generate this report');
+      }
     }
 
     // Fetch the inspector profile using the inspection's inspector_id (not current user)

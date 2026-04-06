@@ -65,16 +65,18 @@ serve(async (req) => {
     // Fetch training data using shared formatter
     const trainingData = await fetchTrainingData(trainingId, supabaseAdmin);
     
-    // Authorization check
-    if (trainingData.training.inspector_id !== user.id) {
-      const { data: roles } = await supabaseAdmin
-        .from('user_roles')
-        .select('role')
-        .eq('user_id', user.id);
-      
-      const isSuperAdmin = roles?.some(r => r.role === 'admin');
-      if (!isSuperAdmin) {
-        throw new Error('Unauthorized to generate this report');
+    // Authorization check (skip for service-role callers)
+    if (!isServiceRole) {
+      if (trainingData.training.inspector_id !== user.id) {
+        const { data: roles } = await supabaseAdmin
+          .from('user_roles')
+          .select('role')
+          .eq('user_id', user.id);
+        
+        const isSuperAdmin = roles?.some(r => r.role === 'admin');
+        if (!isSuperAdmin) {
+          throw new Error('Unauthorized to generate this report');
+        }
       }
     }
 
