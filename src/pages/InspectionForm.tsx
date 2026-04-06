@@ -1338,6 +1338,10 @@ export default function InspectionForm() {
         const offlineId = getOfflineUserId();
         if (offlineId) user = { id: offlineId } as any;
       }
+      if (!user && navigator.onLine) {
+        // Token may have expired — attempt session refresh before giving up
+        user = await ensureValidSession();
+      }
       if (!user) {
         throw new Error('User not authenticated');
       }
