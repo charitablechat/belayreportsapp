@@ -256,8 +256,8 @@ serve(async (req) => {
     }
     
     .page-footer {
-      margin-top: 30px;
-      padding-top: 15px;
+      margin-top: 12px;
+      padding-top: 10px;
     }
     
     /* Footer logo row - same line, left/right alignment */
