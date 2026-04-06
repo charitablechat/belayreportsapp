@@ -586,7 +586,6 @@ export default function DailyAssessmentForm() {
   const handleUpdateAssessment = async (field: string, value: any) => {
     const updatedAssessment = { ...assessment, [field]: value, updated_at: new Date().toISOString() };
     setAssessment(updatedAssessment);
-    setHasUnsavedChanges(true);
     try {
       // Save offline first
       await saveDailyAssessmentOffline(updatedAssessment);
