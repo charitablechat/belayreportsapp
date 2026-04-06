@@ -348,7 +348,7 @@ serve(async (req) => {
       margin-bottom: 10px;
     }
     .info-item {
-      padding: 10px;
+      padding: 8px;
       background: #c2c2c2;
       border-left: 3px solid #1e40af;
     }
