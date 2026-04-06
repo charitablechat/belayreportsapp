@@ -1,55 +1,55 @@
 
 
-# Report Deletion Investigation — Findings and Fixes
+# Fix "User not authenticated" Error on Inspection Form Save
 
-## Current State
+## Root Cause
 
-Report deletion **does work** for authenticated owners while online. The flow is:
-1. User clicks Delete on a report card → confirmation dialog opens
-2. On confirm, Dashboard calls `supabase.from(table).update({ deleted_at, deleted_by, retention_until })` with `.eq('id', reportId)`
-3. RLS UPDATE policies for all three tables allow owners to update their own records (no `deleted_at IS NULL` restriction in the USING clause)
+The `performSave` function in `InspectionForm.tsx` (line 1336) uses `getUserWithCache()` to check auth. This function:
+1. Returns cached user if in-memory cache is fresh (< 60s)
+2. Falls back to localStorage session — but **rejects expired tokens when online**
+3. Falls back to network `getUser()` with an 8s timeout
 
-**No RLS blocker exists.** Owners can soft-delete their own inspections, trainings, and daily assessments.
+If the session token has expired and the network call is slow or fails, `getUserWithCache()` returns `null`. The code then checks `getOfflineUserId()` but only when `!navigator.onLine` — so an online user with an expired token gets `'User not authenticated'`.
 
-## Issues Found
+Meanwhile, `ensureValidSession()` exists specifically to handle this: it calls `supabase.auth.refreshSession()` to get a fresh token. But `performSave` never calls it.
 
-### 1. Training deletion fails offline (inconsistency)
-**Severity: Medium**
+## Fix
 
-Inspections and daily assessments show a success message when deleted offline. Trainings show an **error toast** ("Cannot delete training while offline") and abort. This is confusing and inconsistent.
-
-**Fix:** Handle offline training deletion the same way as daily assessments — remove from local storage and show a "will be deleted when online" message.
-
-### 2. Misleading "cannot be undone" dialog text
-**Severity: Low**
-
-The delete confirmation says *"This action cannot be undone"* — but soft-delete **is** recoverable within 60 days by an admin. The message should reflect this.
-
-**Fix:** Change to *"This report will be moved to trash and permanently deleted after 60 days."*
-
-### 3. Daily assessment offline deletion doesn't actually queue the operation
-**Severity: Medium**
-
-For inspections, the offline path calls `queueOperation('update', ...)` to sync the soft-delete later. For daily assessments, it just shows a success toast **without** queueing. The report is removed from IndexedDB but the server record remains active — it will reappear on next sync.
-
-**Fix:** Add `queueOperation` call for daily assessments (same pattern as inspections).
-
-### 4. No ownership guard on the delete button
-**Severity: Low**
-
-The delete button in `ReportCard` is always visible. If an admin is viewing someone else's report, they can trigger deletion. The soft-delete sets `deleted_by` to the admin's ID, so it's auditable, but there's no visual distinction or confirmation that you're deleting someone else's report.
-
-**Fix:** Optional — add a warning in the confirmation dialog when `inspector_id !== currentUserId`.
-
-## Compatibility with Backup Pipeline
-
-The backup pipeline (`generate-backup-pdfs`, `sync-offsite-backup`) already filters for `deleted_at IS NULL` when querying reports. Soft-deleted reports are excluded from future backups. Previously generated PDFs/HTMLs in the persistent `pdfs/` folder remain in storage (they are not cleaned up when a report is soft-deleted) — this is correct behavior for archival purposes.
-
-No changes needed for backup compatibility.
-
-## Summary of Changes
+In `performSave`, replace the current auth check with a cascade that tries `ensureValidSession()` before giving up:
 
 | File | Change |
 |------|--------|
-| `src/pages/Dashboard.tsx` | Fix offline training deletion (queue instead of error); fix offline daily assessment deletion (add queueOperation); update dialog text to reflect 60-day retention |
+| `src/pages/InspectionForm.tsx` | In `performSave` (~line 1336), after `getUserWithCache()` returns null while online, attempt `ensureValidSession()` before throwing. This refreshes the token and recovers the session. |
+
+### Current code (lines 1335-1343):
+```typescript
+let user = await getUserWithCache();
+if (!user && !navigator.onLine) {
+  const offlineId = getOfflineUserId();
+  if (offlineId) user = { id: offlineId } as any;
+}
+if (!user) {
+  throw new Error('User not authenticated');
+}
+```
+
+### Fixed code:
+```typescript
+let user = await getUserWithCache();
+if (!user && !navigator.onLine) {
+  const offlineId = getOfflineUserId();
+  if (offlineId) user = { id: offlineId } as any;
+}
+if (!user && navigator.onLine) {
+  // Token may have expired — attempt session refresh before giving up
+  user = await ensureValidSession();
+}
+if (!user) {
+  throw new Error('User not authenticated');
+}
+```
+
+This adds one extra recovery step. If the token expired but the refresh token is still valid (which it is for 30+ days), `ensureValidSession()` will refresh the session and return the user. The error will only appear if the user is genuinely signed out.
+
+The `ensureValidSession` import already exists in other files but needs to be added to `InspectionForm.tsx`'s import from `cached-auth`.
 
