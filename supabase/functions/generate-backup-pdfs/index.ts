@@ -6,12 +6,11 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
-const CONCURRENCY = 3;
+const CONCURRENCY = 2; // Keep low to avoid timeouts on PDF generation
 
 interface PdfResult {
   generated: number;
   skipped: number;
-  no_pdf: number;
   errors: number;
   error_details: string[];
 }
@@ -21,28 +20,6 @@ function sanitizeFilename(str: string): string {
     .replace(/[^a-zA-Z0-9_\- ]/g, "")
     .replace(/\s+/g, "-")
     .substring(0, 60);
-}
-
-/**
- * Find a training PDF file path in storage by training ID.
- * Training PDFs are stored as `training-reports/training-report-{id}-{timestamp}.pdf`
- * in the `inspection-reports` bucket.
- */
-async function findTrainingPdfPath(
-  adminClient: any,
-  trainingId: string,
-): Promise<string | null> {
-  const { data: files } = await adminClient.storage
-    .from("inspection-reports")
-    .list("training-reports", { limit: 100, search: `training-report-${trainingId}` });
-
-  if (!files || files.length === 0) return null;
-
-  const match = files.find((f: any) =>
-    f.name.startsWith(`training-report-${trainingId}-`) && f.name.endsWith(".pdf")
-  );
-
-  return match ? `training-reports/${match.name}` : null;
 }
 
 Deno.serve(async (req) => {
@@ -56,14 +33,13 @@ Deno.serve(async (req) => {
     const adminClient = createClient(supabaseUrl, serviceRoleKey);
 
     const body = await req.json();
-    const mode = body.mode || "incremental"; // "backfill" or "incremental"
+    const mode = body.mode || "incremental";
 
     console.log(`[generate-backup-pdfs] Mode: ${mode}`);
 
     const result: PdfResult = {
       generated: 0,
       skipped: 0,
-      no_pdf: 0,
       errors: 0,
       error_details: [],
     };
@@ -76,7 +52,7 @@ Deno.serve(async (req) => {
       .is("deleted_at", null);
 
     if (mode === "incremental") {
-      const cutoff = new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString(); // 25h for safety
+      const cutoff = new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString();
       inspectionQuery = inspectionQuery.gte("updated_at", cutoff);
     }
 
@@ -96,50 +72,31 @@ Deno.serve(async (req) => {
 
     const { data: trainings } = await trainingQuery;
 
-    // ── Get existing inspection PDF file paths from inspection_reports table ──
-    const inspectionIds = (inspections || []).map((i: any) => i.id);
-    const { data: inspectionReports } =
-      inspectionIds.length > 0
-        ? await adminClient
-            .from("inspection_reports")
-            .select("inspection_id, pdf_url")
-            .in("inspection_id", inspectionIds)
-        : { data: [] };
-
-    // inspection_reports.pdf_url stores the storage file path (e.g. "inspection-OrgName-123.pdf")
-    const inspectionPdfMap = new Map(
-      (inspectionReports || []).map((r: any) => [r.inspection_id, r.pdf_url]),
-    );
-
     // ── Build job list ──
-    interface CopyJob {
-      type: "inspections" | "trainings";
+    interface Job {
+      type: "inspection" | "training";
       id: string;
       org: string;
       date: string;
-      storagePath: string | null; // path in inspection-reports bucket
     }
 
-    const jobs: CopyJob[] = [];
+    const jobs: Job[] = [];
 
     for (const insp of inspections || []) {
       jobs.push({
-        type: "inspections",
+        type: "inspection",
         id: insp.id,
         org: insp.organization,
         date: insp.inspection_date,
-        storagePath: inspectionPdfMap.get(insp.id) || null,
       });
     }
 
     for (const tr of trainings || []) {
-      // Training pdf_url stores a signed URL (useless), so we find the file by listing storage
       jobs.push({
-        type: "trainings",
+        type: "training",
         id: tr.id,
         org: tr.organization,
         date: tr.start_date,
-        storagePath: null, // resolved per-job below
       });
     }
 
@@ -155,49 +112,95 @@ Deno.serve(async (req) => {
         batch.map(async (job) => {
           const org = sanitizeFilename(job.org || "Unknown");
           const idPrefix = job.id.substring(0, 8);
+          const folder = job.type === "inspection" ? "inspections" : "trainings";
           const destFilename = `${org}_${job.date}_${idPrefix}.pdf`;
-          const destPath = `pdfs/${job.type}/${destFilename}`;
+          const destPath = `pdfs/${folder}/${destFilename}`;
 
           try {
             // Check if already exists in backup bucket
             const { data: existing } = await adminClient.storage
               .from("database-backups")
-              .list(`pdfs/${job.type}`, {
-                limit: 1,
-                search: destFilename,
-              });
+              .list(`pdfs/${folder}`, { limit: 1, search: destFilename });
 
-            if (
-              existing &&
-              existing.some((f: any) => f.name === destFilename)
-            ) {
+            if (existing && existing.some((f: any) => f.name === destFilename)) {
               result.skipped++;
               return;
             }
 
-            // Resolve storage path for trainings
-            let sourcePath = job.storagePath;
-            if (job.type === "trainings" && !sourcePath) {
-              sourcePath = await findTrainingPdfPath(adminClient, job.id);
+            // ── Step 1: Call the PDF generator with service-role auth ──
+            const functionName = job.type === "inspection"
+              ? "generate-inspection-pdf"
+              : "generate-training-pdf";
+
+            const bodyPayload = job.type === "inspection"
+              ? { inspectionId: job.id }
+              : { trainingId: job.id };
+
+            console.log(`[generate-backup-pdfs] Generating ${job.type} PDF for ${job.id}...`);
+
+            const genRes = await fetch(
+              `${supabaseUrl}/functions/v1/${functionName}`,
+              {
+                method: "POST",
+                headers: {
+                  "Authorization": `Bearer ${serviceRoleKey}`,
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify(bodyPayload),
+              },
+            );
+
+            if (!genRes.ok) {
+              const errText = await genRes.text();
+              throw new Error(`Generator returned ${genRes.status}: ${errText.substring(0, 200)}`);
+            }
+
+            const genData = await genRes.json();
+
+            // ── Step 2: Find the generated PDF in inspection-reports bucket ──
+            // The generators save with patterns like:
+            //   inspection: "inspection-{org}-{timestamp}.pdf" or via inspection_reports table
+            //   training: "training-reports/training-report-{id}-{timestamp}.pdf"
+            let sourcePath: string | null = null;
+
+            if (job.type === "inspection") {
+              // Check inspection_reports table for the file path
+              const { data: reportRow } = await adminClient
+                .from("inspection_reports")
+                .select("pdf_url")
+                .eq("inspection_id", job.id)
+                .maybeSingle();
+
+              sourcePath = reportRow?.pdf_url || null;
+            } else {
+              // Training: search in training-reports folder
+              const { data: files } = await adminClient.storage
+                .from("inspection-reports")
+                .list("training-reports", {
+                  limit: 10,
+                  search: `training-report-${job.id}`,
+                });
+
+              const match = files?.find((f: any) =>
+                f.name.startsWith(`training-report-${job.id}`) && f.name.endsWith(".pdf")
+              );
+              sourcePath = match ? `training-reports/${match.name}` : null;
             }
 
             if (!sourcePath) {
-              result.no_pdf++;
-              return;
+              throw new Error("PDF generated but could not find file in storage");
             }
 
-            // Download from inspection-reports bucket
+            // ── Step 3: Download from inspection-reports ──
             const { data: blob, error: dlErr } = await adminClient.storage
               .from("inspection-reports")
               .download(sourcePath);
 
             if (dlErr || !blob) {
-              throw new Error(
-                `Download failed: ${dlErr?.message || "no data"}`,
-              );
+              throw new Error(`Download failed: ${dlErr?.message || "no data"}`);
             }
 
-            // Upload to database-backups/pdfs/
+            // ── Step 4: Upload to database-backups/pdfs/ ──
             const { error: upErr } = await adminClient.storage
               .from("database-backups")
               .upload(destPath, blob, {
@@ -206,24 +209,24 @@ Deno.serve(async (req) => {
               });
 
             if (upErr) {
-              throw new Error(`Upload failed: ${upErr.message}`);
+              throw new Error(`Upload to backup failed: ${upErr.message}`);
             }
 
             result.generated++;
+            console.log(`[generate-backup-pdfs] ✓ ${destPath}`);
           } catch (err: any) {
             result.errors++;
             if (result.error_details.length < 10) {
-              result.error_details.push(
-                `${job.type}/${job.id}: ${err.message}`,
-              );
+              result.error_details.push(`${job.type}/${job.id}: ${err.message}`);
             }
+            console.error(`[generate-backup-pdfs] ✗ ${job.type}/${job.id}: ${err.message}`);
           }
         }),
       );
     }
 
     console.log(
-      `[generate-backup-pdfs] Done: generated=${result.generated}, skipped=${result.skipped}, no_pdf=${result.no_pdf}, errors=${result.errors}`,
+      `[generate-backup-pdfs] Done: generated=${result.generated}, skipped=${result.skipped}, errors=${result.errors}`,
     );
 
     return new Response(JSON.stringify(result), {
