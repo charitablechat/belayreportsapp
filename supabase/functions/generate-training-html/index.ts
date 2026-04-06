@@ -334,12 +334,12 @@ serve(async (req) => {
     }
     .standards-box {
       background: #dbeafe;
-      padding: 15px;
+      padding: 10px;
       border-radius: 4px;
-      margin-bottom: 25px;
+      margin-bottom: 14px;
       color: #1e40af;
       font-size: 14px;
-      line-height: 1.6;
+      line-height: 1.5;
     }
     .info-grid {
       display: grid;
