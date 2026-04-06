@@ -130,19 +130,13 @@ export const SHARED_HEADER_FOOTER_CSS = `
      * ============================
      * HEADER: Both logos on same line (LEFT: Rope Works, RIGHT: ACCT)
      * FOOTER: NO logos - only page number and disclaimer text
-     * 
-     * PDF LAYOUT VARIABLES:
-     * --pdf-header-h: Reserved space for fixed header
-     * --pdf-footer-h: Reserved space for fixed footer
      */
     :root {
-      /* Hard cap: logos NEVER exceed 35px in any report (HTML + PDF) */
       --report-logo-max-h: 35px;
       --pdf-header-h: 55px;
       --pdf-footer-h: 70px;
     }
     
-    /* HEADER STYLES - Both logos on same line using TABLE layout for PDF reliability */
     .page-header {
       padding: 8px 0;
       border-bottom: 2px solid #1e40af;
@@ -153,7 +147,6 @@ export const SHARED_HEADER_FOOTER_CSS = `
       max-height: 50px;
     }
 
-    /* Table layout forces single row - more reliable than flexbox in PDF */
     .header-logo-table {
       width: 100%;
       table-layout: fixed;
@@ -172,7 +165,6 @@ export const SHARED_HEADER_FOOTER_CSS = `
       width: 50%;
     }
 
-    /* Hard-capped logo sizing: max 35px for both logos, all reports */
     .header-logo-left,
     .header-logo-right {
       height: auto !important;
@@ -183,13 +175,12 @@ export const SHARED_HEADER_FOOTER_CSS = `
       display: block;
     }
     
-    /* FOOTER STYLES - NO LOGOS, only disclaimer */
     .page-footer {
-      margin-top: 20px;
+      margin-top: 12px;
       font-size: 9pt;
       color: #666;
       position: relative;
-      padding-top: 10px;
+      padding-top: 8px;
     }
 
     .page-number {
@@ -197,17 +188,17 @@ export const SHARED_HEADER_FOOTER_CSS = `
       font-weight: normal;
       font-size: 9pt;
       color: #333;
-      margin-bottom: 4px;
+      margin-bottom: 3px;
     }
 
     .footer-line {
       border-top: 1px solid #000;
-      margin-bottom: 8px;
+      margin-bottom: 6px;
     }
 
     .footer-disclaimer {
       text-align: center;
-      line-height: 1.5;
+      line-height: 1.3;
       font-size: 8.5pt;
       margin: 0 auto;
     }
