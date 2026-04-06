@@ -303,8 +303,8 @@ export const SHARED_PRINT_CSS = `
     .page-footer {
       display: block !important;
       visibility: visible !important;
-      margin-top: 15px !important;
-      padding-top: 10px !important;
+      margin-top: 12px !important;
+      padding-top: 8px !important;
       page-break-inside: avoid !important;
     }
     
