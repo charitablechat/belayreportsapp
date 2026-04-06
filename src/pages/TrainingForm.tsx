@@ -9,7 +9,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { goBack } from "@/lib/navigation";
 import { emitSyncComplete, markPendingDashboardRefresh, markDashboardStaleTimestamp } from "@/lib/sync-events";
 import { supabase } from "@/integrations/supabase/client";
-import { getUserWithCache, getOfflineUserId } from "@/lib/cached-auth";
+import { getUserWithCache, getOfflineUserId, ensureValidSession } from "@/lib/cached-auth";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
