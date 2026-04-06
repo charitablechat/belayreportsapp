@@ -539,6 +539,12 @@ Deno.serve(async (req) => {
         timed_out: photoBackupResult.timed_out,
         buckets: photoBackupResult.buckets,
       } : null,
+      pdf_backup: pdfBackupResult ? {
+        generated: pdfBackupResult.generated,
+        skipped: pdfBackupResult.skipped,
+        no_pdf: pdfBackupResult.no_pdf,
+        errors: pdfBackupResult.errors,
+      } : null,
     };
     const manifestBytes = new TextEncoder().encode(JSON.stringify(manifest, null, 2));
     await adminClient.storage
