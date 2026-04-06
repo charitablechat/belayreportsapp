@@ -1892,7 +1892,7 @@ serve(async (req) => {
     </div>
 
     <div class="page-footer">
-      <div class="page-number">Page 4</div>
+      <div class="page-number">Page 3</div>
       <div class="footer-line"></div>
       <div class="disclaimer">
         The information contained in this report has been documented by a Qualified Professional.<br>
