@@ -721,7 +721,7 @@ serve(async (req) => {
       .upsert({
         training_id: trainingId,
         pdf_url: urlData?.signedUrl || '',
-        generated_by: user.id,
+        generated_by: user?.id || null,
         file_size_bytes: pdfBytes.byteLength,
         version: 1, // Will be auto-incremented by trigger on updates
         generated_at: new Date().toISOString(),

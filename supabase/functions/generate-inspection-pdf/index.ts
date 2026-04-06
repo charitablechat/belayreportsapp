@@ -771,7 +771,7 @@ serve(async (req) => {
       .upsert({
         inspection_id: inspectionId,
         pdf_url: fileName,
-        generated_by: user.id,
+        generated_by: user?.id || null,
         file_size_bytes: pdfUint8Array.length,
         version: 1, // Will be auto-incremented by trigger on updates
         generated_at: new Date().toISOString(),
