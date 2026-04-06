@@ -125,6 +125,7 @@ export const template = {
     tableCounts: { profiles: 25, inspections: 340, trainings: 120 },
     downloadUrl: 'https://example.com/download',
     denormalizedReports: 485,
+    pdfsGenerated: 24,
   },
 } satisfies TemplateEntry
 
