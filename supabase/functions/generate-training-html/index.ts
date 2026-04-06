@@ -186,7 +186,7 @@ serve(async (req) => {
     :root {
       --pdf-header-h: 85px;
       --pdf-footer-h: 80px;
-      --page-padding: 0.25in;
+      --page-padding: 0.2in;
     }
     
     * {
@@ -256,8 +256,8 @@ serve(async (req) => {
     }
     
     .page-footer {
-      margin-top: 30px;
-      padding-top: 15px;
+      margin-top: 12px;
+      padding-top: 10px;
     }
     
     /* Footer logo row - same line, left/right alignment */
@@ -301,7 +301,7 @@ serve(async (req) => {
       text-align: center;
       color: #64748b;
       font-size: 11px;
-      line-height: 1.5;
+      line-height: 1.3;
     }
     
     .page-content {
@@ -321,34 +321,34 @@ serve(async (req) => {
     }
     
     .section {
-      margin-bottom: 25px;
+      margin-bottom: 14px;
     }
     .section-title {
       background: #1e40af;
       color: white;
-      padding: 12px 20px;
+      padding: 8px 14px;
       font-size: 18px;
       font-weight: 600;
-      margin-bottom: 15px;
+      margin-bottom: 8px;
       border-radius: 4px;
     }
     .standards-box {
       background: #dbeafe;
-      padding: 15px;
+      padding: 10px;
       border-radius: 4px;
-      margin-bottom: 25px;
+      margin-bottom: 14px;
       color: #1e40af;
       font-size: 14px;
-      line-height: 1.6;
+      line-height: 1.5;
     }
     .info-grid {
       display: grid;
       grid-template-columns: repeat(2, 1fr);
-      gap: 15px;
-      margin-bottom: 15px;
+      gap: 10px;
+      margin-bottom: 10px;
     }
     .info-item {
-      padding: 10px;
+      padding: 8px;
       background: #c2c2c2;
       border-left: 3px solid #1e40af;
     }
@@ -419,18 +419,18 @@ serve(async (req) => {
       list-style-type: disc !important;
     }
     .text-content {
-      padding: 15px;
+      padding: 10px;
       background: #c2c2c2;
       border-radius: 4px;
       white-space: pre-wrap;
-      line-height: 1.8;
+      line-height: 1.6;
     }
     .disclaimer {
       background: #fef3c7;
-      padding: 15px;
+      padding: 10px;
       border-radius: 4px;
       border-left: 4px solid #f59e0b;
-      margin-bottom: 20px;
+      margin-bottom: 12px;
     }
     .disclaimer-title {
       font-weight: 700;
@@ -474,7 +474,7 @@ serve(async (req) => {
       /* Reserve space for content - prevents footer overlap */
       @page {
         size: letter portrait;
-        margin: 0.5in 0.5in 0.7in 0.5in;
+        margin: 0.4in 0.35in 0.6in 0.35in;
       }
 
       .page {
@@ -835,17 +835,17 @@ serve(async (req) => {
     ${footer(2)}
   </div>
 
-  <!-- Page 3: Verifiable Items -->
+  <!-- Page 3: Verifiable Items + Systems in Place (combined) -->
   <div class="page">
     ${header()}
     <div class="page-content">
       ${content.verifiableItems.length > 0 ? `
       <div class="section">
         <div class="section-title">Items Verified During Training</div>
-        <p style="margin: 10px 0 15px 0; font-style: italic; color: #666; line-height: 1.6;">
+        <p style="margin: 6px 0 10px 0; font-style: italic; color: #666; line-height: 1.5; font-size: 13px;">
           It is the responsibility of the client to read, understand, and follow all manufacturer guidelines, notices and recalls for the equipment used for your site's operations. This includes proper documentation and inventory tracking of each item used for course operations. This should be done according to a written checklist that is monitored by the course manager or other qualified person at your site. Records should be available at your annual inspection that include and indicate the date of purchase, date of first use and the equipment shall be identifiable by the serial number/tag or other unique identifier that matches your written documentation and the manufacturer retirement criteria.
         </p>
-        <p style="margin: 0 0 15px 0; font-weight: 600; color: #333;">
+        <p style="margin: 0 0 10px 0; font-weight: 600; color: #333;">
           CHECK ONLY THOSE THAT WERE VERIFIABLE AND IN PLACE DURING TRAINING.
         </p>
         <ul>
@@ -855,23 +855,16 @@ serve(async (req) => {
       ` : `
       <div class="section">
         <div class="section-title">Items Verified During Training</div>
-        <p style="margin: 10px 0 15px 0; font-style: italic; color: #666;">No items were verified during this training session.</p>
+        <p style="margin: 6px 0 10px 0; font-style: italic; color: #666;">No items were verified during this training session.</p>
       </div>
       `}
-    </div>
-    ${footer(3)}
-  </div>
 
-  <!-- Page 4: Systems in Place -->
-  <div class="page">
-    ${header()}
-    <div class="page-content">
       <div class="section">
         <div class="section-title">Systems in Place</div>
-        <p style="margin: 10px 0 8px 0; font-weight: 600; color: #333;">
+        <p style="margin: 6px 0 6px 0; font-weight: 600; color: #333;">
           Check ONLY if the following are in place:
         </p>
-        <p style="margin: 0 0 15px 0; font-style: italic; color: #666; line-height: 1.6;">
+        <p style="margin: 0 0 10px 0; font-style: italic; color: #666; line-height: 1.5; font-size: 13px;">
           The following were either addressed in discussion with training participants or a staff supervisor. We recommend following up to address any unchecked areas.
         </p>
         <ul>
@@ -879,10 +872,10 @@ serve(async (req) => {
         </ul>
       </div>
     </div>
-    ${footer(4)}
+    ${footer(3)}
   </div>
 
-  <!-- Page 5: Training Summary -->
+  <!-- Page 4: Training Summary -->
   <div class="page">
     ${header()}
     <div class="page-content">
@@ -890,9 +883,9 @@ serve(async (req) => {
       <div class="section">
         <div class="section-title">Training Summary</div>
         ${content.summary.observations ? `
-          <div style="margin-bottom: 20px;">
-            <div class="info-label" style="margin-bottom: 8px;">Training Observations</div>
-            <p style="margin: 0 0 12px 0; font-style: italic; color: #666; line-height: 1.5; font-size: 14px;">
+          <div style="margin-bottom: 14px;">
+            <div class="info-label" style="margin-bottom: 6px;">Training Observations</div>
+            <p style="margin: 0 0 8px 0; font-style: italic; color: #666; line-height: 1.5; font-size: 13px;">
               This area lists/describes any observations at the time of training pertaining to staff, equipment function, or operations:
             </p>
             ${content.summary.observationsList.length > 0 
@@ -903,9 +896,9 @@ serve(async (req) => {
           </div>
         ` : ''}
         ${content.summary.recommendations ? `
-          <div style="margin-bottom: 20px;">
-            <div class="info-label" style="margin-bottom: 8px;">Training Recommendations</div>
-            <p style="margin: 0 0 12px 0; font-style: italic; color: #666; line-height: 1.5; font-size: 14px;">
+          <div style="margin-bottom: 14px;">
+            <div class="info-label" style="margin-bottom: 6px;">Training Recommendations</div>
+            <p style="margin: 0 0 8px 0; font-style: italic; color: #666; line-height: 1.5; font-size: 13px;">
               This area lists recommendations from the trainer after visiting your site regarding staff, equipment function, or operations:
             </p>
             ${content.summary.recommendationsList.length > 0 
@@ -919,42 +912,14 @@ serve(async (req) => {
       ` : `
       <div class="section">
         <div class="section-title">Training Summary</div>
-        <p style="margin: 10px 0 15px 0; font-style: italic; color: #666;">No observations or recommendations were recorded for this training session.</p>
+        <p style="margin: 6px 0 10px 0; font-style: italic; color: #666;">No observations or recommendations were recorded for this training session.</p>
       </div>
       `}
-    </div>
-    ${footer(5)}
-  </div>
 
-  ${photoUrls.length > 0 ? `
-  <!-- Photo Pages -->
-  <div class="page">
-    ${header()}
-    <div class="page-content">
-      <div class="section">
-        <div class="section-title">Training Photos</div>
-        <div class="photo-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 12px;">
-          ${photoUrls.map(photo => `
-            <div style="border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">
-              <img src="${photo.url}" style="width: 100%; max-height: 200px; object-fit: contain; background: #f1f5f9;" alt="${photo.caption || 'Training photo'}" />
-              ${photo.caption ? `<div style="padding: 8px 12px; font-size: 13px; color: #475569; background: #f8fafc;">${photo.caption}</div>` : ''}
-            </div>
-          `).join('')}
-        </div>
-      </div>
-    </div>
-    ${footer(6)}
-  </div>
-  ` : ''}
-
-  <!-- Submission and Disclaimer -->
-  <div class="page">
-    ${header()}
-    <div class="page-content">
       ${content.summary.personSubmitting || content.summary.submissionDate ? `
       <div class="section">
-        <div class="section-title">Person Submitting Form</div>
-        <p style="margin: 0 0 16px 0; font-style: italic; color: #666; line-height: 1.5; font-size: 14px;">
+        <div class="section-title" style="font-size: 16px;">Person Submitting Form</div>
+        <p style="margin: 0 0 10px 0; font-style: italic; color: #666; line-height: 1.4; font-size: 13px;">
           The trainer listed on this report verifies the report is complete and ready for client submission on the following date.
         </p>
         <div class="info-grid">
@@ -974,6 +939,36 @@ serve(async (req) => {
       </div>
       ` : ''}
 
+      ${photoUrls.length === 0 ? `
+      <div class="disclaimer">
+        <div class="disclaimer-title">DISCLAIMER</div>
+        <div class="disclaimer-text">${content.disclaimer}</div>
+      </div>
+      <div class="generated-timestamp">
+        Generated on ${new Date().toLocaleString('en-US', { timeZone: 'America/Chicago', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+      </div>
+      ` : ''}
+    </div>
+    ${footer(4)}
+  </div>
+
+  ${photoUrls.length > 0 ? `
+  <!-- Photo Pages + Disclaimer -->
+  <div class="page">
+    ${header()}
+    <div class="page-content">
+      <div class="section">
+        <div class="section-title">Training Photos</div>
+        <div class="photo-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 8px;">
+          ${photoUrls.map(photo => `
+            <div style="border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">
+              <img src="${photo.url}" style="width: 100%; max-height: 200px; object-fit: contain; background: #f1f5f9;" alt="${photo.caption || 'Training photo'}" />
+              ${photo.caption ? `<div style="padding: 6px 10px; font-size: 12px; color: #475569; background: #f8fafc;">${photo.caption}</div>` : ''}
+            </div>
+          `).join('')}
+        </div>
+      </div>
+
       <div class="disclaimer">
         <div class="disclaimer-title">DISCLAIMER</div>
         <div class="disclaimer-text">${content.disclaimer}</div>
@@ -983,8 +978,9 @@ serve(async (req) => {
         Generated on ${new Date().toLocaleString('en-US', { timeZone: 'America/Chicago', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
       </div>
     </div>
-    ${footer(photoUrls.length > 0 ? 7 : 6)}
+    ${footer(5)}
   </div>
+  ` : ''}
 </body>
 </html>`;
 

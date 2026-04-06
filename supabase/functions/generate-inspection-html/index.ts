@@ -429,8 +429,8 @@ serve(async (req) => {
       equipmentRowCount > 0 && standardsRowCount > 0 && equipmentRowCount <= 6 && standardsRowCount <= 6;
 
     // Calculate page count with consolidation
-    // Pages: Cover + Reminders + Categories + Results Key = 4 base pages
-    let pageCount = 4;
+    // Pages: Cover + Reminders+Categories(combined) + Results Key = 3 base pages
+    let pageCount = 3;
 
     if (canCombineSystemsZiplines) {
       pageCount++; // Combined systems/ziplines page
@@ -650,8 +650,8 @@ serve(async (req) => {
     .info-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 18px 30px;
-      margin: 25px 0;
+      gap: 10px 20px;
+      margin: 14px 0;
       border: none;
     }
 
@@ -936,9 +936,9 @@ serve(async (req) => {
     }
 
     .combined-section {
-      margin-bottom: 25px;
-      min-height: 100px; /* Prevent collapsed combined sections */
-      page-break-inside: auto; /* Allow breaks within large sections */
+      margin-bottom: 14px;
+      min-height: 100px;
+      page-break-inside: auto;
     }
 
     .combined-section:last-child {
@@ -1789,7 +1789,7 @@ serve(async (req) => {
     </div>
   </div>
 
-  <!-- PAGE 2: REMINDERS AND REQUIREMENTS -->
+  <!-- PAGE 2: REMINDERS AND REQUIREMENTS + INSPECTION CATEGORIES (combined) -->
   <div class="page">
     <div class="page-header">
       <div class="header-left">
@@ -1812,36 +1812,9 @@ serve(async (req) => {
         <li><strong>Staff Training:</strong> Proper staff training should be provided for the operation of all aerial activities and equipment on your site.</li>
         <li><strong>Operational Reviews:</strong> Operational Reviews shall be conducted once every five years by a qualified professional in accordance with ACCT Standards.</li>
       </ul>
-    </div>
 
-    <div class="page-footer">
-      <div class="page-number">Page 2</div>
-      <div class="footer-line"></div>
-      <div class="disclaimer">
-        The information contained in this report has been documented by a Qualified Professional.<br>
-        This report is effective for one year from the date of inspection. Issued by:<br>
-        Rope Works Inc., PO Box 1074, Dripping Springs, TX 78620
-      </div>
-    </div>
-  </div>
-
-  <!-- PAGE 3: INSPECTION CATEGORIES -->
-  <div class="page">
-    <div class="page-header">
-      <div class="header-left">
-        <img src="${ropeWorksLogo}" alt="Rope Works">
-      </div>
-      <div class="header-center">
-        <div class="header-title"></div>
-      </div>
-      <div class="header-right">
-        <img src="${acctLogo}" alt="ACCT Accredited Vendor">
-      </div>
-    </div>
-
-    <div class="page-content">
-      <h2 style="margin-top: 5px;">INSPECTION CATEGORIES</h2>
-      <p style="margin-bottom: 15px; font-size: 10pt; line-height: 1.6;">All inspections include the following categories when applicable:</p>
+      <h2 style="margin-top: 14px;">INSPECTION CATEGORIES</h2>
+      <p style="margin-bottom: 10px; font-size: 10pt; line-height: 1.5;">All inspections include the following categories when applicable:</p>
 
       <div class="key-section">
         <h3>Lifeline HDW (Hardware)</h3>
@@ -1865,7 +1838,7 @@ serve(async (req) => {
     </div>
 
     <div class="page-footer">
-      <div class="page-number">Page 3</div>
+      <div class="page-number">Page 2</div>
       <div class="footer-line"></div>
       <div class="disclaimer">
         The information contained in this report has been documented by a Qualified Professional.<br>
@@ -1875,7 +1848,7 @@ serve(async (req) => {
     </div>
   </div>
 
-  <!-- PAGE 4: INSPECTION RESULTS KEY -->
+  <!-- PAGE 3: INSPECTION RESULTS KEY -->
   <div class="page">
     <div class="page-header">
       <div class="header-left">
@@ -1919,7 +1892,7 @@ serve(async (req) => {
     </div>
 
     <div class="page-footer">
-      <div class="page-number">Page 4</div>
+      <div class="page-number">Page 3</div>
       <div class="footer-line"></div>
       <div class="disclaimer">
         The information contained in this report has been documented by a Qualified Professional.<br>

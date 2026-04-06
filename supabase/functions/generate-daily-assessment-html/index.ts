@@ -204,7 +204,7 @@ serve(async (req) => {
     :root {
       --pdf-header-h: 85px;
       --pdf-footer-h: 80px;
-      --page-padding: 0.25in;
+      --page-padding: 0.2in;
     }
     
     * {
@@ -281,7 +281,7 @@ serve(async (req) => {
     }
 
     .page-footer {
-      margin-top: 20px;
+      margin-top: 12px;
       font-size: 9pt;
       color: #666;
       position: relative;
@@ -327,7 +327,7 @@ serve(async (req) => {
 
     .footer-disclaimer {
       text-align: center;
-      line-height: 1.5;
+      line-height: 1.3;
       font-size: 8.5pt;
       margin: 0 auto;
     }
@@ -346,28 +346,28 @@ serve(async (req) => {
     }
 
     .section {
-      margin-bottom: 20px;
+      margin-bottom: 14px;
     }
 
     .section-title {
       background: #1e40af;
       color: white;
-      padding: 10px 15px;
+      padding: 8px 12px;
       font-size: 14px;
       font-weight: 600;
-      margin-bottom: 12px;
+      margin-bottom: 8px;
       border-radius: 4px;
     }
 
     .info-grid {
       display: grid;
       grid-template-columns: repeat(2, 1fr);
-      gap: 12px;
-      margin-bottom: 15px;
+      gap: 10px;
+      margin-bottom: 10px;
     }
 
     .info-item {
-      padding: 10px;
+      padding: 8px;
       background: #c2c2c2;
       border-left: 3px solid #1e40af;
     }
@@ -476,10 +476,10 @@ serve(async (req) => {
 
     .disclaimer {
       background: #fef3c7;
-      padding: 12px;
+      padding: 10px;
       border-radius: 4px;
       border-left: 4px solid #f59e0b;
-      margin-top: 20px;
+      margin-top: 14px;
     }
 
     .disclaimer-title {
@@ -561,7 +561,7 @@ serve(async (req) => {
       /* Reserve space for content - prevents footer overlap */
       @page {
         size: letter portrait;
-        margin: 0.5in 0.5in 0.7in 0.5in;
+        margin: 0.4in 0.35in 0.6in 0.35in;
       }
 
       .page {
