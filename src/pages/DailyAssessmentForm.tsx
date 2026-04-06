@@ -157,6 +157,7 @@ export default function DailyAssessmentForm() {
   }, [isCompletionLocked]);
 
   const isInternalUpdateRef = useRef(false);
+  const hasUnsavedRef = useRef(false);
 
   // Track which child data types loaded successfully (not from timeout fallback)
   const childDataLoadedRef = useRef<Record<string, boolean>>({
