@@ -886,6 +886,7 @@ export default function TrainingForm() {
       }
 
       setLastSaved(new Date());
+      hasUnsavedRef.current = false;
       setHasUnsavedChanges(false);
     } catch (error) {
       console.error('[Training Save] Error saving training:', error);
