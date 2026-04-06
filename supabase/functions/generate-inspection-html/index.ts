@@ -1789,7 +1789,7 @@ serve(async (req) => {
     </div>
   </div>
 
-  <!-- PAGE 2: REMINDERS AND REQUIREMENTS -->
+  <!-- PAGE 2: REMINDERS AND REQUIREMENTS + INSPECTION CATEGORIES (combined) -->
   <div class="page">
     <div class="page-header">
       <div class="header-left">
@@ -1812,36 +1812,9 @@ serve(async (req) => {
         <li><strong>Staff Training:</strong> Proper staff training should be provided for the operation of all aerial activities and equipment on your site.</li>
         <li><strong>Operational Reviews:</strong> Operational Reviews shall be conducted once every five years by a qualified professional in accordance with ACCT Standards.</li>
       </ul>
-    </div>
 
-    <div class="page-footer">
-      <div class="page-number">Page 2</div>
-      <div class="footer-line"></div>
-      <div class="disclaimer">
-        The information contained in this report has been documented by a Qualified Professional.<br>
-        This report is effective for one year from the date of inspection. Issued by:<br>
-        Rope Works Inc., PO Box 1074, Dripping Springs, TX 78620
-      </div>
-    </div>
-  </div>
-
-  <!-- PAGE 3: INSPECTION CATEGORIES -->
-  <div class="page">
-    <div class="page-header">
-      <div class="header-left">
-        <img src="${ropeWorksLogo}" alt="Rope Works">
-      </div>
-      <div class="header-center">
-        <div class="header-title"></div>
-      </div>
-      <div class="header-right">
-        <img src="${acctLogo}" alt="ACCT Accredited Vendor">
-      </div>
-    </div>
-
-    <div class="page-content">
-      <h2 style="margin-top: 5px;">INSPECTION CATEGORIES</h2>
-      <p style="margin-bottom: 15px; font-size: 10pt; line-height: 1.6;">All inspections include the following categories when applicable:</p>
+      <h2 style="margin-top: 14px;">INSPECTION CATEGORIES</h2>
+      <p style="margin-bottom: 10px; font-size: 10pt; line-height: 1.5;">All inspections include the following categories when applicable:</p>
 
       <div class="key-section">
         <h3>Lifeline HDW (Hardware)</h3>
@@ -1865,7 +1838,7 @@ serve(async (req) => {
     </div>
 
     <div class="page-footer">
-      <div class="page-number">Page 3</div>
+      <div class="page-number">Page 2</div>
       <div class="footer-line"></div>
       <div class="disclaimer">
         The information contained in this report has been documented by a Qualified Professional.<br>
