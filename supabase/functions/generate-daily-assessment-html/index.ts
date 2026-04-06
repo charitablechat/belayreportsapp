@@ -327,7 +327,7 @@ serve(async (req) => {
 
     .footer-disclaimer {
       text-align: center;
-      line-height: 1.5;
+      line-height: 1.3;
       font-size: 8.5pt;
       margin: 0 auto;
     }
