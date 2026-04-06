@@ -60,12 +60,16 @@ const BackupNotificationEmail = ({
             </Row>
           </Section>
 
-          {/* Reports Stats */}
+          {/* Reports & PDFs Stats */}
           <Section style={reportsSection}>
             <Row>
               <Column style={reportStatBox}>
                 <Text style={reportStatValue}>{denormalizedReports.toString()}</Text>
                 <Text style={statLabel}>JSON Reports</Text>
+              </Column>
+              <Column style={{ ...reportStatBox, backgroundColor: '#fef3c7' }}>
+                <Text style={{ ...reportStatValue, color: '#92400e' }}>{pdfsGenerated.toString()}</Text>
+                <Text style={statLabel}>PDFs Generated</Text>
               </Column>
             </Row>
           </Section>
