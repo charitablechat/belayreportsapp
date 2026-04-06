@@ -973,6 +973,8 @@ export default function Dashboard() {
               console.log('[Dashboard] Daily assessment soft-deleted:', reportToDelete.id);
             }
           } else {
+            // Queue for later soft-deletion when back online
+            await queueOperation('update', reportToDelete.id, { ...reportToDelete, ...softDeleteData });
             triggerHaptic('success');
             toast.success("Assessment will be deleted when you're back online.");
             
