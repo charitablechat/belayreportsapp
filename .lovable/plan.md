@@ -1,55 +1,46 @@
 
 
-# Fix "User not authenticated" Error on Inspection Form Save
+# Fix: Training Summary Bullet Points Not Rendering in HTML Report
 
-## Root Cause
+## Problem
 
-The `performSave` function in `InspectionForm.tsx` (line 1336) uses `getUserWithCache()` to check auth. This function:
-1. Returns cached user if in-memory cache is fresh (< 60s)
-2. Falls back to localStorage session — but **rejects expired tokens when online**
-3. Falls back to network `getUser()` with an 8s timeout
+The rich text editor (TipTap) stores each line as a `<p>` tag:
+```html
+<p>It is recommended that the site institute a written pre-use checklist</p>
+<p>It is recommended that maintenance check the sturdiness...</p>
+<p>It is recommended that a rope for each the TTT...</p>
+```
 
-If the session token has expired and the network call is slow or fails, `getUserWithCache()` returns `null`. The code then checks `getOfflineUserId()` but only when `!navigator.onLine` — so an online user with an expired token gets `'User not authenticated'`.
+The `parseTextToList()` function in `training-formatter.ts` calls `stripHtml()` first, which does `html.replace(/<[^>]*>/g, '')`. This strips **all** tags without inserting any separators, so the three paragraphs become one continuous string:
 
-Meanwhile, `ensureValidSession()` exists specifically to handle this: it calls `supabase.auth.refreshSession()` to get a fresh token. But `performSave` never calls it.
+```
+"It is recommended that the site institute...checklistIt is recommended that maintenance check..."
+```
+
+The sentence-splitting regex then partially recovers this (splitting on `. Capital`), but since these lines don't end with periods, they get concatenated into a single bullet point — exactly what the screenshot shows.
 
 ## Fix
 
-In `performSave`, replace the current auth check with a cascade that tries `ensureValidSession()` before giving up:
+**File: `supabase/functions/_shared/training-formatter.ts`**
 
-| File | Change |
-|------|--------|
-| `src/pages/InspectionForm.tsx` | In `performSave` (~line 1336), after `getUserWithCache()` returns null while online, attempt `ensureValidSession()` before throwing. This refreshes the token and recovers the session. |
+Update `parseTextToList()` to convert block-level HTML boundaries (`</p>`, `</div>`, `<br>`, `</li>`) into newline characters **before** stripping HTML tags. This preserves the line structure the user entered in the editor.
 
-### Current code (lines 1335-1343):
 ```typescript
-let user = await getUserWithCache();
-if (!user && !navigator.onLine) {
-  const offlineId = getOfflineUserId();
-  if (offlineId) user = { id: offlineId } as any;
-}
-if (!user) {
-  throw new Error('User not authenticated');
-}
+export function parseTextToList(textContent: string | null | undefined): string[] {
+  if (!textContent) return [];
+  
+  // Convert block-level HTML boundaries to newlines BEFORE stripping tags
+  let preprocessed = textContent
+    .replace(/<\/p>/gi, '\n')
+    .replace(/<\/div>/gi, '\n')
+    .replace(/<\/li>/gi, '\n')
+    .replace(/<br\s*\/?>/gi, '\n');
+  
+  let text = stripHtml(preprocessed);
+  if (!text || text === 'N/A') return [];
+  
+  // ... rest of the function stays the same
 ```
 
-### Fixed code:
-```typescript
-let user = await getUserWithCache();
-if (!user && !navigator.onLine) {
-  const offlineId = getOfflineUserId();
-  if (offlineId) user = { id: offlineId } as any;
-}
-if (!user && navigator.onLine) {
-  // Token may have expired — attempt session refresh before giving up
-  user = await ensureValidSession();
-}
-if (!user) {
-  throw new Error('User not authenticated');
-}
-```
-
-This adds one extra recovery step. If the token expired but the refresh token is still valid (which it is for 30+ days), `ensureValidSession()` will refresh the session and return the user. The error will only appear if the user is genuinely signed out.
-
-The `ensureValidSession` import already exists in other files but needs to be added to `InspectionForm.tsx`'s import from `cached-auth`.
+This is a one-line-category fix in a single shared file. No other files need changes — the HTML generation template already correctly renders `observationsList` and `recommendationsList` as `<li>` elements.
 
