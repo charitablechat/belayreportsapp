@@ -435,6 +435,34 @@ Deno.serve(async (req) => {
       console.warn(`[scheduled-backup-notify] ${reportUploadErrors} denormalized report upload(s) failed`);
     }
 
+    // ── Step 3.5: Generate backup PDFs (incremental) ──
+    let pdfBackupResult: any = null;
+    try {
+      console.log("[scheduled-backup-notify] Starting incremental PDF generation...");
+      const pdfRes = await fetch(
+        `${supabaseUrl}/functions/v1/generate-backup-pdfs`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${serviceRoleKey}`,
+          },
+          body: JSON.stringify({ mode: "incremental" }),
+        },
+      );
+      if (pdfRes.ok) {
+        pdfBackupResult = await pdfRes.json();
+        console.log(
+          `[scheduled-backup-notify] PDF backup: generated=${pdfBackupResult.generated}, skipped=${pdfBackupResult.skipped}, no_pdf=${pdfBackupResult.no_pdf}, errors=${pdfBackupResult.errors}`,
+        );
+      } else {
+        const errText = await pdfRes.text();
+        console.error(`[scheduled-backup-notify] PDF backup failed [${pdfRes.status}]: ${errText}`);
+      }
+    } catch (pdfErr: any) {
+      console.error(`[scheduled-backup-notify] PDF backup error: ${pdfErr.message}`);
+    }
+
     // ── Step 4: Build combined backup JSON (gzip compressed) ──
     const combinedPayload = {
       version: 1,
