@@ -386,6 +386,38 @@ serve(async (req) => {
       font-size: 14px;
       margin-top: 4px;
     }
+    /* Summary bullet lists - dedicated class to override global ul/li resets */
+    .summary-list {
+      list-style-type: disc !important;
+      list-style-position: outside !important;
+      padding-left: 24px !important;
+      margin: 0 !important;
+    }
+    .summary-list li {
+      background: none !important;
+      border-left: none !important;
+      border-radius: 0 !important;
+      padding: 4px 0 !important;
+      margin-bottom: 6px !important;
+      line-height: 1.6 !important;
+      display: list-item !important;
+      list-style-type: disc !important;
+    }
+    /* Trainee names list - same override pattern */
+    .trainee-names-list {
+      list-style-type: disc !important;
+      list-style-position: outside !important;
+      padding-left: 20px !important;
+      margin-top: 8px !important;
+    }
+    .trainee-names-list li {
+      background: none !important;
+      border-left: none !important;
+      padding: 4px 0 !important;
+      margin-bottom: 2px !important;
+      display: list-item !important;
+      list-style-type: disc !important;
+    }
     .text-content {
       padding: 15px;
       background: #c2c2c2;
