@@ -301,7 +301,7 @@ serve(async (req) => {
       text-align: center;
       color: #64748b;
       font-size: 11px;
-      line-height: 1.5;
+      line-height: 1.3;
     }
     
     .page-content {
