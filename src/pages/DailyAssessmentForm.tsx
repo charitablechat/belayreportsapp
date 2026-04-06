@@ -959,6 +959,7 @@ export default function DailyAssessmentForm() {
         }
       }
 
+      hasUnsavedRef.current = false;
       setHasUnsavedChanges(false);
       setLastSaved(new Date());
       setAssessment(updatedAssessment);
