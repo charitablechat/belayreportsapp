@@ -281,7 +281,7 @@ serve(async (req) => {
     }
 
     .page-footer {
-      margin-top: 20px;
+      margin-top: 12px;
       font-size: 9pt;
       color: #666;
       position: relative;
