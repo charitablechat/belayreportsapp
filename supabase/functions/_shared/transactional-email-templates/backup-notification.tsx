@@ -25,6 +25,7 @@ const BackupNotificationEmail = ({
   downloadUrl = '#',
   tableCount = 0,
   denormalizedReports = 0,
+  pdfsGenerated = 0,
 }: BackupNotificationProps) => {
   const tableEntries = Object.entries(tableCounts).sort(([, a], [, b]) => b - a)
   const displayTableCount = tableCount || Object.keys(tableCounts).length
