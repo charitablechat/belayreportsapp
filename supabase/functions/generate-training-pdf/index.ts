@@ -28,25 +28,33 @@ serve(async (req) => {
     
     const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
     
+    // Check if caller is using the service role key (internal/backup calls)
     const token = authHeader.replace('Bearer ', '');
-    const { data: { user }, error: userError } = await supabaseAdmin.auth.getUser(token);
-    
-    if (userError || !user) {
-      throw new Error('Unauthorized');
+    const isServiceRole = token === supabaseServiceKey;
+
+    let user: any = null;
+    if (isServiceRole) {
+      console.log('[Auth] Service-role caller — skipping user auth and rate limiting');
+    } else {
+      const { data: { user: authUser }, error: userError } = await supabaseAdmin.auth.getUser(token);
+      if (userError || !authUser) {
+        throw new Error('Unauthorized');
+      }
+      user = authUser;
+
+      // Rate limiting: 10 PDF generations per user per hour
+      const rateLimit = checkRateLimit(`pdf:training:${user.id}`, {
+        maxRequests: 10,
+        windowMs: 60 * 60 * 1000 // 1 hour
+      });
+
+      if (!rateLimit.allowed) {
+        console.warn(`[Rate Limit] User ${user.id} exceeded PDF generation limit`);
+        return createRateLimitResponse(rateLimit.resetAt, corsHeaders);
+      }
+
+      console.log(`[Rate Limit] User ${user.id} - ${rateLimit.remaining} requests remaining`);
     }
-
-    // Rate limiting: 10 PDF generations per user per hour
-    const rateLimit = checkRateLimit(`pdf:training:${user.id}`, {
-      maxRequests: 10,
-      windowMs: 60 * 60 * 1000 // 1 hour
-    });
-
-    if (!rateLimit.allowed) {
-      console.warn(`[Rate Limit] User ${user.id} exceeded PDF generation limit`);
-      return createRateLimitResponse(rateLimit.resetAt, corsHeaders);
-    }
-
-    console.log(`[Rate Limit] User ${user.id} - ${rateLimit.remaining} requests remaining`);
 
     const { trainingId } = await req.json();
     
