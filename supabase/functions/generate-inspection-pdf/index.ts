@@ -24,25 +24,33 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
+    // Check if caller is using the service role key (internal/backup calls)
     const token = authHeader.replace('Bearer ', '');
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+    const isServiceRole = token === supabaseKey;
 
-    if (authError || !user) {
-      throw new Error('Unauthorized');
+    let user: any = null;
+    if (isServiceRole) {
+      console.log('[Auth] Service-role caller — skipping user auth and rate limiting');
+    } else {
+      const { data: { user: authUser }, error: authError } = await supabase.auth.getUser(token);
+      if (authError || !authUser) {
+        throw new Error('Unauthorized');
+      }
+      user = authUser;
+
+      // Rate limiting: 10 PDF generations per user per hour
+      const rateLimit = checkRateLimit(`pdf:inspection:${user.id}`, {
+        maxRequests: 10,
+        windowMs: 60 * 60 * 1000 // 1 hour
+      });
+
+      if (!rateLimit.allowed) {
+        console.warn(`[Rate Limit] User ${user.id} exceeded PDF generation limit`);
+        return createRateLimitResponse(rateLimit.resetAt, corsHeaders);
+      }
+
+      console.log(`[Rate Limit] User ${user.id} - ${rateLimit.remaining} requests remaining`);
     }
-
-    // Rate limiting: 10 PDF generations per user per hour
-    const rateLimit = checkRateLimit(`pdf:inspection:${user.id}`, {
-      maxRequests: 10,
-      windowMs: 60 * 60 * 1000 // 1 hour
-    });
-
-    if (!rateLimit.allowed) {
-      console.warn(`[Rate Limit] User ${user.id} exceeded PDF generation limit`);
-      return createRateLimitResponse(rateLimit.resetAt, corsHeaders);
-    }
-
-    console.log(`[Rate Limit] User ${user.id} - ${rateLimit.remaining} requests remaining`);
 
     const { inspectionId } = await req.json();
 
@@ -74,10 +82,12 @@ serve(async (req) => {
 
     if (inspectionError) throw inspectionError;
 
-    // Authorization check
-    const isSuperAdmin = await supabase.from('user_roles').select('role').eq('user_id', user.id).eq('role', 'admin').single();
-    if (!isSuperAdmin.data && inspection.inspector_id !== user.id) {
-      throw new Error('Unauthorized to generate this report');
+    // Authorization check (skip for service-role callers)
+    if (!isServiceRole) {
+      const isSuperAdmin = await supabase.from('user_roles').select('role').eq('user_id', user.id).eq('role', 'admin').single();
+      if (!isSuperAdmin.data && inspection.inspector_id !== user.id) {
+        throw new Error('Unauthorized to generate this report');
+      }
     }
 
     // Fetch the inspector profile using the inspection's inspector_id (not current user)
@@ -761,7 +771,7 @@ serve(async (req) => {
       .upsert({
         inspection_id: inspectionId,
         pdf_url: fileName,
-        generated_by: user.id,
+        generated_by: user?.id || null,
         file_size_bytes: pdfUint8Array.length,
         version: 1, // Will be auto-incremented by trigger on updates
         generated_at: new Date().toISOString(),
