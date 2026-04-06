@@ -2,7 +2,7 @@
  * Section Comments Component
  * Terminal-style, developer-focused comments textarea for Daily Assessment sections
  */
-import { Textarea } from "@/components/ui/textarea";
+import { DebouncedTextarea } from "@/components/inspection/DebouncedTextarea";
 import { Label } from "@/components/ui/label";
 import { MessageSquare } from "lucide-react";
 
@@ -25,9 +25,9 @@ export function SectionComments({
         <MessageSquare className="h-4 w-4" />
         {label}
       </Label>
-      <Textarea
+      <DebouncedTextarea
         value={value || ''}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={onChange}
         placeholder={placeholder}
         rows={3}
         className="font-mono text-sm bg-amber-50 dark:bg-amber-950/30 border-amber-300 dark:border-amber-700 focus:border-amber-500 placeholder:text-amber-800/40 dark:placeholder:text-amber-300/40 text-black dark:text-amber-100 resize-y"
