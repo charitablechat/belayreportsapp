@@ -125,12 +125,18 @@ export function parseTraineeNames(traineeNamesStr: string | null): string[] {
 export function parseTextToList(textContent: string | null | undefined): string[] {
   if (!textContent) return [];
   
-  let text = stripHtml(textContent);
+  // Convert block-level HTML boundaries to newlines BEFORE stripping tags
+  // This preserves the line structure from the rich text editor (TipTap stores each line as <p>)
+  let preprocessed = textContent
+    .replace(/<\/p>/gi, '\n')
+    .replace(/<\/div>/gi, '\n')
+    .replace(/<\/li>/gi, '\n')
+    .replace(/<br\s*\/?>/gi, '\n');
+  
+  let text = stripHtml(preprocessed);
   if (!text || text === 'N/A') return [];
   
-  // CRITICAL FIX: Normalize spacing after sentence-ending punctuation
-  // Insert a space after .!? when immediately followed by a capital letter (no space)
-  // This handles cases like "ladder.Ladders" → "ladder. Ladders"
+  // Normalize spacing after sentence-ending punctuation
   text = text.replace(/([.!?])([A-Z])/g, '$1 $2');
   
   // First, try splitting by newlines (most common for bullet-style content)
