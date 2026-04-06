@@ -217,9 +217,9 @@ export function DatabaseBackupsPanel() {
             Database Backups
           </CardTitle>
           <CardDescription>
-            Daily backups include all database tables (JSON), individual HTML reports with embedded photos,
+            Daily backups include all database tables (JSON), denormalized per-report JSON files,
             and raw photo storage blobs from all three photo buckets.
-            Archives are emailed automatically and stored on the server with a 7-day download link.
+            Archives are emailed automatically and synced off-site.
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-wrap gap-3">

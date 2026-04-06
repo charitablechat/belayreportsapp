@@ -13,11 +13,7 @@ interface BackupNotificationProps {
   tableCounts?: Record<string, number>
   downloadUrl?: string
   tableCount?: number
-  totalReports?: number
-  newReports?: number
-  attachedReports?: number
-  archiveSize?: string
-  exceededSizeLimit?: boolean
+  denormalizedReports?: number
 }
 
 const BackupNotificationEmail = ({
@@ -27,11 +23,7 @@ const BackupNotificationEmail = ({
   tableCounts = {},
   downloadUrl = '#',
   tableCount = 0,
-  totalReports = 0,
-  newReports = 0,
-  attachedReports = 0,
-  archiveSize = '0 B',
-  exceededSizeLimit = false,
+  denormalizedReports = 0,
 }: BackupNotificationProps) => {
   const tableEntries = Object.entries(tableCounts).sort(([, a], [, b]) => b - a)
   const displayTableCount = tableCount || Object.keys(tableCounts).length
@@ -39,7 +31,7 @@ const BackupNotificationEmail = ({
   return (
     <Html lang="en" dir="ltr">
       <Head />
-      <Preview>✅ Daily Backup Complete — {totalReports} reports — {timestamp}</Preview>
+      <Preview>✅ Daily Backup Complete — {denormalizedReports} reports — {timestamp}</Preview>
       <Body style={main}>
         <Container style={container}>
           {/* Header */}
@@ -70,34 +62,11 @@ const BackupNotificationEmail = ({
           <Section style={reportsSection}>
             <Row>
               <Column style={reportStatBox}>
-                <Text style={reportStatValue}>{totalReports.toString()}</Text>
-                <Text style={statLabel}>HTML Reports</Text>
-              </Column>
-              <Column style={reportStatBoxGreen}>
-                <Text style={reportStatValueGreen}>{newReports.toString()}</Text>
-                <Text style={statLabel}>New Today</Text>
-              </Column>
-              <Column style={reportStatBoxPurple}>
-                <Text style={reportStatValuePurple}>{archiveSize}</Text>
-                <Text style={statLabel}>Archive Size</Text>
+                <Text style={reportStatValue}>{denormalizedReports.toString()}</Text>
+                <Text style={statLabel}>JSON Reports</Text>
               </Column>
             </Row>
           </Section>
-
-          {/* Attachment Note */}
-          {exceededSizeLimit ? (
-            <Section style={warnSection}>
-              <Text style={warnText}>
-                ⚠️ Full archive too large for email ({archiveSize}). Use the download button below to get all {totalReports} HTML reports.
-              </Text>
-            </Section>
-          ) : attachedReports > 0 ? (
-            <Section style={noteSection}>
-              <Text style={noteText}>
-                📎 All {attachedReports} HTML report{attachedReports === 1 ? '' : 's'} attached to this email
-              </Text>
-            </Section>
-          ) : null}
 
           {/* Download Button */}
           <Section style={downloadSection}>
@@ -105,7 +74,7 @@ const BackupNotificationEmail = ({
               Download Full Archive
             </Button>
             <Text style={downloadNote}>
-              Link valid for 7 days • Contains backup.json.gz + all {totalReports} HTML reports
+              Link valid for 7 days • Contains backup.json.gz + {denormalizedReports} denormalized report files
             </Text>
           </Section>
 
@@ -139,8 +108,7 @@ const BackupNotificationEmail = ({
 export const template = {
   component: BackupNotificationEmail,
   subject: (data: Record<string, any>) => {
-    const newLabel = data.newReports > 0 ? ` — ${data.newReports} new report${data.newReports === 1 ? '' : 's'}` : ''
-    return `Ropeworks Daily Backup${newLabel} — ${data.timestamp || 'Complete'}`
+    return `Ropeworks Daily Backup — ${data.timestamp || 'Complete'}`
   },
   displayName: 'Daily backup notification',
   previewData: {
@@ -150,10 +118,7 @@ export const template = {
     tableCount: 35,
     tableCounts: { profiles: 25, inspections: 340, trainings: 120 },
     downloadUrl: 'https://example.com/download',
-    totalReports: 45,
-    newReports: 2,
-    attachedReports: 2,
-    archiveSize: '18.3 MB',
+    denormalizedReports: 485,
   },
 } satisfies TemplateEntry
 
@@ -172,16 +137,8 @@ const statValueBlue = { fontSize: '24px', fontWeight: 'bold', color: '#1e40af', 
 const statValueYellow = { fontSize: '24px', fontWeight: 'bold', color: '#92400e', margin: '0' }
 const statLabel = { fontSize: '12px', color: '#6b7280', margin: '4px 0 0' }
 const reportsSection = { padding: '8px 16px 24px' }
-const reportStatBox = { backgroundColor: '#f5f3ff', borderRadius: '8px', padding: '16px', textAlign: 'center' as const, width: '33%' }
-const reportStatBoxGreen = { backgroundColor: '#ecfdf5', borderRadius: '8px', padding: '16px', textAlign: 'center' as const, width: '33%' }
-const reportStatBoxPurple = { backgroundColor: '#faf5ff', borderRadius: '8px', padding: '16px', textAlign: 'center' as const, width: '33%' }
+const reportStatBox = { backgroundColor: '#f5f3ff', borderRadius: '8px', padding: '16px', textAlign: 'center' as const, width: '100%' }
 const reportStatValue = { fontSize: '24px', fontWeight: 'bold', color: '#6d28d9', margin: '0' }
-const reportStatValueGreen = { fontSize: '24px', fontWeight: 'bold', color: '#059669', margin: '0' }
-const reportStatValuePurple = { fontSize: '24px', fontWeight: 'bold', color: '#7c3aed', margin: '0' }
-const noteSection = { padding: '0 24px 8px' }
-const noteText = { fontSize: '13px', color: '#059669', fontWeight: 'bold', margin: '0', textAlign: 'center' as const }
-const warnSection = { padding: '0 24px 8px' }
-const warnText = { fontSize: '13px', color: '#dc2626', fontWeight: 'bold', margin: '0', textAlign: 'center' as const }
 const downloadSection = { textAlign: 'center' as const, padding: '0 24px 24px' }
 const downloadButton = {
   backgroundColor: '#1a365d', color: '#ffffff', padding: '12px 32px',
