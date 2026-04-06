@@ -1294,12 +1294,10 @@ export default function TrainingForm() {
 
   const updateTrainingField = (field: string, value: any) => {
     setTraining({ ...training, [field]: value });
-    setHasUnsavedChanges(true);
   };
 
   const updateSummaryField = (field: string, value: any) => {
     setSummary({ ...summary, [field]: value });
-    setHasUnsavedChanges(true);
   };
 
   if (isLoading) {
