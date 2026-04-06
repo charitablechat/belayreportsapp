@@ -14,6 +14,7 @@ interface BackupNotificationProps {
   downloadUrl?: string
   tableCount?: number
   denormalizedReports?: number
+  pdfsGenerated?: number
 }
 
 const BackupNotificationEmail = ({
@@ -24,6 +25,7 @@ const BackupNotificationEmail = ({
   downloadUrl = '#',
   tableCount = 0,
   denormalizedReports = 0,
+  pdfsGenerated = 0,
 }: BackupNotificationProps) => {
   const tableEntries = Object.entries(tableCounts).sort(([, a], [, b]) => b - a)
   const displayTableCount = tableCount || Object.keys(tableCounts).length
@@ -58,12 +60,16 @@ const BackupNotificationEmail = ({
             </Row>
           </Section>
 
-          {/* Reports Stats */}
+          {/* Reports & PDFs Stats */}
           <Section style={reportsSection}>
             <Row>
               <Column style={reportStatBox}>
                 <Text style={reportStatValue}>{denormalizedReports.toString()}</Text>
                 <Text style={statLabel}>JSON Reports</Text>
+              </Column>
+              <Column style={{ ...reportStatBox, backgroundColor: '#fef3c7' }}>
+                <Text style={{ ...reportStatValue, color: '#92400e' }}>{pdfsGenerated.toString()}</Text>
+                <Text style={statLabel}>PDFs Generated</Text>
               </Column>
             </Row>
           </Section>
@@ -119,6 +125,7 @@ export const template = {
     tableCounts: { profiles: 25, inspections: 340, trainings: 120 },
     downloadUrl: 'https://example.com/download',
     denormalizedReports: 485,
+    pdfsGenerated: 24,
   },
 } satisfies TemplateEntry
 
@@ -137,7 +144,7 @@ const statValueBlue = { fontSize: '24px', fontWeight: 'bold', color: '#1e40af', 
 const statValueYellow = { fontSize: '24px', fontWeight: 'bold', color: '#92400e', margin: '0' }
 const statLabel = { fontSize: '12px', color: '#6b7280', margin: '4px 0 0' }
 const reportsSection = { padding: '8px 16px 24px' }
-const reportStatBox = { backgroundColor: '#f5f3ff', borderRadius: '8px', padding: '16px', textAlign: 'center' as const, width: '100%' }
+const reportStatBox = { backgroundColor: '#f5f3ff', borderRadius: '8px', padding: '16px', textAlign: 'center' as const, width: '50%' }
 const reportStatValue = { fontSize: '24px', fontWeight: 'bold', color: '#6d28d9', margin: '0' }
 const downloadSection = { textAlign: 'center' as const, padding: '0 24px 24px' }
 const downloadButton = {

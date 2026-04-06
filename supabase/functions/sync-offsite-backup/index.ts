@@ -205,16 +205,31 @@ Deno.serve(async (req) => {
     const adminClient = createClient(supabaseUrl, serviceRoleKey);
     const deadline = Date.now() + TIMEOUT_MS;
 
+    // ── Pass 1: Sync the daily backup folder ──
     const extResult = await syncToExternalSupabase(adminClient, backupPath, deadline);
 
     console.log(
-      `[sync-offsite] External Supabase: synced=${extResult.files_synced}, skipped=${extResult.files_skipped}, errors=${extResult.files_errored}, timed_out=${extResult.timed_out}`,
+      `[sync-offsite] Daily folder: synced=${extResult.files_synced}, skipped=${extResult.files_skipped}, errors=${extResult.files_errored}, timed_out=${extResult.timed_out}`,
     );
+
+    // ── Pass 2: Sync persistent pdfs/ folder (incremental) ──
+    let pdfSyncResult: SyncResult | null = null;
+    if (!extResult.timed_out && Date.now() < deadline) {
+      console.log("[sync-offsite] Starting PDF folder sync...");
+      pdfSyncResult = await syncPdfsFolder(adminClient, deadline);
+      console.log(
+        `[sync-offsite] PDF folder: synced=${pdfSyncResult.files_synced}, skipped=${pdfSyncResult.files_skipped}, errors=${pdfSyncResult.files_errored}, timed_out=${pdfSyncResult.timed_out}`,
+      );
+    }
+
+    // Combine results
+    const combinedSuccess = extResult.success && (!pdfSyncResult || pdfSyncResult.success);
 
     return new Response(
       JSON.stringify({
-        success: extResult.success,
+        success: combinedSuccess,
         external_supabase: extResult,
+        pdf_sync: pdfSyncResult,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
@@ -226,3 +241,103 @@ Deno.serve(async (req) => {
     );
   }
 });
+
+/**
+ * Sync the persistent pdfs/ folder from source to external Supabase.
+ * Only uploads files that don't already exist on the destination.
+ */
+async function syncPdfsFolder(
+  sourceClient: any,
+  deadline: number,
+): Promise<SyncResult> {
+  const extUrl = Deno.env.get("EXTERNAL_SUPABASE_URL");
+  const extKey = Deno.env.get("EXTERNAL_SUPABASE_SERVICE_KEY");
+
+  if (!extUrl || !extKey) {
+    return {
+      success: false,
+      files_synced: 0,
+      files_skipped: 0,
+      files_errored: 0,
+      total_size_bytes: 0,
+      errors: ["External Supabase not configured"],
+      timed_out: false,
+    };
+  }
+
+  const extClient = createClient(extUrl, extKey);
+  const result: SyncResult = {
+    success: true,
+    files_synced: 0,
+    files_skipped: 0,
+    files_errored: 0,
+    total_size_bytes: 0,
+    errors: [],
+    timed_out: false,
+  };
+
+  // List all PDFs in source
+  const sourceFiles = await listAllFiles(sourceClient, "database-backups", "pdfs");
+  console.log(`[sync-offsite] Found ${sourceFiles.length} PDF files in source`);
+
+  if (sourceFiles.length === 0) return result;
+
+  // Process in batches
+  for (let i = 0; i < sourceFiles.length; i += CONCURRENCY) {
+    if (Date.now() > deadline) {
+      result.timed_out = true;
+      console.warn("[sync-offsite] Timeout reached during PDF sync");
+      break;
+    }
+
+    const batch = sourceFiles.slice(i, i + CONCURRENCY);
+    const promises = batch.map(async (file) => {
+      try {
+        // Check if exists on destination
+        const parentPath = file.path.substring(0, file.path.lastIndexOf("/"));
+        const { data: existing } = await extClient.storage
+          .from("ropeworks-backups")
+          .list(parentPath, { limit: 1, search: file.name });
+
+        if (existing && existing.some((e: any) => e.name === file.name)) {
+          result.files_skipped++;
+          return;
+        }
+
+        // Download from source
+        const { data: blob, error: dlErr } = await sourceClient.storage
+          .from("database-backups")
+          .download(file.path);
+
+        if (dlErr || !blob) {
+          throw new Error(`Download failed: ${dlErr?.message || "no data"}`);
+        }
+
+        // Upload to destination
+        const { error: upErr } = await extClient.storage
+          .from("ropeworks-backups")
+          .upload(file.path, blob, {
+            contentType: "application/pdf",
+            upsert: false,
+          });
+
+        if (upErr) {
+          throw new Error(`Upload failed: ${upErr.message}`);
+        }
+
+        result.files_synced++;
+        result.total_size_bytes += file.size || (blob as Blob).size || 0;
+      } catch (err: any) {
+        result.files_errored++;
+        if (result.errors.length < 10) {
+          result.errors.push(`${file.path}: ${err.message}`);
+        }
+      }
+    });
+
+    await Promise.all(promises);
+  }
+
+  result.success = result.files_errored === 0 && !result.timed_out;
+  return result;
+}

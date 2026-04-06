@@ -266,10 +266,11 @@ function buildEmailHtml(opts: {
   denormalizedReports: number;
   photoBackup?: { total_copied: number; total_skipped: number; total_errors: number; total_size_bytes: number; timed_out: boolean } | null;
   offsiteSync?: { success: boolean; files_synced: number; files_errored: number; timed_out: boolean } | null;
+  pdfBackup?: { generated: number; skipped: number; no_pdf: number; errors: number } | null;
 }): string {
   const {
     emailTimestamp, totalSize, totalRows, tableCounts, tableCount,
-    downloadUrl, failedTables, denormalizedReports, photoBackup, offsiteSync,
+    downloadUrl, failedTables, denormalizedReports, photoBackup, offsiteSync, pdfBackup,
   } = opts;
 
   const tableRows = Object.entries(tableCounts)
@@ -300,6 +301,11 @@ function buildEmailHtml(opts: {
         ${photoBackup.total_errors > 0 ? `<tr><td style="padding:6px 0;color:#dc2626;">Photo Errors</td><td style="text-align:right;font-weight:bold;color:#dc2626;">${photoBackup.total_errors}</td></tr>` : ""}
         ${photoBackup.timed_out ? `<tr><td colspan="2" style="padding:6px 0;color:#f59e0b;font-size:12px;">⚠️ Photo backup timed out — partial results</td></tr>` : ""}
         ` : `<tr><td colspan="2" style="padding:6px 0;color:#dc2626;font-size:12px;">⚠️ Photo storage backup was not performed</td></tr>`}
+        ${pdfBackup ? `
+        <tr><td style="padding:6px 0;color:#555;">📄 PDFs Generated</td><td style="text-align:right;font-weight:bold;">${pdfBackup.generated}</td></tr>
+        ${pdfBackup.no_pdf > 0 ? `<tr><td style="padding:6px 0;color:#555;font-size:12px;">   Reports without PDF</td><td style="text-align:right;font-size:12px;color:#6b7280;">${pdfBackup.no_pdf}</td></tr>` : ""}
+        ${pdfBackup.errors > 0 ? `<tr><td style="padding:6px 0;color:#dc2626;">PDF Errors</td><td style="text-align:right;font-weight:bold;color:#dc2626;">${pdfBackup.errors}</td></tr>` : ""}
+        ` : ""}
         ${offsiteSync ? `
         <tr><td style="padding:6px 0;color:#555;">🌐 Off-Site Sync</td><td style="text-align:right;font-weight:bold;color:${offsiteSync.success ? '#059669' : '#dc2626'};">${offsiteSync.success ? `✅ ${offsiteSync.files_synced} files` : '❌ Failed'}</td></tr>
         ${offsiteSync.files_errored > 0 ? `<tr><td style="padding:6px 0;color:#dc2626;">Off-Site Errors</td><td style="text-align:right;font-weight:bold;color:#dc2626;">${offsiteSync.files_errored}</td></tr>` : ""}
@@ -435,6 +441,34 @@ Deno.serve(async (req) => {
       console.warn(`[scheduled-backup-notify] ${reportUploadErrors} denormalized report upload(s) failed`);
     }
 
+    // ── Step 3.5: Generate backup PDFs (incremental) ──
+    let pdfBackupResult: any = null;
+    try {
+      console.log("[scheduled-backup-notify] Starting incremental PDF generation...");
+      const pdfRes = await fetch(
+        `${supabaseUrl}/functions/v1/generate-backup-pdfs`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${serviceRoleKey}`,
+          },
+          body: JSON.stringify({ mode: "incremental" }),
+        },
+      );
+      if (pdfRes.ok) {
+        pdfBackupResult = await pdfRes.json();
+        console.log(
+          `[scheduled-backup-notify] PDF backup: generated=${pdfBackupResult.generated}, skipped=${pdfBackupResult.skipped}, no_pdf=${pdfBackupResult.no_pdf}, errors=${pdfBackupResult.errors}`,
+        );
+      } else {
+        const errText = await pdfRes.text();
+        console.error(`[scheduled-backup-notify] PDF backup failed [${pdfRes.status}]: ${errText}`);
+      }
+    } catch (pdfErr: any) {
+      console.error(`[scheduled-backup-notify] PDF backup error: ${pdfErr.message}`);
+    }
+
     // ── Step 4: Build combined backup JSON (gzip compressed) ──
     const combinedPayload = {
       version: 1,
@@ -504,6 +538,12 @@ Deno.serve(async (req) => {
         total_size_bytes: photoBackupResult.total_size_bytes,
         timed_out: photoBackupResult.timed_out,
         buckets: photoBackupResult.buckets,
+      } : null,
+      pdf_backup: pdfBackupResult ? {
+        generated: pdfBackupResult.generated,
+        skipped: pdfBackupResult.skipped,
+        no_pdf: pdfBackupResult.no_pdf,
+        errors: pdfBackupResult.errors,
       } : null,
     };
     const manifestBytes = new TextEncoder().encode(JSON.stringify(manifest, null, 2));
@@ -585,6 +625,7 @@ Deno.serve(async (req) => {
       failedTables,
       denormalizedReports: denormalizedReports.length,
       photoBackup: photoBackupResult,
+      pdfBackup: pdfBackupResult,
       offsiteSync: offsiteSyncResult?.external_supabase ? {
         success: offsiteSyncResult.external_supabase.success,
         files_synced: offsiteSyncResult.external_supabase.files_synced,
