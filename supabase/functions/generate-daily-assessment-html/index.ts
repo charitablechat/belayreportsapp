@@ -352,10 +352,10 @@ serve(async (req) => {
     .section-title {
       background: #1e40af;
       color: white;
-      padding: 10px 15px;
+      padding: 8px 12px;
       font-size: 14px;
       font-weight: 600;
-      margin-bottom: 12px;
+      margin-bottom: 8px;
       border-radius: 4px;
     }
 
