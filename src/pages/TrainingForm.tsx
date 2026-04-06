@@ -277,6 +277,9 @@ export default function TrainingForm() {
         const offlineId = getOfflineUserId();
         if (offlineId) user = { id: offlineId } as any;
       }
+      if (!user && navigator.onLine) {
+        user = await ensureValidSession();
+      }
       setCurrentUser(user);
     };
     fetchUser();

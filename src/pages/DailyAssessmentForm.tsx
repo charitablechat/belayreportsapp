@@ -276,6 +276,9 @@ export default function DailyAssessmentForm() {
         const offlineId = getOfflineUserId();
         if (offlineId) user = { id: offlineId } as any;
       }
+      if (!user && navigator.onLine) {
+        user = await ensureValidSession();
+      }
       setCurrentUser(user);
     };
     fetchUser();
