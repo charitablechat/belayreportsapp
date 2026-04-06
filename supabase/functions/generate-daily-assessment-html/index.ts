@@ -476,10 +476,10 @@ serve(async (req) => {
 
     .disclaimer {
       background: #fef3c7;
-      padding: 12px;
+      padding: 10px;
       border-radius: 4px;
       border-left: 4px solid #f59e0b;
-      margin-top: 20px;
+      margin-top: 14px;
     }
 
     .disclaimer-title {
