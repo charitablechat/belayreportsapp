@@ -936,9 +936,9 @@ serve(async (req) => {
     }
 
     .combined-section {
-      margin-bottom: 25px;
-      min-height: 100px; /* Prevent collapsed combined sections */
-      page-break-inside: auto; /* Allow breaks within large sections */
+      margin-bottom: 14px;
+      min-height: 100px;
+      page-break-inside: auto;
     }
 
     .combined-section:last-child {
