@@ -429,8 +429,8 @@ serve(async (req) => {
       equipmentRowCount > 0 && standardsRowCount > 0 && equipmentRowCount <= 6 && standardsRowCount <= 6;
 
     // Calculate page count with consolidation
-    // Pages: Cover + Reminders + Categories + Results Key = 4 base pages
-    let pageCount = 4;
+    // Pages: Cover + Reminders+Categories(combined) + Results Key = 3 base pages
+    let pageCount = 3;
 
     if (canCombineSystemsZiplines) {
       pageCount++; // Combined systems/ziplines page
