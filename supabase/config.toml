@@ -86,3 +86,6 @@ verify_jwt = false
 
 [functions.sync-offsite-backup]
 verify_jwt = false
+
+[functions.generate-backup-pdfs]
+verify_jwt = false
