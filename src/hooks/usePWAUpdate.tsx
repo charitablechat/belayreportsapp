@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { isLovablePreview } from '@/lib/environment';
 
 export type UpdateCheckResult = 'update_found' | 'up_to_date' | 'no_sw' | 'error';
 
@@ -121,11 +122,16 @@ export const usePWAUpdate = (): PWAUpdateStatus => {
     try {
       let reg = registration;
       if (!reg) {
+        // In preview/iframe, SW is never registered — skip the 5s wait
+        const isIframe = (() => { try { return window.self !== window.top; } catch { return true; } })();
+        if (isLovablePreview() || isIframe) {
+          return 'no_sw';
+        }
         try {
           reg = await withTimeout(navigator.serviceWorker.ready, 5000, 'SW ready (check)');
         } catch {
           console.warn('[PWA Update] No service worker available for update check');
-          return 'error';
+          return 'no_sw';
         }
       }
 

@@ -74,9 +74,14 @@ export const ManualUpdateButton = () => {
     try {
       const result = await checkForUpdates();
       toast.dismiss('update-check');
-      if (result === 'up_to_date' || result === 'no_sw') {
+      if (result === 'up_to_date') {
         toast.info('App is up to date', { 
           description: 'You have the latest version',
+          duration: 3000
+        });
+      } else if (result === 'no_sw') {
+        toast.info('App is up to date', { 
+          description: 'Update checks are available in the installed app',
           duration: 3000
         });
       } else if (result === 'error') {
