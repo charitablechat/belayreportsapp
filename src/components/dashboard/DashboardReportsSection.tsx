@@ -313,7 +313,7 @@ export function DashboardReportsSection({
       </div>
 
       {/* Stats bar */}
-      {!loading && (
+      {!loading && !isSearchActive && (
         <DashboardStatsBar
           total={statsData.total}
           drafts={statsData.drafts}
@@ -324,149 +324,261 @@ export function DashboardReportsSection({
         />
       )}
 
-      {/* Report type tabs */}
-      <Tabs value={activeReportTab} onValueChange={setActiveReportTab}>
-        <TabsList className="w-full sm:w-auto mb-4">
-          <TabsTrigger value="inspections" className="flex items-center gap-2">
-            <FileText className="w-4 h-4" />
-            Inspections ({loading || (!totalInspections && inspections.length === 0) ? '…' : (totalInspections ?? inspections.length)})
-          </TabsTrigger>
-          <TabsTrigger value="training" className="flex items-center gap-2">
-            <GraduationCap className="w-4 h-4" />
-            Training ({loading || (!totalTrainings && trainings.length === 0) ? '…' : (totalTrainings ?? trainings.length)})
-          </TabsTrigger>
-          <TabsTrigger value="daily" className="flex items-center gap-2">
-            <FileText className="w-4 h-4" />
-            Daily ({loading || (!totalDailyAssessments && dailyAssessments.length === 0) ? '…' : (totalDailyAssessments ?? dailyAssessments.length)})
-          </TabsTrigger>
-        </TabsList>
+      {/* Cross-tab search results */}
+      {isSearchActive && !loading ? (
+        <div className="space-y-6">
+          <div className="flex items-center gap-2 mb-2">
+            <Search className="w-4 h-4 text-muted-foreground" />
+            <span className="text-sm text-muted-foreground">
+              Searching all reports — {crossTabResults?.total ?? 0} results
+            </span>
+          </div>
 
-        {/* Content for all tabs - rendered by the same logic */}
-        {['inspections', 'training', 'daily'].map((tab) => (
-          <TabsContent key={tab} value={tab}>
-            {loading ? (
-              <div className="grid gap-4">
-                {Array.from({ length: 3 }).map((_, i) => (
-                  <ReportCardSkeleton key={i} />
-                ))}
-              </div>
-            ) : filteredCount === 0 ? (
-              hasActiveFilters ? (
-                <Card>
-                  <CardContent className="p-8 text-center">
-                    <p className="text-muted-foreground mb-4">No reports match your filters</p>
-                    <Button variant="outline" onClick={() => { clearAllFilters(); setStatsFilter(null); }}>Clear all filters</Button>
-                  </CardContent>
-                </Card>
+          {crossTabResults && crossTabResults.total === 0 && (
+            <Card>
+              <CardContent className="p-8 text-center">
+                <p className="text-muted-foreground mb-4">No reports match your search across all types</p>
+                <Button variant="outline" onClick={() => { updateFilter('search', ''); }}>Clear search</Button>
+              </CardContent>
+            </Card>
+          )}
+
+          {crossTabResults && crossTabResults.inspections.length > 0 && (
+            <CrossTabSection
+              label="Inspections"
+              icon={<FileText className="w-4 h-4" />}
+              reports={crossTabResults.inspections}
+              type="inspection"
+              compact={compact}
+              viewMode={filters.viewMode}
+              onDelete={(r) => handleDeleteForType(r, 'inspection')}
+              onClick={(r) => handleClick(r, 'inspection')}
+              getStatusBadge={getStatusBadge}
+            />
+          )}
+
+          {crossTabResults && crossTabResults.trainings.length > 0 && (
+            <CrossTabSection
+              label="Training"
+              icon={<GraduationCap className="w-4 h-4" />}
+              reports={crossTabResults.trainings}
+              type="training"
+              compact={compact}
+              viewMode={filters.viewMode}
+              onDelete={(r) => handleDeleteForType(r, 'training')}
+              onClick={(r) => handleClick(r, 'training')}
+            />
+          )}
+
+          {crossTabResults && crossTabResults.daily.length > 0 && (
+            <CrossTabSection
+              label="Daily Assessments"
+              icon={<FileText className="w-4 h-4" />}
+              reports={crossTabResults.daily}
+              type="daily"
+              compact={compact}
+              viewMode={filters.viewMode}
+              onDelete={(r) => handleDeleteForType(r, 'daily')}
+              onClick={(r) => handleClick(r, 'daily')}
+            />
+          )}
+        </div>
+      ) : (
+        /* Normal tab-based view */
+        <Tabs value={activeReportTab} onValueChange={setActiveReportTab}>
+          <TabsList className="w-full sm:w-auto mb-4">
+            <TabsTrigger value="inspections" className="flex items-center gap-2">
+              <FileText className="w-4 h-4" />
+              Inspections ({loading || (!totalInspections && inspections.length === 0) ? '…' : (totalInspections ?? inspections.length)})
+            </TabsTrigger>
+            <TabsTrigger value="training" className="flex items-center gap-2">
+              <GraduationCap className="w-4 h-4" />
+              Training ({loading || (!totalTrainings && trainings.length === 0) ? '…' : (totalTrainings ?? trainings.length)})
+            </TabsTrigger>
+            <TabsTrigger value="daily" className="flex items-center gap-2">
+              <FileText className="w-4 h-4" />
+              Daily ({loading || (!totalDailyAssessments && dailyAssessments.length === 0) ? '…' : (totalDailyAssessments ?? dailyAssessments.length)})
+            </TabsTrigger>
+          </TabsList>
+
+          {/* Content for all tabs - rendered by the same logic */}
+          {['inspections', 'training', 'daily'].map((tab) => (
+            <TabsContent key={tab} value={tab}>
+              {loading ? (
+                <div className="grid gap-4">
+                  {Array.from({ length: 3 }).map((_, i) => (
+                    <ReportCardSkeleton key={i} />
+                  ))}
+                </div>
+              ) : filteredCount === 0 ? (
+                hasActiveFilters ? (
+                  <Card>
+                    <CardContent className="p-8 text-center">
+                      <p className="text-muted-foreground mb-4">No reports match your filters</p>
+                      <Button variant="outline" onClick={() => { clearAllFilters(); setStatsFilter(null); }}>Clear all filters</Button>
+                    </CardContent>
+                  </Card>
+                ) : (
+                  <Card>
+                    <CardContent className="p-0">
+                      <EmptyState
+                        onAction={() => {
+                          triggerHaptic('light');
+                          navigate(newPath);
+                        }}
+                      />
+                    </CardContent>
+                  </Card>
+                )
               ) : (
-                <Card>
-                  <CardContent className="p-0">
-                    <EmptyState
-                      onAction={() => {
-                        triggerHaptic('light');
-                        navigate(newPath);
-                      }}
-                    />
-                  </CardContent>
-                </Card>
-              )
-            ) : (
-              <div className={cn("space-y-6", compact && "space-y-3")}>
-                {groups.map((group, gi) => {
-                  const isCompleted = group.label.startsWith('Completed');
-                  const isCollapsed = isCompleted ? completedCollapsed : collapsedGroups.has(group.label);
-                  const showHeader = groups.length > 1 || filters.groupBy !== 'none';
+                <div className={cn("space-y-6", compact && "space-y-3")}>
+                  {groups.map((group, gi) => {
+                    const isCompleted = group.label.startsWith('Completed');
+                    const isCollapsed = isCompleted ? completedCollapsed : collapsedGroups.has(group.label);
+                    const showHeader = groups.length > 1 || filters.groupBy !== 'none';
 
-                  // Get summary for collapsed groups
-                  const getCollapsedSummary = () => {
-                    if (!isCollapsed || group.items.length === 0) return null;
-                    const last = group.items[0];
-                    const org = last?.organization || 'Unknown';
-                    return `${group.count} reports — latest: ${org}`;
-                  };
+                    const getCollapsedSummary = () => {
+                      if (!isCollapsed || group.items.length === 0) return null;
+                      const last = group.items[0];
+                      const org = last?.organization || 'Unknown';
+                      return `${group.count} reports — latest: ${org}`;
+                    };
 
-                  const gridClass = cn(
-                    "grid md:grid-cols-2 lg:grid-cols-3",
-                    compact ? "gap-2" : "gap-4"
-                  );
+                    const gridClass = cn(
+                      "grid md:grid-cols-2 lg:grid-cols-3",
+                      compact ? "gap-2" : "gap-4"
+                    );
 
-                  return (
-                    <div key={group.label}>
-                      {showHeader && (
-                        <Collapsible
-                          open={!isCollapsed}
-                          onOpenChange={() => isCompleted ? setCompletedCollapsed(!completedCollapsed) : toggleGroupCollapse(group.label)}
-                        >
-                          <CollapsibleTrigger className="flex items-center gap-2 mb-3 w-full text-left hover:opacity-80 transition-opacity">
-                            {isCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                            <span className="font-semibold text-sm">{group.label}</span>
-                            <Badge variant="secondary" className="text-xs">{group.count}</Badge>
-                            {isCollapsed && getCollapsedSummary() && (
-                              <span className="text-xs text-muted-foreground ml-2 truncate">{getCollapsedSummary()}</span>
-                            )}
-                          </CollapsibleTrigger>
-                          <CollapsibleContent>
-                            {filters.viewMode === 'list' ? (
-                              <ReportListView
-                                reports={group.items}
-                                type={currentType}
-                                onRowClick={handleClick}
-                              />
-                            ) : (
-                              <div className={gridClass}>
-                                {group.items.map((report: any) => (
-                                  <ReportCard
-                                    key={report.id}
-                                    report={report}
-                                    type={currentType}
-                                    onDelete={handleDelete}
-                                    onClick={handleClick}
-                                    getStatusBadge={currentType === 'inspection' ? getStatusBadge : undefined}
-                                    compact={compact}
-                                  />
-                                ))}
-                              </div>
-                            )}
-                          </CollapsibleContent>
-                        </Collapsible>
-                      )}
-                      {!showHeader && (
-                        filters.viewMode === 'list' ? (
-                          <ReportListView
-                            reports={group.items}
-                            type={currentType}
-                            onRowClick={handleClick}
-                          />
-                        ) : (
-                          <div className={gridClass}>
-                            {group.items.map((report: any) => (
-                              <ReportCard
-                                key={report.id}
-                                report={report}
-                                type={currentType}
-                                onDelete={handleDelete}
-                                onClick={handleClick}
-                                getStatusBadge={currentType === 'inspection' ? getStatusBadge : undefined}
-                                compact={compact}
-                              />
-                            ))}
-                          </div>
-                        )
-                      )}
-                    </div>
-                  );
-                })}
+                    return (
+                      <div key={group.label}>
+                        {showHeader && (
+                          <Collapsible
+                            open={!isCollapsed}
+                            onOpenChange={() => isCompleted ? setCompletedCollapsed(!completedCollapsed) : toggleGroupCollapse(group.label)}
+                          >
+                            <CollapsibleTrigger className="flex items-center gap-2 mb-3 w-full text-left hover:opacity-80 transition-opacity">
+                              {isCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                              <span className="font-semibold text-sm">{group.label}</span>
+                              <Badge variant="secondary" className="text-xs">{group.count}</Badge>
+                              {isCollapsed && getCollapsedSummary() && (
+                                <span className="text-xs text-muted-foreground ml-2 truncate">{getCollapsedSummary()}</span>
+                              )}
+                            </CollapsibleTrigger>
+                            <CollapsibleContent>
+                              {filters.viewMode === 'list' ? (
+                                <ReportListView
+                                  reports={group.items}
+                                  type={currentType}
+                                  onRowClick={handleClick}
+                                />
+                              ) : (
+                                <div className={gridClass}>
+                                  {group.items.map((report: any) => (
+                                    <ReportCard
+                                      key={report.id}
+                                      report={report}
+                                      type={currentType}
+                                      onDelete={handleDelete}
+                                      onClick={handleClick}
+                                      getStatusBadge={currentType === 'inspection' ? getStatusBadge : undefined}
+                                      compact={compact}
+                                    />
+                                  ))}
+                                </div>
+                              )}
+                            </CollapsibleContent>
+                          </Collapsible>
+                        )}
+                        {!showHeader && (
+                          filters.viewMode === 'list' ? (
+                            <ReportListView
+                              reports={group.items}
+                              type={currentType}
+                              onRowClick={handleClick}
+                            />
+                          ) : (
+                            <div className={gridClass}>
+                              {group.items.map((report: any) => (
+                                <ReportCard
+                                  key={report.id}
+                                  report={report}
+                                  type={currentType}
+                                  onDelete={handleDelete}
+                                  onClick={handleClick}
+                                  getStatusBadge={currentType === 'inspection' ? getStatusBadge : undefined}
+                                  compact={compact}
+                                />
+                              ))}
+                            </div>
+                          )
+                        )}
+                      </div>
+                    );
+                  })}
 
-                <DashboardPagination
-                  currentPage={currentPage}
-                  totalPages={totalPages}
-                  onPageChange={(p) => updateFilter('page', p)}
-                />
-              </div>
-            )}
-          </TabsContent>
-        ))}
-      </Tabs>
+                  <DashboardPagination
+                    currentPage={currentPage}
+                    totalPages={totalPages}
+                    onPageChange={(p) => updateFilter('page', p)}
+                  />
+                </div>
+              )}
+            </TabsContent>
+          ))}
+        </Tabs>
+      )}
+    </div>
+  );
+}
+
+/* ── Cross-tab search result section ── */
+
+interface CrossTabSectionProps {
+  label: string;
+  icon: React.ReactNode;
+  reports: any[];
+  type: 'inspection' | 'training' | 'daily';
+  compact: boolean;
+  viewMode: 'grid' | 'list';
+  onDelete: (report: any) => void;
+  onClick: (report: any) => void;
+  getStatusBadge?: (report: any) => React.ReactNode;
+}
+
+function CrossTabSection({ label, icon, reports, type, compact, viewMode, onDelete, onClick, getStatusBadge }: CrossTabSectionProps) {
+  const gridClass = cn(
+    "grid md:grid-cols-2 lg:grid-cols-3",
+    compact ? "gap-2" : "gap-4"
+  );
+
+  return (
+    <div>
+      <div className="flex items-center gap-2 mb-3">
+        {icon}
+        <span className="font-semibold text-sm">{label}</span>
+        <Badge variant="secondary" className="text-xs">{reports.length}</Badge>
+      </div>
+      {viewMode === 'list' ? (
+        <ReportListView
+          reports={reports}
+          type={type}
+          onRowClick={onClick}
+        />
+      ) : (
+        <div className={gridClass}>
+          {reports.map((report: any) => (
+            <ReportCard
+              key={report.id}
+              report={report}
+              type={type}
+              onDelete={onDelete}
+              onClick={onClick}
+              getStatusBadge={type === 'inspection' ? getStatusBadge : undefined}
+              compact={compact}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
