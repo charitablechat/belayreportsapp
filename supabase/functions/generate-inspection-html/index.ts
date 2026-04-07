@@ -312,8 +312,18 @@ serve(async (req) => {
     ]);
 
     const photoDataUris: { id: string; dataUri: string; caption: string; section: string }[] = [];
+    const seenPhotoKeys = new Set<string>();
     for (const r of galleryResults) {
-      if (r.status === 'fulfilled' && r.value) photoDataUris.push(r.value);
+      if (r.status === 'fulfilled' && r.value) {
+        // Deduplicate by photo_url+section to prevent duplicate gallery entries
+        const dedupeKey = `${r.value.section}::${r.value.dataUri.substring(0, 100)}`;
+        if (!seenPhotoKeys.has(dedupeKey)) {
+          seenPhotoKeys.add(dedupeKey);
+          photoDataUris.push(r.value);
+        } else {
+          console.log(`[Inspection HTML] Skipped duplicate gallery photo: ${r.value.id}`);
+        }
+      }
     }
 
     const itemPhotoMap = new Map<string, string>();
