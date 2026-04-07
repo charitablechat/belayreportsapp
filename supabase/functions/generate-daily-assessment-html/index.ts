@@ -217,7 +217,7 @@ serve(async (req) => {
       font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
       line-height: 1.6;
       color: #333;
-      background: #c2c2c2;
+      background: #ffffff;
       padding: 10px;
     }
 
