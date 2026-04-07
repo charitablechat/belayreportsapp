@@ -2601,8 +2601,8 @@ serve(async (req) => {
       <table style="width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 10pt;">
         <thead>
           <tr>
-            <th style="background: #c2c2c2; color: #000; padding: 8px; text-align: left; font-weight: bold; border: 1px solid #000; width: 40%;">Retirement Criteria</th>
-            <th style="background: #c2c2c2; color: #000; padding: 8px; text-align: left; font-weight: bold; border: 1px solid #000; width: 60%;">Description</th>
+            <th style="background: #1e40af; color: #fff; padding: 8px; text-align: left; font-weight: bold; border: 1px solid #1e40af; width: 40%;">Retirement Criteria</th>
+            <th style="background: #1e40af; color: #fff; padding: 8px; text-align: left; font-weight: bold; border: 1px solid #1e40af; width: 60%;">Description</th>
           </tr>
         </thead>
         <tbody>
