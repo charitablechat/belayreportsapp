@@ -289,6 +289,69 @@ export function invalidateAdminCache() {
 // Backward compatibility alias
 export const invalidateSuperAdminCache = invalidateAdminCache;
 
+// True super admin cache - distinguishes kale (super_admin role) from regular admins
+let cachedTrueSuperAdmin: boolean | null = null;
+let trueSuperAdminCacheTimestamp: number = 0;
+let pendingTrueSuperAdminPromise: Promise<boolean> | null = null;
+const TRUE_SUPER_ADMIN_CACHE_TTL = 120000; // 2 minutes
+
+/**
+ * Checks if the current user is a TRUE super admin (has 'admin' role in user_roles
+ * checked via the is_super_admin RPC — which is the legacy name for the top-level role).
+ * This distinguishes the super admin from regular admins who only have the 'admin' role
+ * via is_admin_or_above.
+ * 
+ * Note: The DB function is_super_admin() checks for role='admin' in user_roles,
+ * while is_admin_or_above() checks for role IN ('admin','super_admin').
+ * In practice, only kale has the 'admin' role; Josh/Brenda have 'super_admin' role
+ * (which is actually the "admin" tier, confusingly named).
+ */
+export async function getIsTrueSuperAdmin(): Promise<boolean> {
+  const now = Date.now();
+
+  if (cachedTrueSuperAdmin !== null && (now - trueSuperAdminCacheTimestamp) < TRUE_SUPER_ADMIN_CACHE_TTL) {
+    return cachedTrueSuperAdmin;
+  }
+
+  if (pendingTrueSuperAdminPromise) {
+    return pendingTrueSuperAdminPromise;
+  }
+
+  const localCached = localStorage.getItem('cached-true-super-admin');
+  if (!navigator.onLine && localCached !== null) {
+    return localCached === 'true';
+  }
+
+  pendingTrueSuperAdminPromise = (async () => {
+    try {
+      const { data, error } = await supabase.rpc('is_super_admin');
+      if (error) throw error;
+
+      const status = !!data;
+      cachedTrueSuperAdmin = status;
+      trueSuperAdminCacheTimestamp = Date.now();
+      localStorage.setItem('cached-true-super-admin', status.toString());
+      return status;
+    } catch (error) {
+      console.warn('[CachedAuth] Error checking true super admin status:', error);
+      return localCached === 'true';
+    } finally {
+      pendingTrueSuperAdminPromise = null;
+    }
+  })();
+
+  return pendingTrueSuperAdminPromise;
+}
+
+/**
+ * Invalidates the true super admin cache
+ */
+export function invalidateTrueSuperAdminCache() {
+  cachedTrueSuperAdmin = null;
+  trueSuperAdminCacheTimestamp = 0;
+  pendingTrueSuperAdminPromise = null;
+}
+
 /**
  * Gets the cached user from localStorage (Supabase session)
  * Returns null if no valid cached session exists
