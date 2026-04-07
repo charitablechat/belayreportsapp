@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { FileText, GraduationCap, ChevronDown, ChevronRight, X, Filter, Minimize2, Maximize2 } from "lucide-react";
+import { FileText, GraduationCap, ChevronDown, ChevronRight, X, Filter, Minimize2, Maximize2, Search } from "lucide-react";
 import { ReportCard } from "@/components/dashboard/ReportCard";
 import { ReportCardSkeleton } from "@/components/dashboard/ReportCardSkeleton";
 import { ReportListView } from "@/components/dashboard/ReportListView";
@@ -18,6 +18,15 @@ import { useDashboardFilters } from "@/hooks/useDashboardFilters";
 import { InspectionsEmptyState, TrainingsEmptyState, DailyAssessmentsEmptyState } from "@/components/EmptyState";
 import { triggerHaptic } from "@/lib/haptics";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { getAssigneeName } from "@/lib/report-utils";
+
+function textMatchesReport(report: any, query: string, type: string): boolean {
+  const q = query.toLowerCase();
+  const org = (report.organization || '').toLowerCase();
+  const loc = (report.location || report.site || '').toLowerCase();
+  const assignee = getAssigneeName(report, type).toLowerCase();
+  return org.includes(q) || loc.includes(q) || assignee.includes(q);
+}
 
 interface DashboardReportsSectionProps {
   inspections: any[];
