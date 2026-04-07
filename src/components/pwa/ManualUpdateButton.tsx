@@ -29,7 +29,6 @@ export const ManualUpdateButton = () => {
   const [checking, setChecking] = useState(false);
   const [showForceRefreshDialog, setShowForceRefreshDialog] = useState(false);
   const [showUnsyncedWarning, setShowUnsyncedWarning] = useState(false);
-  const previousNeedsUpdate = useRef(needsUpdate);
 
   // Check if app was just updated after reload
   useEffect(() => {
@@ -43,19 +42,6 @@ export const ManualUpdateButton = () => {
       triggerHaptic('success');
     }
   }, []);
-
-  // Watch for needsUpdate transitions to show toast
-  useEffect(() => {
-    if (needsUpdate && !previousNeedsUpdate.current) {
-      toast.dismiss('update-check');
-      toast.success('Update found!', {
-        description: 'Click "Update App" to install the latest version',
-        duration: 5000
-      });
-      triggerHaptic('success');
-    }
-    previousNeedsUpdate.current = needsUpdate;
-  }, [needsUpdate]);
 
   const handleCheckForUpdates = async () => {
     triggerHaptic('light');

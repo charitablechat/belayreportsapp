@@ -13,7 +13,7 @@ export interface PWAUpdateStatus {
 }
 
 const UPDATE_APPLIED_KEY = 'pwa-update-just-applied';
-const SW_READY_TIMEOUT_MS = 1500;
+const SW_READY_TIMEOUT_MS = 5000;
 const UPDATE_DISCOVERY_TIMEOUT_MS = 4000;
 const SW_UPDATE_TIMEOUT_MS = 4000;
 
@@ -204,25 +204,8 @@ export const usePWAUpdate = (): PWAUpdateStatus => {
         };
 
         onUpdateFound = () => {
-          const sw = reg!.installing;
-          if (!sw) {
-            resolveOnce(false);
-            return;
-          }
-
-          const onStateChange = () => {
-            if (sw.state === 'installed' || sw.state === 'activated') {
-              sw.removeEventListener('statechange', onStateChange);
-              resolveOnce(true);
-            }
-          };
-
-          sw.addEventListener('statechange', onStateChange);
-
-          if (sw.state === 'installed' || sw.state === 'activated') {
-            sw.removeEventListener('statechange', onStateChange);
-            resolveOnce(true);
-          }
+          // updatefound confirms an update exists — resolve immediately
+          resolveOnce(true);
         };
 
         reg!.addEventListener('updatefound', onUpdateFound);
