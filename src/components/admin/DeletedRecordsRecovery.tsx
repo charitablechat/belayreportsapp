@@ -313,6 +313,18 @@ export function DeletedRecordsRecovery() {
         </CardContent>
       </Card>
 
+      {pendingDeleteCount > 0 && (
+        <Card className="border-amber-500/50 bg-amber-500/5">
+          <CardContent className="flex items-center gap-3 py-4">
+            <CloudOff className="h-5 w-5 text-amber-600 shrink-0" />
+            <p className="text-sm text-amber-700 dark:text-amber-400">
+              <strong>{pendingDeleteCount}</strong> deletion{pendingDeleteCount !== 1 ? 's are' : ' is'} pending sync.
+              They will appear here once the device reconnects and syncs.
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
       {deletedRecords.length === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12 text-center">
