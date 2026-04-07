@@ -275,8 +275,8 @@ export default function PhotoGallery({
 
         const pendingPhotos = offlinePhotosList.filter(p => !p.uploaded);
         // Dedup: filter out offline photos whose photoUrl already exists in DB results
-        const supabaseUrls = new Set(supabasePhotos.map(p => p.photo_url));
-        const dedupedPending = pendingPhotos.filter(p => !supabaseUrls.has(p.photo_url));
+        const supabaseUrls = new Set(supabasePhotos.map(p => p.photoUrl));
+        const dedupedPending = pendingPhotos.filter(p => !supabaseUrls.has(p.photoUrl));
         const mergedPhotos = [...dedupedPending, ...supabasePhotos].sort(
           (a, b) => a.display_order - b.display_order
         );
