@@ -301,7 +301,7 @@ export function DashboardReportsSection({
           </div>
         )}
 
-        {hasActiveFilters && (
+        {hasActiveFilters && !isSearchActive && (
           <div className="flex items-center gap-2">
             <span className="text-xs text-muted-foreground">{filteredCount} results</span>
             <Button variant="ghost" size="sm" className="h-6 text-xs gap-1" onClick={clearAllFilters}>
