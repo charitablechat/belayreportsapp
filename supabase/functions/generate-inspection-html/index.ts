@@ -2124,7 +2124,7 @@ serve(async (req) => {
     <div class="page-content">
       <h2>ZIPLINES</h2>
       
-      <div style="margin-bottom: 15px; font-size: 9.5pt; padding: 10px; background: #c2c2c2; border-left: 3px solid #1e40af;">
+      <div style="margin-bottom: 15px; font-size: 9.5pt; padding: 10px; background: #f8fafc; border: 1px solid #e2e8f0; border-left: 3px solid #1e40af;">
         <strong>Key Abbreviations:</strong><br>
         <strong>Cable Type:</strong> GAC = Galvanized Aircraft Cable, SS = Stainless Steel<br>
         <strong>Braking System:</strong> ZS = Zipstop, FB = Friction Brake, SB = Spring Brake, G = Gravity<br>
