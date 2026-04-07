@@ -734,8 +734,8 @@ serve(async (req) => {
     }
 
     table th {
-      background: #c2c2c2;
-      color: #000;
+      background: #1e40af;
+      color: #fff;
       padding: 6px 8px;
       text-align: left;
       font-weight: bold;
