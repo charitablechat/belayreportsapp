@@ -5,12 +5,13 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { RefreshCw, Trash2, RotateCcw, Clock, AlertTriangle, FileText, GraduationCap, ClipboardCheck, Loader2, Calendar, User, X } from "lucide-react";
+import { RefreshCw, Trash2, RotateCcw, Clock, AlertTriangle, FileText, GraduationCap, ClipboardCheck, Loader2, Calendar, User, X, CloudOff } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { useSoftDelete, DeletedRecord, SoftDeleteTable } from "@/hooks/useSoftDelete";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { getPendingSoftDeleteCount } from "@/lib/queued-soft-delete-processor";
 
 export function DeletedRecordsRecovery() {
   const [deletedRecords, setDeletedRecords] = useState<DeletedRecord[]>([]);
