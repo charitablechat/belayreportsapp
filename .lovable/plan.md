@@ -1,32 +1,43 @@
 
 
-# Fix PWA Update Check: False Positives and Delayed Detection
+# Make Super Admin Strictly Read-Only on Others' Reports
 
 ## Problem
+When you (super admin) open another user's report, the permission hook returns `canEdit: true, isReadOnly: false`, which allows saves, sets `last_modified_by`, and stores data locally under your account. You want complete invisibility — no writes, no traces.
 
-When the user clicks "Check for Updates", the function returns `up_to_date` even when an update exists. Minutes later, the background `updatefound` listener fires and shows the update banner — contradicting the earlier toast. Two root causes:
+## Current State (already correct)
+- `last_opened_at` update: already gated on `isOwner` (InspectionForm line 1045)
+- Auto-save (debounced + interval): already gated on `isOwner` in all 3 forms
+- `last_modified_by`: only set inside `performSave`, which is blocked by auto-save guards
+- Save Progress button: hidden when `effectiveReadOnly` is true
+- Active timer: already disabled (`enabled: false`)
 
-1. **`updatefound` handler waits too long**: Once `updatefound` fires (confirming an update exists), the code waits for the SW to reach `installed` state before resolving `true`. On slower connections, the 4s safety timeout fires first, resolving `false` — a false negative.
+## What Needs to Change
 
-2. **SW_READY_TIMEOUT_MS too aggressive (1.5s)**: On cold starts or slower devices, `navigator.serviceWorker.ready` may not resolve in 1.5s, causing the function to bail with `no_sw` even though the SW is available.
+### 1. `src/hooks/useReportEditPermission.tsx` (lines 156-167)
 
-3. **Stale closure in ManualUpdateButton**: `handleCheckForUpdates` captures `needsUpdate` from the render closure. If `checkForUpdates` internally sets `needRefresh=true` but the component hasn't re-rendered yet, the function still sees the old `needsUpdate=false` value.
+Change the super admin non-owner block from granting full edit access to strict read-only:
 
-## Changes
+```tsx
+// Super Admin viewing someone else's report - strictly read-only, no traces
+if (isSuperAdmin) {
+  return {
+    canEdit: false,
+    isReadOnly: true,
+    isOwner: false,
+    isSuperAdmin: true,
+    isLoading: false,
+    readOnlyReason: null
+  };
+}
+```
 
-### 1. `src/hooks/usePWAUpdate.tsx`
+Setting `readOnlyReason: null` avoids showing a banner — the super admin knows they're browsing. Setting `canEdit: false` and `isReadOnly: true` ensures:
+- Save Progress button is hidden
+- Auto-save never fires (already gated on `isOwner`, plus `effectiveReadOnly` blocks manual saves)
+- No `last_modified_by` gets written
+- No local IndexedDB writes occur
+- All form fields render as disabled
 
-- **Increase `SW_READY_TIMEOUT_MS`** from `1500` to `5000` — gives the SW registration time to resolve on slower devices.
-- **Resolve `updatefound` immediately**: When the `updatefound` event fires, resolve `true` right away instead of waiting for the SW to reach `installed` state. The existence of `updatefound` already confirms an update is available — no need to wait for installation to complete before telling the user.
-
-Specific change in `checkForUpdates` (line ~206-225): simplify the `onUpdateFound` handler to just call `resolveOnce(true)` immediately, removing the `statechange` listener logic.
-
-### 2. `src/components/pwa/ManualUpdateButton.tsx`
-
-- **Fix stale closure**: Handle the `update_found` result directly in `handleCheckForUpdates` instead of relying on the `useEffect` watching `needsUpdate`. When `checkForUpdates()` returns `'update_found'`, show the success toast and haptic immediately in the same function, ensuring the user gets instant feedback.
-- **Remove the `previousNeedsUpdate` useEffect** that watches for `needsUpdate` transitions — it's redundant once we handle `update_found` inline and causes the delayed/duplicate notification.
-
-### Files Modified
-- `src/hooks/usePWAUpdate.tsx` — 2 changes (timeout constant, updatefound handler)
-- `src/components/pwa/ManualUpdateButton.tsx` — remove transition watcher useEffect, add inline `update_found` handling
+This is a single-line-group change in one file. Delete capability is unaffected — it's handled separately via dashboard delete actions and RLS policies, not by `canEdit`.
 
