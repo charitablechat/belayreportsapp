@@ -146,7 +146,8 @@ export default function TrainingForm() {
     // Allow tab navigation in locked mode
     const isTabTrigger = target.closest('[role="tab"]');
     const isLightboxTrigger = target.closest('[data-lightbox-trigger]');
-    if (!isEditable || isTabTrigger || isLightboxTrigger) return; // Allow all non-editable interactions (scroll, expand, copy, navigate, view photos)
+    const isInsideDialog = target.closest('[role="dialog"]');
+    if (!isEditable || isTabTrigger || isLightboxTrigger || isInsideDialog) return; // Allow all non-editable interactions (scroll, expand, copy, navigate, view photos, dialog interactions)
 
     e.preventDefault();
     e.stopPropagation();
