@@ -153,12 +153,11 @@ export function useReportEditPermission({
       };
     }
 
-    // Super Admin viewing someone else's report - read-only
-    // Super Admin viewing someone else's report - full edit access
+    // Super Admin viewing someone else's report - strictly read-only, no traces
     if (isSuperAdmin) {
       return {
-        canEdit: true,
-        isReadOnly: false,
+        canEdit: false,
+        isReadOnly: true,
         isOwner: false,
         isSuperAdmin: true,
         isLoading: false,
