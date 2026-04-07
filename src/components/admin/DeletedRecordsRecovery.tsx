@@ -104,6 +104,8 @@ export function DeletedRecordsRecovery() {
 
   useEffect(() => {
     loadDeletedRecords();
+    // Check for pending offline soft-deletes
+    getPendingSoftDeleteCount().then(count => setPendingDeleteCount(count)).catch(() => {});
   }, [loadDeletedRecords]);
 
   const handleRestore = async () => {
