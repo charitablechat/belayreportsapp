@@ -277,7 +277,10 @@ export function LocalSnapshotsPanel({ allowDelete = true }: SnapshotsPanelProps)
   const filteredSnapshots = snapshots.filter(s => {
     if (!searchQuery) return true;
     const q = searchQuery.toLowerCase();
-    return (s.organization || '').toLowerCase().includes(q);
+    return (s.organization || '').toLowerCase().includes(q)
+        || s.reportType.replace('_', ' ').toLowerCase().includes(q)
+        || s.device.toLowerCase().includes(q)
+        || s.reportId.toLowerCase().includes(q);
   });
 
   return (
@@ -326,7 +329,7 @@ export function LocalSnapshotsPanel({ allowDelete = true }: SnapshotsPanelProps)
           </div>
         ) : (
           <>
-            <RecoverySearchBar value={searchQuery} onChange={setSearchQuery} placeholder="Search by organization..." />
+            <RecoverySearchBar value={searchQuery} onChange={setSearchQuery} placeholder="Search by organization, type, device, or ID..." />
             {filteredSnapshots.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
                 No snapshots match &ldquo;{searchQuery}&rdquo;.
@@ -539,7 +542,10 @@ export function CloudSnapshotsPanel({ allowDelete = true }: CloudSnapshotsPanelP
     if (!searchQuery) return true;
     const q = searchQuery.toLowerCase();
     return (s.facility || '').toLowerCase().includes(q)
-        || (s.user_name || '').toLowerCase().includes(q);
+        || (s.user_name || '').toLowerCase().includes(q)
+        || (s.report_type || '').replace('_', ' ').toLowerCase().includes(q)
+        || (s.device || '').toLowerCase().includes(q)
+        || (s.report_id || '').toLowerCase().includes(q);
   });
 
   return (
@@ -601,7 +607,7 @@ export function CloudSnapshotsPanel({ allowDelete = true }: CloudSnapshotsPanelP
           </div>
         ) : (
           <>
-            <RecoverySearchBar value={searchQuery} onChange={setSearchQuery} placeholder="Search by facility or user..." />
+            <RecoverySearchBar value={searchQuery} onChange={setSearchQuery} placeholder="Search by facility, user, type, device, or ID..." />
             {filteredSnapshots.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
                 No snapshots match &ldquo;{searchQuery}&rdquo;.
@@ -795,7 +801,10 @@ function AllUserSnapshotsPanel() {
     if (!searchQuery) return true;
     const q = searchQuery.toLowerCase();
     return (s.facility || '').toLowerCase().includes(q)
-        || (s.user_name || '').toLowerCase().includes(q);
+        || (s.user_name || '').toLowerCase().includes(q)
+        || (s.report_type || '').replace('_', ' ').toLowerCase().includes(q)
+        || (s.device || '').toLowerCase().includes(q)
+        || (s.report_id || '').toLowerCase().includes(q);
   });
 
   const grouped = filteredSnapshots.reduce<Record<string, { name: string; items: any[] }>>((acc, s) => {
@@ -837,7 +846,7 @@ function AllUserSnapshotsPanel() {
           </div>
         ) : (
           <>
-            <RecoverySearchBar value={searchQuery} onChange={setSearchQuery} placeholder="Search by facility or user..." />
+            <RecoverySearchBar value={searchQuery} onChange={setSearchQuery} placeholder="Search by facility, user, type, device, or ID..." />
             {userEntries.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
                 {snapshots.length > 0 ? `No snapshots match "${searchQuery}".` : 'No cloud backup snapshots found across any users.'}
@@ -912,6 +921,7 @@ function AdminEditHistoryPanel() {
   const [snapshots, setSnapshots] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [restoring, setRestoring] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
 
   const loadSnapshots = useCallback(async () => {
     setLoading(true);
@@ -1013,8 +1023,24 @@ function AdminEditHistoryPanel() {
             No admin edit snapshots found. Snapshots are captured automatically when a super admin modifies another user's report.
           </div>
         ) : (
+          <>
+          <RecoverySearchBar value={searchQuery} onChange={setSearchQuery} placeholder="Search by type, owner, editor, or ID..." />
           <div className="space-y-2">
-            {snapshots.map((s: any) => (
+            {(() => {
+              const filtered = snapshots.filter(s => {
+                if (!searchQuery) return true;
+                const q = searchQuery.toLowerCase();
+                return (s.report_type || '').replace('_', ' ').toLowerCase().includes(q)
+                    || (s.owner_name || '').toLowerCase().includes(q)
+                    || (s.editor_name || '').toLowerCase().includes(q)
+                    || (s.report_id || '').toLowerCase().includes(q);
+              });
+              if (filtered.length === 0) return (
+                <div className="text-center py-8 text-muted-foreground">
+                  No snapshots match &ldquo;{searchQuery}&rdquo;.
+                </div>
+              );
+              return filtered.map((s: any) => (
               <div key={s.id} className="rounded-lg border border-white/10 px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
                 <div className="flex items-center gap-2 flex-1 min-w-0 flex-wrap">
                   <Badge variant="outline" className="text-xs shrink-0">{(s.report_type || '').replace('_', ' ')}</Badge>
@@ -1042,8 +1068,10 @@ function AdminEditHistoryPanel() {
                   </Button>
                 </div>
               </div>
-            ))}
+            ));
+            })()}
           </div>
+          </>
         )}
       </CardContent>
     </Card>
@@ -1060,6 +1088,7 @@ export function IndexedDBRecoveryPanel({ allowDelete = true }: IndexedDBPanelPro
   const [syncing, setSyncing] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{ type: string; id: string } | null>(null);
   const [selectedOps, setSelectedOps] = useState<Set<string>>(new Set());
+  const [searchQuery, setSearchQuery] = useState('');
   const [clearAllDialogOpen, setClearAllDialogOpen] = useState(false);
   const [clearSectionDialog, setClearSectionDialog] = useState<string | null>(null);
   const [batchDeleteDialog, setBatchDeleteDialog] = useState(false);
@@ -1425,6 +1454,21 @@ export function IndexedDBRecoveryPanel({ allowDelete = true }: IndexedDBPanelPro
     (localData?.queuedAssessmentOperations.length || 0) +
     (localData?.queuedTrainingOperations.length || 0);
 
+  const idbMatch = (item: any) => {
+    if (!searchQuery) return true;
+    const q = searchQuery.toLowerCase();
+    return (item.organization || '').toLowerCase().includes(q)
+        || (item.location || '').toLowerCase().includes(q)
+        || (item.site || '').toLowerCase().includes(q)
+        || (item.id || '').toLowerCase().includes(q)
+        || (item.status || '').toLowerCase().includes(q)
+        || (item.trainer_of_record || '').toLowerCase().includes(q);
+  };
+
+  const filteredTrainings = localData?.trainings.filter(idbMatch) || [];
+  const filteredAssessments = localData?.dailyAssessments.filter(idbMatch) || [];
+  const filteredInspections = localData?.inspections.filter(idbMatch) || [];
+
   return (
     <div className="space-y-6">
     <Card className="glass-card">
@@ -1509,6 +1553,7 @@ export function IndexedDBRecoveryPanel({ allowDelete = true }: IndexedDBPanelPro
       </Card>
 
       <Tabs defaultValue="snapshots" className="space-y-4">
+        <RecoverySearchBar value={searchQuery} onChange={setSearchQuery} placeholder="Search by organization, location, ID, or status..." />
         <TabsList className="flex-wrap">
           <TabsTrigger value="snapshots">
             <Shield className="h-4 w-4 mr-1" />
@@ -1541,9 +1586,9 @@ export function IndexedDBRecoveryPanel({ allowDelete = true }: IndexedDBPanelPro
               </CardDescription>
             </CardHeader>
             <CardContent>
-              {localData?.trainings.length === 0 ? (
+              {filteredTrainings.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground">
-                  No local training data found
+                  {searchQuery ? `No trainings match "${searchQuery}".` : 'No local training data found'}
                 </div>
               ) : (
                 <div className="rounded-md border">
@@ -1560,7 +1605,7 @@ export function IndexedDBRecoveryPanel({ allowDelete = true }: IndexedDBPanelPro
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {localData?.trainings.map((training) => {
+                      {filteredTrainings.map((training) => {
                         const syncStatus = getSyncStatus(training);
                         return (
                           <TableRow key={training.id}>
@@ -1633,9 +1678,9 @@ export function IndexedDBRecoveryPanel({ allowDelete = true }: IndexedDBPanelPro
               </CardDescription>
             </CardHeader>
             <CardContent>
-              {localData?.dailyAssessments.length === 0 ? (
+              {filteredAssessments.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground">
-                  No local daily assessment data found
+                  {searchQuery ? `No assessments match "${searchQuery}".` : 'No local daily assessment data found'}
                 </div>
               ) : (
                 <div className="rounded-md border">
@@ -1652,7 +1697,7 @@ export function IndexedDBRecoveryPanel({ allowDelete = true }: IndexedDBPanelPro
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {localData?.dailyAssessments.map((assessment) => {
+                      {filteredAssessments.map((assessment) => {
                         const syncStatus = getSyncStatus(assessment);
                         return (
                           <TableRow key={assessment.id}>
@@ -1723,9 +1768,9 @@ export function IndexedDBRecoveryPanel({ allowDelete = true }: IndexedDBPanelPro
               </CardDescription>
             </CardHeader>
             <CardContent>
-              {localData?.inspections.length === 0 ? (
+              {filteredInspections.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground">
-                  No local inspection data found
+                  {searchQuery ? `No inspections match "${searchQuery}".` : 'No local inspection data found'}
                 </div>
               ) : (
                 <div className="rounded-md border">
@@ -1742,7 +1787,7 @@ export function IndexedDBRecoveryPanel({ allowDelete = true }: IndexedDBPanelPro
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {localData?.inspections.map((inspection) => {
+                      {filteredInspections.map((inspection) => {
                         const syncStatus = getSyncStatus(inspection);
                         return (
                           <TableRow key={inspection.id}>
