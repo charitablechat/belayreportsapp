@@ -150,6 +150,7 @@ export default function PhotoGallery({
             return {
               id: p.id,
               photoUrl: objectUrl,
+              rawStoragePath: p.photoUrl || '', // preserve raw storage path for dedup
               blob: p.blob,
               uploaded: p.uploaded,
               caption: null,
@@ -161,7 +162,7 @@ export default function PhotoGallery({
             return null;
           }
         })
-        .filter(Boolean) as Photo[];
+        .filter(Boolean) as (Photo & { rawStoragePath?: string })[];
 
       const receipts = getPhotoReceipts(inspectionId, section);
       const offlinePhotoIds = new Set(offlinePhotos.filter(p => p.section === section).map(p => p.id));
