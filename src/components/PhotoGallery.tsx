@@ -759,7 +759,7 @@ export default function PhotoGallery({
                 } ${batchMode ? 'cursor-pointer' : ''}`}
                 onClick={batchMode ? () => toggleSelection(photo.id) : undefined}
               >
-                <div className="relative" onClick={!batchMode ? (e) => { e.stopPropagation(); setSelectedPhotoIndex(photos.indexOf(photo)); } : undefined} style={!batchMode ? { cursor: 'pointer' } : undefined}>
+                <div data-lightbox-trigger className="relative" onClick={!batchMode ? (e) => { e.stopPropagation(); setSelectedPhotoIndex(photos.indexOf(photo)); } : undefined} style={!batchMode ? { cursor: 'pointer' } : undefined}>
                   {/* Batch selection checkbox overlay */}
                   {batchMode && (
                     <div className="absolute top-2 left-2 z-10">
