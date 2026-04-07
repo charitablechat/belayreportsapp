@@ -1023,8 +1023,14 @@ export default function Dashboard() {
       setInspectionToDelete(null);
       setReportToDelete(null);
     } catch (error: any) {
-      console.error("Error soft-deleting report:", error);
-      toast.error("Failed to delete report");
+      const itemId = itemToDelete?.id || 'unknown';
+      const step = isInspection ? 'inspection' : ('start_date' in (reportToDelete || {}) ? 'training' : 'daily_assessment');
+      console.error(`[Dashboard] Soft-delete failed:`, { step, id: itemId, error: error?.message, code: error?.code });
+      
+      const detail = error?.message?.includes('row-level security')
+        ? 'Permission denied. Please sign in again and retry.'
+        : (error?.message || 'Unknown error');
+      toast.error(`Failed to delete report: ${detail}`);
       triggerHaptic('error');
     }
   };

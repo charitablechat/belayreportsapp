@@ -5,12 +5,13 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { RefreshCw, Trash2, RotateCcw, Clock, AlertTriangle, FileText, GraduationCap, ClipboardCheck, Loader2, Calendar, User, X } from "lucide-react";
+import { RefreshCw, Trash2, RotateCcw, Clock, AlertTriangle, FileText, GraduationCap, ClipboardCheck, Loader2, Calendar, User, X, CloudOff } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { useSoftDelete, DeletedRecord, SoftDeleteTable } from "@/hooks/useSoftDelete";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { getPendingSoftDeleteCount } from "@/lib/queued-soft-delete-processor";
 
 export function DeletedRecordsRecovery() {
   const [deletedRecords, setDeletedRecords] = useState<DeletedRecord[]>([]);
@@ -26,6 +27,7 @@ export function DeletedRecordsRecovery() {
     trainings: number;
     daily_assessments: number;
   } | null>(null);
+  const [pendingDeleteCount, setPendingDeleteCount] = useState(0);
 
   const { getDeletedRecords, restoreRecord, permanentDelete, batchPermanentDelete, runCleanup, getRetentionBadge } = useSoftDelete();
 
@@ -102,6 +104,8 @@ export function DeletedRecordsRecovery() {
 
   useEffect(() => {
     loadDeletedRecords();
+    // Check for pending offline soft-deletes
+    getPendingSoftDeleteCount().then(count => setPendingDeleteCount(count)).catch(() => {});
   }, [loadDeletedRecords]);
 
   const handleRestore = async () => {
@@ -308,6 +312,18 @@ export function DeletedRecordsRecovery() {
           </div>
         </CardContent>
       </Card>
+
+      {pendingDeleteCount > 0 && (
+        <Card className="border-amber-500/50 bg-amber-500/5">
+          <CardContent className="flex items-center gap-3 py-4">
+            <CloudOff className="h-5 w-5 text-amber-600 shrink-0" />
+            <p className="text-sm text-amber-700 dark:text-amber-400">
+              <strong>{pendingDeleteCount}</strong> deletion{pendingDeleteCount !== 1 ? 's are' : ' is'} pending sync.
+              They will appear here once the device reconnects and syncs.
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
       {deletedRecords.length === 0 ? (
         <Card>

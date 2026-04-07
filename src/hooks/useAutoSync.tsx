@@ -230,6 +230,18 @@ export const useAutoSync = () => {
       
       const syncResult = await withSyncTimeout(
         (async () => {
+          // Process any queued offline soft-deletes before main sync
+          try {
+            const { processQueuedSoftDeletes } = await import('@/lib/queued-soft-delete-processor');
+            const deleteResult = await processQueuedSoftDeletes();
+            if (deleteResult.processed > 0) {
+              console.log(`[AutoSync] Processed ${deleteResult.processed} queued soft-deletes`);
+            }
+          } catch (e) {
+            console.warn('[AutoSync] Queued soft-delete processing failed (non-blocking):', e);
+          }
+          await yieldToUI();
+
           const inspResult = await syncAllInspectionsAtomic(validatedUser).catch(e => { console.error('[AutoSync] Inspections sync failed:', e); return null; });
           await yieldToUI();
           const trainResult = await syncAllTrainingsAtomic(validatedUser).catch(e => { console.error('[AutoSync] Trainings sync failed:', e); return null; });
