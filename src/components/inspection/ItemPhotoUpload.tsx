@@ -136,14 +136,23 @@ function ItemPhotoUpload({
 
       // Insert into gallery if applicable
       if (photoSection) {
-        const { error: galleryError } = await supabase.from('inspection_photos').insert({
-          inspection_id: inspectionId,
-          photo_url: filePath,
-          photo_section: photoSection,
-          caption: itemName || 'Item photo',
-        });
+        // Dedup guard: skip insert if a row already exists for this photo_url + inspection_id
+        const { data: existing } = await supabase.from('inspection_photos')
+          .select('id')
+          .eq('photo_url', filePath)
+          .eq('inspection_id', inspectionId)
+          .maybeSingle();
 
-        if (galleryError) throw galleryError;
+        if (!existing) {
+          const { error: galleryError } = await supabase.from('inspection_photos').insert({
+            inspection_id: inspectionId,
+            photo_url: filePath,
+            photo_section: photoSection,
+            caption: itemName || 'Item photo',
+          });
+
+          if (galleryError) throw galleryError;
+        }
         onGalleryRefresh?.();
       }
 
