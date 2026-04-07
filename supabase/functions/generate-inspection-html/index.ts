@@ -1602,7 +1602,7 @@ serve(async (req) => {
       object-fit: contain;
       display: block;
       margin: 0 auto;
-      background: #c2c2c2;
+      background: #f8fafc;
       border-radius: 4px;
     }
 
