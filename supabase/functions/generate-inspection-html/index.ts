@@ -2519,7 +2519,7 @@ serve(async (req) => {
 
       <div style="margin-bottom: 20px;">
         
-        <div class="text-block" style="padding: 10px 15px; background: #c2c2c2; border-left: 4px solid #16a34a;">
+        <div class="text-block" style="padding: 10px 15px; background: #f8fafc; border-left: 4px solid #16a34a;">
           ${renderBulletList(parseTextToList(prependDefaultBolt(summary?.repairs_performed || "")), deduplicateHtmlContent(prependDefaultBolt(summary?.repairs_performed || "")))}
         </div>
       </div>
