@@ -40,7 +40,7 @@ class PWAErrorBoundary extends Component<
         updateAndReload: async () => {},
         lastUpdateCheck: null,
         isCheckingForUpdate: false,
-        checkForUpdates: async () => {},
+        checkForUpdates: async () => 'error' as const,
         isOnline: navigator.onLine,
         effectiveType: null,
         downlink: null,
@@ -85,7 +85,7 @@ export interface PWAContextType {
   updateAndReload: () => Promise<void>;
   lastUpdateCheck: Date | null;
   isCheckingForUpdate: boolean;
-  checkForUpdates: () => Promise<void>;
+  checkForUpdates: () => Promise<'update_found' | 'up_to_date' | 'no_sw' | 'error'>;
   
   // Network state
   isOnline: boolean;
