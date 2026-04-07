@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { isLovablePreview } from "@/lib/environment";
-import { getUserWithCache, getSuperAdminStatusWithCache, getOfflineUserId } from "@/lib/cached-auth";
+import { getUserWithCache, getSuperAdminStatusWithCache, getIsTrueSuperAdmin, getOfflineUserId } from "@/lib/cached-auth";
 
 interface UseReportEditPermissionProps {
   inspectorId: string | undefined | null;
@@ -11,12 +11,14 @@ interface UseReportEditPermissionProps {
 interface ReportEditPermission {
   /** Whether the current user can edit this report */
   canEdit: boolean;
-  /** Whether the report is in read-only mode (Super Admin viewing someone else's report) */
+  /** Whether the report is in read-only mode */
   isReadOnly: boolean;
   /** Whether the current user is the report owner */
   isOwner: boolean;
-  /** Whether the current user is a super admin */
+  /** Whether the current user is a super admin (kale) */
   isSuperAdmin: boolean;
+  /** Whether the current user is an admin (Josh/Brenda) */
+  isAdmin: boolean;
   /** Loading state while checking permissions */
   isLoading: boolean;
   /** Reason for read-only mode (for UI display) */
@@ -26,25 +28,22 @@ interface ReportEditPermission {
 /**
  * Hook to determine if the current user can edit a report.
  * 
- * Rules:
- * - Report owners (inspector_id === current user) can always edit
- * - Super Admins can VIEW and EDIT all reports
- * - The inspector_id field is immutable once set
- * 
- * Data integrity is preserved through the immutable inspector_id field
- * and updated_at timestamps for audit trails.
+ * Three-tier permission model:
+ * - Super Admin (kale): can VIEW all reports, strictly read-only, invisible (no traces)
+ * - Admin (Josh/Brenda): can VIEW and EDIT all reports
+ * - Regular users: own reports only
  */
 export function useReportEditPermission({ 
   inspectorId, 
   reportType 
 }: UseReportEditPermissionProps): ReportEditPermission {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false); // is_admin_or_above (admin OR super_admin role)
+  const [isTrueSuperAdmin, setIsTrueSuperAdmin] = useState(false); // is_super_admin (kale only)
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     // Synchronous fast-path: set userId from localStorage immediately
-    // so effectiveReadOnly is false while async auth resolves
     const offlineId = getOfflineUserId();
     if (offlineId && !currentUserId) {
       setCurrentUserId(offlineId);
@@ -52,18 +51,20 @@ export function useReportEditPermission({
 
     const checkPermissions = async () => {
       try {
-        // Get current user
         const user = await getUserWithCache();
         const userId = user?.id ?? getOfflineUserId();
-        // Only update if we actually got a userId - don't clear a known-good ID
         if (userId) {
           setCurrentUserId(userId);
         }
 
         if (user) {
-          // Use cached super admin status for performance
-          const superAdminStatus = await getSuperAdminStatusWithCache();
-          setIsSuperAdmin(superAdminStatus);
+          // Check both admin tiers in parallel
+          const [adminStatus, trueSuperAdminStatus] = await Promise.all([
+            getSuperAdminStatusWithCache(),
+            getIsTrueSuperAdmin()
+          ]);
+          setIsAdmin(adminStatus);
+          setIsTrueSuperAdmin(trueSuperAdminStatus);
         }
       } catch (error) {
         console.error('[useReportEditPermission] Error checking permissions:', error);
@@ -81,19 +82,24 @@ export function useReportEditPermission({
         if (newUserId) {
           setCurrentUserId(newUserId);
         } else if (navigator.onLine) {
-          // Only clear userId on explicit sign-out while online
           setCurrentUserId(null);
         }
-        // If offline and session is null, retain existing userId
 
         if (session?.user) {
-          const superAdminStatus = await getSuperAdminStatusWithCache();
-          setIsSuperAdmin(superAdminStatus);
-      } else if (navigator.onLine) {
-          // Only clear admin if localStorage also confirms non-admin
+          const [adminStatus, trueSuperAdminStatus] = await Promise.all([
+            getSuperAdminStatusWithCache(),
+            getIsTrueSuperAdmin()
+          ]);
+          setIsAdmin(adminStatus);
+          setIsTrueSuperAdmin(trueSuperAdminStatus);
+        } else if (navigator.onLine) {
           const cachedAdmin = localStorage.getItem('cached-admin-status');
           if (cachedAdmin !== 'true') {
-            setIsSuperAdmin(false);
+            setIsAdmin(false);
+          }
+          const cachedTrueSA = localStorage.getItem('cached-true-super-admin');
+          if (cachedTrueSA !== 'true') {
+            setIsTrueSuperAdmin(false);
           }
         }
       }
@@ -109,6 +115,7 @@ export function useReportEditPermission({
         isReadOnly: true,
         isOwner: false,
         isSuperAdmin: false,
+        isAdmin: false,
         isLoading: false,
         readOnlyReason: 'Preview mode — read-only'
       };
@@ -116,14 +123,14 @@ export function useReportEditPermission({
 
     const isOwner = currentUserId === inspectorId;
     
-    // Fast path: If we can determine ownership, enable editing immediately for owners
-    // This avoids blocking on the super admin check which is only needed for non-owners
+    // Fast path: owners can always edit
     if (inspectorId && currentUserId && isOwner) {
       return {
         canEdit: true,
         isReadOnly: false,
         isOwner: true,
-        isSuperAdmin, // May still be loading, but irrelevant for owners
+        isSuperAdmin: isTrueSuperAdmin,
+        isAdmin,
         isLoading: false,
         readOnlyReason: null
       };
@@ -135,47 +142,63 @@ export function useReportEditPermission({
         canEdit: false,
         isReadOnly: true,
         isOwner: false,
-        isSuperAdmin,
+        isSuperAdmin: isTrueSuperAdmin,
+        isAdmin,
         isLoading: isLoading || !currentUserId,
         readOnlyReason: isLoading ? 'Checking permissions...' : 'Report owner not determined'
       };
     }
 
-    // Only owners can edit - Super Admins are view-only
+    // Owner (redundant but kept for clarity)
     if (isOwner) {
       return {
         canEdit: true,
         isReadOnly: false,
         isOwner: true,
-        isSuperAdmin,
+        isSuperAdmin: isTrueSuperAdmin,
+        isAdmin,
         isLoading: false,
         readOnlyReason: null
       };
     }
 
-    // Super Admin viewing someone else's report - strictly read-only, no traces
-    if (isSuperAdmin) {
+    // True Super Admin (kale) viewing someone else's report — strictly read-only, invisible
+    if (isTrueSuperAdmin) {
       return {
         canEdit: false,
         isReadOnly: true,
         isOwner: false,
         isSuperAdmin: true,
+        isAdmin: true,
         isLoading: false,
         readOnlyReason: null
       };
     }
 
-    // Non-owner, non-super-admin - should not have access via RLS
-    // but if they somehow do, they cannot edit
+    // Admin (Josh/Brenda) viewing someone else's report — full edit access
+    if (isAdmin) {
+      return {
+        canEdit: true,
+        isReadOnly: false,
+        isOwner: false,
+        isSuperAdmin: false,
+        isAdmin: true,
+        isLoading: false,
+        readOnlyReason: null
+      };
+    }
+
+    // Non-owner, non-admin — no edit access
     return {
       canEdit: false,
       isReadOnly: true,
       isOwner: false,
       isSuperAdmin: false,
+      isAdmin: false,
       isLoading: false,
       readOnlyReason: 'You do not have permission to edit this report'
     };
-  }, [currentUserId, inspectorId, isSuperAdmin, isLoading]);
+  }, [currentUserId, inspectorId, isAdmin, isTrueSuperAdmin, isLoading]);
 
   return permission;
 }
