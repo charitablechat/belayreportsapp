@@ -65,8 +65,8 @@ const RootLayout = () => {
     window.history.pushState({ lovableGuard: true }, "");
 
     const handlePopState = (event: PopStateEvent) => {
-      // If an overlay (lightbox) is active, let its own handler deal with the event
       if (isOverlayActive()) return;
+      if (isReportTabActive()) return;
 
       // Haptic feedback on mobile
       if (isMobileDevice) {
