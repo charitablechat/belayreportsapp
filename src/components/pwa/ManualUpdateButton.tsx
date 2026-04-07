@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { RefreshCw, Smartphone, MoreVertical, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -29,7 +29,6 @@ export const ManualUpdateButton = () => {
   const [checking, setChecking] = useState(false);
   const [showForceRefreshDialog, setShowForceRefreshDialog] = useState(false);
   const [showUnsyncedWarning, setShowUnsyncedWarning] = useState(false);
-  const previousNeedsUpdate = useRef(needsUpdate);
 
   // Check if app was just updated after reload
   useEffect(() => {
@@ -43,19 +42,6 @@ export const ManualUpdateButton = () => {
       triggerHaptic('success');
     }
   }, []);
-
-  // Watch for needsUpdate transitions to show toast
-  useEffect(() => {
-    if (needsUpdate && !previousNeedsUpdate.current) {
-      toast.dismiss('update-check');
-      toast.success('Update found!', {
-        description: 'Click "Update App" to install the latest version',
-        duration: 5000
-      });
-      triggerHaptic('success');
-    }
-    previousNeedsUpdate.current = needsUpdate;
-  }, [needsUpdate]);
 
   const handleCheckForUpdates = async () => {
     triggerHaptic('light');
@@ -84,13 +70,18 @@ export const ManualUpdateButton = () => {
           description: 'Update checks are available in the installed app',
           duration: 3000
         });
+      } else if (result === 'update_found') {
+        toast.success('Update found!', {
+          description: 'Click "Update App" to install the latest version',
+          duration: 5000
+        });
+        triggerHaptic('success');
       } else if (result === 'error') {
         toast.error('Update check failed', { 
           description: 'Please try again later'
         });
         triggerHaptic('warning');
       }
-      // 'update_found' case handled by the useEffect above
     } catch (error) {
       console.error('[Manual Update] Error checking for updates:', error);
       toast.dismiss('update-check');
