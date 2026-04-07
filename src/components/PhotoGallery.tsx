@@ -10,7 +10,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { X, Cloud, CloudOff, Loader2, AlertTriangle, CheckSquare, Trash2 } from "lucide-react";
+import { X, Cloud, CloudOff, Loader2, AlertTriangle, CheckSquare, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
 import { triggerHaptic } from "@/lib/haptics";
 import { toast } from "sonner";
 import PhotoCaptionInput from "./PhotoCaptionInput";
@@ -91,7 +91,27 @@ export default function PhotoGallery({
 
   // Confirmation dialog state
   const [deleteConfirm, setDeleteConfirm] = useState<{ type: 'single'; photo: Photo } | { type: 'batch' } | null>(null);
-  const [selectedPhoto, setSelectedPhoto] = useState<Photo | null>(null);
+  const [selectedPhotoIndex, setSelectedPhotoIndex] = useState<number | null>(null);
+  const selectedPhoto = selectedPhotoIndex !== null ? photos[selectedPhotoIndex] ?? null : null;
+
+  const goToPrev = useCallback(() => {
+    setSelectedPhotoIndex(prev => prev !== null ? (prev === 0 ? photos.length - 1 : prev - 1) : null);
+  }, [photos.length]);
+
+  const goToNext = useCallback(() => {
+    setSelectedPhotoIndex(prev => prev !== null ? (prev === photos.length - 1 ? 0 : prev + 1) : null);
+  }, [photos.length]);
+
+  // Keyboard navigation for lightbox
+  useEffect(() => {
+    if (selectedPhotoIndex === null) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowLeft') { e.preventDefault(); goToPrev(); }
+      else if (e.key === 'ArrowRight') { e.preventDefault(); goToNext(); }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [selectedPhotoIndex, goToPrev, goToNext]);
 
   // Desktop-first sensor configuration with mobile support
   const sensors = useSensors(
@@ -706,7 +726,7 @@ export default function PhotoGallery({
                 } ${batchMode ? 'cursor-pointer' : ''}`}
                 onClick={batchMode ? () => toggleSelection(photo.id) : undefined}
               >
-                <div className="relative" onClick={!batchMode ? (e) => { e.stopPropagation(); setSelectedPhoto(photo); } : undefined} style={!batchMode ? { cursor: 'pointer' } : undefined}>
+                <div className="relative" onClick={!batchMode ? (e) => { e.stopPropagation(); setSelectedPhotoIndex(photos.indexOf(photo)); } : undefined} style={!batchMode ? { cursor: 'pointer' } : undefined}>
                   {/* Batch selection checkbox overlay */}
                   {batchMode && (
                     <div className="absolute top-2 left-2 z-10">
@@ -817,19 +837,46 @@ export default function PhotoGallery({
       </AlertDialogContent>
     </AlertDialog>
 
-    {/* Full-size image lightbox */}
-    <Dialog open={!!selectedPhoto} onOpenChange={(open) => { if (!open) setSelectedPhoto(null); }}>
+    {/* Full-size image lightbox with navigation */}
+    <Dialog open={selectedPhotoIndex !== null} onOpenChange={(open) => { if (!open) setSelectedPhotoIndex(null); }}>
       <DialogContent hideDefaultClose className="max-w-4xl p-2 bg-black/95 border-none [&>button]:hidden">
         {selectedPhoto && (
-          <img
-            src={selectedPhoto.photoUrl}
-            alt={selectedPhoto.caption || "Full size photo"}
-            className="w-full h-auto max-h-[85vh] object-contain rounded"
-          />
+          <div className="relative select-none">
+            <img
+              src={selectedPhoto.photoUrl}
+              alt={selectedPhoto.caption || "Full size photo"}
+              className="w-full h-auto max-h-[85vh] object-contain rounded"
+            />
+            {/* Navigation arrows */}
+            {photos.length > 1 && (
+              <>
+                <button
+                  onClick={(e) => { e.stopPropagation(); goToPrev(); }}
+                  className="absolute left-2 top-1/2 -translate-y-1/2 w-12 h-12 rounded-full bg-white/20 hover:bg-white/40 flex items-center justify-center transition-colors backdrop-blur-sm"
+                  aria-label="Previous photo"
+                >
+                  <ChevronLeft className="w-7 h-7 text-white" />
+                </button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); goToNext(); }}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 w-12 h-12 rounded-full bg-white/20 hover:bg-white/40 flex items-center justify-center transition-colors backdrop-blur-sm"
+                  aria-label="Next photo"
+                >
+                  <ChevronRight className="w-7 h-7 text-white" />
+                </button>
+              </>
+            )}
+          </div>
         )}
-        {selectedPhoto?.caption && (
-          <p className="text-center text-white/80 text-sm mt-2">{selectedPhoto.caption}</p>
-        )}
+        {/* Caption and counter */}
+        <div className="text-center mt-2 space-y-1">
+          {selectedPhoto?.caption && (
+            <p className="text-white/80 text-sm">{selectedPhoto.caption}</p>
+          )}
+          {photos.length > 1 && selectedPhotoIndex !== null && (
+            <p className="text-white/50 text-xs">{selectedPhotoIndex + 1} / {photos.length}</p>
+          )}
+        </div>
       </DialogContent>
     </Dialog>
     </>
