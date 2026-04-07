@@ -1279,7 +1279,7 @@ serve(async (req) => {
       
       /* Section headers */
       .section-header {
-        background-color: #c2c2c2 !important;
+        background-color: #f1f5f9 !important;
         padding: 8px !important;
         margin: 10px 0 6px 0 !important;
         border-left: 4px solid #3b82f6 !important;
