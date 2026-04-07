@@ -371,9 +371,9 @@ serve(async (req) => {
     li {
       padding: 8px 12px;
       margin-bottom: 6px;
-      background: #c2c2c2;
-      border-left: 3px solid #3b82f6;
-      border-radius: 2px;
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 4px;
     }
     li strong {
       color: #1e293b;
