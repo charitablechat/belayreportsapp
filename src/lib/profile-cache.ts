@@ -25,11 +25,16 @@ export async function getCachedProfile(userId: string): Promise<{
     };
   }
 
-  const { data } = await supabase
-    .from('profiles')
-    .select('first_name, last_name, avatar_url')
-    .eq('id', userId)
-    .maybeSingle();
+  const { data } = await Promise.race([
+    supabase
+      .from('profiles')
+      .select('first_name, last_name, avatar_url')
+      .eq('id', userId)
+      .maybeSingle(),
+    new Promise<{ data: null }>(resolve =>
+      setTimeout(() => resolve({ data: null }), 5000)
+    ),
+  ]);
 
   if (data) {
     profileCache.set(userId, { ...data, cachedAt: Date.now() });
