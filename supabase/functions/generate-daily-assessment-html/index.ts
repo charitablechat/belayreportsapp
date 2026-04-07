@@ -467,9 +467,10 @@ serve(async (req) => {
       align-items: center;
       gap: 8px;
       padding: 8px 10px;
-      background: #c2c2c2;
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
       border-left: 3px solid #22c55e;
-      border-radius: 2px;
+      border-radius: 4px;
       font-size: 13px;
     }
 
