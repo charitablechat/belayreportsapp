@@ -1,40 +1,37 @@
 
 
-# Fix Browser Back Button: Always Navigate Within App
+# Fix: Admin Panel Snapshot Loading Spinner Hang
 
-## Problem
-Multiple competing `popstate` listeners cause conflicts. The RootLayout guard, PhotoGallery lightbox, and ItemPhotoUpload lightbox each register their own `popstate` handler. When a lightbox is open and the user presses back:
-1. RootLayout's handler fires first and incorrectly decrements `navigationDepth`
-2. Then the lightbox handler fires and closes the lightbox
+## Root Cause
 
-This double-handling corrupts the depth counter and can cause premature exits on subsequent back presses.
+The spinner hangs because snapshot-loading functions (`fetchCloudSnapshots`, `fetchAllCloudSnapshots`, `fetchAdminEditSnapshots`) resolve user profile names via `getCachedProfile` — which makes individual database queries **with no timeout**. If any query hangs (slow network, connection issues), the entire `Promise.all` never resolves, and `setLoading(false)` in the `finally` block is never reached.
 
-## Solution
-Centralize back-button coordination through a global overlay state tracker in `navigation.ts`. When an overlay (lightbox) is active, the RootLayout popstate handler defers to the overlay's own handler and skips depth tracking.
+**Not involved:** `PhotoCapture.tsx` and `sync-manager.ts` are unrelated to admin panel snapshot loading. The issue is entirely within the profile resolution step of the cloud-backup and admin-edit-snapshot modules.
 
-## Changes
+## Proposed Fix (2 files)
 
-### 1. `src/lib/navigation.ts` — Add overlay tracking
-- Add `let overlayActive = false` flag
-- Export `setOverlayActive(active: boolean)` and `isOverlayActive()` functions
-- Overlays (lightboxes) call `setOverlayActive(true)` when they open and `setOverlayActive(false)` when they close
+### 1. `src/lib/profile-cache.ts` — Add a per-query timeout
 
-### 2. `src/App.tsx` — Update RootLayout popstate handler
-- Import `isOverlayActive` from navigation
-- At the top of the popstate handler, if `isOverlayActive()` returns true, return early (let the overlay's own handler consume the event)
-- This prevents depth decrement when back is pressed to close a lightbox
+Wrap the Supabase `.select()` call in a `Promise.race` with a 5-second timeout. If the query doesn't resolve in time, return `null` (the caller already handles missing profiles gracefully by showing "Unknown").
 
-### 3. `src/components/PhotoGallery.tsx` — Register overlay state
-- Call `setOverlayActive(true)` when lightbox opens
-- Call `setOverlayActive(false)` when lightbox closes (in `closeLightbox` and in the popstate handler)
+```
+Before:  const { data } = await supabase.from('profiles').select(...)
+After:   const { data } = await Promise.race([
+           supabase.from('profiles').select(...),
+           new Promise(resolve => setTimeout(() => resolve({ data: null }), 5000))
+         ])
+```
 
-### 4. `src/components/inspection/ItemPhotoUpload.tsx` — Same treatment
-- Call `setOverlayActive(true)` when lightbox opens
-- Call `setOverlayActive(false)` when lightbox closes
+This single change fixes all three panels since they all funnel through `getCachedProfile`.
+
+### 2. `src/components/admin/DataRecoveryTool.tsx` — Add a 15-second safety timeout to each panel's load function
+
+Wrap the `loadSnapshots` async call body in a `Promise.race` with a 15-second overall timeout. If hit, set `loading = false`, show a toast error, and render an empty state instead of an infinite spinner.
+
+Affects: `CloudSnapshotsPanel.loadSnapshots`, `AllUserSnapshotsPanel.loadSnapshots`, `AdminEditHistoryPanel.loadSnapshots`.
 
 ## Result
-- Back button while lightbox is open → closes lightbox only, depth counter unchanged
-- Back button on a report page (no overlay) → navigates to previous page normally
-- Back button when no history remains → redirects to `/dashboard` (existing guard)
-- No premature exits from reports due to corrupted depth counter
+- Profile queries that hang will timeout after 5s, showing "Unknown" for that user's name
+- Panel loading that hangs for any reason will timeout after 15s, clearing the spinner and showing an error toast
+- No changes to PhotoCapture or sync-manager (not related)
 
