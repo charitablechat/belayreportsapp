@@ -1,67 +1,51 @@
 
 
-# Fix: Update Check Stalls and Never Completes
+# Fix: Update Check Shows "Failed" in Preview Environment
 
 ## Root Cause
 
-Two bugs cause the update check to stall:
+The update check returns `'error'` when the service worker ready promise times out (line 125-129 of `usePWAUpdate.tsx`). In the Lovable preview and desktop browsers without a registered SW, this always times out because no service worker is installed. The user sees "Update check failed" — which is technically correct but misleading. It's not a failure; the SW simply doesn't exist in this context.
 
-### Bug 1: Unbounded `navigator.serviceWorker.ready` await (PRIMARY STALL)
-In `usePWAUpdate.checkForUpdates()` line 121:
-```ts
-const reg = registration || await navigator.serviceWorker.ready;
-```
-If `registration` is `null` (which happens when the initial 5s SW timeout fires on mount), this falls back to `navigator.serviceWorker.ready` **without any timeout**. This promise can hang indefinitely — especially in preview/iframe environments, on desktop without a registered SW, or on mobile Safari where SW activation is delayed.
-
-### Bug 2: 8-second wait even when no update exists
-When no update is available, `updatePromise` always waits the full 8 seconds before resolving `false`. The user sees "Checking for updates..." for 8 seconds with no feedback, which feels like a stall.
-
-### Bug 3: Stale closure in ManualUpdateButton
-After `await checkForUpdates()`, line 78 checks `if (!needsUpdate)` — but `needsUpdate` is captured from the render closure. Even if `checkForUpdates` set `needRefresh = true`, the local `needsUpdate` variable is still `false`. The "App is up to date" toast fires incorrectly, then the `useEffect` fires "Update found!" — confusing UX.
+On the **published production site** (`ropeworks.lovable.app`), the SW is registered and the check should work normally. This issue is primarily a preview/non-PWA environment problem.
 
 ## Changes
 
-### 1. `src/hooks/usePWAUpdate.tsx` — Fix the stall and reduce wait time
+### 1. `src/hooks/usePWAUpdate.tsx` — Detect preview/non-SW environments early
 
-- **Add timeout** to the `navigator.serviceWorker.ready` fallback (5s, matching init timeout)
-- **Reduce** the `updatePromise` safety timeout from 8s → 4s
-- **Return a result** from `checkForUpdates` so callers can know the outcome without relying on stale state:
-  ```ts
-  checkForUpdates: () => Promise<'update_found' | 'up_to_date' | 'no_sw' | 'error'>
-  ```
+Before attempting the 5s timeout on `navigator.serviceWorker.ready`, check if we're in a preview or iframe environment and return `'no_sw'` immediately instead of waiting 5 seconds to fail:
 
-```text
-checkForUpdates flow (fixed):
-
-1. If no SW support → return 'no_sw' immediately
-2. Get registration with 5s timeout → if timeout, return 'error'
-3. If reg.waiting → set needRefresh, return 'update_found'
-4. Call reg.update() + listen for updatefound with 4s timeout
-5. Return 'update_found' or 'up_to_date'
-```
-
-### 2. `src/components/pwa/ManualUpdateButton.tsx` — Use returned result
-
-Replace the stale-closure check with the returned value:
 ```ts
-const result = await checkForUpdates();
-if (result === 'up_to_date' || result === 'no_sw') {
-  toast.dismiss('update-check');
-  toast.info('App is up to date', { ... });
-} else if (result === 'error') {
-  toast.dismiss('update-check');
-  toast.error('Update check failed', { ... });
+if (!reg) {
+  // In preview/iframe, SW is never registered — skip the 5s wait
+  if (isLovablePreview() || window.self !== window.top) {
+    return 'no_sw';
+  }
+  try {
+    reg = await withTimeout(navigator.serviceWorker.ready, 5000, 'SW ready (check)');
+  } catch {
+    return 'no_sw';  // Changed from 'error' to 'no_sw'
+  }
 }
-// 'update_found' case handled by the existing useEffect
 ```
 
-### 3. `src/components/pwa/PWAProvider.tsx` — Update type passthrough
+Key changes:
+- Import `isLovablePreview` from `@/lib/environment`
+- Add iframe detection (`window.self !== window.top`)
+- Change the timeout catch from `'error'` → `'no_sw'` (no SW available isn't an error)
 
-Update the `PWAContextType` interface to reflect the new return type of `checkForUpdates`.
+### 2. `src/components/pwa/ManualUpdateButton.tsx` — Better messaging for `'no_sw'`
+
+Separate `'no_sw'` from `'up_to_date'` to give context-appropriate feedback:
+
+```ts
+if (result === 'up_to_date') {
+  toast.info('App is up to date', { description: 'You have the latest version' });
+} else if (result === 'no_sw') {
+  toast.info('App is up to date', { description: 'Update checks are available in the installed app' });
+}
+```
 
 ### Files Modified
-- `src/hooks/usePWAUpdate.tsx` — timeout guard, reduced wait, return result
-- `src/components/pwa/ManualUpdateButton.tsx` — use result instead of stale closure
-- `src/components/pwa/PWAProvider.tsx` — update interface type
-- `src/hooks/usePWA.tsx` — update fallback type
+- `src/hooks/usePWAUpdate.tsx` — early return for preview/iframe, change timeout catch to `'no_sw'`
+- `src/components/pwa/ManualUpdateButton.tsx` — separate `'no_sw'` messaging
 
