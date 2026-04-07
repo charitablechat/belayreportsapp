@@ -223,6 +223,10 @@ export function invalidateUserCache() {
   pendingUserPromise = null;
   // Also invalidate admin cache on user cache invalidation
   invalidateAdminCache();
+  // Also invalidate true super admin cache
+  cachedTrueSuperAdmin = null;
+  trueSuperAdminCacheTimestamp = 0;
+  pendingTrueSuperAdminPromise = null;
   // Clear offline auth credentials on sign-out
   clearOfflineAuth().catch(() => {});
 }
