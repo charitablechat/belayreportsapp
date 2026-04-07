@@ -311,17 +311,17 @@ serve(async (req) => {
       Promise.allSettled(uniqueItemPaths.map(p => downloadItemPhotoPath(p))),
     ]);
 
-    const photoDataUris: { id: string; dataUri: string; caption: string; section: string }[] = [];
+    const photoDataUris: { id: string; dataUri: string; caption: string; section: string; photoPath: string }[] = [];
     const seenPhotoKeys = new Set<string>();
     for (const r of galleryResults) {
       if (r.status === 'fulfilled' && r.value) {
-        // Deduplicate by photo_url+section to prevent duplicate gallery entries
-        const dedupeKey = `${r.value.section}::${r.value.dataUri.substring(0, 100)}`;
+        // Deduplicate by storage path + section to prevent duplicate gallery entries
+        const dedupeKey = `${r.value.section}::${r.value.photoPath}`;
         if (!seenPhotoKeys.has(dedupeKey)) {
           seenPhotoKeys.add(dedupeKey);
           photoDataUris.push(r.value);
         } else {
-          console.log(`[Inspection HTML] Skipped duplicate gallery photo: ${r.value.id}`);
+          console.log(`[Inspection HTML] Skipped duplicate gallery photo: ${r.value.id} (path: ${r.value.photoPath})`);
         }
       }
     }
