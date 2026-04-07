@@ -401,15 +401,17 @@ function ItemPhotoUpload({
 
       <Dialog open={lightboxOpen} onOpenChange={(open) => { if (!open) closeLightbox(); }}>
         <DialogContent hideDefaultClose className="max-w-2xl bg-black/95 border-none p-2 [&>button]:hidden">
-          {/* Close button — top-right */}
-          <button
-            onClick={closeLightbox}
-            className="absolute right-3 top-3 z-50 w-10 h-10 rounded-full bg-white/20 hover:bg-white/40 flex items-center justify-center transition-colors backdrop-blur-sm"
-            aria-label="Close lightbox"
-          >
-            <X className="w-5 h-5 text-white" />
-          </button>
-          <div className="flex flex-col items-center gap-4 pt-8">
+          {/* Close row — sits above the photo in the black area */}
+          <div className="flex justify-end pb-1">
+            <button
+              onClick={closeLightbox}
+              className="w-10 h-10 rounded-full bg-white/20 hover:bg-red-600 flex items-center justify-center transition-colors"
+              aria-label="Close lightbox"
+            >
+              <X className="w-6 h-6 text-white" />
+            </button>
+          </div>
+          <div className="flex flex-col items-center gap-4">
             {displayUrl ? (
               <img src={displayUrl} alt="Item photo full size" className="max-w-full max-h-[70vh] object-contain rounded-lg" />
             ) : isOfflinePhoto ? (

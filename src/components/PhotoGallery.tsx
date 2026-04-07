@@ -873,14 +873,16 @@ export default function PhotoGallery({
     {/* Full-size image lightbox with navigation */}
     <Dialog open={selectedPhotoIndex !== null} onOpenChange={(open) => { if (!open) closeLightbox(); }}>
       <DialogContent hideDefaultClose className="max-w-4xl p-2 bg-black/95 border-none [&>button]:hidden">
-        {/* Close button — top-right */}
-        <button
-          onClick={closeLightbox}
-          className="absolute right-3 top-3 z-50 w-10 h-10 rounded-full bg-white/20 hover:bg-white/40 flex items-center justify-center transition-colors backdrop-blur-sm"
-          aria-label="Close lightbox"
-        >
-          <X className="w-5 h-5 text-white" />
-        </button>
+        {/* Close row — sits above the photo in the black area */}
+        <div className="flex justify-end pb-1">
+          <button
+            onClick={closeLightbox}
+            className="w-10 h-10 rounded-full bg-white/20 hover:bg-red-600 flex items-center justify-center transition-colors"
+            aria-label="Close lightbox"
+          >
+            <X className="w-6 h-6 text-white" />
+          </button>
+        </div>
         {selectedPhoto && (
           <div className="relative select-none">
             <img
