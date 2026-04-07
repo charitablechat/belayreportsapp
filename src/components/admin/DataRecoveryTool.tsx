@@ -1454,6 +1454,21 @@ export function IndexedDBRecoveryPanel({ allowDelete = true }: IndexedDBPanelPro
     (localData?.queuedAssessmentOperations.length || 0) +
     (localData?.queuedTrainingOperations.length || 0);
 
+  const idbMatch = (item: any) => {
+    if (!searchQuery) return true;
+    const q = searchQuery.toLowerCase();
+    return (item.organization || '').toLowerCase().includes(q)
+        || (item.location || '').toLowerCase().includes(q)
+        || (item.site || '').toLowerCase().includes(q)
+        || (item.id || '').toLowerCase().includes(q)
+        || (item.status || '').toLowerCase().includes(q)
+        || (item.trainer_of_record || '').toLowerCase().includes(q);
+  };
+
+  const filteredTrainings = localData?.trainings.filter(idbMatch) || [];
+  const filteredAssessments = localData?.dailyAssessments.filter(idbMatch) || [];
+  const filteredInspections = localData?.inspections.filter(idbMatch) || [];
+
   return (
     <div className="space-y-6">
     <Card className="glass-card">
