@@ -873,10 +873,10 @@ export default function PhotoGallery({
     {/* Full-size image lightbox with navigation */}
     <Dialog open={selectedPhotoIndex !== null} onOpenChange={(open) => { if (!open) closeLightbox(); }}>
       <DialogContent hideDefaultClose className="max-w-4xl p-2 bg-black/95 border-none [&>button]:hidden">
-        {/* Close button — top-left */}
+        {/* Close button — top-right */}
         <button
           onClick={closeLightbox}
-          className="absolute left-3 top-3 z-50 w-10 h-10 rounded-full bg-white/20 hover:bg-white/40 flex items-center justify-center transition-colors backdrop-blur-sm"
+          className="absolute right-3 top-3 z-50 w-10 h-10 rounded-full bg-white/20 hover:bg-white/40 flex items-center justify-center transition-colors backdrop-blur-sm"
           aria-label="Close lightbox"
         >
           <X className="w-5 h-5 text-white" />
