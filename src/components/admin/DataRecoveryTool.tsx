@@ -1538,6 +1538,7 @@ export function IndexedDBRecoveryPanel({ allowDelete = true }: IndexedDBPanelPro
       </Card>
 
       <Tabs defaultValue="snapshots" className="space-y-4">
+        <RecoverySearchBar value={searchQuery} onChange={setSearchQuery} placeholder="Search by organization, location, ID, or status..." />
         <TabsList className="flex-wrap">
           <TabsTrigger value="snapshots">
             <Shield className="h-4 w-4 mr-1" />
