@@ -102,6 +102,35 @@ export default function PhotoGallery({
     setSelectedPhotoIndex(prev => prev !== null ? (prev === photos.length - 1 ? 0 : prev + 1) : null);
   }, [photos.length]);
 
+  // Track whether we pushed a history entry for the lightbox
+  const lightboxHistoryPushedRef = useRef(false);
+
+  const closeLightbox = useCallback(() => {
+    setSelectedPhotoIndex(null);
+    if (lightboxHistoryPushedRef.current) {
+      lightboxHistoryPushedRef.current = false;
+      window.history.back();
+    }
+  }, []);
+
+  // Push history state when lightbox opens; listen for popstate to close it
+  useEffect(() => {
+    if (selectedPhotoIndex !== null) {
+      window.history.pushState({ lightbox: true }, '');
+      lightboxHistoryPushedRef.current = true;
+    }
+
+    const onPopState = () => {
+      if (selectedPhotoIndex !== null) {
+        lightboxHistoryPushedRef.current = false;
+        setSelectedPhotoIndex(null);
+      }
+    };
+
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, [selectedPhotoIndex !== null]); // only on open/close transitions
+
   // Keyboard navigation for lightbox
   useEffect(() => {
     if (selectedPhotoIndex === null) return;
@@ -838,8 +867,16 @@ export default function PhotoGallery({
     </AlertDialog>
 
     {/* Full-size image lightbox with navigation */}
-    <Dialog open={selectedPhotoIndex !== null} onOpenChange={(open) => { if (!open) setSelectedPhotoIndex(null); }}>
+    <Dialog open={selectedPhotoIndex !== null} onOpenChange={(open) => { if (!open) closeLightbox(); }}>
       <DialogContent hideDefaultClose className="max-w-4xl p-2 bg-black/95 border-none [&>button]:hidden">
+        {/* Close button — top-left */}
+        <button
+          onClick={closeLightbox}
+          className="absolute left-3 top-3 z-50 w-10 h-10 rounded-full bg-white/20 hover:bg-white/40 flex items-center justify-center transition-colors backdrop-blur-sm"
+          aria-label="Close lightbox"
+        >
+          <X className="w-5 h-5 text-white" />
+        </button>
         {selectedPhoto && (
           <div className="relative select-none">
             <img

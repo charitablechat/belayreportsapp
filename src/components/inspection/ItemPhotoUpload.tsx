@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect, memo } from "react";
+import { useState, useRef, useCallback, useEffect, memo, useMemo } from "react";
 import { Camera, X, ImagePlus, Loader2, CloudOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -49,8 +49,33 @@ function ItemPhotoUpload({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const prevObjectUrlRef = useRef<string | null>(null);
   const { isOnline } = useNetworkStatus();
+  const lightboxHistoryPushedRef = useRef(false);
 
   const displayUrl = localPreview || signedUrl;
+
+  const closeLightbox = useCallback(() => {
+    setLightboxOpen(false);
+    if (lightboxHistoryPushedRef.current) {
+      lightboxHistoryPushedRef.current = false;
+      window.history.back();
+    }
+  }, []);
+
+  // Push history state when lightbox opens; listen for popstate to close it
+  useEffect(() => {
+    if (lightboxOpen) {
+      window.history.pushState({ lightbox: true }, '');
+      lightboxHistoryPushedRef.current = true;
+    }
+    const onPopState = () => {
+      if (lightboxOpen) {
+        lightboxHistoryPushedRef.current = false;
+        setLightboxOpen(false);
+      }
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, [lightboxOpen]);
 
   // Cleanup object URLs on unmount
   useEffect(() => {
@@ -370,22 +395,27 @@ function ItemPhotoUpload({
         </div>
       )}
 
-      <Dialog open={lightboxOpen} onOpenChange={setLightboxOpen}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Item Photo</DialogTitle>
-          </DialogHeader>
-          <div className="flex flex-col items-center gap-4">
+      <Dialog open={lightboxOpen} onOpenChange={(open) => { if (!open) closeLightbox(); }}>
+        <DialogContent hideDefaultClose className="max-w-2xl bg-black/95 border-none p-2 [&>button]:hidden">
+          {/* Close button — top-left */}
+          <button
+            onClick={closeLightbox}
+            className="absolute left-3 top-3 z-50 w-10 h-10 rounded-full bg-white/20 hover:bg-white/40 flex items-center justify-center transition-colors backdrop-blur-sm"
+            aria-label="Close lightbox"
+          >
+            <X className="w-5 h-5 text-white" />
+          </button>
+          <div className="flex flex-col items-center gap-4 pt-8">
             {displayUrl ? (
-              <img src={displayUrl} alt="Item photo full size" className="max-w-full max-h-[60vh] object-contain rounded-lg" />
+              <img src={displayUrl} alt="Item photo full size" className="max-w-full max-h-[70vh] object-contain rounded-lg" />
             ) : isOfflinePhoto ? (
-              <div className="flex flex-col items-center gap-2 py-8 text-muted-foreground">
+              <div className="flex flex-col items-center gap-2 py-8 text-white/60">
                 <CloudOff className="w-8 h-8" />
                 <p className="text-sm">Photo will load when back online</p>
               </div>
             ) : null}
             <div className="flex gap-2">
-              <Button variant="outline" size="sm" onClick={() => { setLightboxOpen(false); setCameraOpen(true); }} disabled={disabled || uploading}>
+              <Button variant="outline" size="sm" onClick={() => { closeLightbox(); setCameraOpen(true); }} disabled={disabled || uploading}>
                 <Camera className="w-4 h-4 mr-2" />
                 Take Photo
               </Button>
