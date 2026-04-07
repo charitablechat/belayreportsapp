@@ -1,33 +1,33 @@
 
 
-# Fix: Photo Navigation Blocked in Locked Reports
+# Move Close Button Outside the Photo Area
 
-## Root Cause
+Currently the X button is positioned `absolute right-3 top-3` inside the `DialogContent`, which places it over the photo. The fix moves it above/outside the photo into the black padding area of the lightbox, making it clearly visible and separate from the image.
 
-React's synthetic event system bubbles events through the **React component tree**, not the DOM tree. Even though the lightbox Dialog renders via a portal to `document.body`, clicks inside it still trigger `onClickCapture` on `<main>` because PhotoGallery is a React child of `<main>`.
+## Changes
 
-The lightbox navigation arrows are `<button>` elements. The lock interceptor matches them as "editable" (`button` selector) but they lack `data-lightbox-trigger`, so clicks are blocked — preventing prev/next navigation and the close button.
+### 1. `src/components/PhotoGallery.tsx` (line ~877-883)
 
-## Fix
+Move the close button outside the photo container and position it in the top-right of the dialog's black area, above the image. Change from `absolute` positioning inside the content to a flex row at the top:
 
-Add a single check to `handleLockedFieldClick` in all three form pages: if the click target is inside a `[role="dialog"]` element, allow it through. This covers:
-- Lightbox prev/next arrows
-- Lightbox close button
-- Any future dialog interactions
-
-This is cleaner than sprinkling `data-lightbox-trigger` on every button inside every dialog.
-
-### Files to modify
-
-**`src/pages/InspectionForm.tsx`** — line ~218, add dialog check:
-```ts
-const isInsideDialog = target.closest('[role="dialog"]');
-if (!isEditable || isTabTrigger || isLightboxTrigger || isInsideDialog) return;
+```tsx
+{/* Close row — sits above the photo in the black area */}
+<div className="flex justify-end pb-1">
+  <button
+    onClick={closeLightbox}
+    className="w-10 h-10 rounded-full bg-white/20 hover:bg-red-600 flex items-center justify-center transition-colors"
+    aria-label="Close lightbox"
+  >
+    <X className="w-6 h-6 text-white" />
+  </button>
+</div>
 ```
 
-**`src/pages/TrainingForm.tsx`** — same change in equivalent `handleLockedFieldClick`.
+Remove the old `absolute right-3 top-3` button. The photo container (`<div className="relative select-none">`) stays unchanged below it.
 
-**`src/pages/DailyAssessmentForm.tsx`** — same change in equivalent `handleLockedFieldClick`.
+### 2. `src/components/inspection/ItemPhotoUpload.tsx` (line ~405-411)
 
-Three one-line changes, consistent across all report modules.
+Same pattern: replace the absolute-positioned button with a flex row above the photo content. Move it before the `<div className="flex flex-col items-center ...">` block.
+
+Two files, styling-only changes. The X will now sit clearly in the black border area, never overlapping the photo.
 
