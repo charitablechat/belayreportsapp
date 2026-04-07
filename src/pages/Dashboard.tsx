@@ -1371,11 +1371,33 @@ export default function Dashboard() {
                   ? 'Delete Daily Assessment'
                   : 'Delete Training Report'}
             </AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to delete this report for{" "}
-              <strong>
-                {inspectionToDelete?.organization || reportToDelete?.organization}
-              </strong>? This report will be moved to trash and permanently deleted after 60 days.
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                <p>
+                  Are you sure you want to delete this report for{" "}
+                  <strong>
+                    {inspectionToDelete?.organization || reportToDelete?.organization}
+                  </strong>? This report will be moved to trash and permanently deleted after 60 days.
+                </p>
+                {(() => {
+                  const targetReport = inspectionToDelete || reportToDelete;
+                  const ownerId = targetReport?.inspector_id;
+                  const isOtherUsersReport = ownerId && currentUser?.id && ownerId !== currentUser.id;
+                  if (!isOtherUsersReport) return null;
+                  return (
+                    <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-amber-900 dark:border-amber-700 dark:bg-amber-950/50 dark:text-amber-200">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 flex-shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                        <line x1="12" y1="9" x2="12" y2="13"/>
+                        <line x1="12" y1="17" x2="12.01" y2="17"/>
+                      </svg>
+                      <span className="text-sm font-medium">
+                        This report belongs to another user. You are deleting it as an admin.
+                      </span>
+                    </div>
+                  );
+                })()}
+              </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
