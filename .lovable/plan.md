@@ -1,43 +1,48 @@
 
 
-# Make Super Admin Strictly Read-Only on Others' Reports
+# Three-Tier Permission Structure
 
-## Problem
-When you (super admin) open another user's report, the permission hook returns `canEdit: true, isReadOnly: false`, which allows saves, sets `last_modified_by`, and stores data locally under your account. You want complete invisibility — no writes, no traces.
+## Goal
 
-## Current State (already correct)
-- `last_opened_at` update: already gated on `isOwner` (InspectionForm line 1045)
-- Auto-save (debounced + interval): already gated on `isOwner` in all 3 forms
-- `last_modified_by`: only set inside `performSave`, which is blocked by auto-save guards
-- Save Progress button: hidden when `effectiveReadOnly` is true
-- Active timer: already disabled (`enabled: false`)
-
-## What Needs to Change
-
-### 1. `src/hooks/useReportEditPermission.tsx` (lines 156-167)
-
-Change the super admin non-owner block from granting full edit access to strict read-only:
-
-```tsx
-// Super Admin viewing someone else's report - strictly read-only, no traces
-if (isSuperAdmin) {
-  return {
-    canEdit: false,
-    isReadOnly: true,
-    isOwner: false,
-    isSuperAdmin: true,
-    isLoading: false,
-    readOnlyReason: null
-  };
-}
+```text
+Role            Admin Panel    DB Backups    Others' Reports
+─────────────   ───────────    ──────────    ───────────────
+Super Admin     ✓ Full         ✓ Yes         Read-only, invisible
+Admin           ✓ Full         ✗ No          Full edit access
+Regular User    ✗ None         ✗ No          Own reports only
 ```
 
-Setting `readOnlyReason: null` avoids showing a banner — the super admin knows they're browsing. Setting `canEdit: false` and `isReadOnly: true` ensures:
-- Save Progress button is hidden
-- Auto-save never fires (already gated on `isOwner`, plus `effectiveReadOnly` blocks manual saves)
-- No `last_modified_by` gets written
-- No local IndexedDB writes occur
-- All form fields render as disabled
+## Problem
 
-This is a single-line-group change in one file. Delete capability is unaffected — it's handled separately via dashboard delete actions and RLS policies, not by `canEdit`.
+`useReportEditPermission` calls `getSuperAdminStatusWithCache()` which uses the `is_admin_or_above` RPC. Both admins and the super admin resolve to `isSuperAdmin=true`, so **both are currently read-only** on others' reports. Admins need to be able to edit.
+
+## Changes
+
+### 1. `src/lib/cached-auth.ts` — Add true super admin check
+
+Add a new `getIsTrueSuperAdmin()` function that calls the existing `is_super_admin` RPC (already in the DB). This distinguishes kale@belayreports.com from regular admins. Include the same caching/offline-fallback pattern as `getAdminStatusWithCache`.
+
+### 2. `src/hooks/useReportEditPermission.tsx` — Two-tier non-owner logic
+
+- Import the new `getIsTrueSuperAdmin` function
+- Add separate state: `isAdmin` (from `getSuperAdminStatusWithCache`) and `isTrueSuperAdmin` (from `getIsTrueSuperAdmin`)
+- Update the permission logic:
+  - **True super admin + not owner** → `canEdit: false, isReadOnly: true, readOnlyReason: null` (invisible, no traces)
+  - **Admin + not owner** → `canEdit: true, isReadOnly: false` (full edit access)
+  - **Neither** → `canEdit: false` (no access)
+- Update the returned `isSuperAdmin` field to reflect the true super admin status
+
+### 3. `src/hooks/useReportEditPermission.tsx` — Interface update
+
+Add `isAdmin: boolean` to the `ReportEditPermission` interface so form pages can distinguish admin from super admin if needed (e.g., showing/hiding UI elements).
+
+### 4. No changes needed to
+
+- **Admin panel access** (`useRequireAdmin`) — already gates on `is_admin_or_above`, so both admins and super admin get in. No change needed.
+- **Database backups tab** — already gated by `showBackupTab={currentUserId === BACKUP_ADMIN_ID}` in `SuperAdminDashboard.tsx`. Only kale's UUID sees it.
+- **RLS policies** — admins already have UPDATE policies on report tables via `is_admin_or_above()`. Super admin has them via `is_super_admin()`. The client-side hook is what enforces the read-only behavior for super admin.
+
+### Files Modified
+- `src/lib/cached-auth.ts` — new `getIsTrueSuperAdmin()` with caching
+- `src/hooks/useReportEditPermission.tsx` — two-tier admin vs super admin logic
 
