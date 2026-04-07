@@ -1,33 +1,67 @@
 
 
-# Allow Photo Lightbox Viewing in Locked Reports
+# Fix: Update Check Stalls and Never Completes
 
-## Problem
-In a completed (locked) report, clicking a photo thumbnail in `ItemPhotoUpload` is blocked by the `handleLockedFieldClick` interceptor because it uses `<button>` elements. The lock treats all button clicks as edit attempts and shows the "REPORT LOCKED" dialog instead of opening the lightbox.
+## Root Cause
 
-The `PhotoGallery` lightbox itself (navigation arrows, close button) renders via a Dialog portal outside the locked `<main>` container, so it already works once opened. The issue is purely about **opening** the lightbox from item photo thumbnails.
+Two bugs cause the update check to stall:
+
+### Bug 1: Unbounded `navigator.serviceWorker.ready` await (PRIMARY STALL)
+In `usePWAUpdate.checkForUpdates()` line 121:
+```ts
+const reg = registration || await navigator.serviceWorker.ready;
+```
+If `registration` is `null` (which happens when the initial 5s SW timeout fires on mount), this falls back to `navigator.serviceWorker.ready` **without any timeout**. This promise can hang indefinitely — especially in preview/iframe environments, on desktop without a registered SW, or on mobile Safari where SW activation is delayed.
+
+### Bug 2: 8-second wait even when no update exists
+When no update is available, `updatePromise` always waits the full 8 seconds before resolving `false`. The user sees "Checking for updates..." for 8 seconds with no feedback, which feels like a stall.
+
+### Bug 3: Stale closure in ManualUpdateButton
+After `await checkForUpdates()`, line 78 checks `if (!needsUpdate)` — but `needsUpdate` is captured from the render closure. Even if `checkForUpdates` set `needRefresh = true`, the local `needsUpdate` variable is still `false`. The "App is up to date" toast fires incorrectly, then the `useEffect` fires "Update found!" — confusing UX.
 
 ## Changes
 
-### 1. Mark lightbox-trigger elements as safe (`ItemPhotoUpload.tsx`)
-Add `data-lightbox-trigger` attribute to the two `<button>` elements that open the lightbox (lines 346 and 365):
-```tsx
-<button data-lightbox-trigger type="button" onClick={() => setLightboxOpen(true)} ...>
+### 1. `src/hooks/usePWAUpdate.tsx` — Fix the stall and reduce wait time
+
+- **Add timeout** to the `navigator.serviceWorker.ready` fallback (5s, matching init timeout)
+- **Reduce** the `updatePromise` safety timeout from 8s → 4s
+- **Return a result** from `checkForUpdates` so callers can know the outcome without relying on stale state:
+  ```ts
+  checkForUpdates: () => Promise<'update_found' | 'up_to_date' | 'no_sw' | 'error'>
+  ```
+
+```text
+checkForUpdates flow (fixed):
+
+1. If no SW support → return 'no_sw' immediately
+2. Get registration with 5s timeout → if timeout, return 'error'
+3. If reg.waiting → set needRefresh, return 'update_found'
+4. Call reg.update() + listen for updatefound with 4s timeout
+5. Return 'update_found' or 'up_to_date'
 ```
 
-### 2. Exclude lightbox triggers from lock interception (all three form files)
-Update `handleLockedFieldClick` in `InspectionForm.tsx`, `TrainingForm.tsx`, and `DailyAssessmentForm.tsx` to skip elements marked with `data-lightbox-trigger`:
+### 2. `src/components/pwa/ManualUpdateButton.tsx` — Use returned result
 
+Replace the stale-closure check with the returned value:
 ```ts
-const isLightboxTrigger = target.closest('[data-lightbox-trigger]');
-if (!isEditable || isTabTrigger || isLightboxTrigger) return;
+const result = await checkForUpdates();
+if (result === 'up_to_date' || result === 'no_sw') {
+  toast.dismiss('update-check');
+  toast.info('App is up to date', { ... });
+} else if (result === 'error') {
+  toast.dismiss('update-check');
+  toast.error('Update check failed', { ... });
+}
+// 'update_found' case handled by the existing useEffect
 ```
 
-This is the minimal change — one attribute on the thumbnail buttons, one condition in the lock handler. No structural changes needed since the lightbox Dialog already renders outside the locked container.
+### 3. `src/components/pwa/PWAProvider.tsx` — Update type passthrough
+
+Update the `PWAContextType` interface to reflect the new return type of `checkForUpdates`.
 
 ### Files Modified
-- `src/components/inspection/ItemPhotoUpload.tsx` — add `data-lightbox-trigger` to thumbnail buttons
-- `src/pages/InspectionForm.tsx` — exclude `[data-lightbox-trigger]` from lock
-- `src/pages/TrainingForm.tsx` — same
-- `src/pages/DailyAssessmentForm.tsx` — same
+- `src/hooks/usePWAUpdate.tsx` — timeout guard, reduced wait, return result
+- `src/components/pwa/ManualUpdateButton.tsx` — use result instead of stale closure
+- `src/components/pwa/PWAProvider.tsx` — update interface type
+- `src/hooks/usePWA.tsx` — update fallback type
 
