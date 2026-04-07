@@ -316,8 +316,8 @@ function ItemPhotoUpload({
     setIsOfflinePhoto(false);
     onPhotoChange(null);
     onImmediateSave?.();
-    setLightboxOpen(false);
-  }, [photoUrl, onPhotoChange, onImmediateSave, photoSection, inspectionId, onGalleryRefresh]);
+    closeLightbox();
+  }, [photoUrl, onPhotoChange, onImmediateSave, photoSection, inspectionId, onGalleryRefresh, closeLightbox]);
 
   const hasPhoto = !!(photoUrl || localPreview);
 
