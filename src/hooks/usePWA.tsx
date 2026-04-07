@@ -13,7 +13,7 @@ const fallbackContext: PWAContextType = {
   updateAndReload: async () => {},
   lastUpdateCheck: null,
   isCheckingForUpdate: false,
-  checkForUpdates: async () => {},
+  checkForUpdates: async () => 'error' as const,
   isOnline: typeof navigator !== 'undefined' ? navigator.onLine : true,
   effectiveType: null,
   downlink: null,

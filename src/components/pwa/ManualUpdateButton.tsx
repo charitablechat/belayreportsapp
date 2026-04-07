@@ -72,16 +72,20 @@ export const ManualUpdateButton = () => {
     toast.loading('Checking for updates...', { id: 'update-check' });
     
     try {
-      await checkForUpdates();
-      // If no update was found (needsUpdate didn't change), show "up to date"
-      // The useEffect above handles the "update found" case
-      if (!needsUpdate) {
-        toast.dismiss('update-check');
+      const result = await checkForUpdates();
+      toast.dismiss('update-check');
+      if (result === 'up_to_date' || result === 'no_sw') {
         toast.info('App is up to date', { 
           description: 'You have the latest version',
           duration: 3000
         });
+      } else if (result === 'error') {
+        toast.error('Update check failed', { 
+          description: 'Please try again later'
+        });
+        triggerHaptic('warning');
       }
+      // 'update_found' case handled by the useEffect above
     } catch (error) {
       console.error('[Manual Update] Error checking for updates:', error);
       toast.dismiss('update-check');
