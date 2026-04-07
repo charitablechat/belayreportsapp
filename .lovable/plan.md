@@ -1,33 +1,32 @@
 
 
-# Move Close Button Outside the Photo Area
+# Fix PWA Update Check: False Positives and Delayed Detection
 
-Currently the X button is positioned `absolute right-3 top-3` inside the `DialogContent`, which places it over the photo. The fix moves it above/outside the photo into the black padding area of the lightbox, making it clearly visible and separate from the image.
+## Problem
+
+When the user clicks "Check for Updates", the function returns `up_to_date` even when an update exists. Minutes later, the background `updatefound` listener fires and shows the update banner — contradicting the earlier toast. Two root causes:
+
+1. **`updatefound` handler waits too long**: Once `updatefound` fires (confirming an update exists), the code waits for the SW to reach `installed` state before resolving `true`. On slower connections, the 4s safety timeout fires first, resolving `false` — a false negative.
+
+2. **SW_READY_TIMEOUT_MS too aggressive (1.5s)**: On cold starts or slower devices, `navigator.serviceWorker.ready` may not resolve in 1.5s, causing the function to bail with `no_sw` even though the SW is available.
+
+3. **Stale closure in ManualUpdateButton**: `handleCheckForUpdates` captures `needsUpdate` from the render closure. If `checkForUpdates` internally sets `needRefresh=true` but the component hasn't re-rendered yet, the function still sees the old `needsUpdate=false` value.
 
 ## Changes
 
-### 1. `src/components/PhotoGallery.tsx` (line ~877-883)
+### 1. `src/hooks/usePWAUpdate.tsx`
 
-Move the close button outside the photo container and position it in the top-right of the dialog's black area, above the image. Change from `absolute` positioning inside the content to a flex row at the top:
+- **Increase `SW_READY_TIMEOUT_MS`** from `1500` to `5000` — gives the SW registration time to resolve on slower devices.
+- **Resolve `updatefound` immediately**: When the `updatefound` event fires, resolve `true` right away instead of waiting for the SW to reach `installed` state. The existence of `updatefound` already confirms an update is available — no need to wait for installation to complete before telling the user.
 
-```tsx
-{/* Close row — sits above the photo in the black area */}
-<div className="flex justify-end pb-1">
-  <button
-    onClick={closeLightbox}
-    className="w-10 h-10 rounded-full bg-white/20 hover:bg-red-600 flex items-center justify-center transition-colors"
-    aria-label="Close lightbox"
-  >
-    <X className="w-6 h-6 text-white" />
-  </button>
-</div>
-```
+Specific change in `checkForUpdates` (line ~206-225): simplify the `onUpdateFound` handler to just call `resolveOnce(true)` immediately, removing the `statechange` listener logic.
 
-Remove the old `absolute right-3 top-3` button. The photo container (`<div className="relative select-none">`) stays unchanged below it.
+### 2. `src/components/pwa/ManualUpdateButton.tsx`
 
-### 2. `src/components/inspection/ItemPhotoUpload.tsx` (line ~405-411)
+- **Fix stale closure**: Handle the `update_found` result directly in `handleCheckForUpdates` instead of relying on the `useEffect` watching `needsUpdate`. When `checkForUpdates()` returns `'update_found'`, show the success toast and haptic immediately in the same function, ensuring the user gets instant feedback.
+- **Remove the `previousNeedsUpdate` useEffect** that watches for `needsUpdate` transitions — it's redundant once we handle `update_found` inline and causes the delayed/duplicate notification.
 
-Same pattern: replace the absolute-positioned button with a flex row above the photo content. Move it before the `<div className="flex flex-col items-center ...">` block.
-
-Two files, styling-only changes. The X will now sit clearly in the black border area, never overlapping the photo.
+### Files Modified
+- `src/hooks/usePWAUpdate.tsx` — 2 changes (timeout constant, updatefound handler)
+- `src/components/pwa/ManualUpdateButton.tsx` — remove transition watcher useEffect, add inline `update_found` handling
 
