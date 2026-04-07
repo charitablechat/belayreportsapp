@@ -1586,9 +1586,9 @@ export function IndexedDBRecoveryPanel({ allowDelete = true }: IndexedDBPanelPro
               </CardDescription>
             </CardHeader>
             <CardContent>
-              {localData?.trainings.length === 0 ? (
+              {filteredTrainings.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground">
-                  No local training data found
+                  {searchQuery ? `No trainings match "${searchQuery}".` : 'No local training data found'}
                 </div>
               ) : (
                 <div className="rounded-md border">
@@ -1605,7 +1605,7 @@ export function IndexedDBRecoveryPanel({ allowDelete = true }: IndexedDBPanelPro
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {localData?.trainings.map((training) => {
+                      {filteredTrainings.map((training) => {
                         const syncStatus = getSyncStatus(training);
                         return (
                           <TableRow key={training.id}>
@@ -1678,9 +1678,9 @@ export function IndexedDBRecoveryPanel({ allowDelete = true }: IndexedDBPanelPro
               </CardDescription>
             </CardHeader>
             <CardContent>
-              {localData?.dailyAssessments.length === 0 ? (
+              {filteredAssessments.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground">
-                  No local daily assessment data found
+                  {searchQuery ? `No assessments match "${searchQuery}".` : 'No local daily assessment data found'}
                 </div>
               ) : (
                 <div className="rounded-md border">
@@ -1697,7 +1697,7 @@ export function IndexedDBRecoveryPanel({ allowDelete = true }: IndexedDBPanelPro
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {localData?.dailyAssessments.map((assessment) => {
+                      {filteredAssessments.map((assessment) => {
                         const syncStatus = getSyncStatus(assessment);
                         return (
                           <TableRow key={assessment.id}>
@@ -1768,9 +1768,9 @@ export function IndexedDBRecoveryPanel({ allowDelete = true }: IndexedDBPanelPro
               </CardDescription>
             </CardHeader>
             <CardContent>
-              {localData?.inspections.length === 0 ? (
+              {filteredInspections.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground">
-                  No local inspection data found
+                  {searchQuery ? `No inspections match "${searchQuery}".` : 'No local inspection data found'}
                 </div>
               ) : (
                 <div className="rounded-md border">
@@ -1787,7 +1787,7 @@ export function IndexedDBRecoveryPanel({ allowDelete = true }: IndexedDBPanelPro
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {localData?.inspections.map((inspection) => {
+                      {filteredInspections.map((inspection) => {
                         const syncStatus = getSyncStatus(inspection);
                         return (
                           <TableRow key={inspection.id}>
