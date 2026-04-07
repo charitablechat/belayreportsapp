@@ -13,6 +13,9 @@ export interface PWAUpdateStatus {
 }
 
 const UPDATE_APPLIED_KEY = 'pwa-update-just-applied';
+const SW_READY_TIMEOUT_MS = 1500;
+const UPDATE_DISCOVERY_TIMEOUT_MS = 4000;
+const SW_UPDATE_TIMEOUT_MS = 4000;
 
 const withTimeout = <T,>(promise: Promise<T>, ms: number, label: string): Promise<T> =>
   Promise.race([
@@ -21,6 +24,41 @@ const withTimeout = <T,>(promise: Promise<T>, ms: number, label: string): Promis
       setTimeout(() => reject(new Error(`${label} timeout after ${ms}ms`)), ms)
     ),
   ]);
+
+const isPreviewOrIframeEnvironment = (): boolean => {
+  try {
+    return (
+      isLovablePreview() ||
+      window.location.hostname.includes('lovableproject.com') ||
+      window.self !== window.top
+    );
+  } catch {
+    return true;
+  }
+};
+
+const getAvailableServiceWorkerRegistration = async (): Promise<ServiceWorkerRegistration | null> => {
+  if (!('serviceWorker' in navigator) || isPreviewOrIframeEnvironment()) {
+    return null;
+  }
+
+  try {
+    const existingRegistration = await navigator.serviceWorker.getRegistration();
+    if (existingRegistration) {
+      return existingRegistration;
+    }
+  } catch (error) {
+    if (import.meta.env.DEV) {
+      console.warn('[PWA Update] Failed to inspect service worker registration:', error);
+    }
+  }
+
+  try {
+    return await withTimeout(navigator.serviceWorker.ready, SW_READY_TIMEOUT_MS, 'SW ready');
+  } catch {
+    return null;
+  }
+};
 
 export const usePWAUpdate = (): PWAUpdateStatus => {
   const [needRefresh, setNeedRefresh] = useState(false);
@@ -44,10 +82,12 @@ export const usePWAUpdate = (): PWAUpdateStatus => {
   useEffect(() => {
     if (!('serviceWorker' in navigator)) return;
 
-    let intervalId: ReturnType<typeof setInterval>;
+    let intervalId: ReturnType<typeof setInterval> | undefined;
 
-    withTimeout(navigator.serviceWorker.ready, 5000, 'SW ready')
+    getAvailableServiceWorkerRegistration()
       .then((reg) => {
+        if (!reg) return;
+
         if (import.meta.env.DEV) {
           console.log('[PWA Update] Service Worker ready');
         }
@@ -82,7 +122,13 @@ export const usePWAUpdate = (): PWAUpdateStatus => {
           if (import.meta.env.DEV) {
             console.log('[PWA Update] Auto-checking for updates...');
           }
-          reg.update();
+
+          void withTimeout(reg.update(), SW_UPDATE_TIMEOUT_MS, 'SW update (auto)').catch((error) => {
+            if (import.meta.env.DEV) {
+              console.warn('[PWA Update] Auto-check failed:', error);
+            }
+          });
+
           const now = new Date();
           setLastChecked(now);
           localStorage.setItem('pwa-last-update-check', now.toISOString());
@@ -119,20 +165,20 @@ export const usePWAUpdate = (): PWAUpdateStatus => {
   const checkForUpdates = useCallback(async (): Promise<UpdateCheckResult> => {
     if (!('serviceWorker' in navigator)) return 'no_sw';
     setIsChecking(true);
+
     try {
-      let reg = registration;
+      let reg = registration ?? await getAvailableServiceWorkerRegistration();
+
       if (!reg) {
-        // In preview/iframe, SW is never registered — skip the 5s wait
-        const isIframe = (() => { try { return window.self !== window.top; } catch { return true; } })();
-        if (isLovablePreview() || isIframe) {
-          return 'no_sw';
+        if (import.meta.env.DEV) {
+          console.info('[PWA Update] Update check skipped — no service worker registration available');
         }
-        try {
-          reg = await withTimeout(navigator.serviceWorker.ready, 5000, 'SW ready (check)');
-        } catch {
-          console.warn('[PWA Update] No service worker available for update check');
-          return 'no_sw';
-        }
+
+        return 'no_sw';
+      }
+
+      if (reg !== registration) {
+        setRegistration(reg);
       }
 
       // Already waiting? Done.
@@ -143,44 +189,73 @@ export const usePWAUpdate = (): PWAUpdateStatus => {
 
       // Listen for updatefound BEFORE calling update()
       const updatePromise = new Promise<boolean>((resolve) => {
-        const onUpdateFound = () => {
-          reg!.removeEventListener('updatefound', onUpdateFound);
+        let settled = false;
+        let onUpdateFound: (() => void) | null = null;
+
+        const resolveOnce = (value: boolean) => {
+          if (settled) return;
+          settled = true;
+
+          if (onUpdateFound) {
+            reg!.removeEventListener('updatefound', onUpdateFound);
+          }
+
+          resolve(value);
+        };
+
+        onUpdateFound = () => {
           const sw = reg!.installing;
-          if (!sw) { resolve(false); return; }
+          if (!sw) {
+            resolveOnce(false);
+            return;
+          }
 
           const onStateChange = () => {
             if (sw.state === 'installed' || sw.state === 'activated') {
               sw.removeEventListener('statechange', onStateChange);
-              resolve(true);
+              resolveOnce(true);
             }
           };
+
           sw.addEventListener('statechange', onStateChange);
+
           if (sw.state === 'installed' || sw.state === 'activated') {
             sw.removeEventListener('statechange', onStateChange);
-            resolve(true);
+            resolveOnce(true);
           }
         };
+
         reg!.addEventListener('updatefound', onUpdateFound);
 
         // Safety: resolve false after 4s if no update found
-        setTimeout(() => {
-          reg!.removeEventListener('updatefound', onUpdateFound);
-          resolve(false);
-        }, 4000);
+        window.setTimeout(() => {
+          resolveOnce(false);
+        }, UPDATE_DISCOVERY_TIMEOUT_MS);
       });
 
-      await reg.update();
+      let updateCallError: unknown = null;
+      const updateCallPromise = withTimeout(reg.update(), SW_UPDATE_TIMEOUT_MS, 'SW update').catch((error) => {
+        updateCallError = error;
+      });
 
-      // Check immediately after update()
+      const found = await updatePromise;
+
+      // Check immediately after update discovery
+      if (found || reg.waiting) {
+        setNeedRefresh(true);
+        return 'update_found';
+      }
+
+      await updateCallPromise;
+
       if (reg.waiting) {
         setNeedRefresh(true);
         return 'update_found';
       }
 
-      const found = await updatePromise;
-      if (found || reg.waiting) {
-        setNeedRefresh(true);
-        return 'update_found';
+      if (updateCallError) {
+        console.error('[PWA Update] Check failed:', updateCallError);
+        return 'error';
       }
 
       return 'up_to_date';
