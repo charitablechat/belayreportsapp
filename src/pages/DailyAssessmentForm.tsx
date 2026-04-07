@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from "react";
+import { useReportTabHistory } from "@/hooks/useReportTabHistory";
 import { isLocalDataNewer } from "@/lib/local-data-guards";
 import { useParams, useNavigate } from "react-router-dom";
 import { goBack } from "@/lib/navigation";
@@ -177,6 +178,12 @@ export default function DailyAssessmentForm() {
   const [currentTab, setCurrentTab] = useState("beginning");
   const tabOrder = ["beginning", "end", "systems", "equipment", "structure", "environment", "photos"];
 
+  // Hardware back button → navigate tabs on mobile
+  const { handleTabChange } = useReportTabHistory(
+    currentTab, setCurrentTab, tabOrder,
+    useCallback(() => setShowLeaveDialog(true), []),
+  );
+
   // Swipe navigation for mobile (swipe right on first tab navigates back)
   const isFirstTab = currentTab === tabOrder[0];
   const { containerRef: swipeContainerRef, swipeState } = useSwipeNavigation({
@@ -185,13 +192,13 @@ export default function DailyAssessmentForm() {
     onSwipeLeft: () => {
       const currentIndex = tabOrder.indexOf(currentTab);
       if (currentIndex < tabOrder.length - 1) {
-        setCurrentTab(tabOrder[currentIndex + 1]);
+        handleTabChange(tabOrder[currentIndex + 1]);
       }
     },
     onSwipeRight: () => {
       const currentIndex = tabOrder.indexOf(currentTab);
       if (currentIndex > 0) {
-        setCurrentTab(tabOrder[currentIndex - 1]);
+        handleTabChange(tabOrder[currentIndex - 1]);
       } else if (currentIndex === 0) {
         setShowLeaveDialog(true);
       }
@@ -1681,7 +1688,7 @@ export default function DailyAssessmentForm() {
           />
         )}
 
-        <Tabs value={currentTab} onValueChange={setCurrentTab} className="w-full">
+        <Tabs value={currentTab} onValueChange={handleTabChange} className="w-full">
           <div ref={swipeContainerRef} className="sticky top-0 z-30 bg-background/95 backdrop-blur-sm pb-1">
             <TabsList className="grid w-full grid-cols-4 lg:grid-cols-7 gap-1 lg:gap-0 h-auto p-1.5 lg:p-1">
               <TabsTrigger value="beginning" className="text-xs lg:text-sm py-2 flex flex-col lg:flex-row items-center gap-1 lg:gap-1.5">

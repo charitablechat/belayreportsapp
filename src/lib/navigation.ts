@@ -5,6 +5,15 @@
  */
 let navigationDepth = 0;
 let overlayActive = false;
+let reportTabActive = false;
+
+export function setReportTabActive(active: boolean) {
+  reportTabActive = active;
+}
+
+export function isReportTabActive() {
+  return reportTabActive;
+}
 
 export function setOverlayActive(active: boolean) {
   overlayActive = active;

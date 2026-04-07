@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, useRef, useCallback } from "react";
+import { useReportTabHistory } from "@/hooks/useReportTabHistory";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel,
   AlertDialogContent, AlertDialogDescription,
@@ -245,6 +246,12 @@ export default function InspectionForm() {
   // Track visited tabs for lazy rendering (performance optimization)
   const [visitedTabs, setVisitedTabs] = useState<Set<string>>(new Set(['details']));
   
+  // Hardware back button → navigate tabs on mobile
+  const { handleTabChange } = useReportTabHistory(
+    currentTab, setCurrentTab, tabOrder,
+    useCallback(() => setShowLeaveDialog(true), []),
+  );
+  
   // Swipe navigation for mobile (swipe right on first tab navigates back)
   const isFirstTab = currentTab === tabOrder[0];
   const { containerRef: swipeContainerRef, swipeState } = useSwipeNavigation({
@@ -253,13 +260,13 @@ export default function InspectionForm() {
     onSwipeLeft: () => {
       const currentIndex = tabOrder.indexOf(currentTab);
       if (currentIndex < tabOrder.length - 1) {
-        setCurrentTab(tabOrder[currentIndex + 1]);
+        handleTabChange(tabOrder[currentIndex + 1]);
       }
     },
     onSwipeRight: () => {
       const currentIndex = tabOrder.indexOf(currentTab);
       if (currentIndex > 0) {
-        setCurrentTab(tabOrder[currentIndex - 1]);
+        handleTabChange(tabOrder[currentIndex - 1]);
       } else if (currentIndex === 0) {
         setShowLeaveDialog(true);
       }
@@ -2800,7 +2807,7 @@ export default function InspectionForm() {
         )}
 
         <Tabs value={currentTab} onValueChange={(tab) => {
-          setCurrentTab(tab);
+          handleTabChange(tab);
           // Mark tab as visited for lazy rendering
           setVisitedTabs(prev => new Set([...prev, tab]));
         }} className="space-y-6 mt-6">
