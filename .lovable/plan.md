@@ -1,69 +1,103 @@
 
 
-# Fix Excessive Whitespace in Generated PDF Reports
+# Refactor Report HTML: Remove Grey Box Styling, Apply Clean Professional Aesthetic
 
-## Problem
-All three report types use a `<div class="page">` structure with `page-break-after: always`, giving every section its own full page. Short sections (e.g., 5 bullet points, a small disclaimer, or a few checklist items) leave half or more of the page blank.
+## Current Problem
+All three report generators use a heavy grey (`#c2c2c2`) background on nearly every element — body, info items, list items, text blocks, table headers, and even alternating table rows. This creates a dated, muddy appearance. The screenshot confirms: info items are grey boxes with blue left borders, trainee names sit on a full-width grey slab.
 
-## Root Causes Identified
+## Design Direction
+Clean, minimal professional report: white backgrounds, subtle borders, structured with typography and spacing rather than background fills. Single accent color: **#1e40af** (existing blue). Secondary accent for borders/dividers: **#e2e8f0** (light slate).
 
-1. **Training Report** has 7 fixed pages regardless of content volume:
-   - Page 3 (Verifiable Items) and Page 4 (Systems in Place) are often half-empty
-   - Page 7 (Disclaimer/Submission) has only 2-3 fields and a disclaimer box — the rest is whitespace
+```text
+BEFORE                          AFTER
+┌──────────────────┐            ┌──────────────────┐
+│ ▌█████ grey box  │            │  Label            │
+│ ▌█████ grey box  │            │  Value            │
+│ ▌█████ grey box  │            │  ─────────────── │
+│ ▌█████ grey box  │            │  Label            │
+└──────────────────┘            │  Value            │
+                                └──────────────────┘
+```
 
-2. **Inspection Report** has 4 mandatory intro pages that are always separate:
-   - Page 2 (Reminders: 5 bullets) and Page 3 (Categories: 4 boxes) are short and could fit on one page
-   
-3. **All Reports** use generous spacing values designed for screen display that carry into print:
-   - `margin-bottom: 25px` on sections, `gap: 18px 30px` on info grids, `margin-top: 30px` on footers
-   - Print `@page` margins of 0.4-0.5in are wider than needed
+## Changes Per File
 
-## Solution
+### 1. Training Report (`generate-training-html/index.ts`)
 
-### 1. Training Report — Merge sparse pages
-**File: `supabase/functions/generate-training-html/index.ts`**
+**Body:** `background: #c2c2c2` → `background: #ffffff`
 
-- Combine Page 3 (Verifiable Items) and Page 4 (Systems in Place) into a single page. Both are checklist-style content that fits comfortably together.
-- Combine Page 7 (Submission/Disclaimer) with the Summary page (Page 5) or the Photos page when photos exist. The submission section is only 2 info items + disclaimer text.
-- Result: 5-6 pages instead of 7, with no wasted half-pages.
+**`.info-item`:** Remove grey bg + blue left border. Replace with:
+- `background: #ffffff`
+- `border: 1px solid #e2e8f0`
+- `border-radius: 4px`
+- `padding: 10px 12px`
 
-### 2. Inspection Report — Merge intro pages
-**File: `supabase/functions/generate-inspection-html/index.ts`**
+**`.info-label`:** Darken to `color: #1e40af` (accent), `font-size: 11px`, `text-transform: uppercase`, `letter-spacing: 0.5px`
 
-- Combine Page 2 (Reminders and Requirements) and Page 3 (Inspection Categories) into a single page. Together they fill roughly 80% of a letter page.
-- Re-number subsequent pages accordingly.
+**Global `li`:** Remove `background: #c2c2c2` and `border-left: 3px solid #3b82f6`. Replace with:
+- `background: #ffffff`
+- `border: 1px solid #e2e8f0`
+- `border-radius: 4px`
+- Keep padding `8px 12px`
 
-### 3. Tighten print spacing across all three reports
-**Files: All three HTML generators + `_shared/report-layout.ts`**
+**`.text-content`:** `background: #c2c2c2` → `background: #f8fafc` (very light blue-grey), `border: 1px solid #e2e8f0`
 
-Reduce spacing values that apply during print/PDF:
-- Section margins: `25px → 14px`
-- Info grid gaps: `18px 30px → 10px 20px`
-- Footer `margin-top`: `30px → 12px`
-- Section title padding: `12px 20px → 8px 14px`
-- `@page` margins: `0.5in → 0.35in` side margins
-- Page content padding: `0.25in → 0.15in`
-- Section title bottom margin: `15px → 8px`
-- Footer disclaimer line-height: `1.5 → 1.3`
-- Standards box / info-item padding: `15px → 10px`
+**`.standards-box`:** Keep light blue `#dbeafe` bg — this is intentionally distinct and already looks clean.
 
-These reductions apply in `@media print` blocks so the screen HTML view remains unchanged.
+**Photo grid items:** Already use `border: 1px solid #e2e8f0` — no change needed.
 
-### 4. Daily Assessment — Minor tightening only
-**File: `supabase/functions/generate-daily-assessment-html/index.ts`**
+### 2. Inspection Report (`generate-inspection-html/index.ts`)
 
-This report already has dynamic page merging. Apply only the spacing tightening from step 3 — no structural page merging needed.
+**`table th`:** `background: #c2c2c2` → `background: #1e40af`, `color: white` (already done in print CSS; apply to screen too for consistency)
 
-## Files Changed
-- `supabase/functions/generate-training-html/index.ts` — merge pages 3+4, merge disclaimer into last content page, tighten print spacing
-- `supabase/functions/generate-inspection-html/index.ts` — merge pages 2+3, tighten print spacing
-- `supabase/functions/generate-daily-assessment-html/index.ts` — tighten print spacing only
-- `supabase/functions/_shared/report-layout.ts` — reduce shared footer/header spacing for print
+**`.key-section`:** `background: #c2c2c2` → `background: #f8fafc`, `border: 1px solid #e2e8f0`
+
+**`.info-grid` print:** Remove `background: #c2c2c2 !important`
+
+**`table tr:nth-child(even)` print:** `background: #c2c2c2` → `background: #f8fafc`
+
+**`.section-header` print:** `background-color: #c2c2c2` → `background-color: #f1f5f9`
+
+**`.inspection-photo`:** `background: #c2c2c2` → `background: #f8fafc`
+
+**`.section-divider`:** `border-top: 2px solid #c2c2c2` → `border-top: 1px solid #e2e8f0`
+
+**`.info-cell` mobile border:** `border-bottom: 1px solid #c2c2c2` → `border-bottom: 1px solid #e2e8f0`
+
+### 3. Daily Assessment Report (`generate-daily-assessment-html/index.ts`)
+
+**Body:** `background: #c2c2c2` → `background: #ffffff`
+
+**`.info-item`:** Same treatment as training — white bg, subtle border, no grey.
+
+**Global `li`:** Same — remove grey bg, add white bg with light border. Keep `.checked` (green left border) and `.unchecked` (red left border) accent colors but on white background.
+
+**`.system-item`:** `background: #c2c2c2` → `background: #ffffff`, `border: 1px solid #e2e8f0`, keep green left border accent.
+
+### 4. Shared Layout (`_shared/report-layout.ts`)
+
+No changes needed — the shared layout only defines header/footer structure, not content backgrounds.
+
+## Print CSS Adjustments
+In all three generators' `@media print` blocks:
+- Remove any `background: #c2c2c2 !important` overrides
+- Replace with `background: #f8fafc !important` or `transparent` as appropriate
+- Keep `print-color-adjust: exact` to preserve the subtle tints
+
+## What Stays the Same
+- Blue section title bars (`#1e40af` background, white text)
+- Blue accent on header border-bottom
+- Yellow disclaimer boxes (`#fef3c7`)
+- Red critical/fail highlights
+- Green/red checklist border accents
+- Logo placement and sizing
+- All typography, font families, and sizing
+- Page structure and pagination logic
+
+## Files Modified
+- `supabase/functions/generate-training-html/index.ts`
+- `supabase/functions/generate-inspection-html/index.ts`
+- `supabase/functions/generate-daily-assessment-html/index.ts`
 
 ## Expected Outcome
-- Training reports: ~2 fewer pages, no half-empty pages
-- Inspection reports: ~1 fewer page, denser intro section
-- All reports: ~15-20% less vertical whitespace per page from tighter spacing
-- Screen HTML view is unchanged — only print/PDF output is affected
-- Professional appearance maintained with balanced content density
+Reports shift from a heavy grey-box aesthetic to a clean white-and-blue professional look. Content is distinguished by subtle borders and typography hierarchy rather than background fills. Consistent across all three report types.
 
