@@ -203,10 +203,20 @@ export function DashboardReportsSection({
     setDeleteDialogOpen(true);
   };
 
-  const handleClick = (report: any) => {
-    if (currentType === 'inspection') navigate(`/inspection/${report.id}`);
-    else if (currentType === 'training') navigate(`/training/${report.id}`);
+  const handleClick = (report: any, type?: 'inspection' | 'training' | 'daily') => {
+    const t = type || currentType;
+    if (t === 'inspection') navigate(`/inspection/${report.id}`);
+    else if (t === 'training') navigate(`/training/${report.id}`);
     else navigate(`/daily-assessment/${report.id}`);
+  };
+
+  const handleDeleteForType = (report: any, type: 'inspection' | 'training' | 'daily') => {
+    if (type === 'inspection') {
+      setInspectionToDelete(report);
+    } else {
+      setReportToDelete(report);
+    }
+    setDeleteDialogOpen(true);
   };
 
   const EmptyState = activeReportTab === 'inspections' ? InspectionsEmptyState
