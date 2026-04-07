@@ -158,7 +158,7 @@ serve(async (req) => {
     const systemsInPlaceHtml = ALL_SYSTEMS_IN_PLACE.map(item => {
       const isChecked = content.systemsInPlace.includes(item);
       const checkmark = isChecked ? '☑' : '☐';
-      const style = isChecked ? '' : 'style="border-left-color: #94a3b8; background: #c2c2c2;"';
+      const style = isChecked ? '' : 'style="border-left-color: #94a3b8; background: #f8fafc;"';
       return `<li ${style}>${checkmark} ${item}</li>`;
     }).join('');
 
@@ -198,7 +198,7 @@ serve(async (req) => {
       font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
       line-height: 1.6;
       color: #333;
-      background: #c2c2c2;
+      background: #ffffff;
       padding: 10px;
     }
     
@@ -348,14 +348,17 @@ serve(async (req) => {
       margin-bottom: 10px;
     }
     .info-item {
-      padding: 8px;
-      background: #c2c2c2;
-      border-left: 3px solid #1e40af;
+      padding: 10px 12px;
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 4px;
     }
     .info-label {
       font-weight: 600;
-      color: #475569;
-      font-size: 13px;
+      color: #1e40af;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
       margin-bottom: 4px;
     }
     .info-value {
@@ -368,9 +371,9 @@ serve(async (req) => {
     li {
       padding: 8px 12px;
       margin-bottom: 6px;
-      background: #c2c2c2;
-      border-left: 3px solid #3b82f6;
-      border-radius: 2px;
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 4px;
     }
     li strong {
       color: #1e293b;
@@ -420,7 +423,8 @@ serve(async (req) => {
     }
     .text-content {
       padding: 10px;
-      background: #c2c2c2;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
       border-radius: 4px;
       white-space: pre-wrap;
       line-height: 1.6;
@@ -708,7 +712,7 @@ serve(async (req) => {
       .info-item {
         display: block !important;
         margin-bottom: 12px !important;
-        border-bottom: 1px solid #c2c2c2 !important;
+        border-bottom: 1px solid #e2e8f0 !important;
         padding-bottom: 8px !important;
         grid-column: span 1 !important;
       }

@@ -217,7 +217,7 @@ serve(async (req) => {
       font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
       line-height: 1.6;
       color: #333;
-      background: #c2c2c2;
+      background: #ffffff;
       padding: 10px;
     }
 
@@ -367,9 +367,10 @@ serve(async (req) => {
     }
 
     .info-item {
-      padding: 8px;
-      background: #c2c2c2;
-      border-left: 3px solid #1e40af;
+      padding: 10px 12px;
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 4px;
     }
 
     .info-item.full-width {
@@ -378,8 +379,10 @@ serve(async (req) => {
 
     .info-label {
       font-weight: 600;
-      color: #475569;
-      font-size: 12px;
+      color: #1e40af;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
       margin-bottom: 4px;
     }
 
@@ -398,9 +401,10 @@ serve(async (req) => {
       gap: 10px;
       padding: 8px 10px;
       margin-bottom: 6px;
-      background: #c2c2c2;
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
       border-left: 3px solid #3b82f6;
-      border-radius: 2px;
+      border-radius: 4px;
       align-items: flex-start;
     }
 
@@ -463,9 +467,10 @@ serve(async (req) => {
       align-items: center;
       gap: 8px;
       padding: 8px 10px;
-      background: #c2c2c2;
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
       border-left: 3px solid #22c55e;
-      border-radius: 2px;
+      border-radius: 4px;
       font-size: 13px;
     }
 
