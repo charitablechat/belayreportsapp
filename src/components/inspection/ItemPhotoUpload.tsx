@@ -1,11 +1,9 @@
-import { useState, useRef, useCallback, useEffect, memo, useMemo } from "react";
+import { useState, useRef, useCallback, useEffect, memo } from "react";
 import { Camera, X, ImagePlus, Loader2, CloudOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
-  DialogHeader,
-  DialogTitle,
 } from "@/components/ui/dialog";
 import { CameraCaptureDialog } from "@/components/ui/camera-capture-dialog";
 import { supabase } from "@/integrations/supabase/client";
