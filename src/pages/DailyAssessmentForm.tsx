@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from "react";
+import { useReportTabHistory } from "@/hooks/useReportTabHistory";
 import { isLocalDataNewer } from "@/lib/local-data-guards";
 import { useParams, useNavigate } from "react-router-dom";
 import { goBack } from "@/lib/navigation";
