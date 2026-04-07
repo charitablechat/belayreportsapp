@@ -150,7 +150,8 @@ export default function DailyAssessmentForm() {
 
     // Allow tab navigation in locked mode
     const isTabTrigger = target.closest('[role="tab"]');
-    if (!isEditable || isTabTrigger) return; // Allow all non-editable interactions (scroll, expand, copy, navigate)
+    const isLightboxTrigger = target.closest('[data-lightbox-trigger]');
+    if (!isEditable || isTabTrigger || isLightboxTrigger) return; // Allow all non-editable interactions (scroll, expand, copy, navigate, view photos)
 
     e.preventDefault();
     e.stopPropagation();

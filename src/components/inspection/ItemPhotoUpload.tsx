@@ -344,6 +344,7 @@ function ItemPhotoUpload({
 
       {hasPhoto && displayUrl ? (
         <button
+          data-lightbox-trigger
           type="button"
           onClick={() => setLightboxOpen(true)}
           className="relative w-12 h-12 rounded-md overflow-hidden border border-border hover:border-primary transition-colors focus:outline-none focus:ring-2 focus:ring-ring"
@@ -363,6 +364,7 @@ function ItemPhotoUpload({
         </button>
       ) : hasPhoto && isOfflinePhoto ? (
         <button
+          data-lightbox-trigger
           type="button"
           onClick={() => setLightboxOpen(true)}
           className="relative w-12 h-12 rounded-md overflow-hidden border border-border bg-muted flex items-center justify-center"
