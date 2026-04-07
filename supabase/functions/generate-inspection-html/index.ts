@@ -1229,7 +1229,7 @@ serve(async (req) => {
       }
 
       table tr:nth-child(even) {
-        background: #c2c2c2 !important;
+        background: #f8fafc !important;
       }
 
       .result-attention {
