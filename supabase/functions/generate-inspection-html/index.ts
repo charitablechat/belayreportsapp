@@ -1394,7 +1394,7 @@ serve(async (req) => {
       .info-cell {
         display: block !important;
         margin-bottom: 12px !important;
-        border-bottom: 1px solid #c2c2c2 !important;
+        border-bottom: 1px solid #e2e8f0 !important;
         padding-bottom: 8px !important;
       }
 
