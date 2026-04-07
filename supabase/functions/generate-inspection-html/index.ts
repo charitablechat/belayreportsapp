@@ -898,8 +898,8 @@ serve(async (req) => {
     .key-section {
       margin: 10px 0;
       padding: 10px 14px;
-      background: #c2c2c2;
-      border: 1px solid #ddd;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
       border-radius: 2px;
     }
 
