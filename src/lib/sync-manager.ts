@@ -170,7 +170,17 @@ export async function syncPhotos(): Promise<{ remaining: number }> {
               caption: photo.caption || photo.section || 'Photo',
             });
 
-          if (dbError) throw dbError;
+          // Treat unique-constraint violations as success (another path inserted first)
+          if (dbError) {
+            const isUniqueViolation = dbError.code === '23505' || dbError.message?.includes('duplicate');
+            if (isUniqueViolation) {
+              if (import.meta.env.DEV) {
+                console.log('[Sync Manager] Unique constraint hit (race OK), treating as success:', photo.id);
+              }
+            } else {
+              throw dbError;
+            }
+          }
         } else if (import.meta.env.DEV) {
           console.log('[Sync Manager] Skipped duplicate DB row for photo:', photo.id);
         }

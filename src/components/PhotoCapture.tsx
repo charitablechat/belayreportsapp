@@ -71,15 +71,28 @@ export default function PhotoCapture({
     try {
       const { error: uploadError } = await supabase.storage
         .from(storageBucket)
-        .upload(storagePath, processedFile);
+        .upload(storagePath, processedFile, { upsert: true });
       if (uploadError) throw uploadError;
 
-      const { error: dbError } = await (supabase.from(tableName) as any).insert({
-        [foreignKeyColumn]: inspectionId,
-        photo_url: storagePath,
-        photo_section: section,
-      });
-      if (dbError) throw dbError;
+      // Dedup guard: check if a row already exists for this photo_url + parent ID
+      const { data: existing } = await (supabase
+        .from(tableName) as any)
+        .select('id')
+        .eq('photo_url', storagePath)
+        .eq(foreignKeyColumn, inspectionId)
+        .maybeSingle();
+
+      if (!existing) {
+        const { error: dbError } = await (supabase.from(tableName) as any).insert({
+          [foreignKeyColumn]: inspectionId,
+          photo_url: storagePath,
+          photo_section: section,
+        });
+        // Treat unique-constraint violations as success (another path inserted first)
+        if (dbError && !dbError.message?.includes('duplicate') && !dbError.code?.includes('23505')) {
+          throw dbError;
+        }
+      }
 
       await markPhotoAsUploaded(photoId, storagePath);
       
