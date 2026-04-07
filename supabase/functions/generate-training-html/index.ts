@@ -423,7 +423,8 @@ serve(async (req) => {
     }
     .text-content {
       padding: 10px;
-      background: #c2c2c2;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
       border-radius: 4px;
       white-space: pre-wrap;
       line-height: 1.6;
