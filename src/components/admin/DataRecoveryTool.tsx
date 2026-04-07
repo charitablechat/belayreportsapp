@@ -277,7 +277,10 @@ export function LocalSnapshotsPanel({ allowDelete = true }: SnapshotsPanelProps)
   const filteredSnapshots = snapshots.filter(s => {
     if (!searchQuery) return true;
     const q = searchQuery.toLowerCase();
-    return (s.organization || '').toLowerCase().includes(q);
+    return (s.organization || '').toLowerCase().includes(q)
+        || s.reportType.replace('_', ' ').toLowerCase().includes(q)
+        || s.device.toLowerCase().includes(q)
+        || s.reportId.toLowerCase().includes(q);
   });
 
   return (
@@ -326,7 +329,7 @@ export function LocalSnapshotsPanel({ allowDelete = true }: SnapshotsPanelProps)
           </div>
         ) : (
           <>
-            <RecoverySearchBar value={searchQuery} onChange={setSearchQuery} placeholder="Search by organization..." />
+            <RecoverySearchBar value={searchQuery} onChange={setSearchQuery} placeholder="Search by organization, type, device, or ID..." />
             {filteredSnapshots.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
                 No snapshots match &ldquo;{searchQuery}&rdquo;.
@@ -539,7 +542,10 @@ export function CloudSnapshotsPanel({ allowDelete = true }: CloudSnapshotsPanelP
     if (!searchQuery) return true;
     const q = searchQuery.toLowerCase();
     return (s.facility || '').toLowerCase().includes(q)
-        || (s.user_name || '').toLowerCase().includes(q);
+        || (s.user_name || '').toLowerCase().includes(q)
+        || (s.report_type || '').replace('_', ' ').toLowerCase().includes(q)
+        || (s.device || '').toLowerCase().includes(q)
+        || (s.report_id || '').toLowerCase().includes(q);
   });
 
   return (
@@ -601,7 +607,7 @@ export function CloudSnapshotsPanel({ allowDelete = true }: CloudSnapshotsPanelP
           </div>
         ) : (
           <>
-            <RecoverySearchBar value={searchQuery} onChange={setSearchQuery} placeholder="Search by facility or user..." />
+            <RecoverySearchBar value={searchQuery} onChange={setSearchQuery} placeholder="Search by facility, user, type, device, or ID..." />
             {filteredSnapshots.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
                 No snapshots match &ldquo;{searchQuery}&rdquo;.
@@ -795,7 +801,10 @@ function AllUserSnapshotsPanel() {
     if (!searchQuery) return true;
     const q = searchQuery.toLowerCase();
     return (s.facility || '').toLowerCase().includes(q)
-        || (s.user_name || '').toLowerCase().includes(q);
+        || (s.user_name || '').toLowerCase().includes(q)
+        || (s.report_type || '').replace('_', ' ').toLowerCase().includes(q)
+        || (s.device || '').toLowerCase().includes(q)
+        || (s.report_id || '').toLowerCase().includes(q);
   });
 
   const grouped = filteredSnapshots.reduce<Record<string, { name: string; items: any[] }>>((acc, s) => {
@@ -837,7 +846,7 @@ function AllUserSnapshotsPanel() {
           </div>
         ) : (
           <>
-            <RecoverySearchBar value={searchQuery} onChange={setSearchQuery} placeholder="Search by facility or user..." />
+            <RecoverySearchBar value={searchQuery} onChange={setSearchQuery} placeholder="Search by facility, user, type, device, or ID..." />
             {userEntries.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
                 {snapshots.length > 0 ? `No snapshots match "${searchQuery}".` : 'No cloud backup snapshots found across any users.'}
@@ -912,6 +921,7 @@ function AdminEditHistoryPanel() {
   const [snapshots, setSnapshots] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [restoring, setRestoring] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
 
   const loadSnapshots = useCallback(async () => {
     setLoading(true);
@@ -1013,8 +1023,24 @@ function AdminEditHistoryPanel() {
             No admin edit snapshots found. Snapshots are captured automatically when a super admin modifies another user's report.
           </div>
         ) : (
+          <>
+          <RecoverySearchBar value={searchQuery} onChange={setSearchQuery} placeholder="Search by type, owner, editor, or ID..." />
           <div className="space-y-2">
-            {snapshots.map((s: any) => (
+            {(() => {
+              const filtered = snapshots.filter(s => {
+                if (!searchQuery) return true;
+                const q = searchQuery.toLowerCase();
+                return (s.report_type || '').replace('_', ' ').toLowerCase().includes(q)
+                    || (s.owner_name || '').toLowerCase().includes(q)
+                    || (s.editor_name || '').toLowerCase().includes(q)
+                    || (s.report_id || '').toLowerCase().includes(q);
+              });
+              if (filtered.length === 0) return (
+                <div className="text-center py-8 text-muted-foreground">
+                  No snapshots match &ldquo;{searchQuery}&rdquo;.
+                </div>
+              );
+              return filtered.map((s: any) => (
               <div key={s.id} className="rounded-lg border border-white/10 px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
                 <div className="flex items-center gap-2 flex-1 min-w-0 flex-wrap">
                   <Badge variant="outline" className="text-xs shrink-0">{(s.report_type || '').replace('_', ' ')}</Badge>
@@ -1042,8 +1068,10 @@ function AdminEditHistoryPanel() {
                   </Button>
                 </div>
               </div>
-            ))}
+            ));
+            })()}
           </div>
+          </>
         )}
       </CardContent>
     </Card>
@@ -1060,6 +1088,7 @@ export function IndexedDBRecoveryPanel({ allowDelete = true }: IndexedDBPanelPro
   const [syncing, setSyncing] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{ type: string; id: string } | null>(null);
   const [selectedOps, setSelectedOps] = useState<Set<string>>(new Set());
+  const [searchQuery, setSearchQuery] = useState('');
   const [clearAllDialogOpen, setClearAllDialogOpen] = useState(false);
   const [clearSectionDialog, setClearSectionDialog] = useState<string | null>(null);
   const [batchDeleteDialog, setBatchDeleteDialog] = useState(false);
