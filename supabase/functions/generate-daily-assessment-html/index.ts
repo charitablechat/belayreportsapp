@@ -401,9 +401,10 @@ serve(async (req) => {
       gap: 10px;
       padding: 8px 10px;
       margin-bottom: 6px;
-      background: #c2c2c2;
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
       border-left: 3px solid #3b82f6;
-      border-radius: 2px;
+      border-radius: 4px;
       align-items: flex-start;
     }
 
