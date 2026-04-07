@@ -348,9 +348,10 @@ serve(async (req) => {
       margin-bottom: 10px;
     }
     .info-item {
-      padding: 8px;
-      background: #c2c2c2;
-      border-left: 3px solid #1e40af;
+      padding: 10px 12px;
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 4px;
     }
     .info-label {
       font-weight: 600;
