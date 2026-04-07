@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { X, Cloud, CloudOff, Loader2, AlertTriangle, CheckSquare, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
 import { triggerHaptic } from "@/lib/haptics";
+import { setOverlayActive } from "@/lib/navigation";
 import { toast } from "sonner";
 import PhotoCaptionInput from "./PhotoCaptionInput";
 import { DraggablePhotoItem } from "./DraggablePhotoItem";
@@ -107,6 +108,7 @@ export default function PhotoGallery({
 
   const closeLightbox = useCallback(() => {
     setSelectedPhotoIndex(null);
+    setOverlayActive(false);
     if (lightboxHistoryPushedRef.current) {
       lightboxHistoryPushedRef.current = false;
       window.history.back();
@@ -118,11 +120,13 @@ export default function PhotoGallery({
     if (selectedPhotoIndex !== null) {
       window.history.pushState({ lightbox: true }, '');
       lightboxHistoryPushedRef.current = true;
+      setOverlayActive(true);
     }
 
     const onPopState = () => {
       if (selectedPhotoIndex !== null) {
         lightboxHistoryPushedRef.current = false;
+        setOverlayActive(false);
         setSelectedPhotoIndex(null);
       }
     };

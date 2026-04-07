@@ -14,6 +14,7 @@ import { getCachedPhotoBlob, cachePhotoFromRemote } from "@/lib/photo-cache";
 import { savePhotoOffline, markPhotoAsUploaded, updatePhotoPath } from "@/lib/offline-storage";
 import { savePhotoReceipt } from "@/lib/photo-receipts";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
+import { setOverlayActive } from "@/lib/navigation";
 
 interface ItemPhotoUploadProps {
   itemId: string;
@@ -53,6 +54,7 @@ function ItemPhotoUpload({
 
   const closeLightbox = useCallback(() => {
     setLightboxOpen(false);
+    setOverlayActive(false);
     if (lightboxHistoryPushedRef.current) {
       lightboxHistoryPushedRef.current = false;
       window.history.back();
@@ -64,10 +66,12 @@ function ItemPhotoUpload({
     if (lightboxOpen) {
       window.history.pushState({ lightbox: true }, '');
       lightboxHistoryPushedRef.current = true;
+      setOverlayActive(true);
     }
     const onPopState = () => {
       if (lightboxOpen) {
         lightboxHistoryPushedRef.current = false;
+        setOverlayActive(false);
         setLightboxOpen(false);
       }
     };
