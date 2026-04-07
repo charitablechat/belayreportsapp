@@ -27,6 +27,7 @@ export function DeletedRecordsRecovery() {
     trainings: number;
     daily_assessments: number;
   } | null>(null);
+  const [pendingDeleteCount, setPendingDeleteCount] = useState(0);
 
   const { getDeletedRecords, restoreRecord, permanentDelete, batchPermanentDelete, runCleanup, getRetentionBadge } = useSoftDelete();
 
