@@ -458,10 +458,19 @@ export function CloudSnapshotsPanel({ allowDelete = true }: CloudSnapshotsPanelP
     }
     setLoading(true);
     try {
-      const { fetchCloudSnapshots } = await import('@/lib/cloud-backup');
-      const data = await fetchCloudSnapshots();
-      setSnapshots(data);
-      lastFetchedAt.current = Date.now();
+      const result = await Promise.race([
+        (async () => {
+          const { fetchCloudSnapshots } = await import('@/lib/cloud-backup');
+          return await fetchCloudSnapshots();
+        })(),
+        new Promise<'timeout'>((resolve) => setTimeout(() => resolve('timeout'), 15000)),
+      ]);
+      if (result === 'timeout') {
+        toast.error("Loading cloud backups timed out");
+      } else {
+        setSnapshots(result);
+        lastFetchedAt.current = Date.now();
+      }
     } catch {
       toast.error("Failed to load cloud backups");
     } finally {
@@ -708,9 +717,18 @@ function AllUserSnapshotsPanel() {
   const loadSnapshots = useCallback(async () => {
     setLoading(true);
     try {
-      const { fetchAllCloudSnapshots } = await import('@/lib/cloud-backup');
-      const data = await fetchAllCloudSnapshots();
-      setSnapshots(data);
+      const result = await Promise.race([
+        (async () => {
+          const { fetchAllCloudSnapshots } = await import('@/lib/cloud-backup');
+          return await fetchAllCloudSnapshots();
+        })(),
+        new Promise<'timeout'>((resolve) => setTimeout(() => resolve('timeout'), 15000)),
+      ]);
+      if (result === 'timeout') {
+        toast.error("Loading all user snapshots timed out");
+      } else {
+        setSnapshots(result);
+      }
     } catch {
       toast.error("Failed to load all user snapshots");
     } finally {
@@ -898,9 +916,18 @@ function AdminEditHistoryPanel() {
   const loadSnapshots = useCallback(async () => {
     setLoading(true);
     try {
-      const { fetchAdminEditSnapshots } = await import('@/lib/admin-edit-snapshot');
-      const data = await fetchAdminEditSnapshots();
-      setSnapshots(data);
+      const result = await Promise.race([
+        (async () => {
+          const { fetchAdminEditSnapshots } = await import('@/lib/admin-edit-snapshot');
+          return await fetchAdminEditSnapshots();
+        })(),
+        new Promise<'timeout'>((resolve) => setTimeout(() => resolve('timeout'), 15000)),
+      ]);
+      if (result === 'timeout') {
+        toast.error("Loading admin edit history timed out");
+      } else {
+        setSnapshots(result);
+      }
     } catch {
       toast.error("Failed to load admin edit history");
     } finally {
