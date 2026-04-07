@@ -712,7 +712,7 @@ serve(async (req) => {
       .info-item {
         display: block !important;
         margin-bottom: 12px !important;
-        border-bottom: 1px solid #c2c2c2 !important;
+        border-bottom: 1px solid #e2e8f0 !important;
         padding-bottom: 8px !important;
         grid-column: span 1 !important;
       }
