@@ -4,6 +4,15 @@
  * decide whether navigate(-1) has a real page to return to.
  */
 let navigationDepth = 0;
+let overlayActive = false;
+
+export function setOverlayActive(active: boolean) {
+  overlayActive = active;
+}
+
+export function isOverlayActive() {
+  return overlayActive;
+}
 
 export function trackNavigation() {
   navigationDepth++;
