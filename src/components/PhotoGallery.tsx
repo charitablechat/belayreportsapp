@@ -150,6 +150,7 @@ export default function PhotoGallery({
             return {
               id: p.id,
               photoUrl: objectUrl,
+              rawStoragePath: p.photoUrl || '', // preserve raw storage path for dedup
               blob: p.blob,
               uploaded: p.uploaded,
               caption: null,
@@ -161,7 +162,7 @@ export default function PhotoGallery({
             return null;
           }
         })
-        .filter(Boolean) as Photo[];
+        .filter(Boolean) as (Photo & { rawStoragePath?: string })[];
 
       const receipts = getPhotoReceipts(inspectionId, section);
       const offlinePhotoIds = new Set(offlinePhotos.filter(p => p.section === section).map(p => p.id));
@@ -274,9 +275,13 @@ export default function PhotoGallery({
         const supabasePhotos: Photo[] = [...cachedPhotos, ...batchPhotos];
 
         const pendingPhotos = offlinePhotosList.filter(p => !p.uploaded);
-        // Dedup: filter out offline photos whose photoUrl already exists in DB results
-        const supabaseUrls = new Set(supabasePhotos.map(p => p.photoUrl));
-        const dedupedPending = pendingPhotos.filter(p => !supabaseUrls.has(p.photoUrl));
+        // Dedup: filter out offline photos whose raw storage path already exists in DB results
+        // Use raw DB photo_url paths (not signed/object URLs) for reliable comparison
+        const dbStoragePaths = new Set((data || []).map((p: any) => p.photo_url));
+        const dedupedPending = pendingPhotos.filter(p => {
+          const rawPath = (p as any).rawStoragePath || '';
+          return !dbStoragePaths.has(rawPath);
+        });
         const mergedPhotos = [...dedupedPending, ...supabasePhotos].sort(
           (a, b) => a.display_order - b.display_order
         );

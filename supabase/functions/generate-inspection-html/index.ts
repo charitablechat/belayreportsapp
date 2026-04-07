@@ -251,7 +251,7 @@ serve(async (req) => {
       return false;
     };
 
-    const downloadGalleryPhoto = async (photo: any): Promise<{ id: string; dataUri: string; caption: string; section: string } | null> => {
+    const downloadGalleryPhoto = async (photo: any): Promise<{ id: string; dataUri: string; caption: string; section: string; photoPath: string } | null> => {
       if (Date.now() - photoStart > PHOTO_BUDGET_MS) {
         console.warn(`[Inspection HTML] Photo budget exceeded, skipping gallery photo ${photo.id}`);
         return null;
@@ -268,7 +268,7 @@ serve(async (req) => {
         const photoBase64 = arrayBufferToBase64(arrayBuffer);
         const photoMime = fileData.type || 'image/jpeg';
         console.log(`[Inspection HTML] Gallery photo ${photo.id} converted (${Math.round(arrayBuffer.byteLength / 1024)}KB)`);
-        return { id: photo.id, dataUri: `data:${photoMime};base64,${photoBase64}`, caption: photo.caption || '', section: photo.photo_section || 'general' };
+        return { id: photo.id, dataUri: `data:${photoMime};base64,${photoBase64}`, caption: photo.caption || '', section: photo.photo_section || 'general', photoPath: photo.photo_url };
       } catch (e) {
         console.error(`[Inspection HTML] Error processing gallery photo ${photo.id}:`, e);
         return null;
@@ -311,9 +311,19 @@ serve(async (req) => {
       Promise.allSettled(uniqueItemPaths.map(p => downloadItemPhotoPath(p))),
     ]);
 
-    const photoDataUris: { id: string; dataUri: string; caption: string; section: string }[] = [];
+    const photoDataUris: { id: string; dataUri: string; caption: string; section: string; photoPath: string }[] = [];
+    const seenPhotoKeys = new Set<string>();
     for (const r of galleryResults) {
-      if (r.status === 'fulfilled' && r.value) photoDataUris.push(r.value);
+      if (r.status === 'fulfilled' && r.value) {
+        // Deduplicate by storage path + section to prevent duplicate gallery entries
+        const dedupeKey = `${r.value.section}::${r.value.photoPath}`;
+        if (!seenPhotoKeys.has(dedupeKey)) {
+          seenPhotoKeys.add(dedupeKey);
+          photoDataUris.push(r.value);
+        } else {
+          console.log(`[Inspection HTML] Skipped duplicate gallery photo: ${r.value.id} (path: ${r.value.photoPath})`);
+        }
+      }
     }
 
     const itemPhotoMap = new Map<string, string>();
