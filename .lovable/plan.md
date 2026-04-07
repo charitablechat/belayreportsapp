@@ -1,103 +1,39 @@
 
 
-# Refactor Report HTML: Remove Grey Box Styling, Apply Clean Professional Aesthetic
+# Fix Photo Duplication in Inspection Report Gallery
 
-## Current Problem
-All three report generators use a heavy grey (`#c2c2c2`) background on nearly every element — body, info items, list items, text blocks, table headers, and even alternating table rows. This creates a dated, muddy appearance. The screenshot confirms: info items are grey boxes with blue left borders, trainee names sit on a full-width grey slab.
+## Root Cause
 
-## Design Direction
-Clean, minimal professional report: white backgrounds, subtle borders, structured with typography and spacing rather than background fills. Single accent color: **#1e40af** (existing blue). Secondary accent for borders/dividers: **#e2e8f0** (light slate).
+There are two duplication vectors:
 
-```text
-BEFORE                          AFTER
-┌──────────────────┐            ┌──────────────────┐
-│ ▌█████ grey box  │            │  Label            │
-│ ▌█████ grey box  │            │  Value            │
-│ ▌█████ grey box  │            │  ─────────────── │
-│ ▌█████ grey box  │            │  Label            │
-└──────────────────┘            │  Value            │
-                                └──────────────────┘
-```
+1. **Race between two insert paths**: `ItemPhotoUpload.uploadInBackground` does a blind `INSERT` into `inspection_photos` with no dedup check. Meanwhile, `syncPhotos` in `sync-manager.ts` can also insert a row for the same photo if it runs before `markPhotoAsUploaded` completes. Both paths insert a row with the same `photo_url`, creating DB-level duplicates.
 
-## Changes Per File
+2. **Gallery merge shows both offline + DB copies**: `PhotoGallery.loadPhotos` merges `pendingPhotos` (IndexedDB, `uploaded=false`) with `supabasePhotos` (DB query). During the window between background upload completing the DB insert and IndexedDB being updated to `uploaded=true`, the same photo appears in both lists.
 
-### 1. Training Report (`generate-training-html/index.ts`)
+## Solution
 
-**Body:** `background: #c2c2c2` → `background: #ffffff`
+### 1. Add dedup guard to ItemPhotoUpload.uploadInBackground
+**File: `src/components/inspection/ItemPhotoUpload.tsx`**
 
-**`.info-item`:** Remove grey bg + blue left border. Replace with:
-- `background: #ffffff`
-- `border: 1px solid #e2e8f0`
-- `border-radius: 4px`
-- `padding: 10px 12px`
+Before the `INSERT` at line 139, check if a row already exists for this `photo_url` + `inspection_id` (same pattern as `syncPhotos` line 155-160). Skip insert if it exists.
 
-**`.info-label`:** Darken to `color: #1e40af` (accent), `font-size: 11px`, `text-transform: uppercase`, `letter-spacing: 0.5px`
+### 2. Deduplicate gallery merge in PhotoGallery
+**File: `src/components/PhotoGallery.tsx`**
 
-**Global `li`:** Remove `background: #c2c2c2` and `border-left: 3px solid #3b82f6`. Replace with:
-- `background: #ffffff`
-- `border: 1px solid #e2e8f0`
-- `border-radius: 4px`
-- Keep padding `8px 12px`
+When merging pending offline photos with Supabase photos (line 276-278), filter out any offline photo whose `photoUrl` path matches an existing Supabase photo's `photo_url`. This prevents showing the same image twice during the upload race window.
 
-**`.text-content`:** `background: #c2c2c2` → `background: #f8fafc` (very light blue-grey), `border: 1px solid #e2e8f0`
+### 3. Retroactive cleanup: deduplicate existing DB rows
+**Create a migration** that removes duplicate `inspection_photos` rows. For each group of rows sharing the same `(inspection_id, photo_url, photo_section)` where `deleted_at IS NULL`, keep only the one with the earliest `created_at` and soft-delete the rest.
 
-**`.standards-box`:** Keep light blue `#dbeafe` bg — this is intentionally distinct and already looks clean.
+Apply the same cleanup to `training_photos` and `daily_assessment_photos` tables.
 
-**Photo grid items:** Already use `border: 1px solid #e2e8f0` — no change needed.
+## Files Changed
+- `src/components/inspection/ItemPhotoUpload.tsx` — add dedup check before gallery insert
+- `src/components/PhotoGallery.tsx` — deduplicate merged photo list by `photo_url`
+- New migration — retroactive cleanup of duplicate rows across all photo tables
 
-### 2. Inspection Report (`generate-inspection-html/index.ts`)
-
-**`table th`:** `background: #c2c2c2` → `background: #1e40af`, `color: white` (already done in print CSS; apply to screen too for consistency)
-
-**`.key-section`:** `background: #c2c2c2` → `background: #f8fafc`, `border: 1px solid #e2e8f0`
-
-**`.info-grid` print:** Remove `background: #c2c2c2 !important`
-
-**`table tr:nth-child(even)` print:** `background: #c2c2c2` → `background: #f8fafc`
-
-**`.section-header` print:** `background-color: #c2c2c2` → `background-color: #f1f5f9`
-
-**`.inspection-photo`:** `background: #c2c2c2` → `background: #f8fafc`
-
-**`.section-divider`:** `border-top: 2px solid #c2c2c2` → `border-top: 1px solid #e2e8f0`
-
-**`.info-cell` mobile border:** `border-bottom: 1px solid #c2c2c2` → `border-bottom: 1px solid #e2e8f0`
-
-### 3. Daily Assessment Report (`generate-daily-assessment-html/index.ts`)
-
-**Body:** `background: #c2c2c2` → `background: #ffffff`
-
-**`.info-item`:** Same treatment as training — white bg, subtle border, no grey.
-
-**Global `li`:** Same — remove grey bg, add white bg with light border. Keep `.checked` (green left border) and `.unchecked` (red left border) accent colors but on white background.
-
-**`.system-item`:** `background: #c2c2c2` → `background: #ffffff`, `border: 1px solid #e2e8f0`, keep green left border accent.
-
-### 4. Shared Layout (`_shared/report-layout.ts`)
-
-No changes needed — the shared layout only defines header/footer structure, not content backgrounds.
-
-## Print CSS Adjustments
-In all three generators' `@media print` blocks:
-- Remove any `background: #c2c2c2 !important` overrides
-- Replace with `background: #f8fafc !important` or `transparent` as appropriate
-- Keep `print-color-adjust: exact` to preserve the subtle tints
-
-## What Stays the Same
-- Blue section title bars (`#1e40af` background, white text)
-- Blue accent on header border-bottom
-- Yellow disclaimer boxes (`#fef3c7`)
-- Red critical/fail highlights
-- Green/red checklist border accents
-- Logo placement and sizing
-- All typography, font families, and sizing
-- Page structure and pagination logic
-
-## Files Modified
-- `supabase/functions/generate-training-html/index.ts`
-- `supabase/functions/generate-inspection-html/index.ts`
-- `supabase/functions/generate-daily-assessment-html/index.ts`
-
-## Expected Outcome
-Reports shift from a heavy grey-box aesthetic to a clean white-and-blue professional look. Content is distinguished by subtle borders and typography hierarchy rather than background fills. Consistent across all three report types.
+## Impact
+- Existing duplicate photos in the database will be cleaned up automatically
+- Future uploads are protected by dedup guards in both insert paths
+- Gallery display is protected by merge-time deduplication regardless of timing
 
