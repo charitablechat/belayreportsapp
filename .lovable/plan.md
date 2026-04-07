@@ -1,41 +1,32 @@
 
 
-# Cross-Tab Search on Dashboard
+# Photo Gallery Lightbox Navigation
 
 ## Problem
-Currently, the search bar only filters reports within the active tab (Inspections, Training, or Daily). When you type a search query, you only see matches from the tab you're on, missing results in other tabs.
+When a photo is clicked to view full-size in the lightbox, users must close the viewer and click another photo to see it. There's no way to navigate between photos without leaving the lightbox.
 
 ## Solution
-When a search query is entered, automatically search across all three report types and display combined results grouped by type -- regardless of which tab is active. When the search is cleared, revert to normal tab-based browsing.
+Add left/right arrow navigation to the existing lightbox dialog in `PhotoGallery.tsx`, allowing users to cycle through all photos sequentially.
 
-## How it works
+## Changes — single file: `src/components/PhotoGallery.tsx`
 
-1. **DashboardReportsSection.tsx** -- Main changes:
-   - Detect when a search query is active
-   - When searching: combine all inspections, trainings, and daily assessments into a single list, tagging each with its report type
-   - Run the text search filter across all combined reports
-   - Display results grouped into three sections (Inspections, Training, Daily) with counts, hiding empty sections
-   - Replace the tab UI with a "Searching all reports" indicator and result counts per type
-   - When search is cleared: restore normal tab-based view
+1. **Track selected photo by index** instead of by object reference
+   - Replace `selectedPhoto: Photo | null` state with `selectedPhotoIndex: number | null`
+   - Derive the current photo from `photos[selectedPhotoIndex]`
 
-2. **useDashboardFilters.tsx** -- Minor adjustment:
-   - The hook already handles text search filtering. For cross-tab mode, we'll run three separate filter instances (one per type) or do a simpler pre-filter before passing to the hook
-   - Simplest approach: do the cross-tab text matching inline in the component, bypassing the per-tab hook when in search mode
+2. **Add navigation handlers**
+   - `goToPrev`: decrement index, wrap to last photo when at 0
+   - `goToNext`: increment index, wrap to first photo when at end
+   - Add keyboard support: Left/Right arrow keys navigate, Escape closes
 
-3. **Visual behavior**:
-   - Tabs remain visible but become secondary when searching (results span all types)
-   - Each result group shows its type label and count (e.g., "Inspections (3)", "Training (1)")
-   - Clicking a result navigates to the correct report type's form
-   - Search result count shows total across all types
+3. **Render navigation arrows in the lightbox**
+   - Left arrow: `ChevronLeft` icon, positioned absolute on the left edge, large click target
+   - Right arrow: `ChevronRight` icon, positioned absolute on the right edge
+   - Semi-transparent white on dark background, hover brightens
+   - Photo counter indicator (e.g., "3 / 12") at the bottom
 
-## Technical approach
-
-In `DashboardReportsSection`, when `filters.search` is non-empty:
-- Create three filtered arrays by applying the search text to inspections, trainings, and dailyAssessments independently
-- Render all three sections inline (skipping empty ones) instead of rendering the active tab's content
-- Each section uses its correct `type` for navigation and display
-- The existing `ReportCard` component already accepts a `type` prop, so cards render correctly per type
-
-## Files modified
-- `src/components/dashboard/DashboardReportsSection.tsx`
+4. **Visual design**
+   - Arrows: 48px circular buttons with `bg-white/20 hover:bg-white/40` backdrop
+   - Positioned vertically centered on left/right edges with comfortable padding
+   - Counter: small white text below the caption
 
