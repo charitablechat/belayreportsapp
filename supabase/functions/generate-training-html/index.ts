@@ -355,8 +355,10 @@ serve(async (req) => {
     }
     .info-label {
       font-weight: 600;
-      color: #475569;
-      font-size: 13px;
+      color: #1e40af;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
       margin-bottom: 4px;
     }
     .info-value {
