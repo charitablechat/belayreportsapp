@@ -156,6 +156,23 @@ export function DashboardReportsSection({
     }
   };
 
+  // Cross-tab search: when search is active, filter all report types
+  const isSearchActive = filters.search.trim().length > 0;
+
+  const crossTabResults = useMemo(() => {
+    if (!isSearchActive) return null;
+    const q = filters.search.trim();
+    const filteredInspections = inspections.filter(r => textMatchesReport(r, q, 'inspection'));
+    const filteredTrainings = trainings.filter(r => textMatchesReport(r, q, 'training'));
+    const filteredDaily = dailyAssessments.filter(r => textMatchesReport(r, q, 'daily'));
+    return {
+      inspections: filteredInspections,
+      trainings: filteredTrainings,
+      daily: filteredDaily,
+      total: filteredInspections.length + filteredTrainings.length + filteredDaily.length,
+    };
+  }, [isSearchActive, filters.search, inspections, trainings, dailyAssessments]);
+
   // Reset filters when switching tabs to avoid stale filter state (Issue 1)
   useEffect(() => {
     if (prevTabRef.current !== activeReportTab) {
