@@ -1,48 +1,42 @@
 
 
-# Three-Tier Permission Structure
+# Fix: "Update check failed" Toast on PWA Update Check
 
-## Goal
+## Root Cause
 
-```text
-Role            Admin Panel    DB Backups    Others' Reports
-─────────────   ───────────    ──────────    ───────────────
-Super Admin     ✓ Full         ✓ Yes         Read-only, invisible
-Admin           ✓ Full         ✗ No          Full edit access
-Regular User    ✗ None         ✗ No          Own reports only
+In `usePWAUpdate.tsx`, the `checkForUpdates` function wraps `reg.update()` with a 4-second timeout. When the SW update call is slow (common on mobile or slower connections), the timeout fires and sets `updateCallError`. Later, the code checks this error and returns `'error'` — even though there's nothing actually wrong; the update call was just slow and no update exists.
+
+The flow:
+1. `updatePromise` resolves `false` after 4s (no `updatefound` event)
+2. `await updateCallPromise` — this already caught a timeout error, setting `updateCallError`
+3. Line 239: `if (updateCallError)` → returns `'error'`
+4. ManualUpdateButton shows "Update check failed" toast
+
+A timeout on `reg.update()` when no update was found is not an error — it just means the check was slow and there's nothing new.
+
+## Fix
+
+### `src/hooks/usePWAUpdate.tsx`
+
+Change the error-handling logic (lines 239-242) to distinguish timeout errors from real failures. If `updateCallError` is a timeout and no update was found, treat it as `'up_to_date'` instead of `'error'`:
+
+```tsx
+if (updateCallError) {
+  // Timeout on reg.update() with no update found is not an error
+  const isTimeout = updateCallError instanceof Error && 
+    updateCallError.message.includes('timeout');
+  if (!isTimeout) {
+    console.error('[PWA Update] Check failed:', updateCallError);
+    return 'error';
+  }
+  // Timeout with no update found = up to date
+}
+
+return 'up_to_date';
 ```
 
-## Problem
-
-`useReportEditPermission` calls `getSuperAdminStatusWithCache()` which uses the `is_admin_or_above` RPC. Both admins and the super admin resolve to `isSuperAdmin=true`, so **both are currently read-only** on others' reports. Admins need to be able to edit.
-
-## Changes
-
-### 1. `src/lib/cached-auth.ts` — Add true super admin check
-
-Add a new `getIsTrueSuperAdmin()` function that calls the existing `is_super_admin` RPC (already in the DB). This distinguishes kale@belayreports.com from regular admins. Include the same caching/offline-fallback pattern as `getAdminStatusWithCache`.
-
-### 2. `src/hooks/useReportEditPermission.tsx` — Two-tier non-owner logic
-
-- Import the new `getIsTrueSuperAdmin` function
-- Add separate state: `isAdmin` (from `getSuperAdminStatusWithCache`) and `isTrueSuperAdmin` (from `getIsTrueSuperAdmin`)
-- Update the permission logic:
-  - **True super admin + not owner** → `canEdit: false, isReadOnly: true, readOnlyReason: null` (invisible, no traces)
-  - **Admin + not owner** → `canEdit: true, isReadOnly: false` (full edit access)
-  - **Neither** → `canEdit: false` (no access)
-- Update the returned `isSuperAdmin` field to reflect the true super admin status
-
-### 3. `src/hooks/useReportEditPermission.tsx` — Interface update
-
-Add `isAdmin: boolean` to the `ReportEditPermission` interface so form pages can distinguish admin from super admin if needed (e.g., showing/hiding UI elements).
-
-### 4. No changes needed to
-
-- **Admin panel access** (`useRequireAdmin`) — already gates on `is_admin_or_above`, so both admins and super admin get in. No change needed.
-- **Database backups tab** — already gated by `showBackupTab={currentUserId === BACKUP_ADMIN_ID}` in `SuperAdminDashboard.tsx`. Only kale's UUID sees it.
-- **RLS policies** — admins already have UPDATE policies on report tables via `is_admin_or_above()`. Super admin has them via `is_super_admin()`. The client-side hook is what enforces the read-only behavior for super admin.
+This is a single change in one file. The `'error'` toast will only show for genuine failures (network errors, SW registration issues), not for slow-but-successful checks.
 
 ### Files Modified
-- `src/lib/cached-auth.ts` — new `getIsTrueSuperAdmin()` with caching
-- `src/hooks/useReportEditPermission.tsx` — two-tier admin vs super admin logic
+- `src/hooks/usePWAUpdate.tsx` — treat timeout as up_to_date, not error
 
