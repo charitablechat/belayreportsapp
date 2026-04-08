@@ -237,8 +237,12 @@ export const usePWAUpdate = (): PWAUpdateStatus => {
       }
 
       if (updateCallError) {
-        console.error('[PWA Update] Check failed:', updateCallError);
-        return 'error';
+        const isTimeout = updateCallError instanceof Error && 
+          updateCallError.message.includes('timeout');
+        if (!isTimeout) {
+          console.error('[PWA Update] Check failed:', updateCallError);
+          return 'error';
+        }
       }
 
       return 'up_to_date';
