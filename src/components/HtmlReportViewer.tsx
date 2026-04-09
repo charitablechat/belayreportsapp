@@ -4,12 +4,11 @@
  */
 
  import { useEffect, useRef, useState } from 'react';
- import { X, Download, Share2, Mail, MessageSquare, Link2 } from 'lucide-react';
+ import { X, Download, Share2, MessageSquare, Link2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { downloadHtmlReport, shareHtmlReport, printFromIframe, generateSmsLink, canShareViaSms } from '@/lib/html-report-viewer';
  import { copyShareLink } from '@/lib/og-share';
- import { EmailReportDialog } from './EmailReportDialog';
  import { useNetworkStatus } from '@/hooks/useNetworkStatus';
 import { isMobile, isPWA } from '@/lib/mobile-detection';
 import { toast } from 'sonner';
@@ -42,10 +41,6 @@ export function HtmlReportViewer({
   const isMobileOrPWA = isMobile() || isPWA();
   const canSms = canShareViaSms();
    const { isOnline } = useNetworkStatus();
-   const [emailDialogOpen, setEmailDialogOpen] = useState(false);
- 
-   // Only show email button if reportType is provided (for backward compatibility)
-   const canEmail = Boolean(reportType) && isOnline;
   
   // Generate SMS link if we have report metadata
   const smsLink = reportType && organization && date 
@@ -229,9 +224,6 @@ export function HtmlReportViewer({
     downloadHtmlReport(html, filename);
   };
 
-   const handleEmail = () => {
-     setEmailDialogOpen(true);
-   };
  
   return (
      <>
@@ -254,18 +246,6 @@ export function HtmlReportViewer({
                   </Button>
                 )}
 
-              {Boolean(reportType) && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled
-                    className="hidden md:inline-flex gap-2 opacity-50 cursor-not-allowed"
-                    title="Email Report (coming soon)"
-                  >
-                    <Mail className="h-4 w-4" />
-                    <span className="hidden sm:inline">Email</span>
-                  </Button>
-                )}
                 
                 {canSms && smsLink && (
                   <Button
@@ -327,18 +307,6 @@ export function HtmlReportViewer({
          </DialogContent>
        </Dialog>
        
-       {/* Email Dialog */}
-       {reportType && (
-         <EmailReportDialog
-           isOpen={emailDialogOpen}
-           onClose={() => setEmailDialogOpen(false)}
-           html={html}
-           reportType={reportType}
-           title={title}
-           organization={organization}
-           date={date}
-         />
-       )}
      </>
   );
 }
