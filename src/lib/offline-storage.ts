@@ -903,14 +903,30 @@ export async function getUnsyncedInspections(userId?: string) {
   return withIndexedDBErrorBoundary(
     async () => {
       const db = await getDB();
+      
+      // Use by-synced index: records with synced_at = undefined/null are keyed as undefined
+      // This avoids a full-table scan that can trigger Safari's 5s IDB timeout
+      const neverSynced = await db.getAllFromIndex('inspections', 'by-synced', IDBKeyRange.only(undefined as any));
+      
+      // Also get all records and check for drift — but only if the store is small enough
+      // For drift detection, we need records where updated_at > synced_at + 2s
       const allInspections = await db.getAll('inspections');
-      let unsynced = allInspections.filter(i => {
-        if (!i.synced_at) return true;
+      const driftUnsynced = allInspections.filter(i => {
+        if (!i.synced_at) return false; // already captured above
         if (!i.updated_at) return false;
-        // Tolerate up to 2 seconds of drift from server-side timestamp alignment
         const drift = new Date(i.updated_at).getTime() - new Date(i.synced_at).getTime();
         return drift > 2000;
       });
+      
+      // Merge both sets, dedup by id
+      const seen = new Set(neverSynced.map(i => i.id));
+      let unsynced = [...neverSynced];
+      for (const item of driftUnsynced) {
+        if (!seen.has(item.id)) {
+          unsynced.push(item);
+          seen.add(item.id);
+        }
+      }
       
       if (userId) {
         const owned = unsynced.filter(i => i.inspector_id === userId);
@@ -1601,14 +1617,26 @@ export async function getUnsyncedDailyAssessments(userId?: string) {
   return withIndexedDBErrorBoundary(
     async () => {
       const db = await getDB();
+      
+      // Use by-synced index to avoid full-table scan (Safari 5s timeout protection)
+      const neverSynced = await db.getAllFromIndex('daily_assessments', 'by-synced', IDBKeyRange.only(undefined as any));
+      
       const allAssessments = await db.getAll('daily_assessments');
-      let unsynced = allAssessments.filter(a => {
-        if (!a.synced_at) return true;
+      const driftUnsynced = allAssessments.filter(a => {
+        if (!a.synced_at) return false;
         if (!a.updated_at) return false;
-        // Tolerate up to 2 seconds of drift from server-side timestamp alignment
         const drift = new Date(a.updated_at).getTime() - new Date(a.synced_at).getTime();
         return drift > 2000;
       });
+      
+      const seen = new Set(neverSynced.map(a => a.id));
+      let unsynced = [...neverSynced];
+      for (const item of driftUnsynced) {
+        if (!seen.has(item.id)) {
+          unsynced.push(item);
+          seen.add(item.id);
+        }
+      }
       
       if (userId) {
         const owned = unsynced.filter(a => a.inspector_id === userId);
@@ -1918,14 +1946,26 @@ export async function getUnsyncedTrainings(userId?: string) {
   return withIndexedDBErrorBoundary(
     async () => {
       const db = await getDB();
+      
+      // Use by-synced index to avoid full-table scan (Safari 5s timeout protection)
+      const neverSynced = await db.getAllFromIndex('trainings', 'by-synced', IDBKeyRange.only(undefined as any));
+      
       const allTrainings = await db.getAll('trainings');
-      let unsynced = allTrainings.filter(t => {
-        if (!t.synced_at) return true;
+      const driftUnsynced = allTrainings.filter(t => {
+        if (!t.synced_at) return false;
         if (!t.updated_at) return false;
-        // Tolerate up to 2 seconds of drift from server-side timestamp alignment
         const drift = new Date(t.updated_at).getTime() - new Date(t.synced_at).getTime();
         return drift > 2000;
       });
+      
+      const seen = new Set(neverSynced.map(t => t.id));
+      let unsynced = [...neverSynced];
+      for (const item of driftUnsynced) {
+        if (!seen.has(item.id)) {
+          unsynced.push(item);
+          seen.add(item.id);
+        }
+      }
       
       if (userId) {
         const owned = unsynced.filter(t => t.inspector_id === userId);
@@ -1965,13 +2005,28 @@ export async function getUnsyncedCounts(userId?: string): Promise<{
     async () => {
       const db = await getDB();
       
-      const filterUnsynced = (items: any[], ownerField = 'inspector_id') => {
-        let unsynced = items.filter(i => {
-          if (!i.synced_at) return true;
+      const getUnsyncedFromStore = async (storeName: 'inspections' | 'trainings' | 'daily_assessments', ownerField = 'inspector_id') => {
+        // Use by-synced index for never-synced records (avoids full-table scan)
+        const neverSynced = await db.getAllFromIndex(storeName, 'by-synced', IDBKeyRange.only(undefined as any));
+        
+        // For drift detection we still need all records with synced_at set
+        const allItems = await db.getAll(storeName);
+        const driftUnsynced = allItems.filter(i => {
+          if (!i.synced_at) return false;
           if (!i.updated_at) return false;
           const drift = new Date(i.updated_at).getTime() - new Date(i.synced_at).getTime();
           return drift > 2000;
         });
+        
+        const seen = new Set(neverSynced.map(i => i.id));
+        let unsynced = [...neverSynced];
+        for (const item of driftUnsynced) {
+          if (!seen.has(item.id)) {
+            unsynced.push(item);
+            seen.add(item.id);
+          }
+        }
+        
         if (userId) {
           const owned = unsynced.filter(i => i[ownerField] === userId);
           const orphaned = unsynced.filter(i => i[ownerField] !== userId && i.id.startsWith('temp-'));
@@ -1981,15 +2036,11 @@ export async function getUnsyncedCounts(userId?: string): Promise<{
       };
       
       // RC-1: Sequential reads instead of parallel to reduce Safari IDB lock contention
-      const allInspections = await db.getAll('inspections');
-      const allTrainings = await db.getAll('trainings');
-      const allAssessments = await db.getAll('daily_assessments');
+      const inspections = await getUnsyncedFromStore('inspections');
+      const trainings = await getUnsyncedFromStore('trainings');
+      const assessments = await getUnsyncedFromStore('daily_assessments');
       
-      return {
-        inspections: filterUnsynced(allInspections),
-        trainings: filterUnsynced(allTrainings),
-        assessments: filterUnsynced(allAssessments),
-      };
+      return { inspections, trainings, assessments };
     },
     { inspections: [], trainings: [], assessments: [] },
     'getUnsyncedCounts'
