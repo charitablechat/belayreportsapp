@@ -1,95 +1,71 @@
 
 
-# Sync Engine Final Audit: Remaining Gaps
+# Sync Engine Production Readiness Audit — Final Report
 
-After reviewing all sync-related code (`atomic-sync-manager.ts`, `useAutoSync.tsx`, `sw-sync.js`, `offline-storage.ts`, `sync-manager.ts`, `sync-reconciliation.ts`, `transaction-manager.ts`, `cached-auth.ts`, `environment.ts`, all RLS policies, and recent DB logs), here is the assessment:
+## Audit Scope
+Reviewed: `offline-storage.ts`, `atomic-sync-manager.ts`, `sw-sync.js`, `sync-manager.ts`, `transaction-manager.ts`, `sync-reconciliation.ts`, `useAutoSync.tsx`, `db-config.js`, `local-data-guards.ts`, RLS policies, and DB error logs.
 
-## Status: Main Thread Sync — SOLID
+## Overall Assessment: PRODUCTION READY
 
-The main thread sync pipeline (`atomic-sync-manager.ts` + `useAutoSync.tsx`) is robust. The recent fixes (getUnsynced scan, early-return guard, dead code cleanup) resolved all identified issues. No new gaps found.
-
-## Status: Service Worker Sync — SOLID
-
-The recent Bug 1-7 fixes (join stripping, photo paths, temp-ID guards, index names, client deferral) addressed all critical SW issues. The SW now correctly defers to the main thread when clients are active, uses proper index names for trainings/assessments, and strips joined objects.
-
-## Status: RLS Policies — SOLID
-
-The admin child table migration successfully added `is_admin_or_above()` policies to all 20 child tables. DB logs show zero errors.
+The sync engine is solid after the recent Bug 1–13 fixes. Zero database errors in recent logs. The linter only shows 4 pre-existing `search_path` warnings on pgmq helper functions (non-critical).
 
 ---
 
-## Remaining Issues Found
+## One Remaining Gap Found
 
-### Bug 11 (LOW): `transaction-manager.ts` missing `daily_assessment_photos` in blocklist
+### Bug 14 (LOW): SW fallback DB_VERSION is stale (`8` instead of `9`)
 
-**File:** `src/lib/transaction-manager.ts`, line 26-29
+**File:** `public/sw-sync.js`, line 5
 
-The `REPORT_TABLE_BLOCKLIST` (which blocks accidental DELETE operations) includes all child tables but is **missing `daily_assessment_photos`**. If a malformed transaction step tried to delete assessment photos, the guard wouldn't catch it.
-
-Current list includes `inspection_photos` and `training_photos` but not `daily_assessment_photos`.
-
-**Fix:** Add `'daily_assessment_photos'` to the blocklist Set.
-
-### Bug 12 (LOW): `sync_conflicts` table missing admin policies
-
-The `sync_conflicts` table only has policies for `super_admin` SELECT and owner-based CRUD. If an admin syncs another user's inspection and a conflict is detected, the INSERT to `sync_conflicts` will fail with an RLS violation because the admin doesn't own the inspection referenced by `inspection_id`.
-
-The `sync_conflicts` user policies check:
-```sql
-EXISTS (SELECT 1 FROM inspections WHERE inspections.id = sync_conflicts.inspection_id AND inspections.inspector_id = auth.uid())
+```js
+var DB_VERSION = (typeof DB_CONFIG !== 'undefined' && DB_CONFIG.version) || 8;
 ```
 
-An admin syncing Brenda's inspection would fail this check since `inspector_id != admin.uid()`.
+The fallback value is `8`, but the actual DB version is `9` (as defined in `db-config.js` and `offline-storage.ts`). If `db-config.js` fails to load before `sw-sync.js` (e.g., import ordering edge case in SW scope), the SW would attempt to open version 8 on a DB already upgraded to version 9. IndexedDB blocks downgrades — the `openDB` call would fail with a `VersionError`, silently disabling all SW sync.
 
-**Fix:** Add `is_admin_or_above()` ALL policy on `sync_conflicts`.
+**Risk:** Low — `db-config.js` is imported via `importScripts` in the main SW file and should always load first. But the fallback exists specifically for when it doesn't.
 
-### Bug 13 (COSMETIC): `report_deleted_items` missing admin INSERT policy
-
-When an admin syncs another user's report, the reconciliation in `sync-reconciliation.ts` logs deleted child rows to `report_deleted_items` with `deleted_by = auth.uid()`. The INSERT policy checks `deleted_by = auth.uid()` which works. However, admins cannot VIEW these entries (only super_admin and the original owner can). This means an admin who reconciles data cannot verify their own reconciliation audit trail.
-
-**Fix:** Add `is_admin_or_above()` SELECT policy on `report_deleted_items`.
+**Fix:** Update the fallback from `8` to `9` on line 5 of `sw-sync.js`.
 
 ---
 
 ## Verified — No Issues
 
-| Area | Status | Notes |
-|------|--------|-------|
-| `getUnsyncedInspections/Trainings/Assessments` | OK | `getAll()` + filter working |
-| Temp-ID handling (main thread) | OK | UUID swap + dedup guard + child propagation |
-| Temp-ID handling (SW) | OK | Skips temp-IDs per Bug 3 fix |
-| Photo sync (`sync-manager.ts`) | OK | Per-photo metadata, pending path normalization |
-| SW photo sync | OK | Uses `photoUrl`, per-photo bucket/table |
-| Field-count regression guard | OK | 3-skip override prevents permanent blocks |
-| Empty-local guard + recovery | OK | Pulls server data into IndexedDB on mismatch |
-| Reconciliation (`sync-reconciliation.ts`) | OK | 50% partial-read guard, audit logging |
-| Circuit breaker | OK | Exponential backoff, health probe |
-| Auth session management | OK | Single validation per cycle, LockManager guard |
-| Realtime subscriptions | OK | Post-sync cooldown, 3-error unsubscribe |
-| Stale upload detection | OK | 5-minute warning |
-| Accelerated drain | OK | 5s re-sync for large queues |
-| DB version alignment | OK | Version 9 in both `db-config.js` and `offline-storage.ts` |
-| Lovable preview guard | OK | Blocks all writes in preview |
-| DB error logs | OK | Zero errors in recent logs |
-| Parent table RLS | OK | Admin access on all 3 parent tables |
-| Child table RLS | OK | Admin access on all 20 child tables |
-| `invoiced_reports` RLS | OK | Admin ALL policy exists |
+| Area | Status | Details |
+|------|--------|---------|
+| `getUnsyncedInspections` | ✓ SOLID | `getAll()` + filter with 2s drift tolerance — no `IDBKeyRange.only()` usage |
+| `getUnsyncedTrainings` | ✓ SOLID | Same pattern, consistent with inspections |
+| `getUnsyncedDailyAssessments` | ✓ SOLID | Same pattern, consistent |
+| `getUnsyncedCounts` (batched) | ✓ SOLID | Sequential reads to avoid Safari lock contention |
+| `DataError: IDBKeyRange.only()` fix | ✓ CONFIRMED | All three functions use `getAll()` + `.filter()` — no index queries remain |
+| Temp-ID handling (main thread) | ✓ SOLID | UUID swap + dedup guard + child propagation, dead code removed |
+| Temp-ID handling (SW) | ✓ SOLID | Skips `temp-` IDs per Bug 3 fix |
+| Ownership checks | ✓ SOLID | Dead `startsWith('temp-')` removed; uses `!synced_at` only |
+| Join object stripping (SW) | ✓ SOLID | `inspector`, `trainer` deleted before upsert |
+| SW index names | ✓ SOLID | Training uses `'by-training'`, assessment uses `'by-assessment'` |
+| SW client deferral | ✓ SOLID | All 3 sync functions check `clients.matchAll()` |
+| Photo sync (SW) | ✓ SOLID | Uses `photoUrl`, per-photo `storageBucket`/`tableName` |
+| Photo sync (main thread) | ✓ SOLID | Per-photo metadata, retry counter, temp-ID skip |
+| Transaction blocklist | ✓ SOLID | All 20 child tables including `daily_assessment_photos` |
+| DB version alignment | ✓ SOLID | v9 in both `db-config.js` and `offline-storage.ts` |
+| Circuit breaker | ✓ SOLID | Exponential backoff, health probe, localStorage fallback |
+| Reconciliation | ✓ SOLID | 50% partial-read guard, audit logging |
+| RLS policies | ✓ SOLID | Admin access on all parent + child tables + `sync_conflicts` + `report_deleted_items` |
+| Empty-local guard | ✓ SOLID | Pulls server data, 3-skip override |
+| Field-count regression guard | ✓ SOLID | 3-skip override prevents permanent blocks |
+| Auth session management | ✓ SOLID | Single validation per cycle |
+| Early return for empty batches | ✓ SOLID | All 3 report types consistent |
+| Deprecated sync functions | ✓ SOLID | `syncInspections/Trainings/Assessments` throw errors |
+| DB error logs | ✓ CLEAN | Zero ERROR/FATAL/PANIC entries |
+| DB linter | ✓ CLEAN | Only 4 pre-existing `search_path` warnings on pgmq helpers |
+
+---
 
 ## Plan
 
-### Step 1: Add `daily_assessment_photos` to transaction blocklist
-**File:** `src/lib/transaction-manager.ts`
-Add the missing entry to the `REPORT_TABLE_BLOCKLIST` Set.
+### Step 1: Update SW fallback DB version
+**File:** `public/sw-sync.js`, line 5
+Change `|| 8` to `|| 9` to match the current IndexedDB schema version.
 
-### Step 2: Add admin policies for `sync_conflicts` and `report_deleted_items`
-**Migration:** Add `is_admin_or_above()` policies for admin access.
-
-### Files to change
-
-| File | Change |
-|------|--------|
-| `src/lib/transaction-manager.ts` | Add `daily_assessment_photos` to blocklist |
-| New migration | Admin policies for `sync_conflicts` and `report_deleted_items` |
-
-These are all low-severity items. The sync engine is production-ready for all critical paths.
+This is the only remaining change needed. The sync engine is production-ready.
 
