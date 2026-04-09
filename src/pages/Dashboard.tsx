@@ -1498,7 +1498,7 @@ export default function Dashboard() {
             <Tabs value={reportSection} onValueChange={(v) => setReportSection(v as "recent" | "all")}>
               <TabsList className="mb-4 h-11">
                 <TabsTrigger value="recent" className="text-base font-semibold px-5 py-2">
-                  Recent Reports
+                  9 Most Recent Reports
                 </TabsTrigger>
                 <TabsTrigger value="all" className="text-base font-semibold px-5 py-2">
                   All Reports
