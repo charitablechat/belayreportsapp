@@ -501,17 +501,25 @@ export function DashboardReportsSection({
                                 />
                               ) : (
                                 <div className={gridClass}>
-                                  {group.items.map((report: any) => (
-                                    <ReportCard
-                                      key={report.id}
-                                      report={report}
-                                      type={currentType}
-                                      onDelete={handleDelete}
-                                      onClick={handleClick}
-                                      getStatusBadge={currentType === 'inspection' ? getStatusBadge : undefined}
-                                      compact={compact}
-                                    />
-                                  ))}
+                                  {group.items.map((report: any) => {
+                                    const effectiveType = activeReportTab === 'invoiced'
+                                      ? (invoicedReports.find(ir => ir.report.id === report.id)?.type || currentType)
+                                      : currentType;
+                                    return (
+                                      <ReportCard
+                                        key={report.id}
+                                        report={report}
+                                        type={effectiveType}
+                                        onDelete={handleDelete}
+                                        onClick={(r) => handleClick(r, effectiveType)}
+                                        getStatusBadge={effectiveType === 'inspection' ? getStatusBadge : undefined}
+                                        compact={compact}
+                                        isAdmin={isSuperAdmin}
+                                        isInvoiced={invoicedReportIds?.has(report.id)}
+                                        onToggleInvoiced={onToggleInvoiced}
+                                      />
+                                    );
+                                  })}
                                 </div>
                               )}
                             </CollapsibleContent>
@@ -526,17 +534,25 @@ export function DashboardReportsSection({
                             />
                           ) : (
                             <div className={gridClass}>
-                              {group.items.map((report: any) => (
-                                <ReportCard
-                                  key={report.id}
-                                  report={report}
-                                  type={currentType}
-                                  onDelete={handleDelete}
-                                  onClick={handleClick}
-                                  getStatusBadge={currentType === 'inspection' ? getStatusBadge : undefined}
-                                  compact={compact}
-                                />
-                              ))}
+                              {group.items.map((report: any) => {
+                                const effectiveType = activeReportTab === 'invoiced'
+                                  ? (invoicedReports.find(ir => ir.report.id === report.id)?.type || currentType)
+                                  : currentType;
+                                return (
+                                  <ReportCard
+                                    key={report.id}
+                                    report={report}
+                                    type={effectiveType}
+                                    onDelete={handleDelete}
+                                    onClick={(r) => handleClick(r, effectiveType)}
+                                    getStatusBadge={effectiveType === 'inspection' ? getStatusBadge : undefined}
+                                    compact={compact}
+                                    isAdmin={isSuperAdmin}
+                                    isInvoiced={invoicedReportIds?.has(report.id)}
+                                    onToggleInvoiced={onToggleInvoiced}
+                                  />
+                                );
+                              })}
                             </div>
                           )
                         )}
