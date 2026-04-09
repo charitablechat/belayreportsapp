@@ -1841,9 +1841,6 @@ export default function TrainingForm() {
         filename={`training-report-${training?.organization || 'report'}-${new Date().toISOString().split('T')[0]}.html`}
         isOpen={htmlViewerOpen}
         onClose={() => setHtmlViewerOpen(false)}
-         reportType="training"
-         organization={training?.organization}
-         date={training?.start_date}
       />
 
       </div>

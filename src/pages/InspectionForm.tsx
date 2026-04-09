@@ -3038,9 +3038,6 @@ export default function InspectionForm() {
         filename={`inspection-report-${inspection?.organization || 'report'}-${new Date().toISOString().split('T')[0]}.html`}
         isOpen={htmlViewerOpen}
         onClose={() => setHtmlViewerOpen(false)}
-         reportType="inspection"
-         organization={inspection?.organization}
-         date={inspection?.inspection_date}
       />
 
       </div>
