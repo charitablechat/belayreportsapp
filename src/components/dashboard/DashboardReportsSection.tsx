@@ -421,7 +421,7 @@ export function DashboardReportsSection({
               <FileText className="w-4 h-4" />
               Daily ({loading || (!totalDailyAssessments && dailyAssessments.length === 0) ? '…' : (totalDailyAssessments ?? dailyAssessments.length)})
             </TabsTrigger>
-            {isSuperAdmin && invoicedReports.length > 0 && (
+            {isSuperAdmin && (
               <TabsTrigger value="invoiced" className="flex items-center gap-2">
                 <Receipt className="w-4 h-4" />
                 Invoiced ({invoicedReports.length})
