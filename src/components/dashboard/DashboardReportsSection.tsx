@@ -20,12 +20,80 @@ import { triggerHaptic } from "@/lib/haptics";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { getAssigneeName } from "@/lib/report-utils";
 
+/**
+ * Normalize a string for fuzzy matching: lowercase, remove diacritics,
+ * collapse whitespace.
+ */
+function normalizeForSearch(s: string): string {
+  return s
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function textMatchesReport(report: any, query: string, type: string): boolean {
-  const q = query.toLowerCase();
-  const org = (report.organization || '').toLowerCase();
-  const loc = (report.location || report.site || '').toLowerCase();
-  const assignee = getAssigneeName(report, type).toLowerCase();
-  return org.includes(q) || loc.includes(q) || assignee.includes(q);
+  const q = normalizeForSearch(query);
+  if (!q) return false;
+  const org = normalizeForSearch(report.organization || '');
+  const loc = normalizeForSearch(report.location || report.site || '');
+  const assignee = normalizeForSearch(getAssigneeName(report, type));
+
+  // Exact substring match first (fast path)
+  if (org.includes(q) || loc.includes(q) || assignee.includes(q)) return true;
+
+  // Token-by-token matching: every query token must appear in at least one field
+  const tokens = q.split(' ').filter(Boolean);
+  if (tokens.length > 1) {
+    const combined = `${org} ${loc} ${assignee}`;
+    return tokens.every(token => combined.includes(token));
+  }
+
+  // Single-token fuzzy: check if query is a substring allowing 1-char difference
+  // e.g. "ariel" matches "airiel" because "ariel" is a subsequence
+  if (q.length >= 3) {
+    const fields = [org, loc, assignee];
+    for (const field of fields) {
+      if (isCloseSubstring(field, q)) return true;
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Check if `needle` is approximately contained in `haystack`
+ * allowing at most 1 extra/missing/different character.
+ */
+function isCloseSubstring(haystack: string, needle: string): boolean {
+  if (haystack.includes(needle)) return true;
+  // Check if needle is a subsequence of any substring of similar length
+  const len = needle.length;
+  for (let i = 0; i <= haystack.length - len + 1; i++) {
+    const slice = haystack.substring(i, i + len + 1);
+    if (editDistance1(slice, needle)) return true;
+  }
+  return false;
+}
+
+function editDistance1(a: string, b: string): boolean {
+  const diff = Math.abs(a.length - b.length);
+  if (diff > 1) return false;
+  let mismatches = 0;
+  let ai = 0, bi = 0;
+  while (ai < a.length && bi < b.length) {
+    if (a[ai] !== b[bi]) {
+      mismatches++;
+      if (mismatches > 1) return false;
+      if (a.length > b.length) ai++;
+      else if (b.length > a.length) bi++;
+      else { ai++; bi++; }
+    } else {
+      ai++; bi++;
+    }
+  }
+  return true;
 }
 
 type DashboardReportType = 'inspection' | 'training' | 'daily';
