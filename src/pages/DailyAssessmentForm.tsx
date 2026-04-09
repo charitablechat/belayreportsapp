@@ -74,7 +74,8 @@ import { appendVersion } from "@/lib/report-version-manager";
 import { showHardSavedToast } from "@/lib/toast-helpers";
 import { DataIntegrityBadge, type IntegrityStatus } from "@/components/ui/data-integrity-badge";
 import { VersionHistoryPanel } from "@/components/admin/VersionHistoryPanel";
-import { Shield as ShieldIcon } from "lucide-react";
+import { Shield as ShieldIcon, Receipt } from "lucide-react";
+import { useInvoicedStatus } from "@/hooks/useInvoicedStatus";
 
 export default function DailyAssessmentForm() {
   const { id } = useParams();
@@ -87,10 +88,11 @@ export default function DailyAssessmentForm() {
   
   // Check edit permissions - Super Admins are view-only, only owners can edit
   const [inspectorId, setInspectorId] = useState<string | null>(null);
-  const { canEdit, isReadOnly, isOwner, isSuperAdmin, readOnlyReason } = useReportEditPermission({
+  const { canEdit, isReadOnly, isOwner, isSuperAdmin, isAdmin, readOnlyReason } = useReportEditPermission({
     inspectorId,
     reportType: 'daily_assessment'
   });
+  
   
   // Completion lock: prevent accidental edits to completed reports
   const [completionLockOverridden, setCompletionLockOverridden] = useState(false);
@@ -108,6 +110,11 @@ export default function DailyAssessmentForm() {
   const [lastManuallySaved, setLastManuallySaved] = useState<Date | null>(null);
   const [generating, setGenerating] = useState(false);
   const [assessment, setAssessment] = useState<any>(null);
+  const { isInvoiced, toggling: invoiceToggling, toggleInvoiced } = useInvoicedStatus({
+    reportId: id,
+    reportType: 'daily',
+    enabled: isAdmin && assessment?.status === 'completed',
+  });
   const [beginningOfDay, setBeginningOfDay] = useState<any[]>([]);
   const [endOfDay, setEndOfDay] = useState<any[]>([]);
   const [operatingSystems, setOperatingSystems] = useState<any[]>([]);
@@ -1659,6 +1666,18 @@ export default function DailyAssessmentForm() {
                     </>
                   )}
                 </Button>
+                {isAdmin && assessment?.status === 'completed' && (
+                  <Button
+                    variant="outline"
+                    size={isMobileView ? "default" : "sm"}
+                    onClick={toggleInvoiced}
+                    disabled={invoiceToggling}
+                    className={isInvoiced ? "text-destructive border-destructive hover:text-destructive" : ""}
+                  >
+                    <Receipt className={isMobileView ? "w-5 h-5 mr-1.5" : "w-4 h-4 mr-2"} />
+                    {isMobileView ? "" : (isInvoiced ? "Invoiced ✓" : "Invoiced")}
+                  </Button>
+                )}
                 </>
               )}
             </div>

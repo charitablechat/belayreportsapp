@@ -71,7 +71,8 @@ import { appendVersion } from "@/lib/report-version-manager";
 import { showHardSavedToast } from "@/lib/toast-helpers";
 import { DataIntegrityBadge, type IntegrityStatus } from "@/components/ui/data-integrity-badge";
 import { VersionHistoryPanel } from "@/components/admin/VersionHistoryPanel";
-import { Shield as ShieldIcon } from "lucide-react";
+import { Shield as ShieldIcon, Receipt } from "lucide-react";
+import { useInvoicedStatus } from "@/hooks/useInvoicedStatus";
 
 export default function TrainingForm() {
   const { id } = useParams();
@@ -83,10 +84,11 @@ export default function TrainingForm() {
   
   // Check edit permissions - Super Admins are view-only, only owners can edit
   const [inspectorId, setInspectorId] = useState<string | null>(null);
-  const { canEdit, isReadOnly, isOwner, isSuperAdmin, readOnlyReason } = useReportEditPermission({
+  const { canEdit, isReadOnly, isOwner, isSuperAdmin, isAdmin, readOnlyReason } = useReportEditPermission({
     inspectorId,
     reportType: 'training'
   });
+  
   
   // Completion lock: prevent accidental edits to completed reports
   const [completionLockOverridden, setCompletionLockOverridden] = useState(false);
@@ -110,6 +112,11 @@ export default function TrainingForm() {
     message: ''
   });
   const [training, setTraining] = useState<any>(null);
+  const { isInvoiced, toggling: invoiceToggling, toggleInvoiced } = useInvoicedStatus({
+    reportId: id,
+    reportType: 'training',
+    enabled: isAdmin && training?.status === 'completed',
+  });
   const [deliveryApproaches, setDeliveryApproaches] = useState<any[]>([]);
   const [operatingSystems, setOperatingSystems] = useState<any[]>([]);
   const [immediateAttention, setImmediateAttention] = useState<any[]>([]);
@@ -1598,6 +1605,18 @@ export default function TrainingForm() {
                     </>
                   )}
                 </Button>
+                {isAdmin && training?.status === 'completed' && (
+                  <Button
+                    variant="outline"
+                    size={isMobile ? "default" : "sm"}
+                    onClick={toggleInvoiced}
+                    disabled={invoiceToggling}
+                    className={isInvoiced ? "text-destructive border-destructive hover:text-destructive" : ""}
+                  >
+                    <Receipt className={isMobile ? "w-5 h-5 mr-1.5" : "w-4 h-4 mr-2"} />
+                    {isMobile ? "" : (isInvoiced ? "Invoiced ✓" : "Invoiced")}
+                  </Button>
+                )}
                 </>
               )}
             </div>
