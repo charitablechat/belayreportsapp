@@ -406,8 +406,14 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
     // ZERO DATA LOSS: Empty-array safeguard
     // If the server has child data but local is completely empty, this is suspicious
     // (likely IndexedDB corruption or failed read) -- skip sync to prevent data loss
+    let existingSystems: any[] = [];
+    let existingZiplines: any[] = [];
+    let existingEquipment: any[] = [];
+    let existingStandards: any[] = [];
+    let existingSummary: any[] = [];
+    
     if (recordStatus?.record_exists && !recordStatus?.is_deleted) {
-      const [
+      [
         existingSystems,
         existingZiplines,
         existingEquipment,
