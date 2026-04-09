@@ -266,7 +266,7 @@ function buildEmailHtml(opts: {
   denormalizedReports: number;
   photoBackup?: { total_copied: number; total_skipped: number; total_errors: number; total_size_bytes: number; timed_out: boolean } | null;
   offsiteSync?: { success: boolean; files_synced: number; files_errored: number; timed_out: boolean } | null;
-  pdfBackup?: { generated: number; skipped: number; no_pdf: number; errors: number } | null;
+  pdfBackup?: { copied: number; skipped: number; no_source: number; errors: number } | null;
 }): string {
   const {
     emailTimestamp, totalSize, totalRows, tableCounts, tableCount,
@@ -302,8 +302,8 @@ function buildEmailHtml(opts: {
         ${photoBackup.timed_out ? `<tr><td colspan="2" style="padding:6px 0;color:#f59e0b;font-size:12px;">⚠️ Photo backup timed out — partial results</td></tr>` : ""}
         ` : `<tr><td colspan="2" style="padding:6px 0;color:#dc2626;font-size:12px;">⚠️ Photo storage backup was not performed</td></tr>`}
         ${pdfBackup ? `
-        <tr><td style="padding:6px 0;color:#555;">📄 PDFs Generated</td><td style="text-align:right;font-weight:bold;">${pdfBackup.generated}</td></tr>
-        ${pdfBackup.no_pdf > 0 ? `<tr><td style="padding:6px 0;color:#555;font-size:12px;">   Reports without PDF</td><td style="text-align:right;font-size:12px;color:#6b7280;">${pdfBackup.no_pdf}</td></tr>` : ""}
+        <tr><td style="padding:6px 0;color:#555;">📄 PDFs Copied</td><td style="text-align:right;font-weight:bold;">${pdfBackup.copied}</td></tr>
+        ${pdfBackup.no_source > 0 ? `<tr><td style="padding:6px 0;color:#555;font-size:12px;">   No existing report</td><td style="text-align:right;font-size:12px;color:#6b7280;">${pdfBackup.no_source}</td></tr>` : ""}
         ${pdfBackup.errors > 0 ? `<tr><td style="padding:6px 0;color:#dc2626;">PDF Errors</td><td style="text-align:right;font-weight:bold;color:#dc2626;">${pdfBackup.errors}</td></tr>` : ""}
         ` : ""}
         ${offsiteSync ? `
@@ -459,7 +459,7 @@ Deno.serve(async (req) => {
       if (pdfRes.ok) {
         pdfBackupResult = await pdfRes.json();
         console.log(
-          `[scheduled-backup-notify] PDF backup: generated=${pdfBackupResult.generated}, skipped=${pdfBackupResult.skipped}, no_pdf=${pdfBackupResult.no_pdf}, errors=${pdfBackupResult.errors}`,
+          `[scheduled-backup-notify] PDF backup: copied=${pdfBackupResult.copied}, skipped=${pdfBackupResult.skipped}, no_source=${pdfBackupResult.no_source}, errors=${pdfBackupResult.errors}`,
         );
       } else {
         const errText = await pdfRes.text();
