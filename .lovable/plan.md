@@ -1,51 +1,47 @@
 
 
-# Sync Performance Gaps Analysis
+# Why "Ariel Crawler World" Still Doesn't Appear
 
-## Finding 1: Inspection & Training `suspicious_empty_guard` still blocks permanently (HIGH)
+## Root Cause
 
-**Location**: `src/lib/atomic-sync-manager.ts` lines 483-491 (inspections) and 1217-1224 (trainings)
+The record is correctly restored in the database (`deleted_at = null`). The problem is **all 6 Supabase network queries are timing out after 15 seconds**, as shown in the console logs. The dashboard falls back to stale local cache, which doesn't contain this record (it was deleted before being cached).
 
-The assessment version of this guard was just fixed to allow genuinely blank forms through, but the **inspection** and **training** versions still have the old blocking behavior — they return `{ skipped: true }` unconditionally when a record is edited, empty, and older than 5 minutes. This means any legitimately blank inspection or training will be permanently stuck in the same infinite skip loop that was just fixed for assessments.
+Two compounding issues:
 
-**Fix**: Apply the same logic from the assessment guard — check whether the server also has no child data before blocking. If Guard 1 (`empty_local_guard`) already ran and didn't block, it means the server is also empty, so the record is genuinely blank and should sync.
+1. **Blocked refresh**: While the first `refreshReports` is stuck waiting for timeouts (~23s total: 8s session + 15s queries), the `refreshInFlightRef` guard silently drops all subsequent refresh attempts — including the `dashboard-stale` event we just added.
 
----
+2. **No stale-data indicator**: When network fails, users see cached data with no warning that results may be incomplete.
 
-## Finding 2: Per-item network request count is very high (MEDIUM — performance)
+## Fix
 
-Each **existing** record sync makes a large number of sequential network requests:
+### 1. Prevent refresh stacking from blocking restore visibility
 
-1. `checkRemoteRecordStatus` RPC — 1 request
-2. `fetchRollbackData` for each child table — **5-6 requests** (inspections: 5, trainings: 6, assessments: 6)
-3. `reconcileAllChildTables` fetches server rows for each child table — **another 5-6 requests** (each calls `select('*')`)
-4. `executeTransaction` — 1 upsert per parent + 1 per non-empty child table + 1 final update = **3-8 requests**
-5. Post-transaction verification SELECT — 1 request
-6. `align_synced_at` RPC — 1 request
-7. Queue cleanup — 1 request
+**File: `src/pages/Dashboard.tsx`**
 
-**Total per existing record: ~18-28 network requests**, all sequential. With a batch of 5 items, that's **90-140 requests per sync cycle**.
+When `refreshInFlightRef` blocks a `dashboard-stale` triggered refresh, queue it so it runs immediately after the current in-flight refresh completes, rather than being silently dropped.
 
-The `fetchRollbackData` calls (Guard 1) and `reconcileAllChildTables` both fetch the same server child data independently — this is a redundant double-fetch.
+Add a `pendingRefreshRef` flag:
+- When `refreshReports` is called while in-flight, set `pendingRefreshRef.current = true`
+- In the `finally` block after clearing `refreshInFlightRef`, check `pendingRefreshRef` and re-trigger if set
 
-**Fix**: Pass the already-fetched server child data from Guard 1 into the reconciliation step, eliminating 5-6 duplicate fetches per record. This alone cuts per-item requests by ~25%.
+### 2. Show network status feedback when queries fail
 
----
+**File: `src/pages/Dashboard.tsx`**
 
-## Finding 3: Reconciliation does N+1 deletes (LOW — performance)
+Track when all network queries have timed out and show a subtle banner: "Unable to reach server — showing cached data. Pull to refresh."
 
-`reconcileChildTable` in `sync-reconciliation.ts` fetches all server rows, computes orphans, then deletes them **one by one** (implied by the individual `.delete()` calls per orphan row). For records with many deleted child rows, this creates many small requests.
+This tells users that search results may be incomplete, prompting a manual retry.
 
-**Fix**: Batch orphan deletes using `.in('id', orphanIds)` instead of individual calls.
+### 3. Investigate query timeout root cause
 
----
+The queries are lean (no `latest_report_html`), so 15s timeouts suggest a transient network or Supabase connectivity issue in the preview environment. No code change needed, but worth monitoring. If persistent, consider:
+- Reducing the session validation timeout from 8s to 4s
+- Running the 3 `load*` functions with independent session checks so one slow query doesn't block the others (they already run in `Promise.all`, but they share the same `sessionValid` gate)
 
-## Summary of Proposed Changes
+## Summary of Changes
 
-| File | Change | Priority |
-|------|--------|----------|
-| `src/lib/atomic-sync-manager.ts` (lines 483-491) | Apply server-aware suspicious_empty_guard to inspections (match assessment pattern) | HIGH |
-| `src/lib/atomic-sync-manager.ts` (lines 1217-1224) | Apply server-aware suspicious_empty_guard to trainings (match assessment pattern) | HIGH |
-| `src/lib/atomic-sync-manager.ts` (all 3 sync functions) | Pass Guard 1 fetched data to reconciliation to eliminate duplicate fetches | MEDIUM |
-| `src/lib/sync-reconciliation.ts` | Batch orphan deletes with `.in()` instead of individual calls | LOW |
+| File | Change |
+|------|--------|
+| `src/pages/Dashboard.tsx` | Queue pending refresh when in-flight refresh blocks a new request |
+| `src/pages/Dashboard.tsx` | Add stale-data indicator when all network queries time out |
 
