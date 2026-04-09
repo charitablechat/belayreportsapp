@@ -32,19 +32,26 @@ export async function reconcileChildTable({
   localItems,
   reportType,
   userId,
+  prefetchedServerRows,
 }: ReconcileOptions): Promise<{ deletedCount: number; deletedRows: any[] }> {
-  // 1. Fetch current server rows for this parent
-  const { data: serverRows, error: fetchError } = await (supabase as any)
-    .from(childTable)
-    .select('*')
-    .eq(parentIdColumn, parentId);
+  // 1. Use pre-fetched rows if available, otherwise fetch from server
+  let serverRows: any[];
+  if (prefetchedServerRows !== undefined) {
+    serverRows = prefetchedServerRows;
+  } else {
+    const { data, error: fetchError } = await (supabase as any)
+      .from(childTable)
+      .select('*')
+      .eq(parentIdColumn, parentId);
 
-  if (fetchError) {
-    console.error(`[Reconcile] Failed to fetch ${childTable}:`, fetchError);
-    return { deletedCount: 0, deletedRows: [] };
+    if (fetchError) {
+      console.error(`[Reconcile] Failed to fetch ${childTable}:`, fetchError);
+      return { deletedCount: 0, deletedRows: [] };
+    }
+    serverRows = data || [];
   }
 
-  if (!serverRows || serverRows.length === 0) {
+  if (serverRows.length === 0) {
     return { deletedCount: 0, deletedRows: [] };
   }
 
@@ -118,6 +125,7 @@ export async function reconcileAllChildTables(
     childTable: string;
     parentIdColumn: string;
     localItems: Array<{ id?: string }>;
+    prefetchedServerRows?: any[];
   }>,
   parentId: string,
   reportType: 'inspection' | 'training' | 'daily_assessment',
@@ -131,6 +139,7 @@ export async function reconcileAllChildTables(
       localItems: t.localItems,
       reportType,
       userId,
+      prefetchedServerRows: t.prefetchedServerRows,
     }))
   );
 
