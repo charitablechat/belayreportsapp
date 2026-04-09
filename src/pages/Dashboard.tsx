@@ -289,7 +289,7 @@ export default function Dashboard() {
   // NOTE: deps intentionally kept as [] — the load* functions inside only use
   // their arguments and stable useState setters, so the closure is safe.
   // If you add direct state reads here, move to useRef or add to deps.
-  const refreshReports = React.useCallback(async (force = false) => {
+  const refreshReports = React.useCallback(async (force = false, skipSessionValidation = false) => {
     if (refreshInFlightRef.current) {
       pendingRefreshRef.current = true;
       return;
@@ -298,42 +298,51 @@ export default function Dashboard() {
     refreshInFlightRef.current = true;
     lastRefreshTsRef.current = Date.now();
 
-    // Bug 7 fix: navigator.onLine can briefly be false during iOS page transitions.
-    // If offline at start, wait 1s and recheck before giving up on network.
-    let effectiveOnline = navigator.onLine;
-    if (!effectiveOnline) {
-      await new Promise(r => setTimeout(r, 1000));
-      effectiveOnline = navigator.onLine;
-    }
+    let effectiveOnline: boolean;
+    let sessionValid: boolean;
 
-    // Capture session validity — gate network queries on this
-    // Use 8s timeout (mobile auth round-trips can take 3-5s)
-    let sessionValid = false;
-    if (effectiveOnline) {
-      try {
-        const sessionUser = await Promise.race([
-          ensureValidSession(),
-          new Promise<null>(resolve => setTimeout(() => resolve(null), 8000))
-        ]);
-        sessionValid = !!sessionUser;
-      } catch (e) {
-        console.warn('[Dashboard] Session validation failed:', e);
+    if (skipSessionValidation) {
+      // Fast path: user just came from a report form — cached auth is fresh
+      effectiveOnline = true;
+      sessionValid = true;
+    } else {
+      // Bug 7 fix: navigator.onLine can briefly be false during iOS page transitions.
+      // If offline at start, wait 1s and recheck before giving up on network.
+      effectiveOnline = navigator.onLine;
+      if (!effectiveOnline) {
+        await new Promise(r => setTimeout(r, 1000));
+        effectiveOnline = navigator.onLine;
       }
 
-      // Retry once after 2s if first attempt failed while online
-      if (!sessionValid) {
+      // Capture session validity — gate network queries on this
+      // Use 8s timeout (mobile auth round-trips can take 3-5s)
+      sessionValid = false;
+      if (effectiveOnline) {
         try {
-          await new Promise(r => setTimeout(r, 2000));
-          const retryUser = await Promise.race([
+          const sessionUser = await Promise.race([
             ensureValidSession(),
-            new Promise<null>(resolve => setTimeout(() => resolve(null), 5000))
+            new Promise<null>(resolve => setTimeout(() => resolve(null), 8000))
           ]);
-          sessionValid = !!retryUser;
-          if (sessionValid && import.meta.env.DEV) {
-            console.log('[Dashboard] Session recovered on retry');
+          sessionValid = !!sessionUser;
+        } catch (e) {
+          console.warn('[Dashboard] Session validation failed:', e);
+        }
+
+        // Retry once after 2s if first attempt failed while online
+        if (!sessionValid) {
+          try {
+            await new Promise(r => setTimeout(r, 2000));
+            const retryUser = await Promise.race([
+              ensureValidSession(),
+              new Promise<null>(resolve => setTimeout(() => resolve(null), 5000))
+            ]);
+            sessionValid = !!retryUser;
+            if (sessionValid && import.meta.env.DEV) {
+              console.log('[Dashboard] Session recovered on retry');
+            }
+          } catch {
+            // Still failed — proceed with offline data
           }
-        } catch {
-          // Still failed — proceed with offline data
         }
       }
     }
@@ -386,10 +395,17 @@ export default function Dashboard() {
       }
     }, LOAD_TIMEOUT);
 
-    refreshReports(true).then(() => {
+    // Detect stale marker early — if present, use fast path (skip session validation)
+    const hasStaleMarker = consumeDashboardStaleTimestamp() || consumePendingDashboardRefresh();
+
+    refreshReports(true, hasStaleMarker).then(() => {
       loadCompleted = true;
       clearTimeout(safetyTimeout);
       setLoading(false);
+      // If we used the fast path, do a background session-validated refresh
+      if (hasStaleMarker) {
+        setTimeout(() => refreshReports(true), 500);
+      }
     });
 
     // Fetch current user
@@ -448,10 +464,7 @@ export default function Dashboard() {
       }
     };
 
-    // Check if a report form marked data as stale before navigating here
-    if (consumeDashboardStaleTimestamp() || consumePendingDashboardRefresh()) {
-      if (import.meta.env.DEV) console.log('[Dashboard] Stale timestamp detected from report form');
-    }
+    // Stale marker is now consumed above before refreshReports call
 
     // Hydrate restored records immediately from sessionStorage marker
     const hydrateRestoredRecord = async () => {
