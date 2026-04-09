@@ -108,7 +108,7 @@ export function DatabaseAutocomplete({
   const saveMutation = useMutation({
     mutationFn: async (newValue: string) => {
       const user = await getUserWithCache();
-      if (!user) throw new Error("Not authenticated");
+      if (!user) return; // Skip saving history when auth unavailable (e.g. offline)
 
       const trimmedValue = newValue.trim();
       if (!trimmedValue) return;

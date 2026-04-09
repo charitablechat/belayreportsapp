@@ -12,7 +12,7 @@ import ropeWorksLogo from "@/assets/rope-works-logo.png";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { OrganizationAutocomplete } from "@/components/OrganizationAutocomplete";
 import { getCurrentLocationWithAddress, getGeolocationErrorMessage } from "@/lib/geolocation";
-import { getUserWithCache, getCachedUser } from "@/lib/cached-auth";
+import { getUserWithCache, getCachedUser, getOfflineUserId } from "@/lib/cached-auth";
 import { triggerHaptic } from "@/lib/haptics";
 import { saveDailyAssessmentOffline, queueAssessmentOperation } from "@/lib/offline-storage";
 import { toast } from "sonner";
@@ -125,16 +125,17 @@ export default function NewDailyAssessment() {
     setLoading(true);
 
     try {
-      const user = await getUserWithCache();
+      let user = await getUserWithCache();
       if (!user) {
-        if (!navigator.onLine) {
+        const offlineId = getOfflineUserId();
+        if (offlineId) {
+          user = { id: offlineId } as any;
+        } else {
           toast.error("Please sign in to create reports");
           setLoading(false);
           isSubmitting.current = false;
           return;
         }
-        navigate("/", { replace: true });
-        return;
       }
 
       const assessmentId = crypto.randomUUID();

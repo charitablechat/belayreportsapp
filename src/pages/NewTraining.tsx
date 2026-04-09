@@ -12,7 +12,7 @@ import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { OrganizationAutocomplete } from "@/components/OrganizationAutocomplete";
 import { Input } from "@/components/ui/input";
 import { getCurrentLocationWithAddress, getGeolocationErrorMessage } from "@/lib/geolocation";
-import { getUserWithCache, getCachedUser } from "@/lib/cached-auth";
+import { getUserWithCache, getCachedUser, getOfflineUserId } from "@/lib/cached-auth";
 import { triggerHaptic } from "@/lib/haptics";
 import { saveTrainingOffline, queueTrainingOperation } from "@/lib/offline-storage";
 import { toast } from "sonner";
@@ -115,15 +115,16 @@ export default function NewTraining() {
     setLoading(true);
 
     try {
-      const user = await getUserWithCache();
+      let user = await getUserWithCache();
       if (!user) {
-        if (!navigator.onLine) {
+        const offlineId = getOfflineUserId();
+        if (offlineId) {
+          user = { id: offlineId } as any;
+        } else {
           toast.error("Please sign in to create reports");
           setLoading(false);
           return;
         }
-        navigate("/", { replace: true });
-        return;
       }
 
       const now = new Date().toISOString();
