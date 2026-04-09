@@ -1,39 +1,31 @@
 
+# Fix: Invoiced Reports Not Appearing in the Invoiced Tab
 
-# Glassmorphism Pulsating Green "INVOICED" Watermark on Report Cards
+## Problem
+When a report is marked as invoiced from the report form page (e.g., the Southwest inspection), the dashboard's invoiced tab doesn't reflect the change. Two issues:
 
-## Summary
-Apply a glassmorphism pulsating money-green style to the "INVOICED" watermark stamp on report cards, and revert the dashboard tab back to its default style. Also slow down the pulse animation for a calming effect.
+1. **Stale query cache**: The `invoiced-reports` query has `staleTime: 60s` and is never explicitly refetched when returning to the dashboard.
+2. **No cross-page invalidation**: The `useInvoicedStatus` hook (used in report forms) doesn't invalidate the React Query cache, so the dashboard never learns about the change.
 
 ## Changes
 
-### 1. `src/components/dashboard/ReportCard.tsx` (line 168-171)
-Replace the current red "INVOICED" watermark with a glassmorphism emerald style:
+### 1. `src/hooks/useInvoicedStatus.tsx`
+After a successful toggle (insert or delete), invalidate the `invoiced-reports` React Query cache so the dashboard picks up the change on next mount:
+
 ```tsx
-{isAdmin && isInvoiced && (
-  <span className="absolute backdrop-blur-sm bg-emerald-500/10 border border-emerald-400/30 rounded-lg px-4 py-2 text-emerald-600 dark:text-emerald-400 text-4xl md:text-5xl font-bold tracking-wider rotate-[25deg] select-none whitespace-nowrap shadow-[0_0_20px_rgba(16,185,129,0.25)] animate-pulse-calm">
-    INVOICED
-  </span>
-)}
+import { useQueryClient } from "@tanstack/react-query";
+// In the hook:
+const queryClient = useQueryClient();
+// After successful toggle:
+queryClient.invalidateQueries({ queryKey: ["invoiced-reports"] });
 ```
 
-### 2. `src/components/dashboard/DashboardReportsSection.tsx` (line 425)
-Revert the Invoiced tab trigger back to the default style (remove glassmorphism classes):
-```tsx
-<TabsTrigger value="invoiced" className="flex items-center gap-2">
-```
+### 2. `src/pages/Dashboard.tsx`
+- Reduce `staleTime` on the `invoiced-reports` query to `0` (or remove it) so it always refetches on remount/focus.
+- Alternatively, add `refetchOnMount: 'always'` to ensure the invoiced IDs are fresh whenever the dashboard loads.
 
-### 3. `tailwind.config.ts`
-Add a new slow, calming pulse animation:
-```ts
-// In keyframes:
-"pulse-calm": {
-  "0%, 100%": { opacity: "1" },
-  "50%": { opacity: "0.6" },
-}
+### 3. `src/pages/Dashboard.tsx` — `handleToggleInvoiced`
+After the optimistic state update, also call `refetchInvoiced()` to keep the React Query cache in sync for consistency.
 
-// In animation:
-"pulse-calm": "pulse-calm 4s ease-in-out infinite",
-```
-Uses a 4-second cycle (vs 2s for pulse-soft) for a slower, more calming feel.
-
+## Why This Fixes It
+Currently, marking a report invoiced from the form page writes to the database but the dashboard query cache remains stale. By invalidating the query on toggle and ensuring the dashboard refetches on mount, the invoiced tab will always show the correct reports.
