@@ -125,6 +125,7 @@ export function DeletedRecordsRecovery() {
       }
       
       toast.success("Record restored successfully");
+      window.dispatchEvent(new CustomEvent('dashboard-stale'));
       await loadDeletedRecords();
     } catch (error: any) {
       console.error("[DeletedRecordsRecovery] Restore failed:", error);
