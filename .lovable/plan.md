@@ -1,56 +1,67 @@
 
 
-# Fix: Nightly Backup Triggering Report "Completion" Side Effects
+# Admin-Only "Invoiced" Feature for Completed Reports
 
-## Root Cause
+## Overview
+Add an admin-only invoicing system: admins see an "Invoiced" button on completed report cards, which stamps the card with a red "INVOICED" crossing the green "COMPLETED" text, and moves the report into a new "Invoiced" tab visible only to admins.
 
-The `generate-backup-pdfs` edge function (called by the nightly `scheduled-backup-notify`) calls the **live report generation functions** (`generate-inspection-pdf`, `generate-training-pdf`) to produce backup copies of rendered reports. These generation functions have a critical side effect:
+## Database Changes
 
-**They upsert into `inspection_reports` and `training_reports` tables**, which:
-1. Overwrites `generated_by` with `null` (no user in service-role context)
-2. Bumps `version` via the `increment_*_report_version` trigger
-3. Updates `generated_at` to `NOW()`
-4. Writes new PDF files to the `inspection-reports` storage bucket, overwriting any existing ones
+### New table: `invoiced_reports`
+```sql
+CREATE TABLE public.invoiced_reports (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  report_id uuid NOT NULL,
+  report_type text NOT NULL CHECK (report_type IN ('inspection', 'training', 'daily')),
+  invoiced_by uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  invoiced_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (report_id, report_type)
+);
 
-This means every nightly backup **modifies production database records and storage** as a side effect of what should be a read-only operation. Reports that already had PDFs get re-generated, their metadata is overwritten, and version numbers inflate.
+ALTER TABLE public.invoiced_reports ENABLE ROW LEVEL SECURITY;
 
-## Solution
-
-Rewrite `generate-backup-pdfs` to be a **copy-only** operation — never call the generation functions. Instead:
-
-1. For each completed report, check if a rendered file already exists in the `inspection-reports` bucket
-2. If yes → download it and copy to the `database-backups/pdfs/` folder
-3. If no → skip it (count as `no_source`, don't generate)
-
-This eliminates all database writes and storage overwrites from the backup process.
-
-## Technical Details
-
-### File: `supabase/functions/generate-backup-pdfs/index.ts`
-
-Replace the current flow (call generation function → find source → download → upload to backup) with:
-
-```
-For each completed report:
-  1. Look up existing source file:
-     - Inspections: query inspection_reports.pdf_url
-     - Trainings: list inspection-reports/training-reports/ for matching file
-     - Daily Assessments: list inspection-reports/html-reports/ for matching file
-  2. If source exists → download from inspection-reports → upload to database-backups/pdfs/
-  3. If no source → increment no_source counter, skip
+-- Only admins can read/write
+CREATE POLICY "Admins can manage invoiced reports"
+  ON public.invoiced_reports FOR ALL TO authenticated
+  USING (public.has_role(auth.uid(), 'admin') OR public.has_role(auth.uid(), 'super_admin'))
+  WITH CHECK (public.has_role(auth.uid(), 'admin') OR public.has_role(auth.uid(), 'super_admin'));
 ```
 
-Remove all `fetch()` calls to generation functions. The function becomes purely read-from-source, write-to-backup.
+This approach keeps invoiced state separate from the report `status` column — no risk of breaking existing logic.
 
-### Result interface update
+## UI Changes
 
-Replace `generated` counter with `copied` and add `no_source` to track reports that had no rendered file available.
+### 1. `ReportCard.tsx` — Invoiced stamp and button
+- Accept new props: `isAdmin`, `isInvoiced`, `onToggleInvoiced`
+- When `isAdmin && status === 'completed'`: show an "Invoiced" button (left of the status badge area) in the card's dropdown menu
+- When `isInvoiced && isAdmin`: overlay a red "INVOICED" text rotated ~25deg (opposite direction to the green "COMPLETED") creating an X-shape over the card center
+- Non-admins see only the existing green "COMPLETED" stamp — no change
 
-### No other files change
+### 2. `DashboardReportsSection.tsx` — New "Invoiced" tab
+- Accept new prop: `invoicedReports` (Set of `report_id` strings)
+- When `isSuperAdmin` (admin), add a 4th tab trigger: "Invoiced (N)" with a receipt icon
+- The Invoiced tab shows all completed reports (across all types) that have an entry in `invoiced_reports`
+- Each card in the Invoiced tab shows the type badge (Inspection/Training/Daily) so the user knows which type it is
+- Filter the invoiced reports OUT of the normal Inspections/Training/Daily tabs (admin only)
 
-The `scheduled-backup-notify` function already handles `pdfBackupResult` generically — it just reads the response fields. The email template references `pdfBackup.generated` which we'll rename to `pdfBackup.copied`, requiring a minor update to the email HTML builder in `scheduled-backup-notify/index.ts`.
+### 3. `Dashboard.tsx` — Fetch invoiced data
+- When user is admin: query `invoiced_reports` table to get the set of invoiced report IDs
+- Pass `invoicedReports` set down to `DashboardReportsSection`
+- Provide `onToggleInvoiced` callback that inserts/deletes from `invoiced_reports`
+- For non-admins: skip the query entirely, pass empty set — no UI changes visible
 
-### Files Modified
-- `supabase/functions/generate-backup-pdfs/index.ts` — rewrite to copy-only (no generation calls)
-- `supabase/functions/scheduled-backup-notify/index.ts` — update email template field name (`generated` → `copied`)
+### 4. Tab layout (admin view)
+```text
+┌─────────────┬──────────┬───────┬───────────┐
+│ Inspections │ Training │ Daily │ Invoiced  │
+│    (32)     │   (18)   │  (6)  │   (4)     │
+└─────────────┴──────────┴───────┴───────────┘
+```
+The "Invoiced" tab only renders when the viewer is an admin/super_admin.
+
+## Files Modified
+1. **Migration** — Create `invoiced_reports` table with RLS
+2. **`src/components/dashboard/ReportCard.tsx`** — Add invoiced stamp overlay + toggle in dropdown
+3. **`src/components/dashboard/DashboardReportsSection.tsx`** — Add Invoiced tab (admin only), filter invoiced from other tabs
+4. **`src/pages/Dashboard.tsx`** — Fetch invoiced set for admins, pass props, provide toggle handler
 
