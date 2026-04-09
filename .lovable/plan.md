@@ -1,81 +1,65 @@
 
+Root cause found: the restored report does exist in the backend, but Dashboard search is only searching the lists already passed into `DashboardReportsSection`. In `src/pages/Dashboard.tsx`, those lists are trimmed to the 9 most recent reports whenever `reportSection === "recent"`:
+- `baseInspections = ...slice(0, 9)`
+- `baseTrainings = ...slice(0, 9)`
+- `baseDailyAssessments = ...slice(0, 9)`
 
-# Complete Sync Engine Audit — Remaining Gaps
+Then `DashboardReportsSection` builds cross-tab search from those already-truncated arrays:
+- `crossTabResults.inspections = inspections.filter(...)`
+- `crossTabResults.trainings = trainings.filter(...)`
+- `crossTabResults.daily = dailyAssessments.filter(...)`
 
-After a thorough review of `atomic-sync-manager.ts`, `useAutoSync.tsx`, `transaction-manager.ts`, `sync-reconciliation.ts`, and `offline-storage.ts`, here are all remaining issues that could stop or slow down syncing.
+So if “Airiel Crawler World” is not in the current top 9 for that tab set, search returns 0 even though the record exists. In this case, the restored daily assessment is actually the newest in the backend, but the current code still has a structural bug: search scope depends on the Recent/All toggle, which can hide valid restored records and any older records.
 
----
+Plan:
+1. Fix search scope in `src/pages/Dashboard.tsx`
+   - Keep the existing “Recent Reports” slicing for normal browsing.
+   - But when passing data into `DashboardReportsSection`, also pass the full datasets (`inspections`, `trainings`, `dailyAssessments`) separately for search.
+   - Do not let cross-tab search depend on the sliced “recent” arrays.
 
-## BUG 1: `isNewRecord` logic for inspections is broken (HIGH — causes unnecessary slowdown)
+2. Update `src/components/dashboard/DashboardReportsSection.tsx`
+   - Add props for full report collections, e.g. `allInspections`, `allTrainings`, `allDailyAssessments`.
+   - Change `crossTabResults` to search those full collections instead of the currently displayed subset.
+   - Keep normal tab browsing, filters, pagination, and counts unchanged for the visible tab.
 
-**File**: `src/lib/atomic-sync-manager.ts`, line 254
+3. Make restore visibility deterministic
+   - After a restore, keep the existing `dashboard-stale` refresh trigger.
+   - Add a small safeguard so if search is active, the search view always searches full data regardless of “Recent/All”.
+   - This ensures restored records are discoverable immediately, even if they are older or outside the recent slice.
 
-```js
-const isNewRecord = !inspection.synced_at && !inspectionIdMapping?.oldId?.startsWith('temp-') === false;
-```
+4. Optional resilience improvement
+   - Normalize search text for typos/spacing/case only if needed later, but not as the first fix.
+   - Current search already does case-insensitive substring matching, so the main issue is search scope, not matching logic.
 
-Due to JS operator precedence, `!x === false` evaluates as `(!x) === false`, not `!(x === false)`. This means:
+Technical details:
+- File 1: `src/pages/Dashboard.tsx`
+  - Today:
+    ```text
+    full data -> slice to 9 in Recent mode -> pass sliced arrays into DashboardReportsSection
+    ```
+  - Fix to:
+    ```text
+    full data -> slice only for visible cards
+              -> also pass full arrays for search
+    ```
+- File 2: `src/components/dashboard/DashboardReportsSection.tsx`
+  - Today:
+    ```text
+    crossTabResults uses props.inspections/trainings/dailyAssessments
+    ```
+  - Fix to:
+    ```text
+    crossTabResults uses props.allInspections/allTrainings/allDailyAssessments
+    normal tab content still uses currentReports from visible arrays
+    ```
 
-- **Non-temp inspections with no `synced_at`** (e.g., a new inspection created online with a real UUID): `isNewRecord` evaluates to `false`, so it makes an unnecessary `checkRemoteRecordStatus` RPC call + 5 rollback fetches (~6 extra network requests)
-- Trainings (line 1048) and assessments (line 1745) use the correct `!training.synced_at` — only inspections have this bug
+Expected outcome:
+- Searching “ariel”, “airiel”, or “crawler world” will return restored records as long as they are loaded in Dashboard data.
+- Recent mode will still show only the top 9 visually, but search will no longer be artificially limited.
+- Restored reports will be accessible immediately after restore instead of appearing “missing.”
 
-**Fix**: Replace with `const isNewRecord = !inspection.synced_at;` (same as trainings/assessments). The temp-ID mapping is already handled separately.
-
----
-
-## BUG 2: `getUnsyncedInspections` uses `getAll()` full-table scan (MEDIUM — Safari timeouts)
-
-**File**: `src/lib/offline-storage.ts`, line 906
-
-The memory documents that index-based queries (`by-synced`) should be used instead of `getAll()` to avoid Safari's 5-second timeout on large stores. But `getUnsyncedInspections` (and the training/assessment equivalents) still do:
-
-```js
-const allInspections = await db.getAll('inspections');
-let unsynced = allInspections.filter(...)
-```
-
-This loads **all** records into memory, then filters client-side. For users with 100+ records, this can trigger Safari's IDB timeout and cause the circuit breaker to trip, blocking all syncing.
-
-The `getUnsyncedCounts` (line 1982) has the same issue — it calls `getAll()` on all three stores sequentially.
-
-**Fix**: Use the `by-synced` index to query only unsynced records directly from IndexedDB, avoiding the full scan.
-
----
-
-## GAP 3: Sequential sync across all 3 types (MEDIUM — slowdown)
-
-**File**: `src/hooks/useAutoSync.tsx`, lines 245-251
-
-Inspections, trainings, and assessments are synced sequentially:
-```js
-const inspResult = await syncAllInspectionsAtomic(validatedUser);
-await yieldToUI();
-const trainResult = await syncAllTrainingsAtomic(validatedUser);
-await yieldToUI();
-const assessResult = await syncAllDailyAssessmentsAtomic(validatedUser);
-```
-
-If a user has 5 inspections + 5 trainings + 5 assessments (15 items), these process sequentially across types. Since they hit different tables with no shared state, they could be parallelized at the type level (while keeping per-item serialization within each type).
-
-However, this is intentionally sequential to avoid overwhelming mobile connections — **recommend keeping as-is** with a note. This is not a bug.
-
----
-
-## GAP 4: `field_count_regression` guard has no escape hatch (LOW — potential stuck loop)
-
-**File**: `src/lib/atomic-sync-manager.ts`, lines 366-381, 1111-1128, 1808-1825
-
-If a record's field count drops >50% (e.g., user legitimately deletes most child rows), the sync is permanently blocked with `skipped: true, reason: 'field_count_regression'`. Like the old `suspicious_empty_guard`, this has no max-skip counter. A record caught by this guard will be retried and skipped every cycle indefinitely.
-
-**Fix**: Add a skip counter (in-memory Map) — after 3 consecutive skips for the same record, allow the sync to proceed. The version snapshot already captures pre-sync state for recovery.
-
----
-
-## Summary of Proposed Changes
-
-| # | File | Change | Priority |
-|---|------|--------|----------|
-| 1 | `src/lib/atomic-sync-manager.ts` (line 254) | Fix `isNewRecord` operator precedence bug | HIGH |
-| 2 | `src/lib/offline-storage.ts` | Replace `getAll()` with index-based queries for unsynced detection | MEDIUM |
-| 3 | `src/lib/atomic-sync-manager.ts` | Add skip counter to `field_count_regression` guard | LOW |
-
+Validation after implementation:
+- Restore a deleted older report and search for it while still on “Recent Reports”.
+- Verify it appears in cross-tab search results.
+- Verify “All Reports” behavior is unchanged.
+- Verify mobile and desktop search both behave the same.
