@@ -111,11 +111,6 @@ export default function InspectionForm() {
     inspectorId,
     reportType: 'inspection'
   });
-  const { isInvoiced, toggling: invoiceToggling, toggleInvoiced } = useInvoicedStatus({
-    reportId: id,
-    reportType: 'inspection',
-    enabled: isAdmin && inspection?.status === 'completed',
-  });
   
   // Completion lock: prevent accidental edits to completed reports
   const [completionLockOverridden, setCompletionLockOverridden] = useState(false);

@@ -87,11 +87,7 @@ export default function TrainingForm() {
     inspectorId,
     reportType: 'training'
   });
-  const { isInvoiced, toggling: invoiceToggling, toggleInvoiced } = useInvoicedStatus({
-    reportId: id,
-    reportType: 'training',
-    enabled: isAdmin && training?.status === 'completed',
-  });
+  
   
   // Completion lock: prevent accidental edits to completed reports
   const [completionLockOverridden, setCompletionLockOverridden] = useState(false);

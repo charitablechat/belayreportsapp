@@ -91,11 +91,7 @@ export default function DailyAssessmentForm() {
     inspectorId,
     reportType: 'daily_assessment'
   });
-  const { isInvoiced, toggling: invoiceToggling, toggleInvoiced } = useInvoicedStatus({
-    reportId: assessmentId,
-    reportType: 'daily',
-    enabled: isAdmin && assessment?.status === 'completed',
-  });
+  
   
   // Completion lock: prevent accidental edits to completed reports
   const [completionLockOverridden, setCompletionLockOverridden] = useState(false);
