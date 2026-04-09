@@ -290,7 +290,10 @@ export default function Dashboard() {
   // their arguments and stable useState setters, so the closure is safe.
   // If you add direct state reads here, move to useRef or add to deps.
   const refreshReports = React.useCallback(async (force = false) => {
-    if (refreshInFlightRef.current) return;
+    if (refreshInFlightRef.current) {
+      pendingRefreshRef.current = true;
+      return;
+    }
     if (!force && Date.now() - lastRefreshTsRef.current < REFRESH_THROTTLE_MS) return;
     refreshInFlightRef.current = true;
     lastRefreshTsRef.current = Date.now();
@@ -346,9 +349,25 @@ export default function Dashboard() {
         loadTrainingReports(userId, superAdminStatus, sessionValid),
         loadDailyAssessments(userId, superAdminStatus, sessionValid),
       ]);
+
+      // Track network failures for stale-data banner
+      if (!sessionValid && effectiveOnline) {
+        networkFailCountRef.current++;
+        if (networkFailCountRef.current >= 2) {
+          setShowStaleDataBanner(true);
+        }
+      } else if (sessionValid) {
+        networkFailCountRef.current = 0;
+        setShowStaleDataBanner(false);
+      }
     } finally {
       setDataValidated(true);
       refreshInFlightRef.current = false;
+      // If a refresh was queued while we were busy, trigger it now
+      if (pendingRefreshRef.current) {
+        pendingRefreshRef.current = false;
+        refreshReports(true);
+      }
     }
   }, []);
 
