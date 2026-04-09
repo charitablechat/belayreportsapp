@@ -129,7 +129,7 @@ export default function Dashboard() {
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [userProfile, setUserProfile] = useState<any>(null);
   const [inspectorFilter, setInspectorFilter] = useState<string>("all");
-  const [invoicedReportIds, setInvoicedReportIds] = useState<Set<string>>(new Set());
+  const queryClient = useQueryClient();
 
   // Deduplication & throttle refs for refreshReports
   const refreshInFlightRef = React.useRef(false);
@@ -230,8 +230,8 @@ export default function Dashboard() {
     },
   });
 
-  // Fetch invoiced report IDs (admin only)
-  const { refetch: refetchInvoiced } = useQuery({
+  // Fetch invoiced report IDs (admin only) — single source of truth via React Query
+  const invoicedQuery = useQuery({
     queryKey: ["invoiced-reports"],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -239,16 +239,15 @@ export default function Dashboard() {
         .select("report_id");
       if (error) {
         console.warn('[Dashboard] Error fetching invoiced reports:', error);
-        return [];
+        return new Set<string>();
       }
-      const ids = new Set((data || []).map((r: any) => r.report_id));
-      setInvoicedReportIds(ids);
-      return data;
+      return new Set((data || []).map((r: any) => r.report_id));
     },
     enabled: !!isSuperAdmin,
-    staleTime: 0,
-    refetchOnMount: 'always',
+    staleTime: 30_000,
   });
+
+  const invoicedReportIds = invoicedQuery.data ?? new Set<string>();
 
   const handleToggleInvoiced = React.useCallback(async (report: any, type: 'inspection' | 'training' | 'daily') => {
     const isCurrentlyInvoiced = invoicedReportIds.has(report.id);
@@ -263,8 +262,9 @@ export default function Dashboard() {
         toast.error("Failed to remove invoice status");
         return;
       }
-      setInvoicedReportIds(prev => {
-        const next = new Set(prev);
+      // Optimistic update via React Query cache
+      queryClient.setQueryData<Set<string>>(["invoiced-reports"], (old) => {
+        const next = new Set(old);
         next.delete(report.id);
         return next;
       });
@@ -278,12 +278,14 @@ export default function Dashboard() {
         toast.error("Failed to mark as invoiced");
         return;
       }
-      setInvoicedReportIds(prev => new Set(prev).add(report.id));
+      queryClient.setQueryData<Set<string>>(["invoiced-reports"], (old) => {
+        return new Set(old).add(report.id);
+      });
       toast.success("Report marked as invoiced");
     }
     triggerHaptic('light');
-    refetchInvoiced();
-  }, [invoicedReportIds, refetchInvoiced]);
+    queryClient.invalidateQueries({ queryKey: ["invoiced-reports"] });
+  }, [invoicedReportIds, queryClient]);
 
 
   // NOTE: deps intentionally kept as [] — the load* functions inside only use
