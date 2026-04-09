@@ -344,19 +344,21 @@ export default function Dashboard() {
     const superAdminStatus = user && sessionValid ? await getSuperAdminStatusWithCache() : false;
 
     try {
-      await Promise.all([
+      const results = await Promise.all([
         loadInspections(userId, superAdminStatus, sessionValid),
         loadTrainingReports(userId, superAdminStatus, sessionValid),
         loadDailyAssessments(userId, superAdminStatus, sessionValid),
       ]);
 
       // Track network failures for stale-data banner
-      if (!sessionValid && effectiveOnline) {
+      // Fix: detect query-level timeouts even when session is valid
+      const anyNetworkSuccess = results.some(r => r.networkSuccess);
+      if (effectiveOnline && !anyNetworkSuccess) {
         networkFailCountRef.current++;
         if (networkFailCountRef.current >= 2) {
           setShowStaleDataBanner(true);
         }
-      } else if (sessionValid) {
+      } else if (anyNetworkSuccess) {
         networkFailCountRef.current = 0;
         setShowStaleDataBanner(false);
       }
