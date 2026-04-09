@@ -232,6 +232,8 @@ async function syncInspectionWithTransaction(inspection, systems, ziplines, equi
     // Step 1: Upsert inspection data WITHOUT synced_at (deferred marking pattern)
     const inspData = { ...inspection };
     delete inspData.synced_at;
+    // Bug 1 fix: Strip joined objects that would cause PostgREST errors
+    delete inspData.inspector;
     
     const inspResponse = await fetch(`${SUPABASE_URL}/rest/v1/inspections`, {
       method: 'POST',
@@ -293,12 +295,21 @@ async function syncInspectionWithTransaction(inspection, systems, ziplines, equi
 async function syncInspectionsAtomic() {
   console.log('[SW Atomic Sync] Starting atomic inspection sync...');
   
+  // Bug 7 fix: Skip sync if main thread clients are active (they handle sync better)
+  const activeClients = await self.clients.matchAll({ type: 'window' });
+  if (activeClients.length > 0) {
+    console.log('[SW Atomic Sync] Main thread client active — deferring inspection sync to main thread');
+    return;
+  }
+  
   try {
     const db = await openDB(DB_NAME, DB_VERSION);
     const allInspections = await getAllFromStore(db, 'inspections');
     const DRIFT_TOLERANCE_MS = 2000; // Match main thread's 2s drift tolerance
     const SW_BATCH_LIMIT = 5; // Match main thread MAX_BATCH_SIZE
     const allUnsynced = allInspections.filter(i => {
+      // Bug 3 fix: Skip temp-ID records — main thread handles ID transformation
+      if (i.id && i.id.startsWith('temp-')) return false;
       if (!i.synced_at) return true;
       return (new Date(i.updated_at).getTime() - new Date(i.synced_at).getTime()) > DRIFT_TOLERANCE_MS;
     });
@@ -405,15 +416,33 @@ async function syncPhotos() {
     
     for (const photo of unuploaded) {
       try {
-        // Upload to storage
-        const fileExt = photo.fileName.split('.').pop();
-        const fileName = `${photo.inspectionId}/${Date.now()}.${fileExt}`;
+        // Bug 3 fix: Skip photos with temp inspection IDs
+        if (photo.inspectionId && photo.inspectionId.startsWith('temp-')) {
+          console.warn('[SW Sync] Skipping photo with temp inspection ID:', photo.id);
+          continue;
+        }
         
-        const uploadResponse = await fetch(`${SUPABASE_URL}/storage/v1/object/inspection-photos/${fileName}`, {
+        // Bug 6 fix: Use per-photo metadata with backward-compatible defaults
+        const bucket = photo.storageBucket || 'inspection-photos';
+        const table = photo.tableName || 'inspection_photos';
+        const fkColumn = photo.foreignKeyColumn || 'inspection_id';
+        
+        // Bug 2 fix: Use pre-assigned photoUrl if available (includes user ID prefix)
+        // If no photoUrl, skip — we can't construct a valid RLS-compliant path without user ID
+        const fileExt = photo.fileName.split('.').pop();
+        let fileName;
+        if (photo.photoUrl && !photo.photoUrl.startsWith('pending/')) {
+          fileName = photo.photoUrl;
+        } else {
+          console.warn('[SW Sync] Skipping photo without valid pre-assigned path:', photo.id);
+          continue;
+        }
+        
+        const uploadResponse = await fetch(`${SUPABASE_URL}/storage/v1/object/${bucket}/${fileName}`, {
           method: 'POST',
           headers: {
             ...authHeaders,
-            'Content-Type': photo.blob.type
+            'Content-Type': photo.blob ? photo.blob.type : 'image/jpeg'
           },
           body: photo.blob
         });
@@ -423,18 +452,19 @@ async function syncPhotos() {
           continue;
         }
         
-        // Save metadata to database
-        const metadataResponse = await fetch(`${SUPABASE_URL}/rest/v1/inspection_photos`, {
+        // Save metadata to database using per-photo table/column
+        const metadataResponse = await fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
           method: 'POST',
           headers: {
             ...authHeaders,
             'Content-Type': 'application/json',
-            'Prefer': 'return=representation'
+            'Prefer': 'resolution=merge-duplicates,return=representation'
           },
           body: JSON.stringify({
-            inspection_id: photo.inspectionId,
+            [fkColumn]: photo.inspectionId,
             photo_url: fileName,
-            photo_section: photo.section
+            photo_section: photo.section,
+            caption: photo.caption || photo.section || 'Photo'
           })
         });
         
@@ -478,12 +508,21 @@ async function syncTrainingsAtomic() {
     return;
   }
   
+  // Bug 7 fix: Skip sync if main thread clients are active
+  const activeClients = await self.clients.matchAll({ type: 'window' });
+  if (activeClients.length > 0) {
+    console.log('[SW Atomic Sync] Main thread client active — deferring training sync to main thread');
+    return;
+  }
+  
   try {
     const db = await openDB(DB_NAME, DB_VERSION);
     const allTrainings = await getAllFromStore(db, 'trainings');
     const DRIFT_TOLERANCE_MS = 2000;
     const SW_BATCH_LIMIT = 5;
     const allUnsynced = allTrainings.filter(t => {
+      // Bug 3 fix: Skip temp-ID records
+      if (t.id && t.id.startsWith('temp-')) return false;
       if (!t.synced_at) return true;
       return (new Date(t.updated_at).getTime() - new Date(t.synced_at).getTime()) > DRIFT_TOLERANCE_MS;
     });
@@ -518,6 +557,9 @@ async function syncTrainingsAtomic() {
         
         const trainingData = { ...training };
         delete trainingData.synced_at;
+        // Bug 1 fix: Strip joined objects that would cause PostgREST errors
+        delete trainingData.inspector;
+        delete trainingData.trainer;
         
         const response = await fetch(`${SUPABASE_URL}/rest/v1/trainings`, {
           method: 'POST',
@@ -594,12 +636,21 @@ async function syncDailyAssessmentsAtomic() {
     return;
   }
   
+  // Bug 7 fix: Skip sync if main thread clients are active
+  const activeClients = await self.clients.matchAll({ type: 'window' });
+  if (activeClients.length > 0) {
+    console.log('[SW Atomic Sync] Main thread client active — deferring assessment sync to main thread');
+    return;
+  }
+  
   try {
     const db = await openDB(DB_NAME, DB_VERSION);
     const allAssessments = await getAllFromStore(db, 'daily_assessments');
     const DRIFT_TOLERANCE_MS = 2000;
     const SW_BATCH_LIMIT = 5;
     const allUnsynced = allAssessments.filter(a => {
+      // Bug 3 fix: Skip temp-ID records
+      if (a.id && a.id.startsWith('temp-')) return false;
       if (!a.synced_at) return true;
       return (new Date(a.updated_at).getTime() - new Date(a.synced_at).getTime()) > DRIFT_TOLERANCE_MS;
     });
@@ -634,6 +685,8 @@ async function syncDailyAssessmentsAtomic() {
         
         const assessmentData = { ...assessment };
         delete assessmentData.synced_at;
+        // Bug 1 fix: Strip joined objects that would cause PostgREST errors
+        delete assessmentData.inspector;
         
         const response = await fetch(`${SUPABASE_URL}/rest/v1/daily_assessments`, {
           method: 'POST',

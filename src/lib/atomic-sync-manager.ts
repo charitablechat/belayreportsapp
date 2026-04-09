@@ -174,7 +174,7 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
     
     // Auto-fix ownership for locally-created records, skip only for server-origin records
     if (inspection.inspector_id !== user.id) {
-      if (inspectionId.startsWith('temp-') || !inspection.synced_at) {
+      if (!inspection.synced_at) {
         console.log('[Atomic Sync] Auto-fixing inspector_id for local inspection:', {
           inspectionId,
           oldInspectorId: inspection.inspector_id?.substring(0, 8),
@@ -768,6 +768,14 @@ export async function syncAllInspectionsAtomic(preValidatedUser?: CachedUser) {
     return { total: -1, success: 0, failed: 0, errors: [{ id: 'indexeddb', error: 'Timeout fetching inspections' }] };
   }
   
+  // Early return for empty batch (consistent with trainings/assessments)
+  if (unsynced.length === 0) {
+    if (import.meta.env.DEV) {
+      console.log('[Atomic Sync] No inspections to sync');
+    }
+    return { total: 0, success: 0, failed: 0, errors: [] };
+  }
+  
   // Batch limiting: only process MAX_BATCH_SIZE items per cycle
   const totalUnsynced = unsynced.length;
   const batch = unsynced.slice(0, MAX_BATCH_SIZE);
@@ -982,7 +990,7 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
     
     // Auto-fix ownership for locally-created records, skip only for server-origin records
     if (training.inspector_id !== user.id) {
-      if (trainingId.startsWith('temp-') || !training.synced_at) {
+      if (!training.synced_at) {
         console.log('[Atomic Sync] Auto-fixing inspector_id for local training:', {
           trainingId,
           oldInspectorId: training.inspector_id?.substring(0, 8),
@@ -1698,7 +1706,7 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
     
     // Auto-fix ownership for locally-created records, skip only for server-origin records
     if (assessment.inspector_id !== user.id) {
-      if (assessmentId.startsWith('temp-') || !assessment.synced_at) {
+      if (!assessment.synced_at) {
         console.log('[Atomic Sync] Auto-fixing inspector_id for local assessment:', {
           assessmentId,
           oldInspectorId: assessment.inspector_id?.substring(0, 8),
