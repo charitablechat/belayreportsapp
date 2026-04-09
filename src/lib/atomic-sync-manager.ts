@@ -20,6 +20,8 @@ import {
   relinkPhotosToNewInspectionId,
   clearTrainingDataOffline,
   clearAssessmentDataOffline,
+  getQueuedTrainingOperations,
+  removeQueuedTrainingOperation,
 } from "./offline-storage";
 import { 
   validateInspectionPackage,
@@ -1367,6 +1369,24 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
         stepsCompleted: result.completedSteps,
         totalSteps: result.totalSteps,
       });
+    }
+    
+    // Clean up any queued training_operations entries for this training
+    // These are redundant now that the atomic sync has handled the data
+    try {
+      const queuedOps = await getQueuedTrainingOperations();
+      const matchingOps = queuedOps.filter(op => {
+        const opTrainingId = (op as any).trainingId || op.data?.id;
+        return opTrainingId === trainingId || (trainingIdMapping && opTrainingId === trainingIdMapping.oldId);
+      });
+      for (const op of matchingOps) {
+        await removeQueuedTrainingOperation(op.id!);
+      }
+      if (matchingOps.length > 0 && import.meta.env.DEV) {
+        console.log(`[Atomic Sync] Cleaned up ${matchingOps.length} orphaned training_operations entries for ${trainingId}`);
+      }
+    } catch (cleanupErr) {
+      console.warn('[Atomic Sync] Non-blocking: failed to clean training_operations queue:', cleanupErr);
     }
     
     return { success: true };
