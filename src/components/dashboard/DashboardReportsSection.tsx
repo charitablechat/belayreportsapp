@@ -522,7 +522,7 @@ export function DashboardReportsSection({
       ) : (
         /* Normal tab-based view */
         <Tabs value={activeReportTab} onValueChange={setActiveReportTab}>
-          <TabsList className="w-full sm:w-auto mb-4">
+          <TabsList className="w-full sm:w-auto mb-4 overflow-x-auto">
             <TabsTrigger value="inspections" className="flex items-center gap-2">
               <FileText className="w-4 h-4" />
               Inspections ({loading || (!totalInspections && inspections.length === 0) ? '…' : (totalInspections ?? inspections.length)})
