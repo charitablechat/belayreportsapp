@@ -481,12 +481,17 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
       const wasEdited = (updatedAt - createdAt) > 60000; // edited if updated > 60s after creation
 
       if (localIsCompletelyEmpty && wasEdited && ageMinutes > 5) {
-        console.warn('[SAFETY] suspicious_empty_guard: inspection was edited but all child data is empty', {
-          inspectionId: inspectionId.substring(0, 8),
-          ageMinutes: Math.round(ageMinutes),
-          updatedAt: inspection.updated_at,
-        });
-        return { success: false, skipped: true, reason: 'suspicious_empty' };
+        if (recordStatus?.record_exists && !recordStatus?.is_deleted) {
+          // Guard 1 already ran and didn't block — server is also empty. Allow sync.
+          console.log('[SYNC] suspicious_empty_guard: both local and server are empty, allowing sync for genuinely blank inspection', {
+            inspectionId: inspectionId.substring(0, 8),
+          });
+        } else {
+          // Record doesn't exist on server yet — new blank form, allow sync
+          console.log('[SYNC] suspicious_empty_guard: new inspection with no server data, allowing sync', {
+            inspectionId: inspectionId.substring(0, 8),
+          });
+        }
       }
     }
 
@@ -1215,12 +1220,17 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
       const wasEdited = (updatedAt - createdAt) > 60000;
 
       if (localIsCompletelyEmpty && wasEdited && ageMinutes > 5) {
-        console.warn('[SAFETY] suspicious_empty_guard: training was edited but all child data is empty', {
-          trainingId: trainingId.substring(0, 8),
-          ageMinutes: Math.round(ageMinutes),
-          updatedAt: training.updated_at,
-        });
-        return { success: false, skipped: true, reason: 'suspicious_empty' };
+        if (recordStatus?.record_exists && !recordStatus?.is_deleted) {
+          // Guard 1 already ran and didn't block — server is also empty. Allow sync.
+          console.log('[SYNC] suspicious_empty_guard: both local and server are empty, allowing sync for genuinely blank training', {
+            trainingId: trainingId.substring(0, 8),
+          });
+        } else {
+          // Record doesn't exist on server yet — new blank form, allow sync
+          console.log('[SYNC] suspicious_empty_guard: new training with no server data, allowing sync', {
+            trainingId: trainingId.substring(0, 8),
+          });
+        }
       }
     }
 

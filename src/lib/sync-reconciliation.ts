@@ -16,6 +16,7 @@ interface ReconcileOptions {
   localItems: Array<{ id?: string }>;
   reportType: 'inspection' | 'training' | 'daily_assessment';
   userId: string;
+  prefetchedServerRows?: any[]; // Pre-fetched server rows from Guard 1 to avoid duplicate fetch
 }
 
 /**
