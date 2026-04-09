@@ -1324,7 +1324,9 @@ export default function Dashboard() {
                 </Badge>
               )}
               
-              <NetworkQualityIndicator />
+              <div className="hidden sm:flex">
+                <NetworkQualityIndicator />
+              </div>
               
               {/* Visible Force Sync button for quick access */}
               <ForceSyncButton variant="icon" className="h-8 w-8" />
@@ -1498,10 +1500,12 @@ export default function Dashboard() {
             <Tabs value={reportSection} onValueChange={(v) => setReportSection(v as "recent" | "all")}>
               <TabsList className="mb-4 h-11">
                 <TabsTrigger value="recent" className="text-base font-semibold px-5 py-2">
-                  9 Most Recent Reports
+                  <span className="hidden sm:inline">9 Most Recent Reports</span>
+                  <span className="sm:hidden">Recent</span>
                 </TabsTrigger>
                 <TabsTrigger value="all" className="text-base font-semibold px-5 py-2">
-                  All Reports
+                  <span className="hidden sm:inline">All Reports</span>
+                  <span className="sm:hidden">All</span>
                 </TabsTrigger>
               </TabsList>
             </Tabs>
