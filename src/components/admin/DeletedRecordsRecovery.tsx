@@ -114,7 +114,7 @@ export function DeletedRecordsRecovery() {
     
     setActionLoading(record.record_id);
     try {
-      const { success, error } = await restoreRecord(
+      const { success, error, restoredRow } = await restoreRecord(
         record.table_name as SoftDeleteTable, 
         record.record_id
       );
@@ -123,6 +123,17 @@ export function DeletedRecordsRecovery() {
         toast.error(error || "Failed to restore record");
         return;
       }
+      
+      // Persist restore marker so Dashboard can hydrate immediately
+      try {
+        const marker = {
+          table: record.table_name,
+          recordId: record.record_id,
+          row: restoredRow || null,
+          ts: Date.now(),
+        };
+        sessionStorage.setItem('restored-report-marker', JSON.stringify(marker));
+      } catch {}
       
       toast.success("Record restored successfully");
       window.dispatchEvent(new CustomEvent('dashboard-stale'));
