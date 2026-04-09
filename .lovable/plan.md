@@ -1,47 +1,81 @@
 
 
-# Why "Ariel Crawler World" Still Doesn't Appear
+# Complete Sync Engine Audit — Remaining Gaps
 
-## Root Cause
+After a thorough review of `atomic-sync-manager.ts`, `useAutoSync.tsx`, `transaction-manager.ts`, `sync-reconciliation.ts`, and `offline-storage.ts`, here are all remaining issues that could stop or slow down syncing.
 
-The record is correctly restored in the database (`deleted_at = null`). The problem is **all 6 Supabase network queries are timing out after 15 seconds**, as shown in the console logs. The dashboard falls back to stale local cache, which doesn't contain this record (it was deleted before being cached).
+---
 
-Two compounding issues:
+## BUG 1: `isNewRecord` logic for inspections is broken (HIGH — causes unnecessary slowdown)
 
-1. **Blocked refresh**: While the first `refreshReports` is stuck waiting for timeouts (~23s total: 8s session + 15s queries), the `refreshInFlightRef` guard silently drops all subsequent refresh attempts — including the `dashboard-stale` event we just added.
+**File**: `src/lib/atomic-sync-manager.ts`, line 254
 
-2. **No stale-data indicator**: When network fails, users see cached data with no warning that results may be incomplete.
+```js
+const isNewRecord = !inspection.synced_at && !inspectionIdMapping?.oldId?.startsWith('temp-') === false;
+```
 
-## Fix
+Due to JS operator precedence, `!x === false` evaluates as `(!x) === false`, not `!(x === false)`. This means:
 
-### 1. Prevent refresh stacking from blocking restore visibility
+- **Non-temp inspections with no `synced_at`** (e.g., a new inspection created online with a real UUID): `isNewRecord` evaluates to `false`, so it makes an unnecessary `checkRemoteRecordStatus` RPC call + 5 rollback fetches (~6 extra network requests)
+- Trainings (line 1048) and assessments (line 1745) use the correct `!training.synced_at` — only inspections have this bug
 
-**File: `src/pages/Dashboard.tsx`**
+**Fix**: Replace with `const isNewRecord = !inspection.synced_at;` (same as trainings/assessments). The temp-ID mapping is already handled separately.
 
-When `refreshInFlightRef` blocks a `dashboard-stale` triggered refresh, queue it so it runs immediately after the current in-flight refresh completes, rather than being silently dropped.
+---
 
-Add a `pendingRefreshRef` flag:
-- When `refreshReports` is called while in-flight, set `pendingRefreshRef.current = true`
-- In the `finally` block after clearing `refreshInFlightRef`, check `pendingRefreshRef` and re-trigger if set
+## BUG 2: `getUnsyncedInspections` uses `getAll()` full-table scan (MEDIUM — Safari timeouts)
 
-### 2. Show network status feedback when queries fail
+**File**: `src/lib/offline-storage.ts`, line 906
 
-**File: `src/pages/Dashboard.tsx`**
+The memory documents that index-based queries (`by-synced`) should be used instead of `getAll()` to avoid Safari's 5-second timeout on large stores. But `getUnsyncedInspections` (and the training/assessment equivalents) still do:
 
-Track when all network queries have timed out and show a subtle banner: "Unable to reach server — showing cached data. Pull to refresh."
+```js
+const allInspections = await db.getAll('inspections');
+let unsynced = allInspections.filter(...)
+```
 
-This tells users that search results may be incomplete, prompting a manual retry.
+This loads **all** records into memory, then filters client-side. For users with 100+ records, this can trigger Safari's IDB timeout and cause the circuit breaker to trip, blocking all syncing.
 
-### 3. Investigate query timeout root cause
+The `getUnsyncedCounts` (line 1982) has the same issue — it calls `getAll()` on all three stores sequentially.
 
-The queries are lean (no `latest_report_html`), so 15s timeouts suggest a transient network or Supabase connectivity issue in the preview environment. No code change needed, but worth monitoring. If persistent, consider:
-- Reducing the session validation timeout from 8s to 4s
-- Running the 3 `load*` functions with independent session checks so one slow query doesn't block the others (they already run in `Promise.all`, but they share the same `sessionValid` gate)
+**Fix**: Use the `by-synced` index to query only unsynced records directly from IndexedDB, avoiding the full scan.
 
-## Summary of Changes
+---
 
-| File | Change |
-|------|--------|
-| `src/pages/Dashboard.tsx` | Queue pending refresh when in-flight refresh blocks a new request |
-| `src/pages/Dashboard.tsx` | Add stale-data indicator when all network queries time out |
+## GAP 3: Sequential sync across all 3 types (MEDIUM — slowdown)
+
+**File**: `src/hooks/useAutoSync.tsx`, lines 245-251
+
+Inspections, trainings, and assessments are synced sequentially:
+```js
+const inspResult = await syncAllInspectionsAtomic(validatedUser);
+await yieldToUI();
+const trainResult = await syncAllTrainingsAtomic(validatedUser);
+await yieldToUI();
+const assessResult = await syncAllDailyAssessmentsAtomic(validatedUser);
+```
+
+If a user has 5 inspections + 5 trainings + 5 assessments (15 items), these process sequentially across types. Since they hit different tables with no shared state, they could be parallelized at the type level (while keeping per-item serialization within each type).
+
+However, this is intentionally sequential to avoid overwhelming mobile connections — **recommend keeping as-is** with a note. This is not a bug.
+
+---
+
+## GAP 4: `field_count_regression` guard has no escape hatch (LOW — potential stuck loop)
+
+**File**: `src/lib/atomic-sync-manager.ts`, lines 366-381, 1111-1128, 1808-1825
+
+If a record's field count drops >50% (e.g., user legitimately deletes most child rows), the sync is permanently blocked with `skipped: true, reason: 'field_count_regression'`. Like the old `suspicious_empty_guard`, this has no max-skip counter. A record caught by this guard will be retried and skipped every cycle indefinitely.
+
+**Fix**: Add a skip counter (in-memory Map) — after 3 consecutive skips for the same record, allow the sync to proceed. The version snapshot already captures pre-sync state for recovery.
+
+---
+
+## Summary of Proposed Changes
+
+| # | File | Change | Priority |
+|---|------|--------|----------|
+| 1 | `src/lib/atomic-sync-manager.ts` (line 254) | Fix `isNewRecord` operator precedence bug | HIGH |
+| 2 | `src/lib/offline-storage.ts` | Replace `getAll()` with index-based queries for unsynced detection | MEDIUM |
+| 3 | `src/lib/atomic-sync-manager.ts` | Add skip counter to `field_count_regression` guard | LOW |
 
