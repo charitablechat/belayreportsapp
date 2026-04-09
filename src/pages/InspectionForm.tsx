@@ -50,7 +50,7 @@ import { ForceSyncButton } from "@/components/pwa/ForceSyncButton";
 import { convertCircleBulletsToHtml } from "@/lib/bullet-converter";
 import { getUserWithCache, getOfflineUserId, ensureValidSession } from "@/lib/cached-auth";
 import { HtmlReportViewer } from "@/components/HtmlReportViewer";
-import { openHtmlReport } from "@/lib/html-report-viewer";
+
 import { useKeyboardAvoidance } from "@/hooks/useKeyboardAvoidance";
 import { useScrollBoundaryDetection } from "@/hooks/useScrollBoundaryDetection";
 import { useReportSync } from "@/hooks/useReportSync";
@@ -2364,16 +2364,9 @@ export default function InspectionForm() {
       const filename = `inspection-report-${inspection?.organization || 'report'}-${new Date().toISOString().split('T')[0]}.html`;
       const title = `Inspection Report - ${inspection?.organization || 'Report'}`;
 
-      // Try to open in new window (desktop)
-      const opened = openHtmlReport({ html, filename, title });
-
-      // If failed (mobile/PWA/popup blocked), use in-app viewer
-      if (!opened) {
-        setReportHtml(html);
-        setHtmlViewerOpen(true);
-      } else if (import.meta.env.DEV) {
-        console.log('[HTML Generation] Report opened successfully');
-      }
+      // Always use in-app viewer for consistent Save PDF + Close buttons
+      setReportHtml(html);
+      setHtmlViewerOpen(true);
     } catch (error: any) {
       console.error('[HTML Generation] Error:', error.message || error);
       

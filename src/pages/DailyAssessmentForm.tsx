@@ -38,7 +38,7 @@ import EnvironmentChecksSection from "@/components/daily-assessment/EnvironmentC
 import PhotoCapture from "@/components/PhotoCapture";
 import PhotoGallery from "@/components/PhotoGallery";
 import { HtmlReportViewer } from "@/components/HtmlReportViewer";
-import { openHtmlReport } from "@/lib/html-report-viewer";
+
 import { triggerCompletionConfetti } from "@/lib/confetti";
 import { triggerHaptic } from "@/lib/haptics";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -1327,14 +1327,9 @@ export default function DailyAssessmentForm() {
       const filename = `daily-assessment-${assessment?.site || 'report'}-${new Date().toISOString().split('T')[0]}.html`;
       const title = `Daily Assessment - ${assessment?.site || 'Report'}`;
 
-      // Try to open in new window (desktop)
-      const opened = openHtmlReport({ html, filename, title });
-
-      // If failed (mobile/PWA/popup blocked), use in-app viewer
-      if (!opened) {
-        setReportHtml(html);
-        setViewerOpen(true);
-      }
+      // Always use in-app viewer for consistent Save PDF + Close buttons
+      setReportHtml(html);
+      setViewerOpen(true);
     } catch (error: any) {
       console.error('[Report Generation] Error:', error.message || error);
       

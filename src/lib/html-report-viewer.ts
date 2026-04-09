@@ -3,40 +3,6 @@
  * Handles cross-platform HTML report viewing
  */
 
-export interface ViewerOptions {
-  html: string;
-  filename: string;
-  title: string;
-}
-
-/**
- * Open HTML report with appropriate method based on platform
- * Returns true if viewer was opened successfully, false otherwise
- */
-export function openHtmlReport(options: ViewerOptions): boolean {
-  const { html, title } = options;
-
-  try {
-    const newWindow = window.open('', '_blank');
-    
-    if (!newWindow) {
-      return false;
-    }
-
-    newWindow.document.open();
-    newWindow.document.write(html);
-    newWindow.document.close();
-    
-    if (newWindow.document.title) {
-      newWindow.document.title = title;
-    }
-
-    return true;
-  } catch (error) {
-    console.error('[HTMLViewer] Failed to open in new window:', error);
-    return false;
-  }
-}
 
 /**
  * Download HTML report as a file (opens print dialog)
