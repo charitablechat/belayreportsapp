@@ -80,13 +80,26 @@ export function DashboardReportsSection({
   const [statsFilter, setStatsFilter] = useState<string | null>(null);
   const prevTabRef = useRef(activeReportTab);
 
+  // Build invoiced reports list for the Invoiced tab (admin only)
+  const invoicedReports = useMemo(() => {
+    if (!isSuperAdmin || !invoicedReportIds || invoicedReportIds.size === 0) return [];
+    const all: { report: any; type: 'inspection' | 'training' | 'daily' }[] = [];
+    for (const r of inspections) {
+      if (invoicedReportIds.has(r.id)) all.push({ report: r, type: 'inspection' });
+    }
+    for (const r of trainings) {
+      if (invoicedReportIds.has(r.id)) all.push({ report: r, type: 'training' });
+    }
+    for (const r of dailyAssessments) {
+      if (invoicedReportIds.has(r.id)) all.push({ report: r, type: 'daily' });
+    }
+    return all;
+  }, [isSuperAdmin, invoicedReportIds, inspections, trainings, dailyAssessments]);
+
   const currentReports = activeReportTab === 'inspections' ? inspections
     : activeReportTab === 'training' ? trainings
+    : activeReportTab === 'invoiced' ? invoicedReports.map(r => r.report)
     : dailyAssessments;
-
-  const currentType = (activeReportTab === 'inspections' ? 'inspection'
-    : activeReportTab === 'training' ? 'training'
-    : 'daily') as 'inspection' | 'training' | 'daily';
 
   const statuses = useMemo(() => [...new Set(currentReports.map(r => r.status).filter(Boolean))], [currentReports]);
 
