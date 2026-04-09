@@ -904,32 +904,17 @@ export async function getUnsyncedInspections(userId?: string) {
     async () => {
       const db = await getDB();
       
-      // Use by-synced index: records with synced_at = undefined/null are keyed as undefined
-      // This avoids a full-table scan that can trigger Safari's 5s IDB timeout
-      const neverSynced = await db.getAllFromIndex('inspections', 'by-synced', IDBKeyRange.only(undefined as any));
-      
-      // Drift detection: use cursor over by-synced index for synced records only
-      // Avoids full-table getAll() that triggers Safari's 5s IDB timeout
-      const driftUnsynced: typeof neverSynced = [];
-      const seenIds = new Set(neverSynced.map(i => i.id));
-      const tx = db.transaction('inspections', 'readonly');
-      const index = tx.store.index('by-synced');
-      // Open cursor for records that HAVE a synced_at value (exclude undefined)
-      let cursor = await index.openCursor(IDBKeyRange.lowerBound('', true));
-      while (cursor) {
-        const record = cursor.value;
-        if (record.updated_at && record.synced_at) {
+      // Simple getAll() + filter — reliable across all browsers.
+      // These stores typically hold <100 records so full scans are fast.
+      const all = await db.getAll('inspections');
+      let unsynced = all.filter(record => {
+        if (!record.synced_at) return true; // never synced
+        if (record.updated_at) {
           const drift = new Date(record.updated_at).getTime() - new Date(record.synced_at).getTime();
-          if (drift > 2000 && !seenIds.has(record.id)) {
-            driftUnsynced.push(record);
-            seenIds.add(record.id);
-          }
+          return drift > 2000;
         }
-        cursor = await cursor.continue();
-      }
-      await tx.done;
-      
-      let unsynced = [...neverSynced, ...driftUnsynced];
+        return false;
+      });
       
       if (userId) {
         const owned = unsynced.filter(i => i.inspector_id === userId);
@@ -1621,29 +1606,15 @@ export async function getUnsyncedDailyAssessments(userId?: string) {
     async () => {
       const db = await getDB();
       
-      // Use by-synced index to avoid full-table scan (Safari 5s timeout protection)
-      const neverSynced = await db.getAllFromIndex('daily_assessments', 'by-synced', IDBKeyRange.only(undefined as any));
-      
-      // Drift detection via cursor — avoids full-table getAll()
-      const driftUnsynced: typeof neverSynced = [];
-      const seenIds = new Set(neverSynced.map(a => a.id));
-      const tx = db.transaction('daily_assessments', 'readonly');
-      const index = tx.store.index('by-synced');
-      let cursor = await index.openCursor(IDBKeyRange.lowerBound('', true));
-      while (cursor) {
-        const record = cursor.value;
-        if (record.updated_at && record.synced_at) {
+      const all = await db.getAll('daily_assessments');
+      let unsynced = all.filter(record => {
+        if (!record.synced_at) return true;
+        if (record.updated_at) {
           const drift = new Date(record.updated_at).getTime() - new Date(record.synced_at).getTime();
-          if (drift > 2000 && !seenIds.has(record.id)) {
-            driftUnsynced.push(record);
-            seenIds.add(record.id);
-          }
+          return drift > 2000;
         }
-        cursor = await cursor.continue();
-      }
-      await tx.done;
-      
-      let unsynced = [...neverSynced, ...driftUnsynced];
+        return false;
+      });
       
       if (userId) {
         const owned = unsynced.filter(a => a.inspector_id === userId);
@@ -1954,29 +1925,15 @@ export async function getUnsyncedTrainings(userId?: string) {
     async () => {
       const db = await getDB();
       
-      // Use by-synced index to avoid full-table scan (Safari 5s timeout protection)
-      const neverSynced = await db.getAllFromIndex('trainings', 'by-synced', IDBKeyRange.only(undefined as any));
-      
-      // Drift detection via cursor — avoids full-table getAll()
-      const driftUnsynced: typeof neverSynced = [];
-      const seenIds = new Set(neverSynced.map(t => t.id));
-      const tx = db.transaction('trainings', 'readonly');
-      const index = tx.store.index('by-synced');
-      let cursor = await index.openCursor(IDBKeyRange.lowerBound('', true));
-      while (cursor) {
-        const record = cursor.value;
-        if (record.updated_at && record.synced_at) {
+      const all = await db.getAll('trainings');
+      let unsynced = all.filter(record => {
+        if (!record.synced_at) return true;
+        if (record.updated_at) {
           const drift = new Date(record.updated_at).getTime() - new Date(record.synced_at).getTime();
-          if (drift > 2000 && !seenIds.has(record.id)) {
-            driftUnsynced.push(record);
-            seenIds.add(record.id);
-          }
+          return drift > 2000;
         }
-        cursor = await cursor.continue();
-      }
-      await tx.done;
-      
-      let unsynced = [...neverSynced, ...driftUnsynced];
+        return false;
+      });
       
       if (userId) {
         const owned = unsynced.filter(t => t.inspector_id === userId);
@@ -2017,26 +1974,13 @@ export async function getUnsyncedCounts(userId?: string): Promise<{
       const db = await getDB();
       
       const getUnsyncedFromStore = async (storeName: 'inspections' | 'trainings' | 'daily_assessments', ownerField = 'inspector_id') => {
-        // Use by-synced index for never-synced records (avoids full-table scan)
-        const neverSynced = await db.getAllFromIndex(storeName, 'by-synced', IDBKeyRange.only(undefined as any));
-        
-        // For drift detection we still need all records with synced_at set
         const allItems = await db.getAll(storeName);
-        const driftUnsynced = allItems.filter(i => {
-          if (!i.synced_at) return false;
+        let unsynced = allItems.filter(i => {
+          if (!i.synced_at) return true;
           if (!i.updated_at) return false;
           const drift = new Date(i.updated_at).getTime() - new Date(i.synced_at).getTime();
           return drift > 2000;
         });
-        
-        const seen = new Set(neverSynced.map(i => i.id));
-        let unsynced = [...neverSynced];
-        for (const item of driftUnsynced) {
-          if (!seen.has(item.id)) {
-            unsynced.push(item);
-            seen.add(item.id);
-          }
-        }
         
         if (userId) {
           const owned = unsynced.filter(i => i[ownerField] === userId);
