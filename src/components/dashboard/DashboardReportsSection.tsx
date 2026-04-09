@@ -74,6 +74,7 @@ interface DashboardReportsSectionProps {
   setDeleteDialogOpen: (open: boolean) => void;
   invoicedReportIds?: Set<string>;
   onToggleInvoiced?: (report: any, type: DashboardReportType) => void;
+  invoicedCount?: number;
 }
 
 export function DashboardReportsSection({
@@ -98,6 +99,7 @@ export function DashboardReportsSection({
   setDeleteDialogOpen,
   invoicedReportIds,
   onToggleInvoiced,
+  invoicedCount,
 }: DashboardReportsSectionProps) {
   const [showFilters, setShowFilters] = useState(false);
   const [compact, setCompact] = useState(false);
@@ -458,7 +460,7 @@ export function DashboardReportsSection({
             {isSuperAdmin && (
               <TabsTrigger value="invoiced" className="flex items-center gap-2">
                 <Receipt className="w-4 h-4" />
-                Invoiced ({invoicedReports.length})
+                Invoiced ({invoicedCount ?? invoicedReports.length})
               </TabsTrigger>
             )}
           </TabsList>

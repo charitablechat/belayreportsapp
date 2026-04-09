@@ -1383,6 +1383,10 @@ export default function Dashboard() {
               const dashboardTrainings = activeReportTab === 'invoiced' ? trainings : baseTrainings;
               const dashboardDailyAssessments = activeReportTab === 'invoiced' ? dailyAssessments : baseDailyAssessments;
 
+              const invoicedCount = isSuperAdmin && invoicedReportIds.size > 0
+                ? [...inspections, ...trainings, ...dailyAssessments].filter(r => invoicedReportIds.has(r.id)).length
+                : 0;
+
               return (
                 <DashboardReportsSection
                   inspections={dashboardInspections}
@@ -1391,6 +1395,7 @@ export default function Dashboard() {
                   totalInspections={dataValidated ? inspections.length : undefined}
                   totalTrainings={dataValidated ? trainings.length : undefined}
                   totalDailyAssessments={dataValidated ? dailyAssessments.length : undefined}
+                  invoicedCount={invoicedCount}
                   activeReportTab={activeReportTab}
                   setActiveReportTab={setActiveReportTab}
                   loading={loading}
