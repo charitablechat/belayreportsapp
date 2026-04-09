@@ -16,6 +16,7 @@ interface BackupNotificationProps {
   denormalizedReports?: number
   pdfsGenerated?: number
   pdfsNoSource?: number
+}
 
 const BackupNotificationEmail = ({
   timestamp = 'Wednesday, April 2, 2026 at 8:00 PM ET',
