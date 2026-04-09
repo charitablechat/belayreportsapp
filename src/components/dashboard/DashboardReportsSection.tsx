@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { FileText, GraduationCap, ChevronDown, ChevronRight, X, Filter, Minimize2, Maximize2, Search } from "lucide-react";
+import { FileText, GraduationCap, ChevronDown, ChevronRight, X, Filter, Minimize2, Maximize2, Search, Receipt } from "lucide-react";
 import { ReportCard } from "@/components/dashboard/ReportCard";
 import { ReportCardSkeleton } from "@/components/dashboard/ReportCardSkeleton";
 import { ReportListView } from "@/components/dashboard/ReportListView";
@@ -48,6 +48,8 @@ interface DashboardReportsSectionProps {
   setInspectionToDelete: (report: any) => void;
   setReportToDelete: (report: any) => void;
   setDeleteDialogOpen: (open: boolean) => void;
+  invoicedReportIds?: Set<string>;
+  onToggleInvoiced?: (report: any, type: 'inspection' | 'training' | 'daily') => void;
 }
 
 export function DashboardReportsSection({
@@ -70,18 +72,38 @@ export function DashboardReportsSection({
   setInspectionToDelete,
   setReportToDelete,
   setDeleteDialogOpen,
+  invoicedReportIds,
+  onToggleInvoiced,
 }: DashboardReportsSectionProps) {
   const [showFilters, setShowFilters] = useState(false);
   const [compact, setCompact] = useState(false);
   const [statsFilter, setStatsFilter] = useState<string | null>(null);
   const prevTabRef = useRef(activeReportTab);
 
+  // Build invoiced reports list for the Invoiced tab (admin only)
+  const invoicedReports = useMemo(() => {
+    if (!isSuperAdmin || !invoicedReportIds || invoicedReportIds.size === 0) return [];
+    const all: { report: any; type: 'inspection' | 'training' | 'daily' }[] = [];
+    for (const r of inspections) {
+      if (invoicedReportIds.has(r.id)) all.push({ report: r, type: 'inspection' });
+    }
+    for (const r of trainings) {
+      if (invoicedReportIds.has(r.id)) all.push({ report: r, type: 'training' });
+    }
+    for (const r of dailyAssessments) {
+      if (invoicedReportIds.has(r.id)) all.push({ report: r, type: 'daily' });
+    }
+    return all;
+  }, [isSuperAdmin, invoicedReportIds, inspections, trainings, dailyAssessments]);
+
   const currentReports = activeReportTab === 'inspections' ? inspections
     : activeReportTab === 'training' ? trainings
+    : activeReportTab === 'invoiced' ? invoicedReports.map(r => r.report)
     : dailyAssessments;
 
   const currentType = (activeReportTab === 'inspections' ? 'inspection'
     : activeReportTab === 'training' ? 'training'
+    : activeReportTab === 'invoiced' ? 'inspection'
     : 'daily') as 'inspection' | 'training' | 'daily';
 
   const statuses = useMemo(() => [...new Set(currentReports.map(r => r.status).filter(Boolean))], [currentReports]);
@@ -399,10 +421,16 @@ export function DashboardReportsSection({
               <FileText className="w-4 h-4" />
               Daily ({loading || (!totalDailyAssessments && dailyAssessments.length === 0) ? '…' : (totalDailyAssessments ?? dailyAssessments.length)})
             </TabsTrigger>
+            {isSuperAdmin && invoicedReports.length > 0 && (
+              <TabsTrigger value="invoiced" className="flex items-center gap-2">
+                <Receipt className="w-4 h-4" />
+                Invoiced ({invoicedReports.length})
+              </TabsTrigger>
+            )}
           </TabsList>
 
           {/* Content for all tabs - rendered by the same logic */}
-          {['inspections', 'training', 'daily'].map((tab) => (
+          {['inspections', 'training', 'daily', ...(isSuperAdmin ? ['invoiced'] : [])].map((tab) => (
             <TabsContent key={tab} value={tab}>
               {loading ? (
                 <div className="grid gap-4">
@@ -473,17 +501,25 @@ export function DashboardReportsSection({
                                 />
                               ) : (
                                 <div className={gridClass}>
-                                  {group.items.map((report: any) => (
-                                    <ReportCard
-                                      key={report.id}
-                                      report={report}
-                                      type={currentType}
-                                      onDelete={handleDelete}
-                                      onClick={handleClick}
-                                      getStatusBadge={currentType === 'inspection' ? getStatusBadge : undefined}
-                                      compact={compact}
-                                    />
-                                  ))}
+                                  {group.items.map((report: any) => {
+                                    const effectiveType = activeReportTab === 'invoiced'
+                                      ? (invoicedReports.find(ir => ir.report.id === report.id)?.type || currentType)
+                                      : currentType;
+                                    return (
+                                      <ReportCard
+                                        key={report.id}
+                                        report={report}
+                                        type={effectiveType}
+                                        onDelete={handleDelete}
+                                        onClick={(r) => handleClick(r, effectiveType)}
+                                        getStatusBadge={effectiveType === 'inspection' ? getStatusBadge : undefined}
+                                        compact={compact}
+                                        isAdmin={isSuperAdmin}
+                                        isInvoiced={invoicedReportIds?.has(report.id)}
+                                        onToggleInvoiced={onToggleInvoiced}
+                                      />
+                                    );
+                                  })}
                                 </div>
                               )}
                             </CollapsibleContent>
@@ -498,17 +534,25 @@ export function DashboardReportsSection({
                             />
                           ) : (
                             <div className={gridClass}>
-                              {group.items.map((report: any) => (
-                                <ReportCard
-                                  key={report.id}
-                                  report={report}
-                                  type={currentType}
-                                  onDelete={handleDelete}
-                                  onClick={handleClick}
-                                  getStatusBadge={currentType === 'inspection' ? getStatusBadge : undefined}
-                                  compact={compact}
-                                />
-                              ))}
+                              {group.items.map((report: any) => {
+                                const effectiveType = activeReportTab === 'invoiced'
+                                  ? (invoicedReports.find(ir => ir.report.id === report.id)?.type || currentType)
+                                  : currentType;
+                                return (
+                                  <ReportCard
+                                    key={report.id}
+                                    report={report}
+                                    type={effectiveType}
+                                    onDelete={handleDelete}
+                                    onClick={(r) => handleClick(r, effectiveType)}
+                                    getStatusBadge={effectiveType === 'inspection' ? getStatusBadge : undefined}
+                                    compact={compact}
+                                    isAdmin={isSuperAdmin}
+                                    isInvoiced={invoicedReportIds?.has(report.id)}
+                                    onToggleInvoiced={onToggleInvoiced}
+                                  />
+                                );
+                              })}
                             </div>
                           )
                         )}
