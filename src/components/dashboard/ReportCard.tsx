@@ -166,7 +166,7 @@ export function ReportCard({ report, type, onDelete, onClick, getStatusBadge, co
             COMPLETED
           </span>
           {isAdmin && isInvoiced && (
-            <span className="absolute backdrop-blur-sm bg-emerald-500/10 border border-emerald-400/30 rounded-lg px-4 py-2 text-emerald-600 dark:text-emerald-400 text-4xl md:text-5xl font-bold tracking-wider rotate-[25deg] select-none whitespace-nowrap shadow-[0_0_20px_rgba(16,185,129,0.25)] animate-pulse-calm">
+            <span className="absolute backdrop-blur-sm bg-red-500/10 border border-red-400/30 rounded-lg px-4 py-2 text-red-600 dark:text-red-400 text-4xl md:text-5xl font-bold tracking-wider rotate-[25deg] select-none whitespace-nowrap shadow-[0_0_20px_rgba(239,68,68,0.25)] animate-pulse-calm">
               INVOICED
             </span>
           )}
