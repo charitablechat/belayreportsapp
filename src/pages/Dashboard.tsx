@@ -133,8 +133,11 @@ export default function Dashboard() {
 
   // Deduplication & throttle refs for refreshReports
   const refreshInFlightRef = React.useRef(false);
+  const pendingRefreshRef = React.useRef(false);
   const lastRefreshTsRef = React.useRef(0);
   const REFRESH_THROTTLE_MS = 3000;
+  const [showStaleDataBanner, setShowStaleDataBanner] = useState(false);
+  const networkFailCountRef = React.useRef(0);
 
   
   // Build unique inspector list from report data
