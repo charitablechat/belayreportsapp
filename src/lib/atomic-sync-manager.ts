@@ -725,7 +725,7 @@ export async function syncAllInspectionsAtomic(preValidatedUser?: CachedUser) {
     try {
       user = await Promise.race([
         ensureValidSession(),
-        new Promise<null>((_, reject) => setTimeout(() => reject(new Error('Auth timeout')), 5000))
+        new Promise<null>((_, reject) => setTimeout(() => reject(new Error('Auth timeout')), 8000))
       ]);
     } catch (e) {
       console.warn('[Atomic Sync] Session validation timed out, skipping sync');
@@ -1502,7 +1502,7 @@ export async function syncAllTrainingsAtomic(preValidatedUser?: CachedUser) {
     try {
       user = await Promise.race([
         ensureValidSession(),
-        new Promise<null>((_, reject) => setTimeout(() => reject(new Error('Auth timeout')), 5000))
+        new Promise<null>((_, reject) => setTimeout(() => reject(new Error('Auth timeout')), 8000))
       ]);
     } catch (e) {
       console.warn('[Atomic Sync] Session validation timed out for trainings, skipping');
@@ -2208,7 +2208,7 @@ export async function syncAllDailyAssessmentsAtomic(preValidatedUser?: CachedUse
     try {
       user = await Promise.race([
         ensureValidSession(),
-        new Promise<null>((_, reject) => setTimeout(() => reject(new Error('Auth timeout')), 5000))
+        new Promise<null>((_, reject) => setTimeout(() => reject(new Error('Auth timeout')), 8000))
       ]);
     } catch (e) {
       console.warn('[Atomic Sync] Session validation timed out for assessments, skipping');

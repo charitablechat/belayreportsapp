@@ -145,7 +145,7 @@ export const useAutoSync = () => {
     try {
       validatedUser = await Promise.race([
         ensureValidSession(),
-        new Promise<null>((_, reject) => setTimeout(() => reject(new Error('Auth timeout')), 5000))
+        new Promise<null>((_, reject) => setTimeout(() => reject(new Error('Auth timeout')), 8000))
       ]);
     } catch (e) {
       console.warn('[AutoSync] Session validation timed out, skipping sync');
