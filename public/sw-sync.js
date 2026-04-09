@@ -133,13 +133,14 @@ function updateInStore(db, storeName, item) {
   });
 }
 
-// Helper to get related data by inspection_id
-async function getAllRelatedData(db, storeName, inspectionId) {
+// Helper to get related data by parent ID using the correct index
+async function getAllRelatedData(db, storeName, parentId, indexName) {
+  indexName = indexName || 'by-inspection';
   return new Promise((resolve, reject) => {
     const transaction = db.transaction([storeName], 'readonly');
     const store = transaction.objectStore(storeName);
-    const index = store.index('by-inspection');
-    const request = index.getAll(inspectionId);
+    const index = store.index(indexName);
+    const request = index.getAll(parentId);
     request.onsuccess = () => resolve(request.result || []);
     request.onerror = () => reject(request.error);
   });
@@ -535,12 +536,12 @@ async function syncTrainingsAtomic() {
     
     for (const training of unsynced) {
       try {
-        const deliveryApproaches = await getAllRelatedData(db, 'training_delivery_approaches', training.id).catch(() => []);
-        const operatingSystems = await getAllRelatedData(db, 'training_operating_systems', training.id).catch(() => []);
-        const immediateAttention = await getAllRelatedData(db, 'training_immediate_attention', training.id).catch(() => []);
-        const verifiableItems = await getAllRelatedData(db, 'training_verifiable_items', training.id).catch(() => []);
-        const systemsInPlace = await getAllRelatedData(db, 'training_systems_in_place', training.id).catch(() => []);
-        const summaryArray = await getAllRelatedData(db, 'training_summary', training.id).catch(() => []);
+        const deliveryApproaches = await getAllRelatedData(db, 'training_delivery_approaches', training.id, 'by-training').catch(() => []);
+        const operatingSystems = await getAllRelatedData(db, 'training_operating_systems', training.id, 'by-training').catch(() => []);
+        const immediateAttention = await getAllRelatedData(db, 'training_immediate_attention', training.id, 'by-training').catch(() => []);
+        const verifiableItems = await getAllRelatedData(db, 'training_verifiable_items', training.id, 'by-training').catch(() => []);
+        const systemsInPlace = await getAllRelatedData(db, 'training_systems_in_place', training.id, 'by-training').catch(() => []);
+        const summaryArray = await getAllRelatedData(db, 'training_summary', training.id, 'by-training').catch(() => []);
         
         const trainingChildEmpty = deliveryApproaches.length === 0 && operatingSystems.length === 0 && 
           immediateAttention.length === 0 && verifiableItems.length === 0 && 
@@ -663,12 +664,12 @@ async function syncDailyAssessmentsAtomic() {
     
     for (const assessment of unsynced) {
       try {
-        const beginningOfDay = await getAllRelatedData(db, 'daily_assessment_beginning_of_day', assessment.id).catch(() => []);
-        const endOfDay = await getAllRelatedData(db, 'daily_assessment_end_of_day', assessment.id).catch(() => []);
-        const environmentChecks = await getAllRelatedData(db, 'daily_assessment_environment_checks', assessment.id).catch(() => []);
-        const equipmentChecks = await getAllRelatedData(db, 'daily_assessment_equipment_checks', assessment.id).catch(() => []);
-        const structureChecks = await getAllRelatedData(db, 'daily_assessment_structure_checks', assessment.id).catch(() => []);
-        const operatingSystems = await getAllRelatedData(db, 'daily_assessment_operating_systems', assessment.id).catch(() => []);
+        const beginningOfDay = await getAllRelatedData(db, 'daily_assessment_beginning_of_day', assessment.id, 'by-assessment').catch(() => []);
+        const endOfDay = await getAllRelatedData(db, 'daily_assessment_end_of_day', assessment.id, 'by-assessment').catch(() => []);
+        const environmentChecks = await getAllRelatedData(db, 'daily_assessment_environment_checks', assessment.id, 'by-assessment').catch(() => []);
+        const equipmentChecks = await getAllRelatedData(db, 'daily_assessment_equipment_checks', assessment.id, 'by-assessment').catch(() => []);
+        const structureChecks = await getAllRelatedData(db, 'daily_assessment_structure_checks', assessment.id, 'by-assessment').catch(() => []);
+        const operatingSystems = await getAllRelatedData(db, 'daily_assessment_operating_systems', assessment.id, 'by-assessment').catch(() => []);
         
         const assessmentChildEmpty = beginningOfDay.length === 0 && endOfDay.length === 0 && 
           environmentChecks.length === 0 && equipmentChecks.length === 0 && 
