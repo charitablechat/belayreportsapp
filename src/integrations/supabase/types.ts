@@ -1294,6 +1294,30 @@ export type Database = {
           },
         ]
       }
+      invoiced_reports: {
+        Row: {
+          id: string
+          invoiced_at: string
+          invoiced_by: string | null
+          report_id: string
+          report_type: string
+        }
+        Insert: {
+          id?: string
+          invoiced_at?: string
+          invoiced_by?: string | null
+          report_id: string
+          report_type: string
+        }
+        Update: {
+          id?: string
+          invoiced_at?: string
+          invoiced_by?: string | null
+          report_id?: string
+          report_type?: string
+        }
+        Relationships: []
+      }
       migration_audit: {
         Row: {
           backup_table_name: string | null
