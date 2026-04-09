@@ -2780,7 +2780,7 @@ export default function InspectionForm() {
                       size="sm"
                       onClick={toggleInvoiced}
                       disabled={invoiceToggling}
-                      className={isInvoiced ? "text-destructive border-destructive hover:text-destructive" : ""}
+                      className={isInvoiced ? "bg-emerald-500/15 backdrop-blur-md border-emerald-400/30 text-emerald-600 dark:text-emerald-400 shadow-[0_0_12px_rgba(16,185,129,0.2)] hover:bg-emerald-500/25 hover:text-emerald-700 dark:hover:text-emerald-300 animate-pulse-calm" : ""}
                     >
                       <Receipt className="w-4 h-4" />
                       <span className="hidden md:inline ml-2">{isInvoiced ? "Invoiced ✓" : "Invoiced"}</span>
