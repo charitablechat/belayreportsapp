@@ -1666,6 +1666,18 @@ export default function DailyAssessmentForm() {
                     </>
                   )}
                 </Button>
+                {isAdmin && assessment?.status === 'completed' && (
+                  <Button
+                    variant="outline"
+                    size={isMobileView ? "default" : "sm"}
+                    onClick={toggleInvoiced}
+                    disabled={invoiceToggling}
+                    className={isInvoiced ? "text-destructive border-destructive hover:text-destructive" : ""}
+                  >
+                    <Receipt className={isMobileView ? "w-5 h-5 mr-1.5" : "w-4 h-4 mr-2"} />
+                    {isMobileView ? "" : (isInvoiced ? "Invoiced ✓" : "Invoiced")}
+                  </Button>
+                )}
                 </>
               )}
             </div>
