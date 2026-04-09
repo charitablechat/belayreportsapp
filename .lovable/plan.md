@@ -1,47 +1,29 @@
 
-Fix the Invoiced tab count so it always reflects the full set of invoiced reports, not just the currently displayed “Recent Reports” slice.
 
-What I found
-- The data is there: the backend already has 1 row in `invoiced_reports`, linked to the Southwest Airlines inspection.
-- The zero is a counting bug in the dashboard UI.
-- `src/pages/Dashboard.tsx` defaults to `reportSection = "recent"`.
-- When the active tab is not `invoiced`, it passes only the recent top 9 reports into `DashboardReportsSection`.
-- `src/components/dashboard/DashboardReportsSection.tsx` calculates `invoicedReports.length` from those incoming props and uses that for the tab label.
-- So if the invoiced report is older than the recent slice, the tab label shows `0` even though the report exists and appears once the invoiced tab loads full data.
+# Glassmorphism Green "Invoiced" Button — Admin/Super Admin Only
 
-Implementation
-1. In `src/pages/Dashboard.tsx`, compute a separate `invoicedCount` from the full dashboard state arrays:
-   - `inspections`
-   - `trainings`
-   - `dailyAssessments`
-   intersected with `invoicedReportIds`.
-2. Pass `invoicedCount` into `DashboardReportsSection` as its own prop.
-3. In `src/components/dashboard/DashboardReportsSection.tsx`, use that new prop for the tab label instead of `invoicedReports.length`.
-4. Leave everything else unchanged:
-   - Recent vs All behavior
-   - Invoiced tab content
-   - Admin-only visibility
-   - Filters, cards, navigation, and styling
+## Confirmation
+The "Invoiced" button is **already** gated behind `{isAdmin && report?.status === 'completed'}` in all three forms. Regular users never see it. The styling change will only affect this admin-visible button.
 
-Why this fix
-- It targets only the incorrect badge/count source.
-- No backend, permissions, or invoicing logic needs to change.
-- It preserves the current content behavior while making the tab count accurate at all times.
+## Changes
 
-Technical detail
-```text
-Current flow:
-Dashboard (recent mode)
-  -> passes sliced report arrays
-DashboardReportsSection
-  -> builds invoicedReports from sliced arrays
-  -> tab label uses invoicedReports.length
+### 1. `src/pages/InspectionForm.tsx` (line 2783)
+### 2. `src/pages/TrainingForm.tsx` (line 1614)
+### 3. `src/pages/DailyAssessmentForm.tsx` (line 1675)
 
-Result:
-Older invoiced reports are excluded from the badge count.
+Same change in all three — replace the `className` on the Invoiced button:
+
+**Current:**
+```
+className={isInvoiced ? "text-destructive border-destructive hover:text-destructive" : ""}
 ```
 
-Validation
-- With “Recent Reports” selected, the Invoiced tab should still show `1`.
-- Clicking the Invoiced tab should still show the Southwest report.
-- Switching between Recent and All should no longer make the Invoiced count drop incorrectly.
+**New:**
+```
+className={isInvoiced
+  ? "bg-emerald-500/15 backdrop-blur-md border-emerald-400/30 text-emerald-600 dark:text-emerald-400 shadow-[0_0_12px_rgba(16,185,129,0.2)] hover:bg-emerald-500/25 hover:text-emerald-700 dark:hover:text-emerald-300 animate-pulse-calm"
+  : ""}
+```
+
+This gives a frosted green glass look with a calm pulse animation when marked as invoiced. The button remains invisible to non-admin users — no visibility logic needs to change.
+
