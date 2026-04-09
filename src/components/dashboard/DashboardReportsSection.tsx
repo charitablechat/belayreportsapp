@@ -56,6 +56,9 @@ interface DashboardReportsSectionProps {
   inspections: any[];
   trainings: any[];
   dailyAssessments: any[];
+  allInspections?: any[];
+  allTrainings?: any[];
+  allDailyAssessments?: any[];
   totalInspections?: number;
   totalTrainings?: number;
   totalDailyAssessments?: number;

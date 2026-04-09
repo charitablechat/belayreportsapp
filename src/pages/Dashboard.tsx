@@ -1435,6 +1435,9 @@ export default function Dashboard() {
                   inspections={dashboardInspections}
                   trainings={dashboardTrainings}
                   dailyAssessments={dashboardDailyAssessments}
+                  allInspections={inspections}
+                  allTrainings={trainings}
+                  allDailyAssessments={dailyAssessments}
                   totalInspections={dataValidated ? inspections.length : undefined}
                   totalTrainings={dataValidated ? trainings.length : undefined}
                   totalDailyAssessments={dataValidated ? dailyAssessments.length : undefined}
