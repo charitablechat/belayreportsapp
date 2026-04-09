@@ -1,68 +1,78 @@
 
 
-# Fix: "User Not Authenticated" Warning During Offline State
+# Remaining "User Not Authenticated" Gaps
 
-## Problem
-When offline (or during network flickers), auth checks can fail and **block local saves entirely** — the user's data is NOT being persisted when this warning appears.
+## Summary of Findings
 
-## Root Causes
+The recent fixes hardened the three form **save** paths (InspectionForm, TrainingForm, DailyAssessmentForm) and the sync-manager. However, **5 code locations** still throw "Not authenticated" without an offline fallback, and some can surface as user-visible errors.
 
-1. **`ensureValidSession()` fast-path gap**: The recently-added localStorage fast-path doesn't handle expired tokens while offline. `getCachedUserFromStorage()` correctly skips expiry when `!navigator.onLine`, but `ensureValidSession()` does not — it falls through to the slow path which calls `getSession()` and fails.
+## Gaps Found
 
-2. **Network flicker in `performSave()`**: The `getOfflineUserId()` fallback only runs when `!navigator.onLine`. If `navigator.onLine` briefly flickers to `true`, the code skips the offline fallback and calls `ensureValidSession()`, which fails with an expired token.
+### Gap 1: `NewInspection.tsx` — creating a new report (line 448-457)
+Calls `getUserWithCache()` with no `getOfflineUserId()` fallback. If the cache returns null during a network flicker while online, it throws `"Not authenticated"`. When offline, it shows `"Please sign in to create reports"` even though the user IS signed in — it just can't retrieve their identity.
+**Impact**: User cannot create new inspections offline or during flickers.
 
-3. **`sync-manager.ts` has no offline fallback**: Photo sync calls `getUserWithCache()` with no `getOfflineUserId()` guard at all.
+### Gap 2: `NewTraining.tsx` — creating a new training (line 118-127)
+Same pattern: no `getOfflineUserId()` fallback. Offline → shows misleading "Please sign in" toast. Flicker → navigates to home page.
+**Impact**: User cannot create new trainings offline.
 
-## Fix (3 changes)
+### Gap 3: `NewDailyAssessment.tsx` — creating a new assessment (line 128-137)
+Identical gap.
+**Impact**: User cannot create new daily assessments offline.
 
-### File 1: `src/lib/cached-auth.ts` — `ensureValidSession()` (~line 477)
-After the two fast-path conditions (lines 460-477), add an offline bypass for expired tokens:
+### Gap 4: `DatabaseAutocomplete.tsx` — saving field history (line 110-111)
+Throws `"Not authenticated"` with no fallback. This is a mutation inside a form, so it could surface as a toast error while the user is typing/selecting values offline.
+**Impact**: Low severity — field history is a convenience feature and the error is silent (mutation error), but it could confuse users if they see a toast.
+
+### Gap 5: `Onboarding.tsx` — toggling resource completion (line 72-73)
+Uses raw `supabase.auth.getUser()` (not even `getUserWithCache`), which makes a network call. Will fail offline.
+**Impact**: Low — onboarding is a one-time flow typically done online.
+
+### Non-gaps (confirmed safe)
+- `usePushNotifications.tsx` — push subscription requires network by definition, so throwing is correct
+- `useConflicts.tsx` — query is gated by `enabled: navigator.onLine`, so it never runs offline
+- `atomic-sync-manager.ts` — only runs when online; console.warn only, no user-visible error
+- All three form save paths — already patched with `getOfflineUserId()` fallback
+
+## Fix Plan
+
+### Files 1-3: `NewInspection.tsx`, `NewTraining.tsx`, `NewDailyAssessment.tsx`
+Add `getOfflineUserId()` fallback after `getUserWithCache()` returns null — same pattern already used in the form save paths:
 ```typescript
-// Token expired but user exists AND we're offline — trust it (same as getCachedUserFromStorage)
-if (parsed?.user && !navigator.onLine) {
-  cachedUser = parsed.user;
-  cacheTimestamp = Date.now();
-  return parsed.user;
-}
-```
-This ensures `ensureValidSession()` never falls through to `getSession()` when offline.
+import { getUserWithCache, getOfflineUserId } from "@/lib/cached-auth";
 
-### File 2: `src/pages/InspectionForm.tsx` — `performSave()` (~line 1359)
-Change the online-only `ensureValidSession` fallback to also try `getOfflineUserId()` before throwing:
-```typescript
-if (!user && navigator.onLine) {
-  user = await ensureValidSession();
-}
-// Last resort: network may have flickered — try offline ID
+const user = await getUserWithCache();
 if (!user) {
   const offlineId = getOfflineUserId();
-  if (offlineId) user = { id: offlineId } as any;
+  if (offlineId) {
+    // Proceed with offline ID
+    user = { id: offlineId } as any;
+  } else {
+    // Truly not authenticated
+    toast.error("Please sign in to create reports");
+    return;
+  }
 }
 ```
-Apply the same pattern to `TrainingForm.tsx` and `DailyAssessmentForm.tsx` in their equivalent `performSave()` functions.
+This removes the misleading "Please sign in" message when the user IS authenticated but offline.
 
-### File 3: `src/lib/sync-manager.ts` (~line 129-130)
-Add offline fallback to photo sync:
+### File 4: `DatabaseAutocomplete.tsx`
+Add a silent bail-out instead of throwing when offline — field history is non-critical:
 ```typescript
-let user = await getUserWithCache();
+const user = await getUserWithCache();
 if (!user) {
-  const { getOfflineUserId } = await import('./cached-auth');
-  const offlineId = getOfflineUserId();
-  if (offlineId) user = { id: offlineId } as any;
+  // Skip saving history when auth unavailable (offline)
+  return;
 }
-if (!user) throw new Error("Not authenticated");
 ```
+
+### File 5: `Onboarding.tsx` (low priority)
+Replace `supabase.auth.getUser()` with `getUserWithCache()` for consistency, though this page is rarely used offline.
 
 ## Files Changed
-1. `src/lib/cached-auth.ts` — offline bypass in `ensureValidSession()` fast-path
-2. `src/pages/InspectionForm.tsx` — final `getOfflineUserId()` guard in `performSave()`
-3. `src/pages/TrainingForm.tsx` — same guard
-4. `src/pages/DailyAssessmentForm.tsx` — same guard
-5. `src/lib/sync-manager.ts` — offline fallback for photo uploads
-
-## Result
-- Offline saves will **always succeed** — no more "User not authenticated" blocking local persistence
-- Network flickers won't cause auth failures
-- Photo sync gracefully degrades when offline
-- No impact on online behavior — all changes are guarded by `!navigator.onLine` or null-user checks
+1. `src/pages/NewInspection.tsx` — add `getOfflineUserId()` fallback
+2. `src/pages/NewTraining.tsx` — add `getOfflineUserId()` fallback
+3. `src/pages/NewDailyAssessment.tsx` — add `getOfflineUserId()` fallback
+4. `src/components/DatabaseAutocomplete.tsx` — silent bail-out when no user
+5. `src/pages/Onboarding.tsx` — switch to `getUserWithCache()` (minor)
 
