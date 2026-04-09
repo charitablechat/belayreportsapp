@@ -16,7 +16,7 @@ import { saveInspectionOffline, queueOperation } from "@/lib/offline-storage";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { OrganizationAutocomplete } from "@/components/OrganizationAutocomplete";
 import { getCurrentLocationWithAddress, getGeolocationErrorMessage } from "@/lib/geolocation";
-import { getUserWithCache, getCachedUser } from "@/lib/cached-auth";
+import { getUserWithCache, getCachedUser, getOfflineUserId } from "@/lib/cached-auth";
 import { triggerHaptic } from "@/lib/haptics";
 import { getCachedProfile } from "@/lib/profile-cache";
 import { toast } from "sonner";
@@ -445,15 +445,17 @@ export default function NewInspection() {
     setLoading(true);
 
     try {
-      const user = await getUserWithCache();
+      let user = await getUserWithCache();
       if (!user) {
-        if (!navigator.onLine) {
+        const offlineId = getOfflineUserId();
+        if (offlineId) {
+          user = { id: offlineId } as any;
+        } else {
           toast.error("Please sign in to create reports");
           setLoading(false);
           isSubmitting.current = false;
           return;
         }
-        throw new Error("Not authenticated");
       }
 
       const tempId = `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
