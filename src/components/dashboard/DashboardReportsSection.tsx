@@ -522,22 +522,22 @@ export function DashboardReportsSection({
       ) : (
         /* Normal tab-based view */
         <Tabs value={activeReportTab} onValueChange={setActiveReportTab}>
-          <TabsList className="w-full sm:w-auto mb-4 overflow-x-auto">
+          <TabsList className="grid grid-cols-2 sm:inline-flex w-full sm:w-auto mb-4 h-auto">
             <TabsTrigger value="inspections" className="flex items-center gap-2">
-              <FileText className="w-4 h-4" />
+              <FileText className="w-4 h-4 hidden sm:inline" />
               Inspections ({loading || (!totalInspections && inspections.length === 0) ? '…' : (totalInspections ?? inspections.length)})
             </TabsTrigger>
             <TabsTrigger value="training" className="flex items-center gap-2">
-              <GraduationCap className="w-4 h-4" />
+              <GraduationCap className="w-4 h-4 hidden sm:inline" />
               Training ({loading || (!totalTrainings && trainings.length === 0) ? '…' : (totalTrainings ?? trainings.length)})
             </TabsTrigger>
             <TabsTrigger value="daily" className="flex items-center gap-2">
-              <FileText className="w-4 h-4" />
+              <FileText className="w-4 h-4 hidden sm:inline" />
               Daily ({loading || (!totalDailyAssessments && dailyAssessments.length === 0) ? '…' : (totalDailyAssessments ?? dailyAssessments.length)})
             </TabsTrigger>
             {isSuperAdmin && (
               <TabsTrigger value="invoiced" className="flex items-center gap-2">
-                <Receipt className="w-4 h-4" />
+                <Receipt className="w-4 h-4 hidden sm:inline" />
                 Invoiced ({invoicedCount ?? invoicedReports.length})
               </TabsTrigger>
             )}
