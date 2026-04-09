@@ -488,7 +488,7 @@ export default function Dashboard() {
     ]);
   };
 
-  const loadInspections = async (cachedUserId?: string, cachedIsSuperAdmin?: boolean, sessionValid: boolean = true) => {
+  const loadInspections = async (cachedUserId?: string, cachedIsSuperAdmin?: boolean, sessionValid: boolean = true): Promise<{ networkSuccess: boolean }> => {
     try {
       // Use passed userId or fetch from cache
       const userId = cachedUserId || (await getUserWithCache())?.id;
