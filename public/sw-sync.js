@@ -133,13 +133,14 @@ function updateInStore(db, storeName, item) {
   });
 }
 
-// Helper to get related data by inspection_id
-async function getAllRelatedData(db, storeName, inspectionId) {
+// Helper to get related data by parent ID using the correct index
+async function getAllRelatedData(db, storeName, parentId, indexName) {
+  indexName = indexName || 'by-inspection';
   return new Promise((resolve, reject) => {
     const transaction = db.transaction([storeName], 'readonly');
     const store = transaction.objectStore(storeName);
-    const index = store.index('by-inspection');
-    const request = index.getAll(inspectionId);
+    const index = store.index(indexName);
+    const request = index.getAll(parentId);
     request.onsuccess = () => resolve(request.result || []);
     request.onerror = () => reject(request.error);
   });
