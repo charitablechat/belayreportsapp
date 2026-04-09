@@ -1470,13 +1470,17 @@ serve(async (req) => {
         max-width: 100%;
       }
       
-      /* Reduce table font sizes */
+      /* Reduce table font sizes — allow horizontal scroll */
       table {
         font-size: 8pt;
         table-layout: auto;
-        width: 100%;
-        max-width: 100%;
       }
+      
+      /* Per-table minimum widths for readability */
+      .systems-table { min-width: 600px; }
+      .equipment-table { min-width: 550px; }
+      .ziplines-table { min-width: 900px; }
+      .standards-table { min-width: 500px; }
       
       .item-thumbnail {
         width: 40px;
@@ -1565,7 +1569,6 @@ serve(async (req) => {
       table { 
         font-size: 7pt;
         table-layout: auto;
-        width: 100%;
       }
       
       .item-thumbnail {
