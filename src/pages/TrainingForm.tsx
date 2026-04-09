@@ -83,9 +83,14 @@ export default function TrainingForm() {
   
   // Check edit permissions - Super Admins are view-only, only owners can edit
   const [inspectorId, setInspectorId] = useState<string | null>(null);
-  const { canEdit, isReadOnly, isOwner, isSuperAdmin, readOnlyReason } = useReportEditPermission({
+  const { canEdit, isReadOnly, isOwner, isSuperAdmin, isAdmin, readOnlyReason } = useReportEditPermission({
     inspectorId,
     reportType: 'training'
+  });
+  const { isInvoiced, toggling: invoiceToggling, toggleInvoiced } = useInvoicedStatus({
+    reportId: id,
+    reportType: 'training',
+    enabled: isAdmin && training?.status === 'completed',
   });
   
   // Completion lock: prevent accidental edits to completed reports

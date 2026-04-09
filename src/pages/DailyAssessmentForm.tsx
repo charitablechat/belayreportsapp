@@ -87,9 +87,14 @@ export default function DailyAssessmentForm() {
   
   // Check edit permissions - Super Admins are view-only, only owners can edit
   const [inspectorId, setInspectorId] = useState<string | null>(null);
-  const { canEdit, isReadOnly, isOwner, isSuperAdmin, readOnlyReason } = useReportEditPermission({
+  const { canEdit, isReadOnly, isOwner, isSuperAdmin, isAdmin, readOnlyReason } = useReportEditPermission({
     inspectorId,
     reportType: 'daily_assessment'
+  });
+  const { isInvoiced, toggling: invoiceToggling, toggleInvoiced } = useInvoicedStatus({
+    reportId: assessmentId,
+    reportType: 'daily',
+    enabled: isAdmin && assessment?.status === 'completed',
   });
   
   // Completion lock: prevent accidental edits to completed reports

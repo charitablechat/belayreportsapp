@@ -77,7 +77,8 @@ import { appendVersion } from "@/lib/report-version-manager";
 import { showHardSavedToast } from "@/lib/toast-helpers";
 import { DataIntegrityBadge, type IntegrityStatus } from "@/components/ui/data-integrity-badge";
 import { VersionHistoryPanel } from "@/components/admin/VersionHistoryPanel";
-import { Shield as ShieldIcon } from "lucide-react";
+import { Shield as ShieldIcon, Receipt } from "lucide-react";
+import { useInvoicedStatus } from "@/hooks/useInvoicedStatus";
 
 const STANDARDS_TEMPLATE = [
   { standard_name: "Local Written Operations Procedures", has_documentation: null },
@@ -106,9 +107,14 @@ export default function InspectionForm() {
   
   // Check edit permissions - Super Admins are view-only, only owners can edit
   const [inspectorId, setInspectorId] = useState<string | null>(null);
-  const { canEdit, isReadOnly, isOwner, isSuperAdmin, readOnlyReason } = useReportEditPermission({
+  const { canEdit, isReadOnly, isOwner, isSuperAdmin, isAdmin, readOnlyReason } = useReportEditPermission({
     inspectorId,
     reportType: 'inspection'
+  });
+  const { isInvoiced, toggling: invoiceToggling, toggleInvoiced } = useInvoicedStatus({
+    reportId: id,
+    reportType: 'inspection',
+    enabled: isAdmin && inspection?.status === 'completed',
   });
   
   // Completion lock: prevent accidental edits to completed reports
@@ -2768,6 +2774,18 @@ export default function InspectionForm() {
                       )}
                     </Tooltip>
                   </TooltipProvider>
+                  {isAdmin && inspection?.status === 'completed' && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={toggleInvoiced}
+                      disabled={invoiceToggling}
+                      className={isInvoiced ? "text-destructive border-destructive hover:text-destructive" : ""}
+                    >
+                      <Receipt className="w-4 h-4" />
+                      <span className="hidden md:inline ml-2">{isInvoiced ? "Invoiced ✓" : "Invoiced"}</span>
+                    </Button>
+                  )}
                 </>
               )}
             </div>
