@@ -446,6 +446,41 @@ export async function ensureValidSession(): Promise<CachedUser | null> {
   initAuthListener();
   
   try {
+    // FAST PATH: Check localStorage first — avoid LockManager entirely
+    // if we have a token that isn't near expiry
+    try {
+      const storedSession = localStorage.getItem('sb-ssgzcgvygnsrqalisshx-auth-token');
+      if (storedSession) {
+        const parsed = JSON.parse(storedSession);
+        const expiresAt = parsed?.expires_at || 0;
+        const now = Math.floor(Date.now() / 1000);
+        const timeUntilExpiry = expiresAt - now;
+        
+        // If token is valid and not within 5-min refresh buffer, skip network call
+        if (parsed?.user && timeUntilExpiry > SESSION_REFRESH_BUFFER) {
+          cachedUser = parsed.user;
+          cacheTimestamp = Date.now();
+          return parsed.user;
+        }
+        
+        // Token near expiry but user exists — return user, refresh in background
+        if (parsed?.user && timeUntilExpiry > 0) {
+          cachedUser = parsed.user;
+          cacheTimestamp = Date.now();
+          // Non-blocking refresh
+          if (navigator.onLine) {
+            setTimeout(() => {
+              supabase.auth.refreshSession().catch(() => {});
+            }, 0);
+          }
+          return parsed.user;
+        }
+      }
+    } catch {
+      // Ignore localStorage parse errors — fall through to slow path
+    }
+    
+    // SLOW PATH: No valid localStorage token — must use Supabase client
     // First, try to get the current session from Supabase client
     let session;
     let sessionError;
