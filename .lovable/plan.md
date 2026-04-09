@@ -1,53 +1,68 @@
 
 
-# Fix: Table Text Wrapping in HTML Report Viewer
+# Fix: "User Not Authenticated" Warning During Offline State
 
 ## Problem
+When offline (or during network flickers), auth checks can fail and **block local saves entirely** — the user's data is NOT being persisted when this warning appears.
 
-On mobile, tables with many columns (Operating Systems: 5 cols, Equipment: 6 cols, Ziplines: 11 cols) are being squeezed to fit 100% viewport width. This causes every word to wrap onto its own line, making the report unreadable. The screenshots show "Pass with Provisions" breaking into 6+ lines, column headers splitting letter-by-letter.
+## Root Causes
 
-## Root Cause
+1. **`ensureValidSession()` fast-path gap**: The recently-added localStorage fast-path doesn't handle expired tokens while offline. `getCachedUserFromStorage()` correctly skips expiry when `!navigator.onLine`, but `ensureValidSession()` does not — it falls through to the slow path which calls `getSession()` and fails.
 
-Two layers of CSS both force `table { width: 100%; max-width: 100% }` and `td, th { width: auto !important }` on mobile:
+2. **Network flicker in `performSave()`**: The `getOfflineUserId()` fallback only runs when `!navigator.onLine`. If `navigator.onLine` briefly flickers to `true`, the code skips the offline fallback and calls `ensureValidSession()`, which fails with an expired token.
 
-1. **`generate-inspection-html/index.ts`** (lines 1474-1478): Sets `table { width: 100%; max-width: 100% }` in the `@media (max-width: 768px)` block
-2. **`HtmlReportViewer.tsx`** (lines 112-119): Injects additional `width: auto !important` overrides on all table cells
+3. **`sync-manager.ts` has no offline fallback**: Photo sync calls `getUserWithCache()` with no `getOfflineUserId()` guard at all.
 
-The `table-wrapper` has `overflow-x: auto` but is useless since the table itself is capped at 100% width.
+## Fix (3 changes)
 
-## Fix
+### File 1: `src/lib/cached-auth.ts` — `ensureValidSession()` (~line 477)
+After the two fast-path conditions (lines 460-477), add an offline bypass for expired tokens:
+```typescript
+// Token expired but user exists AND we're offline — trust it (same as getCachedUserFromStorage)
+if (parsed?.user && !navigator.onLine) {
+  cachedUser = parsed.user;
+  cacheTimestamp = Date.now();
+  return parsed.user;
+}
+```
+This ensures `ensureValidSession()` never falls through to `getSession()` when offline.
 
-Allow tables to exceed viewport width and scroll horizontally inside their `.table-wrapper` container, with sensible minimum widths per table type.
+### File 2: `src/pages/InspectionForm.tsx` — `performSave()` (~line 1359)
+Change the online-only `ensureValidSession` fallback to also try `getOfflineUserId()` before throwing:
+```typescript
+if (!user && navigator.onLine) {
+  user = await ensureValidSession();
+}
+// Last resort: network may have flickered — try offline ID
+if (!user) {
+  const offlineId = getOfflineUserId();
+  if (offlineId) user = { id: offlineId } as any;
+}
+```
+Apply the same pattern to `TrainingForm.tsx` and `DailyAssessmentForm.tsx` in their equivalent `performSave()` functions.
 
-### File 1: `supabase/functions/generate-inspection-html/index.ts`
+### File 3: `src/lib/sync-manager.ts` (~line 129-130)
+Add offline fallback to photo sync:
+```typescript
+let user = await getUserWithCache();
+if (!user) {
+  const { getOfflineUserId } = await import('./cached-auth');
+  const offlineId = getOfflineUserId();
+  if (offlineId) user = { id: offlineId } as any;
+}
+if (!user) throw new Error("Not authenticated");
+```
 
-In the `@media (max-width: 768px)` block (~lines 1474-1479):
-- Remove `width: 100%; max-width: 100%` from the `table` rule
-- Add minimum widths per table class:
-  - `.systems-table { min-width: 600px }`
-  - `.equipment-table { min-width: 550px }`
-  - `.ziplines-table { min-width: 900px }`
-  - `.standards-table { min-width: 500px }`
-- Keep `table-layout: auto` and `font-size: 8pt`
-
-In the `@media (max-width: 480px)` block (~lines 1565-1569):
-- Same: remove `width: 100%` from the `table` rule
-
-### File 2: `src/components/HtmlReportViewer.tsx`
-
-In the injected mobile styles (~lines 112-119):
-- Remove the blanket `width: auto !important` override on all table cells — this was fighting the column width percentages set by the HTML generator
-- Keep `min-width: 0 !important` to remove fixed min-widths
-
-Add table min-widths in the viewer's mobile styles to match (same values as above), ensuring the tables scroll inside the iframe.
-
-### File 3: `supabase/functions/generate-inspection-html/index.ts` (redeploy)
-
-The edge function must be redeployed for the fix to apply to newly generated reports. Existing cached reports will benefit from the HtmlReportViewer.tsx changes only.
+## Files Changed
+1. `src/lib/cached-auth.ts` — offline bypass in `ensureValidSession()` fast-path
+2. `src/pages/InspectionForm.tsx` — final `getOfflineUserId()` guard in `performSave()`
+3. `src/pages/TrainingForm.tsx` — same guard
+4. `src/pages/DailyAssessmentForm.tsx` — same guard
+5. `src/lib/sync-manager.ts` — offline fallback for photo uploads
 
 ## Result
-
-- **Mobile**: Tables maintain readable column widths and users can horizontally scroll to see all columns. Text like "Pass with Provisions" stays on 1-2 lines max.
-- **Tablet/Desktop**: No change — tables already fit comfortably at full width.
-- **Print/PDF**: No change — print media queries are untouched.
+- Offline saves will **always succeed** — no more "User not authenticated" blocking local persistence
+- Network flickers won't cause auth failures
+- Photo sync gracefully degrades when offline
+- No impact on online behavior — all changes are guarded by `!navigator.onLine` or null-user checks
 
