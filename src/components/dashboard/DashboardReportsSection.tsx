@@ -422,7 +422,7 @@ export function DashboardReportsSection({
               Daily ({loading || (!totalDailyAssessments && dailyAssessments.length === 0) ? '…' : (totalDailyAssessments ?? dailyAssessments.length)})
             </TabsTrigger>
             {isSuperAdmin && (
-              <TabsTrigger value="invoiced" className="flex items-center gap-2">
+              <TabsTrigger value="invoiced" className="flex items-center gap-2 backdrop-blur-md bg-emerald-500/10 border border-emerald-400/30 text-emerald-700 dark:text-emerald-300 shadow-[0_0_15px_rgba(16,185,129,0.2)] animate-pulse-soft data-[state=active]:bg-emerald-500/20 data-[state=active]:shadow-[0_0_20px_rgba(16,185,129,0.35)] data-[state=active]:border-emerald-400/50">
                 <Receipt className="w-4 h-4" />
                 Invoiced ({invoicedReports.length})
               </TabsTrigger>
