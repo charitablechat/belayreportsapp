@@ -803,16 +803,22 @@ export default function Dashboard() {
           if (import.meta.env.DEV) {
             console.log('[Dashboard] Loaded training reports from Supabase:', networkData.length);
           }
+          return { networkSuccess: true };
         } else if (networkData !== null && offlineData.length === 0 && sessionValid) {
           // Only clear when session is VERIFIED valid and server confirmed zero
           setTrainings(prev => prev.length > 0 ? prev : []);
+          return { networkSuccess: true };
         } else if (networkData === null && offlineData.length > 0) {
           // Network failed -- fall back to offline data
           setTrainings(offlineData);
+          return { networkSuccess: false };
         }
+        return { networkSuccess: networkData !== null };
       }
+      return { networkSuccess: false };
     } catch (error: any) {
       console.error("Error loading training reports:", error);
+      return { networkSuccess: false };
     }
   };
 
@@ -955,16 +961,22 @@ export default function Dashboard() {
           if (import.meta.env.DEV) {
             console.log('[Dashboard] Loaded daily assessments from Supabase:', networkData.length);
           }
+          return { networkSuccess: true };
         } else if (networkData !== null && offlineData.length === 0 && sessionValid) {
           // Only clear when session is VERIFIED valid and server confirmed zero
           setDailyAssessments(prev => prev.length > 0 ? prev : []);
+          return { networkSuccess: true };
         } else if (networkData === null && offlineData.length > 0) {
           // Network failed -- fall back to offline data
           setDailyAssessments(offlineData);
+          return { networkSuccess: false };
         }
+        return { networkSuccess: networkData !== null };
       }
+      return { networkSuccess: false };
     } catch (error: any) {
       console.error("Error loading daily assessments:", error);
+      return { networkSuccess: false };
     }
   };
 
