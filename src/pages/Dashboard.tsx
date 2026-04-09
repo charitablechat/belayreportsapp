@@ -227,7 +227,60 @@ export default function Dashboard() {
     },
   });
 
-  // Centralized, deduplicated, throttled refresh.
+  // Fetch invoiced report IDs (admin only)
+  const { refetch: refetchInvoiced } = useQuery({
+    queryKey: ["invoiced-reports"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("invoiced_reports")
+        .select("report_id");
+      if (error) {
+        console.warn('[Dashboard] Error fetching invoiced reports:', error);
+        return [];
+      }
+      const ids = new Set((data || []).map((r: any) => r.report_id));
+      setInvoicedReportIds(ids);
+      return data;
+    },
+    enabled: !!isSuperAdmin,
+    staleTime: 60 * 1000,
+  });
+
+  const handleToggleInvoiced = React.useCallback(async (report: any, type: 'inspection' | 'training' | 'daily') => {
+    const isCurrentlyInvoiced = invoicedReportIds.has(report.id);
+    
+    if (isCurrentlyInvoiced) {
+      const { error } = await supabase
+        .from("invoiced_reports")
+        .delete()
+        .eq("report_id", report.id)
+        .eq("report_type", type);
+      if (error) {
+        toast.error("Failed to remove invoice status");
+        return;
+      }
+      setInvoicedReportIds(prev => {
+        const next = new Set(prev);
+        next.delete(report.id);
+        return next;
+      });
+      toast.success("Invoice status removed");
+    } else {
+      const user = await getUserWithCache();
+      const { error } = await supabase
+        .from("invoiced_reports")
+        .insert({ report_id: report.id, report_type: type, invoiced_by: user?.id });
+      if (error) {
+        toast.error("Failed to mark as invoiced");
+        return;
+      }
+      setInvoicedReportIds(prev => new Set(prev).add(report.id));
+      toast.success("Report marked as invoiced");
+    }
+    triggerHaptic('light');
+  }, [invoicedReportIds]);
+
+
   // NOTE: deps intentionally kept as [] — the load* functions inside only use
   // their arguments and stable useState setters, so the closure is safe.
   // If you add direct state reads here, move to useRef or add to deps.
