@@ -1,29 +1,27 @@
 
 
-# Glassmorphism Green "Invoiced" Button — Admin/Super Admin Only
+# Always-Green Glassmorphism "Invoiced" Button
 
-## Confirmation
-The "Invoiced" button is **already** gated behind `{isAdmin && report?.status === 'completed'}` in all three forms. Regular users never see it. The styling change will only affect this admin-visible button.
+## Change
+Apply the green glassmorphism styling to the Invoiced button at all times (not conditionally on `isInvoiced`). When toggled on, use a stronger intensity to distinguish the active state.
 
-## Changes
+### Files: `InspectionForm.tsx`, `TrainingForm.tsx`, `DailyAssessmentForm.tsx`
 
-### 1. `src/pages/InspectionForm.tsx` (line 2783)
-### 2. `src/pages/TrainingForm.tsx` (line 1614)
-### 3. `src/pages/DailyAssessmentForm.tsx` (line 1675)
-
-Same change in all three — replace the `className` on the Invoiced button:
-
-**Current:**
+**Current** (green only when `isInvoiced` is true):
 ```
-className={isInvoiced ? "text-destructive border-destructive hover:text-destructive" : ""}
+className={isInvoiced ? "bg-emerald-500/15 backdrop-blur-md ..." : ""}
 ```
 
-**New:**
+**New** (always green, stronger when active):
 ```
-className={isInvoiced
-  ? "bg-emerald-500/15 backdrop-blur-md border-emerald-400/30 text-emerald-600 dark:text-emerald-400 shadow-[0_0_12px_rgba(16,185,129,0.2)] hover:bg-emerald-500/25 hover:text-emerald-700 dark:hover:text-emerald-300 animate-pulse-calm"
-  : ""}
+className={cn(
+  "bg-emerald-500/10 backdrop-blur-md border-emerald-400/30 text-emerald-600 dark:text-emerald-400 shadow-[0_0_8px_rgba(16,185,129,0.15)] hover:bg-emerald-500/20 hover:text-emerald-700 dark:hover:text-emerald-300",
+  isInvoiced && "bg-emerald-500/25 shadow-[0_0_16px_rgba(16,185,129,0.3)] animate-pulse-calm"
+)}
 ```
 
-This gives a frosted green glass look with a calm pulse animation when marked as invoiced. The button remains invisible to non-admin users — no visibility logic needs to change.
+- **Default (not yet invoiced):** Subtle green glass — always visible as a green-tinted button.
+- **Active (invoiced):** Stronger green glow + calm pulse animation to indicate it's been marked.
+
+Same change in all three form files. No other changes needed.
 
