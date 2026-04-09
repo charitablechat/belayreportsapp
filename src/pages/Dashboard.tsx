@@ -1409,6 +1409,8 @@ export default function Dashboard() {
                   setInspectionToDelete={setInspectionToDelete}
                   setReportToDelete={setReportToDelete}
                   setDeleteDialogOpen={setDeleteDialogOpen}
+                  invoicedReportIds={invoicedReportIds}
+                  onToggleInvoiced={handleToggleInvoiced}
                 />
               );
             })()}
