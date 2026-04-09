@@ -15,7 +15,7 @@ interface BackupNotificationProps {
   tableCount?: number
   denormalizedReports?: number
   pdfsGenerated?: number
-}
+  pdfsNoSource?: number
 
 const BackupNotificationEmail = ({
   timestamp = 'Wednesday, April 2, 2026 at 8:00 PM ET',
@@ -26,6 +26,7 @@ const BackupNotificationEmail = ({
   tableCount = 0,
   denormalizedReports = 0,
   pdfsGenerated = 0,
+  pdfsNoSource = 0,
 }: BackupNotificationProps) => {
   const tableEntries = Object.entries(tableCounts).sort(([, a], [, b]) => b - a)
   const displayTableCount = tableCount || Object.keys(tableCounts).length
@@ -69,7 +70,7 @@ const BackupNotificationEmail = ({
               </Column>
               <Column style={{ ...reportStatBox, backgroundColor: '#fef3c7' }}>
                 <Text style={{ ...reportStatValue, color: '#92400e' }}>{pdfsGenerated.toString()}</Text>
-                <Text style={statLabel}>PDFs Generated</Text>
+                <Text style={statLabel}>PDFs Copied</Text>
               </Column>
             </Row>
           </Section>
