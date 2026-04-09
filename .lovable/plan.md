@@ -1,27 +1,14 @@
 
 
-# Add "Invoiced" Button to Report Form Pages (Next to Generate Report)
+# Move "Invoiced" Tab to Right of "Daily" Tab (Always Visible for Admins)
 
-## Overview
-Add an "Invoiced" toggle button to the right of the "Generate Report" button on all three completed report forms (Inspection, Training, Daily Assessment). Only visible to admins/super admins. Toggles the invoiced state in the existing `invoiced_reports` table.
+## Summary
+Reposition the "Invoiced" tab to appear immediately after the "Daily" tab, and always show it for admins/super admins regardless of count.
 
 ## Changes
 
-### 1. `src/pages/InspectionForm.tsx`
-- Destructure `isAdmin` from the existing `useReportEditPermission` hook (already available, just not destructured)
-- Query `invoiced_reports` table to check if this report is invoiced (when admin + completed)
-- Add an "Invoiced" button after the Generate Report button (line ~2770), visible only when `isAdmin && status === 'completed'`
-- Button toggles between "Mark Invoiced" (outline style) and "Invoiced ✓" (red/destructive style)
-- On click: insert or delete from `invoiced_reports`
-
-### 2. `src/pages/TrainingForm.tsx`
-- Same pattern: destructure `isAdmin`, query invoiced state, add button after Generate Report (line ~1600)
-
-### 3. `src/pages/DailyAssessmentForm.tsx`
-- Same pattern: add button after Generate Report (line ~1661)
-
-### Button Design
-- Uninvoiced state: `variant="outline"` with Receipt icon + "Invoiced" text (hidden on mobile)
-- Invoiced state: `variant="outline"` with red text/border, Receipt icon + "Invoiced ✓"
-- Uses the existing `Receipt` icon from lucide-react
+### `src/components/dashboard/DashboardReportsSection.tsx`
+- The Invoiced tab is already positioned after Daily (lines 424-429) — so the ordering is correct
+- **Only change needed**: Remove the `invoicedReports.length > 0` condition so the tab always shows for super admins even when empty
+- Change line 424 from `{isSuperAdmin && invoicedReports.length > 0 && (` to `{isSuperAdmin && (`
 
