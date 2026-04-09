@@ -84,6 +84,9 @@ export function DashboardReportsSection({
   inspections,
   trainings,
   dailyAssessments,
+  allInspections,
+  allTrainings,
+  allDailyAssessments,
   totalInspections,
   totalTrainings,
   totalDailyAssessments,
@@ -213,16 +216,20 @@ export function DashboardReportsSection({
   const crossTabResults = useMemo(() => {
     if (!isSearchActive) return null;
     const q = filters.search.trim();
-    const filteredInspections = inspections.filter(r => textMatchesReport(r, q, 'inspection'));
-    const filteredTrainings = trainings.filter(r => textMatchesReport(r, q, 'training'));
-    const filteredDaily = dailyAssessments.filter(r => textMatchesReport(r, q, 'daily'));
+    // Use full (unsliced) arrays for search so results aren't limited by "Recent" view
+    const searchInspections = allInspections ?? inspections;
+    const searchTrainings = allTrainings ?? trainings;
+    const searchDaily = allDailyAssessments ?? dailyAssessments;
+    const filteredInspections = searchInspections.filter(r => textMatchesReport(r, q, 'inspection'));
+    const filteredTrainings = searchTrainings.filter(r => textMatchesReport(r, q, 'training'));
+    const filteredDaily = searchDaily.filter(r => textMatchesReport(r, q, 'daily'));
     return {
       inspections: filteredInspections,
       trainings: filteredTrainings,
       daily: filteredDaily,
       total: filteredInspections.length + filteredTrainings.length + filteredDaily.length,
     };
-  }, [isSearchActive, filters.search, inspections, trainings, dailyAssessments]);
+  }, [isSearchActive, filters.search, inspections, trainings, dailyAssessments, allInspections, allTrainings, allDailyAssessments]);
 
   // Reset filters when switching tabs to avoid stale filter state (Issue 1)
   useEffect(() => {
