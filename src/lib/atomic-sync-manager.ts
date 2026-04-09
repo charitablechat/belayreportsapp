@@ -406,8 +406,14 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
     // ZERO DATA LOSS: Empty-array safeguard
     // If the server has child data but local is completely empty, this is suspicious
     // (likely IndexedDB corruption or failed read) -- skip sync to prevent data loss
+    let existingSystems: any[] = [];
+    let existingZiplines: any[] = [];
+    let existingEquipment: any[] = [];
+    let existingStandards: any[] = [];
+    let existingSummary: any[] = [];
+    
     if (recordStatus?.record_exists && !recordStatus?.is_deleted) {
-      const [
+      [
         existingSystems,
         existingZiplines,
         existingEquipment,
@@ -481,12 +487,17 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
       const wasEdited = (updatedAt - createdAt) > 60000; // edited if updated > 60s after creation
 
       if (localIsCompletelyEmpty && wasEdited && ageMinutes > 5) {
-        console.warn('[SAFETY] suspicious_empty_guard: inspection was edited but all child data is empty', {
-          inspectionId: inspectionId.substring(0, 8),
-          ageMinutes: Math.round(ageMinutes),
-          updatedAt: inspection.updated_at,
-        });
-        return { success: false, skipped: true, reason: 'suspicious_empty' };
+        if (recordStatus?.record_exists && !recordStatus?.is_deleted) {
+          // Guard 1 already ran and didn't block — server is also empty. Allow sync.
+          console.log('[SYNC] suspicious_empty_guard: both local and server are empty, allowing sync for genuinely blank inspection', {
+            inspectionId: inspectionId.substring(0, 8),
+          });
+        } else {
+          // Record doesn't exist on server yet — new blank form, allow sync
+          console.log('[SYNC] suspicious_empty_guard: new inspection with no server data, allowing sync', {
+            inspectionId: inspectionId.substring(0, 8),
+          });
+        }
       }
     }
 
@@ -495,11 +506,11 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
     if (recordStatus?.record_exists && !recordStatus?.is_deleted) {
       await reconcileAllChildTables(
         [
-          { childTable: 'inspection_systems', parentIdColumn: 'inspection_id', localItems: systems },
-          { childTable: 'inspection_ziplines', parentIdColumn: 'inspection_id', localItems: ziplines },
-          { childTable: 'inspection_equipment', parentIdColumn: 'inspection_id', localItems: equipment },
-          { childTable: 'inspection_standards', parentIdColumn: 'inspection_id', localItems: standards },
-          { childTable: 'inspection_summary', parentIdColumn: 'inspection_id', localItems: summary ? [summary] : [] },
+          { childTable: 'inspection_systems', parentIdColumn: 'inspection_id', localItems: systems, prefetchedServerRows: existingSystems },
+          { childTable: 'inspection_ziplines', parentIdColumn: 'inspection_id', localItems: ziplines, prefetchedServerRows: existingZiplines },
+          { childTable: 'inspection_equipment', parentIdColumn: 'inspection_id', localItems: equipment, prefetchedServerRows: existingEquipment },
+          { childTable: 'inspection_standards', parentIdColumn: 'inspection_id', localItems: standards, prefetchedServerRows: existingStandards },
+          { childTable: 'inspection_summary', parentIdColumn: 'inspection_id', localItems: summary ? [summary] : [], prefetchedServerRows: existingSummary },
         ],
         inspectionId,
         'inspection',
@@ -1139,11 +1150,15 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
       rollbackData,
     });
     
-    // ZERO DATA LOSS: Empty-array safeguard
-    // If the server has child data but local is completely empty, this is suspicious
-    // (likely IndexedDB corruption or failed read) -- skip sync to prevent data loss
+    let existingApproaches: any[] = [];
+    let existingSystems: any[] = [];
+    let existingAttention: any[] = [];
+    let existingVerifiable: any[] = [];
+    let existingSystemsInPlace: any[] = [];
+    let existingSummary: any[] = [];
+    
     if (recordStatus?.record_exists && !recordStatus?.is_deleted) {
-      const [
+      [
         existingApproaches,
         existingSystems,
         existingAttention,
@@ -1215,12 +1230,17 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
       const wasEdited = (updatedAt - createdAt) > 60000;
 
       if (localIsCompletelyEmpty && wasEdited && ageMinutes > 5) {
-        console.warn('[SAFETY] suspicious_empty_guard: training was edited but all child data is empty', {
-          trainingId: trainingId.substring(0, 8),
-          ageMinutes: Math.round(ageMinutes),
-          updatedAt: training.updated_at,
-        });
-        return { success: false, skipped: true, reason: 'suspicious_empty' };
+        if (recordStatus?.record_exists && !recordStatus?.is_deleted) {
+          // Guard 1 already ran and didn't block — server is also empty. Allow sync.
+          console.log('[SYNC] suspicious_empty_guard: both local and server are empty, allowing sync for genuinely blank training', {
+            trainingId: trainingId.substring(0, 8),
+          });
+        } else {
+          // Record doesn't exist on server yet — new blank form, allow sync
+          console.log('[SYNC] suspicious_empty_guard: new training with no server data, allowing sync', {
+            trainingId: trainingId.substring(0, 8),
+          });
+        }
       }
     }
 
@@ -1229,12 +1249,12 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
     if (recordStatus?.record_exists && !recordStatus?.is_deleted) {
       await reconcileAllChildTables(
         [
-          { childTable: 'training_delivery_approaches', parentIdColumn: 'training_id', localItems: delivery_approaches },
-          { childTable: 'training_operating_systems', parentIdColumn: 'training_id', localItems: operating_systems },
-          { childTable: 'training_immediate_attention', parentIdColumn: 'training_id', localItems: immediate_attention },
-          { childTable: 'training_verifiable_items', parentIdColumn: 'training_id', localItems: verifiable_items },
-          { childTable: 'training_systems_in_place', parentIdColumn: 'training_id', localItems: systems_in_place },
-          { childTable: 'training_summary', parentIdColumn: 'training_id', localItems: summary ? [summary] : [] },
+          { childTable: 'training_delivery_approaches', parentIdColumn: 'training_id', localItems: delivery_approaches, prefetchedServerRows: existingApproaches },
+          { childTable: 'training_operating_systems', parentIdColumn: 'training_id', localItems: operating_systems, prefetchedServerRows: existingSystems },
+          { childTable: 'training_immediate_attention', parentIdColumn: 'training_id', localItems: immediate_attention, prefetchedServerRows: existingAttention },
+          { childTable: 'training_verifiable_items', parentIdColumn: 'training_id', localItems: verifiable_items, prefetchedServerRows: existingVerifiable },
+          { childTable: 'training_systems_in_place', parentIdColumn: 'training_id', localItems: systems_in_place, prefetchedServerRows: existingSystemsInPlace },
+          { childTable: 'training_summary', parentIdColumn: 'training_id', localItems: summary ? [summary] : [], prefetchedServerRows: existingSummary },
         ],
         trainingId,
         'training',
@@ -1827,11 +1847,15 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
       rollbackData,
     });
     
-    // ZERO DATA LOSS: Empty-array safeguard
-    // If the server has child data but local is completely empty, this is suspicious
-    // (likely IndexedDB corruption or failed read) -- skip sync to prevent data loss
+    let existingBeginning: any[] = [];
+    let existingEnd: any[] = [];
+    let existingSystems: any[] = [];
+    let existingEquipment: any[] = [];
+    let existingStructure: any[] = [];
+    let existingEnvironment: any[] = [];
+    
     if (recordStatus?.record_exists && !recordStatus?.is_deleted) {
-      const [
+      [
         existingBeginning,
         existingEnd,
         existingSystems,
@@ -1925,12 +1949,12 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
     if (recordStatus?.record_exists && !recordStatus?.is_deleted) {
       await reconcileAllChildTables(
         [
-          { childTable: 'daily_assessment_beginning_of_day', parentIdColumn: 'assessment_id', localItems: beginning_of_day },
-          { childTable: 'daily_assessment_end_of_day', parentIdColumn: 'assessment_id', localItems: end_of_day },
-          { childTable: 'daily_assessment_operating_systems', parentIdColumn: 'assessment_id', localItems: operating_systems },
-          { childTable: 'daily_assessment_equipment_checks', parentIdColumn: 'assessment_id', localItems: equipment_checks },
-          { childTable: 'daily_assessment_structure_checks', parentIdColumn: 'assessment_id', localItems: structure_checks },
-          { childTable: 'daily_assessment_environment_checks', parentIdColumn: 'assessment_id', localItems: environment_checks },
+          { childTable: 'daily_assessment_beginning_of_day', parentIdColumn: 'assessment_id', localItems: beginning_of_day, prefetchedServerRows: existingBeginning },
+          { childTable: 'daily_assessment_end_of_day', parentIdColumn: 'assessment_id', localItems: end_of_day, prefetchedServerRows: existingEnd },
+          { childTable: 'daily_assessment_operating_systems', parentIdColumn: 'assessment_id', localItems: operating_systems, prefetchedServerRows: existingSystems },
+          { childTable: 'daily_assessment_equipment_checks', parentIdColumn: 'assessment_id', localItems: equipment_checks, prefetchedServerRows: existingEquipment },
+          { childTable: 'daily_assessment_structure_checks', parentIdColumn: 'assessment_id', localItems: structure_checks, prefetchedServerRows: existingStructure },
+          { childTable: 'daily_assessment_environment_checks', parentIdColumn: 'assessment_id', localItems: environment_checks, prefetchedServerRows: existingEnvironment },
         ],
         assessmentId,
         'daily_assessment',
