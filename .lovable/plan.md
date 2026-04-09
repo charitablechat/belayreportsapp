@@ -1,28 +1,27 @@
 
 
-# Fix: Dashboard Report Tabs — 2x2 Grid on Mobile
+# Remove Email Button from All Reports
 
 ## Problem
-On mobile (390px), the 4 report type tabs (Inspections, Training, Daily, Invoiced) overflow horizontally with an ugly scrollbar.
+The Email button and dialog in the report viewer are not needed and should be removed.
 
-## Solution
-On mobile, switch the `TabsList` to a 2x2 grid layout. On `sm:` and above, keep the current inline row.
+## Changes
 
-**Single file edit:** `src/components/dashboard/DashboardReportsSection.tsx` (line 525)
+### File: `src/components/HtmlReportViewer.tsx`
 
-Change the `TabsList` className from:
-```tsx
-<TabsList className="w-full sm:w-auto mb-4 overflow-x-auto">
-```
-To:
-```tsx
-<TabsList className="grid grid-cols-2 sm:inline-flex sm:grid-cols-none w-full sm:w-auto mb-4">
-```
+1. **Remove import** of `EmailReportDialog` (line 12) and `Mail` icon from lucide-react
+2. **Remove state** `emailDialogOpen` (line 45)
+3. **Remove `canEmail`** variable (line 48)
+4. **Remove `handleEmail`** function (lines 232-234)
+5. **Remove the Email button** (lines 257-268) — the disabled "coming soon" button
+6. **Remove the `EmailReportDialog` render** (lines 330-342)
+7. **Remove email-related props** from the interface (`reportType`, `organization`, `date`) — only if no other feature uses them. Since `reportType` is also used by the Share Link feature (line 244), keep it. Remove only email-specific logic.
 
-Also hide the icons on mobile to save space in each tab trigger (lines 526-542), adding `hidden sm:inline` to each icon:
-```tsx
-<FileText className="w-4 h-4 hidden sm:inline" />
-```
+### File: `src/components/EmailReportDialog.tsx`
+- Delete the entire file (no longer referenced anywhere).
 
-This gives a clean 2-row, 2-column layout on phones and reverts to the standard inline tab bar on wider screens.
+### File: `supabase/functions/send-report-email/index.ts`
+- Keep for now (edge function deletion is a separate concern and it's harmless).
+
+Two file edits, one file deletion. No structural changes.
 
