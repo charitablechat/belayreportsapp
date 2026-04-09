@@ -13,8 +13,7 @@ export interface PWAUpdateStatus {
 }
 
 const UPDATE_APPLIED_KEY = 'pwa-update-just-applied';
-const SW_READY_TIMEOUT_MS = 5000;
-const UPDATE_DISCOVERY_TIMEOUT_MS = 4000;
+const SW_READY_TIMEOUT_MS = 3000;
 const SW_UPDATE_TIMEOUT_MS = 4000;
 
 const withTimeout = <T,>(promise: Promise<T>, ms: number, label: string): Promise<T> =>
