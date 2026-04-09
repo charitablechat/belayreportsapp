@@ -186,6 +186,7 @@ export default {
         "scale-in": "scale-in 0.2s ease-out",
         "slide-up": "slide-up 0.3s ease-out",
         "pulse-soft": "pulse-soft 2s ease-in-out infinite",
+        "pulse-calm": "pulse-calm 4s ease-in-out infinite",
       },
     },
   },
