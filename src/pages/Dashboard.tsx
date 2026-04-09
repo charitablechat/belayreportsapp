@@ -243,7 +243,8 @@ export default function Dashboard() {
       return data;
     },
     enabled: !!isSuperAdmin,
-    staleTime: 60 * 1000,
+    staleTime: 0,
+    refetchOnMount: 'always',
   });
 
   const handleToggleInvoiced = React.useCallback(async (report: any, type: 'inspection' | 'training' | 'daily') => {
@@ -278,7 +279,8 @@ export default function Dashboard() {
       toast.success("Report marked as invoiced");
     }
     triggerHaptic('light');
-  }, [invoicedReportIds]);
+    refetchInvoiced();
+  }, [invoicedReportIds, refetchInvoiced]);
 
 
   // NOTE: deps intentionally kept as [] — the load* functions inside only use

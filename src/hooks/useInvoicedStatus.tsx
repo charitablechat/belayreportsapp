@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
@@ -9,6 +10,7 @@ interface UseInvoicedStatusProps {
 }
 
 export function useInvoicedStatus({ reportId, reportType, enabled }: UseInvoicedStatusProps) {
+  const queryClient = useQueryClient();
   const [isInvoiced, setIsInvoiced] = useState(false);
   const [toggling, setToggling] = useState(false);
 
@@ -38,6 +40,7 @@ export function useInvoicedStatus({ reportId, reportType, enabled }: UseInvoiced
           .eq('report_type', reportType);
         if (error) throw error;
         setIsInvoiced(false);
+        queryClient.invalidateQueries({ queryKey: ["invoiced-reports"] });
         toast.success("Invoice mark removed");
       } else {
         const { error } = await supabase
@@ -45,6 +48,7 @@ export function useInvoicedStatus({ reportId, reportType, enabled }: UseInvoiced
           .insert({ report_id: reportId, report_type: reportType });
         if (error) throw error;
         setIsInvoiced(true);
+        queryClient.invalidateQueries({ queryKey: ["invoiced-reports"] });
         toast.success("Marked as invoiced");
       }
     } catch (err: any) {
