@@ -436,6 +436,8 @@ export default function Dashboard() {
     window.addEventListener('focus', handleWindowFocus);
     window.addEventListener('pageshow', handlePageShow);
     document.addEventListener('visibilitychange', handleVisibilityChange);
+    const handleDashboardStale = () => refreshReports(true);
+    window.addEventListener('dashboard-stale', handleDashboardStale);
 
     return () => {
       window.removeEventListener('online', handleOnline);
@@ -443,6 +445,7 @@ export default function Dashboard() {
       window.removeEventListener('focus', handleWindowFocus);
       window.removeEventListener('pageshow', handlePageShow);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('dashboard-stale', handleDashboardStale);
       subscription.unsubscribe();
       unsubscribeSyncComplete();
     };
