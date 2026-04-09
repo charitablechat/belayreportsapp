@@ -1,62 +1,79 @@
 
 
-# Sync Engine & Data Protection Audit — Final Report
+# Security & Completeness Audit — 3 Real Issues Found
 
-## Overall Assessment: PRODUCTION READY — No New Issues Found
+## Overall Status: SYNC ENGINE SOLID — 3 Security Gaps Need Fixing
 
-After reviewing all critical files (`offline-storage.ts`, `atomic-sync-manager.ts`, `sw-sync.js`, `useAutoSync.tsx`, `sync-reconciliation.ts`, `transaction-manager.ts`), database logs, and the linter, the sync engine is fully production-ready.
-
----
-
-## IDBKeyRange.only() Fix — CONFIRMED STABLE
-
-All three `getUnsynced*` functions use `db.getAll()` + `.filter()` with a 2s drift tolerance. No `IDBKeyRange` usage remains anywhere in the unsynced detection path:
-
-| Function | Pattern | Status |
-|----------|---------|--------|
-| `getUnsyncedInspections` (line 902) | `getAll('inspections')` + filter | SOLID |
-| `getUnsyncedTrainings` (line 1923) | `getAll('trainings')` + filter | SOLID |
-| `getUnsyncedDailyAssessments` (line 1604) | `getAll('daily_assessments')` + filter | SOLID |
-| `getUnsyncedCounts` (line 1967) | Same pattern, sequential reads | SOLID |
-
-The batched `getUnsyncedCounts` uses sequential reads (not parallel) to avoid Safari IDB lock contention. All four functions share identical filter logic (drift > 2000ms) and orphan-adoption logic (temp-ID records).
+The sync engine, data protection layers, and IndexedDB logic are all production-ready (as verified in prior audits). However, the security scan surfaced **2 critical** and **1 medium** finding.
 
 ---
 
-## Data Protection Layers — ALL INTACT
+## Issue 1 — CRITICAL: Anonymous Upload to inspection-reports Bucket
 
-| Layer | Mechanism | Status |
-|-------|-----------|--------|
-| 1. Emergency localStorage | `useEmergencySave` on `visibilitychange`/`pagehide` | INTACT |
-| 2. IndexedDB primary store | `withIndexedDBErrorBoundary` + circuit breaker | INTACT |
-| 3. Emergency fallback | `emergencyLocalStorageFallback` if IDB fails | INTACT |
-| 4. Cloud backup mirror | `report_backups` table passive upload | INTACT |
-| 5. Database sync | 3-step deferred `synced_at` pattern | INTACT |
+**Problem:** The storage policy "Service role can upload PDFs" applies to the `{public}` role (unauthenticated users) with only `bucket_id = 'inspection-reports'` as a check. Any anonymous HTTP request can upload arbitrary files to this private bucket.
 
----
+**Risk:** HIGH — An attacker could fill the bucket with junk data or overwrite existing report PDFs.
 
-## Service Worker Sync — VERIFIED
+**Fix:** Drop the existing policy and recreate it scoped to `service_role` only (which is what the name intended). Edge functions that generate PDFs already use the service role key, so no client code changes are needed.
 
-| Check | Status |
-|-------|--------|
-| DB_VERSION fallback = 9 | CORRECT |
-| Training index: `'by-training'` | CORRECT (line 539-544) |
-| Assessment index: `'by-assessment'` | CORRECT (line 667-672) |
-| Temp-ID skip guard | CORRECT (lines 526, 654) |
-| Join object stripping | CORRECT (lines 560, 689) |
-| Client deferral | CORRECT |
+```sql
+DROP POLICY "Service role can upload PDFs" ON storage.objects;
+CREATE POLICY "Service role can upload PDFs"
+  ON storage.objects FOR INSERT
+  TO service_role
+  WITH CHECK (bucket_id = 'inspection-reports');
+```
 
 ---
 
-## Database Health
+## Issue 2 — CRITICAL (FALSE POSITIVE): `is_super_admin()` checks `role = 'admin'`
 
-- **DB error logs**: 1 benign system error (`pg_proc_info` — internal Supabase catalog, not user-facing)
-- **Linter**: 4 WARN-level `search_path` issues on pgmq helper functions (pre-existing, non-critical — these are Supabase-internal queue functions)
-- **RLS**: All parent tables, 20 child tables, `sync_conflicts`, and `report_deleted_items` have correct admin policies
+**Status: BY DESIGN — No change needed.**
+
+The codebase comments in `cached-auth.ts` (lines 302-310) explain the intentional naming: `is_super_admin()` maps to the `admin` role (the highest tier, held by 1 user), while `is_admin_or_above()` maps to `admin OR super_admin` roles. The naming is legacy but the access control is correct. No users have unauthorized access.
 
 ---
 
-## Conclusion
+## Issue 3 — MEDIUM: Realtime Channel Leakage
 
-**No code changes needed.** The sync engine, data protection layers, and database security are all production-ready. The `IDBKeyRange.only()` fix is fully integrated and stable across all three report types. All recent Bug 1–14 fixes are verified in place.
+**Problem:** The tables `inspections`, `trainings`, and `daily_assessments` are published to Supabase Realtime, but any authenticated user could subscribe to a channel and receive row-change events for other users' records.
+
+**Risk:** MEDIUM — Data leakage of report metadata (not full content, but field names/values in change payloads).
+
+**Fix:** Since the app only uses Realtime for triggering sync refreshes (not for streaming data to clients), the simplest fix is to remove these tables from the Realtime publication entirely. The sync engine uses polling, not Realtime subscriptions.
+
+```sql
+ALTER PUBLICATION supabase_realtime DROP TABLE public.inspections;
+ALTER PUBLICATION supabase_realtime DROP TABLE public.trainings;
+ALTER PUBLICATION supabase_realtime DROP TABLE public.daily_assessments;
+```
+
+---
+
+## Issue 4 — LOW: `global_field_history` readable by all users
+
+**Status: BY DESIGN — No change needed.**
+
+This table powers cross-user autocomplete suggestions (organization names, site names). The `USING (true)` policy is intentional so all users benefit from shared field history. No sensitive personal data is stored — only field labels and common values.
+
+---
+
+## Summary
+
+| # | Issue | Severity | Action |
+|---|-------|----------|--------|
+| 1 | Anonymous storage upload | CRITICAL | Fix policy to `service_role` only |
+| 2 | `is_super_admin` naming | False positive | No change (by design) |
+| 3 | Realtime channel leakage | MEDIUM | Remove tables from publication |
+| 4 | `global_field_history` | By design | No change |
+
+### Plan
+
+**Step 1:** Migration to drop and recreate the storage upload policy with correct role scoping.
+
+**Step 2:** Migration to remove the 3 parent tables from the Realtime publication.
+
+**Step 3:** Verify no client code depends on Realtime subscriptions for these tables (the sync engine uses polling).
+
+Two migrations, zero client code changes.
 
