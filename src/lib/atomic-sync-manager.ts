@@ -60,6 +60,14 @@ import { appendVersion, getLatestFieldCount, calculateFieldCount } from "./repor
 const MAX_BATCH_SIZE = 5;
 
 /**
+ * Tracks consecutive field_count_regression skips per record.
+ * After MAX_REGRESSION_SKIPS consecutive skips, the guard allows sync to proceed.
+ * This prevents legitimate large deletions from being blocked indefinitely.
+ */
+const regressionSkipCounter = new Map<string, number>();
+const MAX_REGRESSION_SKIPS = 3;
+
+/**
  * Interface for record status returned by check_record_status RPC
  * Used to bypass RLS and check if a record was soft-deleted
  */
