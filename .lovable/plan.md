@@ -1,79 +1,101 @@
 
 
-# Security & Completeness Audit — 3 Real Issues Found
+# Text Wrapping & Responsive Design Audit
 
-## Overall Status: SYNC ENGINE SOLID — 3 Security Gaps Need Fixing
+## Overall Assessment: WELL-IMPLEMENTED — 3 Minor Issues Found
 
-The sync engine, data protection layers, and IndexedDB logic are all production-ready (as verified in prior audits). However, the security scan surfaced **2 critical** and **1 medium** finding.
+The application has a mature responsive design foundation with global text-wrapping safety nets in `index.css`, consistent `md`/`lg` breakpoint usage, and proper mobile card fallbacks for all complex tables. The audit identified **3 minor issues** — none are layout-breaking.
 
 ---
 
-## Issue 1 — CRITICAL: Anonymous Upload to inspection-reports Bucket
+## Verified — Working Correctly
 
-**Problem:** The storage policy "Service role can upload PDFs" applies to the `{public}` role (unauthenticated users) with only `bucket_id = 'inspection-reports'` as a check. Any anonymous HTTP request can upload arbitrary files to this private bucket.
+These areas were audited and confirmed to be properly responsive:
 
-**Risk:** HIGH — An attacker could fill the bucket with junk data or overwrite existing report PDFs.
+1. **Global CSS safety net** — `overflow-wrap: anywhere` and `word-break: break-word` applied to all text containers (p, span, label, td, th, div, li). Grid children have `min-width: 0`. Inputs/selects use `text-overflow: ellipsis`.
 
-**Fix:** Drop the existing policy and recreate it scoped to `service_role` only (which is what the name intended). Edge functions that generate PDFs already use the service role key, so no client code changes are needed.
+2. **EquipmentTable** — Desktop grid (`hidden lg:block`) with `overflow-x-auto`. Mobile card layout (`lg:hidden`) with proper stacking. Buttons use `flex-1 lg:flex-none` for full-width on mobile.
 
-```sql
-DROP POLICY "Service role can upload PDFs" ON storage.objects;
-CREATE POLICY "Service role can upload PDFs"
-  ON storage.objects FOR INSERT
-  TO service_role
-  WITH CHECK (bucket_id = 'inspection-reports');
+3. **ZiplinesTable** — Same `lg` breakpoint pattern with 15-column desktop grid wrapped in `overflow-x-auto`, mobile cards below `lg`.
+
+4. **InspectionHeader** — Title uses `break-words [overflow-wrap:anywhere]` with responsive text sizing (`text-xl md:text-2xl`). Form fields use `grid-cols-1 md:grid-cols-2`.
+
+5. **TrainingHeader / DailyAssessmentHeader** — Proper `grid-cols-1 md:grid-cols-2` layouts.
+
+6. **ReportCard** — Uses `line-clamp-1` on titles, responsive padding (`p-4 md:p-6`), text sizing (`text-xs md:text-sm`).
+
+7. **ReportListView** — Columns hidden at breakpoints (`hidden md:table-cell`, `hidden sm:table-cell`). Title column has `min-w-[180px]`.
+
+8. **DashboardFilters** — A-Z letter chips use `ScrollArea` with horizontal scrollbar. Filter pills use `flex flex-wrap`.
+
+9. **DashboardQuickFilters** — Uses `flex flex-wrap gap-2` for chip layout.
+
+10. **DashboardControls** — Uses `flex flex-wrap items-center gap-2`.
+
+11. **SummarySection** — CardHeader uses `flex-col md:flex-row` with responsive button text.
+
+12. **AuthenticatedHeader** — Fixed position `top-3 right-3` with proper z-index.
+
+---
+
+## Issue 1 — LOW: Dashboard Report Tabs Overflow on Small Mobile (320px)
+
+**Component:** `DashboardReportsSection.tsx` line 525
+
+**Problem:** The `TabsList` with "Inspections (N)", "Training (N)", "Daily (N)", and optionally "Invoiced (N)" tabs uses `w-full sm:w-auto` but doesn't wrap or scroll on very narrow screens (320px). With 4 tabs (super admin), text will compress and become illegible.
+
+**Fix:** Add `overflow-x-auto` to the `TabsList` wrapper or hide icons on mobile:
+```tsx
+<TabsList className="w-full sm:w-auto mb-4 overflow-x-auto">
 ```
 
 ---
 
-## Issue 2 — CRITICAL (FALSE POSITIVE): `is_super_admin()` checks `role = 'admin'`
+## Issue 2 — LOW: "9 Most Recent Reports" Tab Text Truncates on Mobile
 
-**Status: BY DESIGN — No change needed.**
+**Component:** `Dashboard.tsx` line 1499-1506
 
-The codebase comments in `cached-auth.ts` (lines 302-310) explain the intentional naming: `is_super_admin()` maps to the `admin` role (the highest tier, held by 1 user), while `is_admin_or_above()` maps to `admin OR super_admin` roles. The naming is legacy but the access control is correct. No users have unauthorized access.
+**Problem:** The "9 Most Recent Reports" tab trigger text is long and may truncate on screens below 375px. The "All Reports" tab beside it compounds the width pressure.
 
----
-
-## Issue 3 — MEDIUM: Realtime Channel Leakage
-
-**Problem:** The tables `inspections`, `trainings`, and `daily_assessments` are published to Supabase Realtime, but any authenticated user could subscribe to a channel and receive row-change events for other users' records.
-
-**Risk:** MEDIUM — Data leakage of report metadata (not full content, but field names/values in change payloads).
-
-**Fix:** Since the app only uses Realtime for triggering sync refreshes (not for streaming data to clients), the simplest fix is to remove these tables from the Realtime publication entirely. The sync engine uses polling, not Realtime subscriptions.
-
-```sql
-ALTER PUBLICATION supabase_realtime DROP TABLE public.inspections;
-ALTER PUBLICATION supabase_realtime DROP TABLE public.trainings;
-ALTER PUBLICATION supabase_realtime DROP TABLE public.daily_assessments;
+**Fix:** Use shorter text on mobile:
+```tsx
+<TabsTrigger value="recent" className="text-base font-semibold px-5 py-2">
+  <span className="hidden sm:inline">9 Most Recent Reports</span>
+  <span className="sm:hidden">Recent</span>
+</TabsTrigger>
 ```
 
 ---
 
-## Issue 4 — LOW: `global_field_history` readable by all users
+## Issue 3 — LOW: Dashboard Header Right-Side Controls Crowded on 360-375px
 
-**Status: BY DESIGN — No change needed.**
+**Component:** `Dashboard.tsx` lines 1315-1361
 
-This table powers cross-user autocomplete suggestions (organization names, site names). The `USING (true)` policy is intentional so all users benefit from shared field history. No sensitive personal data is stored — only field labels and common values.
+**Problem:** The header row contains SyncPulse, pending badge, NetworkQualityIndicator, ForceSyncButton, refresh button, and Super Admin badge — all in a `flex items-center gap-2` container with `mr-14`. On narrow phones (360px), these controls compress against each other.
+
+**Fix:** Hide non-essential indicators on mobile by adding responsive visibility:
+```tsx
+<NetworkQualityIndicator className="hidden sm:flex" />
+```
+Or wrap the controls in a scrollable container.
 
 ---
 
 ## Summary
 
-| # | Issue | Severity | Action |
-|---|-------|----------|--------|
-| 1 | Anonymous storage upload | CRITICAL | Fix policy to `service_role` only |
-| 2 | `is_super_admin` naming | False positive | No change (by design) |
-| 3 | Realtime channel leakage | MEDIUM | Remove tables from publication |
-| 4 | `global_field_history` | By design | No change |
+| # | Issue | Severity | Location |
+|---|-------|----------|----------|
+| 1 | Report tabs overflow on 320px | LOW | DashboardReportsSection L525 |
+| 2 | "9 Most Recent Reports" text too long for mobile | LOW | Dashboard L1499 |
+| 3 | Header controls crowded at 360px | LOW | Dashboard L1315 |
 
 ### Plan
 
-**Step 1:** Migration to drop and recreate the storage upload policy with correct role scoping.
+**Step 1:** Add `overflow-x-auto` to the report type `TabsList` in `DashboardReportsSection.tsx`.
 
-**Step 2:** Migration to remove the 3 parent tables from the Realtime publication.
+**Step 2:** Add responsive text shortening for the "9 Most Recent Reports" / "All Reports" tab triggers in `Dashboard.tsx`.
 
-**Step 3:** Verify no client code depends on Realtime subscriptions for these tables (the sync engine uses polling).
+**Step 3:** Add `hidden sm:flex` to the `NetworkQualityIndicator` in the dashboard header to reduce crowding on narrow phones.
 
-Two migrations, zero client code changes.
+Three targeted edits, no structural changes needed.
 
