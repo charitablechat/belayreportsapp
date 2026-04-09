@@ -9,8 +9,9 @@ const corsHeaders = {
 const CONCURRENCY = 2;
 
 interface PdfResult {
-  generated: number;
+  copied: number;
   skipped: number;
+  no_source: number;
   errors: number;
   error_details: string[];
 }
@@ -35,11 +36,12 @@ Deno.serve(async (req) => {
     const body = await req.json();
     const mode = body.mode || "incremental";
 
-    console.log(`[generate-backup-pdfs] Mode: ${mode}`);
+    console.log(`[generate-backup-pdfs] Mode: ${mode} (copy-only)`);
 
     const result: PdfResult = {
-      generated: 0,
+      copied: 0,
       skipped: 0,
+      no_source: 0,
       errors: 0,
       error_details: [],
     };
@@ -99,7 +101,7 @@ Deno.serve(async (req) => {
       `[generate-backup-pdfs] ${jobs.length} reports to process (${inspections?.length || 0} inspections, ${trainings?.length || 0} trainings, ${assessments?.length || 0} daily assessments)`,
     );
 
-    // ── Process in batches ──
+    // ── Process in batches (copy-only, no generation) ──
     for (let i = 0; i < jobs.length; i += CONCURRENCY) {
       const batch = jobs.slice(i, i + CONCURRENCY);
 
@@ -130,48 +132,9 @@ Deno.serve(async (req) => {
               return;
             }
 
-            // ── Determine function + payload ──
-            let functionName: string;
-            let bodyPayload: Record<string, string>;
-            let contentType: string;
-
-            if (job.type === "inspection") {
-              functionName = "generate-inspection-pdf";
-              bodyPayload = { inspectionId: job.id };
-              contentType = "application/pdf";
-            } else if (job.type === "training") {
-              functionName = "generate-training-pdf";
-              bodyPayload = { trainingId: job.id };
-              contentType = "application/pdf";
-            } else {
-              functionName = "generate-daily-assessment-html";
-              bodyPayload = { assessmentId: job.id };
-              contentType = "text/html";
-            }
-
-            console.log(`[generate-backup-pdfs] Generating ${job.type} for ${job.id}...`);
-
-            const genRes = await fetch(
-              `${supabaseUrl}/functions/v1/${functionName}`,
-              {
-                method: "POST",
-                headers: {
-                  "Authorization": `Bearer ${serviceRoleKey}`,
-                  "Content-Type": "application/json",
-                },
-                body: JSON.stringify(bodyPayload),
-              },
-            );
-
-            if (!genRes.ok) {
-              const errText = await genRes.text();
-              throw new Error(`Generator returned ${genRes.status}: ${errText.substring(0, 200)}`);
-            }
-
-            const genData = await genRes.json();
-
-            // ── Find source file in inspection-reports bucket ──
+            // ── Find existing source file (read-only, no generation) ──
             let sourcePath: string | null = null;
+            let contentType: string;
 
             if (job.type === "inspection") {
               const { data: reportRow } = await adminClient
@@ -180,6 +143,7 @@ Deno.serve(async (req) => {
                 .eq("inspection_id", job.id)
                 .maybeSingle();
               sourcePath = reportRow?.pdf_url || null;
+              contentType = "application/pdf";
             } else if (job.type === "training") {
               const { data: files } = await adminClient.storage
                 .from("inspection-reports")
@@ -191,8 +155,8 @@ Deno.serve(async (req) => {
                 f.name.startsWith(`training-report-${job.id}`) && f.name.endsWith(".pdf")
               );
               sourcePath = match ? `training-reports/${match.name}` : null;
+              contentType = "application/pdf";
             } else {
-              // Daily assessment: search in html-reports folder
               const { data: files } = await adminClient.storage
                 .from("inspection-reports")
                 .list("html-reports", {
@@ -203,10 +167,13 @@ Deno.serve(async (req) => {
                 f.name.startsWith(`daily-assessment-${job.id}`) && f.name.endsWith(".html")
               );
               sourcePath = match ? `html-reports/${match.name}` : null;
+              contentType = "text/html";
             }
 
             if (!sourcePath) {
-              throw new Error("Report generated but could not find file in storage");
+              result.no_source++;
+              console.log(`[generate-backup-pdfs] ⊘ ${job.type}/${job.id}: no existing report to copy`);
+              return;
             }
 
             // ── Download from inspection-reports ──
@@ -230,7 +197,7 @@ Deno.serve(async (req) => {
               throw new Error(`Upload to backup failed: ${upErr.message}`);
             }
 
-            result.generated++;
+            result.copied++;
             console.log(`[generate-backup-pdfs] ✓ ${destPath}`);
           } catch (err: any) {
             result.errors++;
@@ -244,7 +211,7 @@ Deno.serve(async (req) => {
     }
 
     console.log(
-      `[generate-backup-pdfs] Done: generated=${result.generated}, skipped=${result.skipped}, errors=${result.errors}`,
+      `[generate-backup-pdfs] Done: copied=${result.copied}, skipped=${result.skipped}, no_source=${result.no_source}, errors=${result.errors}`,
     );
 
     return new Response(JSON.stringify(result), {
