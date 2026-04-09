@@ -1,27 +1,63 @@
 
 
-# Remove Email Button from All Reports
+# Fix: Dashboard Auto-Reload Lag When Exiting Reports
 
-## Problem
-The Email button and dialog in the report viewer are not needed and should be removed.
+## Root Cause
 
-## Changes
+When navigating back from a report to the dashboard, `refreshReports(true)` runs a **sequential session validation cascade** before loading any data:
 
-### File: `src/components/HtmlReportViewer.tsx`
+1. Check `navigator.onLine` — if briefly false (common on iOS transitions), **wait 1 second** (line 304)
+2. Call `ensureValidSession()` with **8-second timeout** (line 314)
+3. If that fails, **wait 2 seconds**, then retry with a **5-second timeout** (lines 324-330)
+4. Only THEN call `getUserWithCache()` and load reports
 
-1. **Remove import** of `EmailReportDialog` (line 12) and `Mail` icon from lucide-react
-2. **Remove state** `emailDialogOpen` (line 45)
-3. **Remove `canEmail`** variable (line 48)
-4. **Remove `handleEmail`** function (lines 232-234)
-5. **Remove the Email button** (lines 257-268) — the disabled "coming soon" button
-6. **Remove the `EmailReportDialog` render** (lines 330-342)
-7. **Remove email-related props** from the interface (`reportType`, `organization`, `date`) — only if no other feature uses them. Since `reportType` is also used by the Share Link feature (line 244), keep it. Remove only email-specific logic.
+**Worst case: 16 seconds before data even starts loading.** Even in the happy path, `ensureValidSession()` calls `supabase.auth.getSession()` which involves a LockManager acquisition and can take 1-3 seconds on mobile.
 
-### File: `src/components/EmailReportDialog.tsx`
-- Delete the entire file (no longer referenced anywhere).
+Meanwhile, the stale timestamp marker (lines 452-454) is consumed but **has zero effect** — it just logs. It doesn't fast-track anything.
 
-### File: `supabase/functions/send-report-email/index.ts`
-- Keep for now (edge function deletion is a separate concern and it's harmless).
+## Solution: Fast-Path for Report-Exit Navigation
 
-Two file edits, one file deletion. No structural changes.
+When the dashboard detects a stale marker (meaning the user just came from a report form where they were authenticated seconds ago), **skip the session validation entirely for the initial load** and use the in-memory cached user. Then do a background session-validated refresh afterward.
+
+### Changes
+
+**File: `src/pages/Dashboard.tsx`**
+
+1. **Add a `skipSessionValidation` parameter to `refreshReports`** — when `true`, skip the `ensureValidSession()` cascade entirely and trust `getUserWithCache()` (which has a 1-minute in-memory cache).
+
+2. **On mount, detect stale marker and use fast path**:
+   ```
+   // Line 452: Instead of just logging, set a flag
+   const hasStaleMarker = consumeDashboardStaleTimestamp() || consumePendingDashboardRefresh();
+   ```
+   
+   Then on line 389:
+   ```
+   // Fast load with cached auth, then background-validate
+   refreshReports(true, hasStaleMarker).then(() => {
+     if (hasStaleMarker) {
+       // Background: re-validate session and refresh again if needed
+       setTimeout(() => refreshReports(true), 500);
+     }
+   });
+   ```
+
+3. **Inside `refreshReports`, when `skipSessionValidation` is true**:
+   - Skip the 1s offline recheck (we were just online in the report form)
+   - Skip the `ensureValidSession()` + retry cascade
+   - Set `sessionValid = true` and `effectiveOnline = true` directly
+   - Proceed straight to `getUserWithCache()` → load data
+
+This turns a 3-8 second wait into ~50ms (in-memory cache hit + parallel DB queries).
+
+### Why This Is Safe
+
+- The user was authenticated seconds ago in the report form — the cached auth token is valid
+- `getUserWithCache()` has a 1-minute TTL and will return the cached user instantly
+- The background refresh (500ms later) will do full session validation and correct any stale data
+- If the fast path somehow fails (e.g., expired token), the load functions fall back to cached/offline data, and the background refresh will fix it
+
+### Summary
+
+One file edited (`Dashboard.tsx`), ~15 lines changed. The fix eliminates the session validation bottleneck for the most common navigation pattern (report → dashboard) while preserving all safety mechanisms for cold starts and edge cases.
 
