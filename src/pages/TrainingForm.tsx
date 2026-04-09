@@ -44,7 +44,7 @@ import {
   queueTrainingOperation 
 } from "@/lib/offline-storage";
 import { HtmlReportViewer } from "@/components/HtmlReportViewer";
-import { openHtmlReport } from "@/lib/html-report-viewer";
+
 import { triggerCompletionConfetti } from "@/lib/confetti";
 import { triggerHaptic } from "@/lib/haptics";
 import { useReportSync } from "@/hooks/useReportSync";
@@ -1139,14 +1139,9 @@ export default function TrainingForm() {
       const filename = `training-report-${training?.organization || 'report'}-${new Date().toISOString().split('T')[0]}.html`;
       const title = `Training Report - ${training?.organization || 'Report'}`;
 
-      // Try to open in new window (desktop)
-      const opened = openHtmlReport({ html, filename, title });
-
-      // If failed (mobile/PWA/popup blocked), use in-app viewer
-      if (!opened) {
-        setReportHtml(html);
-        setHtmlViewerOpen(true);
-      }
+      // Always use in-app viewer for consistent Save PDF + Close buttons
+      setReportHtml(html);
+      setHtmlViewerOpen(true);
     } catch (error: any) {
       console.error('[HTML Generation] Error:', error.message || error);
       
