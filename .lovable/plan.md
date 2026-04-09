@@ -1,116 +1,99 @@
 
 
-# Sync Engine Audit: Remaining Gaps and Broken Pieces
+# Sync Engine Audit: Remaining Gaps Found
 
-After a thorough review of `atomic-sync-manager.ts`, `useAutoSync.tsx`, `offline-storage.ts`, `sync-manager.ts`, `transaction-manager.ts`, `sync-reconciliation.ts`, `sw-sync.js`, and supporting files, here are the issues found:
+## Summary
 
----
-
-## Bug 1 (HIGH): Service Worker upserts `inspector` join object to DB
-
-**File:** `public/sw-sync.js`, lines 233-244, 519-529, 635-645
-
-The main thread carefully strips joined objects before upsert:
-```js
-// atomic-sync-manager.ts
-const { inspector, ...inspectionWithoutJoin } = inspection as any;
-```
-
-But the Service Worker does **not** strip these. It does `const inspData = { ...inspection }` and only deletes `synced_at`. If the IndexedDB record contains an `inspector` object (which it does -- line 649 saves it), the SW will try to upsert that nested object into the `inspections` table column, causing a PostgREST error or silent data corruption. Same for `trainer` on trainings.
-
-**Fix:** Add `delete inspData.inspector;` (and `delete trainingData.inspector; delete trainingData.trainer;`, and `delete assessmentData.inspector;`) in the SW before upsert.
+After the recent fixes (Bugs 1-7), the **main thread sync engine is solid**. However, the Service Worker still has one critical data-reading bug, and there is a significant RLS gap for admin access to child tables. The fuzzy search and restore hydration logic are working correctly.
 
 ---
 
-## Bug 2 (HIGH): Service Worker photo sync uses wrong storage path
+## Bug 8 (CRITICAL): SW `getAllRelatedData` uses wrong index for trainings and assessments
 
-**File:** `public/sw-sync.js`, lines 410-411
+**File:** `public/sw-sync.js`, line 141
+
+The helper function hardcodes `store.index('by-inspection')` for ALL stores:
 
 ```js
-const fileName = `${photo.inspectionId}/${Date.now()}.${fileExt}`;
+function getAllRelatedData(db, storeName, inspectionId) {
+  const index = store.index('by-inspection'); // WRONG for trainings & assessments
+}
 ```
 
-The main thread's `syncPhotos()` uses `${user.id}/${photo.inspectionId}/${Date.now()}.${fileExt}` (or the photo's pre-assigned `photoUrl`). The SW skips the user ID prefix entirely. Since storage bucket RLS requires paths to start with `auth.uid()`, the SW upload will fail silently or create files in an inaccessible path.
+But IndexedDB stores use different index names:
+- Inspection child stores: `'by-inspection'` (correct)
+- Training child stores: `'by-training'` (line 736 of offline-storage.ts)
+- Daily assessment child stores: `'by-assessment'` (line 704)
 
-**Fix:** The SW should use `photo.photoUrl` if available (matching main thread), or skip photos without a pre-assigned path since the SW doesn't have access to the user ID reliably.
+**Impact:** Every training/assessment child data read in the SW throws a `NotFoundError` (caught by `.catch(() => [])`), returning empty arrays. The `suspicious_empty_guard` then blocks the sync. The SW **cannot sync any training or daily assessment child data** — it only works for inspections.
 
----
-
-## Bug 3 (MEDIUM): Service Worker doesn't handle temp-ID inspections
-
-**File:** `public/sw-sync.js`, lines 293-380
-
-The main thread has elaborate temp-ID-to-UUID transformation and dedup guard logic. The SW has none. If the SW syncs a `temp-` prefixed inspection, it will:
-- Send an invalid UUID to PostgREST, causing a `invalid input syntax for type uuid` error
-- Or create a record with the temp-ID string in the `id` column (if the column type somehow accepts it)
-
-This is documented in the memory as a known pattern, but the SW doesn't implement it.
-
-**Fix:** Add a temp-ID check at the start of the SW sync loop: if `inspection.id.startsWith('temp-')`, skip it and let the main thread handle the ID transformation.
-
----
-
-## Bug 4 (MEDIUM): `syncAllInspectionsAtomic` returns undefined for zero unsynced
-
-**File:** `src/lib/atomic-sync-manager.ts`, lines 710-895
-
-When `unsynced.length === 0`, the function falls through without an early return (unlike trainings at line 1538 and assessments at line 2244). The batch loop simply doesn't execute, and the function returns the result object at line 888. However, there's a missing early-return log statement.
-
-Actually, looking more carefully, lines 795-803 emit progress even when batch is empty. This is minor but wasteful -- the progress emitter fires "Starting sync... (0 total pending)" with `total: 0`. Not a data bug, but inconsistent with trainings/assessments which return early.
-
-**Fix:** Add the same early-return guard as trainings/assessments after `unsynced` is populated.
-
----
-
-## Bug 5 (MEDIUM): Ownership check after temp-ID swap is dead code
-
-**File:** `src/lib/atomic-sync-manager.ts`, line 177
+**Fix:** Replace the single `getAllRelatedData` with a version that accepts the index name as a parameter, or create separate helpers per type:
 
 ```js
-if (inspectionId.startsWith('temp-') || !inspection.synced_at) {
+function getAllRelatedData(db, storeName, parentId, indexName) {
+  indexName = indexName || 'by-inspection'; // backward compatible
+  const index = store.index(indexName);
+  ...
+}
 ```
 
-After the temp-ID swap at line 134-165, `inspectionId` is already replaced with the new UUID. So `inspectionId.startsWith('temp-')` will **never** be true at this point. The condition still works because `!inspection.synced_at` covers the same case, but the dead code is misleading.
-
-Same pattern exists for trainings (line 985) and assessments (line 1701).
-
-**Fix:** Remove the dead `startsWith('temp-')` check from all three ownership blocks.
+Then update callers:
+- Training calls (lines 538-543): pass `'by-training'`
+- Assessment calls (lines 666-671): pass `'by-assessment'`
 
 ---
 
-## Bug 6 (LOW): SW photo sync doesn't check `storageBucket` or `tableName`
+## Bug 9 (HIGH): Admin child table RLS gap
 
-**File:** `public/sw-sync.js`, lines 406-461
+The recent migration added `is_admin_or_above()` SELECT policies to the three **parent** tables (inspections, trainings, daily_assessments). But all **child** tables still only allow access for `super_admin` + owner:
 
-The main thread `syncPhotos()` reads per-photo `storageBucket` and `tableName` metadata (lines in `sync-manager.ts`). The SW hardcodes `inspection-photos` bucket and `inspection_photos` table. Training photos or assessment photos stored with different bucket/table metadata will be uploaded to the wrong location.
+- `inspection_systems`, `inspection_ziplines`, `inspection_equipment`, `inspection_standards`, `inspection_summary`, `inspection_photos`
+- `training_delivery_approaches`, `training_operating_systems`, `training_immediate_attention`, `training_verifiable_items`, `training_systems_in_place`, `training_summary`, `training_photos`
+- `daily_assessment_beginning_of_day`, `daily_assessment_end_of_day`, `daily_assessment_environment_checks`, `daily_assessment_equipment_checks`, `daily_assessment_structure_checks`, `daily_assessment_operating_systems`, `daily_assessment_photos`
 
-**Fix:** Read `photo.storageBucket` and `photo.tableName` in the SW, with fallback to `inspection-photos`/`inspection_photos`.
+**Impact:** An admin (non-super) who restores or opens someone else's report can see the parent row on the dashboard, but when they open the form, all child data (systems, equipment, checks) is invisible. Saves and completions also fail because INSERT/UPDATE on child tables is blocked by RLS.
 
----
-
-## Bug 7 (LOW): Race between SW sync and main thread sync
-
-Both the Service Worker (`sw-sync.js`) and main thread (`useAutoSync.tsx`) can sync the same record simultaneously. The SW has no coordination mechanism with the main thread's `syncInProgressRef`. This can cause:
-- Duplicate child row insertions (mitigated by upsert, but generates unnecessary network traffic)
-- Conflicting `synced_at` timestamps between SW and main thread stamps
-
-The main thread does set `last_sync_source` to distinguish, and the `align_synced_at` RPC helps. But the SW doesn't call `align_synced_at`, so its timestamp may not match, causing the main thread to see the record as "unsynced" again on the next cycle.
-
-**Fix:** Have the SW send a `SYNC_STARTING` message to clients before syncing, which the main thread can use to skip those records. Or simpler: have the SW only sync when no main thread client is active (`self.clients.matchAll()` returns empty).
+**Fix:** Add `is_admin_or_above()` policies for SELECT, INSERT, UPDATE, DELETE on all child tables listed above. This aligns child access with parent access.
 
 ---
 
-## Summary of Fixes
+## Bug 10 (LOW): SW `getAllRelatedData` parameter naming is misleading
 
-| # | Severity | File | Issue | Fix |
-|---|----------|------|-------|-----|
-| 1 | HIGH | `sw-sync.js` | SW upserts joined `inspector`/`trainer` objects | Strip before upsert |
-| 2 | HIGH | `sw-sync.js` | SW photo path missing user ID prefix | Use `photo.photoUrl` or skip |
-| 3 | MEDIUM | `sw-sync.js` | SW doesn't skip temp-ID records | Add `temp-` guard |
-| 4 | MEDIUM | `atomic-sync-manager.ts` | Missing early-return for empty inspections | Add guard like trainings |
-| 5 | MEDIUM | `atomic-sync-manager.ts` | Dead `startsWith('temp-')` after ID swap | Remove dead code |
-| 6 | LOW | `sw-sync.js` | SW hardcodes photo bucket/table | Read from photo metadata |
-| 7 | LOW | `sw-sync.js` | No SW/main-thread sync coordination | Skip sync when client active |
+The third parameter is named `inspectionId` but it's used for training and assessment IDs too. This is cosmetic but makes the code harder to audit.
 
-The main thread sync engine (`atomic-sync-manager.ts`, `useAutoSync.tsx`) is now solid after the recent fixes. The biggest remaining risk area is the **Service Worker** (`sw-sync.js`), which has diverged from the main thread's safety guards and can cause silent data issues.
+**Fix:** Rename to `parentId` when fixing Bug 8.
+
+---
+
+## No Issues Found In
+
+- **Main thread sync** (`atomic-sync-manager.ts`): All 3 report types sync correctly after recent fixes
+- **`getUnsynced*` functions** (`offline-storage.ts`): The `getAll()` + filter approach is working
+- **Fuzzy search** (`DashboardReportsSection.tsx`): `normalizeForSearch`, `isCloseSubstring`, and `editDistance1` are correct — "ariel" matches "airiel"
+- **Restore hydration** (`Dashboard.tsx`): `sessionStorage` marker + targeted fetch path is intact
+- **`useAutoSync`**: Sequential sync with proper debounce, timeout, circuit breaker all correct
+- **Photo sync** (`sync-manager.ts`): Uses per-photo metadata correctly
+
+---
+
+## Plan
+
+### Step 1: Fix SW `getAllRelatedData` index name (Bug 8)
+
+**File:** `public/sw-sync.js`
+
+Add `indexName` parameter to `getAllRelatedData`. Update all training callers to pass `'by-training'` and assessment callers to pass `'by-assessment'`.
+
+### Step 2: Add admin RLS policies for child tables (Bug 9)
+
+**New migration**
+
+Add `is_admin_or_above()` SELECT + INSERT + UPDATE + DELETE policies for all 20 child tables. This is a single SQL migration with 20 policy statements.
+
+### Files to change
+
+| File | Change |
+|------|--------|
+| `public/sw-sync.js` | Fix `getAllRelatedData` to accept index name parameter |
+| New migration | Add admin RLS policies for all child tables |
 
