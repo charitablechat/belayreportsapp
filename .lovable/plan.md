@@ -1,32 +1,35 @@
 
 
-# Fix: Invoiced Tab Blinking and Showing 0 Reports
+# Standardize Report Viewer to "Save PDF" + "Close" Only
 
-## Root Cause
+## Why Josh Sees Extra Buttons But You Don't
 
-Two interrelated issues:
+It's a **platform detection difference**, not a permissions issue. The viewer conditionally renders buttons based on `isMobile()` / `isPWA()`:
 
-1. **Dual-state anti-pattern**: The invoiced report IDs are fetched via React Query but then mirrored into a separate `useState` (`invoicedReportIds`) via a side-effect call to `setInvoicedReportIds(ids)` inside the `queryFn`. This creates a race condition — the React Query data arrives, but the `useState` update is batched and may not be reflected in the same render cycle. Meanwhile, `invoicedReportIds` starts as an empty `Set`, causing the invoiced memo to return `[]`.
+- **Desktop browser** (your setup): Shows only "Save PDF" and "Close" — the SMS "Text" button is hidden (`canShareViaSms()` returns false), and the mobile "Save PDF" / "Share" button pair collapses to just "Save PDF".
+- **Mobile or PWA** (Josh's setup): Shows up to 4 extra buttons — "Share Link" (if reportId passed), "Text" (SMS), a mobile-only "Save PDF", and a "Share" button with the Share2 icon. Josh is likely accessing via mobile browser or the installed PWA.
 
-2. **Constant refetching**: The invoiced query has `staleTime: 0` combined with multiple refetch triggers (`handleWindowFocus`, `handleVisibilityChange`, sync-complete, etc.). Every window focus event refetches the query AND triggers `refreshReports`, causing rapid cascading re-renders where the invoiced data momentarily appears empty between state updates — producing the "blinking" effect.
-
-There are 3 invoiced records in the database that should be visible.
+No role/admin logic is involved — it's purely device-based conditional rendering.
 
 ## Changes
 
-### File: `src/pages/Dashboard.tsx`
+### `src/components/HtmlReportViewer.tsx`
 
-1. **Use React Query data directly** — Remove the `invoicedReportIds` `useState` and derive it from the query's `data` return value instead:
-   - Change the `useQuery` to return the `Set<string>` directly (instead of raw data + side-effect `setState`)
-   - Use `const invoicedReportIds = invoicedQuery.data ?? new Set<string>()` as a stable derived value
-   - Remove the `useState<Set<string>>(new Set())` line
+1. **Remove the "Share Link" button** (lines 236-247) — the `Link2` / `copyShareLink` block
+2. **Remove the "Text" SMS button** (lines 250-261) — the `MessageSquare` block
+3. **Remove the mobile-only "Save PDF" button** (lines 263-272) — the `md:hidden` duplicate
+4. **Simplify the remaining download button** — remove the mobile/desktop conditional icon swap. Always show `Download` icon with "Save PDF" label, always call `handleSavePdf` (which uses `printFromIframe` to trigger the browser's native print-to-PDF on the full iframe content)
+5. **Clean up unused imports and variables** — remove `Share2`, `MessageSquare`, `Link2`, `canShareViaSms`, `generateSmsLink`, `shareHtmlReport`, `copyShareLink`, `useNetworkStatus`, `isMobile`, `isPWA`, and the `isMobileOrPWA`/`canSms`/`smsLink` variables
+6. **Remove unused props** — remove `reportType`, `organization`, `date`, `reportId` from the interface (and from all 3 call sites in InspectionForm, TrainingForm, DailyAssessmentForm)
 
-2. **Set a reasonable `staleTime`** — Change from `0` to `30_000` (30 seconds) to prevent constant refetching on every focus/visibility event. The data is explicitly refetched via `refetchInvoiced()` when toggling invoiced status anyway.
+### PDF completeness
 
-3. **Update `handleToggleInvoiced`** — Instead of calling `setInvoicedReportIds` for optimistic updates, do optimistic updates via React Query's `queryClient.setQueryData` so the single source of truth stays in React Query cache.
+The `printFromIframe` function calls `iframe.contentWindow.print()` which invokes the browser's native print dialog on the full iframe document. This already captures the entire report. The `sandbox` attribute on the iframe currently lacks `allow-scripts` — I'll add `allow-modals` is already there, but the print dialog requires the iframe to be allowed to trigger it. I'll verify the sandbox value is correct for print to work reliably.
 
-4. **Guard the Invoiced tab content** — While `invoicedReportIds` is loading (query is in `isLoading` state), show skeletons instead of the empty state. Pass `isLoading` status alongside existing `loading` prop check.
-
-### Summary
-~20 lines changed in `Dashboard.tsx`. Eliminates the dual-state race condition and stops the refetch storm that causes the blinking empty state.
+### Files touched
+- `src/components/HtmlReportViewer.tsx` — simplify to 2 buttons
+- `src/pages/InspectionForm.tsx` — remove extra props from `<HtmlReportViewer>`
+- `src/pages/TrainingForm.tsx` — same
+- `src/pages/DailyAssessmentForm.tsx` — same
+- `src/lib/html-report-viewer.ts` — remove `generateSmsLink`, `canShareViaSms`, `shareHtmlReport` exports (dead code)
 
