@@ -103,16 +103,18 @@ export function useSoftDelete() {
   const restoreRecord = useCallback(async (
     table: SoftDeleteTable,
     recordId: string
-  ): Promise<{ success: boolean; error?: string }> => {
+  ): Promise<{ success: boolean; error?: string; restoredRow?: any }> => {
     try {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from(table)
         .update({
           deleted_at: null,
           deleted_by: null,
           retention_until: null,
         })
-        .eq('id', recordId);
+        .eq('id', recordId)
+        .select()
+        .single();
 
       if (error) {
         console.error(`[SoftDelete] Error restoring ${table}:`, error);
@@ -120,10 +122,10 @@ export function useSoftDelete() {
       }
 
       if (import.meta.env.DEV) {
-        console.log(`[SoftDelete] Record restored:`, { table, recordId });
+        console.log(`[SoftDelete] Record restored:`, { table, recordId, data });
       }
 
-      return { success: true };
+      return { success: true, restoredRow: data };
     } catch (error: any) {
       console.error(`[SoftDelete] Exception restoring:`, error);
       return { success: false, error: error.message };
