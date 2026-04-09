@@ -74,7 +74,8 @@ import { appendVersion } from "@/lib/report-version-manager";
 import { showHardSavedToast } from "@/lib/toast-helpers";
 import { DataIntegrityBadge, type IntegrityStatus } from "@/components/ui/data-integrity-badge";
 import { VersionHistoryPanel } from "@/components/admin/VersionHistoryPanel";
-import { Shield as ShieldIcon } from "lucide-react";
+import { Shield as ShieldIcon, Receipt } from "lucide-react";
+import { useInvoicedStatus } from "@/hooks/useInvoicedStatus";
 
 export default function DailyAssessmentForm() {
   const { id } = useParams();
@@ -109,6 +110,11 @@ export default function DailyAssessmentForm() {
   const [lastManuallySaved, setLastManuallySaved] = useState<Date | null>(null);
   const [generating, setGenerating] = useState(false);
   const [assessment, setAssessment] = useState<any>(null);
+  const { isInvoiced, toggling: invoiceToggling, toggleInvoiced } = useInvoicedStatus({
+    reportId: assessmentId,
+    reportType: 'daily',
+    enabled: isAdmin && assessment?.status === 'completed',
+  });
   const [beginningOfDay, setBeginningOfDay] = useState<any[]>([]);
   const [endOfDay, setEndOfDay] = useState<any[]>([]);
   const [operatingSystems, setOperatingSystems] = useState<any[]>([]);

@@ -150,6 +150,11 @@ export default function InspectionForm() {
   const [htmlViewerOpen, setHtmlViewerOpen] = useState(false);
   const [reportHtml, setReportHtml] = useState<string>('');
   const [inspection, setInspection] = useState<any>(null);
+  const { isInvoiced, toggling: invoiceToggling, toggleInvoiced } = useInvoicedStatus({
+    reportId: id,
+    reportType: 'inspection',
+    enabled: isAdmin && inspection?.status === 'completed',
+  });
   const [systems, setSystems] = useState<any[]>([]);
   const [ziplines, setZiplines] = useState<any[]>([]);
   const [equipment, setEquipment] = useState<any[]>([]);
