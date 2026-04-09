@@ -9,7 +9,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { format, differenceInDays, formatDistanceToNow } from "date-fns";
-import { FileText, MoreVertical, Trash2, Download, Check, Cloud } from "lucide-react";
+import { FileText, MoreVertical, Trash2, Download, Check, Cloud, Receipt } from "lucide-react";
 import { triggerHaptic } from "@/lib/haptics";
 import { parseLocalDate } from "@/lib/date-utils";
 import { triggerSuccessConfetti } from "@/lib/confetti";
@@ -34,9 +34,12 @@ interface ReportCardProps {
   onClick: (report: any) => void;
   getStatusBadge?: (report: any) => React.ReactNode;
   compact?: boolean;
+  isAdmin?: boolean;
+  isInvoiced?: boolean;
+  onToggleInvoiced?: (report: any, type: 'inspection' | 'training' | 'daily') => void;
 }
 
-export function ReportCard({ report, type, onDelete, onClick, getStatusBadge, compact }: ReportCardProps) {
+export function ReportCard({ report, type, onDelete, onClick, getStatusBadge, compact, isAdmin, isInvoiced, onToggleInvoiced }: ReportCardProps) {
   const { sparkles, triggerSparkles, handleMouseMove } = useClickAndHoverSparkles();
   const isInspection = type === 'inspection';
   const isDaily = type === 'daily';
@@ -162,6 +165,11 @@ export function ReportCard({ report, type, onDelete, onClick, getStatusBadge, co
           <span className="text-green-500/20 text-4xl md:text-5xl font-bold tracking-wider rotate-[-25deg] select-none whitespace-nowrap">
             COMPLETED
           </span>
+          {isAdmin && isInvoiced && (
+            <span className="absolute text-red-500/30 text-4xl md:text-5xl font-bold tracking-wider rotate-[25deg] select-none whitespace-nowrap">
+              INVOICED
+            </span>
+          )}
         </div>
       )}
       <CardContent className={cn("p-4 md:p-6", compact && "p-2.5 md:p-3")}>
@@ -191,6 +199,18 @@ export function ReportCard({ report, type, onDelete, onClick, getStatusBadge, co
                 <DropdownMenuItem onClick={handleDownloadPDF}>
                   <Download className="w-4 h-4 mr-2" />
                   Download PDF
+                </DropdownMenuItem>
+              )}
+              {isAdmin && getReportStatus() === 'completed' && onToggleInvoiced && (
+                <DropdownMenuItem
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onToggleInvoiced(report, type);
+                  }}
+                  className={isInvoiced ? "text-amber-600 focus:text-amber-600" : "text-red-600 focus:text-red-600"}
+                >
+                  <Receipt className="w-4 h-4 mr-2" />
+                  {isInvoiced ? 'Remove Invoice' : 'Mark Invoiced'}
                 </DropdownMenuItem>
               )}
               <DropdownMenuItem 
