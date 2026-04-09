@@ -1,24 +1,39 @@
 
 
-# Glassmorphism Pulsating Green "Invoiced" Tab
+# Glassmorphism Pulsating Green "INVOICED" Watermark on Report Cards
 
-## Change
+## Summary
+Apply a glassmorphism pulsating money-green style to the "INVOICED" watermark stamp on report cards, and revert the dashboard tab back to its default style. Also slow down the pulse animation for a calming effect.
 
-### `src/components/dashboard/DashboardReportsSection.tsx` (line 425)
+## Changes
 
-Update the Invoiced `TabsTrigger` className to add a glassmorphism style with a pulsating money-green glow:
-
+### 1. `src/components/dashboard/ReportCard.tsx` (line 168-171)
+Replace the current red "INVOICED" watermark with a glassmorphism emerald style:
 ```tsx
-<TabsTrigger 
-  value="invoiced" 
-  className="flex items-center gap-2 backdrop-blur-md bg-emerald-500/10 border border-emerald-400/30 text-emerald-700 dark:text-emerald-300 shadow-[0_0_15px_rgba(16,185,129,0.2)] animate-pulse-soft data-[state=active]:bg-emerald-500/20 data-[state=active]:shadow-[0_0_20px_rgba(16,185,129,0.35)] data-[state=active]:border-emerald-400/50"
->
+{isAdmin && isInvoiced && (
+  <span className="absolute backdrop-blur-sm bg-emerald-500/10 border border-emerald-400/30 rounded-lg px-4 py-2 text-emerald-600 dark:text-emerald-400 text-4xl md:text-5xl font-bold tracking-wider rotate-[25deg] select-none whitespace-nowrap shadow-[0_0_20px_rgba(16,185,129,0.25)] animate-pulse-calm">
+    INVOICED
+  </span>
+)}
 ```
 
-This uses:
-- `backdrop-blur-md` + `bg-emerald-500/10` for glassmorphism
-- `border-emerald-400/30` for a subtle green glass border
-- `shadow-[0_0_15px_...]` for the green glow
-- `animate-pulse-soft` (already defined in tailwind config) for the pulsating effect
-- Active state gets stronger glow and opacity
+### 2. `src/components/dashboard/DashboardReportsSection.tsx` (line 425)
+Revert the Invoiced tab trigger back to the default style (remove glassmorphism classes):
+```tsx
+<TabsTrigger value="invoiced" className="flex items-center gap-2">
+```
+
+### 3. `tailwind.config.ts`
+Add a new slow, calming pulse animation:
+```ts
+// In keyframes:
+"pulse-calm": {
+  "0%, 100%": { opacity: "1" },
+  "50%": { opacity: "0.6" },
+}
+
+// In animation:
+"pulse-calm": "pulse-calm 4s ease-in-out infinite",
+```
+Uses a 4-second cycle (vs 2s for pulse-soft) for a slower, more calming feel.
 
