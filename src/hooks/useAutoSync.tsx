@@ -2,7 +2,7 @@ import { useEffect, useCallback, useRef, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { syncAllInspectionsAtomic, syncAllTrainingsAtomic, syncAllDailyAssessmentsAtomic } from '@/lib/atomic-sync-manager';
 import { syncPhotos } from '@/lib/sync-manager';
-import { getUnsyncedInspections, getUnsyncedTrainings, getUnsyncedDailyAssessments, getUnsyncedCounts, getCircuitBreakerStatus, pruneOldSyncedPhotoBlobs } from '@/lib/offline-storage';
+import { getUnsyncedInspections, getUnsyncedTrainings, getUnsyncedDailyAssessments, getUnsyncedCounts, getCircuitBreakerStatus, pruneOldSyncedPhotoBlobs, clearAllQueuedTrainingOperations, clearAllQueuedOperations, clearAllQueuedAssessmentOperations } from '@/lib/offline-storage';
 import { getUserWithCache, getCachedUserFromStorage, ensureValidSession, type CachedUser } from '@/lib/cached-auth';
 import { hasPendingOfflineAuth, verifyAndReconcileOfflineAuth } from '@/lib/offline-auth';
 import { useQueryClient } from '@tanstack/react-query';
@@ -286,8 +286,18 @@ export const useAutoSync = () => {
           // Update photo count for useUnsyncedPhotos (no longer polls independently)
           window.dispatchEvent(new CustomEvent('sync-photos-updated'));
           
-          // Hybrid cleanup: prune old synced photo blobs (non-blocking)
-          pruneOldSyncedPhotoBlobs().catch(() => {});
+           // Hybrid cleanup: prune old synced photo blobs (non-blocking)
+           pruneOldSyncedPhotoBlobs().catch(() => {});
+           
+           // Clean up orphaned operation queue entries after successful sync
+           // These queues accumulate create/update entries that the atomic sync already handled
+           if (anySuccess) {
+             Promise.all([
+               clearAllQueuedOperations(),
+               clearAllQueuedTrainingOperations(),
+               clearAllQueuedAssessmentOperations(),
+             ]).catch(e => console.warn('[AutoSync] Non-blocking: queue cleanup failed:', e));
+           }
           
           // Invalidate queries to refresh UI
           queryClient.invalidateQueries({ queryKey: ['inspections'] });
