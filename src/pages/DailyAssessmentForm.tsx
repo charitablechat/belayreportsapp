@@ -297,6 +297,11 @@ export default function DailyAssessmentForm() {
       if (!user && navigator.onLine) {
         user = await ensureValidSession();
       }
+      // Last resort: network may have flickered — try offline ID
+      if (!user) {
+        const offlineId = getOfflineUserId();
+        if (offlineId) user = { id: offlineId } as any;
+      }
       setCurrentUser(user);
     };
     fetchUser();

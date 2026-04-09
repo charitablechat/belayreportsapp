@@ -475,6 +475,14 @@ export async function ensureValidSession(): Promise<CachedUser | null> {
           }
           return parsed.user;
         }
+        
+        // Token expired but user exists AND we're offline — trust it
+        // (same logic as getCachedUserFromStorage: skip expiry when offline)
+        if (parsed?.user && !navigator.onLine) {
+          cachedUser = parsed.user;
+          cacheTimestamp = Date.now();
+          return parsed.user;
+        }
       }
     } catch {
       // Ignore localStorage parse errors — fall through to slow path
