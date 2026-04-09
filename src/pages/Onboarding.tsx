@@ -69,8 +69,12 @@ export default function Onboarding() {
       if (completed) {
         await supabase.from("onboarding_progress").delete().eq("resource_id", resourceId);
       } else {
-        const { getUserWithCache } = await import("@/lib/cached-auth");
-        const user = await getUserWithCache();
+        const { getUserWithCache, getOfflineUserId } = await import("@/lib/cached-auth");
+        let user = await getUserWithCache();
+        if (!user) {
+          const offlineId = getOfflineUserId();
+          if (offlineId) user = { id: offlineId } as any;
+        }
         if (!user) throw new Error("Not authenticated");
         await supabase.from("onboarding_progress").insert({ user_id: user.id, resource_id: resourceId });
       }

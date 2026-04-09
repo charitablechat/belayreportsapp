@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { getUserWithCache, getOfflineUserId } from "@/lib/cached-auth";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
@@ -48,8 +49,8 @@ export const OrganizationAutocomplete = ({
   // Get current user ID for user-scoped operations
   useEffect(() => {
     const getUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      setUserId(user?.id ?? null);
+      const user = await getUserWithCache();
+      setUserId(user?.id ?? getOfflineUserId());
     };
     getUser();
   }, []);
