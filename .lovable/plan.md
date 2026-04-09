@@ -1,31 +1,20 @@
 
-# Fix: Invoiced Reports Not Appearing in the Invoiced Tab
 
-## Problem
-When a report is marked as invoiced from the report form page (e.g., the Southwest inspection), the dashboard's invoiced tab doesn't reflect the change. Two issues:
+# Change "INVOICED" Watermark Color from Green to Red
 
-1. **Stale query cache**: The `invoiced-reports` query has `staleTime: 60s` and is never explicitly refetched when returning to the dashboard.
-2. **No cross-page invalidation**: The `useInvoicedStatus` hook (used in report forms) doesn't invalidate the React Query cache, so the dashboard never learns about the change.
+## Summary
+Change only the text and border/glow color of the "INVOICED" watermark stamp on report cards from emerald/green to red. No other changes.
 
-## Changes
+## Change
 
-### 1. `src/hooks/useInvoicedStatus.tsx`
-After a successful toggle (insert or delete), invalidate the `invoiced-reports` React Query cache so the dashboard picks up the change on next mount:
+### `src/components/dashboard/ReportCard.tsx` (~line 168-171)
+Replace emerald color classes with red equivalents in the INVOICED span:
 
-```tsx
-import { useQueryClient } from "@tanstack/react-query";
-// In the hook:
-const queryClient = useQueryClient();
-// After successful toggle:
-queryClient.invalidateQueries({ queryKey: ["invoiced-reports"] });
-```
+- `bg-emerald-500/10` → `bg-red-500/10`
+- `border-emerald-400/30` → `border-red-400/30`
+- `text-emerald-600` → `text-red-600`
+- `dark:text-emerald-400` → `dark:text-red-400`
+- `shadow-[0_0_20px_rgba(16,185,129,0.25)]` → `shadow-[0_0_20px_rgba(239,68,68,0.25)]`
 
-### 2. `src/pages/Dashboard.tsx`
-- Reduce `staleTime` on the `invoiced-reports` query to `0` (or remove it) so it always refetches on remount/focus.
-- Alternatively, add `refetchOnMount: 'always'` to ensure the invoiced IDs are fresh whenever the dashboard loads.
+Everything else (animation, size, rotation, blur, positioning) stays identical.
 
-### 3. `src/pages/Dashboard.tsx` — `handleToggleInvoiced`
-After the optimistic state update, also call `refetchInvoiced()` to keep the React Query cache in sync for consistency.
-
-## Why This Fixes It
-Currently, marking a report invoiced from the form page writes to the database but the dashboard query cache remains stale. By invalidating the query on toggle and ensuring the dashboard refetches on mount, the invoiced tab will always show the correct reports.
