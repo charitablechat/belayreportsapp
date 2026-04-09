@@ -1173,6 +1173,24 @@ export default function Dashboard() {
           )}
         </div>
       )}
+
+      {/* Stale Data Banner — shown when network queries repeatedly fail */}
+      {showStaleDataBanner && (
+        <div className="mx-auto max-w-6xl px-4 mt-2">
+          <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/50 px-4 py-2 text-sm text-muted-foreground">
+            <CloudOff className="h-4 w-4 shrink-0" />
+            <span>Unable to reach server — showing cached data. Pull to refresh or check your connection.</span>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="ml-auto h-6 w-6 p-0"
+              onClick={() => setShowStaleDataBanner(false)}
+            >
+              <X className="h-3 w-3" />
+            </Button>
+          </div>
+        </div>
+      )}
       
       {/* Background image */}
       <div className="fixed inset-0 z-0 overflow-hidden">
