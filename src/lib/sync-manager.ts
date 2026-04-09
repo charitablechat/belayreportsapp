@@ -126,7 +126,12 @@ export async function syncPhotos(): Promise<{ remaining: number }> {
           continue;
         }
 
-        const user = await getUserWithCache();
+        let user = await getUserWithCache();
+        if (!user) {
+          const { getOfflineUserId } = await import('./cached-auth');
+          const offlineId = getOfflineUserId();
+          if (offlineId) user = { id: offlineId } as any;
+        }
         if (!user) throw new Error("Not authenticated");
 
         // Use per-photo metadata with backward-compatible defaults
