@@ -251,7 +251,7 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
     
     // RC-5: Skip remote status check for new records (no synced_at = never been on server)
     // This eliminates ~6 network requests per new record (status check + 5 rollback fetches)
-    const isNewRecord = !inspection.synced_at && !inspectionIdMapping?.oldId?.startsWith('temp-') === false;
+    const isNewRecord = !inspection.synced_at;
     const recordStatus = isNewRecord ? null : await checkRemoteRecordStatus('inspections', inspectionId);
     
     // SAFEGUARD: Check if remote record was soft-deleted by someone else
