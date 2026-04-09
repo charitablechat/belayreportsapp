@@ -15,7 +15,7 @@ import { DashboardControls } from "@/components/dashboard/DashboardControls";
 import { DashboardPagination } from "@/components/dashboard/DashboardPagination";
 import { DashboardStatsBar } from "@/components/dashboard/DashboardStatsBar";
 import { useDashboardFilters } from "@/hooks/useDashboardFilters";
-import { InspectionsEmptyState, TrainingsEmptyState, DailyAssessmentsEmptyState } from "@/components/EmptyState";
+import { EmptyState as GenericEmptyState, InspectionsEmptyState, TrainingsEmptyState, DailyAssessmentsEmptyState } from "@/components/EmptyState";
 import { triggerHaptic } from "@/lib/haptics";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { getAssigneeName } from "@/lib/report-utils";
@@ -26,6 +26,30 @@ function textMatchesReport(report: any, query: string, type: string): boolean {
   const loc = (report.location || report.site || '').toLowerCase();
   const assignee = getAssigneeName(report, type).toLowerCase();
   return org.includes(q) || loc.includes(q) || assignee.includes(q);
+}
+
+type DashboardReportType = 'inspection' | 'training' | 'daily';
+
+function normalizeInvoicedReport(report: any, type: DashboardReportType) {
+  return {
+    ...report,
+    __reportType: type,
+    inspection_date:
+      type === 'inspection'
+        ? report.inspection_date || report.created_at || ''
+        : type === 'training'
+          ? report.training?.start_date || report.start_date || report.created_at || ''
+          : report.assessment_date || report.created_at || '',
+    location: report.location || report.site || '',
+    inspector: type === 'training' ? (report.trainer || report.inspector) : report.inspector,
+  };
+}
+
+function resolveDashboardReportType(report: any, fallback: DashboardReportType): DashboardReportType {
+  const reportType = report?.__reportType;
+  return reportType === 'inspection' || reportType === 'training' || reportType === 'daily'
+    ? reportType
+    : fallback;
 }
 
 interface DashboardReportsSectionProps {
@@ -49,7 +73,7 @@ interface DashboardReportsSectionProps {
   setReportToDelete: (report: any) => void;
   setDeleteDialogOpen: (open: boolean) => void;
   invoicedReportIds?: Set<string>;
-  onToggleInvoiced?: (report: any, type: 'inspection' | 'training' | 'daily') => void;
+  onToggleInvoiced?: (report: any, type: DashboardReportType) => void;
 }
 
 export function DashboardReportsSection({
@@ -83,15 +107,15 @@ export function DashboardReportsSection({
   // Build invoiced reports list for the Invoiced tab (admin only)
   const invoicedReports = useMemo(() => {
     if (!isSuperAdmin || !invoicedReportIds || invoicedReportIds.size === 0) return [];
-    const all: { report: any; type: 'inspection' | 'training' | 'daily' }[] = [];
+    const all: { report: any; type: DashboardReportType }[] = [];
     for (const r of inspections) {
-      if (invoicedReportIds.has(r.id)) all.push({ report: r, type: 'inspection' });
+      if (invoicedReportIds.has(r.id)) all.push({ report: normalizeInvoicedReport(r, 'inspection'), type: 'inspection' });
     }
     for (const r of trainings) {
-      if (invoicedReportIds.has(r.id)) all.push({ report: r, type: 'training' });
+      if (invoicedReportIds.has(r.id)) all.push({ report: normalizeInvoicedReport(r, 'training'), type: 'training' });
     }
     for (const r of dailyAssessments) {
-      if (invoicedReportIds.has(r.id)) all.push({ report: r, type: 'daily' });
+      if (invoicedReportIds.has(r.id)) all.push({ report: normalizeInvoicedReport(r, 'daily'), type: 'daily' });
     }
     return all;
   }, [isSuperAdmin, invoicedReportIds, inspections, trainings, dailyAssessments]);
@@ -104,13 +128,13 @@ export function DashboardReportsSection({
   const currentType = (activeReportTab === 'inspections' ? 'inspection'
     : activeReportTab === 'training' ? 'training'
     : activeReportTab === 'invoiced' ? 'inspection'
-    : 'daily') as 'inspection' | 'training' | 'daily';
+    : 'daily') as DashboardReportType;
 
   const statuses = useMemo(() => [...new Set(currentReports.map(r => r.status).filter(Boolean))], [currentReports]);
 
   const uniqueFacilities = useMemo(() => {
     const locations = currentReports
-      .map(r => r.location || '')
+      .map(r => r.location || r.site || '')
       .filter(Boolean);
     return [...new Set(locations)].sort((a, b) => a.localeCompare(b));
   }, [currentReports]);
@@ -217,7 +241,8 @@ export function DashboardReportsSection({
   }, [filters.sortBy]);
 
   const handleDelete = (report: any) => {
-    if (currentType === 'inspection') {
+    const reportType = resolveDashboardReportType(report, currentType);
+    if (reportType === 'inspection') {
       setInspectionToDelete(report);
     } else {
       setReportToDelete(report);
@@ -225,14 +250,14 @@ export function DashboardReportsSection({
     setDeleteDialogOpen(true);
   };
 
-  const handleClick = (report: any, type?: 'inspection' | 'training' | 'daily') => {
-    const t = type || currentType;
-    if (t === 'inspection') navigate(`/inspection/${report.id}`);
-    else if (t === 'training') navigate(`/training/${report.id}`);
+  const handleClick = (report: any, type?: DashboardReportType) => {
+    const resolvedType = type || resolveDashboardReportType(report, currentType);
+    if (resolvedType === 'inspection') navigate(`/inspection/${report.id}`);
+    else if (resolvedType === 'training') navigate(`/training/${report.id}`);
     else navigate(`/daily-assessment/${report.id}`);
   };
 
-  const handleDeleteForType = (report: any, type: 'inspection' | 'training' | 'daily') => {
+  const handleDeleteForType = (report: any, type: DashboardReportType) => {
     if (type === 'inspection') {
       setInspectionToDelete(report);
     } else {
@@ -241,9 +266,18 @@ export function DashboardReportsSection({
     setDeleteDialogOpen(true);
   };
 
+  const InvoicedEmptyState = ({ onAction }: { onAction: () => void }) => (
+    <GenericEmptyState
+      icon={Receipt}
+      title="No invoiced reports"
+      description="Reports you mark as invoiced will appear here."
+    />
+  );
+
   const EmptyState = activeReportTab === 'inspections' ? InspectionsEmptyState
     : activeReportTab === 'training' ? TrainingsEmptyState
-    : DailyAssessmentsEmptyState;
+    : activeReportTab === 'daily' ? DailyAssessmentsEmptyState
+    : InvoicedEmptyState;
 
   const newPath = activeReportTab === 'inspections' ? '/inspection/new'
     : activeReportTab === 'training' ? '/training/new'
