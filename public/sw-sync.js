@@ -2,7 +2,7 @@
 
 // Import shared DB config (set by db-config.js loaded before this script, or fallback)
 var DB_NAME = (typeof DB_CONFIG !== 'undefined' && DB_CONFIG.name) || 'rope-works-inspections';
-var DB_VERSION = (typeof DB_CONFIG !== 'undefined' && DB_CONFIG.version) || 8;
+var DB_VERSION = (typeof DB_CONFIG !== 'undefined' && DB_CONFIG.version) || 9;
 
 // Supabase config constants
 var SUPABASE_URL = 'https://ssgzcgvygnsrqalisshx.supabase.co';
