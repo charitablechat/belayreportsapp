@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { FileText, GraduationCap, ChevronDown, ChevronRight, X, Filter, Minimize2, Maximize2, Search } from "lucide-react";
+import { FileText, GraduationCap, ChevronDown, ChevronRight, X, Filter, Minimize2, Maximize2, Search, Receipt } from "lucide-react";
 import { ReportCard } from "@/components/dashboard/ReportCard";
 import { ReportCardSkeleton } from "@/components/dashboard/ReportCardSkeleton";
 import { ReportListView } from "@/components/dashboard/ReportListView";
@@ -48,6 +48,8 @@ interface DashboardReportsSectionProps {
   setInspectionToDelete: (report: any) => void;
   setReportToDelete: (report: any) => void;
   setDeleteDialogOpen: (open: boolean) => void;
+  invoicedReportIds?: Set<string>;
+  onToggleInvoiced?: (report: any, type: 'inspection' | 'training' | 'daily') => void;
 }
 
 export function DashboardReportsSection({
@@ -70,6 +72,8 @@ export function DashboardReportsSection({
   setInspectionToDelete,
   setReportToDelete,
   setDeleteDialogOpen,
+  invoicedReportIds,
+  onToggleInvoiced,
 }: DashboardReportsSectionProps) {
   const [showFilters, setShowFilters] = useState(false);
   const [compact, setCompact] = useState(false);
