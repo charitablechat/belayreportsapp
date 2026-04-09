@@ -1892,9 +1892,10 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
     }
     
     // SUSPICIOUS EMPTY GUARD: If record has been edited but ALL child data is empty,
-    // this likely means IndexedDB reads failed silently. Skip sync to prevent marking as complete.
-    // However, only block if the server actually HAS child data (meaning local empty is suspicious).
-    // If both sides are empty or the record is new, it's a legitimately blank form — allow sync.
+    // this likely means IndexedDB reads failed silently. However, if we reach here,
+    // the empty_local_guard above already verified the server ALSO has no child data
+    // (or the record doesn't exist on server). So this is a legitimately blank form — allow sync.
+    // Only block if the record wasn't checked by Guard 1 (i.e., doesn't exist on server).
     {
       const localIsCompletelyEmpty = beginning_of_day.length === 0 && end_of_day.length === 0 && 
         operating_systems.length === 0 && equipment_checks.length === 0 && 
@@ -1905,32 +1906,14 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
       const wasEdited = (updatedAt - createdAt) > 60000;
 
       if (localIsCompletelyEmpty && wasEdited && ageMinutes > 5) {
-        // Only block if the server record exists and actually has child data
-        // The empty_local_guard above already handles the case where server has data;
-        // if we reach here, either the server also has no data or the record doesn't exist yet
-        let serverHasData = false;
         if (recordStatus?.record_exists && !recordStatus?.is_deleted) {
-          const [sBegin, sEnd, sSys, sEquip, sStruct, sEnv] = await Promise.all([
-            fetchRollbackData('daily_assessment_beginning_of_day', { assessment_id: assessmentId }),
-            fetchRollbackData('daily_assessment_end_of_day', { assessment_id: assessmentId }),
-            fetchRollbackData('daily_assessment_operating_systems', { assessment_id: assessmentId }),
-            fetchRollbackData('daily_assessment_equipment_checks', { assessment_id: assessmentId }),
-            fetchRollbackData('daily_assessment_structure_checks', { assessment_id: assessmentId }),
-            fetchRollbackData('daily_assessment_environment_checks', { assessment_id: assessmentId }),
-          ]);
-          serverHasData = sBegin.length > 0 || sEnd.length > 0 || sSys.length > 0 || 
-            sEquip.length > 0 || sStruct.length > 0 || sEnv.length > 0;
-        }
-
-        if (serverHasData) {
-          console.warn('[SAFETY] suspicious_empty_guard: assessment was edited but all child data is empty (server has data)', {
-            assessmentId: assessmentId.substring(0, 8),
-            ageMinutes: Math.round(ageMinutes),
-            updatedAt: assessment.updated_at,
-          });
-          return { success: false, skipped: true, reason: 'suspicious_empty' };
-        } else {
+          // Guard 1 already ran and didn't block — server is also empty. Allow sync.
           console.log('[SYNC] suspicious_empty_guard: both local and server are empty, allowing sync for genuinely blank form', {
+            assessmentId: assessmentId.substring(0, 8),
+          });
+        } else {
+          // Record doesn't exist on server yet — new blank form, allow sync
+          console.log('[SYNC] suspicious_empty_guard: new record with no server data, allowing sync', {
             assessmentId: assessmentId.substring(0, 8),
           });
         }
