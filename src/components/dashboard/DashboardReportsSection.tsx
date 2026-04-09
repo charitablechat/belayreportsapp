@@ -101,6 +101,11 @@ export function DashboardReportsSection({
     : activeReportTab === 'invoiced' ? invoicedReports.map(r => r.report)
     : dailyAssessments;
 
+  const currentType = (activeReportTab === 'inspections' ? 'inspection'
+    : activeReportTab === 'training' ? 'training'
+    : activeReportTab === 'invoiced' ? 'inspection'
+    : 'daily') as 'inspection' | 'training' | 'daily';
+
   const statuses = useMemo(() => [...new Set(currentReports.map(r => r.status).filter(Boolean))], [currentReports]);
 
   const uniqueFacilities = useMemo(() => {
