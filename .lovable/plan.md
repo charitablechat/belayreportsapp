@@ -1,99 +1,95 @@
 
 
-# Sync Engine Audit: Remaining Gaps Found
+# Sync Engine Final Audit: Remaining Gaps
 
-## Summary
+After reviewing all sync-related code (`atomic-sync-manager.ts`, `useAutoSync.tsx`, `sw-sync.js`, `offline-storage.ts`, `sync-manager.ts`, `sync-reconciliation.ts`, `transaction-manager.ts`, `cached-auth.ts`, `environment.ts`, all RLS policies, and recent DB logs), here is the assessment:
 
-After the recent fixes (Bugs 1-7), the **main thread sync engine is solid**. However, the Service Worker still has one critical data-reading bug, and there is a significant RLS gap for admin access to child tables. The fuzzy search and restore hydration logic are working correctly.
+## Status: Main Thread Sync — SOLID
+
+The main thread sync pipeline (`atomic-sync-manager.ts` + `useAutoSync.tsx`) is robust. The recent fixes (getUnsynced scan, early-return guard, dead code cleanup) resolved all identified issues. No new gaps found.
+
+## Status: Service Worker Sync — SOLID
+
+The recent Bug 1-7 fixes (join stripping, photo paths, temp-ID guards, index names, client deferral) addressed all critical SW issues. The SW now correctly defers to the main thread when clients are active, uses proper index names for trainings/assessments, and strips joined objects.
+
+## Status: RLS Policies — SOLID
+
+The admin child table migration successfully added `is_admin_or_above()` policies to all 20 child tables. DB logs show zero errors.
 
 ---
 
-## Bug 8 (CRITICAL): SW `getAllRelatedData` uses wrong index for trainings and assessments
+## Remaining Issues Found
 
-**File:** `public/sw-sync.js`, line 141
+### Bug 11 (LOW): `transaction-manager.ts` missing `daily_assessment_photos` in blocklist
 
-The helper function hardcodes `store.index('by-inspection')` for ALL stores:
+**File:** `src/lib/transaction-manager.ts`, line 26-29
 
-```js
-function getAllRelatedData(db, storeName, inspectionId) {
-  const index = store.index('by-inspection'); // WRONG for trainings & assessments
-}
+The `REPORT_TABLE_BLOCKLIST` (which blocks accidental DELETE operations) includes all child tables but is **missing `daily_assessment_photos`**. If a malformed transaction step tried to delete assessment photos, the guard wouldn't catch it.
+
+Current list includes `inspection_photos` and `training_photos` but not `daily_assessment_photos`.
+
+**Fix:** Add `'daily_assessment_photos'` to the blocklist Set.
+
+### Bug 12 (LOW): `sync_conflicts` table missing admin policies
+
+The `sync_conflicts` table only has policies for `super_admin` SELECT and owner-based CRUD. If an admin syncs another user's inspection and a conflict is detected, the INSERT to `sync_conflicts` will fail with an RLS violation because the admin doesn't own the inspection referenced by `inspection_id`.
+
+The `sync_conflicts` user policies check:
+```sql
+EXISTS (SELECT 1 FROM inspections WHERE inspections.id = sync_conflicts.inspection_id AND inspections.inspector_id = auth.uid())
 ```
 
-But IndexedDB stores use different index names:
-- Inspection child stores: `'by-inspection'` (correct)
-- Training child stores: `'by-training'` (line 736 of offline-storage.ts)
-- Daily assessment child stores: `'by-assessment'` (line 704)
+An admin syncing Brenda's inspection would fail this check since `inspector_id != admin.uid()`.
 
-**Impact:** Every training/assessment child data read in the SW throws a `NotFoundError` (caught by `.catch(() => [])`), returning empty arrays. The `suspicious_empty_guard` then blocks the sync. The SW **cannot sync any training or daily assessment child data** — it only works for inspections.
+**Fix:** Add `is_admin_or_above()` ALL policy on `sync_conflicts`.
 
-**Fix:** Replace the single `getAllRelatedData` with a version that accepts the index name as a parameter, or create separate helpers per type:
+### Bug 13 (COSMETIC): `report_deleted_items` missing admin INSERT policy
 
-```js
-function getAllRelatedData(db, storeName, parentId, indexName) {
-  indexName = indexName || 'by-inspection'; // backward compatible
-  const index = store.index(indexName);
-  ...
-}
-```
+When an admin syncs another user's report, the reconciliation in `sync-reconciliation.ts` logs deleted child rows to `report_deleted_items` with `deleted_by = auth.uid()`. The INSERT policy checks `deleted_by = auth.uid()` which works. However, admins cannot VIEW these entries (only super_admin and the original owner can). This means an admin who reconciles data cannot verify their own reconciliation audit trail.
 
-Then update callers:
-- Training calls (lines 538-543): pass `'by-training'`
-- Assessment calls (lines 666-671): pass `'by-assessment'`
+**Fix:** Add `is_admin_or_above()` SELECT policy on `report_deleted_items`.
 
 ---
 
-## Bug 9 (HIGH): Admin child table RLS gap
+## Verified — No Issues
 
-The recent migration added `is_admin_or_above()` SELECT policies to the three **parent** tables (inspections, trainings, daily_assessments). But all **child** tables still only allow access for `super_admin` + owner:
-
-- `inspection_systems`, `inspection_ziplines`, `inspection_equipment`, `inspection_standards`, `inspection_summary`, `inspection_photos`
-- `training_delivery_approaches`, `training_operating_systems`, `training_immediate_attention`, `training_verifiable_items`, `training_systems_in_place`, `training_summary`, `training_photos`
-- `daily_assessment_beginning_of_day`, `daily_assessment_end_of_day`, `daily_assessment_environment_checks`, `daily_assessment_equipment_checks`, `daily_assessment_structure_checks`, `daily_assessment_operating_systems`, `daily_assessment_photos`
-
-**Impact:** An admin (non-super) who restores or opens someone else's report can see the parent row on the dashboard, but when they open the form, all child data (systems, equipment, checks) is invisible. Saves and completions also fail because INSERT/UPDATE on child tables is blocked by RLS.
-
-**Fix:** Add `is_admin_or_above()` policies for SELECT, INSERT, UPDATE, DELETE on all child tables listed above. This aligns child access with parent access.
-
----
-
-## Bug 10 (LOW): SW `getAllRelatedData` parameter naming is misleading
-
-The third parameter is named `inspectionId` but it's used for training and assessment IDs too. This is cosmetic but makes the code harder to audit.
-
-**Fix:** Rename to `parentId` when fixing Bug 8.
-
----
-
-## No Issues Found In
-
-- **Main thread sync** (`atomic-sync-manager.ts`): All 3 report types sync correctly after recent fixes
-- **`getUnsynced*` functions** (`offline-storage.ts`): The `getAll()` + filter approach is working
-- **Fuzzy search** (`DashboardReportsSection.tsx`): `normalizeForSearch`, `isCloseSubstring`, and `editDistance1` are correct — "ariel" matches "airiel"
-- **Restore hydration** (`Dashboard.tsx`): `sessionStorage` marker + targeted fetch path is intact
-- **`useAutoSync`**: Sequential sync with proper debounce, timeout, circuit breaker all correct
-- **Photo sync** (`sync-manager.ts`): Uses per-photo metadata correctly
-
----
+| Area | Status | Notes |
+|------|--------|-------|
+| `getUnsyncedInspections/Trainings/Assessments` | OK | `getAll()` + filter working |
+| Temp-ID handling (main thread) | OK | UUID swap + dedup guard + child propagation |
+| Temp-ID handling (SW) | OK | Skips temp-IDs per Bug 3 fix |
+| Photo sync (`sync-manager.ts`) | OK | Per-photo metadata, pending path normalization |
+| SW photo sync | OK | Uses `photoUrl`, per-photo bucket/table |
+| Field-count regression guard | OK | 3-skip override prevents permanent blocks |
+| Empty-local guard + recovery | OK | Pulls server data into IndexedDB on mismatch |
+| Reconciliation (`sync-reconciliation.ts`) | OK | 50% partial-read guard, audit logging |
+| Circuit breaker | OK | Exponential backoff, health probe |
+| Auth session management | OK | Single validation per cycle, LockManager guard |
+| Realtime subscriptions | OK | Post-sync cooldown, 3-error unsubscribe |
+| Stale upload detection | OK | 5-minute warning |
+| Accelerated drain | OK | 5s re-sync for large queues |
+| DB version alignment | OK | Version 9 in both `db-config.js` and `offline-storage.ts` |
+| Lovable preview guard | OK | Blocks all writes in preview |
+| DB error logs | OK | Zero errors in recent logs |
+| Parent table RLS | OK | Admin access on all 3 parent tables |
+| Child table RLS | OK | Admin access on all 20 child tables |
+| `invoiced_reports` RLS | OK | Admin ALL policy exists |
 
 ## Plan
 
-### Step 1: Fix SW `getAllRelatedData` index name (Bug 8)
+### Step 1: Add `daily_assessment_photos` to transaction blocklist
+**File:** `src/lib/transaction-manager.ts`
+Add the missing entry to the `REPORT_TABLE_BLOCKLIST` Set.
 
-**File:** `public/sw-sync.js`
-
-Add `indexName` parameter to `getAllRelatedData`. Update all training callers to pass `'by-training'` and assessment callers to pass `'by-assessment'`.
-
-### Step 2: Add admin RLS policies for child tables (Bug 9)
-
-**New migration**
-
-Add `is_admin_or_above()` SELECT + INSERT + UPDATE + DELETE policies for all 20 child tables. This is a single SQL migration with 20 policy statements.
+### Step 2: Add admin policies for `sync_conflicts` and `report_deleted_items`
+**Migration:** Add `is_admin_or_above()` policies for admin access.
 
 ### Files to change
 
 | File | Change |
 |------|--------|
-| `public/sw-sync.js` | Fix `getAllRelatedData` to accept index name parameter |
-| New migration | Add admin RLS policies for all child tables |
+| `src/lib/transaction-manager.ts` | Add `daily_assessment_photos` to blocklist |
+| New migration | Admin policies for `sync_conflicts` and `report_deleted_items` |
+
+These are all low-severity items. The sync engine is production-ready for all critical paths.
 
