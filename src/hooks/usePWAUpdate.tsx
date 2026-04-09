@@ -13,8 +13,7 @@ export interface PWAUpdateStatus {
 }
 
 const UPDATE_APPLIED_KEY = 'pwa-update-just-applied';
-const SW_READY_TIMEOUT_MS = 5000;
-const UPDATE_DISCOVERY_TIMEOUT_MS = 4000;
+const SW_READY_TIMEOUT_MS = 3000;
 const SW_UPDATE_TIMEOUT_MS = 4000;
 
 const withTimeout = <T,>(promise: Promise<T>, ms: number, label: string): Promise<T> =>
@@ -187,62 +186,33 @@ export const usePWAUpdate = (): PWAUpdateStatus => {
         return 'update_found';
       }
 
-      // Listen for updatefound BEFORE calling update()
-      const updatePromise = new Promise<boolean>((resolve) => {
-        let settled = false;
-        let onUpdateFound: (() => void) | null = null;
+      // Race: listen for updatefound while calling reg.update().
+      // If reg.update() resolves without triggering updatefound, we're up to date
+      // — no need to wait a fixed timeout.
+      let updateFound = false;
+      const onUpdateFound = () => { updateFound = true; };
+      reg.addEventListener('updatefound', onUpdateFound);
 
-        const resolveOnce = (value: boolean) => {
-          if (settled) return;
-          settled = true;
-
-          if (onUpdateFound) {
-            reg!.removeEventListener('updatefound', onUpdateFound);
-          }
-
-          resolve(value);
-        };
-
-        onUpdateFound = () => {
-          // updatefound confirms an update exists — resolve immediately
-          resolveOnce(true);
-        };
-
-        reg!.addEventListener('updatefound', onUpdateFound);
-
-        // Safety: resolve false after 4s if no update found
-        window.setTimeout(() => {
-          resolveOnce(false);
-        }, UPDATE_DISCOVERY_TIMEOUT_MS);
-      });
-
-      let updateCallError: unknown = null;
-      const updateCallPromise = withTimeout(reg.update(), SW_UPDATE_TIMEOUT_MS, 'SW update').catch((error) => {
-        updateCallError = error;
-      });
-
-      const found = await updatePromise;
-
-      // Check immediately after update discovery
-      if (found || reg.waiting) {
-        setNeedRefresh(true);
-        return 'update_found';
-      }
-
-      await updateCallPromise;
-
-      if (reg.waiting) {
-        setNeedRefresh(true);
-        return 'update_found';
-      }
-
-      if (updateCallError) {
-        const isTimeout = updateCallError instanceof Error && 
-          updateCallError.message.includes('timeout');
+      try {
+        await withTimeout(reg.update(), SW_UPDATE_TIMEOUT_MS, 'SW update');
+      } catch (error) {
+        const isTimeout = error instanceof Error && error.message.includes('timeout');
         if (!isTimeout) {
-          console.error('[PWA Update] Check failed:', updateCallError);
+          reg.removeEventListener('updatefound', onUpdateFound);
+          console.error('[PWA Update] Check failed:', error);
           return 'error';
         }
+        // Timeout is acceptable on slow connections — treat as up_to_date
+      }
+
+      // Give the browser a micro-tick to fire updatefound after update() resolves
+      await new Promise(r => setTimeout(r, 100));
+
+      reg.removeEventListener('updatefound', onUpdateFound);
+
+      if (updateFound || reg.waiting) {
+        setNeedRefresh(true);
+        return 'update_found';
       }
 
       return 'up_to_date';
