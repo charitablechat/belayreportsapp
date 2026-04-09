@@ -344,19 +344,21 @@ export default function Dashboard() {
     const superAdminStatus = user && sessionValid ? await getSuperAdminStatusWithCache() : false;
 
     try {
-      await Promise.all([
+      const results = await Promise.all([
         loadInspections(userId, superAdminStatus, sessionValid),
         loadTrainingReports(userId, superAdminStatus, sessionValid),
         loadDailyAssessments(userId, superAdminStatus, sessionValid),
       ]);
 
       // Track network failures for stale-data banner
-      if (!sessionValid && effectiveOnline) {
+      // Fix: detect query-level timeouts even when session is valid
+      const anyNetworkSuccess = results.some(r => r.networkSuccess);
+      if (effectiveOnline && !anyNetworkSuccess) {
         networkFailCountRef.current++;
         if (networkFailCountRef.current >= 2) {
           setShowStaleDataBanner(true);
         }
-      } else if (sessionValid) {
+      } else if (anyNetworkSuccess) {
         networkFailCountRef.current = 0;
         setShowStaleDataBanner(false);
       }
@@ -488,7 +490,7 @@ export default function Dashboard() {
     ]);
   };
 
-  const loadInspections = async (cachedUserId?: string, cachedIsSuperAdmin?: boolean, sessionValid: boolean = true) => {
+  const loadInspections = async (cachedUserId?: string, cachedIsSuperAdmin?: boolean, sessionValid: boolean = true): Promise<{ networkSuccess: boolean }> => {
     try {
       // Use passed userId or fetch from cache
       const userId = cachedUserId || (await getUserWithCache())?.id;
@@ -644,20 +646,27 @@ export default function Dashboard() {
           if (import.meta.env.DEV) {
             console.log('[Dashboard] Loaded from Supabase:', networkData.length);
           }
+          return { networkSuccess: true };
         } else if (networkData !== null && offlineData.length === 0 && sessionValid) {
           // Only clear when session is VERIFIED valid and server confirmed zero
           setInspections(prev => prev.length > 0 ? prev : []);
+          return { networkSuccess: true };
         } else if (networkData === null && offlineData.length > 0) {
           // Network failed -- fall back to offline data
           setInspections(offlineData);
+          return { networkSuccess: false };
         }
+        // networkData === null and no offline data
+        return { networkSuccess: networkData !== null };
       }
+      return { networkSuccess: false };
     } catch (error: any) {
       console.error("Error loading inspections:", error);
+      return { networkSuccess: false };
     }
   };
 
-  const loadTrainingReports = async (cachedUserId?: string, cachedIsSuperAdmin?: boolean, sessionValid: boolean = true) => {
+  const loadTrainingReports = async (cachedUserId?: string, cachedIsSuperAdmin?: boolean, sessionValid: boolean = true): Promise<{ networkSuccess: boolean }> => {
     try {
       // Use passed userId or fetch from cache
       const userId = cachedUserId || (await getUserWithCache())?.id;
@@ -796,20 +805,26 @@ export default function Dashboard() {
           if (import.meta.env.DEV) {
             console.log('[Dashboard] Loaded training reports from Supabase:', networkData.length);
           }
+          return { networkSuccess: true };
         } else if (networkData !== null && offlineData.length === 0 && sessionValid) {
           // Only clear when session is VERIFIED valid and server confirmed zero
           setTrainings(prev => prev.length > 0 ? prev : []);
+          return { networkSuccess: true };
         } else if (networkData === null && offlineData.length > 0) {
           // Network failed -- fall back to offline data
           setTrainings(offlineData);
+          return { networkSuccess: false };
         }
+        return { networkSuccess: networkData !== null };
       }
+      return { networkSuccess: false };
     } catch (error: any) {
       console.error("Error loading training reports:", error);
+      return { networkSuccess: false };
     }
   };
 
-  const loadDailyAssessments = async (cachedUserId?: string, cachedIsSuperAdmin?: boolean, sessionValid: boolean = true) => {
+  const loadDailyAssessments = async (cachedUserId?: string, cachedIsSuperAdmin?: boolean, sessionValid: boolean = true): Promise<{ networkSuccess: boolean }> => {
     try {
       // Use passed userId or fetch from cache
       const userId = cachedUserId || (await getUserWithCache())?.id;
@@ -948,16 +963,22 @@ export default function Dashboard() {
           if (import.meta.env.DEV) {
             console.log('[Dashboard] Loaded daily assessments from Supabase:', networkData.length);
           }
+          return { networkSuccess: true };
         } else if (networkData !== null && offlineData.length === 0 && sessionValid) {
           // Only clear when session is VERIFIED valid and server confirmed zero
           setDailyAssessments(prev => prev.length > 0 ? prev : []);
+          return { networkSuccess: true };
         } else if (networkData === null && offlineData.length > 0) {
           // Network failed -- fall back to offline data
           setDailyAssessments(offlineData);
+          return { networkSuccess: false };
         }
+        return { networkSuccess: networkData !== null };
       }
+      return { networkSuccess: false };
     } catch (error: any) {
       console.error("Error loading daily assessments:", error);
+      return { networkSuccess: false };
     }
   };
 
