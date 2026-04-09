@@ -26,6 +26,7 @@ const REPORT_TABLE_BLOCKLIST = new Set([
   'daily_assessments', 'daily_assessment_beginning_of_day', 'daily_assessment_end_of_day',
   'daily_assessment_operating_systems', 'daily_assessment_equipment_checks',
   'daily_assessment_structure_checks', 'daily_assessment_environment_checks',
+  'daily_assessment_photos',
 ]);
 
 export interface TransactionStep {
