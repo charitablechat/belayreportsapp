@@ -232,6 +232,8 @@ async function syncInspectionWithTransaction(inspection, systems, ziplines, equi
     // Step 1: Upsert inspection data WITHOUT synced_at (deferred marking pattern)
     const inspData = { ...inspection };
     delete inspData.synced_at;
+    // Bug 1 fix: Strip joined objects that would cause PostgREST errors
+    delete inspData.inspector;
     
     const inspResponse = await fetch(`${SUPABASE_URL}/rest/v1/inspections`, {
       method: 'POST',
@@ -518,6 +520,9 @@ async function syncTrainingsAtomic() {
         
         const trainingData = { ...training };
         delete trainingData.synced_at;
+        // Bug 1 fix: Strip joined objects that would cause PostgREST errors
+        delete trainingData.inspector;
+        delete trainingData.trainer;
         
         const response = await fetch(`${SUPABASE_URL}/rest/v1/trainings`, {
           method: 'POST',
@@ -634,6 +639,8 @@ async function syncDailyAssessmentsAtomic() {
         
         const assessmentData = { ...assessment };
         delete assessmentData.synced_at;
+        // Bug 1 fix: Strip joined objects that would cause PostgREST errors
+        delete assessmentData.inspector;
         
         const response = await fetch(`${SUPABASE_URL}/rest/v1/daily_assessments`, {
           method: 'POST',
