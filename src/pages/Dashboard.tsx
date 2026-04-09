@@ -1378,26 +1378,19 @@ export default function Dashboard() {
               const baseInspections = reportSection === "recent" ? sortByMostRecent(inspections).slice(0, 9) : inspections;
               const baseTrainings = reportSection === "recent" ? sortByMostRecent(trainings).slice(0, 9) : trainings;
               const baseDailyAssessments = reportSection === "recent" ? sortByMostRecent(dailyAssessments).slice(0, 9) : dailyAssessments;
-              
-              const currentReports = activeReportTab === 'inspections' ? baseInspections
-                : activeReportTab === 'training' ? baseTrainings
-                : baseDailyAssessments;
-              
-              const currentType = activeReportTab === 'inspections' ? 'inspection'
-                : activeReportTab === 'training' ? 'training'
-                : 'daily';
-              
-              // Get unique statuses
-              const statuses = [...new Set(currentReports.map(r => r.status).filter(Boolean))];
-              
+
+              const dashboardInspections = activeReportTab === 'invoiced' ? inspections : baseInspections;
+              const dashboardTrainings = activeReportTab === 'invoiced' ? trainings : baseTrainings;
+              const dashboardDailyAssessments = activeReportTab === 'invoiced' ? dailyAssessments : baseDailyAssessments;
+
               return (
                 <DashboardReportsSection
-                  inspections={baseInspections}
-                  trainings={baseTrainings}
-                  dailyAssessments={baseDailyAssessments}
-                   totalInspections={dataValidated ? inspections.length : undefined}
-                   totalTrainings={dataValidated ? trainings.length : undefined}
-                   totalDailyAssessments={dataValidated ? dailyAssessments.length : undefined}
+                  inspections={dashboardInspections}
+                  trainings={dashboardTrainings}
+                  dailyAssessments={dashboardDailyAssessments}
+                  totalInspections={dataValidated ? inspections.length : undefined}
+                  totalTrainings={dataValidated ? trainings.length : undefined}
+                  totalDailyAssessments={dataValidated ? dailyAssessments.length : undefined}
                   activeReportTab={activeReportTab}
                   setActiveReportTab={setActiveReportTab}
                   loading={loading}
