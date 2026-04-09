@@ -1493,7 +1493,7 @@ export default function TrainingForm() {
                 variant="outline" 
                 size={isMobile ? "default" : "sm"} 
                 onClick={async () => { await saveTraining(); setLastManuallySaved(new Date()); }} 
-                disabled={isSaving || !isOnline}
+                disabled={isSaving}
               >
                 <Save className={isMobile ? "w-5 h-5 mr-1.5" : "w-4 h-4 mr-2"} />
                 {isMobile ? (isSaving ? "..." : "Save") : (isSaving ? "Saving..." : "Save Progress")}
@@ -1556,7 +1556,7 @@ export default function TrainingForm() {
               <Button 
                 size={isMobile ? "default" : "sm"} 
                 onClick={() => setShowCompleteDialog(true)} 
-                disabled={isSaving || !isOnline}
+                disabled={isSaving}
                 className={isMobile ? "min-w-[100px] h-10 text-sm font-medium" : ""}
               >
                 {isSaving ? (

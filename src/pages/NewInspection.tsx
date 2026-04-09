@@ -186,6 +186,11 @@ export default function NewInspection() {
       return;
     }
 
+    if (!navigator.onLine) {
+      toast.error("You're offline", { description: "DOCX import requires an internet connection. Please try again when online." });
+      return;
+    }
+
     setImportLoading(true);
     triggerHaptic('medium');
 
