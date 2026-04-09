@@ -1,74 +1,62 @@
 
-What I found
 
-- The earlier “Recent Reports only searches top 9” bug is not the blocker for this record anymore.
-- The restored row does exist in the database:
-  - organization: `Airiel Crawler World`
-  - assessment_date: `2026-02-20`
-  - updated_at: `2026-04-09`
-  - `deleted_at = null`
-- There are only 7 active daily assessments total, so this record should still be in the Daily “Recent Reports” set. That means the missing row is now caused by a different gap.
-- The screenshot search term is `ariel`, but the stored organization is `Airiel`. Current search is strict substring matching only, so `ariel` will not match `airiel`.
-- Console logs also show repeated 15s dashboard query timeouts. When that happens, the dashboard keeps stale cached data. Since restore currently does not hydrate caches directly, the restored row never reaches dashboard state if the bulk refresh times out.
-- There is also a likely permissions mismatch: restore is allowed via `is_admin_or_above()`, but report SELECT visibility is still owner/`is_super_admin()` based on current table policies. If the restoring user is admin-but-not-true-super-admin and not the report owner, they can restore the row but still not see it on the dashboard.
+# Fix: Restored Reports — Full Access Blocked by Broken Sync
 
-Plan
+## Root Cause
 
-1. Fix the real visibility path after restore
-- Update `src/hooks/useSoftDelete.tsx` so `restoreRecord` returns the restored row payload, not just success/failure.
-- Update `src/components/admin/DeletedRecordsRecovery.tsx` to persist a “restored report” marker/payload, not just fire a transient `dashboard-stale` event.
-- On Dashboard load in `src/pages/Dashboard.tsx`, consume that marker and merge the restored record into React state and dashboard caches immediately.
+The **sync engine is completely broken** right now. All three `getUnsynced*` functions crash with:
+```
+DataError: Failed to execute 'only' on 'IDBKeyRange': The parameter is not a valid key.
+```
 
-2. Add a targeted fallback fetch for restored records
-- In `src/pages/Dashboard.tsx`, when a pending restored record exists, run a direct fetch by report ID instead of relying only on the large bulk `daily_assessments` query.
-- If the bulk query times out, the targeted fetch should still insert/update that single report in state, session cache, local cache, and offline storage.
+This happens because `IDBKeyRange.only(undefined)` is invalid — IndexedDB does not index records where the key path value is `undefined`. Records with `synced_at = undefined` simply don't appear in the `by-synced` index at all.
 
-3. Align search behavior with what users type
-- Update `textMatchesReport` in `src/components/dashboard/DashboardReportsSection.tsx`.
-- Keep exact match first, then add normalized/fuzzy matching for organization/location/assignee so `ariel` can match `Airiel`.
-- Also search token-by-token so `crawler` and `world` match independently.
+This means **no reports can sync**, which blocks saving, completing, and invoicing for ALL reports (not just restored ones).
 
-4. Close the admin visibility/RLS gap
-- Add/adjust backend SELECT policies so the same admin tier that can restore reports can also read them on the dashboard.
-- Apply the same rule consistently to:
-  - `public.daily_assessments`
-  - `public.trainings`
-  - `public.inspections`
-- Preferred fix: add admin-level SELECT policies using the existing server-side role check, instead of relying only on owner/true-super-admin visibility.
+The report itself (`3c7c3fca-083d-4b8b-a7db-3c1464ea0e3c`, "Airiel Crawler World", owned by Brenda) has correct permissions — `deleted_at = null`, `status = draft`. The permission model grants Brenda (owner + admin) full edit access. The blocker is that changes can't be persisted because sync crashes on startup.
 
-5. Keep the timeout hardening, but don’t treat it as the only fix
-- Keep the stale banner and queued refresh logic.
-- Only reduce the session-validation timeout if logs prove auth is the slow step.
-- The main issue is that restore currently depends on a slow bulk refresh to make the row visible.
+## Fix
 
-Files to change
+### 1. Fix `getUnsyncedInspections` / `getUnsyncedDailyAssessments` / `getUnsyncedTrainings`
 
-- `src/hooks/useSoftDelete.tsx`
-- `src/components/admin/DeletedRecordsRecovery.tsx`
-- `src/pages/Dashboard.tsx`
-- `src/components/dashboard/DashboardReportsSection.tsx`
-- new backend migration for admin SELECT policy alignment
+**File: `src/lib/offline-storage.ts`** (3 functions, same pattern)
 
-Why this should solve it
+Replace the broken `IDBKeyRange.only(undefined)` approach with a single cursor scan that handles both never-synced and drift-unsynced records in one pass:
 
-- If the row is restored but bulk dashboard fetch is slow, the targeted restore hydration will still surface it.
-- If the user types `ariel`, fuzzy/normalized search will still find `Airiel`.
-- If the restoring user is allowed to restore but not currently allowed to view, aligned SELECT policies will remove that contradiction.
+```typescript
+// Instead of:
+const neverSynced = await db.getAllFromIndex('inspections', 'by-synced', IDBKeyRange.only(undefined as any));
+// ... separate drift cursor ...
 
-Validation
+// Use:
+const db = await getDB();
+const all = await db.getAll('inspections'); // full scan — simple & reliable
+const unsynced = all.filter(record => {
+  if (!record.synced_at) return true; // never synced
+  if (record.updated_at) {
+    const drift = new Date(record.updated_at).getTime() - new Date(record.synced_at).getTime();
+    return drift > 2000;
+  }
+  return false;
+});
+```
 
-- Restore `Airiel Crawler World` and confirm it appears on the dashboard before a full bulk refresh completes.
-- Search for:
-  - `airiel`
-  - `ariel`
-  - `crawler`
-  - `aspen`
-- Verify the row appears in:
-  - Daily tab
-  - cross-tab search
-  - Recent Reports
-- Test with:
-  - report owner
-  - admin
-  - true super admin
-- Simulate network timeout and confirm the restored row still becomes visible from the targeted fallback path.
+This reverts to the original `getAll()` approach that was working before the broken "optimization." The Safari 5s timeout concern is theoretical — these stores typically contain <100 records.
+
+Apply this fix to all three functions:
+- `getUnsyncedInspections` (line 902)
+- `getUnsyncedDailyAssessments` (line 1619)
+- `getUnsyncedTrainings` (line 1952)
+
+## Files Changed
+
+| File | Change |
+|------|--------|
+| `src/lib/offline-storage.ts` | Fix 3 broken `getUnsynced*` functions — replace invalid `IDBKeyRange.only(undefined)` with reliable `getAll()` + filter |
+
+## Expected Outcome
+
+- Sync engine stops crashing → saves, completions, and invoice toggles work again
+- Restored reports (like "Airiel Crawler World") are fully editable by their owner and admins
+- No permission changes needed — the three-tier model already grants correct access
+
