@@ -109,14 +109,11 @@ export function HtmlReportViewer({
           grid-template-columns: 1fr !important;
         }
 
-        /* CRITICAL: Neutralize ALL table min-width constraints on mobile */
-        .equipment-table td, .equipment-table th,
-        .standards-table td, .standards-table th,
-        .ziplines-table td, .ziplines-table th,
-        .systems-table td, .systems-table th {
-          min-width: 0 !important;
-          width: auto !important;
-        }
+        /* Per-table minimum widths for horizontal scroll readability */
+        .systems-table { min-width: 600px !important; }
+        .equipment-table { min-width: 550px !important; }
+        .ziplines-table { min-width: 900px !important; }
+        .standards-table { min-width: 500px !important; }
 
         /* Force table cell wrapping */
         th, td {
