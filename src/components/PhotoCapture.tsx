@@ -4,6 +4,7 @@ import { Camera, Loader2, CloudOff, ImagePlus } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { getUserWithCache } from "@/lib/cached-auth";
 import { savePhotoOffline, markPhotoAsUploaded } from "@/lib/offline-storage";
+import { saveToDevice } from "@/lib/save-to-device";
 import { savePhotoReceipt } from "@/lib/photo-receipts";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { triggerHaptic } from "@/lib/haptics";
@@ -194,6 +195,10 @@ export default function PhotoCapture({
       uploaded: false,
     });
     
+    // Save photo to device's local storage (Downloads / Files app) — fire-and-forget
+    const deviceFileName = `RopeWorks_${section}_${Date.now()}.jpg`;
+    saveToDevice(processedFile, deviceFileName);
+
     if (import.meta.env.DEV) {
       console.log('[PhotoCapture] Photo saved locally with receipt:', photoId);
     }
