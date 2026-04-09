@@ -129,7 +129,6 @@ export default function Dashboard() {
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [userProfile, setUserProfile] = useState<any>(null);
   const [inspectorFilter, setInspectorFilter] = useState<string>("all");
-  const queryClient = useQueryClient();
 
   // Deduplication & throttle refs for refreshReports
   const refreshInFlightRef = React.useRef(false);
