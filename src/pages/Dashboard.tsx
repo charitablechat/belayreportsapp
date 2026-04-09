@@ -450,10 +450,83 @@ export default function Dashboard() {
 
     // Check if a report form marked data as stale before navigating here
     if (consumeDashboardStaleTimestamp() || consumePendingDashboardRefresh()) {
-      // Data is definitely stale — the initial refreshReports(true) above handles it.
-      // No need for a delayed second call (it would be throttle-blocked anyway).
       if (import.meta.env.DEV) console.log('[Dashboard] Stale timestamp detected from report form');
     }
+
+    // Hydrate restored records immediately from sessionStorage marker
+    const hydrateRestoredRecord = async () => {
+      try {
+        const raw = sessionStorage.getItem('restored-report-marker');
+        if (!raw) return;
+        const marker = JSON.parse(raw);
+        // Only consume if recent (within 5 minutes)
+        if (Date.now() - marker.ts > 300000) {
+          sessionStorage.removeItem('restored-report-marker');
+          return;
+        }
+        sessionStorage.removeItem('restored-report-marker');
+
+        const { table, recordId, row } = marker;
+        console.log('[Dashboard] Hydrating restored record:', { table, recordId });
+
+        // Try targeted fetch for full data with profile join
+        let freshRow = row;
+        if (navigator.onLine) {
+          try {
+            if (table === 'inspections') {
+              const { data } = await supabase
+                .from('inspections')
+                .select(`id, inspector_id, organization, location, inspection_date, status, created_at, updated_at, synced_at, last_opened_at, acct_number, started_at, latest_report_generated_at, report_version, deleted_at, organization_id, previous_inspector, previous_inspection_date, inspector:profiles!inspections_inspector_id_profiles_fkey(first_name, last_name, avatar_url)`)
+                .eq('id', recordId)
+                .is('deleted_at', null)
+                .maybeSingle();
+              if (data) freshRow = data;
+            } else if (table === 'trainings') {
+              const { data } = await supabase
+                .from('trainings')
+                .select(`id, inspector_id, organization, trainer_of_record, start_date, end_date, status, created_at, updated_at, synced_at, latest_report_generated_at, report_version, deleted_at, trainer:profiles!trainings_inspector_id_profiles_fkey(first_name, last_name, avatar_url)`)
+                .eq('id', recordId)
+                .is('deleted_at', null)
+                .maybeSingle();
+              if (data) freshRow = data;
+            } else if (table === 'daily_assessments') {
+              const { data } = await supabase
+                .from('daily_assessments')
+                .select(`id, inspector_id, organization, site, trainer_of_record, assessment_date, status, created_at, updated_at, synced_at, latest_report_generated_at, report_version, deleted_at, inspector:profiles!daily_assessments_inspector_id_profiles_fkey(first_name, last_name, avatar_url)`)
+                .eq('id', recordId)
+                .is('deleted_at', null)
+                .maybeSingle();
+              if (data) freshRow = data;
+            }
+          } catch (e) {
+            console.warn('[Dashboard] Targeted restore fetch failed, using marker row:', e);
+          }
+        }
+
+        if (!freshRow) return;
+
+        // Merge into React state
+        if (table === 'inspections') {
+          setInspections(prev => {
+            if (prev.some(r => r.id === recordId)) return prev;
+            return [freshRow, ...prev];
+          });
+        } else if (table === 'trainings') {
+          setTrainings(prev => {
+            if (prev.some(r => r.id === recordId)) return prev;
+            return [freshRow, ...prev];
+          });
+        } else if (table === 'daily_assessments') {
+          setDailyAssessments(prev => {
+            if (prev.some(r => r.id === recordId)) return prev;
+            return [freshRow, ...prev];
+          });
+        }
+      } catch (e) {
+        console.warn('[Dashboard] Failed to hydrate restored record:', e);
+      }
+    };
+    hydrateRestoredRecord();
 
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
