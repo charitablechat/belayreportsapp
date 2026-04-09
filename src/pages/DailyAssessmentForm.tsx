@@ -111,7 +111,7 @@ export default function DailyAssessmentForm() {
   const [generating, setGenerating] = useState(false);
   const [assessment, setAssessment] = useState<any>(null);
   const { isInvoiced, toggling: invoiceToggling, toggleInvoiced } = useInvoicedStatus({
-    reportId: assessmentId,
+    reportId: id,
     reportType: 'daily',
     enabled: isAdmin && assessment?.status === 'completed',
   });
