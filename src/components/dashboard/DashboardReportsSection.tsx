@@ -421,10 +421,16 @@ export function DashboardReportsSection({
               <FileText className="w-4 h-4" />
               Daily ({loading || (!totalDailyAssessments && dailyAssessments.length === 0) ? '…' : (totalDailyAssessments ?? dailyAssessments.length)})
             </TabsTrigger>
+            {isSuperAdmin && invoicedReports.length > 0 && (
+              <TabsTrigger value="invoiced" className="flex items-center gap-2">
+                <Receipt className="w-4 h-4" />
+                Invoiced ({invoicedReports.length})
+              </TabsTrigger>
+            )}
           </TabsList>
 
           {/* Content for all tabs - rendered by the same logic */}
-          {['inspections', 'training', 'daily'].map((tab) => (
+          {['inspections', 'training', 'daily', ...(isSuperAdmin ? ['invoiced'] : [])].map((tab) => (
             <TabsContent key={tab} value={tab}>
               {loading ? (
                 <div className="grid gap-4">
