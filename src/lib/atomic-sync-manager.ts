@@ -1150,11 +1150,15 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
       rollbackData,
     });
     
-    // ZERO DATA LOSS: Empty-array safeguard
-    // If the server has child data but local is completely empty, this is suspicious
-    // (likely IndexedDB corruption or failed read) -- skip sync to prevent data loss
+    let existingApproaches: any[] = [];
+    let existingSystems: any[] = [];
+    let existingAttention: any[] = [];
+    let existingVerifiable: any[] = [];
+    let existingSystemsInPlace: any[] = [];
+    let existingSummary: any[] = [];
+    
     if (recordStatus?.record_exists && !recordStatus?.is_deleted) {
-      const [
+      [
         existingApproaches,
         existingSystems,
         existingAttention,
@@ -1843,11 +1847,15 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
       rollbackData,
     });
     
-    // ZERO DATA LOSS: Empty-array safeguard
-    // If the server has child data but local is completely empty, this is suspicious
-    // (likely IndexedDB corruption or failed read) -- skip sync to prevent data loss
+    let existingBeginning: any[] = [];
+    let existingEnd: any[] = [];
+    let existingSystems: any[] = [];
+    let existingEquipment: any[] = [];
+    let existingStructure: any[] = [];
+    let existingEnvironment: any[] = [];
+    
     if (recordStatus?.record_exists && !recordStatus?.is_deleted) {
-      const [
+      [
         existingBeginning,
         existingEnd,
         existingSystems,
