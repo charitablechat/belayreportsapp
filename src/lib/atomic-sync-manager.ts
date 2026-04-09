@@ -22,6 +22,10 @@ import {
   clearAssessmentDataOffline,
   getQueuedTrainingOperations,
   removeQueuedTrainingOperation,
+  getQueuedOperations,
+  removeQueuedOperation,
+  getQueuedAssessmentOperations,
+  removeQueuedAssessmentOperation,
 } from "./offline-storage";
 import { 
   validateInspectionPackage,
@@ -636,6 +640,23 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
       
       // Relink photos from temp ID to new UUID so syncPhotos() can upload them
       await relinkPhotosToNewInspectionId(inspectionIdMapping.oldId, inspectionIdMapping.newId);
+    }
+    
+    // Clean up any queued operations entries for this inspection
+    try {
+      const queuedOps = await getQueuedOperations();
+      const matchingOps = queuedOps.filter(op => {
+        const opInspectionId = op.inspectionId || op.data?.id;
+        return opInspectionId === inspectionId || (inspectionIdMapping && opInspectionId === inspectionIdMapping.oldId);
+      });
+      for (const op of matchingOps) {
+        await removeQueuedOperation(op.id!);
+      }
+      if (matchingOps.length > 0 && import.meta.env.DEV) {
+        console.log(`[Atomic Sync] Cleaned up ${matchingOps.length} orphaned operations entries for ${inspectionId}`);
+      }
+    } catch (cleanupErr) {
+      console.warn('[Atomic Sync] Non-blocking: failed to clean operations queue:', cleanupErr);
     }
     
     if (import.meta.env.DEV) {
@@ -2043,6 +2064,23 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
       
       // Relink photos from temp ID to new UUID so syncPhotos() can upload them
       await relinkPhotosToNewInspectionId(assessmentIdMapping.oldId, assessmentIdMapping.newId);
+    }
+    
+    // Clean up any queued assessment_operations entries for this assessment
+    try {
+      const queuedOps = await getQueuedAssessmentOperations();
+      const matchingOps = queuedOps.filter(op => {
+        const opAssessmentId = (op as any).assessmentId || op.data?.id;
+        return opAssessmentId === assessmentId || (assessmentIdMapping && opAssessmentId === assessmentIdMapping.oldId);
+      });
+      for (const op of matchingOps) {
+        await removeQueuedAssessmentOperation(op.id!);
+      }
+      if (matchingOps.length > 0 && import.meta.env.DEV) {
+        console.log(`[Atomic Sync] Cleaned up ${matchingOps.length} orphaned assessment_operations entries for ${assessmentId}`);
+      }
+    } catch (cleanupErr) {
+      console.warn('[Atomic Sync] Non-blocking: failed to clean assessment_operations queue:', cleanupErr);
     }
     
     if (import.meta.env.DEV) {

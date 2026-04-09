@@ -43,7 +43,7 @@ import { SyncPulse } from "@/components/pwa/SyncPulse";
 import { useConflicts } from "@/hooks/useConflicts";
 import { usePWA } from "@/hooks/usePWA";
 import { usePullToRefresh } from "@/hooks/usePullToRefresh";
-import { getOfflineInspections, deleteOfflineInspection, queueOperation, saveInspectionOffline, getOfflineTrainings, saveTrainingOffline, deleteOfflineTraining, getOfflineDailyAssessments, saveDailyAssessmentOffline, deleteOfflineDailyAssessment, getOfflineInspection, getOfflineTraining, getOfflineDailyAssessment, clearRelatedDataOffline, clearTrainingDataOffline, clearAssessmentDataOffline } from "@/lib/offline-storage";
+import { getOfflineInspections, deleteOfflineInspection, queueOperation, queueTrainingOperation, queueAssessmentOperation, saveInspectionOffline, getOfflineTrainings, saveTrainingOffline, deleteOfflineTraining, getOfflineDailyAssessments, saveDailyAssessmentOffline, deleteOfflineDailyAssessment, getOfflineInspection, getOfflineTraining, getOfflineDailyAssessment, clearRelatedDataOffline, clearTrainingDataOffline, clearAssessmentDataOffline } from "@/lib/offline-storage";
 import { shouldPreserveLocalRecord } from "@/lib/local-data-guards";
 import { ContactDeveloperSheet } from "@/components/ContactDeveloperSheet";
 import { onSyncComplete, isSyncInProgress, consumePendingDashboardRefresh, consumeDashboardStaleTimestamp } from "@/lib/sync-events";
@@ -1030,7 +1030,7 @@ export default function Dashboard() {
             }
           } else {
             // Queue for later soft-deletion when back online
-            await queueOperation('update', reportToDelete.id, { ...reportToDelete, ...softDeleteData });
+            await queueAssessmentOperation('update', reportToDelete.id, { ...reportToDelete, ...softDeleteData });
             triggerHaptic('success');
             toast.success("Assessment will be deleted when you're back online.");
             
@@ -1061,7 +1061,7 @@ export default function Dashboard() {
             }
           } else {
             // Queue for later soft-deletion when back online
-            await queueOperation('update', reportToDelete.id, { ...reportToDelete, ...softDeleteData });
+            await queueTrainingOperation('update', reportToDelete.id, { ...reportToDelete, ...softDeleteData });
             triggerHaptic('success');
             toast.success("Training will be deleted when you're back online.");
             
