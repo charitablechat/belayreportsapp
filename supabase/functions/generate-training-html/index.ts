@@ -153,7 +153,7 @@ serve(async (req) => {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Training Report - ${content.facilityInfo.organization}</title>
+  <title>${(content.facilityInfo.organization || 'Training_Report').replace(/\s+/g, '_')}</title>
   <style>
     /* 
      * FIX: Content Clipping Prevention

@@ -43,6 +43,26 @@ export function formatReportTitle(
   return `${typeLabel} - ${org} ${mm}-${yyyy}`;
 }
 
+/**
+ * Derives the PDF-friendly base name from a filename
+ * (strips extension so browsers use it as the suggested save name).
+ */
+export function pdfTitleFromFilename(filename: string): string {
+  return filename.replace(/\.\w+$/, '');
+}
+
+/**
+ * Injects or replaces the <title> tag inside an HTML string so that the
+ * browser's print / "Save as PDF" dialog suggests the correct filename.
+ */
+export function injectHtmlTitle(html: string, pdfTitle: string): string {
+  let result = html.replace(/<title>[^<]*<\/title>/, `<title>${pdfTitle}</title>`);
+  if (!/<title>/.test(result)) {
+    result = result.replace('</head>', `<title>${pdfTitle}</title></head>`);
+  }
+  return result;
+}
+
 /** Strip characters that are unsafe on common filesystems and replace spaces with underscores. */
 function sanitizeForFilename(value: string): string {
   return value.trim().replace(/[<>:"/\\|?*]/g, '').replace(/\s+/g, '_');

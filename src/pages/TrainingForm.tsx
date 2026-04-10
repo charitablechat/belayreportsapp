@@ -1024,14 +1024,30 @@ export default function TrainingForm() {
         return;
       }
       
-      // Download the PDF
+      // Download the PDF — fetch as blob so we can enforce the filename
       if (data?.pdfUrl) {
-        const link = document.createElement('a');
-        link.href = data.pdfUrl;
-        link.download = formatReportFilename(training?.organization, 'training', 'pdf');
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+        try {
+          const pdfResp = await fetch(data.pdfUrl);
+          if (pdfResp.ok) {
+            const blob = await pdfResp.blob();
+            const blobUrl = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = blobUrl;
+            link.download = formatReportFilename(training?.organization, 'training', 'pdf');
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(blobUrl);
+          }
+        } catch (dlErr) {
+          console.warn('[Training PDF] Blob download failed, falling back to direct link', dlErr);
+          const link = document.createElement('a');
+          link.href = data.pdfUrl;
+          link.download = formatReportFilename(training?.organization, 'training', 'pdf');
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+        }
         
         // Show email dialog after a short delay
         setTimeout(() => setShowEmailDialog(true), 500);

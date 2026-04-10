@@ -3,18 +3,17 @@
  * Handles cross-platform HTML report viewing
  */
 
+import { pdfTitleFromFilename, injectHtmlTitle } from '@/lib/report-naming';
 
 /**
- * Download HTML report as a file (opens print dialog)
+ * Download HTML report as a file (opens print dialog in a new window).
+ * The injected <title> tells the browser what filename to suggest for
+ * "Save as PDF".
  */
 export function downloadHtmlReport(html: string, filename: string): void {
   try {
-    // Replace <title> so the print-to-PDF dialog uses the correct filename
-    const pdfTitle = filename.replace(/\.\w+$/, '');
-    let enhancedHtml = html.replace(/<title>[^<]*<\/title>/, `<title>${pdfTitle}</title>`);
-    if (!/<title>/.test(enhancedHtml)) {
-      enhancedHtml = enhancedHtml.replace('</head>', `<title>${pdfTitle}</title></head>`);
-    }
+    const pdfTitle = pdfTitleFromFilename(filename);
+    const enhancedHtml = injectHtmlTitle(html, pdfTitle);
 
     const printWindow = window.open('', '_blank');
     if (!printWindow) {
@@ -26,8 +25,13 @@ export function downloadHtmlReport(html: string, filename: string): void {
     printWindow.document.write(enhancedHtml);
     printWindow.document.close();
 
+    // Explicitly set document.title in case the written HTML didn't take effect
+    printWindow.document.title = pdfTitle;
+
     const triggerPrint = () => {
       try {
+        // Re-assert title right before print in case the browser reset it
+        printWindow.document.title = pdfTitle;
         printWindow.focus();
         printWindow.print();
       } catch (e) {
