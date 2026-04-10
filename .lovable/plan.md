@@ -1,62 +1,68 @@
 
 
-# Implement Automatic Report Naming Convention
+# Fix: Sign-Out Stuck on Spinner
 
-## Current State
-Report filenames are scattered across 3 form files with inconsistent patterns like:
-- `training-report-{org}-2024-03-15.html`
-- `inspection-{org}-1710500000.pdf`
-- `daily-assessment-{site}-2024-03-15.html`
+## Root Cause
 
-## Target Convention
-**`{Organization} {MM-YYYY}`** — e.g., `"Acme Corp 03-2024"`
+The `onAuthStateChange` callback in `src/hooks/useReportEditPermission.tsx` (line 80) is `async` and contains `await Promise.all([getSuperAdminStatusWithCache(), getIsTrueSuperAdmin()])`. This blocks the Supabase auth-js event pipeline — when sign-out fires, this listener's `await` creates a deadlock that prevents subsequent auth events (including the `SIGNED_OUT` event) from propagating. The spinner never stops because `setSigningOut(false)` is only called in the `catch` block, and the navigation to `/` never fires because `SIGNED_OUT` never reaches the other listeners.
 
-Applied to both the filename (for downloads) and the viewer title.
+## Fix
 
-## Plan
+### 1. Remove `await` from `useReportEditPermission.tsx` `onAuthStateChange` callback
 
-### Step 1: Create a shared utility function
-**File:** `src/lib/report-naming.ts` (new)
+Change the `async` callback to fire-and-forget:
 
 ```typescript
-export function formatReportFilename(
-  organization: string | undefined,
-  reportType: 'inspection' | 'training' | 'daily-assessment',
-  extension: 'pdf' | 'html' = 'html'
-): string {
-  const org = (organization || 'Report').trim();
-  const now = new Date();
-  const mm = String(now.getMonth() + 1).padStart(2, '0');
-  const yyyy = now.getFullYear();
-  return `${org} ${mm}-${yyyy}.${extension}`;
-}
+// BEFORE (deadlocks):
+supabase.auth.onAuthStateChange(async (_event, session) => {
+  // ...
+  const [adminStatus, trueSuperAdminStatus] = await Promise.all([...]);
+  // ...
+});
+
+// AFTER (fire-and-forget):
+supabase.auth.onAuthStateChange((_event, session) => {
+  const newUserId = session?.user?.id;
+  if (newUserId) {
+    setCurrentUserId(newUserId);
+  } else if (navigator.onLine) {
+    setCurrentUserId(null);
+  }
+
+  if (session?.user) {
+    // Fire and forget — do NOT await inside onAuthStateChange
+    Promise.all([
+      getSuperAdminStatusWithCache(),
+      getIsTrueSuperAdmin()
+    ]).then(([adminStatus, trueSuperAdminStatus]) => {
+      setIsAdmin(adminStatus);
+      setIsTrueSuperAdmin(trueSuperAdminStatus);
+    }).catch(() => {});
+  } else if (navigator.onLine) {
+    // ... existing cache checks (synchronous, no change needed)
+  }
+});
 ```
 
-### Step 2: Update all filename references across forms
+### 2. Add safety reset for `signingOut` state in `AuthenticatedHeader.tsx`
 
-**`src/pages/InspectionForm.tsx`** — 4 locations:
-- HTML viewer filename (line ~2369, ~3035)
-- PDF download filename (lines ~2204, ~2231)
+Add `setSigningOut(false)` after `signOut()` resolves (not just in `catch`), so even if the navigation doesn't happen immediately, the button isn't stuck:
 
-**`src/pages/TrainingForm.tsx`** — 3 locations:
-- HTML viewer filename (line ~1144, ~1841)
-- PDF download filename (line ~1030)
-
-**`src/pages/DailyAssessmentForm.tsx`** — 2 locations:
-- HTML viewer filename (line ~1332, ~1830)
-
-All will import and use `formatReportFilename()`.
-
-### Step 3: Update backup/recovery filenames (DataRecoveryTool)
-**`src/components/admin/DataRecoveryTool.tsx`** — 3 download locations will also use the new convention where an organization name is available.
+```typescript
+const handleSignOut = async () => {
+  setSigningOut(true);
+  try {
+    // ... existing sync logic ...
+    await supabase.auth.signOut();
+  } catch (error) {
+    console.error("Error signing out:", error);
+  } finally {
+    setSigningOut(false);  // Always reset, not just on error
+  }
+};
+```
 
 ## Files Changed
-1. `src/lib/report-naming.ts` — new shared utility
-2. `src/pages/InspectionForm.tsx` — use new naming
-3. `src/pages/TrainingForm.tsx` — use new naming
-4. `src/pages/DailyAssessmentForm.tsx` — use new naming
-5. `src/components/admin/DataRecoveryTool.tsx` — use new naming
-
-## Cross-Platform
-The naming uses only alphanumeric characters, spaces, and hyphens — safe on Windows, macOS, iOS, and Android. No special characters that would cause filesystem issues.
+1. `src/hooks/useReportEditPermission.tsx` — remove `async`/`await` from `onAuthStateChange` callback
+2. `src/components/AuthenticatedHeader.tsx` — move `setSigningOut(false)` to `finally` block
 
