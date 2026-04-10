@@ -656,15 +656,27 @@ export const useAutoSync = () => {
       window.addEventListener('focus', handleFocus);
     }
     
-    // Periodic sync polling with mobile-aware interval
-    periodicSyncIntervalRef.current = setInterval(() => {
-      if (!document.hidden && navigator.onLine) {
-        performSync(true);
+    // Adaptive periodic sync: use shorter interval when items are pending, longer when idle
+    const scheduleNextSync = () => {
+      if (periodicSyncIntervalRef.current) {
+        clearInterval(periodicSyncIntervalRef.current);
       }
-    }, syncInterval);
+      const currentInterval = unsyncedCountRef.current > 0 ? activeSyncInterval : idleSyncInterval;
+      periodicSyncIntervalRef.current = setInterval(() => {
+        if (!document.hidden && navigator.onLine) {
+          performSync(true);
+        }
+      }, currentInterval);
+    };
+    scheduleNextSync();
+    
+    // Re-schedule when unsynced count changes (adaptive interval)
+    const handleSyncPhotosUpdated = () => scheduleNextSync();
+    window.addEventListener('sync-photos-updated', handleSyncPhotosUpdated);
     
     if (import.meta.env.DEV) {
-      console.log('[AutoSync] Initialized with interval:', syncInterval / 1000, 's (mobile viewport:', isMobileViewport, ')');
+      const currentInterval = unsyncedCountRef.current > 0 ? activeSyncInterval : idleSyncInterval;
+      console.log('[AutoSync] Initialized with interval:', currentInterval / 1000, 's (mobile viewport:', isMobileViewport, ', idle:', unsyncedCountRef.current === 0, ')');
     }
     
     // Realtime subscriptions for multi-device sync
@@ -725,7 +737,7 @@ export const useAutoSync = () => {
         supabase.removeChannel(channelRef.current);
       }
     };
-  }, [performSync, handleOnline, handleVisibilityChange, handleRemoteChange, updateUnsyncedCounts, isIOSDevice, isMobileDevice, syncInterval, isMobileViewport]);
+  }, [performSync, handleOnline, handleVisibilityChange, handleRemoteChange, updateUnsyncedCounts, isIOSDevice, isMobileDevice, activeSyncInterval, idleSyncInterval, isMobileViewport]);
   
   // RC-2: Removed separate 30s updateUnsyncedCounts interval
   // Unsynced counts are now updated inside the main periodic sync loop (line 262)
