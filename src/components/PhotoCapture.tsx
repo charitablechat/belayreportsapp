@@ -1,9 +1,9 @@
 import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Camera, Loader2, CloudOff, ImagePlus } from "lucide-react";
+import { Camera, Loader2, CloudOff, ImagePlus, XCircle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { getUserWithCache } from "@/lib/cached-auth";
-import { savePhotoOffline, markPhotoAsUploaded } from "@/lib/offline-storage";
+import { savePhotoOffline, markPhotoAsUploaded, getCircuitBreakerStatus } from "@/lib/offline-storage";
 import { saveToDevice } from "@/lib/save-to-device";
 import { savePhotoReceipt } from "@/lib/photo-receipts";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
@@ -28,8 +28,9 @@ interface PhotoCaptureProps {
 const SUPPORTED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'];
 const MAX_FILE_SIZE_MB = 25;
 
-// Timeout constants — relaxed to prevent false timeouts on mobile
-const PER_FILE_TIMEOUT = 30000; // 30s per file (compression can be slow on iPad)
+// Timeout constants — reduced to prevent long hangs
+const PER_FILE_TIMEOUT = 15000; // 15s per file (down from 30s)
+const MAX_SAFETY_TIMEOUT = 45000; // 45s cap regardless of file count
 
 /**
  * Validate file type and size before processing
@@ -58,10 +59,10 @@ export default function PhotoCapture({
   const [uploading, setUploading] = useState(false);
   const { isOnline } = useNetworkStatus();
   const uploadMutexRef = useRef(false);
+  const cancelledRef = useRef(false);
 
   /**
    * Fire-and-forget background upload — does NOT block UI.
-   * Uses pre-resolved storage path for consistency with IndexedDB record.
    */
   const uploadPhotoInBackground = async (
     photoId: string,
@@ -75,7 +76,6 @@ export default function PhotoCapture({
         .upload(storagePath, processedFile, { upsert: true });
       if (uploadError) throw uploadError;
 
-      // Dedup guard: check if a row already exists for this photo_url + parent ID
       const { data: existing } = await (supabase
         .from(tableName) as any)
         .select('id')
@@ -89,15 +89,12 @@ export default function PhotoCapture({
           photo_url: storagePath,
           photo_section: section,
         });
-        // Treat unique-constraint violations as success (another path inserted first)
         if (dbError && !dbError.message?.includes('duplicate') && !dbError.code?.includes('23505')) {
           throw dbError;
         }
       }
 
       await markPhotoAsUploaded(photoId, storagePath);
-      
-      // Refresh gallery so photo moves from "Pending" to "Synced"
       onPhotoAdded();
       
       if (import.meta.env.DEV) {
@@ -110,7 +107,7 @@ export default function PhotoCapture({
 
   /**
    * Process a single file — LOCAL-FIRST: saves to IndexedDB before any network call.
-   * Auth is NOT required for local save; only needed for background upload.
+   * If circuit breaker is open, falls back to receipt-only mode immediately.
    */
   const processSingleFile = async (file: File): Promise<boolean> => {
     const validation = validateFile(file);
@@ -136,7 +133,6 @@ export default function PhotoCapture({
       }
     } catch (compressionError) {
       console.warn(`[PhotoCapture] Compression failed for ${file.name}:`, compressionError);
-      // Continue with original file
     }
 
     // Block HEIC files that survived the compression pipeline
@@ -147,13 +143,9 @@ export default function PhotoCapture({
       return false;
     }
 
-    // ===== LOCAL-FIRST: Save to IndexedDB IMMEDIATELY =====
     const photoId = `${inspectionId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     const fileExt = processedFile.name.split('.').pop() || 'jpg';
 
-    // Resolve a valid storage path that starts with userId (required by bucket RLS).
-    // If auth is unavailable (offline), fall back to a pending/ placeholder that
-    // sync-manager will normalize later.
     let storagePath: string;
     try {
       const user = await getUserWithCache();
@@ -166,6 +158,34 @@ export default function PhotoCapture({
       storagePath = `pending/${inspectionId}/${photoId}.${fileExt}`;
     }
 
+    // ===== CIRCUIT BREAKER PRE-CHECK =====
+    // If IndexedDB is already known-dead, skip the 8s timeout and go receipt-only
+    const cbStatus = getCircuitBreakerStatus();
+    if (cbStatus.open) {
+      console.warn('[PhotoCapture] Circuit breaker open — saving receipt only');
+      
+      savePhotoReceipt({
+        id: photoId,
+        inspectionId,
+        section,
+        timestamp: Date.now(),
+        uploaded: false,
+      });
+      
+      const deviceFileName = `RopeWorks_${section}_${Date.now()}.jpg`;
+      saveToDevice(processedFile, deviceFileName);
+      
+      onPhotoAdded();
+      
+      toast.warning('Photo saved to backup', {
+        description: 'Storage is recovering — photo will sync automatically',
+        duration: 3000,
+      });
+      
+      return true;
+    }
+
+    // ===== LOCAL-FIRST: Save to IndexedDB =====
     const saved = await savePhotoOffline({
       id: photoId,
       inspectionId,
@@ -180,13 +200,28 @@ export default function PhotoCapture({
     });
 
     if (!saved) {
-      toast.error('Local storage unavailable', {
-        description: 'Unable to save photo locally. Please check device storage.',
+      // IDB failed but circuit breaker may have just tripped — save receipt as fallback
+      savePhotoReceipt({
+        id: photoId,
+        inspectionId,
+        section,
+        timestamp: Date.now(),
+        uploaded: false,
       });
-      return false;
+      
+      const deviceFileName = `RopeWorks_${section}_${Date.now()}.jpg`;
+      saveToDevice(processedFile, deviceFileName);
+      
+      onPhotoAdded();
+      
+      toast.warning('Photo saved to backup', {
+        description: 'Local storage unavailable — using backup. Will sync later.',
+        duration: 3000,
+      });
+      return true;
     }
     
-    // Save lightweight receipt to localStorage (survives IndexedDB eviction)
+    // Save lightweight receipt to localStorage
     savePhotoReceipt({
       id: photoId,
       inspectionId,
@@ -195,7 +230,7 @@ export default function PhotoCapture({
       uploaded: false,
     });
     
-    // Save photo to device's local storage (Downloads / Files app) — fire-and-forget
+    // Save to device storage — fire-and-forget
     const deviceFileName = `RopeWorks_${section}_${Date.now()}.jpg`;
     saveToDevice(processedFile, deviceFileName);
 
@@ -203,11 +238,10 @@ export default function PhotoCapture({
       console.log('[PhotoCapture] Photo saved locally with receipt:', photoId);
     }
 
-    // IMMEDIATELY refresh gallery (user sees photo with "Pending" badge)
+    // IMMEDIATELY refresh gallery
     onPhotoAdded();
 
-    // If online AND not a temp ID, attempt background sync (fire-and-forget)
-    // Temp IDs will fail the DB foreign-key insert, so defer to useAutoSync
+    // If online AND not a temp ID, attempt background sync
     if (isOnline && !inspectionId.startsWith('temp-')) {
       getUserWithCache()
         .then(user => {
@@ -215,12 +249,14 @@ export default function PhotoCapture({
             uploadPhotoInBackground(photoId, processedFile, user.id, storagePath).catch(() => {});
           }
         })
-        .catch(() => {
-          // Auth failed — photo stays queued in IndexedDB for useAutoSync
-        });
+        .catch(() => {});
     }
 
     return true;
+  };
+
+  const handleCancel = () => {
+    cancelledRef.current = true;
   };
 
   const processFiles = async (files: FileList | null) => {
@@ -229,7 +265,6 @@ export default function PhotoCapture({
       toast.info("Preview mode", { description: "Photo uploads are disabled in the Lovable preview." });
       return;
     }
-    // Prevent concurrent uploads (mutex lock)
     if (uploadMutexRef.current) {
       console.log('[PhotoCapture] Upload already in progress, ignoring');
       return;
@@ -237,11 +272,12 @@ export default function PhotoCapture({
     if (!files || files.length === 0) return;
 
     uploadMutexRef.current = true;
+    cancelledRef.current = false;
     triggerHaptic('light');
     setUploading(true);
 
-    // SAFETY: Scale timeout with file count — 30s per file, minimum 30s
-    const safetyTimeoutMs = Math.max(30000, files.length * PER_FILE_TIMEOUT);
+    // Cap safety timeout at MAX_SAFETY_TIMEOUT
+    const safetyTimeoutMs = Math.min(MAX_SAFETY_TIMEOUT, Math.max(15000, files.length * PER_FILE_TIMEOUT));
     const safetyTimeout = setTimeout(() => {
       if (uploadMutexRef.current) {
         console.warn('[PhotoCapture] Safety timeout reached - force releasing mutex');
@@ -259,11 +295,18 @@ export default function PhotoCapture({
     try {
       const fileArray = Array.from(files);
       for (let i = 0; i < fileArray.length; i++) {
-        // Yield to main thread between files — prevents UI freeze on iPad Safari
+        // Check cancel flag
+        if (cancelledRef.current) {
+          toast.info('Upload cancelled', {
+            description: `${successCount} of ${fileArray.length} photos saved`,
+          });
+          break;
+        }
+
+        // Yield to main thread between files
         if (i > 0) await new Promise(r => setTimeout(r, 0));
 
         try {
-          // Per-file timeout wrapping
           const success = await Promise.race([
             processSingleFile(fileArray[i]),
             new Promise<boolean>((_, reject) =>
@@ -282,7 +325,7 @@ export default function PhotoCapture({
         }
       }
 
-      if (successCount > 0) {
+      if (successCount > 0 && !cancelledRef.current) {
         triggerHaptic('success');
         toast.success(successCount === 1 ? 'Photo saved' : `${successCount} photos saved`, {
           description: isOnline ? 'Syncing to cloud...' : 'Will sync when online',
@@ -306,6 +349,7 @@ export default function PhotoCapture({
       clearTimeout(safetyTimeout);
       setUploading(false);
       uploadMutexRef.current = false;
+      cancelledRef.current = false;
       if (cameraInputRef.current) cameraInputRef.current.value = '';
       if (uploadInputRef.current) uploadInputRef.current.value = '';
     }
@@ -338,45 +382,49 @@ export default function PhotoCapture({
         onChange={handleFileUpload}
         className="hidden"
       />
-      <Button
-        type="button"
-        variant="outline"
-        onClick={() => cameraInputRef.current?.click()}
-        disabled={uploading}
-        className="flex-1"
-      >
-        {uploading ? (
-          <>
+      {uploading ? (
+        <>
+          <Button
+            type="button"
+            variant="outline"
+            disabled
+            className="flex-1"
+          >
             <Loader2 className="w-4 h-4 mr-2 animate-spin" />
             Saving...
-          </>
-        ) : (
-          <>
+          </Button>
+          <Button
+            type="button"
+            variant="destructive"
+            onClick={handleCancel}
+            className="px-3"
+          >
+            <XCircle className="w-4 h-4" />
+          </Button>
+        </>
+      ) : (
+        <>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => cameraInputRef.current?.click()}
+            className="flex-1"
+          >
             {!isOnline && <CloudOff className="w-4 h-4 mr-2" />}
             {isOnline && <Camera className="w-4 h-4 mr-2" />}
             Take Photo
-          </>
-        )}
-      </Button>
-      <Button
-        type="button"
-        variant="outline"
-        onClick={() => uploadInputRef.current?.click()}
-        disabled={uploading}
-        className="flex-1"
-      >
-        {uploading ? (
-          <>
-            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-            Saving...
-          </>
-        ) : (
-          <>
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => uploadInputRef.current?.click()}
+            className="flex-1"
+          >
             <ImagePlus className="w-4 h-4 mr-2" />
             Upload
-          </>
-        )}
-      </Button>
+          </Button>
+        </>
+      )}
     </div>
   );
 }
