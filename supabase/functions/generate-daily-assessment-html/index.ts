@@ -48,19 +48,31 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    const { assessmentId } = await req.json();
-    
-    // Fetch logos from storage using shared helper
-    const logos = await getLogoBase64();
+    const { assessmentId, forceRegenerate } = await req.json();
+
+    // OPTIMIZATION: Parallelize logo fetch with assessment data fetch
+    const [logos, assessmentResult] = await Promise.all([
+      getLogoBase64(),
+      supabase.from('daily_assessments').select('*').eq('id', assessmentId).single(),
+    ]);
     const ropeWorksLogo = logos.ropeWorks;
     const acctLogo = logos.acct;
+    const { data: assessment } = assessmentResult;
 
-    // Fetch assessment data
-    const { data: assessment } = await supabase
-      .from('daily_assessments')
-      .select('*')
-      .eq('id', assessmentId)
-      .single();
+    // OPTIMIZATION: Server-side cache check — skip regeneration if nothing changed
+    if (!forceRegenerate && assessment?.latest_report_generated_at && assessment?.updated_at) {
+      const generatedAt = new Date(assessment.latest_report_generated_at).getTime();
+      const updatedAt = new Date(assessment.updated_at).getTime();
+      
+      if (generatedAt >= updatedAt && assessment.latest_report_html) {
+        console.log(`[generate-daily-assessment-html] Cache HIT — returning cached report.`);
+        return new Response(
+          JSON.stringify({ html: assessment.latest_report_html, cached: true }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json; charset=utf-8' }, status: 200 }
+        );
+      }
+      console.log(`[generate-daily-assessment-html] Cache MISS — report data changed.`);
+    }
 
     const [bodData, eodData, osData, eqData, stData, envData] = await Promise.all([
       supabase.from('daily_assessment_beginning_of_day').select('*').eq('assessment_id', assessmentId),
@@ -958,8 +970,20 @@ serve(async (req) => {
 </html>
     `;
 
-    // Upload HTML to storage and return signed URL (avoids massive JSON response)
-    console.log(`[generate-daily-assessment-html] Uploading HTML to storage for assessment ${assessmentId}...`);
+    // OPTIMIZATION: Return HTML directly for reports under 1MB
+    const htmlSizeBytes = new TextEncoder().encode(html).length;
+    const ONE_MB = 1024 * 1024;
+    
+    if (htmlSizeBytes < ONE_MB) {
+      console.log(`[generate-daily-assessment-html] Report size ${(htmlSizeBytes / 1024).toFixed(1)}KB < 1MB — returning directly.`);
+      return new Response(
+        JSON.stringify({ html }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json; charset=utf-8' }, status: 200 }
+      );
+    }
+
+    // Large reports: upload to storage
+    console.log(`[generate-daily-assessment-html] Report size ${(htmlSizeBytes / 1024).toFixed(1)}KB >= 1MB — uploading to storage...`);
     
     const uploadTimestamp = Date.now();
     const filePath = `html-reports/daily-assessment-${assessmentId}-${uploadTimestamp}.html`;
@@ -973,7 +997,7 @@ serve(async (req) => {
       });
 
     if (uploadError) {
-      console.error(`[generate-daily-assessment-html] Storage upload failed:`, uploadError);
+      console.error(`[generate-daily-assessment-html] Storage upload failed, returning directly:`, uploadError);
       return new Response(
         JSON.stringify({ html }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json; charset=utf-8' }, status: 200 }
@@ -985,7 +1009,7 @@ serve(async (req) => {
       .createSignedUrl(filePath, 86400);
 
     if (signedUrlError || !signedUrlData?.signedUrl) {
-      console.error(`[generate-daily-assessment-html] Signed URL creation failed:`, signedUrlError);
+      console.error(`[generate-daily-assessment-html] Signed URL failed, returning directly:`, signedUrlError);
       return new Response(
         JSON.stringify({ html }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json; charset=utf-8' }, status: 200 }

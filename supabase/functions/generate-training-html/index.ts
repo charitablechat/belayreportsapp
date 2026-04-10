@@ -56,19 +56,42 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    const { trainingId } = await req.json();
+    const { trainingId, forceRegenerate } = await req.json();
 
     if (!trainingId) {
       throw new Error('Training ID is required');
     }
 
-    // Fetch logos from storage using shared helper
-    const logos = await getLogoBase64();
+    // OPTIMIZATION: Server-side cache check — skip regeneration if nothing changed
+    if (!forceRegenerate) {
+      const { data: trainingMeta } = await supabase
+        .from('trainings')
+        .select('updated_at, latest_report_generated_at, latest_report_html')
+        .eq('id', trainingId)
+        .single();
+      
+      if (trainingMeta?.latest_report_generated_at && trainingMeta?.updated_at) {
+        const generatedAt = new Date(trainingMeta.latest_report_generated_at).getTime();
+        const updatedAt = new Date(trainingMeta.updated_at).getTime();
+        
+        if (generatedAt >= updatedAt && trainingMeta.latest_report_html) {
+          console.log(`[generate-training-html] Cache HIT — returning cached report.`);
+          return new Response(
+            JSON.stringify({ html: trainingMeta.latest_report_html, cached: true }),
+            { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+          );
+        }
+        console.log(`[generate-training-html] Cache MISS — report data changed.`);
+      }
+    }
+
+    // OPTIMIZATION: Parallelize logo fetch with training data fetch
+    const [logos, trainingData] = await Promise.all([
+      getLogoBase64(),
+      fetchTrainingData(trainingId, supabase),
+    ]);
     const ropeWorksLogo = logos.ropeWorks;
     const acctLogo = logos.acct;
-
-    // Fetch training data using shared formatter
-    const trainingData = await fetchTrainingData(trainingId, supabase);
     const content = formatTrainingContent(trainingData);
 
     // Use signed URLs for photos instead of downloading and converting to base64
@@ -950,8 +973,20 @@ serve(async (req) => {
 </body>
 </html>`;
 
-    // Upload HTML to storage and return signed URL (avoids massive JSON response)
-    console.log(`[generate-training-html] Uploading HTML to storage for training ${trainingId}...`);
+    // OPTIMIZATION: Return HTML directly for reports under 1MB
+    const htmlSizeBytes = new TextEncoder().encode(html).length;
+    const ONE_MB = 1024 * 1024;
+    
+    if (htmlSizeBytes < ONE_MB) {
+      console.log(`[generate-training-html] Report size ${(htmlSizeBytes / 1024).toFixed(1)}KB < 1MB — returning directly.`);
+      return new Response(
+        JSON.stringify({ html }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+      );
+    }
+
+    // Large reports: upload to storage
+    console.log(`[generate-training-html] Report size ${(htmlSizeBytes / 1024).toFixed(1)}KB >= 1MB — uploading to storage...`);
     
     const timestamp = Date.now();
     const filePath = `html-reports/training-${trainingId}-${timestamp}.html`;
@@ -965,8 +1000,7 @@ serve(async (req) => {
       });
 
     if (uploadError) {
-      console.error(`[generate-training-html] Storage upload failed:`, uploadError);
-      // Fallback: return HTML directly if upload fails
+      console.error(`[generate-training-html] Storage upload failed, returning directly:`, uploadError);
       return new Response(
         JSON.stringify({ html }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
@@ -975,11 +1009,10 @@ serve(async (req) => {
 
     const { data: signedUrlData, error: signedUrlError } = await supabase.storage
       .from('inspection-reports')
-      .createSignedUrl(filePath, 86400); // 24 hours
+      .createSignedUrl(filePath, 86400);
 
     if (signedUrlError || !signedUrlData?.signedUrl) {
-      console.error(`[generate-training-html] Signed URL creation failed:`, signedUrlError);
-      // Fallback: return HTML directly
+      console.error(`[generate-training-html] Signed URL failed, returning directly:`, signedUrlError);
       return new Response(
         JSON.stringify({ html }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
