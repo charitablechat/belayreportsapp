@@ -2202,7 +2202,7 @@ export default function InspectionForm() {
         console.log('[PDF Generation] Estimated PDF size:', Math.round(data.pdfData.length * 0.75 / 1024) + ' KB');
         console.log('[PDF Generation] Filename:', data.fileName);
         
-        fileName = data.fileName || `inspection-${inspection.organization}-${Date.now()}.pdf`;
+        fileName = data.fileName || formatReportFilename(inspection.organization, 'inspection', 'pdf');
         
         try {
           console.log('[PDF Generation] Decoding base64 to binary...');
@@ -2229,7 +2229,7 @@ export default function InspectionForm() {
         console.log('[PDF Generation] Processing pdfUrl format (storage URL)');
         console.log('[PDF Generation] PDF URL:', data.pdfUrl);
         
-        fileName = `inspection-${inspection.organization}-${Date.now()}.pdf`;
+        fileName = formatReportFilename(inspection.organization, 'inspection', 'pdf');
         
         try {
           console.log('[PDF Generation] Fetching PDF from storage...');
@@ -2367,8 +2367,8 @@ export default function InspectionForm() {
       } else {
         throw new Error('No HTML content or URL received from server');
       }
-      const filename = `inspection-report-${inspection?.organization || 'report'}-${new Date().toISOString().split('T')[0]}.html`;
-      const title = `Inspection Report - ${inspection?.organization || 'Report'}`;
+      const filename = formatReportFilename(inspection?.organization, 'inspection', 'html');
+      const title = formatReportTitle(inspection?.organization, 'inspection');
 
       // Always use in-app viewer for consistent Save PDF + Close buttons
       setReportHtml(html);
@@ -3032,8 +3032,8 @@ export default function InspectionForm() {
 
       <HtmlReportViewer
         html={reportHtml}
-        title={`Inspection Report - ${inspection?.organization || 'Report'}`}
-        filename={`inspection-report-${inspection?.organization || 'report'}-${new Date().toISOString().split('T')[0]}.html`}
+        title={formatReportTitle(inspection?.organization, 'inspection')}
+        filename={formatReportFilename(inspection?.organization, 'inspection', 'html')}
         isOpen={htmlViewerOpen}
         onClose={() => setHtmlViewerOpen(false)}
       />

@@ -1330,8 +1330,8 @@ export default function DailyAssessmentForm() {
         console.warn('[Report] Failed to sync report to database:', syncErr);
       });
       
-      const filename = `daily-assessment-${assessment?.site || 'report'}-${new Date().toISOString().split('T')[0]}.html`;
-      const title = `Daily Assessment - ${assessment?.site || 'Report'}`;
+      const filename = formatReportFilename(assessment?.organization, 'daily-assessment', 'html');
+      const title = formatReportTitle(assessment?.organization, 'daily-assessment');
 
       // Always use in-app viewer for consistent Save PDF + Close buttons
       setReportHtml(html);
@@ -1827,8 +1827,8 @@ export default function DailyAssessmentForm() {
 
       <HtmlReportViewer
         html={reportHtml}
-        title={`Daily Assessment - ${assessment?.site || 'Report'}`}
-        filename={`daily-assessment-${assessment?.site || 'report'}-${new Date().toISOString().split('T')[0]}.html`}
+        title={formatReportTitle(assessment?.organization, 'daily-assessment')}
+        filename={formatReportFilename(assessment?.organization, 'daily-assessment', 'html')}
         isOpen={viewerOpen}
         onClose={() => setViewerOpen(false)}
       />
