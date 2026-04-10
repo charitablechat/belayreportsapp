@@ -2,104 +2,57 @@
 
 # Fix: Force Sync Not Working and Persistent Sync Badge
 
-## Root Cause Analysis
+## Remaining Gaps Found
 
-### Issue 1: autoIncrement Keys Not Accessible via `op.id` (Primary DataError Source)
-The three operation stores (`operations`, `training_operations`, `assessment_operations`) are created with `{ autoIncrement: true }` and NO `keyPath`. This means `getAll()` returns the raw stored objects — the auto-incremented IDB key is NOT included as a property on the object. When `useAutoSync.tsx` does `op.id!`, it's always `undefined` for entries that don't have an `id` field in their data payload.
+After reviewing the current implementation, all the previously approved fixes (circuit breaker reset, bulk clear, null guards, logo caching, signed URLs, save-flush) are correctly in place. However, **three critical gaps** remain that explain why force sync still appears broken:
 
-The `validIdFilter` added in the last fix checks `op.id != null`, but this filters against the data property, not the IDB key. Many queued operations DO have a data property called `id` (the report UUID), so they pass the filter — but that UUID is not the IDB auto-increment key, so `db.delete('operations', reportUUID)` silently does nothing or throws.
+### Gap 1: Debounce Guard Blocks Force Sync (Primary Cause)
+At line 191-207 of `useAutoSync.tsx`, if a background sync ran within the last 5 seconds (`MIN_SYNC_INTERVAL`), force sync hits the debounce guard. When `silent = false`, it schedules a deferred retry but **returns immediately**. The `ForceSyncButton`'s `await forceSync()` resolves instantly without actually syncing. The success toast fires but no sync occurred.
 
-Meanwhile, operations WITHOUT an `id` in their data payload pass through as `undefined`, causing the `DataError: No key or key range specified` crash that trips the circuit breaker, disabling ALL IndexedDB for 60 seconds. This cascades into the "Using backup storage" banner and prevents force sync from completing.
+**Fix:** Exempt force sync (non-silent) from the debounce guard entirely. The existing `syncInProgressRef` check (line 169) already prevents true duplicate calls.
 
-### Issue 2: `removeQueuedOperation` Lacks Null Guard
-Unlike `removeQueuedTrainingOperation` and `removeQueuedAssessmentOperation` (which were patched with null guards), `removeQueuedOperation` for inspections still accepts bare `number` with no guard against `undefined`.
+### Gap 2: Early Exit Doesn't Refresh Unsynced Counts
+When `unsyncedCountRef.current === 0` and queued ops exist, the stale queue cleanup runs, then the code falls through to the full pipeline. However, if `unsyncedCountRef.current === 0` AND `hasQueuedOps === false`, the early exit at line 275-282 returns without calling `updateUnsyncedCounts()`. If the badge is stale (e.g., from a circuit breaker-induced stale read), force sync won't correct it.
 
-### Issue 3: Circuit Breaker Cascade
-Once the DataError trips the circuit breaker (3 failures), ALL subsequent IndexedDB operations fail for 60 seconds. This means:
-- `updateUnsyncedCounts()` fails → badge stays stale
-- Next sync cycle skips (circuit breaker check at line 130)
-- Force sync also hits the same circuit breaker gate
+**Fix:** Call `updateUnsyncedCounts()` in the early exit path so badge always refreshes.
 
-## Fix Plan
+### Gap 3: Force Sync Success Toast Fires Prematurely
+`ForceSyncButton` calls `await forceSync()` and shows a success toast afterward. But `performSync` can return early (debounce guard, auth failure, offline check, preview check) without throwing — the ForceSyncButton interprets this as success.
 
-### Step 1: Use `clearAll` Instead of Individual Deletes for Stale Queue Cleanup
-**File:** `src/hooks/useAutoSync.tsx`
+**Fix:** Have `performSync` return a result object (`{ synced: boolean, reason?: string }`) so ForceSyncButton can provide accurate feedback. Alternatively, simpler: always call `updateUnsyncedCounts()` in the `finally` block of `performSync` so the badge is always up-to-date regardless of what happened.
 
-Replace the individual `removeQueuedOperation(op.id!)` calls with bulk `clearAllQueuedOperations()`, `clearAllQueuedTrainingOperations()`, `clearAllQueuedAssessmentOperations()`. These already exist and use `store.clear()` which doesn't need keys at all. This eliminates the entire key mismatch problem.
+## Implementation Plan
 
-For soft-delete entries, process them FIRST via `processQueuedSoftDeletes()`, THEN clear the remaining non-soft-delete entries in bulk.
+### File 1: `src/hooks/useAutoSync.tsx`
 
-```typescript
-// BEFORE: Individual deletes with broken keys
-await Promise.all([
-  ...inspOps.filter(nonSoftDeleteFilter).filter(validIdFilter).map(op => removeQueuedOperation(op.id!)),
-  ...
-]);
+1. **Bypass debounce for force sync**: Move the debounce check (lines 191-207) to only apply when `silent === true`. Force sync should always proceed (the `syncInProgressRef` guard at line 169 already prevents true conflicts).
 
-// AFTER: Process soft-deletes first, then bulk clear
-await processQueuedSoftDeletes();
-await Promise.all([
-  clearAllQueuedOperations(),
-  clearAllQueuedTrainingOperations(),
-  clearAllQueuedAssessmentOperations(),
-]);
-```
+2. **Always refresh counts after sync**: Add `updateUnsyncedCounts()` to the `finally` block (line 452-458) so badge state is always fresh, regardless of early exit, timeout, or error.
 
-### Step 2: Add Null Guard to `removeQueuedOperation`
-**File:** `src/lib/offline-storage.ts`
+3. **Early exit count refresh**: Add `updateUnsyncedCounts()` before the early exit `return` at line 281.
 
-Add the same null/undefined guard that `removeQueuedTrainingOperation` and `removeQueuedAssessmentOperation` already have:
+### File 2: `src/components/pwa/ForceSyncButton.tsx`
 
-```typescript
-export async function removeQueuedOperation(id: number | undefined | null) {
-  if (id === undefined || id === null) {
-    console.warn('[Offline Storage] Cannot remove operation with undefined/null ID');
-    return;
-  }
-  // ...existing logic
-}
-```
+4. **Accurate feedback**: After `await forceSync()`, re-check `unsyncedCount` from context to give accurate feedback (e.g., "Sync complete — X items still pending" vs "All data is up to date").
 
-### Step 3: Force Sync Should Reset Circuit Breaker
-**File:** `src/hooks/useAutoSync.tsx`
+## Technical Details
 
-When the user explicitly clicks "Force Sync," bypass or reset the circuit breaker so the sync can actually execute:
+```text
+BEFORE (force sync flow):
+  User clicks → performSync(false) → debounce guard → return (no sync)
+  → ForceSyncButton shows "success" → badge stays stale
 
-```typescript
-const performSync = useCallback(async (silent = true) => {
-  // ...existing checks...
-  
-  const cbStatus = getCircuitBreakerStatus();
-  if (cbStatus.open) {
-    if (silent) return; // Skip on periodic/auto sync
-    // Force sync: reset the circuit breaker so user action always works
-    resetCircuitBreaker();
-  }
-  // ...rest of sync...
-});
-```
-
-### Step 4: Expose `resetCircuitBreaker` from offline-storage
-**File:** `src/lib/offline-storage.ts`
-
-Add a function to reset the circuit breaker state so force sync can bypass it:
-
-```typescript
-export function resetCircuitBreaker() {
-  indexedDBFailureCount = 0;
-  indexedDBDisabledUntil = 0;
-  indexedDBBackoffCount = 0;
-  dbPromise = null; // Force fresh connection
-}
+AFTER (force sync flow):
+  User clicks → performSync(false) → skips debounce → runs pipeline
+  → finally: updateUnsyncedCounts() → badge refreshes → accurate toast
 ```
 
 ## Files Changed
-1. `src/hooks/useAutoSync.tsx` — bulk clear instead of individual key deletes; bypass circuit breaker on force sync
-2. `src/lib/offline-storage.ts` — null guard on `removeQueuedOperation`; expose `resetCircuitBreaker`
+1. `src/hooks/useAutoSync.tsx` — debounce bypass, count refresh in finally/early-exit
+2. `src/components/pwa/ForceSyncButton.tsx` — accurate post-sync feedback
 
 ## Expected Impact
-- Force sync will always execute when user clicks it (no longer blocked by circuit breaker)
-- Zero `DataError` crashes (bulk clear doesn't need keys)
-- Circuit breaker stops cascading into unrelated operations
-- Sync badge updates correctly after successful sync
+- Force sync always executes immediately when clicked
+- Badge always reflects current IDB state after any sync attempt
+- No false "success" toasts when sync was skipped
 
