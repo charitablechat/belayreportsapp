@@ -233,68 +233,41 @@ serve(async (req) => {
 
     console.log(`[Inspection HTML] Found ${photos.length} photos for inspection ${inspectionId}`);
 
-    // Convert photos to base64 data URIs for reliable PDF rendering
-    // Parallelize all downloads with a shared 15-second time budget
-    const PHOTO_BUDGET_MS = 25000;
+    // Use signed URLs for photos instead of downloading and converting to base64
+    // This eliminates the 10-25s photo processing bottleneck entirely
+    const SIGNED_URL_EXPIRY = 86400; // 24 hours
     const photoStart = Date.now();
 
-    const isHeic = (arrayBuffer: ArrayBuffer): boolean => {
-      const bytes = new Uint8Array(arrayBuffer);
-      if (bytes.length >= 12) {
-        const decoder = new TextDecoder('ascii');
-        const ftypTag = decoder.decode(bytes.slice(4, 8));
-        if (ftypTag === 'ftyp') {
-          const brand = decoder.decode(bytes.slice(8, 12)).toLowerCase();
-          if (brand === 'heic' || brand === 'heis' || brand === 'mif1') return true;
+    // Generate signed URLs for gallery photos (near-instant vs downloading files)
+    const gallerySignedUrls: { id: string; signedUrl: string; caption: string; section: string; photoPath: string }[] = [];
+    if (photos.length > 0) {
+      console.log(`[Inspection HTML] Generating signed URLs for ${photos.length} gallery photos`);
+      const paths = photos.map((p: any) => p.photo_url);
+      const { data: signedData, error: signedError } = await supabase
+        .storage.from('inspection-photos')
+        .createSignedUrls(paths, SIGNED_URL_EXPIRY);
+      
+      if (!signedError && signedData) {
+        const seenPhotoKeys = new Set<string>();
+        for (let i = 0; i < signedData.length; i++) {
+          if (signedData[i].error || !signedData[i].signedUrl) continue;
+          const photo = photos[i];
+          const dedupeKey = `${photo.photo_section || 'general'}::${photo.photo_url}`;
+          if (!seenPhotoKeys.has(dedupeKey)) {
+            seenPhotoKeys.add(dedupeKey);
+            gallerySignedUrls.push({
+              id: photo.id,
+              signedUrl: signedData[i].signedUrl,
+              caption: photo.caption || '',
+              section: photo.photo_section || 'general',
+              photoPath: photo.photo_url,
+            });
+          }
         }
+      } else {
+        console.error('[Inspection HTML] Failed to generate signed URLs for gallery photos:', signedError);
       }
-      return false;
-    };
-
-    const downloadGalleryPhoto = async (photo: any): Promise<{ id: string; dataUri: string; caption: string; section: string; photoPath: string } | null> => {
-      if (Date.now() - photoStart > PHOTO_BUDGET_MS) {
-        console.warn(`[Inspection HTML] Photo budget exceeded, skipping gallery photo ${photo.id}`);
-        return null;
-      }
-      try {
-        const { data: fileData, error: downloadError } = await supabase
-          .storage.from('inspection-photos').download(photo.photo_url);
-        if (downloadError || !fileData) return null;
-        const arrayBuffer = await fileData.arrayBuffer();
-        if (isHeic(arrayBuffer)) {
-          console.warn(`[Inspection HTML] Skipping gallery photo ${photo.id} — HEIC data`);
-          return null;
-        }
-        const photoBase64 = arrayBufferToBase64(arrayBuffer);
-        const photoMime = fileData.type || 'image/jpeg';
-        console.log(`[Inspection HTML] Gallery photo ${photo.id} converted (${Math.round(arrayBuffer.byteLength / 1024)}KB)`);
-        return { id: photo.id, dataUri: `data:${photoMime};base64,${photoBase64}`, caption: photo.caption || '', section: photo.photo_section || 'general', photoPath: photo.photo_url };
-      } catch (e) {
-        console.error(`[Inspection HTML] Error processing gallery photo ${photo.id}:`, e);
-        return null;
-      }
-    };
-
-    const downloadItemPhotoPath = async (photoPath: string): Promise<[string, string] | null> => {
-      if (Date.now() - photoStart > PHOTO_BUDGET_MS) {
-        console.warn(`[Inspection HTML] Photo budget exceeded, skipping item photo ${photoPath}`);
-        return null;
-      }
-      try {
-        const { data: fileData, error: downloadError } = await supabase
-          .storage.from('inspection-photos').download(photoPath);
-        if (downloadError || !fileData) return null;
-        const arrayBuffer = await fileData.arrayBuffer();
-        if (isHeic(arrayBuffer)) return null;
-        const photoBase64 = arrayBufferToBase64(arrayBuffer);
-        const photoMime = fileData.type || 'image/jpeg';
-        console.log(`[Inspection HTML] Item photo ${photoPath} converted (${Math.round(arrayBuffer.byteLength / 1024)}KB)`);
-        return [photoPath, `data:${photoMime};base64,${photoBase64}`];
-      } catch (e) {
-        console.error(`[Inspection HTML] Error processing item photo ${photoPath}:`, e);
-        return null;
-      }
-    };
+    }
 
     // Collect all unique per-item photo paths
     const allItemPhotoPaths: string[] = [];
@@ -303,35 +276,34 @@ serve(async (req) => {
     for (const eq of equipment) { if (eq.photo_url) allItemPhotoPaths.push(eq.photo_url); }
     const uniqueItemPaths = [...new Set(allItemPhotoPaths)];
 
-    console.log(`[Inspection HTML] Downloading ${photos.length} gallery + ${uniqueItemPaths.length} item photos in parallel (budget: ${PHOTO_BUDGET_MS}ms)`);
-
-    // Download ALL photos in parallel
-    const [galleryResults, itemResults] = await Promise.all([
-      Promise.allSettled(photos.map(p => downloadGalleryPhoto(p))),
-      Promise.allSettled(uniqueItemPaths.map(p => downloadItemPhotoPath(p))),
-    ]);
-
-    const photoDataUris: { id: string; dataUri: string; caption: string; section: string; photoPath: string }[] = [];
-    const seenPhotoKeys = new Set<string>();
-    for (const r of galleryResults) {
-      if (r.status === 'fulfilled' && r.value) {
-        // Deduplicate by storage path + section to prevent duplicate gallery entries
-        const dedupeKey = `${r.value.section}::${r.value.photoPath}`;
-        if (!seenPhotoKeys.has(dedupeKey)) {
-          seenPhotoKeys.add(dedupeKey);
-          photoDataUris.push(r.value);
-        } else {
-          console.log(`[Inspection HTML] Skipped duplicate gallery photo: ${r.value.id} (path: ${r.value.photoPath})`);
+    // Generate signed URLs for item photos
+    const itemPhotoMap = new Map<string, string>();
+    if (uniqueItemPaths.length > 0) {
+      console.log(`[Inspection HTML] Generating signed URLs for ${uniqueItemPaths.length} item photos`);
+      const { data: itemSignedData, error: itemSignedError } = await supabase
+        .storage.from('inspection-photos')
+        .createSignedUrls(uniqueItemPaths, SIGNED_URL_EXPIRY);
+      
+      if (!itemSignedError && itemSignedData) {
+        for (let i = 0; i < itemSignedData.length; i++) {
+          if (itemSignedData[i].error || !itemSignedData[i].signedUrl) continue;
+          itemPhotoMap.set(uniqueItemPaths[i], itemSignedData[i].signedUrl);
         }
+      } else {
+        console.error('[Inspection HTML] Failed to generate signed URLs for item photos:', itemSignedError);
       }
     }
 
-    const itemPhotoMap = new Map<string, string>();
-    for (const r of itemResults) {
-      if (r.status === 'fulfilled' && r.value) itemPhotoMap.set(r.value[0], r.value[1]);
-    }
+    // Use signed URL data in place of base64 data URIs
+    const photoDataUris = gallerySignedUrls.map(p => ({
+      id: p.id,
+      dataUri: p.signedUrl,
+      caption: p.caption,
+      section: p.section,
+      photoPath: p.photoPath,
+    }));
 
-    console.log(`[Inspection HTML] Photo processing complete in ${Date.now() - photoStart}ms: ${photoDataUris.length} gallery, ${itemPhotoMap.size} item photos`);
+    console.log(`[Inspection HTML] Photo processing complete in ${Date.now() - photoStart}ms: ${photoDataUris.length} gallery, ${itemPhotoMap.size} item photos (signed URLs)`);
 
     // Helper to render item thumbnail cell
     const renderItemPhotoCell = (photoUrl: string | null): string => {
