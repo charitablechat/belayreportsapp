@@ -77,7 +77,7 @@ export function useReportEditPermission({
 
     // Listen for auth state changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
+      (_event, session) => {
         const newUserId = session?.user?.id;
         if (newUserId) {
           setCurrentUserId(newUserId);
@@ -86,12 +86,14 @@ export function useReportEditPermission({
         }
 
         if (session?.user) {
-          const [adminStatus, trueSuperAdminStatus] = await Promise.all([
+          // Fire and forget — do NOT await inside onAuthStateChange to avoid blocking the auth pipeline
+          Promise.all([
             getSuperAdminStatusWithCache(),
             getIsTrueSuperAdmin()
-          ]);
-          setIsAdmin(adminStatus);
-          setIsTrueSuperAdmin(trueSuperAdminStatus);
+          ]).then(([adminStatus, trueSuperAdminStatus]) => {
+            setIsAdmin(adminStatus);
+            setIsTrueSuperAdmin(trueSuperAdminStatus);
+          }).catch(() => {});
         } else if (navigator.onLine) {
           const cachedAdmin = localStorage.getItem('cached-admin-status');
           if (cachedAdmin !== 'true') {
