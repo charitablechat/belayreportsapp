@@ -17,7 +17,9 @@ import { markSnapshotSynced } from '@/lib/local-backup-ledger';
 // Sync configuration with mobile optimization
 const DEBOUNCE_DELAY = 3000; // 3 seconds after local changes
 const DESKTOP_SYNC_INTERVAL = 30000; // 30 seconds for desktop
+const DESKTOP_IDLE_SYNC_INTERVAL = 120000; // 120 seconds when idle (no unsynced items)
 const MOBILE_SYNC_INTERVAL = 60000; // 60 seconds for mobile (reduced from 5min for faster sync)
+const MOBILE_IDLE_SYNC_INTERVAL = 180000; // 180 seconds when idle on mobile
 const MIN_SYNC_INTERVAL = 5000; // Minimum 5 seconds between syncs
 const INITIAL_SYNC_DELAY = 2000; // 2 seconds delay for initial sync to not block UI
 const BASE_SYNC_TIMEOUT = 30000; // Base 30 second timeout
@@ -78,8 +80,10 @@ export const useAutoSync = () => {
   const isIOSDevice = isIOS();
   const isMobileViewport = useIsMobile();
   
-  // Compute sync interval based on viewport (5 min mobile, 30s desktop)
-  const syncInterval = isMobileViewport ? MOBILE_SYNC_INTERVAL : DESKTOP_SYNC_INTERVAL;
+  // Compute sync interval based on viewport (mobile vs desktop)
+  // Active interval is used when there are unsynced items, idle interval when everything is synced
+  const activeSyncInterval = isMobileViewport ? MOBILE_SYNC_INTERVAL : DESKTOP_SYNC_INTERVAL;
+  const idleSyncInterval = isMobileViewport ? MOBILE_IDLE_SYNC_INTERVAL : DESKTOP_IDLE_SYNC_INTERVAL;
   
   const [state, setState] = useState<AutoSyncState>({
     isSyncing: false,
@@ -224,6 +228,61 @@ export const useAutoSync = () => {
         console.log('[AutoSync] Starting sync...', { unsyncedCount: unsyncedCountRef.current, timeout: dynamicTimeout });
       }
       
+      // EARLY EXIT: When nothing to sync, only clean stale queues and skip heavy pipeline
+      const hasUnsyncedItems = unsyncedCountRef.current > 0;
+      let hasQueuedOps = false;
+      
+      if (!hasUnsyncedItems) {
+        try {
+          const [inspOps, trainOps, assessOps] = await Promise.all([
+            getQueuedOperations(),
+            getQueuedTrainingOperations(),
+            getQueuedAssessmentOperations(),
+          ]);
+          hasQueuedOps = inspOps.length > 0 || trainOps.length > 0 || assessOps.length > 0;
+          
+          if (hasQueuedOps) {
+            // Clean stale non-soft-delete entries immediately
+            const nonSoftDeleteFilter = (op: any) => !op?.data?.deleted_at;
+            const staleInsp = inspOps.filter(nonSoftDeleteFilter);
+            const staleTrain = trainOps.filter(nonSoftDeleteFilter);
+            const staleAssess = assessOps.filter(nonSoftDeleteFilter);
+            
+            if (staleInsp.length > 0 || staleTrain.length > 0 || staleAssess.length > 0) {
+              console.log(`[AutoSync] Clearing ${staleInsp.length + staleTrain.length + staleAssess.length} stale queued operations`);
+              await Promise.all([
+                ...staleInsp.map(op => removeQueuedOperation(op.id!)),
+                ...staleTrain.map(op => removeQueuedTrainingOperation(op.id!)),
+                ...staleAssess.map(op => removeQueuedAssessmentOperation(op.id!)),
+              ]);
+            }
+            
+            // Process any remaining soft-delete entries
+            try {
+              const { processQueuedSoftDeletes } = await import('@/lib/queued-soft-delete-processor');
+              const deleteResult = await processQueuedSoftDeletes();
+              if (deleteResult.processed > 0) {
+                console.log(`[AutoSync] Processed ${deleteResult.processed} queued soft-deletes`);
+              }
+            } catch (e) {
+              console.warn('[AutoSync] Queued soft-delete processing failed (non-blocking):', e);
+            }
+          }
+        } catch (e) {
+          console.warn('[AutoSync] Stale queue check failed (non-blocking):', e);
+        }
+      }
+      
+      // If nothing to sync and no queued ops (or we just cleaned them), skip the heavy pipeline
+      if (!hasUnsyncedItems && !hasQueuedOps) {
+        if (import.meta.env.DEV) {
+          console.log('[AutoSync] Nothing to sync - skipping pipeline');
+        }
+        clearTimeout(safetyTimeoutHandle);
+        setState(prev => ({ ...prev, isSyncing: false, lastSyncTime: new Date() }));
+        return;
+      }
+      
       // Sync data types SEQUENTIALLY with UI thread yields between each
       // This prevents sync from blocking typing and other user interactions
       const yieldToUI = () => new Promise<void>(r => setTimeout(r, 0));
@@ -289,28 +348,26 @@ export const useAutoSync = () => {
            // Hybrid cleanup: prune old synced photo blobs (non-blocking)
            pruneOldSyncedPhotoBlobs().catch(() => {});
            
-           // Selectively clean up non-soft-delete operation queue entries after successful sync
-           // Preserve soft-delete entries (data.deleted_at != null) for the processor to retry
-           if (anySuccess) {
-             (async () => {
-               try {
-                 const [inspOps, trainOps, assessOps] = await Promise.all([
-                   getQueuedOperations(),
-                   getQueuedTrainingOperations(),
-                   getQueuedAssessmentOperations(),
-                 ]);
-                 // Only remove entries that are NOT soft-deletes (those are handled by processQueuedSoftDeletes)
-                 const nonSoftDeleteFilter = (op: any) => !op?.data?.deleted_at;
-                 await Promise.all([
-                   ...inspOps.filter(nonSoftDeleteFilter).map(op => removeQueuedOperation(op.id!)),
-                   ...trainOps.filter(nonSoftDeleteFilter).map(op => removeQueuedTrainingOperation(op.id!)),
-                   ...assessOps.filter(nonSoftDeleteFilter).map(op => removeQueuedAssessmentOperation(op.id!)),
-                 ]);
-               } catch (e) {
-                 console.warn('[AutoSync] Non-blocking: selective queue cleanup failed:', e);
-               }
-             })();
-           }
+           // Always clean stale queued operations after sync completes
+           // This prevents stale entries from accumulating when unsyncedCount is 0
+           (async () => {
+             try {
+               const [inspOps, trainOps, assessOps] = await Promise.all([
+                 getQueuedOperations(),
+                 getQueuedTrainingOperations(),
+                 getQueuedAssessmentOperations(),
+               ]);
+               // Only remove entries that are NOT soft-deletes (those are handled by processQueuedSoftDeletes)
+               const nonSoftDeleteFilter = (op: any) => !op?.data?.deleted_at;
+               await Promise.all([
+                 ...inspOps.filter(nonSoftDeleteFilter).map(op => removeQueuedOperation(op.id!)),
+                 ...trainOps.filter(nonSoftDeleteFilter).map(op => removeQueuedTrainingOperation(op.id!)),
+                 ...assessOps.filter(nonSoftDeleteFilter).map(op => removeQueuedAssessmentOperation(op.id!)),
+               ]);
+             } catch (e) {
+               console.warn('[AutoSync] Non-blocking: selective queue cleanup failed:', e);
+             }
+           })();
           
           // Invalidate queries to refresh UI
           queryClient.invalidateQueries({ queryKey: ['inspections'] });
@@ -599,15 +656,27 @@ export const useAutoSync = () => {
       window.addEventListener('focus', handleFocus);
     }
     
-    // Periodic sync polling with mobile-aware interval
-    periodicSyncIntervalRef.current = setInterval(() => {
-      if (!document.hidden && navigator.onLine) {
-        performSync(true);
+    // Adaptive periodic sync: use shorter interval when items are pending, longer when idle
+    const scheduleNextSync = () => {
+      if (periodicSyncIntervalRef.current) {
+        clearInterval(periodicSyncIntervalRef.current);
       }
-    }, syncInterval);
+      const currentInterval = unsyncedCountRef.current > 0 ? activeSyncInterval : idleSyncInterval;
+      periodicSyncIntervalRef.current = setInterval(() => {
+        if (!document.hidden && navigator.onLine) {
+          performSync(true);
+        }
+      }, currentInterval);
+    };
+    scheduleNextSync();
+    
+    // Re-schedule when unsynced count changes (adaptive interval)
+    const handleSyncPhotosUpdated = () => scheduleNextSync();
+    window.addEventListener('sync-photos-updated', handleSyncPhotosUpdated);
     
     if (import.meta.env.DEV) {
-      console.log('[AutoSync] Initialized with interval:', syncInterval / 1000, 's (mobile viewport:', isMobileViewport, ')');
+      const currentInterval = unsyncedCountRef.current > 0 ? activeSyncInterval : idleSyncInterval;
+      console.log('[AutoSync] Initialized with interval:', currentInterval / 1000, 's (mobile viewport:', isMobileViewport, ', idle:', unsyncedCountRef.current === 0, ')');
     }
     
     // Realtime subscriptions for multi-device sync
@@ -649,6 +718,7 @@ export const useAutoSync = () => {
       // Cleanup
       clearTimeout(initialSyncTimer);
       window.removeEventListener('online', handleOnline);
+      window.removeEventListener('sync-photos-updated', handleSyncPhotosUpdated);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       
       if (isIOSDevice) {
@@ -668,7 +738,7 @@ export const useAutoSync = () => {
         supabase.removeChannel(channelRef.current);
       }
     };
-  }, [performSync, handleOnline, handleVisibilityChange, handleRemoteChange, updateUnsyncedCounts, isIOSDevice, isMobileDevice, syncInterval, isMobileViewport]);
+  }, [performSync, handleOnline, handleVisibilityChange, handleRemoteChange, updateUnsyncedCounts, isIOSDevice, isMobileDevice, activeSyncInterval, idleSyncInterval, isMobileViewport]);
   
   // RC-2: Removed separate 30s updateUnsyncedCounts interval
   // Unsynced counts are now updated inside the main periodic sync loop (line 262)
