@@ -1,10 +1,25 @@
-import { useEffect, useRef, useCallback } from "react";
+import { useEffect, useRef, useCallback, useState } from "react";
 import { setReportTabActive } from "@/lib/navigation";
 import { isMobile } from "@/lib/mobile-detection";
 
+const TABLET_BREAKPOINT = 1024;
+
+/**
+ * Detect if the device should use tab-back navigation.
+ * Covers phones (UA-based), tablets (touch + small screen), and iPads
+ * (which report desktop UA but have touch support).
+ */
+function shouldUseTabHistory(): boolean {
+  // UA-based mobile detection (phones + some tablets)
+  if (isMobile()) return true;
+  // Touch-capable device with screen narrower than tablet breakpoint
+  if (navigator.maxTouchPoints > 0 && window.innerWidth < TABLET_BREAKPOINT) return true;
+  return false;
+}
+
 /**
  * Hook that integrates report form tab navigation with the browser history stack.
- * On mobile, pressing the hardware back button navigates to the previous tab
+ * On mobile/tablet, pressing the hardware back button navigates to the previous tab
  * instead of exiting the report. On the first tab, it triggers the leave dialog.
  */
 export function useReportTabHistory(
@@ -15,11 +30,18 @@ export function useReportTabHistory(
 ) {
   const tabHistoryRef = useRef<string[]>([]);
   const isHandlingPopState = useRef(false);
-  const isMobileDevice = isMobile();
+  const [enabled, setEnabled] = useState(shouldUseTabHistory);
 
-  // Mark report tab navigation as active on mount (mobile only)
+  // Re-evaluate on resize (handles tablet orientation changes)
   useEffect(() => {
-    if (!isMobileDevice) return;
+    const onResize = () => setEnabled(shouldUseTabHistory());
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  // Mark report tab navigation as active on mount (mobile/tablet only)
+  useEffect(() => {
+    if (!enabled) return;
     setReportTabActive(true);
     // Push initial history entry for the first tab
     window.history.pushState({ reportTab: tabOrder[0] }, "");
@@ -29,24 +51,24 @@ export function useReportTabHistory(
       setReportTabActive(false);
       tabHistoryRef.current = [];
     };
-  }, [isMobileDevice]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [enabled]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Handle tab changes — push history entry
   const handleTabChange = useCallback(
     (newTab: string) => {
       setCurrentTab(newTab);
-      if (!isMobileDevice) return;
+      if (!enabled) return;
       if (isHandlingPopState.current) return; // Don't push when navigating via back button
 
       window.history.pushState({ reportTab: newTab }, "");
       tabHistoryRef.current.push(newTab);
     },
-    [setCurrentTab, isMobileDevice],
+    [setCurrentTab, enabled],
   );
 
   // Listen for popstate (hardware back button)
   useEffect(() => {
-    if (!isMobileDevice) return;
+    if (!enabled) return;
 
     const handlePopState = (event: PopStateEvent) => {
       // Only handle if this is a report tab entry
@@ -76,7 +98,7 @@ export function useReportTabHistory(
 
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
-  }, [isMobileDevice, currentTab, setCurrentTab, onFirstTabBack]);
+  }, [enabled, currentTab, setCurrentTab, onFirstTabBack]);
 
   return { handleTabChange };
 }

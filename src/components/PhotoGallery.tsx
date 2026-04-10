@@ -115,19 +115,26 @@ export default function PhotoGallery({
     }
   }, []);
 
+  // Ref to track open state for the popstate handler (avoids stale closures)
+  const lightboxOpenRef = useRef(false);
+
   // Push history state when lightbox opens; listen for popstate to close it
   useEffect(() => {
-    if (selectedPhotoIndex !== null) {
+    const isOpen = selectedPhotoIndex !== null;
+    lightboxOpenRef.current = isOpen;
+
+    if (isOpen) {
       window.history.pushState({ lightbox: true }, '');
       lightboxHistoryPushedRef.current = true;
       setOverlayActive(true);
     }
 
     const onPopState = () => {
-      if (selectedPhotoIndex !== null) {
+      if (lightboxOpenRef.current) {
         lightboxHistoryPushedRef.current = false;
         setOverlayActive(false);
         setSelectedPhotoIndex(null);
+        lightboxOpenRef.current = false;
       }
     };
 

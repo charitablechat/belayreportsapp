@@ -62,18 +62,24 @@ function ItemPhotoUpload({
     }
   }, []);
 
+  // Ref to track open state for the popstate handler (avoids stale closures)
+  const lightboxOpenRef = useRef(false);
+
   // Push history state when lightbox opens; listen for popstate to close it
   useEffect(() => {
+    lightboxOpenRef.current = lightboxOpen;
+
     if (lightboxOpen) {
       window.history.pushState({ lightbox: true }, '');
       lightboxHistoryPushedRef.current = true;
       setOverlayActive(true);
     }
     const onPopState = () => {
-      if (lightboxOpen) {
+      if (lightboxOpenRef.current) {
         lightboxHistoryPushedRef.current = false;
         setOverlayActive(false);
         setLightboxOpen(false);
+        lightboxOpenRef.current = false;
       }
     };
     window.addEventListener('popstate', onPopState);

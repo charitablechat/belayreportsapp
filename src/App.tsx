@@ -68,12 +68,17 @@ const RootLayout = () => {
       if (isOverlayActive()) return;
       if (isReportTabActive()) return;
 
+      // Don't decrement depth for non-router history entries
+      // (lightbox and report-tab entries are pushed outside React Router)
+      const state = event.state;
+      if (state?.lightbox || state?.reportTab) return;
+
       // Haptic feedback on mobile
       if (isMobileDevice) {
         triggerNavigationHaptic();
       }
 
-      if (event.state?.lovableGuard && getNavigationDepth() === 0) {
+      if (state?.lovableGuard && getNavigationDepth() === 0) {
         // User exhausted in-app history — trap exit and redirect to dashboard
         window.history.pushState({ lovableGuard: true }, "");
         navigate("/dashboard");
