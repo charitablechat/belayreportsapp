@@ -7,17 +7,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-// Helper: Convert array buffer to base64 in chunks to avoid stack overflow
-function arrayBufferToBase64(buffer: ArrayBuffer): string {
-  const bytes = new Uint8Array(buffer);
-  let binary = '';
-  const chunkSize = 8192;
-  for (let i = 0; i < bytes.length; i += chunkSize) {
-    const chunk = bytes.subarray(i, Math.min(i + chunkSize, bytes.length));
-    binary += String.fromCharCode.apply(null, Array.from(chunk));
-  }
-  return btoa(binary);
-}
+// arrayBufferToBase64 removed — photos now use signed URLs instead of base64
 
 function deduplicateHtmlContent(html: string | null): string {
   if (!html) return "";

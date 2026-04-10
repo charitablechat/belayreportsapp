@@ -5,7 +5,6 @@ import {
   getLogoBase64, 
   createPageHeader, 
   createPageFooter,
-  arrayBufferToBase64 
 } from "../_shared/report-layout.ts";
 
 const corsHeaders = {
