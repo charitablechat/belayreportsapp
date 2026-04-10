@@ -7,8 +7,15 @@
 /**
  * Download HTML report as a file (opens print dialog)
  */
-export function downloadHtmlReport(html: string, _filename: string): void {
+export function downloadHtmlReport(html: string, filename: string): void {
   try {
+    // Replace <title> so the print-to-PDF dialog uses the correct filename
+    const pdfTitle = filename.replace(/\.\w+$/, '');
+    let enhancedHtml = html.replace(/<title>[^<]*<\/title>/, `<title>${pdfTitle}</title>`);
+    if (!/<title>/.test(enhancedHtml)) {
+      enhancedHtml = enhancedHtml.replace('</head>', `<title>${pdfTitle}</title></head>`);
+    }
+
     const printWindow = window.open('', '_blank');
     if (!printWindow) {
       console.error('[HTMLViewer] Popup blocked - cannot open print window');
@@ -16,7 +23,7 @@ export function downloadHtmlReport(html: string, _filename: string): void {
     }
 
     printWindow.document.open();
-    printWindow.document.write(html);
+    printWindow.document.write(enhancedHtml);
     printWindow.document.close();
 
     const triggerPrint = () => {

@@ -151,8 +151,14 @@ export function HtmlReportViewer({
     </style>
   `;
 
-  // Inject before </head> in the html prop
-  const enhancedHtml = html.replace('</head>', `${mobileBaseStyles}</head>`);
+  // Inject filename as <title> so browser print dialog uses it as the PDF name
+  const pdfTitle = filename.replace(/\.\w+$/, '');
+  let enhancedHtml = html.replace(/<title>[^<]*<\/title>/, `<title>${pdfTitle}</title>`);
+  if (!/<title>/.test(enhancedHtml)) {
+    enhancedHtml = enhancedHtml.replace('</head>', `<title>${pdfTitle}</title></head>`);
+  }
+  // Inject mobile styles before </head>
+  enhancedHtml = enhancedHtml.replace('</head>', `${mobileBaseStyles}</head>`);
 
   // Handle escape key
   useEffect(() => {
