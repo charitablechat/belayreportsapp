@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from "react";
+import { formatReportFilename, formatReportTitle } from "@/lib/report-naming";
 import { useReportTabHistory } from "@/hooks/useReportTabHistory";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel,
@@ -1027,7 +1028,7 @@ export default function TrainingForm() {
       if (data?.pdfUrl) {
         const link = document.createElement('a');
         link.href = data.pdfUrl;
-        link.download = `training-report-${training?.organization || 'report'}-${new Date().toISOString().split('T')[0]}.pdf`;
+        link.download = formatReportFilename(training?.organization, 'training', 'pdf');
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
@@ -1141,8 +1142,8 @@ export default function TrainingForm() {
       // Auto-sync report to database for "latest report" functionality
       await syncReport(html);
       
-      const filename = `training-report-${training?.organization || 'report'}-${new Date().toISOString().split('T')[0]}.html`;
-      const title = `Training Report - ${training?.organization || 'Report'}`;
+      const filename = formatReportFilename(training?.organization, 'training', 'html');
+      const title = formatReportTitle(training?.organization, 'training');
 
       // Always use in-app viewer for consistent Save PDF + Close buttons
       setReportHtml(html);
@@ -1837,8 +1838,8 @@ export default function TrainingForm() {
 
       <HtmlReportViewer
         html={reportHtml}
-        title={`Training Report - ${training?.organization || 'Report'}`}
-        filename={`training-report-${training?.organization || 'report'}-${new Date().toISOString().split('T')[0]}.html`}
+        title={formatReportTitle(training?.organization, 'training')}
+        filename={formatReportFilename(training?.organization, 'training', 'html')}
         isOpen={htmlViewerOpen}
         onClose={() => setHtmlViewerOpen(false)}
       />
