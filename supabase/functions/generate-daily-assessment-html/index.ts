@@ -197,8 +197,7 @@ serve(async (req) => {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${(assessment.organization || 'Daily Assessment').replace(/\s+/g, '_')}</title>
   <style>
-    /* Google Fonts - Monospace for terminal aesthetic */
-    @import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&display=swap');
+     /* Clean professional document style */
     
     /* 
      * FIX: Content Clipping Prevention
