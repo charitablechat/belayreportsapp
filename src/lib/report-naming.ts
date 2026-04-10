@@ -1,10 +1,10 @@
 /**
  * Generates a standardized report filename.
  *
- * Convention: "{Organization} {MM-YYYY}.{ext}"
- * Example:   "Acme Corp 03-2024.pdf"
+ * Convention: "{Organization}_{MM}_{YYYY}.{ext}"
+ * Example:   "Acme_Corp_04_2026.pdf"
  *
- * Uses only alphanumeric characters, spaces, and hyphens for
+ * Uses only alphanumeric characters, underscores, and hyphens for
  * cross-platform compatibility (Windows, macOS, iOS, Android).
  */
 export function formatReportFilename(
@@ -16,7 +16,7 @@ export function formatReportFilename(
   const now = new Date();
   const mm = String(now.getMonth() + 1).padStart(2, '0');
   const yyyy = now.getFullYear();
-  return `${org} ${mm}-${yyyy}.${extension}`;
+  return `${org}_${mm}_${yyyy}.${extension}`;
 }
 
 /**
@@ -43,7 +43,7 @@ export function formatReportTitle(
   return `${typeLabel} - ${org} ${mm}-${yyyy}`;
 }
 
-/** Strip characters that are unsafe on common filesystems. */
+/** Strip characters that are unsafe on common filesystems and replace spaces with underscores. */
 function sanitizeForFilename(value: string): string {
-  return value.trim().replace(/[<>:"/\\|?*]/g, '').replace(/\s+/g, ' ');
+  return value.trim().replace(/[<>:"/\\|?*]/g, '').replace(/\s+/g, '_');
 }
