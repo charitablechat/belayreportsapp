@@ -1244,12 +1244,14 @@ export default function DailyAssessmentForm() {
 
   const handleGenerateReport = async () => {
     setGenerating(true);
+    const progressToastId = toast.loading("Generating report...");
     
     // Safety timeout - NEVER get stuck in generating state (60 seconds max)
     const GENERATION_TIMEOUT = 120000;
     const safetyTimeoutHandle = setTimeout(() => {
       console.error('[Report Generation] Safety timeout reached after 60 seconds - force resetting state');
       setGenerating(false);
+      toast.dismiss(progressToastId);
       toast.error("Report generation timed out. Please check your connection and try again.");
     }, GENERATION_TIMEOUT);
     
