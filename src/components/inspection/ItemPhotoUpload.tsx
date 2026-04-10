@@ -207,6 +207,15 @@ function ItemPhotoUpload({
 
   const handleUpload = useCallback(async (file: File) => {
     setUploading(true);
+
+    // Safety timeout — force-clear spinner after 15s no matter what
+    const safetyTimer = setTimeout(() => {
+      setUploading(false);
+      toast.error("Photo processing timed out", {
+        description: "The photo was saved locally. It will sync later.",
+      });
+    }, 15000);
+
     try {
       // 1. Compress image
       const compressed = await compressImage(file, { maxWidth: 1200, maxHeight: 1200, quality: 0.8 });
@@ -215,12 +224,33 @@ function ItemPhotoUpload({
       const previewUrl = URL.createObjectURL(compressed);
       setLocalPreview(previewUrl);
 
-      // 3. Generate deterministic file path (userId resolved later for background upload)
+      // 3. Generate deterministic file path
       const photoId = `item-${itemId}-${Date.now()}`;
-      // Use a placeholder path; background upload will use proper userId path
       const placeholderPath = `pending/${inspectionId}/items/${itemId}.jpg`;
+      const deviceFileName = `RopeWorks_${photoSection || 'item'}_${Date.now()}.jpg`;
 
-      // 4. LOCAL-FIRST: Save to IndexedDB IMMEDIATELY (no auth required)
+      // 4. Circuit breaker pre-check — skip IDB if it's known-dead
+      const cbStatus = getCircuitBreakerStatus();
+      if (cbStatus.open) {
+        console.warn('[ItemPhotoUpload] Circuit breaker open — skipping IDB, saving receipt');
+        savePhotoReceipt({
+          id: photoId,
+          inspectionId,
+          section: photoSection || 'item-photo',
+          timestamp: Date.now(),
+          uploaded: false,
+        });
+        saveToDevice(compressed, deviceFileName);
+        onGalleryRefresh?.();
+        onPhotoChange(placeholderPath);
+        onImmediateSave?.();
+        toast.success("Photo saved to backup storage", {
+          description: "Will sync when storage recovers",
+        });
+        return; // skip IDB entirely
+      }
+
+      // 5. LOCAL-FIRST: Save to IndexedDB
       const saved = await savePhotoOffline({
         id: photoId,
         inspectionId,
@@ -235,15 +265,7 @@ function ItemPhotoUpload({
         caption: itemName || 'Item photo',
       });
 
-      if (!saved) {
-        toast.error('Local storage unavailable', {
-          description: 'Unable to save photo locally. Please check device storage.',
-        });
-        setLocalPreview(null);
-        return;
-      }
-
-      // 5. Save lightweight receipt to localStorage
+      // 6. Save receipt (always, regardless of IDB success)
       savePhotoReceipt({
         id: photoId,
         inspectionId,
@@ -252,33 +274,43 @@ function ItemPhotoUpload({
         uploaded: false,
       });
 
-      // Save photo to device's local storage (Downloads / Files app) — fire-and-forget
-      const deviceFileName = `RopeWorks_${photoSection || 'item'}_${Date.now()}.jpg`;
+      if (!saved) {
+        // IDB failed but circuit breaker wasn't open yet — graceful fallback
+        console.warn('[ItemPhotoUpload] IDB save failed — falling back to receipt + device save');
+        saveToDevice(compressed, deviceFileName);
+        // Keep preview visible — don't clear it
+        onGalleryRefresh?.();
+        onPhotoChange(placeholderPath);
+        onImmediateSave?.();
+        toast.success("Photo saved to backup storage", {
+          description: "Will sync when storage recovers",
+        });
+        return;
+      }
+
+      // Save photo to device's local storage — fire-and-forget
       saveToDevice(compressed, deviceFileName);
 
-      // ✅ Immediately refresh gallery so the photo appears in the section gallery
+      // ✅ Immediately refresh gallery
       onGalleryRefresh?.();
 
-      // 6. Update form state immediately
+      // 7. Update form state immediately
       onPhotoChange(placeholderPath);
       onImmediateSave?.();
 
-      // 7. Background upload if online (fire-and-forget, auth resolved here)
+      // 8. Background upload if online
       if (isOnline) {
         toast.info("Syncing photo...");
         getUserWithCache()
           .then(async (user) => {
             if (user?.id) {
               const realPath = `${user.id}/${inspectionId}/items/${itemId}.jpg`;
-              // ✅ Update IndexedDB with real path BEFORE upload to prevent path divergence
               await updatePhotoPath(photoId, realPath);
               onPhotoChange(realPath);
               uploadInBackground(photoId, compressed, user.id, realPath).catch(() => {});
             }
           })
-          .catch(() => {
-            // Auth failed — photo stays queued for useAutoSync
-          });
+          .catch(() => {});
       } else {
         toast.success("Photo saved locally", {
           description: "Will sync when back online",
@@ -289,9 +321,10 @@ function ItemPhotoUpload({
       toast.error(err?.message || "Failed to save photo");
       setLocalPreview(null);
     } finally {
+      clearTimeout(safetyTimer);
       setUploading(false);
     }
-  }, [itemId, inspectionId, onPhotoChange, onImmediateSave, photoSection, isOnline, uploadInBackground, itemName]);
+  }, [itemId, inspectionId, onPhotoChange, onImmediateSave, photoSection, isOnline, uploadInBackground, itemName, onGalleryRefresh]);
 
   const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
