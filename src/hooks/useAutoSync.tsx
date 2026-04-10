@@ -247,23 +247,7 @@ export const useAutoSync = () => {
           hasQueuedOps = inspOps.length > 0 || trainOps.length > 0 || assessOps.length > 0;
           
           if (hasQueuedOps) {
-            // Clean stale non-soft-delete entries immediately
-            const nonSoftDeleteFilter = (op: any) => !op?.data?.deleted_at;
-            const validIdFilter = (op: any) => op.id != null && op.id !== undefined;
-            const staleInsp = inspOps.filter(nonSoftDeleteFilter).filter(validIdFilter);
-            const staleTrain = trainOps.filter(nonSoftDeleteFilter).filter(validIdFilter);
-            const staleAssess = assessOps.filter(nonSoftDeleteFilter).filter(validIdFilter);
-            
-            if (staleInsp.length > 0 || staleTrain.length > 0 || staleAssess.length > 0) {
-              console.log(`[AutoSync] Clearing ${staleInsp.length + staleTrain.length + staleAssess.length} stale queued operations`);
-              await Promise.all([
-                ...staleInsp.map(op => removeQueuedOperation(op.id!)),
-                ...staleTrain.map(op => removeQueuedTrainingOperation(op.id!)),
-                ...staleAssess.map(op => removeQueuedAssessmentOperation(op.id!)),
-              ]);
-            }
-            
-            // Process any remaining soft-delete entries
+            // Process any soft-delete entries first
             try {
               const { processQueuedSoftDeletes } = await import('@/lib/queued-soft-delete-processor');
               const deleteResult = await processQueuedSoftDeletes();
@@ -273,6 +257,14 @@ export const useAutoSync = () => {
             } catch (e) {
               console.warn('[AutoSync] Queued soft-delete processing failed (non-blocking):', e);
             }
+            
+            // Bulk clear all remaining queued operations (avoids IDB key mismatch issues)
+            console.log(`[AutoSync] Bulk clearing stale queued operations (${inspOps.length} insp, ${trainOps.length} train, ${assessOps.length} assess)`);
+            await Promise.all([
+              clearAllQueuedOperations(),
+              clearAllQueuedTrainingOperations(),
+              clearAllQueuedAssessmentOperations(),
+            ]);
           }
         } catch (e) {
           console.warn('[AutoSync] Stale queue check failed (non-blocking):', e);
