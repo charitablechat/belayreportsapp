@@ -1,45 +1,38 @@
 
 
-# Remove Grey Boxes from Training and Daily Assessment Reports
+# Remove Remaining Grey/Colored Boxes from Training and Daily Assessment Reports
 
-## Problem
-The Training and Daily Assessment HTML reports use a "card" aesthetic with bordered boxes, background fills, and rounded corners for info items and list items. The Inspection report uses a clean, professional document style with no backgrounds, dotted underlines, and a serif font. The user wants all reports to match the Inspection report's clean look.
+## Root Cause
+While the main CSS classes were updated to transparent backgrounds, several elements still produce grey/colored boxes:
 
-Additionally, existing cached reports will continue showing the old grey-box style until regenerated with `forceRegenerate`.
+### Training Report (`generate-training-html/index.ts`)
+1. **Photo cards (inline styles, ~line 970-974)**: `border: 1px solid #e2e8f0; border-radius: 8px;` on wrapper, `background: #f1f5f9;` on img, `background: #f8fafc;` on caption div — these are hardcoded inline styles that override any CSS
+2. **Disclaimer block (CSS ~line 434-450)**: Yellow box with `background: #fef3c7; border-left: 4px solid #f59e0b; border-radius: 4px`
+3. **Page container (CSS ~line 200)**: `box-shadow: 0 2px 10px rgba(0,0,0,0.1)` creates a grey shadow effect around each page
+4. **Immediate attention items (~line 836)**: Inline `style="border-left-color: #dc2626;"` on `<li>` elements
 
-## What Changes
+### Daily Assessment Report (`generate-daily-assessment-html/index.ts`)
+1. **Disclaimer block (CSS ~line 505-524)**: Same yellow box styling
+2. **Section notes (CSS ~line 527-567)**: `background: #fffbeb`, `.notes-content` has `background: #fef3c7; border-left: 3px solid #f59e0b; border-radius: 4px/6px`
+3. **Page container (CSS ~line 245)**: Same `box-shadow`
 
-### 1. Training Report (`supabase/functions/generate-training-html/index.ts`)
+## Changes
 
-Restyle to match the inspection report's professional document aesthetic:
+### Training Report
+- **Page**: Remove `box-shadow` from `.page`
+- **Disclaimer**: Change to match inspection's clean style — transparent background, no colored border-left, no border-radius. Use simple `font-style: italic; color: #666; font-size: 8pt;`
+- **Photo cards**: Remove inline `border-radius: 8px`, `background: #f1f5f9` on img, and `background: #f8fafc` on caption. Use clean `border: 1px solid #000` to match inspection's photo-item style
+- **Immediate attention**: Remove inline `border-left-color` style from `<li>` elements
 
-- **Font**: Switch from `Segoe UI` (sans-serif) to `Georgia, 'Times New Roman', serif`
-- **`.info-item`**: Remove `background`, `border`, `border-radius`. Use `padding: 0; border: none;` with flexbox baseline alignment and dotted underline on values — matching `.info-cell` in the inspection report
-- **`li`**: Remove `background: #ffffff; border: 1px solid #e2e8f0; border-radius: 4px`. Use transparent background
-- **`.info-label`**: Change color from `#1e40af` to `#000`, match inspection sizing
-- **`.info-value`**: Add `border-bottom: 1px dotted #666` underline style
-- **`.text-content`**: Change `background: #f8fafc` to `transparent`, use `border: 1px solid #000`
-- **`.standards-box`**: Remove blue tinted background, use transparent with solid border
-- **Section titles (h2)**: Keep blue background header bar (matches inspection `h2` style)
-
-### 2. Daily Assessment Report (`supabase/functions/generate-daily-assessment-html/index.ts`)
-
-Apply the same restyling:
-
-- **Font**: Switch to `Georgia, 'Times New Roman', serif`
-- **`.info-item`**: Remove card styling, use clean layout with dotted underlines
-- **`li` / checklist items**: Remove background fills and card borders
-- **`.check-item`**: Remove `background: #ffffff; border: 1px solid #e2e8f0; border-left: 3px solid #22c55e`. Use cleaner styling
-- Keep the warning-yellow section notes as-is (they serve a distinct purpose)
-
-### 3. Cache Bust
-
-Both edge functions have server-side caching that returns `latest_report_html` if data hasn't changed. After deploying these style changes, users will need to click "Generate Report" (which triggers `forceRegenerate`) to see the new styling. No code change needed for this — it's the existing behavior.
+### Daily Assessment Report
+- **Page**: Remove `box-shadow`
+- **Disclaimer**: Same clean restyle as training
+- **Section notes**: Remove `background: #fffbeb` and `background: #fef3c7`. Use transparent background with simple `border: 1px solid #000` border, no border-radius
 
 ## Files to Edit
-- `supabase/functions/generate-training-html/index.ts` — CSS section (~lines 157-742)
-- `supabase/functions/generate-daily-assessment-html/index.ts` — CSS section
+- `supabase/functions/generate-training-html/index.ts` — CSS + inline HTML styles
+- `supabase/functions/generate-daily-assessment-html/index.ts` — CSS
 
-## Result
-All three report types will share the same clean, professional document aesthetic: serif font, no grey/colored boxes around info fields, dotted underlines for values, transparent backgrounds, and solid thin borders where needed.
+## After Deployment
+Both edge functions will be deployed. Existing cached reports require clicking "Generate Report" (forceRegenerate) to pick up the new styling.
 
