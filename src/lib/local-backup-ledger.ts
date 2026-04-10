@@ -343,10 +343,10 @@ export function sanitizeFilename(name: string): string {
     .substring(0, 60); // cap length
 }
 
-export function downloadReportBackup(
+export async function downloadReportBackup(
   reportType: ReportType,
   reportId: string
-): boolean {
+): Promise<boolean> {
   try {
     const snapshot = getReportSnapshot(reportType, reportId);
     if (!snapshot) return false;
@@ -360,8 +360,67 @@ export function downloadReportBackup(
 
     const org = snapshot.parent?.organization;
     const orgPart = org ? `_${sanitizeFilename(org)}` : '';
-
     const json = JSON.stringify(payload, null, 2);
+
+    // Try to collect photos and build a ZIP
+    let photoCount = 0;
+    try {
+      const { getOfflinePhotos } = await import('@/lib/offline-storage');
+      const photos = await getOfflinePhotos(reportId);
+
+      // Collect photo blobs — from IDB first, then signed URL fallback
+      const photoEntries: { name: string; blob: Blob }[] = [];
+      for (const photo of photos) {
+        if (photo.blob) {
+          const ext = photo.fileName?.split('.').pop() || 'jpg';
+          photoEntries.push({ name: `${photo.id}.${ext}`, blob: photo.blob });
+        } else if (photo.photoUrl) {
+          try {
+            const { supabase } = await import('@/integrations/supabase/client');
+            const bucket = photo.storageBucket || 'inspection-photos';
+            const { data } = await supabase.storage.from(bucket).createSignedUrl(photo.photoUrl, 60);
+            if (data?.signedUrl) {
+              const controller = new AbortController();
+              const timeout = setTimeout(() => controller.abort(), 5000);
+              const resp = await fetch(data.signedUrl, { signal: controller.signal });
+              clearTimeout(timeout);
+              if (resp.ok) {
+                const blob = await resp.blob();
+                const ext = photo.fileName?.split('.').pop() || 'jpg';
+                photoEntries.push({ name: `${photo.id}.${ext}`, blob });
+              }
+            }
+          } catch {
+            // Skip this photo
+          }
+        }
+      }
+
+      if (photoEntries.length > 0) {
+        const JSZip = (await import('jszip')).default;
+        const zip = new JSZip();
+        zip.file('backup.json', json);
+        const photosFolder = zip.folder('photos')!;
+        for (const entry of photoEntries) {
+          photosFolder.file(entry.name, entry.blob);
+        }
+        const zipBlob = await zip.generateAsync({ type: 'blob' });
+        photoCount = photoEntries.length;
+
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(zipBlob);
+        link.download = `backup_${reportType}${orgPart}_${reportId.substring(0, 8)}_${Date.now()}.zip`;
+        link.style.display = 'none';
+        document.body.appendChild(link);
+        link.click();
+        setTimeout(() => { document.body.removeChild(link); URL.revokeObjectURL(link.href); }, 100);
+        return true;
+      }
+    } catch (zipError) {
+      console.warn('[Backup Ledger] ZIP creation failed, falling back to JSON:', zipError);
+    }
+
+    // Fallback: plain JSON download (no photos or ZIP failed)
     const blob = new Blob([json], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -370,12 +429,7 @@ export function downloadReportBackup(
     link.style.display = 'none';
     document.body.appendChild(link);
     link.click();
-
-    setTimeout(() => {
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-    }, 100);
-
+    setTimeout(() => { document.body.removeChild(link); URL.revokeObjectURL(url); }, 100);
     return true;
   } catch (error) {
     console.warn('[Backup Ledger] Failed to download report backup:', error);
@@ -404,10 +458,47 @@ function inferReportType(parent: Record<string, any>): ReportType | null {
   return null;
 }
 
-export async function importReportBackup(jsonString: string): Promise<{
+export async function importReportBackup(input: string | File): Promise<{
   reportType: ReportType;
   reportId: string;
+  photoCount?: number;
 }> {
+  let jsonString: string;
+  let zipPhotoEntries: { name: string; blob: Blob }[] = [];
+
+  // Detect ZIP vs JSON
+  if (input instanceof File) {
+    const isZip = input.name.endsWith('.zip') || input.type === 'application/zip';
+    if (isZip) {
+      const JSZip = (await import('jszip')).default;
+      const zip = await JSZip.loadAsync(input);
+      const backupJsonFile = zip.file('backup.json');
+      if (!backupJsonFile) {
+        throw new Error('ZIP archive does not contain a backup.json file.');
+      }
+      jsonString = await backupJsonFile.async('string');
+
+      // Collect photo entries
+      const photosFolder = zip.folder('photos');
+      if (photosFolder) {
+        const photoFiles: { name: string; file: any }[] = [];
+        photosFolder.forEach((relativePath, file) => {
+          if (!file.dir) {
+            photoFiles.push({ name: relativePath, file });
+          }
+        });
+        for (const pf of photoFiles) {
+          const blob = await pf.file.async('blob');
+          zipPhotoEntries.push({ name: pf.name, blob });
+        }
+      }
+    } else {
+      jsonString = await input.text();
+    }
+  } else {
+    jsonString = input;
+  }
+
   let parsed: any;
   try {
     parsed = JSON.parse(jsonString);
@@ -476,6 +567,7 @@ export async function importReportBackup(jsonString: string): Promise<{
     saveInspectionOffline, saveRelatedDataOffline,
     saveTrainingOffline, saveTrainingDataOffline,
     saveDailyAssessmentOffline, saveAssessmentDataOffline,
+    savePhotoOffline,
   } = await import('@/lib/offline-storage');
 
   if (reportType === 'inspection') {
@@ -501,15 +593,45 @@ export async function importReportBackup(jsonString: string): Promise<{
     }
   }
 
-  // 3. Fire-and-forget cloud upload
+  // 3. Import photos from ZIP if present
+  let photoCount = 0;
+  if (zipPhotoEntries.length > 0) {
+    for (const entry of zipPhotoEntries) {
+      const photoId = entry.name.replace(/\.[^.]+$/, ''); // strip extension to get ID
+      const ext = entry.name.split('.').pop() || 'jpg';
+      try {
+        await savePhotoOffline({
+          id: photoId,
+          inspectionId: reportId,
+          section: 'imported',
+          blob: entry.blob,
+          fileName: entry.name,
+          uploaded: false,
+          tableName: reportType === 'training' ? 'training_photos' :
+                     reportType === 'daily_assessment' ? 'daily_assessment_photos' :
+                     'inspection_photos',
+          storageBucket: reportType === 'training' ? 'training-photos' :
+                         reportType === 'daily_assessment' ? 'daily-assessment-photos' :
+                         'inspection-photos',
+          foreignKeyColumn: reportType === 'training' ? 'training_id' :
+                            reportType === 'daily_assessment' ? 'assessment_id' :
+                            'inspection_id',
+        });
+        photoCount++;
+      } catch (err) {
+        console.warn('[Backup Ledger] Failed to import photo:', entry.name, err);
+      }
+    }
+  }
+
+  // 4. Fire-and-forget cloud upload
   const { uploadSnapshotToCloud } = await import('@/lib/cloud-backup');
   uploadSnapshotToCloud(reportType, reportId, snapshot);
 
-  // 4. Notify any open form that data was imported so it can reload from IndexedDB
-  // This prevents stale React state from overwriting the imported data on next save
+  // 5. Notify any open form that data was imported so it can reload from IndexedDB
   window.dispatchEvent(new CustomEvent('report-data-imported', {
     detail: { reportType, reportId }
   }));
 
-  return { reportType, reportId };
+  return { reportType, reportId, photoCount: photoCount > 0 ? photoCount : undefined };
 }
