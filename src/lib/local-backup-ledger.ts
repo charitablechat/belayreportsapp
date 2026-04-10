@@ -343,6 +343,17 @@ export function sanitizeFilename(name: string): string {
     .substring(0, 60); // cap length
 }
 
+function buildBackupFilename(org: string | undefined, ext: 'zip' | 'json'): string {
+  const name = sanitizeFilename(org || 'report');
+  const now = new Date();
+  const month = now.getMonth() + 1;
+  const day = now.getDate();
+  const year = now.getFullYear();
+  const hour = now.getHours();
+  const min = String(now.getMinutes()).padStart(2, '0');
+  return `${name}_${month}_${day}_${year}_${hour}_${min}.${ext}`;
+}
+
 export async function downloadReportBackup(
   reportType: ReportType,
   reportId: string
@@ -359,7 +370,6 @@ export async function downloadReportBackup(
     };
 
     const org = snapshot.parent?.organization;
-    const orgPart = org ? `_${sanitizeFilename(org)}` : '';
     const json = JSON.stringify(payload, null, 2);
 
     // Try to collect photos and build a ZIP
@@ -409,7 +419,7 @@ export async function downloadReportBackup(
 
         const link = document.createElement('a');
         link.href = URL.createObjectURL(zipBlob);
-        link.download = `backup_${reportType}${orgPart}_${reportId.substring(0, 8)}_${Date.now()}.zip`;
+        link.download = buildBackupFilename(org, 'zip');
         link.style.display = 'none';
         document.body.appendChild(link);
         link.click();
@@ -425,7 +435,7 @@ export async function downloadReportBackup(
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `backup_${reportType}${orgPart}_${reportId.substring(0, 8)}_${Date.now()}.json`;
+    link.download = buildBackupFilename(org, 'json');
     link.style.display = 'none';
     document.body.appendChild(link);
     link.click();
