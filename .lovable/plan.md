@@ -1,124 +1,100 @@
 
 
-# Comprehensive Application Bug Audit & Fix Plan
+# IndexedDB Storage Pressure — Audit & Mitigation Plan
 
-## Audit Findings
+## Current State
 
-### BUG 1: Unused imports in App.tsx (LOW — dead code / bundle size)
+The app has **20+ IndexedDB object stores** holding reports, child tables, photos, operation queues, version history, and backup snapshots. Here's what exists today for storage management:
 
-**File:** `src/App.tsx` lines 35-36
+### What's Already Working
+1. **Persistent storage request** — `requestPersistentStorage()` asks the browser not to evict data
+2. **Photo blob nullification** — `markPhotoAsUploaded()` sets `blob = null` after successful upload, freeing the largest objects
+3. **7-day photo blob pruning** — `pruneOldSyncedPhotoBlobs()` runs after each sync cycle, nullifying synced photo blobs older than 7 days
+4. **24-hour cache cleanup** — `cleanupStaleCachedPhotos()` deletes re-cached remote photos older than 24 hours (runs hourly)
+5. **Version history pruning** — `report_versions` caps at 10 snapshots per report
+6. **Storage quota warning** — logs a warning when usage exceeds 80%
+7. **Circuit breaker** — `withIndexedDBErrorBoundary` trips after 3 failures, falls back to localStorage
 
-`NetworkStatusIndicator` and `SyncStatusIndicator` are imported but never used in the JSX template. These are dead imports that add unnecessary bytes to the bundle.
+### What's Missing (Gaps)
 
-**Fix:** Remove the two unused import lines.
+| Gap | Risk | Description |
+|-----|------|-------------|
+| **No eviction of synced reports** | HIGH | Every report (inspection, training, assessment) + all child rows stay in IndexedDB forever, even after successful sync. A user with 500+ reports will accumulate megabytes of JSON. |
+| **No eviction of synced report_backups** | HIGH | WAL backup snapshots grow unbounded. Each contains full report JSON. |
+| **No proactive storage pressure response** | MEDIUM | The 80% warning only logs to console. No automated cleanup triggers. User gets no actionable UI. |
+| **No storage dashboard for users** | LOW | Users cannot see how much space is used or take action. |
+| **report_versions stores full parentData + childrenData** | MEDIUM | 10 versions × full JSON per report. For complex inspections this can be several MB per report. |
+| **Photo metadata records never deleted** | LOW | Even after blob is nullified, the photo metadata row (with `blob: null`) remains forever. |
 
----
+## Proposed Solution: Tiered Storage Eviction System
 
-### BUG 2: Stale closure in ItemPhotoUpload cleanup effect (MEDIUM — memory leak)
+### 1. Create `src/lib/storage-pressure-manager.ts` (NEW FILE)
 
-**File:** `src/components/inspection/ItemPhotoUpload.tsx` lines 90-95
+A centralized manager that:
+- Checks `navigator.storage.estimate()` on each sync cycle
+- Implements 3 pressure tiers with automatic cleanup:
 
-The cleanup `useEffect` has an empty dependency array `[]` but captures `localPreview` from the initial render (always `null`). When `localPreview` changes later, the cleanup function still references the stale initial value and never revokes the real object URL.
-
-**Fix:** Use a ref to track `localPreview` so the cleanup always revokes the latest URL:
-```typescript
-const localPreviewRef = useRef<string | null>(null);
-useEffect(() => { localPreviewRef.current = localPreview; }, [localPreview]);
-
-useEffect(() => {
-  return () => {
-    if (prevObjectUrlRef.current) URL.revokeObjectURL(prevObjectUrlRef.current);
-    if (localPreviewRef.current) URL.revokeObjectURL(localPreviewRef.current);
-  };
-}, []);
+```text
+Tier 0 (< 60% used):  No action
+Tier 1 (60-80% used): Evict synced report data older than 30 days
+Tier 2 (80-90% used): Evict synced report data older than 7 days + prune version history to 3 per report
+Tier 3 (> 90% used):  Aggressive — evict all synced data older than 24 hours + prune versions to 1 per report
 ```
 
----
+**Key safety rule:** NEVER evict a record where `synced_at` is null or `synced_at < updated_at` (unsynced local changes). Only evict data that has been confirmed synced to the server.
 
-### BUG 3: Multiple `onAuthStateChange` listeners accumulate (MEDIUM — performance)
+**Eviction means:** Delete the parent record + all child rows (systems, equipment, ziplines, etc.) from IndexedDB. The data still lives on the server and will be re-fetched on demand when the user opens that report.
 
-**File:** `src/lib/cached-auth.ts` line 42
+### 2. Add `evictSyncedReports()` to `src/lib/offline-storage.ts`
 
-The `initAuthListener()` function in `cached-auth.ts` registers an `onAuthStateChange` callback that is **never unsubscribed**. It uses a boolean gate (`authListenerInitialized`) so it only fires once, which is correct — but this is in addition to per-component listeners registered in:
-- `AuthenticatedHeader.tsx` (properly cleaned up)
-- `Dashboard.tsx` (properly cleaned up)
-- `InspectionForm.tsx` (properly cleaned up)
-- `useReportEditPermission.tsx` (properly cleaned up)
+A function that:
+- Iterates inspections, trainings, daily_assessments stores
+- Identifies records where `synced_at >= updated_at` AND `synced_at` is older than the age threshold
+- Deletes the parent + all associated child store entries (using the `by-inspection`/`by-training`/`by-assessment` indexes)
+- Deletes associated `report_backups` entries
+- Deletes photo metadata rows (blobs already nullified)
+- Returns count of evicted reports for logging
 
-With 5 total listeners, every auth event (token refresh every ~60 mins, tab focus, etc.) fires 5 handlers. This is acceptable but worth noting. The cached-auth one cannot be unsubscribed by design (singleton pattern). **No fix needed** — this is by design.
+### 3. Add `evictOldReportBackups()` to `src/lib/offline-storage.ts`
 
----
+- Delete `report_backups` entries older than 14 days (these are WAL snapshots, not user-facing backups)
+- Run after every sync cycle
 
-### BUG 4: `handleOnline` triggers non-silent sync bypassing debounce (LOW-MEDIUM)
+### 4. Integrate into sync cycle (`useAutoSync.tsx`)
 
-**File:** `src/hooks/useAutoSync.tsx` line 533
+After the existing `pruneOldSyncedPhotoBlobs()` call, add:
+```typescript
+// Storage pressure management (non-blocking)
+manageStoragePressure().catch(() => {});
+```
 
-When the device goes online, `performSync(false)` is called (non-silent), which bypasses the `MIN_SYNC_INTERVAL` debounce. If the network flickers repeatedly (common on mobile), this can trigger rapid consecutive sync attempts. The `syncInProgressRef` guard prevents true duplicates, but the waiting promise (lines 174-186) queues up, potentially stacking multiple 15-second timeout promises.
+### 5. Add storage indicator to Dashboard
 
-**Fix:** Add a debounce to `handleOnline` — use `triggerDebouncedSync()` instead of `performSync(false)`, or add a minimum gap check before the session refresh + sync.
+A small badge/indicator in the dashboard header showing:
+- Green: < 60% used
+- Yellow: 60-80% used  
+- Red: > 80% used
+- Clicking opens a small panel showing usage breakdown and a "Clear synced cache" manual button
 
----
+### 6. Reduce `report_versions` snapshot size
 
-### BUG 5: `refreshSession` result type mismatch in `handleOnline` (LOW)
+Instead of storing the full `parentData` + `childrenData` in every version, store only a delta (changed fields) for versions after the first. This is an optimization that can reduce version store size by ~80%.
 
-**File:** `src/hooks/useAutoSync.tsx` lines 509-514
-
-The `Promise.race` resolves with either `supabase.auth.refreshSession()` (which returns `{ data, error }`) or a timeout that returns `{ error: { message } }`. The check `if ('error' in refreshResult && refreshResult.error)` will be true for both the timeout AND a successful result where `error` is `null`. The code works because it only logs a warning, but the type handling is imprecise.
-
-**Fix:** Check `refreshResult.error` more explicitly — the current behavior is safe but could log spurious warnings if `refreshSession` succeeds with `error: null`.
-
----
-
-### BUG 6: `useReportTabHistory` popstate handler doesn't check `isOverlayActive` (MEDIUM)
-
-**File:** `src/hooks/useReportTabHistory.tsx` lines 73-96
-
-When a lightbox is open inside a report form (overlay active), the tab history popstate handler can still fire and process the back-button press as a tab navigation. The App.tsx handler checks `isOverlayActive()` and `isReportTabActive()` to bail, but the tab history handler itself doesn't check `isOverlayActive()`. Both handlers run because `addEventListener` fires all registered listeners.
-
-**Scenario:** Open lightbox inside report → press back → lightbox handler closes lightbox AND tab handler also pops a tab from history, causing an unexpected tab change.
-
-**Fix:** Add `if (isOverlayActive()) return;` at the top of the `handlePopState` in `useReportTabHistory.tsx`.
-
----
-
-### BUG 7: PhotoGallery lightbox pushes duplicate history entries on rapid open/close (LOW)
-
-**File:** `src/components/PhotoGallery.tsx` lines 122-143
-
-When a user rapidly opens photo A, closes it (via X button which calls `window.history.back()`), then immediately opens photo B, the effect cleanup for A may not have run yet. The new effect for B pushes another `{ lightbox: true }` entry. This leaves an orphaned history entry in the stack.
-
-**Fix:** Guard the `pushState` with a check: only push if `lightboxHistoryPushedRef.current` is false. Currently the ref is reset to false when the lightbox closes, but there's a race window.
-
----
-
-### BUG 8: `camera-capture-dialog.tsx` doesn't revoke preview URL on dialog close (LOW — memory leak)
-
-**File:** `src/components/ui/camera-capture-dialog.tsx` line 99
-
-When the dialog closes without the user clicking "Retake" or "Use Photo", the `previewUrl` object URL created at line 99 is never revoked. The `handleRetake` function properly revokes it, but closing the dialog via the X button or overlay click doesn't.
-
-**Fix:** Add a cleanup effect that revokes `previewUrl` when the dialog's `open` prop changes to `false`.
-
----
-
-## Fix Plan Summary
-
-| # | Severity | File | Fix |
-|---|----------|------|-----|
-| 1 | LOW | `App.tsx` | Remove unused `NetworkStatusIndicator` and `SyncStatusIndicator` imports |
-| 2 | MEDIUM | `ItemPhotoUpload.tsx` | Use ref for `localPreview` in cleanup effect |
-| 3 | — | `cached-auth.ts` | No fix needed (by design) |
-| 4 | LOW-MED | `useAutoSync.tsx` | Debounce `handleOnline` with min interval check |
-| 5 | LOW | `useAutoSync.tsx` | Tighten `refreshResult.error` check |
-| 6 | MEDIUM | `useReportTabHistory.tsx` | Add `isOverlayActive()` guard to popstate handler |
-| 7 | LOW | `PhotoGallery.tsx` | Guard duplicate `pushState` with ref check |
-| 8 | LOW | `camera-capture-dialog.tsx` | Revoke preview URL on dialog close |
+**However**, this adds complexity to the restore path. A simpler alternative: reduce `MAX_VERSIONS_PER_REPORT` from 10 to 5, and exclude large HTML fields (`latest_report_html`) from version snapshots.
 
 ## Files Changed
-1. `src/App.tsx` — remove 2 unused imports
-2. `src/components/inspection/ItemPhotoUpload.tsx` — ref-based cleanup for localPreview
-3. `src/hooks/useAutoSync.tsx` — debounce handleOnline, tighten error check
-4. `src/hooks/useReportTabHistory.tsx` — add overlay guard to popstate handler
-5. `src/components/PhotoGallery.tsx` — guard duplicate lightbox history push
-6. `src/components/ui/camera-capture-dialog.tsx` — revoke preview URL on close
+
+1. **`src/lib/storage-pressure-manager.ts`** (NEW) — Tiered eviction logic + quota checking
+2. **`src/lib/offline-storage.ts`** — Add `evictSyncedReports()`, `evictOldReportBackups()`, `evictPhotoMetadata()`
+3. **`src/hooks/useAutoSync.tsx`** — Call `manageStoragePressure()` after sync
+4. **`src/lib/report-version-manager.ts`** — Strip `latest_report_html` from snapshots, reduce max to 5
+5. **`src/components/dashboard/DashboardStatsBar.tsx`** — Add storage usage indicator
+6. **`src/App.tsx`** — Run initial storage pressure check on mount
+
+## Safety Guarantees
+
+- **Never evict unsynced data** — only records with `synced_at >= updated_at`
+- **Never evict the currently open report** — check against current route
+- **Re-fetch on demand** — when a user opens an evicted report, the form already fetches from the server as primary source
+- **Graceful degradation** — if `navigator.storage.estimate()` is unavailable, fall back to time-based eviction only (30-day default)
 
