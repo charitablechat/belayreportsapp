@@ -44,19 +44,7 @@ function deduplicateHtmlContent(html: string | null): string {
   return Array.from(uniqueLines.values()).join('\n');
 }
 
-/**
- * Check if a blob contains HEIC/HEIF data by inspecting magic bytes.
- * Returns true if bytes 4-7 are "ftyp" and bytes 8-11 are a known HEIC brand.
- */
-function isHeicBytes(buffer: ArrayBuffer): boolean {
-  const bytes = new Uint8Array(buffer);
-  if (bytes.length < 12) return false;
-  const decoder = new TextDecoder('ascii');
-  const ftypTag = decoder.decode(bytes.slice(4, 8));
-  if (ftypTag !== 'ftyp') return false;
-  const brand = decoder.decode(bytes.slice(8, 12)).toLowerCase();
-  return brand === 'heic' || brand === 'heis' || brand === 'mif1';
-}
+// isHeicBytes removed — photos now use signed URLs instead of base64 downloads
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
