@@ -1,64 +1,32 @@
 
 
-# Speed Up Report Generation
+# Fix PDF Save Filename Across All Platforms
 
-## Current Bottleneck Analysis
+## Problem
+When clicking "Save PDF" in the report viewer, the browser's print-to-PDF dialog uses the iframe's `<title>` tag as the default filename. The edge functions set titles like "Inspection Report - Acme Corp" instead of the desired convention: **"Acme Corp 03-2024.pdf"**.
 
-The "Generate Report" flow currently performs **5 sequential network operations**:
+The `HtmlReportViewer` component already receives a correctly formatted `filename` prop (from `formatReportFilename`), but it never injects that into the iframe's HTML `<title>`. The browser ignores the `filename` prop entirely.
 
-1. Client → Edge Function (invoke)
-2. Edge Function → DB (6 parallel queries — fast, ~200ms)
-3. Edge Function → Storage (batch signed URLs for photos — fast, ~100ms)
-4. Edge Function → Storage **upload** the finished HTML (~500ms-2s depending on size)
-5. Edge Function → Storage **create signed URL** (~100ms)
-6. Client → Storage **fetch HTML** from signed URL (~500ms-1s)
+## Fix
 
-Steps 4-6 add ~1-3 seconds of pure overhead. On a cold start, logo fetching adds another ~500ms.
+### 1. `src/components/HtmlReportViewer.tsx` — Inject filename as `<title>`
+In the `enhancedHtml` processing (where mobile styles are already injected before `</head>`), also replace the existing `<title>...</title>` with the `filename` prop (minus the extension). This ensures the browser print dialog pre-populates with the correct name on all platforms.
 
-The biggest missed optimization: **if nothing has changed since the last generation, the entire edge function runs anyway** — even though `latest_report_html` is already stored in the database row.
+```typescript
+// Strip extension for the PDF save dialog title
+const pdfTitle = filename.replace(/\.\w+$/, '');
+// Replace existing <title> or inject before </head>
+let enhancedHtml = html.replace(/<title>[^<]*<\/title>/, `<title>${pdfTitle}</title>`);
+// Then inject mobile styles as before
+enhancedHtml = enhancedHtml.replace('</head>', `${mobileBaseStyles}</head>`);
+```
 
-## Plan
+This single change ensures that when the user clicks "Save PDF" on **any platform** (Web, iOS, Android, Windows, macOS), the print dialog suggests **"Acme Corp 03-2024"** as the filename.
 
-### 1. Add server-side cache check (biggest win — saves 3-8s on repeat generations)
-
-At the top of each edge function (`generate-inspection-html`, `generate-training-html`, `generate-daily-assessment-html`), compare the report's `updated_at` against `latest_report_generated_at`. If `updated_at <= latest_report_generated_at` (no edits since last generation), skip regeneration entirely — just return the existing cached HTML or its storage URL.
-
-This means the second and subsequent clicks of "Generate Report" (with no changes) return in ~200ms instead of 3-8s.
-
-**Files:** All 3 `generate-*-html` edge functions
-
-### 2. Return HTML directly for small reports (eliminates 2 round trips)
-
-Currently every report is uploaded to storage and returned as a signed URL. This adds ~1.5s. For reports under a size threshold (e.g., 1MB), return the HTML directly in the response body — the client already handles this path (`data.html` fallback). Only use the storage upload path for very large reports.
-
-**Files:** All 3 `generate-*-html` edge functions
-
-### 3. Client-side cache check (instant for unchanged reports)
-
-Before even calling the edge function, check if the form has unsaved changes AND if a `latest_report_generated_at` exists that's newer than `updated_at`. If so, fetch the cached `latest_report_html` from the DB row directly — no edge function needed at all.
-
-**Files:** `InspectionForm.tsx`, `TrainingForm.tsx`, `DailyAssessmentForm.tsx`
-
-### 4. Parallelize logo fetch with DB queries
-
-Currently logos are fetched first, then DB queries run. Since they're independent, run them in parallel. On cold starts this saves ~300-500ms.
-
-**Files:** All 3 `generate-*-html` edge functions
-
-## Expected Impact
-
-| Scenario | Current | After |
-|----------|---------|-------|
-| First generation (cold start) | 4-8s | 3-5s |
-| First generation (warm) | 3-6s | 2-4s |
-| Repeat generation (no changes) | 3-6s | **< 0.5s** |
+### 2. `src/lib/html-report-viewer.ts` — Same fix for `downloadHtmlReport`
+The fallback `downloadHtmlReport` function (used when popup-based printing is triggered) also opens a new window. Apply the same `<title>` replacement using the `_filename` parameter (currently unused — hence the underscore prefix).
 
 ## Files Changed
-
-1. `supabase/functions/generate-inspection-html/index.ts` — Cache check + direct HTML return + parallel logo fetch
-2. `supabase/functions/generate-training-html/index.ts` — Same optimizations
-3. `supabase/functions/generate-daily-assessment-html/index.ts` — Same optimizations
-4. `src/pages/InspectionForm.tsx` — Client-side cache check before edge function call
-5. `src/pages/TrainingForm.tsx` — Client-side cache check
-6. `src/pages/DailyAssessmentForm.tsx` — Client-side cache check
+1. `src/components/HtmlReportViewer.tsx` — Replace `<title>` with filename before rendering in iframe
+2. `src/lib/html-report-viewer.ts` — Use the `filename` parameter to set `<title>` in the print window
 
