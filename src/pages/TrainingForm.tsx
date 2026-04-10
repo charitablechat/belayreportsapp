@@ -1511,7 +1511,7 @@ export default function TrainingForm() {
                 size="icon"
                 className="h-8 w-8"
                 title="Force Local Backup"
-                onClick={() => {
+                onClick={async () => {
                   if (training && id) {
                     saveReportSnapshot('training', id, training, {
                       delivery_approaches: deliveryApproaches,
@@ -1522,7 +1522,7 @@ export default function TrainingForm() {
                       summary: summary ? [summary] : [],
                     }, !!training.synced_at);
                   }
-                  const ok = downloadReportBackup('training', id);
+                  const ok = await downloadReportBackup('training', id);
                   if (ok) {
                     toast.success('BACKUP SAVED', {
                       description: 'Snapshot downloaded to device',

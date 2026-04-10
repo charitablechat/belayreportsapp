@@ -2647,13 +2647,13 @@ export default function InspectionForm() {
                       variant="ghost"
                       size="icon"
                       className="h-8 w-8"
-                      onClick={() => {
+                      onClick={async () => {
                         if (inspection && id) {
                           saveReportSnapshot('inspection', id, inspection, {
                             systems, ziplines, equipment, standards, summary: [summary],
                           }, !!inspection.synced_at);
                         }
-                        const ok = downloadReportBackup('inspection', id);
+                        const ok = await downloadReportBackup('inspection', id);
                         if (ok) {
                           toast.success('BACKUP SAVED', {
                             description: 'Snapshot downloaded to device',

@@ -200,12 +200,12 @@ export function LocalSnapshotsPanel({ allowDelete = true }: SnapshotsPanelProps)
     e.target.value = '';
     setImporting(true);
     try {
-      const text = await file.text();
-      const { reportType, reportId } = await importReportBackup(text);
+      const { reportType, reportId, photoCount } = await importReportBackup(file);
       refreshSnapshots();
       setHighlightedId(reportId);
       setTimeout(() => setHighlightedId(null), 8600);
-      toast.success(`Imported ${reportType.replace('_', ' ')} backup`, {
+      const photoPart = photoCount ? ` with ${photoCount} photo${photoCount > 1 ? 's' : ''}` : '';
+      toast.success(`Imported ${reportType.replace('_', ' ')} backup${photoPart}`, {
         description: `Report ${reportId.substring(0, 8)}… restored to local + cloud storage.`,
       });
     } catch (err: any) {
@@ -298,7 +298,7 @@ export function LocalSnapshotsPanel({ allowDelete = true }: SnapshotsPanelProps)
             </CardDescription>
           </div>
           <div className="flex gap-2 shrink-0">
-            <input type="file" accept=".json" className="hidden" id="import-backup-file" onChange={handleImportFile} />
+            <input type="file" accept=".json,.zip" className="hidden" id="import-backup-file" onChange={handleImportFile} />
             <Button variant="outline" size="sm" disabled={importing} onClick={() => document.getElementById('import-backup-file')?.click()} title="Import a previously exported backup JSON file">
               {importing ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Upload className="h-4 w-4 mr-2" />}
               Import
