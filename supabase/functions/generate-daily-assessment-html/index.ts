@@ -197,8 +197,7 @@ serve(async (req) => {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${(assessment.organization || 'Daily Assessment').replace(/\s+/g, '_')}</title>
   <style>
-    /* Google Fonts - Monospace for terminal aesthetic */
-    @import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&display=swap');
+     /* Clean professional document style */
     
     /* 
      * FIX: Content Clipping Prevention
@@ -226,9 +225,10 @@ serve(async (req) => {
     }
 
     body {
-      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      font-family: Georgia, 'Times New Roman', serif;
+      font-size: 11pt;
       line-height: 1.6;
-      color: #333;
+      color: #000;
       background: #ffffff;
       padding: 10px;
     }
@@ -346,9 +346,9 @@ serve(async (req) => {
 
     .page-title {
       color: #1e40af;
-      font-size: 24px;
+      font-size: 24pt;
       margin-bottom: 8px;
-      font-weight: 700;
+      font-weight: bold;
     }
 
     .page-subtitle {
@@ -362,27 +362,31 @@ serve(async (req) => {
     }
 
     .section-title {
-      background: #1e40af;
+      background: #1B6DB5;
       color: white;
-      padding: 8px 12px;
-      font-size: 14px;
-      font-weight: 600;
-      margin-bottom: 8px;
-      border-radius: 4px;
+      padding: 6px 10px;
+      font-size: 16pt;
+      font-weight: bold;
+      margin: 12px 0 8px 0;
+      line-height: 1.4;
     }
 
     .info-grid {
       display: grid;
       grid-template-columns: repeat(2, 1fr);
-      gap: 10px;
-      margin-bottom: 10px;
+      gap: 10px 20px;
+      margin: 14px 0;
+      border: none;
     }
 
     .info-item {
-      padding: 10px 12px;
-      background: #ffffff;
-      border: 1px solid #e2e8f0;
-      border-radius: 4px;
+      padding: 0;
+      background: transparent;
+      border: none;
+      border-radius: 0;
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
     }
 
     .info-item.full-width {
@@ -391,16 +395,20 @@ serve(async (req) => {
 
     .info-label {
       font-weight: 600;
-      color: #1e40af;
-      font-size: 11px;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      margin-bottom: 4px;
+      color: #000;
+      font-size: 10pt;
+      white-space: normal;
+      flex-shrink: 0;
     }
 
     .info-value {
-      color: #1e293b;
-      font-size: 13px;
+      flex: 1;
+      color: #000;
+      font-size: 10pt;
+      line-height: 1.4;
+      border-bottom: 1px dotted #666;
+      min-height: 18px;
+      padding-bottom: 2px;
     }
 
     ul {
@@ -411,21 +419,24 @@ serve(async (req) => {
     li {
       display: flex;
       gap: 10px;
-      padding: 8px 10px;
-      margin-bottom: 6px;
-      background: #ffffff;
-      border: 1px solid #e2e8f0;
-      border-left: 3px solid #3b82f6;
-      border-radius: 4px;
+      padding: 6px 0;
+      margin-bottom: 4px;
+      background: transparent;
+      border: none;
+      border-bottom: 1px dotted #ccc;
       align-items: flex-start;
     }
 
+    li:last-child {
+      border-bottom: none;
+    }
+
     li.checked {
-      border-left-color: #22c55e;
+      /* Clean style - no colored left border */
     }
 
     li.unchecked {
-      border-left-color: #ef4444;
+      /* Clean style - no colored left border */
     }
 
     .checkbox-icon {
@@ -450,19 +461,19 @@ serve(async (req) => {
 
     .item-label {
       font-weight: 500;
-      color: #1e293b;
-      font-size: 13px;
+      color: #000;
+      font-size: 10pt;
     }
 
     em {
       font-style: italic;
       font-weight: 500;
-      color: rgba(30, 41, 59, 0.95);
+      color: rgba(0, 0, 0, 0.9);
       letter-spacing: 0.01em;
     }
 
     .item-comments {
-      font-size: 12px;
+      font-size: 9pt;
       color: #64748b;
       font-style: italic;
       margin-top: 3px;
@@ -478,12 +489,12 @@ serve(async (req) => {
       display: flex;
       align-items: center;
       gap: 8px;
-      padding: 8px 10px;
-      background: #ffffff;
-      border: 1px solid #e2e8f0;
-      border-left: 3px solid #22c55e;
-      border-radius: 4px;
-      font-size: 13px;
+      padding: 6px 0;
+      background: transparent;
+      border: none;
+      border-bottom: 1px dotted #ccc;
+      border-radius: 0;
+      font-size: 10pt;
     }
 
     .system-item .checkbox-icon {
@@ -519,7 +530,7 @@ serve(async (req) => {
       padding: 12px;
       margin-top: 16px;
       border: 1px solid #f59e0b;
-      font-family: 'Fira Code', 'Monaco', 'Consolas', monospace;
+      font-family: Georgia, 'Times New Roman', serif;
     }
 
     .notes-header {
