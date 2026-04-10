@@ -2332,6 +2332,28 @@ export default function InspectionForm() {
     }, GENERATION_TIMEOUT);
 
     try {
+      // OPTIMIZATION: Client-side cache check — if no unsaved changes and report was already 
+      // generated after the last update, use cached HTML from the database directly
+      if (!hasUnsavedChanges && inspection?.latest_report_generated_at && inspection?.updated_at) {
+        const generatedAt = new Date(inspection.latest_report_generated_at).getTime();
+        const updatedAt = new Date(inspection.updated_at).getTime();
+        
+        if (generatedAt >= updatedAt) {
+          console.log('[HTML Generation] Client-side cache HIT — fetching cached report from DB');
+          toast.loading("Loading cached report...", { id: progressToastId });
+          const cachedHtml = await getLatestReport();
+          if (cachedHtml) {
+            clearTimeout(safetyTimeoutHandle);
+            toast.dismiss(progressToastId);
+            setReportHtml(cachedHtml);
+            setHtmlViewerOpen(true);
+            setGeneratingHtml(false);
+            return;
+          }
+          console.log('[HTML Generation] Cache returned empty, falling through to generation');
+        }
+      }
+
       // Flush any pending changes to ensure edge function reads fresh data
       if (hasUnsavedChanges) {
         toast.loading("Saving changes first...", { id: progressToastId });
