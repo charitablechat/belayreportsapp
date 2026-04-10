@@ -339,6 +339,11 @@ export const useAutoSync = () => {
            // Hybrid cleanup: prune old synced photo blobs (non-blocking)
            pruneOldSyncedPhotoBlobs().catch(() => {});
            
+           // Storage pressure management (non-blocking)
+           import('@/lib/storage-pressure-manager').then(({ manageStoragePressure }) => {
+             manageStoragePressure().catch(() => {});
+           }).catch(() => {});
+           
            // Always clean stale queued operations after sync completes
            // Uses bulk clear to avoid IDB autoIncrement key mismatch issues
            (async () => {

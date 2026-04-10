@@ -2430,3 +2430,185 @@ export async function bulkPutAutocompleteEntries(entries: AutocompleteEntry[]): 
     'bulkPutAutocompleteEntries'
   );
 }
+
+// ============= STORAGE EVICTION FUNCTIONS =============
+
+/**
+ * Child store names grouped by parent store type.
+ * Used for cascading eviction of synced report data.
+ */
+const INSPECTION_CHILD_STORES = [
+  'inspection_systems', 'inspection_ziplines', 'inspection_equipment',
+  'inspection_standards', 'inspection_summary',
+] as const;
+
+const TRAINING_CHILD_STORES = [
+  'training_delivery_approaches', 'training_operating_systems',
+  'training_immediate_attention', 'training_verifiable_items',
+  'training_systems_in_place', 'training_summary',
+] as const;
+
+const ASSESSMENT_CHILD_STORES = [
+  'daily_assessment_beginning_of_day', 'daily_assessment_end_of_day',
+  'daily_assessment_operating_systems', 'daily_assessment_equipment_checks',
+  'daily_assessment_structure_checks', 'daily_assessment_environment_checks',
+] as const;
+
+/**
+ * Get the current route's report ID (if any) to avoid evicting the open report.
+ */
+function getCurrentReportId(): string | null {
+  const path = window.location.pathname;
+  const match = path.match(/\/(inspection|training|daily-assessment)\/([^/]+)/);
+  return match ? match[2] : null;
+}
+
+/**
+ * Evict synced reports older than `ageDays` from IndexedDB.
+ * Only evicts records where synced_at >= updated_at (confirmed synced).
+ * Returns the number of evicted parent records.
+ */
+export async function evictSyncedReports(ageDays: number): Promise<number> {
+  let evictedCount = 0;
+  const cutoff = Date.now() - ageDays * 24 * 60 * 60 * 1000;
+  const currentReportId = getCurrentReportId();
+
+  try {
+    const db = await getDB();
+
+    // Helper to evict from a parent store + its child stores
+    const evictFromStore = async (
+      parentStoreName: 'inspections' | 'trainings' | 'daily_assessments',
+      childStores: readonly string[],
+      childIndexPrefix: string,
+      photoIndexField: string,
+    ) => {
+      const readTx = db.transaction(parentStoreName, 'readonly');
+      const allRecords = await readTx.store.getAll();
+      await readTx.done;
+
+      for (const record of allRecords) {
+        const id = record.id;
+        if (!id || id === currentReportId) continue;
+
+        // Safety: only evict if synced and not modified since sync
+        const syncedAt = record.synced_at ? new Date(record.synced_at).getTime() : 0;
+        const updatedAt = record.updated_at ? new Date(record.updated_at).getTime() : 0;
+        if (!syncedAt || syncedAt < updatedAt) continue;
+        if (syncedAt > cutoff) continue;
+
+        // Evict parent + children in a single transaction
+        // Use 'as any' to bypass strict store name typing for dynamic store list
+        const allStoreNames = [parentStoreName, ...childStores, 'photos'];
+        const availableStores = allStoreNames.filter(s => db.objectStoreNames.contains(s as any));
+        const deleteTx = db.transaction(availableStores as any, 'readwrite');
+
+        (deleteTx as any).objectStore(parentStoreName).delete(id);
+
+        // Evict child records
+        for (const childStore of childStores) {
+          if (!db.objectStoreNames.contains(childStore as any)) continue;
+          const store = (deleteTx as any).objectStore(childStore);
+          const indexName = `by-${childIndexPrefix}`;
+          if (store.indexNames.contains(indexName)) {
+            const childKeys = await store.index(indexName).getAllKeys(id);
+            for (const key of childKeys) {
+              await store.delete(key);
+            }
+          }
+        }
+
+        // Evict photo metadata for this report
+        if (db.objectStoreNames.contains('photos')) {
+          const photoStore = deleteTx.objectStore('photos');
+          if (photoStore.indexNames.contains('by-inspection')) {
+            const photoKeys = await photoStore.index('by-inspection').getAllKeys(id);
+            for (const key of photoKeys) {
+              await photoStore.delete(key);
+            }
+          }
+        }
+
+        await deleteTx.done;
+        evictedCount++;
+      }
+    };
+
+    await evictFromStore('inspections', INSPECTION_CHILD_STORES, 'inspection', 'inspectionId');
+    await evictFromStore('trainings', TRAINING_CHILD_STORES, 'training', 'trainingId');
+    await evictFromStore('daily_assessments', ASSESSMENT_CHILD_STORES, 'assessment', 'assessmentId');
+
+  } catch (error) {
+    console.warn('[Eviction] evictSyncedReports failed:', error);
+  }
+
+  return evictedCount;
+}
+
+/**
+ * Evict report_backups entries older than `ageDays`.
+ * Returns number of evicted entries.
+ */
+export async function evictOldReportBackups(ageDays: number): Promise<number> {
+  let evictedCount = 0;
+  try {
+    const db = await getDB();
+    if (!db.objectStoreNames.contains('report_backups')) return 0;
+
+    const cutoff = Date.now() - ageDays * 24 * 60 * 60 * 1000;
+    const tx = db.transaction('report_backups', 'readwrite');
+    const index = tx.store.index('by-timestamp');
+
+    // IDBKeyRange.upperBound gets all entries with timestamp <= cutoff
+    const range = IDBKeyRange.upperBound(cutoff);
+    let cursor = await index.openCursor(range);
+    while (cursor) {
+      await cursor.delete();
+      evictedCount++;
+      cursor = await cursor.continue();
+    }
+    await tx.done;
+
+    if (evictedCount > 0 && import.meta.env.DEV) {
+      console.log(`[Eviction] Removed ${evictedCount} old report_backups entries`);
+    }
+  } catch (error) {
+    console.warn('[Eviction] evictOldReportBackups failed:', error);
+  }
+  return evictedCount;
+}
+
+/**
+ * Evict photo metadata rows where blob is null (already uploaded) and synced older than ageDays.
+ */
+export async function evictSyncedPhotoMetadata(ageDays: number): Promise<number> {
+  let evictedCount = 0;
+  try {
+    const db = await getDB();
+    if (!db.objectStoreNames.contains('photos')) return 0;
+
+    const cutoff = Date.now() - ageDays * 24 * 60 * 60 * 1000;
+    const currentReportId = getCurrentReportId();
+
+    const tx = db.transaction('photos', 'readwrite');
+    let cursor = await tx.store.openCursor();
+    while (cursor) {
+      const photo = cursor.value;
+      // Only evict if: blob already nullified, uploaded, and old enough
+      if (
+        photo.blob === null &&
+        photo.uploaded === true &&
+        photo.timestamp < cutoff &&
+        photo.inspectionId !== currentReportId
+      ) {
+        await cursor.delete();
+        evictedCount++;
+      }
+      cursor = await cursor.continue();
+    }
+    await tx.done;
+  } catch (error) {
+    console.warn('[Eviction] evictSyncedPhotoMetadata failed:', error);
+  }
+  return evictedCount;
+}
