@@ -80,8 +80,10 @@ export const useAutoSync = () => {
   const isIOSDevice = isIOS();
   const isMobileViewport = useIsMobile();
   
-  // Compute sync interval based on viewport (5 min mobile, 30s desktop)
-  const syncInterval = isMobileViewport ? MOBILE_SYNC_INTERVAL : DESKTOP_SYNC_INTERVAL;
+  // Compute sync interval based on viewport (mobile vs desktop)
+  // Active interval is used when there are unsynced items, idle interval when everything is synced
+  const activeSyncInterval = isMobileViewport ? MOBILE_SYNC_INTERVAL : DESKTOP_SYNC_INTERVAL;
+  const idleSyncInterval = isMobileViewport ? MOBILE_IDLE_SYNC_INTERVAL : DESKTOP_IDLE_SYNC_INTERVAL;
   
   const [state, setState] = useState<AutoSyncState>({
     isSyncing: false,
@@ -226,6 +228,61 @@ export const useAutoSync = () => {
         console.log('[AutoSync] Starting sync...', { unsyncedCount: unsyncedCountRef.current, timeout: dynamicTimeout });
       }
       
+      // EARLY EXIT: When nothing to sync, only clean stale queues and skip heavy pipeline
+      const hasUnsyncedItems = unsyncedCountRef.current > 0;
+      let hasQueuedOps = false;
+      
+      if (!hasUnsyncedItems) {
+        try {
+          const [inspOps, trainOps, assessOps] = await Promise.all([
+            getQueuedOperations(),
+            getQueuedTrainingOperations(),
+            getQueuedAssessmentOperations(),
+          ]);
+          hasQueuedOps = inspOps.length > 0 || trainOps.length > 0 || assessOps.length > 0;
+          
+          if (hasQueuedOps) {
+            // Clean stale non-soft-delete entries immediately
+            const nonSoftDeleteFilter = (op: any) => !op?.data?.deleted_at;
+            const staleInsp = inspOps.filter(nonSoftDeleteFilter);
+            const staleTrain = trainOps.filter(nonSoftDeleteFilter);
+            const staleAssess = assessOps.filter(nonSoftDeleteFilter);
+            
+            if (staleInsp.length > 0 || staleTrain.length > 0 || staleAssess.length > 0) {
+              console.log(`[AutoSync] Clearing ${staleInsp.length + staleTrain.length + staleAssess.length} stale queued operations`);
+              await Promise.all([
+                ...staleInsp.map(op => removeQueuedOperation(op.id!)),
+                ...staleTrain.map(op => removeQueuedTrainingOperation(op.id!)),
+                ...staleAssess.map(op => removeQueuedAssessmentOperation(op.id!)),
+              ]);
+            }
+            
+            // Process any remaining soft-delete entries
+            try {
+              const { processQueuedSoftDeletes } = await import('@/lib/queued-soft-delete-processor');
+              const deleteResult = await processQueuedSoftDeletes();
+              if (deleteResult.processed > 0) {
+                console.log(`[AutoSync] Processed ${deleteResult.processed} queued soft-deletes`);
+              }
+            } catch (e) {
+              console.warn('[AutoSync] Queued soft-delete processing failed (non-blocking):', e);
+            }
+          }
+        } catch (e) {
+          console.warn('[AutoSync] Stale queue check failed (non-blocking):', e);
+        }
+      }
+      
+      // If nothing to sync and no queued ops (or we just cleaned them), skip the heavy pipeline
+      if (!hasUnsyncedItems && !hasQueuedOps) {
+        if (import.meta.env.DEV) {
+          console.log('[AutoSync] Nothing to sync - skipping pipeline');
+        }
+        clearTimeout(safetyTimeoutHandle);
+        setState(prev => ({ ...prev, isSyncing: false, lastSyncTime: new Date() }));
+        return;
+      }
+      
       // Sync data types SEQUENTIALLY with UI thread yields between each
       // This prevents sync from blocking typing and other user interactions
       const yieldToUI = () => new Promise<void>(r => setTimeout(r, 0));
@@ -291,28 +348,26 @@ export const useAutoSync = () => {
            // Hybrid cleanup: prune old synced photo blobs (non-blocking)
            pruneOldSyncedPhotoBlobs().catch(() => {});
            
-           // Selectively clean up non-soft-delete operation queue entries after successful sync
-           // Preserve soft-delete entries (data.deleted_at != null) for the processor to retry
-           if (anySuccess) {
-             (async () => {
-               try {
-                 const [inspOps, trainOps, assessOps] = await Promise.all([
-                   getQueuedOperations(),
-                   getQueuedTrainingOperations(),
-                   getQueuedAssessmentOperations(),
-                 ]);
-                 // Only remove entries that are NOT soft-deletes (those are handled by processQueuedSoftDeletes)
-                 const nonSoftDeleteFilter = (op: any) => !op?.data?.deleted_at;
-                 await Promise.all([
-                   ...inspOps.filter(nonSoftDeleteFilter).map(op => removeQueuedOperation(op.id!)),
-                   ...trainOps.filter(nonSoftDeleteFilter).map(op => removeQueuedTrainingOperation(op.id!)),
-                   ...assessOps.filter(nonSoftDeleteFilter).map(op => removeQueuedAssessmentOperation(op.id!)),
-                 ]);
-               } catch (e) {
-                 console.warn('[AutoSync] Non-blocking: selective queue cleanup failed:', e);
-               }
-             })();
-           }
+           // Always clean stale queued operations after sync completes
+           // This prevents stale entries from accumulating when unsyncedCount is 0
+           (async () => {
+             try {
+               const [inspOps, trainOps, assessOps] = await Promise.all([
+                 getQueuedOperations(),
+                 getQueuedTrainingOperations(),
+                 getQueuedAssessmentOperations(),
+               ]);
+               // Only remove entries that are NOT soft-deletes (those are handled by processQueuedSoftDeletes)
+               const nonSoftDeleteFilter = (op: any) => !op?.data?.deleted_at;
+               await Promise.all([
+                 ...inspOps.filter(nonSoftDeleteFilter).map(op => removeQueuedOperation(op.id!)),
+                 ...trainOps.filter(nonSoftDeleteFilter).map(op => removeQueuedTrainingOperation(op.id!)),
+                 ...assessOps.filter(nonSoftDeleteFilter).map(op => removeQueuedAssessmentOperation(op.id!)),
+               ]);
+             } catch (e) {
+               console.warn('[AutoSync] Non-blocking: selective queue cleanup failed:', e);
+             }
+           })();
           
           // Invalidate queries to refresh UI
           queryClient.invalidateQueries({ queryKey: ['inspections'] });
