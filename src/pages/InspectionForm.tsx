@@ -104,7 +104,7 @@ export default function InspectionForm() {
   const { isSyncing } = usePWA();
   const isMobileView = useIsMobile();
   const { storageUnavailable, usingFallbackStorage } = useStorageHealthCheck();
-  const { syncReport } = useReportSync(id, 'inspection');
+  const { syncReport, getLatestReport } = useReportSync(id, 'inspection');
   
   // Check edit permissions - Super Admins are view-only, only owners can edit
   const [inspectorId, setInspectorId] = useState<string | null>(null);

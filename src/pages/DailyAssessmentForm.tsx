@@ -84,7 +84,7 @@ export default function DailyAssessmentForm() {
   const { formConfig, isLoading: isLoadingConfig } = useFormConfiguration('en', 'daily_assessment');
   const { isOnline } = useNetworkStatus();
   const isMobileView = useIsMobile();
-  const { syncReport } = useReportSync(id, 'daily_assessment');
+  const { syncReport, getLatestReport } = useReportSync(id, 'daily_assessment');
   const { storageUnavailable, usingFallbackStorage } = useStorageHealthCheck();
   
   // Check edit permissions - Super Admins are view-only, only owners can edit

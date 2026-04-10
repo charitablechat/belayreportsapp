@@ -80,7 +80,7 @@ export default function TrainingForm() {
   const navigate = useNavigate();
   const { isOnline } = useNetworkStatus();
   const isMobile = useIsMobile();
-  const { syncReport } = useReportSync(id, 'training');
+  const { syncReport, getLatestReport } = useReportSync(id, 'training');
   const { storageUnavailable, usingFallbackStorage } = useStorageHealthCheck();
   
   // Check edit permissions - Super Admins are view-only, only owners can edit
