@@ -1,68 +1,71 @@
 
 
-# Fix: Sign-Out Stuck on Spinner
+# Fix: Syncing Lag and Persistent Spinning Indicator
 
-## Root Cause
+## Root Causes Identified
 
-The `onAuthStateChange` callback in `src/hooks/useReportEditPermission.tsx` (line 80) is `async` and contains `await Promise.all([getSuperAdminStatusWithCache(), getIsTrueSuperAdmin()])`. This blocks the Supabase auth-js event pipeline — when sign-out fires, this listener's `await` creates a deadlock that prevents subsequent auth events (including the `SIGNED_OUT` event) from propagating. The spinner never stops because `setSigningOut(false)` is only called in the `catch` block, and the navigation to `/` never fires because `SIGNED_OUT` never reaches the other listeners.
+### Issue 1: Stale Queued Operations Never Cleared (Primary Cause)
+The console logs show **49 inspection queued operations, 31 training operations, and 6 assessment operations** accumulating in IndexedDB. These are read every sync cycle (every 30s on desktop) but **never cleaned up** because cleanup only runs when `anySuccess` is true (line 294 of `useAutoSync.tsx`). Since there are 0 unsynced items, no sync "succeeds," so the stale queue grows forever. Each cycle reads all 86 entries, causing unnecessary IndexedDB churn and the recurring 8s timeout warnings.
 
-## Fix
+### Issue 2: Redundant IndexedDB Reads Per Cycle
+Every 30-second sync cycle performs these reads even when `unsyncedCount === 0`:
+- `getQueuedOperations()` (49 entries)
+- `getQueuedTrainingOperations()` (31 entries)
+- `getQueuedAssessmentOperations()` (6 entries)
+- `getUnsyncedInspections()`, `getUnsyncedTrainings()`, `getUnsyncedDailyAssessments()`
+- Full atomic sync pipeline for all 3 report types
 
-### 1. Remove `await` from `useReportEditPermission.tsx` `onAuthStateChange` callback
+This creates constant IndexedDB contention, triggering the `[Offline Storage] Operation timed out after 8000ms` warnings seen in the console.
 
-Change the `async` callback to fire-and-forget:
+### Issue 3: Sync Runs Even When Nothing to Sync
+When `unsyncedCount === 0`, the sync still runs the full pipeline (soft-delete processing, 3 atomic syncs, photo sync), wasting resources and creating the perception of constant activity.
 
-```typescript
-// BEFORE (deadlocks):
-supabase.auth.onAuthStateChange(async (_event, session) => {
-  // ...
-  const [adminStatus, trueSuperAdminStatus] = await Promise.all([...]);
-  // ...
-});
+## Fix Plan
 
-// AFTER (fire-and-forget):
-supabase.auth.onAuthStateChange((_event, session) => {
-  const newUserId = session?.user?.id;
-  if (newUserId) {
-    setCurrentUserId(newUserId);
-  } else if (navigator.onLine) {
-    setCurrentUserId(null);
-  }
+### Step 1: Clear stale queued operations independently of sync success
+**File:** `src/hooks/useAutoSync.tsx`
 
-  if (session?.user) {
-    // Fire and forget — do NOT await inside onAuthStateChange
-    Promise.all([
-      getSuperAdminStatusWithCache(),
-      getIsTrueSuperAdmin()
-    ]).then(([adminStatus, trueSuperAdminStatus]) => {
-      setIsAdmin(adminStatus);
-      setIsTrueSuperAdmin(trueSuperAdminStatus);
-    }).catch(() => {});
-  } else if (navigator.onLine) {
-    // ... existing cache checks (synchronous, no change needed)
-  }
-});
-```
-
-### 2. Add safety reset for `signingOut` state in `AuthenticatedHeader.tsx`
-
-Add `setSigningOut(false)` after `signOut()` resolves (not just in `catch`), so even if the navigation doesn't happen immediately, the button isn't stuck:
+Move the queue cleanup **outside** the `if (anySuccess)` gate. When there are 0 unsynced items but queued operations exist, clean them up unconditionally. This immediately eliminates the 86 stale entries and the associated IndexedDB churn.
 
 ```typescript
-const handleSignOut = async () => {
-  setSigningOut(true);
-  try {
-    // ... existing sync logic ...
-    await supabase.auth.signOut();
-  } catch (error) {
-    console.error("Error signing out:", error);
-  } finally {
-    setSigningOut(false);  // Always reset, not just on error
+// BEFORE (line 294): cleanup only when anySuccess
+if (anySuccess) { /* cleanup queued ops */ }
+
+// AFTER: cleanup whenever sync completes (no unsynced items = stale queue)
+if (!allFetchesFailed) {
+  // Always clean stale queued ops (they accumulate when no items need syncing)
+  (async () => { /* cleanup logic - moved outside anySuccess gate */ })();
+  
+  if (anySuccess) {
+    // toast, notifications, emit sync complete, etc.
   }
-};
+}
 ```
+
+### Step 2: Skip full sync pipeline when nothing to sync
+**File:** `src/hooks/useAutoSync.tsx`
+
+Add an early exit in `performSync` when `unsyncedCount === 0` AND there are no queued operations. This eliminates the 30-second cycle overhead entirely when there's nothing to do.
+
+```typescript
+// After session validation, before starting the pipeline:
+if (unsyncedCountRef.current === 0) {
+  // Still process queued soft-deletes and clean stale queued ops
+  // but skip the full atomic sync + photo sync pipeline
+}
+```
+
+### Step 3: Reduce periodic sync frequency when idle
+**File:** `src/hooks/useAutoSync.tsx`
+
+When there are 0 unsynced items and the last sync was successful, back off to a longer interval (e.g., 120s instead of 30s for desktop) to reduce background noise. Reset to normal interval when items appear.
 
 ## Files Changed
-1. `src/hooks/useReportEditPermission.tsx` — remove `async`/`await` from `onAuthStateChange` callback
-2. `src/components/AuthenticatedHeader.tsx` — move `setSigningOut(false)` to `finally` block
+1. `src/hooks/useAutoSync.tsx` — stale queue cleanup, early exit on empty, adaptive interval
+
+## Impact
+- Eliminates the persistent 8s timeout warnings (no more unnecessary IndexedDB reads)
+- Removes the spinning indicator caused by constant sync activity
+- Reduces IndexedDB contention from ~6 transactions/cycle to near-zero when idle
+- Preserves all existing sync guarantees when items actually need syncing
 
