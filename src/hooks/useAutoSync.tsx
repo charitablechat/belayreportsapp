@@ -347,24 +347,16 @@ export const useAutoSync = () => {
            pruneOldSyncedPhotoBlobs().catch(() => {});
            
            // Always clean stale queued operations after sync completes
-           // This prevents stale entries from accumulating when unsyncedCount is 0
+           // Uses bulk clear to avoid IDB autoIncrement key mismatch issues
            (async () => {
              try {
-               const [inspOps, trainOps, assessOps] = await Promise.all([
-                 getQueuedOperations(),
-                 getQueuedTrainingOperations(),
-                 getQueuedAssessmentOperations(),
-               ]);
-               // Only remove entries that are NOT soft-deletes (those are handled by processQueuedSoftDeletes)
-               const nonSoftDeleteFilter = (op: any) => !op?.data?.deleted_at;
-               const validIdFilter = (op: any) => op.id != null && op.id !== undefined;
                await Promise.all([
-                 ...inspOps.filter(nonSoftDeleteFilter).filter(validIdFilter).map(op => removeQueuedOperation(op.id!)),
-                 ...trainOps.filter(nonSoftDeleteFilter).filter(validIdFilter).map(op => removeQueuedTrainingOperation(op.id!)),
-                 ...assessOps.filter(nonSoftDeleteFilter).filter(validIdFilter).map(op => removeQueuedAssessmentOperation(op.id!)),
+                 clearAllQueuedOperations(),
+                 clearAllQueuedTrainingOperations(),
+                 clearAllQueuedAssessmentOperations(),
                ]);
              } catch (e) {
-               console.warn('[AutoSync] Non-blocking: selective queue cleanup failed:', e);
+               console.warn('[AutoSync] Non-blocking: bulk queue cleanup failed:', e);
              }
            })();
           
