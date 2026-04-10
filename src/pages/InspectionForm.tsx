@@ -1351,24 +1351,9 @@ export default function InspectionForm() {
     }
     anySaveInProgressRef.current = true;
     try {
-      // Verify user is authenticated before saving (with offline fallback)
-      let user = await getUserWithCache();
-      if (!user && !navigator.onLine) {
-        const offlineId = getOfflineUserId();
-        if (offlineId) user = { id: offlineId } as any;
-      }
-      if (!user && navigator.onLine) {
-        // Token may have expired — attempt session refresh before giving up
-        user = await ensureValidSession();
-      }
-      // Last resort: network may have flickered — try offline ID
-      if (!user) {
-        const offlineId = getOfflineUserId();
-        if (offlineId) user = { id: offlineId } as any;
-      }
-      if (!user) {
-        throw new Error('User not authenticated');
-      }
+      // Best-effort user lookup for last_modified_by — never blocks save
+      // Matches TrainingForm/DailyAssessmentForm pattern: local saves always succeed
+      const user = await getUserWithCache().catch(() => null);
       
       // Preserve original inspector_id - only update timestamp
       const inspectionToSave = {
