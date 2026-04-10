@@ -1,100 +1,105 @@
 
 
-# Fix: Report Generation Lag and Performance Bottleneck
+# Fix: Force Sync Not Working and Persistent Sync Badge
 
-## Root Causes Identified
+## Root Cause Analysis
 
-### Cause 1: Photo Downloads in Edge Functions (Primary — 10-25s)
-Every "Generate Report" call triggers `generate-inspection-html` (2772 lines), which downloads **every photo** from Supabase Storage and converts each to base64 inline. With a 25-second budget and sequential storage API calls, this dominates execution time. The same pattern exists in `generate-training-html`.
+### Issue 1: autoIncrement Keys Not Accessible via `op.id` (Primary DataError Source)
+The three operation stores (`operations`, `training_operations`, `assessment_operations`) are created with `{ autoIncrement: true }` and NO `keyPath`. This means `getAll()` returns the raw stored objects — the auto-incremented IDB key is NOT included as a property on the object. When `useAutoSync.tsx` does `op.id!`, it's always `undefined` for entries that don't have an `id` field in their data payload.
 
-### Cause 2: Logo Fetches on Every Generation (~1-2s)
-`getLogoBase64()` fetches two logo PNGs from storage and converts to base64 on every single report generation — these never change but are re-downloaded every time.
+The `validIdFilter` added in the last fix checks `op.id != null`, but this filters against the data property, not the IDB key. Many queued operations DO have a data property called `id` (the report UUID), so they pass the filter — but that UUID is not the IDB auto-increment key, so `db.delete('operations', reportUUID)` silently does nothing or throws.
 
-### Cause 3: IndexedDB Circuit Breaker Tripping During Generation
-The console logs show `removeQueuedAssessmentOperation` being called with `undefined` IDs (the queued operations lack an `id` field), causing `DataError: No key or key range specified`. This trips the circuit breaker, disabling IndexedDB for 60s and causing cascading timeout warnings that degrade the entire UI during report generation.
+Meanwhile, operations WITHOUT an `id` in their data payload pass through as `undefined`, causing the `DataError: No key or key range specified` crash that trips the circuit breaker, disabling ALL IndexedDB for 60 seconds. This cascades into the "Using backup storage" banner and prevents force sync from completing.
 
-### Cause 4: No Auto-Save Flush Before Generation
-When the user clicks "Generate Report," any unsaved edits haven't been persisted to the server yet. The edge function reads stale data from the database, and there's no flush-and-wait step.
+### Issue 2: `removeQueuedOperation` Lacks Null Guard
+Unlike `removeQueuedTrainingOperation` and `removeQueuedAssessmentOperation` (which were patched with null guards), `removeQueuedOperation` for inspections still accepts bare `number` with no guard against `undefined`.
+
+### Issue 3: Circuit Breaker Cascade
+Once the DataError trips the circuit breaker (3 failures), ALL subsequent IndexedDB operations fail for 60 seconds. This means:
+- `updateUnsyncedCounts()` fails → badge stays stale
+- Next sync cycle skips (circuit breaker check at line 130)
+- Force sync also hits the same circuit breaker gate
 
 ## Fix Plan
 
-### Step 1: Fix undefined ID crashes in queue cleanup
+### Step 1: Use `clearAll` Instead of Individual Deletes for Stale Queue Cleanup
 **File:** `src/hooks/useAutoSync.tsx`
 
-Filter out operations with falsy `id` before calling `remove*` functions. This eliminates the `DataError` crashes and circuit breaker trips.
+Replace the individual `removeQueuedOperation(op.id!)` calls with bulk `clearAllQueuedOperations()`, `clearAllQueuedTrainingOperations()`, `clearAllQueuedAssessmentOperations()`. These already exist and use `store.clear()` which doesn't need keys at all. This eliminates the entire key mismatch problem.
+
+For soft-delete entries, process them FIRST via `processQueuedSoftDeletes()`, THEN clear the remaining non-soft-delete entries in bulk.
 
 ```typescript
-// Before removal, filter out entries without valid IDs
-const staleInsp = inspOps.filter(op => op.id && !op?.data?.deleted_at);
-const staleTrain = trainOps.filter(op => op.id && !op?.data?.deleted_at);
-const staleAssess = assessOps.filter(op => op.id && !op?.data?.deleted_at);
+// BEFORE: Individual deletes with broken keys
+await Promise.all([
+  ...inspOps.filter(nonSoftDeleteFilter).filter(validIdFilter).map(op => removeQueuedOperation(op.id!)),
+  ...
+]);
+
+// AFTER: Process soft-deletes first, then bulk clear
+await processQueuedSoftDeletes();
+await Promise.all([
+  clearAllQueuedOperations(),
+  clearAllQueuedTrainingOperations(),
+  clearAllQueuedAssessmentOperations(),
+]);
 ```
 
-### Step 2: Cache logos in edge functions
-**File:** `supabase/functions/_shared/report-layout.ts`
+### Step 2: Add Null Guard to `removeQueuedOperation`
+**File:** `src/lib/offline-storage.ts`
 
-Add module-level caching so logos are fetched once per cold start (edge functions persist across warm invocations):
+Add the same null/undefined guard that `removeQueuedTrainingOperation` and `removeQueuedAssessmentOperation` already have:
 
 ```typescript
-let cachedLogos: { ropeWorks: string; acct: string } | null = null;
-
-export async function getLogoBase64() {
-  if (cachedLogos) return cachedLogos;
-  // ...existing fetch logic...
-  cachedLogos = result;
-  return cachedLogos;
+export async function removeQueuedOperation(id: number | undefined | null) {
+  if (id === undefined || id === null) {
+    console.warn('[Offline Storage] Cannot remove operation with undefined/null ID');
+    return;
+  }
+  // ...existing logic
 }
 ```
 
-### Step 3: Use signed URLs instead of base64 for photos
-**File:** `supabase/functions/generate-inspection-html/index.ts`
+### Step 3: Force Sync Should Reset Circuit Breaker
+**File:** `src/hooks/useAutoSync.tsx`
 
-Replace the expensive download-and-convert-to-base64 loop with `createSignedUrl()` calls (which return instantly without downloading file content). This eliminates the 10-25s photo processing budget entirely.
-
-- Gallery photos: use signed URLs (valid 24h) in `<img src="...">` tags
-- Item photos: same approach
-- Fallback: keep base64 conversion only for PDF generation (where signed URLs won't work)
-
-**Same change in:** `supabase/functions/generate-training-html/index.ts`
-
-### Step 4: Flush unsaved changes before generating
-**File:** `src/pages/InspectionForm.tsx`
-
-Add a save-flush step at the start of `handleGenerateHTML`:
+When the user explicitly clicks "Force Sync," bypass or reset the circuit breaker so the sync can actually execute:
 
 ```typescript
-const handleGenerateHTML = async () => {
-  // Flush any pending changes to ensure edge function reads fresh data
-  if (hasUnsavedChanges) {
-    await saveProgress();
+const performSync = useCallback(async (silent = true) => {
+  // ...existing checks...
+  
+  const cbStatus = getCircuitBreakerStatus();
+  if (cbStatus.open) {
+    if (silent) return; // Skip on periodic/auto sync
+    // Force sync: reset the circuit breaker so user action always works
+    resetCircuitBreaker();
   }
-  // ...existing generation logic...
-};
+  // ...rest of sync...
+});
 ```
 
-**Same pattern in:** `TrainingForm.tsx`, `DailyAssessmentForm.tsx`
+### Step 4: Expose `resetCircuitBreaker` from offline-storage
+**File:** `src/lib/offline-storage.ts`
 
-### Step 5: Add progress feedback
-Show a more informative toast during generation so users know the system is working:
+Add a function to reset the circuit breaker state so force sync can bypass it:
 
 ```typescript
-const toastId = toast.loading("Generating report...");
-// ... after completion:
-toast.dismiss(toastId);
+export function resetCircuitBreaker() {
+  indexedDBFailureCount = 0;
+  indexedDBDisabledUntil = 0;
+  indexedDBBackoffCount = 0;
+  dbPromise = null; // Force fresh connection
+}
 ```
 
 ## Files Changed
-1. `src/hooks/useAutoSync.tsx` — guard against undefined IDs in queue cleanup
-2. `supabase/functions/_shared/report-layout.ts` — module-level logo cache
-3. `supabase/functions/generate-inspection-html/index.ts` — signed URLs for photos instead of base64
-4. `supabase/functions/generate-training-html/index.ts` — same signed URL optimization
-5. `src/pages/InspectionForm.tsx` — flush unsaved changes + progress toast
-6. `src/pages/TrainingForm.tsx` — flush unsaved changes + progress toast
-7. `src/pages/DailyAssessmentForm.tsx` — flush unsaved changes + progress toast
+1. `src/hooks/useAutoSync.tsx` — bulk clear instead of individual key deletes; bypass circuit breaker on force sync
+2. `src/lib/offline-storage.ts` — null guard on `removeQueuedOperation`; expose `resetCircuitBreaker`
 
 ## Expected Impact
-- **Photo processing:** 10-25s → ~1-2s (signed URLs are near-instant vs downloading files)
-- **Logo fetching:** 1-2s → 0ms on warm invocations
-- **IndexedDB crashes:** Eliminated (no more undefined ID deletions)
-- **Data freshness:** Guaranteed by pre-generation flush
+- Force sync will always execute when user clicks it (no longer blocked by circuit breaker)
+- Zero `DataError` crashes (bulk clear doesn't need keys)
+- Circuit breaker stops cascading into unrelated operations
+- Sync badge updates correctly after successful sync
 
