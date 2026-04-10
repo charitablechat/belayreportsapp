@@ -5,6 +5,8 @@ interface UseUnsavedChangesOptions {
   hasUnsavedChanges: boolean;
   /** Always block SPA navigation regardless of unsaved state (e.g., always show exit dialog) */
   alwaysBlock?: boolean;
+  /** Where to navigate on confirm/save-and-leave (default: '/dashboard') */
+  fallbackPath?: string;
   message?: string;
   onSaveAndLeave?: () => Promise<void>;
 }
@@ -12,6 +14,7 @@ interface UseUnsavedChangesOptions {
 export function useUnsavedChanges({
   hasUnsavedChanges,
   alwaysBlock = false,
+  fallbackPath = "/dashboard",
   message = "You have unsaved changes. Are you sure you want to leave?",
   onSaveAndLeave,
 }: UseUnsavedChangesOptions) {
@@ -56,8 +59,9 @@ export function useUnsavedChanges({
 
   const confirmNavigation = useCallback(() => {
     bypassRef.current = true;
-    blocker.proceed?.();
-  }, [blocker]);
+    blocker.reset?.();
+    navigate(fallbackPath);
+  }, [blocker, navigate, fallbackPath]);
 
   const cancelNavigation = useCallback(() => {
     blocker.reset?.();
@@ -75,8 +79,9 @@ export function useUnsavedChanges({
       }
     }
     bypassRef.current = true;
-    blocker.proceed?.();
-  }, [blocker, onSaveAndLeave]);
+    blocker.reset?.();
+    navigate(fallbackPath);
+  }, [blocker, onSaveAndLeave, navigate, fallbackPath]);
 
   // Reset bypass when blocker resets (user cancelled or new navigation)
   useEffect(() => {
