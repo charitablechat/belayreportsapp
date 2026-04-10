@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, useRef, useCallback } from "react";
+import { formatReportFilename, formatReportTitle } from "@/lib/report-naming";
 import { useReportTabHistory } from "@/hooks/useReportTabHistory";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel,
