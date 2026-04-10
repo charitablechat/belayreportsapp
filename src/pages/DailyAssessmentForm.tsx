@@ -1680,7 +1680,7 @@ export default function DailyAssessmentForm() {
                     className={cn("bg-emerald-500/10 backdrop-blur-md border-emerald-400/30 text-emerald-600 dark:text-emerald-400 shadow-[0_0_8px_rgba(16,185,129,0.15)] hover:bg-emerald-500/20 hover:text-emerald-700 dark:hover:text-emerald-300", isInvoiced && "bg-emerald-500/25 shadow-[0_0_16px_rgba(16,185,129,0.3)] animate-pulse-calm")}
                   >
                     <Receipt className={isMobileView ? "w-5 h-5 mr-1.5" : "w-4 h-4 mr-2"} />
-                    {isMobileView ? "" : (isInvoiced ? "Invoiced ✓" : "Invoiced")}
+                    {isMobileView ? "" : (isInvoiced ? "Invoiced ✓" : "Invoice")}
                   </Button>
                 )}
                 </>

@@ -210,7 +210,7 @@ export function ReportCard({ report, type, onDelete, onClick, getStatusBadge, co
                   className={isInvoiced ? "text-amber-600 focus:text-amber-600" : "text-red-600 focus:text-red-600"}
                 >
                   <Receipt className="w-4 h-4 mr-2" />
-                  {isInvoiced ? 'Remove Invoice' : 'Mark Invoiced'}
+                  {isInvoiced ? 'Remove Invoice' : 'Mark Invoice'}
                 </DropdownMenuItem>
               )}
               <DropdownMenuItem 
