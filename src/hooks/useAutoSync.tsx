@@ -186,21 +186,12 @@ export const useAutoSync = () => {
       });
     }
     
-    // Debounce protection — schedule deferred retry for explicit reconnection syncs
+    // Debounce protection — only applies to background (silent) syncs.
+    // Force sync (silent=false) bypasses debounce entirely; the syncInProgressRef
+    // guard above already prevents true duplicate calls.
     const now = Date.now();
-    if (now - lastSyncAttemptRef.current < MIN_SYNC_INTERVAL) {
-      if (!silent) {
-        // Explicit reconnection (online event) — don't silently drop, schedule retry
-        const remaining = MIN_SYNC_INTERVAL - (now - lastSyncAttemptRef.current);
-        if (import.meta.env.DEV) {
-          console.log(`[AutoSync] Debounce guard hit on reconnection — scheduling retry in ${remaining}ms`);
-        }
-        setTimeout(() => {
-          if (navigator.onLine && !syncInProgressRef.current) {
-            performSync(false);
-          }
-        }, remaining + 500);
-      } else if (import.meta.env.DEV) {
+    if (silent && now - lastSyncAttemptRef.current < MIN_SYNC_INTERVAL) {
+      if (import.meta.env.DEV) {
         console.log('[AutoSync] Too soon since last sync - debouncing');
       }
       return;
@@ -277,6 +268,8 @@ export const useAutoSync = () => {
           console.log('[AutoSync] Nothing to sync - skipping pipeline');
         }
         clearTimeout(safetyTimeoutHandle);
+        // Always refresh counts so badge reflects reality (fixes stale badge after circuit breaker)
+        updateUnsyncedCounts().catch(() => {});
         setState(prev => ({ ...prev, isSyncing: false, lastSyncTime: new Date() }));
         return;
       }
@@ -455,6 +448,8 @@ export const useAutoSync = () => {
       lastSyncCompletedAtRef.current = Date.now();
       // CRITICAL: Always reset isSyncing state in finally block to prevent stuck spinner
       setState(prev => ({ ...prev, isSyncing: false }));
+      // Always refresh unsynced counts so the badge is accurate after every sync attempt
+      updateUnsyncedCounts().catch(() => {});
     }
   }, [queryClient, isMobileDevice, isIOSDevice]);
   
