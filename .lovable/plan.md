@@ -1,49 +1,38 @@
 
 
-# Fix Double-Dialog Flash When Exiting Reports
+# Remove Auth Gate from InspectionForm Save
 
-## Root Cause
+## Problem
+`InspectionForm.performSave` is the **only** form that checks authentication before saving locally. Lines 1354–1371 run a 4-layer auth check and throw `"User not authenticated"` if all layers fail — which aborts the entire save, including the local IndexedDB write.
 
-The bug is caused by the interaction between two systems:
+`TrainingForm.saveTraining` and `DailyAssessmentForm.handleSaveProgress` both skip auth entirely and write directly to IndexedDB/localStorage. This is the correct pattern — local saves should never depend on authentication.
 
-1. **`useReportTabHistory`** pushes extra browser history entries (one per tab visited) using `window.history.pushState({ reportTab: ... })`.
-2. **`useBlocker`** (inside `useUnsavedChanges`) intercepts SPA navigation and shows the `UnsavedChangesDialog`.
-
-When the user presses the browser/hardware back button:
-- React Router's `useBlocker` intercepts the navigation and shows the `UnsavedChangesDialog`
-- The user clicks "Save & Exit" or "Exit — Nothing to Save"
-- `confirmNavigation()` calls `blocker.proceed()`, which continues the **original back navigation**
-- But the previous history entry is a **tab history entry** (`{ reportTab: "..." }`), NOT the dashboard
-- So the user lands on another history entry **still on the same form page**
-- `bypassRef` gets reset by the cleanup effect
-- The `popstate` listener in `useReportTabHistory` fires and either changes tabs or calls `onFirstTabBack()`, which shows the `SaveBeforeLeaveDialog` — causing the dialog to flash again
+## Why the Auth Check Exists (and Why It's Wrong Here)
+The auth check was originally added to stamp `last_modified_by` on the inspection. But this is a nice-to-have metadata field — it should never block data persistence. The other two forms handle this identically (`currentUser?.id`) without an auth gate.
 
 ## Fix
 
-Change `confirmNavigation` and `saveAndLeave` in `useUnsavedChanges` to **reset the blocker and navigate explicitly to a fallback path** instead of calling `blocker.proceed()` (which tries to continue the original back-navigation through stale tab history entries).
+**File: `src/pages/InspectionForm.tsx`** (~lines 1354–1371)
 
-### Changes
-
-**`src/hooks/useUnsavedChanges.tsx`**:
-- Add a `fallbackPath` option (default: `'/dashboard'`)
-- `confirmNavigation`: call `blocker.reset()` + `navigate(fallbackPath)` instead of `blocker.proceed()`
-- `saveAndLeave`: same — after saving, `blocker.reset()` + `navigate(fallbackPath)` instead of `blocker.proceed()`
-- Keep `bypassAndProceed` unchanged (it's used by `SaveBeforeLeaveDialog` which already calls `navigate('/dashboard')` explicitly after)
+Remove the auth verification block and replace it with a soft, non-blocking approach that matches TrainingForm/DailyAssessmentForm:
 
 ```text
-Before:  confirmNavigation → bypassRef=true → blocker.proceed()
-                              ↓
-                    Goes to tab history entry (wrong!)
-                              ↓
-                    Still on form → dialog fires again
+Before (throws & aborts save):
+  let user = await getUserWithCache();
+  ... 4-layer fallback ...
+  if (!user) throw new Error('User not authenticated');
 
-After:   confirmNavigation → bypassRef=true → blocker.reset() → navigate('/dashboard')
-                              ↓
-                    Goes directly to dashboard ✓
+After (never blocks save):
+  // Best-effort user lookup for last_modified_by — never blocks save
+  const user = await getUserWithCache().catch(() => null);
 ```
 
-No changes needed in the three form components — they all already use `alwaysBlock: true` and want to navigate to `/dashboard` on exit.
+The `last_modified_by` field already has a conditional guard (`currentUser?.id && currentUser.id !== inspection.inspector_id`), so it gracefully handles a missing user by simply not setting the field.
 
-## Files
-- `src/hooks/useUnsavedChanges.tsx` — add `fallbackPath` option, update `confirmNavigation` and `saveAndLeave`
+### Specific Changes
+1. Remove lines 1354–1371 (the 4-layer auth check + throw)
+2. The `currentUser` variable (already available from the hook) continues to handle `last_modified_by` — no change needed there
+3. Remove the now-unused `ensureValidSession` import if it's only used here
+
+This makes InspectionForm consistent with TrainingForm and DailyAssessmentForm: **data is always saved locally first, authentication is only relevant for cloud sync**.
 
